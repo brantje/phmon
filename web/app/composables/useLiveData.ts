@@ -33,6 +33,7 @@ const hasSnapshot = ref(false)
 const staleCycle = ref(false)
 
 const subscriptions = new Map<string, Subscription>()
+const subscriptionRevisions = new Map<string, number>()
 let socket: WebSocket | null = null
 let reconnectTimer: number | undefined
 let watchdogTimer: number | undefined
@@ -54,6 +55,16 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.group_id || '') === (right.group_id || '') &&
     (left.character_id || '') === (right.character_id || '')
   )
+}
+
+function nextSubscriptionRevision(id: string, current?: Subscription) {
+  const previous = Math.max(
+    subscriptionRevisions.get(id) || 0,
+    current?.revision || 0,
+  )
+  const next = previous + 1
+  subscriptionRevisions.set(id, next)
+  return next
 }
 
 function send(frame: LiveClientFrame) {
@@ -93,7 +104,7 @@ function ensureSubscription(
     id,
     stream,
     filter,
-    revision: (current?.revision || 0) + 1,
+    revision: nextSubscriptionRevision(id, current),
     current: false,
     unavailable: false,
   }
