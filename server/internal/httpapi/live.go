@@ -27,7 +27,8 @@ const (
 	liveWriteTimeout          = 3 * time.Second
 	liveHeartbeatInterval     = 10 * time.Second
 	liveHeartbeatTimeout      = 35 * time.Second
-	liveSnapshotCoalesce      = 25 * time.Millisecond
+	liveSnapshotCoalesce      = 500 * time.Millisecond
+	liveMaxConcurrentBuilds   = 2
 )
 
 type liveFilter struct {
@@ -68,8 +69,9 @@ type LiveHub struct {
 	registry   *agentdomain.Registry
 	characters *characters.Store
 
-	mu      sync.RWMutex
-	clients map[*liveClient]struct{}
+	mu         sync.RWMutex
+	clients    map[*liveClient]struct{}
+	buildSlots chan struct{}
 }
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
@@ -78,6 +80,7 @@ func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStor
 		registry:   registry,
 		characters: characterStore,
 		clients:    make(map[*liveClient]struct{}),
+		buildSlots: make(chan struct{}, liveMaxConcurrentBuilds),
 	}
 }
 
@@ -131,6 +134,7 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 		outgoing:      make(chan []byte, liveOutgoingQueueSize),
 		snapshotWake:  make(chan struct{}, 1),
 		subscriptions: make(map[string]liveSubscription),
+		revisions:     make(map[string]uint64),
 	}
 	h.register(client)
 	defer func() {
@@ -173,6 +177,7 @@ type liveClient struct {
 
 	mu            sync.RWMutex
 	subscriptions map[string]liveSubscription
+	revisions     map[string]uint64
 }
 
 func (c *liveClient) notify() {
@@ -269,7 +274,8 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 
 	c.mu.Lock()
 	current, exists := c.subscriptions[subscription.ID]
-	if exists && subscription.Revision <= current.Revision {
+	highestRevision := c.revisions[subscription.ID]
+	if subscription.Revision <= highestRevision {
 		c.mu.Unlock()
 		c.enqueue(liveServerMessage{
 			Type:            "subscription.rejected",
@@ -286,7 +292,9 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 		c.fail(websocket.StatusPolicyViolation, "too many subscriptions")
 		return false
 	}
+	_ = current
 	c.subscriptions[subscription.ID] = subscription
+	c.revisions[subscription.ID] = subscription.Revision
 	c.mu.Unlock()
 	c.notify()
 	return true
@@ -391,10 +399,21 @@ func (c *liveClient) snapshotLoop() {
 		}
 		c.mu.RUnlock()
 
+		select {
+		case c.hub.buildSlots <- struct{}{}:
+		case <-c.ctx.Done():
+			return
+		}
+		keepGoing := true
 		for _, subscription := range subscriptions {
 			if !c.snapshot(subscription) {
-				return
+				keepGoing = false
+				break
 			}
+		}
+		<-c.hub.buildSlots
+		if !keepGoing {
+			return
 		}
 	}
 }
