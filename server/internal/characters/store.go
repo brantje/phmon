@@ -237,14 +237,22 @@ func (s *Store) ReconcileSessions(ctx context.Context) error {
 // repeatedly and deliberately leaves sibling generations of the same agent
 // untouched.
 func (s *Store) ReconcileInactiveSessions(ctx context.Context, generationIsActive func(agentID string, generation uint64) bool) error {
+	_, err := s.ReconcileInactiveSessionsChanged(ctx, generationIsActive)
+	return err
+}
+
+// ReconcileInactiveSessionsChanged reports whether durable live presence changed.
+// The browser live-data reconciler uses this to publish a replacement snapshot after
+// recovery without turning reconciliation into a polling read path.
+func (s *Store) ReconcileInactiveSessionsChanged(ctx context.Context, generationIsActive func(agentID string, generation uint64) bool) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	rows, err := tx.Query(ctx, `SELECT session_id::text,agent_id::text,connection_generation FROM character_sessions WHERE ended_at IS NULL FOR UPDATE`)
 	if err != nil {
-		return err
+		return false, err
 	}
 	type sessionOwner struct {
 		sessionID, agentID string
@@ -255,7 +263,7 @@ func (s *Store) ReconcileInactiveSessions(ctx context.Context, generationIsActiv
 		var owner sessionOwner
 		if err := rows.Scan(&owner.sessionID, &owner.agentID, &owner.generation); err != nil {
 			rows.Close()
-			return err
+			return false, err
 		}
 		if !generationIsActive(owner.agentID, owner.generation) {
 			stale = append(stale, owner)
@@ -263,15 +271,18 @@ func (s *Store) ReconcileInactiveSessions(ctx context.Context, generationIsActiv
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
-		return err
+		return false, err
 	}
 	rows.Close()
 	for _, owner := range stale {
 		if _, err := tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='agent_disconnected' WHERE session_id=$1 AND ended_at IS NULL`, owner.sessionID); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return len(stale) > 0, nil
 }
 
 const selectCharacters = `SELECT c.character_id::text,c.server_name,c.character_name,c.guild_name,c.zone_name,
