@@ -353,17 +353,17 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
-**Slice 0: complete and locally validated (2026-09-26). Slices 1–15: not started.**
-Slice 0 acceptance criteria are satisfied locally. **Next implementation action:
-Slice 1 — Agent registration and connectivity**, including the reference application
-shell. On an implementation request, continue through the remaining roadmap without
-per-slice approval gates under the execution contract above. Each completed slice
-must record status, decisions, deviations, limitations and deliberately deferred work.
+**Slice 0: complete and locally validated (2026-09-26). Slice 1: in progress
+(implementation complete; PR validation/review pending). Slices 2–15: not started.**
+The active work is **Slice 1 — Agent registration and connectivity**. Its production
+path and simulator coverage are implemented on the feature branch; do not begin
+Slice 2 until the Slice 1 validation/review cycle is complete.
 
-**Current turn (2026-09-26): specification update only.** Demo parity and autonomous
-execution are now the target; no Slice 1 or later implementation occurred in this
-update. Slices 1–15 remain not started. Resume by verifying Slice 0 checks, inspecting
-phBot plugin APIs, and defining Slice 1's authenticated connection contract.
+**Current turn (2026-09-26): Slice 1 implementation.** The authenticated connection
+contract, durable agent identity, plugin, simulator, backend registry/API, reference
+shell and stack lifecycle tests are implemented. Real Windows/phBot runtime validation
+and same-viewport browser screenshot comparison remain explicit gates rather than
+being inferred from simulator/source results.
 
 For each subsequent slice keep a completion entry with: status (`not started`,
 `in progress`, `blocked`, `complete`), implemented behavior/files, tests actually run,
@@ -400,6 +400,44 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   connectivity**. No executable plugin, WebSocket or `/agent` route exists.
 - See README for reproducible commands and configuration. Never describe planned
   roadmap behavior as implemented.
+
+### Slice 1 progress record
+
+- Added protocol v1 over bearer-authenticated outbound WebSocket: hello/ack,
+  application heartbeat, bounded message size, explicit compatibility rejection and
+  automatic reconnect semantics. Per-agent tokens are stored only as SHA-256 hashes
+  and are bound to stable UUID agent IDs.
+- Added embedded transactional migrations, durable agent metadata, a generation-fenced
+  in-memory active registry and a safe read-only agent presentation API. New valid
+  sessions supersede old sockets without stale cleanup marking the replacement
+  offline.
+- Added phmonctl agent create for one-time credential provisioning. No browser route
+  exposes tokens or hashes.
+- Added plugin/PhMon.py using only verified Python standard-library networking. A
+  dedicated worker owns network I/O; phBot callbacks never block on the backend.
+  Added scripts/agent_simulator.py using the exact same transport/worker contract.
+- Replaced the temporary Slice 0 page with the first reference-style PhMon shell:
+  compact sidebar/header, persisted easy/advanced and collapse preferences, live
+  agent list, loading/stale/error/recovery states, responsive agent cards and
+  credential-free instance copy/QR access. Health remains an operational diagnostic.
+- Extended CI to provision a real test credential and exercise
+  connect -> Go restart -> automatic reconnect -> disconnect through
+  plugin transport -> Go -> PostgreSQL -> Nuxt, in addition to database
+  outage/recovery checks.
+- Validation actually run before this record: Python compile checks plus 9 focused
+  stdlib plugin protocol/config/backoff tests passed locally. Full Go/frontend/Docker
+  validation and hosted CI are pending the PR cycle and must not be claimed green
+  until observed.
+- Real-runtime limitation: no Windows/phBot process is available in this environment.
+  Record the actual supported phBot version and runtime behavior in
+  docs/phbot-capabilities.md when that gate is exercised. Simulator results are not
+  a substitute.
+- Visual limitation: implementation follows the recorded proportions/tokens and
+  responsive structure, but same-viewport local screenshots still require a runnable
+  browser stack. See docs/reference-parity.md.
+- Exact next action: open the Slice 1 PR, run complete CI, resolve technically valid
+  review findings, then update this record with observed final validation before
+  declaring Slice 1 complete.
 
 ## Canonical slice roadmap
 
