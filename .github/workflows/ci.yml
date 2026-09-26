@@ -38,9 +38,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci
       - run: cp .env.example .env
       - run: docker compose up --build -d --wait --wait-timeout 180
       - run: python3 scripts/smoke.py
+      - name: Verify production browser live WebSocket path
+        run: python3 scripts/live_smoke.py
       - name: Verify authenticated agent connect, reconnect and disconnect
         shell: bash
         run: |
@@ -68,10 +76,42 @@ jobs:
 
           python3 scripts/agent_smoke.py
           python3 scripts/character_smoke.py
+          python3 scripts/live_smoke.py
+
+          rm -f /tmp/phmon-browser-ready /tmp/phmon-browser-audit.log
+          BROWSER_AUDIT_REQUIRE_RECONNECT=1 \
+            BROWSER_AUDIT_READY_FILE=/tmp/phmon-browser-ready \
+            node scripts/browser_live_audit.mjs >/tmp/phmon-browser-audit.log 2>&1 &
+          browser_pid=$!
+          cleanup() {
+            if [[ -n "${browser_pid:-}" ]]; then
+              kill -TERM "$browser_pid" 2>/dev/null || true
+              wait "$browser_pid" 2>/dev/null || true
+            fi
+            if [[ -n "${simulator_pid:-}" ]]; then
+              kill -TERM "$simulator_pid" 2>/dev/null || true
+              wait "$simulator_pid" 2>/dev/null || true
+            fi
+            cat /tmp/phmon-browser-audit.log 2>/dev/null || true
+            cat /tmp/phmon-agent.log || true
+          }
+          for _ in $(seq 1 200); do
+            [[ -f /tmp/phmon-browser-ready ]] && break
+            kill -0 "$browser_pid" 2>/dev/null || {
+              cat /tmp/phmon-browser-audit.log
+              exit 1
+            }
+            sleep 0.1
+          done
+          test -f /tmp/phmon-browser-ready
+
           docker compose stop server
           docker compose up -d --wait --wait-timeout 120 server
           python3 scripts/agent_smoke.py
           python3 scripts/character_smoke.py
+          wait "$browser_pid"
+          browser_pid=
+          cat /tmp/phmon-browser-audit.log
 
           kill -TERM "$simulator_pid"
           wait "$simulator_pid" || true
@@ -79,13 +119,37 @@ jobs:
           EXPECT_AGENT_CONNECTED=0 python3 scripts/agent_smoke.py
           trap - EXIT
           cat /tmp/phmon-agent.log
-      - name: Verify database outage
+      - name: Verify database outage and live recovery synchronization
         id: outage
         continue-on-error: true
         env:
           PHMON_COMPOSE_PROJECT: phmon
         run: |
+          set -euo pipefail
+          rm -f /tmp/phmon-live-recovery-ready /tmp/phmon-live-recovery-stale /tmp/phmon-live-recovery.log
+          LIVE_RECOVERY_READY_FILE=/tmp/phmon-live-recovery-ready \
+            LIVE_RECOVERY_STALE_FILE=/tmp/phmon-live-recovery-stale \
+            python3 scripts/live_recovery_smoke.py >/tmp/phmon-live-recovery.log 2>&1 &
+          live_recovery_pid=$!
+          cleanup_live_recovery() {
+            kill -TERM "$live_recovery_pid" 2>/dev/null || true
+            wait "$live_recovery_pid" 2>/dev/null || true
+            cat /tmp/phmon-live-recovery.log || true
+          }
+          trap cleanup_live_recovery EXIT
+          for _ in $(seq 1 150); do
+            [[ -f /tmp/phmon-live-recovery-ready ]] && break
+            kill -0 "$live_recovery_pid" 2>/dev/null || {
+              cat /tmp/phmon-live-recovery.log
+              exit 1
+            }
+            sleep 0.1
+          done
+          test -f /tmp/phmon-live-recovery-ready
           python3 scripts/outage_session_smoke.py
+          wait "$live_recovery_pid"
+          trap - EXIT
+          cat /tmp/phmon-live-recovery.log
       - name: Verify database recovery
         id: recovery
         if: always()
@@ -97,6 +161,38 @@ jobs:
         run: |
           test "${{ steps.outage.outcome }}" = success
           test "${{ steps.recovery.outcome }}" = success
+      - name: Verify Nuxt development WebSocket relay
+        if: always() && steps.recovery.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd web
+            NUXT_BACKEND_URL=http://127.0.0.1:8081 \
+              npx nuxt dev --host 127.0.0.1 --port 3006 --dotenv ../.env
+          ) >/tmp/phmon-nuxt-dev.log 2>&1 &
+          dev_pid=$!
+          cleanup_dev() {
+            kill -TERM "$dev_pid" 2>/dev/null || true
+            wait "$dev_pid" 2>/dev/null || true
+            cat /tmp/phmon-nuxt-dev.log || true
+          }
+          trap cleanup_dev EXIT
+          for _ in $(seq 1 300); do
+            if curl -fsS http://127.0.0.1:3006/api/health >/dev/null 2>&1; then
+              break
+            fi
+            kill -0 "$dev_pid" 2>/dev/null || {
+              cat /tmp/phmon-nuxt-dev.log
+              exit 1
+            }
+            sleep 0.1
+          done
+          curl -fsS http://127.0.0.1:3006/api/health >/dev/null
+          SMOKE_WEB_URL=http://127.0.0.1:3006 python3 scripts/live_smoke.py
+          SMOKE_WEB_URL=http://127.0.0.1:3006 node scripts/browser_live_audit.mjs
+          trap - EXIT
+          cleanup_dev
       - if: failure()
         run: docker compose logs --no-color
       - if: always()
