@@ -3,6 +3,8 @@ import json
 import os
 import socket
 import tempfile
+import threading
+import time
 import unittest
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), 'PhMon.py')
@@ -47,6 +49,9 @@ class ConfigTests(unittest.TestCase):
 
 
 class WebSocketFrameTests(unittest.TestCase):
+    def _server_text_frame(self, payload):
+        return bytes(bytearray([0x81, len(payload)])) + payload
+
     def test_client_frame_is_masked(self):
         frame = plugin._encode_client_frame(0x1, b'hello', b'\x01\x02\x03\x04')
         self.assertEqual(frame[0], 0x81)
@@ -67,7 +72,7 @@ class WebSocketFrameTests(unittest.TestCase):
             ws._socket = client_sock
             payload = b'{"type":"hello.ack"}'
             server_sock.sendall(bytes(bytearray([0x89, 0x01])) + b'x')
-            server_sock.sendall(bytes(bytearray([0x81, len(payload)])) + payload)
+            server_sock.sendall(self._server_text_frame(payload))
             value = ws.receive_json(timeout=1)
             self.assertEqual(value['type'], 'hello.ack')
             pong = server_sock.recv(64)
@@ -86,6 +91,58 @@ class WebSocketFrameTests(unittest.TestCase):
             with self.assertRaises(plugin.WebSocketClosed):
                 ws.receive_json(timeout=1)
         finally:
+            client_sock.close()
+            server_sock.close()
+
+    def test_no_data_poll_keeps_stream_parseable(self):
+        client_sock, server_sock = socket.socketpair()
+        try:
+            ws = plugin.WebSocketClient('ws://localhost/agent', 'token')
+            ws._socket = client_sock
+            self.assertIsNone(ws.receive_json(timeout=0.01))
+
+            payload = b'{"type":"hello.ack"}'
+            server_sock.sendall(self._server_text_frame(payload))
+            self.assertEqual(ws.receive_json(timeout=1)['type'], 'hello.ack')
+        finally:
+            client_sock.close()
+            server_sock.close()
+
+    def test_partial_frame_timeout_fails_connection(self):
+        client_sock, server_sock = socket.socketpair()
+        try:
+            ws = plugin.WebSocketClient('ws://localhost/agent', 'token', connect_timeout=0.05)
+            ws._socket = client_sock
+            server_sock.sendall(b'\x81')
+            with self.assertRaisesRegex(plugin.WebSocketClosed, 'timeout while receiving WebSocket frame'):
+                ws.receive_json(timeout=1)
+        finally:
+            client_sock.close()
+            server_sock.close()
+
+    def test_segmented_server_frame_is_reassembled(self):
+        client_sock, server_sock = socket.socketpair()
+        sender = None
+        try:
+            ws = plugin.WebSocketClient('ws://localhost/agent', 'token', connect_timeout=0.5)
+            ws._socket = client_sock
+            payload = b'{"type":"hello.ack"}'
+            frame = self._server_text_frame(payload)
+            chunks = [frame[:1], frame[1:2], frame[2:7], frame[7:]]
+
+            def send_chunks():
+                for chunk in chunks:
+                    server_sock.sendall(chunk)
+                    time.sleep(0.01)
+
+            sender = threading.Thread(target=send_chunks)
+            sender.start()
+            self.assertEqual(ws.receive_json(timeout=1)['type'], 'hello.ack')
+            sender.join(1)
+            self.assertFalse(sender.is_alive())
+        finally:
+            if sender is not None:
+                sender.join(1)
             client_sock.close()
             server_sock.close()
 
