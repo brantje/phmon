@@ -509,7 +509,11 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   @click="toggleCredentialPanel"
                 >
                   <UIcon name="i-lucide-key-round" />
-                  {{ credentialPanelOpen ? 'Close credential' : 'Create credential' }}
+                  {{
+                    credentialPanelOpen
+                      ? 'Close credential'
+                      : 'Create credential'
+                  }}
                 </button>
                 <button
                   class="compact-button"
