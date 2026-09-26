@@ -613,7 +613,9 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   production-plugin simulator sockets shared one credential, closed A during the
   outage, restored the database without restarting Go, and verified A offline, B
   online, and the logical agent connected with one active socket. Outage health/data
-  APIs and post-recovery normal smoke checks passed.
+  APIs and post-recovery normal smoke checks passed. GitHub Actions runs `36271335065`
+  and `36271338139` both passed `validate` and `stack`, including the new outage
+  scenario.
 - `origin/main` was integrated in merge commit `ca30d62`. Its newer Slice 2.5
   game-data catalog and PK2 requirements were preserved in the feature matrix and
   roadmap; Slice 2 progress and review records were retained and updated.
