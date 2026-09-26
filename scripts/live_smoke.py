@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 WEB_URL = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005").rstrip("/")
 LIVE_PROTOCOL_VERSION = 1
 MAX_FRAME = 1024 * 1024
+MAX_PENDING_FRAMES = 256
 
 
 class WebSocketError(RuntimeError):
@@ -52,6 +53,7 @@ class WebSocketClient:
         self.origin = origin
         self.sock: socket.socket | ssl.SSLSocket | None = None
         self.buffer = b""
+        self.pending: list[dict] = []
 
     def connect(self) -> "WebSocketClient":
         parsed = urlparse(self.url)
@@ -219,11 +221,18 @@ def subscribe(client: WebSocketClient, sub_id: str, revision: int, stream: str, 
 
 
 def wait_for(client: WebSocketClient, predicate, timeout: float = 8) -> dict:
+    for index, frame in enumerate(client.pending):
+        if predicate(frame):
+            return client.pending.pop(index)
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         frame = client.receive_json(max(0.1, deadline - time.monotonic()))
         if predicate(frame):
             return frame
+        if len(client.pending) >= MAX_PENDING_FRAMES:
+            raise WebSocketError("too many unmatched live frames")
+        client.pending.append(frame)
     raise TimeoutError("matching live frame not received")
 
 
