@@ -99,6 +99,47 @@ type blockingListAgentStore struct {
 	releaseFirst chan struct{}
 }
 
+type concurrentListAgentStore struct {
+	*fakeAgentStore
+	mu      sync.Mutex
+	active  int
+	max     int
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *concurrentListAgentStore) ListSeen(ctx context.Context) ([]agentdomain.Record, error) {
+	s.mu.Lock()
+	s.active++
+	if s.active > s.max {
+		s.max = s.active
+	}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.active--
+		s.mu.Unlock()
+	}()
+
+	select {
+	case s.started <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	select {
+	case <-s.release:
+		return nil, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *concurrentListAgentStore) maxActive() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.max
+}
+
 func (s *blockingListAgentStore) ListSeen(ctx context.Context) ([]agentdomain.Record, error) {
 	s.mu.Lock()
 	s.calls++
@@ -114,6 +155,62 @@ func (s *blockingListAgentStore) ListSeen(ctx context.Context) ([]agentdomain.Re
 		return s.first, nil
 	}
 	return s.second, nil
+}
+
+func TestLiveSnapshotBuildConcurrencyIsBounded(t *testing.T) {
+	store := &concurrentListAgentStore{
+		fakeAgentStore: newFakeAgentStore(),
+		started:        make(chan struct{}, 3),
+		release:        make(chan struct{}),
+	}
+	registry := agentdomain.NewRegistry()
+	live := NewLiveHub(store, registry, nil)
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		Live:     live,
+	}))
+	defer server.Close()
+
+	connections := make([]*websocket.Conn, 0, 3)
+	defer func() {
+		for _, conn := range connections {
+			conn.CloseNow()
+		}
+	}()
+	for i := 0; i < 3; i++ {
+		conn := dialLive(t, server.URL, server.URL)
+		connections = append(connections, conn)
+		writeLive(t, conn, liveClientMessage{
+			Type:            "subscribe",
+			ProtocolVersion: liveProtocolVersion,
+			SubscriptionID:  "agents",
+			Revision:        1,
+			Stream:          "agents",
+		})
+	}
+
+	for i := 0; i < liveMaxConcurrentBuilds; i++ {
+		select {
+		case <-store.started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("snapshot build did not start")
+		}
+	}
+	select {
+	case <-store.started:
+		t.Fatal("snapshot concurrency exceeded liveMaxConcurrentBuilds")
+	case <-time.After(150 * time.Millisecond):
+	}
+	if got := store.maxActive(); got != liveMaxConcurrentBuilds {
+		t.Fatalf("max concurrent snapshot builds = %d, want %d", got, liveMaxConcurrentBuilds)
+	}
+
+	close(store.release)
+	for _, conn := range connections {
+		readLiveType(t, conn, "snapshot")
+	}
 }
 
 func TestLiveInvalidationDuringSnapshotIsNotLost(t *testing.T) {
@@ -202,6 +299,59 @@ func TestLiveRejectsObsoleteSubscriptionRevision(t *testing.T) {
 	rejected := readLiveType(t, conn, "subscription.rejected")
 	if rejected.SubscriptionID != "agent-list" || rejected.Revision != 1 || rejected.Reason != "obsolete_revision" {
 		t.Fatalf("unexpected rejection: %+v", rejected)
+	}
+}
+
+func TestLiveRevisionRemainsMonotonicAcrossUnsubscribe(t *testing.T) {
+	store := newFakeAgentStore()
+	registry := agentdomain.NewRegistry()
+	live := NewLiveHub(store, registry, nil)
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		Live:     live,
+	}))
+	defer server.Close()
+
+	conn := dialLive(t, server.URL, server.URL)
+	defer conn.CloseNow()
+	writeLive(t, conn, liveClientMessage{
+		Type:            "subscribe",
+		ProtocolVersion: liveProtocolVersion,
+		SubscriptionID:  "detail",
+		Revision:        1,
+		Stream:          "agents",
+	})
+	writeLive(t, conn, liveClientMessage{
+		Type:            "unsubscribe",
+		ProtocolVersion: liveProtocolVersion,
+		SubscriptionID:  "detail",
+		Revision:        1,
+	})
+	writeLive(t, conn, liveClientMessage{
+		Type:            "subscribe",
+		ProtocolVersion: liveProtocolVersion,
+		SubscriptionID:  "detail",
+		Revision:        1,
+		Stream:          "agents",
+	})
+
+	rejected := readLiveType(t, conn, "subscription.rejected")
+	if rejected.SubscriptionID != "detail" || rejected.Revision != 1 || rejected.Reason != "obsolete_revision" {
+		t.Fatalf("unexpected recycled revision response: %+v", rejected)
+	}
+
+	writeLive(t, conn, liveClientMessage{
+		Type:            "subscribe",
+		ProtocolVersion: liveProtocolVersion,
+		SubscriptionID:  "detail",
+		Revision:        2,
+		Stream:          "agents",
+	})
+	snapshot := readLiveType(t, conn, "snapshot")
+	if snapshot.SubscriptionID != "detail" || snapshot.Revision != 2 {
+		t.Fatalf("newer revision was not accepted: %+v", snapshot)
 	}
 }
 
