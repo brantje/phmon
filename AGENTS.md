@@ -361,7 +361,19 @@ progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API a
 same-viewport visual gates remain open; basic connectivity must not be described as
 blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
 
-**Current turn (2026-09-26): Slice 2 PR #3 correctness follow-up.** Scope remains
+**Current turn (2026-09-26): Slice 2 Dashboard/header verification.** Scope is the
+user-requested visual follow-up; no agent protocol, schema or phBot behavior changed.
+The Dashboard and Stats routes are now distinct, the top strip displays observed
+character counts/vitals/gold, the dashboard follows the reference's asymmetric card
+layout, and unimplemented dashboard/sidebar areas are labeled `LATER`. The sidebar
+shows an instance QR and copy-link control. Local Nuxt typecheck/build passed, lint
+passed with three existing input warnings, and formatting passed for changed files.
+The local browser at 1264 × 710 verified Dashboard/Stats navigation; its backend was
+unavailable, and the 1440 × 1000 populated-data comparison remains open. The LAN
+browser's older build could not be rebuilt because Docker is unavailable here. See
+`docs/reference-parity.md`. Do not start Slice 3.
+
+**Previous turn (2026-09-26): Slice 2 PR #3 correctness follow-up.** Scope remained
 Slice 2 only. This follow-up adds periodic dead-generation session reconciliation
 after database recovery, nonfatal per-character rejection for stale writes, plugin
 suppression of a rejected observation, full-current-observation semantics for state

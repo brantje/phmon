@@ -38,6 +38,7 @@ const accessDialog = ref<HTMLElement | null>(null)
 const accessCloseButton = ref<HTMLButtonElement | null>(null)
 const runtimeConfig = useRuntimeConfig()
 const requestURL = useRequestURL()
+const route = useRoute()
 type Character = {
   character_id: string
   server: string
@@ -67,9 +68,10 @@ type Character = {
 type CharacterList = { characters: Character[]; status?: string }
 type CharacterGroup = { group_id: string; name: string; members: Character[] }
 const characterDetailID = computed(() => {
-  const match = requestURL.pathname.match(/^\/characters\/([0-9a-f-]{36})\/?$/i)
+  const match = route.path.match(/^\/characters\/([0-9a-f-]{36})\/?$/i)
   return match?.[1] || ''
 })
+const isStatsPage = computed(() => route.path.replace(/\/$/, '') === '/stats')
 const characterSearch = ref('')
 const debouncedCharacterSearch = ref('')
 let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
@@ -100,16 +102,32 @@ const {
   query: characterListQuery,
   watch: [characterListQuery],
 })
+const {
+  data: fleetCharacterResponse,
+  refresh: refreshFleetCharacters,
+  error: fleetCharacterError,
+} = await useFetch<CharacterList>('/api/characters', {
+  key: 'fleet-characters',
+  retry: 0,
+  dedupe: 'cancel',
+})
 const { data: groupResponse, refresh: refreshGroups } = await useFetch<{
   groups: CharacterGroup[]
 }>('/api/groups', { retry: 0 })
 const lastCharacters = ref<Character[]>(
   characterResponse.value?.characters || [],
 )
+const lastFleetCharacters = ref<Character[]>(
+  fleetCharacterResponse.value?.characters || [],
+)
 const lastGroups = ref<CharacterGroup[]>(groupResponse.value?.groups || [])
 watch(characterResponse, (value) => {
   if (value?.status !== 'unavailable')
     lastCharacters.value = value?.characters || []
+})
+watch(fleetCharacterResponse, (value) => {
+  if (value?.status !== 'unavailable')
+    lastFleetCharacters.value = value?.characters || []
 })
 watch(groupResponse, (value) => {
   if (value?.groups) lastGroups.value = value.groups
@@ -127,6 +145,57 @@ const visibleCharacters = computed(() =>
     return groupMatches
   }),
 )
+const onlineCharacterCount = computed(
+  () =>
+    lastFleetCharacters.value.filter((character) => character.online).length,
+)
+const offlineCharacterCount = computed(
+  () =>
+    lastFleetCharacters.value.filter((character) => !character.online).length,
+)
+const characterCountsUnknown = computed(
+  () =>
+    (!fleetCharacterResponse.value ||
+      Boolean(fleetCharacterError.value) ||
+      fleetCharacterResponse.value?.status === 'unavailable') &&
+    lastFleetCharacters.value.length === 0,
+)
+function displayCharacterCount(value: number) {
+  return characterCountsUnknown.value ? '—' : String(value)
+}
+const combinedVitals = computed(() => {
+  const withHP = lastFleetCharacters.value.filter(
+    (character) =>
+      character.hp != null && character.hp_max != null && character.hp_max > 0,
+  )
+  const withMP = lastFleetCharacters.value.filter(
+    (character) =>
+      character.mp != null && character.mp_max != null && character.mp_max > 0,
+  )
+  const ratio = (
+    items: Character[],
+    current: 'hp' | 'mp',
+    max: 'hp_max' | 'mp_max',
+  ) =>
+    items.length
+      ? `${((items.reduce((sum, character) => sum + (character[current] || 0), 0) / items.reduce((sum, character) => sum + (character[max] || 0), 0)) * 100).toFixed(1)}%`
+      : '—'
+  return {
+    hp: ratio(withHP, 'hp', 'hp_max'),
+    mp: ratio(withMP, 'mp', 'mp_max'),
+  }
+})
+const observedGold = computed(() => {
+  const values = lastFleetCharacters.value
+    .map((character) => character.gold)
+    .filter((value): value is number => value != null)
+  return values.length
+    ? new Intl.NumberFormat('en', {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(values.reduce((sum, value) => sum + value, 0))
+    : '—'
+})
 async function createCharacterGroup() {
   groupActionError.value = ''
   try {
@@ -200,6 +269,7 @@ async function toggleGroupMember(character: Character) {
 }
 async function refreshCharacterData() {
   await refreshCharacters()
+  await refreshFleetCharacters()
   await refreshGroups()
 }
 const { data: detailCharacter, refresh: refreshCharacterDetail } =
@@ -236,7 +306,6 @@ watch(agentResponse, (value) => {
 
 const {
   data: health,
-  status: healthStatus,
   error: healthError,
   refresh: refreshHealth,
 } = await useFetch<Health>('/api/health', { retry: 0 })
@@ -252,19 +321,6 @@ const connectedAgents = computed<number | null>(() =>
   agentsUnavailable.value
     ? null
     : lastAgents.value.filter((agent) => agent.connected).length,
-)
-const activeSockets = computed<number | null>(() =>
-  agentsUnavailable.value
-    ? null
-    : lastAgents.value.reduce(
-        (count, agent) => count + (agent.active_connections || 0),
-        0,
-      ),
-)
-const disconnectedAgents = computed<number | null>(() =>
-  agentsUnavailable.value || connectedAgents.value === null
-    ? null
-    : lastAgents.value.length - connectedAgents.value,
 )
 const fleetStatus = computed(() => {
   if (agentsUnavailable.value) return 'Backend unavailable'
@@ -285,6 +341,7 @@ onMounted(() => {
   agentTimer = setInterval(() => void refreshAgents(), 3000)
   characterTimer = setInterval(() => {
     void refreshCharacters()
+    void refreshFleetCharacters()
     if (characterDetailID.value) void refreshCharacterDetail()
     void refreshGroups()
   }, 2000)
@@ -303,20 +360,23 @@ onUnmounted(() => {
 })
 
 const primaryNavigation = [
-  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', active: true },
-  { label: 'Stats', icon: 'i-lucide-chart-no-axes-combined' },
+  { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', href: '/' },
+  { label: 'Stats', icon: 'i-lucide-chart-no-axes-combined', href: '/stats' },
+  { label: 'Events', icon: 'i-lucide-activity' },
   { label: 'Chat', icon: 'i-lucide-messages-square' },
   { label: 'Economy', icon: 'i-lucide-coins' },
   { label: 'Alchemy', icon: 'i-lucide-flask-conical' },
   { label: 'Academy', icon: 'i-lucide-graduation-cap' },
-  { label: 'Map', icon: 'i-lucide-map' },
+  { label: 'Guild Storage', icon: 'i-lucide-warehouse' },
+  { label: 'phBot', icon: 'i-lucide-bot' },
 ]
 
 const advancedNavigation = [
+  { label: 'Analytics', icon: 'i-lucide-chart-no-axes-column-increasing' },
+  { label: 'Map', icon: 'i-lucide-map' },
   { label: 'Item Search', icon: 'i-lucide-search' },
   { label: 'Skill Builder', icon: 'i-lucide-git-branch' },
   { label: 'Automations', icon: 'i-lucide-zap' },
-  { label: 'Server List', icon: 'i-lucide-server' },
 ]
 
 function formatTimestamp(value?: string) {
@@ -520,6 +580,15 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
           <div class="brand-copy">
             <strong>PhMon</strong>
             <span>self-hosted · slice 2</span>
+            <span
+              class="brand-connect"
+              :class="
+                !agentsUnavailable && (connectedAgents ?? 0) > 0
+                  ? 'is-online'
+                  : 'is-offline'
+              "
+              >{{ fleetStatus }}</span
+            >
           </div>
           <span
             class="connection-dot"
@@ -533,28 +602,43 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
         </div>
 
         <div class="scope-block">
-          <span>Server scope</span>
+          <span>Server scope · LATER</span>
           <button type="button" disabled>
             <UIcon name="i-lucide-layers-3" />
-            <span>All servers</span>
+            <span>All</span>
+            <span class="nav-soon">LATER</span>
             <UIcon name="i-lucide-chevron-down" />
           </button>
         </div>
 
         <nav class="navigation" aria-label="Primary navigation">
-          <button
-            v-for="item in primaryNavigation"
-            :key="item.label"
-            type="button"
-            class="nav-item"
-            :class="{ active: item.active }"
-            :disabled="!item.active"
-            :title="sidebarCollapsed ? item.label : undefined"
-          >
-            <UIcon :name="item.icon" />
-            <span>{{ item.label }}</span>
-            <span v-if="!item.active" class="nav-soon">later</span>
-          </button>
+          <template v-for="item in primaryNavigation" :key="item.label">
+            <NuxtLink
+              v-if="item.href"
+              :to="item.href"
+              class="nav-item"
+              :class="{ active: (isStatsPage ? '/stats' : '/') === item.href }"
+              :aria-current="
+                (isStatsPage ? '/stats' : '/') === item.href
+                  ? 'page'
+                  : undefined
+              "
+            >
+              <UIcon :name="item.icon" />
+              <span>{{ item.label }}</span>
+            </NuxtLink>
+            <button
+              v-else
+              type="button"
+              class="nav-item"
+              disabled
+              :title="sidebarCollapsed ? item.label : undefined"
+            >
+              <UIcon :name="item.icon" />
+              <span>{{ item.label }}</span>
+              <span class="nav-soon">later</span>
+            </button>
+          </template>
 
           <template v-if="advancedMode">
             <p class="nav-heading">Tools</p>
@@ -572,7 +656,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
             </button>
           </template>
 
-          <p class="nav-heading">System</p>
+          <p class="nav-heading">{{ advancedMode ? 'Misc' : 'System' }}</p>
           <button
             class="nav-item"
             type="button"
@@ -581,6 +665,17 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
           >
             <UIcon name="i-lucide-settings" />
             <span>Settings</span>
+            <span class="nav-soon">later</span>
+          </button>
+          <button
+            v-if="advancedMode"
+            class="nav-item"
+            type="button"
+            disabled
+            title="Server List arrives later"
+          >
+            <UIcon name="i-lucide-server" />
+            <span>Server List</span>
             <span class="nav-soon">later</span>
           </button>
         </nav>
@@ -596,9 +691,20 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
             <UIcon name="i-lucide-qr-code" />
             <span>Mobile access</span>
           </button>
+          <div class="sidebar-qr" aria-label="PhMon instance QR code">
+            <QrcodeVue
+              :value="instanceUrl"
+              :size="78"
+              level="M"
+              render-as="svg"
+            />
+          </div>
           <div class="instance-url" :title="instanceUrl">
             {{ instanceUrl }}
           </div>
+          <button class="sidebar-copy" type="button" @click="copyInstanceUrl">
+            {{ copied ? 'Copied' : 'Copy link' }}
+          </button>
         </div>
       </aside>
 
@@ -629,19 +735,35 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                 "
               />
             </button>
-            <span
-              class="diagnostic"
-              :class="backendReady ? 'is-ok' : 'is-warning'"
-            >
-              <span class="diagnostic-dot" />
-              {{
-                healthStatus === 'pending'
-                  ? 'Checking backend'
-                  : backendReady
-                    ? 'Backend ready'
-                    : 'Backend unavailable'
-              }}
-            </span>
+            <div class="top-summary" aria-label="Live character summary">
+              <span class="top-summary-item"
+                ><UIcon name="i-lucide-users-round" /> Chars:
+                <strong
+                  >{{
+                    displayCharacterCount(onlineCharacterCount)
+                  }}
+                  online</strong
+                ><i>|</i
+                ><span
+                  >{{
+                    displayCharacterCount(offlineCharacterCount)
+                  }}
+                  offline</span
+                ></span
+              >
+              <span class="top-summary-item"
+                ><UIcon name="i-lucide-heart-pulse" /> Combined stats:
+                <strong>HP {{ combinedVitals.hp }}</strong
+                ><i>|</i><strong>MP {{ combinedVitals.mp }}</strong></span
+              >
+              <span class="top-summary-item"
+                ><UIcon name="i-lucide-coins" /> Total Gold:
+                <strong>{{ observedGold }}</strong></span
+              >
+            </div>
+            <span class="sr-only" role="status">{{
+              backendReady ? 'Backend ready' : 'Backend unavailable'
+            }}</span>
           </div>
 
           <label class="mode-toggle">
@@ -659,18 +781,150 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
           <template v-if="!characterDetailID">
             <header class="page-header">
               <div class="page-icon">
-                <UIcon name="i-lucide-users-round" />
+                <UIcon
+                  :name="
+                    isStatsPage
+                      ? 'i-lucide-chart-no-axes-combined'
+                      : 'i-lucide-layout-dashboard'
+                  "
+                />
               </div>
               <div>
-                <h1>Character overview</h1>
+                <h1>{{ isStatsPage ? 'Stats' : 'Dashboard' }}</h1>
                 <p>
-                  Current character presence and live state across connected
-                  phBot agents.
+                  {{
+                    isStatsPage
+                      ? 'Live character state and saved character groups.'
+                      : 'Live overview of your characters, recent activity and server.'
+                  }}
                 </p>
               </div>
             </header>
 
-            <section class="panel character-panel">
+            <section
+              v-if="!isStatsPage"
+              class="dashboard-grid"
+              aria-label="Dashboard overview"
+            >
+              <article class="panel dashboard-characters">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Characters</h2>
+                    <p>Current fleet presence and observed gold</p>
+                  </div>
+                  <a class="panel-link" href="/stats#characters"
+                    >Show character stats <UIcon name="i-lucide-arrow-up-right"
+                  /></a>
+                </div>
+                <div class="dashboard-counts">
+                  <div class="dashboard-count online-count">
+                    <span>Online</span
+                    ><strong>{{
+                      displayCharacterCount(onlineCharacterCount)
+                    }}</strong>
+                  </div>
+                  <div class="dashboard-count">
+                    <span>Offline</span
+                    ><strong>{{
+                      displayCharacterCount(offlineCharacterCount)
+                    }}</strong>
+                  </div>
+                  <div class="dashboard-count later-count">
+                    <span>Alive</span><strong>LATER</strong>
+                  </div>
+                  <div class="dashboard-count later-count">
+                    <span>Dead</span><strong>LATER</strong>
+                  </div>
+                </div>
+                <div class="dashboard-gold">
+                  <UIcon name="i-lucide-coins" /><span>Total Gold</span
+                  ><strong>{{ observedGold }}</strong>
+                </div>
+              </article>
+
+              <article class="panel dashboard-later dashboard-deaths">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Last Deaths</h2>
+                    <p>Recent character deaths</p>
+                  </div>
+                  <span class="later-badge">LATER</span>
+                </div>
+                <div class="later-content">
+                  <UIcon name="i-lucide-skull" /><strong>LATER</strong
+                  ><span>Event history arrives in a later slice.</span>
+                </div>
+              </article>
+
+              <article class="panel dashboard-later dashboard-server">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Server Information</h2>
+                    <p>Operator managed</p>
+                  </div>
+                  <span class="later-badge">LATER</span>
+                </div>
+                <div class="later-content">
+                  <UIcon name="i-lucide-server" /><strong>LATER</strong
+                  ><span
+                    >Server artwork and metadata arrive in a later slice.</span
+                  >
+                </div>
+              </article>
+
+              <article class="panel dashboard-later dashboard-events">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Recent Events</h2>
+                    <p>Latest activity across your characters</p>
+                  </div>
+                  <span class="later-badge">LATER</span>
+                </div>
+                <div class="later-content">
+                  <UIcon name="i-lucide-clock-3" /><strong>LATER</strong
+                  ><span>Timeline data arrives in a later slice.</span>
+                </div>
+              </article>
+
+              <div class="dashboard-stack">
+                <article class="panel dashboard-later">
+                  <div class="panel-header compact">
+                    <div><h2>Last Rare Drop</h2></div>
+                    <span class="later-badge">LATER</span>
+                  </div>
+                  <div class="later-content compact-later">
+                    <UIcon name="i-lucide-gem" /><strong>LATER</strong>
+                  </div>
+                </article>
+                <article class="panel dashboard-later">
+                  <div class="panel-header compact">
+                    <div><h2>Chat Messages</h2></div>
+                    <span class="later-badge">LATER</span>
+                  </div>
+                  <div class="later-content compact-later">
+                    <UIcon name="i-lucide-messages-square" /><strong
+                      >LATER</strong
+                    >
+                  </div>
+                </article>
+              </div>
+
+              <article class="panel dashboard-later dashboard-offers">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Global Offers</h2>
+                    <p>Recent buy, sell and trade offers</p>
+                  </div>
+                  <span class="later-badge">LATER</span>
+                </div>
+                <div class="later-content">
+                  <UIcon name="i-lucide-store" /><strong>LATER</strong
+                  ><span>Economy data arrives in a later slice.</span>
+                </div>
+              </article>
+            </section>
+
+            <section id="characters" class="panel character-panel">
               <div class="panel-header">
                 <div>
                   <h2>Characters</h2>
@@ -886,37 +1140,6 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   }}
                 </p>
               </div>
-            </section>
-
-            <section class="summary-grid" aria-label="Fleet summary">
-              <article class="summary-card">
-                <span>Registered</span>
-                <strong>{{ lastAgents.length }}</strong>
-                <small>agents seen</small>
-              </article>
-              <article class="summary-card">
-                <span>Connected agents</span>
-                <strong>{{ connectedAgents ?? '—' }}</strong>
-                <small>{{
-                  agentsUnavailable
-                    ? 'last loaded state retained'
-                    : `${activeSockets} active sockets`
-                }}</small>
-              </article>
-              <article class="summary-card">
-                <span>Offline</span>
-                <strong>{{ disconnectedAgents ?? '—' }}</strong>
-                <small>{{
-                  agentsUnavailable
-                    ? 'last loaded state retained'
-                    : 'last known agents'
-                }}</small>
-              </article>
-              <article class="summary-card summary-wide">
-                <span>Connection state</span>
-                <strong class="summary-state">{{ fleetStatus }}</strong>
-                <small>protocol v2 · automatic reconnect</small>
-              </article>
             </section>
 
             <section class="panel agent-panel">
