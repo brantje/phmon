@@ -514,6 +514,27 @@ agent authentication is enforced
 
 Provide the first genuinely useful monitoring dashboard.
 
+**Character routing contract:**
+
+Agent identity and character identity are separate concerns. An agent identifies the
+plugin/runtime connection; it must never implicitly define the target character.
+
+Every character-scoped plugin -> backend and backend -> plugin protocol message MUST
+include an explicit `character_id`. This applies to snapshots, live-state updates,
+events, observations, chat, commands, acknowledgements/results and future
+character-scoped message types. Never infer `character_id` solely from
+`agent_id`, the WebSocket connection, or whichever character was most recently seen.
+
+Agent-scoped messages that genuinely have no character target, such as agent hello,
+heartbeat, capability/version reporting and connection lifecycle, do not require
+`character_id`.
+
+Design the protocol so one agent can represent or multiplex multiple characters
+without changing message schemas. The initial plugin/runtime implementation may
+still expose only one active character per phBot instance, but the backend and
+wire contract must not bake in that limitation. Commands and other mutations must
+validate both the authenticated agent and explicit `character_id` before routing.
+
 **Implement:**
 
 joined-game detection
@@ -551,6 +572,10 @@ current statistics update live
 reconnect restores correct current state
 
 character identity does not depend solely on an ephemeral socket connection
+
+all character-scoped protocol messages carry explicit character_id and are never targeted by connection identity alone
+
+one agent can address multiple character identities without a protocol/schema redesign
 
 ### Slice 3 — Remote commands
 
