@@ -162,10 +162,7 @@ const combinedVitals = computed(() => {
             (sum, character) => sum + (character[current] || 0),
             0,
           ) /
-            items.reduce(
-              (sum, character) => sum + (character[max] || 0),
-              0,
-            )) *
+            items.reduce((sum, character) => sum + (character[max] || 0), 0)) *
           100
         ).toFixed(1)}%`
       : '—'
@@ -1444,7 +1441,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                     <dd>v2</dd>
                   </div>
                   <div>
-                    <dt>Polling</dt>
+                    <dt>Session reconciliation</dt>
                     <dd>3 seconds</dd>
                   </div>
                 </dl>
@@ -1489,11 +1486,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               </div>
               <a class="compact-button" href="/">Back to overview</a>
             </header>
-            <div
-              v-if="liveStale"
-              class="status-banner warning"
-              role="status"
-            >
+            <div v-if="liveStale" class="status-banner warning" role="status">
               <UIcon name="i-lucide-triangle-alert" />
               Live character data is stale. PhMon is retrying the WebSocket
               connection; HTTP fallback is disabled.
