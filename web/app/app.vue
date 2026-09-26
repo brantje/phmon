@@ -96,7 +96,18 @@ const lastAgents = liveAgents
 const characterError = computed(() => liveStale.value)
 const agentsUnavailable = computed(() => liveStale.value)
 const agentsStatus = computed(() =>
-  liveLoading.value ? 'pending' : 'success',
+  liveConnectionState.value !== 'current' && lastAgents.value.length === 0
+    ? 'pending'
+    : 'success',
+)
+const charactersLoading = computed(
+  () =>
+    liveConnectionState.value !== 'current' &&
+    !liveStale.value &&
+    lastCharacters.value.length === 0,
+)
+const detailLoading = computed(
+  () => liveConnectionState.value !== 'current' && !liveStale.value,
 )
 
 const visibleCharacters = computed(() =>
@@ -144,14 +155,15 @@ const combinedVitals = computed(() => {
   ) =>
     items.length
       ? `${(
-          items.reduce(
+          (items.reduce(
             (sum, character) => sum + (character[current] || 0),
             0,
           ) /
-          items.reduce(
-            (sum, character) => sum + (character[max] || 0),
-            0,
-          )
+            items.reduce(
+              (sum, character) => sum + (character[max] || 0),
+              0,
+            )) *
+          100
         ).toFixed(1)}%`
       : '—'
   return {
@@ -1058,19 +1070,25 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   :name="
                     characterError
                       ? 'i-lucide-cloud-off'
-                      : 'i-lucide-user-round-search'
+                      : charactersLoading
+                        ? 'i-lucide-loader-circle'
+                        : 'i-lucide-user-round-search'
                   "
                 />
                 <strong>{{
                   characterError
-                    ? 'Character data unavailable'
-                    : 'No characters observed yet'
+                    ? 'Character data stale'
+                    : charactersLoading
+                      ? 'Loading live characters'
+                      : 'No characters observed yet'
                 }}</strong>
                 <p>
                   {{
                     characterError
-                      ? 'The last known character records remain stored when the service recovers.'
-                      : 'Join a character in phBot. PhMon will register its server-scoped identity automatically.'
+                      ? 'The last received records remain visible and will be replaced after WebSocket recovery.'
+                      : charactersLoading
+                        ? 'Waiting for the initial WebSocket snapshot.'
+                        : 'Join a character in phBot. PhMon will register its server-scoped identity automatically.'
                   }}
                 </p>
               </div>
@@ -1102,7 +1120,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                     class="compact-button"
                     type="button"
                     :disabled="agentsStatus === 'pending'"
-                    @click="refreshAgents()"
+                    @click="refreshLiveData(['agents'])"
                   >
                     <UIcon
                       name="i-lucide-refresh-cw"
@@ -1468,6 +1486,15 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               </div>
               <a class="compact-button" href="/">Back to overview</a>
             </header>
+            <div
+              v-if="liveStale"
+              class="status-banner warning"
+              role="status"
+            >
+              <UIcon name="i-lucide-triangle-alert" />
+              Live character data is stale. PhMon is retrying the WebSocket
+              connection; HTTP fallback is disabled.
+            </div>
             <div v-if="detailCharacter" class="detail-grid">
               <article class="panel detail-identity">
                 <div class="panel-header compact">
@@ -1560,10 +1587,21 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               </article>
             </div>
             <div v-else class="panel empty-state">
-              <strong>Character unavailable</strong>
+              <strong>{{
+                detailLoading
+                  ? 'Loading live character'
+                  : liveStale
+                    ? 'Last character snapshot unavailable'
+                    : 'Character unavailable'
+              }}</strong>
               <p>
-                The character ID may be invalid, or the backend is temporarily
-                unavailable.
+                {{
+                  detailLoading
+                    ? 'Waiting for the initial WebSocket detail snapshot.'
+                    : liveStale
+                      ? 'The WebSocket will retry and resynchronize without an HTTP fallback.'
+                      : 'The character ID is not present in the current live snapshot.'
+                }}
               </p>
             </div>
           </section>
