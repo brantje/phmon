@@ -336,7 +336,7 @@ class BackoffTests(unittest.TestCase):
         }, 'fixture')
 
         class Transport:
-            sent = []
+            def __init__(self): self.sent = []
             def send_json(self, value): self.sent.append(value)
             def receive_json(self, timeout=None):
                 return {'type':'character.registered','protocol_version':2,'character_id':AGENT_ID}
@@ -346,10 +346,42 @@ class BackoffTests(unittest.TestCase):
         worker._publish_sample(transport, sample, False)
         worker._publish_sample(transport, sample, False)
         self.assertEqual(transport.sent[0]['type'], 'character.identify')
+        self.assertEqual(transport.sent[0]['guild'], '')
         self.assertEqual(transport.sent[1]['type'], 'character.snapshot')
         self.assertEqual(transport.sent[1]['character_id'], AGENT_ID)
         self.assertEqual(transport.sent[2]['type'], 'character.state')
         self.assertEqual(transport.sent[2]['character_id'], AGENT_ID)
+
+        unknown_guild = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture')
+        transport = Transport()
+        unknown_guild._publish_sample(transport, {
+            'identity': {'server': 'Silkroad', 'name': 'Beta', 'guild': None},
+            'state': {'level': 1},
+        }, True)
+        self.assertIsNone(transport.sent[0]['guild'])
+
+    def test_queued_leave_prevents_reconnect_snapshot_resurrection(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture')
+        sample = {'identity': {'server': 'Silkroad', 'name': 'Alpha', 'guild': ''}, 'state': {'level': 110}}
+        worker._latest_sample = sample
+        worker.leave_character()
+
+        class Transport:
+            sent = []
+            def send_json(self, value): self.sent.append(value)
+
+        transport = Transport()
+        worker._restore_latest_sample(transport)
+        self.assertEqual(transport.sent, [])
+        self.assertIsNone(worker._latest_sample)
 
 
 class WorkerStopTests(unittest.TestCase):

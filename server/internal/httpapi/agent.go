@@ -52,7 +52,7 @@ type agentMessage struct {
 	CharacterID     string           `json:"character_id,omitempty"`
 	Server          string           `json:"server,omitempty"`
 	Name            string           `json:"name,omitempty"`
-	Guild           string           `json:"guild,omitempty"`
+	Guild           *string          `json:"guild,omitempty"`
 	State           characters.State `json:"state,omitempty"`
 }
 
@@ -164,7 +164,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !stillConnected {
-			if err := h.store.MarkDisconnected(ctx, hello.AgentID, connectedAt); err != nil {
+			logicalConnectedAt, ok := h.registry.LatestConnectedAt(hello.AgentID)
+			if !ok {
+				logicalConnectedAt = connectedAt
+			}
+			if err := h.store.MarkDisconnected(ctx, hello.AgentID, logicalConnectedAt); err != nil {
 				slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
 			}
 		}
@@ -221,6 +225,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			id, e := h.characters.Resolve(ctx, characters.Identity{Server: message.Server, Name: message.Name, Guild: message.Guild})
+			if e == nil {
+				e = h.characters.ClaimSession(ctx, hello.AgentID, id, generation)
+			}
 			cancel()
 			if e != nil {
 				_ = conn.Close(websocket.StatusPolicyViolation, "invalid character identity")

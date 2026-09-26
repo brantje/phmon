@@ -15,10 +15,11 @@ type Registry struct {
 	mu       sync.RWMutex
 	next     uint64
 	sessions map[uint64]activeSession
+	latest   map[string]time.Time
 }
 
 func NewRegistry() *Registry {
-	return &Registry{sessions: make(map[uint64]activeSession)}
+	return &Registry{sessions: make(map[uint64]activeSession), latest: make(map[string]time.Time)}
 }
 
 func (r *Registry) Register(agentID string) (generation uint64, connectedAt time.Time) {
@@ -31,7 +32,17 @@ func (r *Registry) Register(agentID string) (generation uint64, connectedAt time
 		generation:  r.next,
 		connectedAt: connectedAt,
 	}
+	r.latest[agentID] = connectedAt
 	return r.next, connectedAt
+}
+
+// LatestConnectedAt is retained after disconnect so persistence can fence an
+// older socket's close using the newest generation for this logical agent.
+func (r *Registry) LatestConnectedAt(agentID string) (time.Time, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	at, ok := r.latest[agentID]
+	return at, ok
 }
 
 // Unregister removes one connection generation and reports whether any

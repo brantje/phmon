@@ -19,6 +19,9 @@ func TestRegistryTracksConcurrentConnectionsPerAgent(t *testing.T) {
 	if connectedAt, ok := registry.ConnectedAt("agent"); !ok || !connectedAt.Equal(atOne) || atTwo.Before(atOne) {
 		t.Fatalf("unexpected connected-at value %v (atOne %v, atTwo %v)", connectedAt, atOne, atTwo)
 	}
+	if connectedAt, ok := registry.LatestConnectedAt("agent"); !ok || !connectedAt.Equal(atTwo) {
+		t.Fatalf("latest connected-at value = %v, want %v", connectedAt, atTwo)
+	}
 
 	removed, stillConnected := registry.Unregister("agent", genOne)
 	if !removed || !stillConnected {
@@ -34,5 +37,30 @@ func TestRegistryTracksConcurrentConnectionsPerAgent(t *testing.T) {
 	}
 	if _, ok := registry.ConnectedAt("agent"); ok {
 		t.Fatal("agent remained connected after its last socket closed")
+	}
+	if connectedAt, ok := registry.LatestConnectedAt("agent"); !ok || !connectedAt.Equal(atTwo) {
+		t.Fatalf("disconnect cutoff was not retained: %v, %v", connectedAt, ok)
+	}
+}
+
+func TestEitherConcurrentSocketCloseOrderKeepsLogicalAgentOnlineUntilLastClose(t *testing.T) {
+	for _, order := range []string{"first-then-second", "second-then-first"} {
+		t.Run(order, func(t *testing.T) {
+			registry := NewRegistry()
+			first, _ := registry.Register("agent")
+			second, _ := registry.Register("agent")
+			closeOne, closeTwo := first, second
+			if order == "second-then-first" {
+				closeOne, closeTwo = second, first
+			}
+			removed, stillConnected := registry.Unregister("agent", closeOne)
+			if !removed || !stillConnected || registry.ConnectionCount("agent") != 1 {
+				t.Fatalf("first close removed logical agent: removed=%v connected=%v count=%d", removed, stillConnected, registry.ConnectionCount("agent"))
+			}
+			removed, stillConnected = registry.Unregister("agent", closeTwo)
+			if !removed || stillConnected || registry.ConnectionCount("agent") != 0 {
+				t.Fatalf("last close retained logical agent: removed=%v connected=%v count=%d", removed, stillConnected, registry.ConnectionCount("agent"))
+			}
+		})
 	}
 }

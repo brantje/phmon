@@ -64,7 +64,8 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 	if ack.ProtocolVersion != 2 {
 		t.Fatalf("unexpected protocol version: %d", ack.ProtocolVersion)
 	}
-	if err := wsjson.Write(ctx, conn, agentMessage{Type: "character.identify", ProtocolVersion: 2, Server: serverName, Name: "LiveAlpha", Guild: "TestGuild", SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+	guild := "TestGuild"
+	if err := wsjson.Write(ctx, conn, agentMessage{Type: "character.identify", ProtocolVersion: 2, Server: serverName, Name: "LiveAlpha", Guild: &guild, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
 		t.Fatal(err)
 	}
 	var registration struct {
@@ -90,8 +91,8 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	preResponse.Body.Close()
-	if len(preSnapshot.Characters) != 1 || preSnapshot.Characters[0].Online {
-		t.Fatalf("identity registration alone must not open presence: %+v", preSnapshot.Characters)
+	if len(preSnapshot.Characters) != 1 || !preSnapshot.Characters[0].Online {
+		t.Fatalf("explicit identity claim must establish the live session: %+v", preSnapshot.Characters)
 	}
 	level, hp, mp, exp, sp, gold, region, x, y := 110, int64(500), int64(250), int64(800), int64(42), int64(99), 25000, 10.5, 20.5
 	state := characters.State{Level: &level, HP: &hp, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, X: &x, Y: &y}
@@ -117,7 +118,7 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 		if decodeErr != nil {
 			t.Fatal(decodeErr)
 		}
-		if len(listed.Characters) == 1 && listed.Characters[0].Online {
+		if len(listed.Characters) == 1 && listed.Characters[0].Online && listed.Characters[0].Level != nil {
 			break
 		}
 		time.Sleep(25 * time.Millisecond)

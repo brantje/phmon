@@ -10,9 +10,12 @@ leave messages. Commands and game events remain outside the implemented message 
 - Production deployments use wss:// with normal certificate validation. Plain ws://
   is for trusted local development only.
 - Every upgrade request carries Authorization: Bearer <agent-token>.
-- Tokens are created per agent through the dashboard or `phmonctl agent create`.
+- Tokens are created per logical agent through the dashboard or `phmonctl agent create`.
   Both use the same server-side generator/store path. PostgreSQL stores only a
   SHA-256 token hash. A token is permanently bound to one stable agent_id.
+- Multiple concurrent phBot sockets/profiles may intentionally reuse the same
+  agent ID/token when they belong to one logical agent. Use separate credentials
+  when they should be separate logical agents; credentials are not per-socket.
 - Tokens never belong in URLs, logs or QR codes. The credential-creation response is
   the sole browser-visible exception: it returns the newly generated plaintext token
   once with `Cache-Control: no-store`. Existing tokens are never retrievable.
@@ -85,9 +88,12 @@ resolved a character, the plugin sends an authenticated registration request:
      "name":"CharacterName","guild":"Optional guild name","sent_at":"2026-09-26T14:00:11Z"}
 
 The backend trims and case-folds server and name for a durable identity key, assuming
-character names are unique within one game server. It does not use agent ID,
+character names are unique within one game server. `guild` is optional: omitted means
+guild was unavailable, while an explicit empty string means the plugin observed no
+current guild and clears saved guild metadata. It does not use agent ID,
 connection generation, guild, or undocumented player/account ID stability. This is
-the only character-related request before the backend issues an ID. The backend
+the only character-related request before the backend issues an ID and establishes a
+live session claim for that character on this connection generation. The backend
 responds:
 
     {"type":"character.registered","protocol_version":2,"character_id":"<uuid>"}
@@ -99,8 +105,12 @@ characters over time or multiplex several by sending explicit IDs.
 
 ## Character snapshots, updates and presence
 
-After registration on join or reconnect, the plugin sends the complete available
-snapshot:
+After identification on join or reconnect, the plugin sends the complete available
+snapshot. Identification establishes character-level authority; a snapshot cannot
+open a session or retake a character after another generation has taken authority.
+An explicit later identify may transfer authority. Delayed writes from a generation
+that lost ownership are rejected/fenced. This is per character, so one generation
+may continue observing B while another owns A.
 
     {"type":"character.snapshot","protocol_version":2,"character_id":"<uuid>",
      "sent_at":"2026-09-26T14:00:12Z","state":{"level":110,"hp":32207,"mp":8744,
@@ -114,14 +124,15 @@ Server-owned state/session/activity timestamps are authoritative; plugin `sent_a
 diagnostic only.
 
 `character.left` carries protocol version, explicit character ID and diagnostic
-`sent_at`. The plugin sends it before identifying a switched character. Identity
-registration creates/resolves the durable record but does not itself mark the
-character online. A full `character.snapshot` opens the live session; updates are
-accepted only for that active agent/generation/session. Socket close and heartbeat
+`sent_at`. The plugin sends it before identifying a switched character. A full
+`character.snapshot` replaces all current state fields, clearing unavailable values
+to unknown instead of carrying them from an earlier session. `character.state` is
+patch-oriented and preserves fields omitted from that delta. Updates are accepted
+only for that active agent/generation/session. Socket close and heartbeat
 expiry close sessions owned by that generation; backend process startup closes all
 persisted live sessions with a distinct end reason. After
-reconnect a character starts offline and becomes online only after registration and
-a full snapshot. Backend restart retains durable records/state and never resurrects
+reconnect a character starts offline and becomes online after explicit identification;
+the full snapshot then restores authoritative current state. Backend restart retains durable records/state and never resurrects
 live sessions.
 
 The backend fences writes with the authenticated agent ID and socket's connection

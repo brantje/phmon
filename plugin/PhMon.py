@@ -519,8 +519,10 @@ class AgentWorker(object):
                 next_heartbeat = _monotonic() + interval
                 self.character_id = None
                 self._current_identity = None
-                if self._latest_sample is not None:
-                    self._publish_sample(client, self._latest_sample, True)
+                # Callbacks may have queued a leave while the backend was
+                # unavailable. Apply the newest queued fact before replaying
+                # the last sample so a departed character is never resurrected.
+                self._restore_latest_sample(client)
 
                 while not self.stop_event.is_set():
                     try:
@@ -582,6 +584,20 @@ class AgentWorker(object):
             self._current_identity = identity
             snapshot = True
         client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'state':state,'sent_at':_utc_now()})
+
+    def _restore_latest_sample(self, client):
+        # Drain pending callbacks before replaying state after reconnect. The
+        # bounded queue contains the most recent callback fact, including leave.
+        pending_sample = None
+        while True:
+            try:
+                pending_sample = self._samples.get_nowait()
+            except _queue.Empty:
+                break
+        if pending_sample is not None:
+            self._latest_sample = None if pending_sample.get('leave') else pending_sample
+        if self._latest_sample is not None:
+            self._publish_sample(client, self._latest_sample, True)
 
     def _validate_ack(self, ack):
         if not isinstance(ack, dict) or ack.get('type') != 'hello.ack':
@@ -802,7 +818,11 @@ def _sample_character():
     identity = {
         'server':str(data['server']).strip()[:100],
         'name':str(data['name']).strip()[:64],
-        'guild':str(data.get('guild') or '').strip()[:100],
+        'guild':(
+            str(data['guild']).strip()[:100]
+            if isinstance(data.get('guild'), str)
+            else None
+        ),
     }
     if not identity['server'] or not identity['name']:
         return

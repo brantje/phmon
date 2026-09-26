@@ -13,7 +13,12 @@ import (
 
 var ErrNotFound = errors.New("character not found")
 
-type Identity struct{ Server, Name, Guild string }
+type Identity struct {
+	Server, Name string
+	// Guild nil means unavailable; a pointer to an empty string means the
+	// plugin observed that the character currently has no guild.
+	Guild *string
+}
 type State struct {
 	Level      *int     `json:"level"`
 	HP         *int64   `json:"hp"`
@@ -83,8 +88,16 @@ func (s *Store) Resolve(ctx context.Context, identity Identity) (string, error) 
 		return "", err
 	}
 	var id string
+	var guild any
+	guildObserved := identity.Guild != nil
+	if identity.Guild != nil {
+		guild = strings.TrimSpace(*identity.Guild)
+		if guild == "" {
+			guild = nil
+		}
+	}
 	err = tx.QueryRow(ctx, `INSERT INTO characters(server_name,server_key,character_name,identity_key,guild_name)
-VALUES($1,$2,$3,$4,NULLIF($5,'')) ON CONFLICT(server_key,identity_key) DO UPDATE SET server_name=EXCLUDED.server_name,character_name=EXCLUDED.character_name,guild_name=COALESCE(EXCLUDED.guild_name,characters.guild_name),updated_at=now() RETURNING character_id::text`, server, serverKey, name, key, strings.TrimSpace(identity.Guild)).Scan(&id)
+	VALUES($1,$2,$3,$4,$5) ON CONFLICT(server_key,identity_key) DO UPDATE SET server_name=EXCLUDED.server_name,character_name=EXCLUDED.character_name,guild_name=CASE WHEN $6 THEN EXCLUDED.guild_name ELSE characters.guild_name END,updated_at=now() RETURNING character_id::text`, server, serverKey, name, key, guild, guildObserved).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("resolve character: %w", err)
 	}
@@ -92,6 +105,40 @@ VALUES($1,$2,$3,$4,NULLIF($5,'')) ON CONFLICT(server_key,identity_key) DO UPDATE
 		return "", err
 	}
 	return id, nil
+}
+
+// ClaimSession is called only after this connection explicitly identifies a
+// character. It transfers that character's live authority to this generation;
+// other characters observed by the same agent remain independent.
+func (s *Store) ClaimSession(ctx context.Context, agentID, characterID string, generation uint64) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
+		return err
+	}
+	var currentAgent string
+	var currentGeneration uint64
+	err = tx.QueryRow(ctx, `SELECT agent_id::text,connection_generation FROM character_sessions WHERE character_id=$1 AND ended_at IS NULL FOR UPDATE`, characterID).Scan(&currentAgent, &currentGeneration)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err == nil && currentAgent == agentID && currentGeneration == generation {
+		_, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND ended_at IS NULL`, characterID)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='switched' WHERE character_id=$1 AND ended_at IS NULL`, characterID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO character_sessions(character_id,agent_id,connection_generation) VALUES($1,$2,$3)`, characterID, agentID, generation); err != nil {
+		return fmt.Errorf("open character session: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
@@ -103,20 +150,15 @@ func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, gener
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
 		return err
 	}
-	var existing string
-	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation).Scan(&existing)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	var sessionID string
+	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation).Scan(&sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
 		return err
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		if _, err = tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),end_reason='switched' WHERE character_id=$1 AND ended_at IS NULL`, characterID); err != nil {
-			return err
-		}
-		if _, err = tx.Exec(ctx, `INSERT INTO character_sessions(character_id,agent_id,connection_generation) VALUES($1,$2,$3)`, characterID, agentID, generation); err != nil {
-			return fmt.Errorf("open character session: %w", err)
-		}
-	}
-	if _, err = tx.Exec(ctx, `UPDATE characters SET level=COALESCE($2,level),hp=COALESCE($3,hp),hp_max=COALESCE($4,hp_max),mp=COALESCE($5,mp),mp_max=COALESCE($6,mp_max),current_exp=COALESCE($7,current_exp),max_exp=COALESCE($8,max_exp),sp=COALESCE($9,sp),gold=COALESCE($10,gold),region=COALESCE($11,region),zone_name=COALESCE($12,zone_name),x=COALESCE($13,x),y=COALESCE($14,y),z=COALESCE($15,z),botting=$16,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE characters SET level=$2,hp=$3,hp_max=$4,mp=$5,mp_max=$6,current_exp=$7,max_exp=$8,sp=$9,gold=$10,region=$11,zone_name=$12,x=$13,y=$14,z=$15,botting=$16,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
@@ -125,29 +167,55 @@ func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, gener
 	return tx.Commit(ctx)
 }
 func (s *Store) Update(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
-	result, err := s.pool.Exec(ctx, `UPDATE characters c SET
-level=COALESCE($4,c.level),hp=COALESCE($5,c.hp),hp_max=COALESCE($6,c.hp_max),mp=COALESCE($7,c.mp),mp_max=COALESCE($8,c.mp_max),
-current_exp=COALESCE($9,c.current_exp),max_exp=COALESCE($10,c.max_exp),sp=COALESCE($11,c.sp),gold=COALESCE($12,c.gold),region=COALESCE($13,c.region),zone_name=COALESCE($14,c.zone_name),
-x=COALESCE($15,c.x),y=COALESCE($16,c.y),z=COALESCE($17,c.z),botting=$18,state_updated_at=now(),updated_at=now()
-WHERE c.character_id=$1 AND EXISTS(SELECT 1 FROM character_sessions cs WHERE cs.character_id=c.character_id AND cs.agent_id=$2 AND cs.connection_generation=$3 AND cs.ended_at IS NULL)`, characterID, agentID, generation, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
+		return err
+	}
+	var sessionID string
+	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation).Scan(&sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE characters c SET
+level=COALESCE($2,c.level),hp=COALESCE($3,c.hp),hp_max=COALESCE($4,c.hp_max),mp=COALESCE($5,c.mp),mp_max=COALESCE($6,c.mp_max),
+current_exp=COALESCE($7,c.current_exp),max_exp=COALESCE($8,c.max_exp),sp=COALESCE($9,c.sp),gold=COALESCE($10,c.gold),region=COALESCE($11,c.region),zone_name=COALESCE($12,c.zone_name),
+x=COALESCE($13,c.x),y=COALESCE($14,c.y),z=COALESCE($15,c.z),botting=COALESCE($16,c.botting),state_updated_at=now(),updated_at=now()
+WHERE c.character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting)
 	if err != nil {
 		return fmt.Errorf("update character state: %w", err)
 	}
-	if result.RowsAffected() != 1 {
-		return ErrNotFound
+	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
+		return err
 	}
-	_, err = s.pool.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation)
-	return err
+	return tx.Commit(ctx)
 }
 func (s *Store) End(ctx context.Context, agentID, characterID string, generation uint64, reason string) error {
 	if reason != "left" && reason != "agent_disconnected" {
 		return errors.New("invalid session end reason")
 	}
-	tag, err := s.pool.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason=$4 WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation, reason)
-	if err == nil && tag.RowsAffected() == 0 {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason=$4 WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation, reason)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return err
+	return tx.Commit(ctx)
 }
 func (s *Store) EndAgent(ctx context.Context, agentID string, generation uint64) error {
 	_, err := s.pool.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='agent_disconnected' WHERE agent_id=$1 AND connection_generation=$2 AND ended_at IS NULL`, agentID, generation)

@@ -31,8 +31,13 @@ coverage is tracked separately and is never treated as proof of a real phBot run
     and keeps its own per-profile settings file under Config/PhMon/.
 - Misc: https://plugins.phbot.org/phbot-api/misc
   - get_version() returns the phBot version string.
-  - get_profile() returns the active profile name, an empty string for the default
-    profile, or None while no player is logged in.
+- get_profile() returns the active profile name, an empty string for the default
+  profile, or None while no player is logged in.
+
+These per-profile settings files are a local configuration choice only. An agent
+ID/token identifies one logical PhMon agent; operators may reuse it across multiple
+concurrent phBot processes/profiles that should belong to the same logical agent, or
+create separate credentials for separate logical agents.
 
 ## Login and connection status behavior
 
@@ -72,9 +77,8 @@ the Go backend owns durable identity, authentication and connection history.
 ## Runtime validation
 
 Operator-provided evidence: **Real phBot → PhMon plugin/backend connectivity has
-been manually verified.** The repository does not record the phBot build, embedded
-Python version, profile count, or which Slice 2 data APIs were exercised. This
-confirms basic connectivity only; it does not validate character collection.
+been manually verified.** This confirms basic connectivity only; it does not
+validate APIs not listed in the runtime evidence below.
 
 Live-runtime update (2026-09-26): phBot 20.1.1 agents running plugin 1.1.0
 registered four online characters through protocol v2. The API showed three active
@@ -137,6 +141,9 @@ snapshot. The backend timestamp is authoritative; `sent_at` is diagnostic only.
 Identity is lowercased/trimmed character name scoped by lowercased/trimmed server
 name. This assumes game character names are unique within a Silkroad server; PhMon
 does not claim a globally unique game ID. Guild is mutable metadata, not identity.
+The collector preserves a documented string value, including `""` for an observed
+no-guild value; an absent or non-string guild value is sent as unavailable and does
+not clear stored metadata.
 
 Remaining Slice 2 runtime checks: record embedded Python version; verify repeated
 disconnect callbacks, character switch, teleport/region change, and reconnect

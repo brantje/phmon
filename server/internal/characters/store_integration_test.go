@@ -43,7 +43,8 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 		_, _ = pool.Exec(cleanCtx, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
 	})
 	store := NewStore(pool)
-	a, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Alpha", Guild: "Founders"})
+	guild := "Founders"
+	a, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Alpha", Guild: &guild})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +56,19 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 		t.Fatalf("server/name identity changed: %s != %s", a, a2)
 	}
 	level, hp, hpmax, mp, exp, sp, gold, region, x, y := 110, int64(500), int64(1000), int64(250), int64(900), int64(42), int64(99), 25000, 12.5, 33.25
-	fullState := State{Level: &level, HP: &hp, HPMax: &hpmax, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, X: &x, Y: &y}
+	zone := "Jangan"
+	fullState := State{Level: &level, HP: &hp, HPMax: &hpmax, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, Zone: &zone, X: &x, Y: &y}
+	if err := store.ClaimSession(ctx, credential.AgentID, a, 1); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Snapshot(ctx, credential.AgentID, a, 1, fullState); err != nil {
 		t.Fatal(err)
 	}
 	b, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Beta"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimSession(ctx, credential.AgentID, b, 2); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Snapshot(ctx, credential.AgentID, b, 2, fullState); err != nil {
@@ -83,6 +91,56 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if !beta.Online {
 		t.Fatalf("beta should be online: %+v", beta)
 	}
+	// Character authority is independent of logical-agent/socket validity. A
+	// second generation may take over A while the first still observes B.
+	if err := store.ClaimSession(ctx, credential.AgentID, a, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(ctx, credential.AgentID, a, 1, State{Level: &level}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("stale generation state accepted after takeover: %v", err)
+	}
+	if err := store.Snapshot(ctx, credential.AgentID, a, 1, State{Level: &level}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("stale generation snapshot reclaimed character: %v", err)
+	}
+	if err := store.Snapshot(ctx, credential.AgentID, a, 2, State{HP: &hp}); err != nil {
+		t.Fatal(err)
+	}
+	// The same old socket can still explicitly claim an unrelated character.
+	c, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Gamma"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimSession(ctx, credential.AgentID, c, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Snapshot(ctx, credential.AgentID, c, 1, fullState); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.End(ctx, credential.AgentID, c, 1, "left"); err != nil {
+		t.Fatal(err)
+	}
+	// A full new-session snapshot clears fields unavailable in the new session.
+	if err := store.End(ctx, credential.AgentID, a, 2, "left"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimSession(ctx, credential.AgentID, a, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Snapshot(ctx, credential.AgentID, a, 3, State{HP: &hp}); err != nil {
+		t.Fatal(err)
+	}
+	alpha, err = store.Get(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alpha.Gold != nil || alpha.Zone != nil || alpha.HP == nil || *alpha.HP != hp {
+		t.Fatalf("new full snapshot retained stale state: %+v", alpha)
+	}
+	// A later explicit reconnect of the same durable identity reuses its ID.
+	aReconnect, err := store.Resolve(ctx, Identity{Server: "slice2-server", Name: "ALPHA"})
+	if err != nil || aReconnect != a {
+		t.Fatalf("identity changed across reconnect: %s, %v", aReconnect, err)
+	}
 	if _, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Beta"}); err != nil {
 		t.Fatal(err)
 	}
@@ -90,8 +148,11 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	alpha, err = store.Get(ctx, a)
-	if err != nil || alpha.Online {
-		t.Fatalf("closing one socket did not only close its character: %+v err=%v", alpha, err)
+	if err != nil || !alpha.Online {
+		t.Fatalf("closing generation 1 ended the character owned by generation 3: %+v err=%v", alpha, err)
+	}
+	if err := store.ClaimSession(ctx, credential.AgentID, b, 3); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.Snapshot(ctx, credential.AgentID, b, 3, fullState); err != nil {
 		t.Fatal(err)
@@ -132,6 +193,19 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	}
 	if len(results) == 0 || results[0].ID != a {
 		t.Fatalf("guild search failed: %+v", results)
+	}
+	noGuild := ""
+	if _, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Alpha", Guild: &noGuild}); err != nil {
+		t.Fatal(err)
+	}
+	results, err = store.List(ctx, "founders", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, result := range results {
+		if result.ID == a {
+			t.Fatal("character still matched its previous guild after observed leave")
+		}
 	}
 	groupResults, err := store.List(ctx, "", group.ID)
 	if err != nil {

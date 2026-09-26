@@ -17,13 +17,18 @@ type characterHandler struct{ store *characters.Store }
 
 func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
 	groupID := r.URL.Query().Get("group_id")
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 100 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "query is too long"})
+		return
+	}
 	if groupID != "" && !agentdomain.ValidAgentID(groupID) {
 		respondJSON(w, 400, map[string]string{"error": "invalid group_id"})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	items, err := h.store.List(ctx, r.URL.Query().Get("q"), groupID)
+	items, err := h.store.List(ctx, query, groupID)
 	if err != nil {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
