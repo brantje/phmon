@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +55,34 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	}
 	if a != a2 {
 		t.Fatalf("server/name identity changed: %s != %s", a, a2)
+	}
+	var discovery sync.WaitGroup
+	ids := make(chan string, 8)
+	errs := make(chan error, 8)
+	for range 8 {
+		discovery.Add(1)
+		go func() {
+			defer discovery.Done()
+			id, resolveErr := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "ConcurrentDiscovery"})
+			if resolveErr != nil {
+				errs <- resolveErr
+				return
+			}
+			ids <- id
+		}()
+	}
+	discovery.Wait()
+	close(ids)
+	close(errs)
+	for resolveErr := range errs {
+		t.Fatal(resolveErr)
+	}
+	var sharedID string
+	for id := range ids {
+		if sharedID != "" && sharedID != id {
+			t.Fatalf("concurrent first discovery produced IDs %s and %s", sharedID, id)
+		}
+		sharedID = id
 	}
 	level, hp, hpmax, mp, exp, sp, gold, region, x, y := 110, int64(500), int64(1000), int64(250), int64(900), int64(42), int64(99), 25000, 12.5, 33.25
 	zone := "Jangan"
