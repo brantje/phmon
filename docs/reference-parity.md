@@ -107,6 +107,36 @@ Visual parity and remaining real phBot lifecycle/data checks remain open.
   development backdrop remains; approved local artwork and final visual treatment
   remain open.
 
+### Dashboard/header visual follow-up (2026-09-26)
+
+- Compared the local dashboard render against the tracked
+  [Dashboard](reference/phmonitor-dashboard.png) and [Stats](reference/phmonitor-stats.png)
+  baselines, alongside the user-supplied detailed captures. Added the
+  reference-style three-part live summary in the 34 px top strip (online/offline
+  characters, combined HP/MP percentages and compact total gold), moved the
+  easy/advanced toggle to the right edge, added a distinct Dashboard header and
+  asymmetric dashboard panels, and added the reference sidebar QR/copy-link utility.
+- Dashboard counters, vitals and gold use observed character records. Alive/dead,
+  deaths, server information, event timeline, rare drops, chat and global offers
+  are explicitly labeled `LATER`; they are owned by later slices. Missing character
+  data displays as unknown (`—`) instead of implying zero.
+- Added a working Dashboard ↔ Stats navigation link. The Stats page keeps the existing
+  searchable/group-manageable character surface; the user explicitly excluded its
+  table and the phBot agents section from this visual comparison. Advanced navigation
+  now follows the observed Tools/Misc order and marks unimplemented destinations
+  `LATER`. Server scope remains visibly deferred.
+- Browser comparison was made from the local dev build at 1264 × 710, with the
+  backend unavailable in that isolated shell. Layout and unavailable states were
+  reviewed, and Stats navigation was clicked and verified. This is not a populated
+  data screenshot or the required 1440 × 1000 same-viewport evidence. The current
+  `192.168.10.25:3005` tab still serves the prior build; Docker is unavailable in the
+  shell, so that instance was not rebuilt. No phMonitor artwork or external assets
+  were copied; the dark backdrop remains an explicit visual gap.
+- Local checks after the follow-up: Nuxt typecheck and production build passed;
+  ESLint passed with the three existing HTML-input self-closing warnings; Prettier
+  passed for the changed files. Full `format:check` was also invoked and remains
+  red because 19 unrelated existing files in `web/` are not formatted.
+
 ### Comparison and gaps
 
 - A compact character table now appears above the existing agent/operations panels;
