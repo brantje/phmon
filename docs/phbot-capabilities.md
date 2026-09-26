@@ -76,13 +76,14 @@ been manually verified.** The repository does not record the phBot build, embedd
 Python version, profile count, or which Slice 2 data APIs were exercised. This
 confirms basic connectivity only; it does not validate character collection.
 
-Live-runtime update (2026-09-26): a phBot 20.1.1 agent running plugin 1.1.0
-registered one online character through protocol v2. The character API returned
-server, character name, guild, zone, level, HP/MP, XP/SP, gold, region, and position;
-the same-origin character detail API showed its active agent/session and advancing
-state timestamps. This manually exercises the current character/state path in one
-runtime/profile. It does not verify multiple profiles, character switching, or
-botting-state reporting.
+Live-runtime update (2026-09-26): phBot 20.1.1 agents running plugin 1.1.0
+registered `nuker1` and `nuker2` online through protocol v2. They have distinct
+stable character IDs, distinct serving agent IDs, and fresh/advancing state
+timestamps. The API returned server, character name, zone, level, HP/MP, XP/SP,
+gold, region, and position; guild was returned when available. This manually
+exercises two live character paths and separation across agents. It does not verify
+multiple profiles within one phBot process, character switching, or botting-state
+reporting.
 
 The deterministic simulator added with Slice 1 imports the production PhMon.py
 transport and exercises the same protocol contract. Hosted CI has verified credential

@@ -503,12 +503,14 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   The follow-up collector regression test and complete PostgreSQL-enabled check
   passed again. Two simulator-created fixture characters and their sessions/agent
   were removed from the local development database.
-- Real runtime evidence: a live phBot 20.1.1 agent running plugin 1.1.0 registered
-  one online character. Search/detail APIs showed server, name, guild, zone, level,
-  HP/MP, XP/SP, gold, region, position, serving agent, active session, and advancing
-  state timestamps. This verifies one profile's collection/API path. Basic real
-  phBot → PhMon connectivity had been operator-confirmed earlier. Simulator coverage
-  remains separately labelled and was not used for this runtime claim.
+- Real runtime evidence: phBot 20.1.1 agents running plugin 1.1.0 registered two
+  online characters, `nuker1` and `nuker2`, with distinct stable character IDs and
+  distinct serving agent IDs. Search/detail APIs showed server, name, zone, level,
+  HP/MP, XP/SP, gold, region, position, active sessions, and advancing state
+  timestamps. This verifies two live character paths across agents; it does not
+  establish multiple-profile behavior within one process. Basic real phBot → PhMon
+  connectivity had been operator-confirmed earlier. Simulator coverage remains
+  separately labelled and was not used for this runtime claim.
 - Exact remaining Slice 2 work before claiming full completion: record embedded
   Python version, manually validate character switch/teleport/reconnect snapshot and
   repeated disconnect behavior, and determine whether botting state has a supported
