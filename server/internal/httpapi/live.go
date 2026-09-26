@@ -22,7 +22,7 @@ const (
 	liveMaxClientMessageBytes = 16 * 1024
 	liveMaxServerMessageBytes = 512 * 1024
 	liveMaxSubscriptions      = 32
-	liveOutgoingQueueSize     = 16
+	liveOutgoingQueueSize     = 64
 	liveSnapshotTimeout       = 3 * time.Second
 	liveWriteTimeout          = 3 * time.Second
 	liveHeartbeatInterval     = 10 * time.Second
