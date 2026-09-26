@@ -19,7 +19,8 @@
     "@iconify-json/lucide": "1.2.137",
     "@nuxt/ui": "4.11.2",
     "h3": "1.15.11",
-    "nuxt": "4.5.2"
+    "nuxt": "4.5.2",
+    "qrcode.vue": "3.9.1"
   },
   "devDependencies": {
     "@nuxt/eslint": "1.17.0",
