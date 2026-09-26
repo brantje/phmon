@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -184,11 +185,11 @@ func (c *liveClient) notify() {
 
 func (c *liveClient) fail(status websocket.StatusCode, reason string) {
 	c.cancel()
+	if c.conn == nil {
+		return
+	}
 	go func() {
-		closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
 		_ = c.conn.Close(status, reason)
-		_ = closeCtx
 	}()
 }
 
@@ -229,6 +230,11 @@ func (c *liveClient) readLoop() {
 		decoder := json.NewDecoder(strings.NewReader(string(payload)))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&message); err != nil {
+			c.fail(websocket.StatusPolicyViolation, "malformed live frame")
+			return
+		}
+		var trailing any
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 			c.fail(websocket.StatusPolicyViolation, "malformed live frame")
 			return
 		}
