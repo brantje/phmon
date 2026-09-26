@@ -39,19 +39,30 @@ class ConfigTests(unittest.TestCase):
         config_dir = os.path.join('C:', 'phBot', 'Config')
         first = plugin._profile_settings_path(
             config_dir,
-            'C:\\phBot\\Config\\Venus_Alice.Farm.json',
+            'C:\\phBot\\Config\\Venus_Alice.json',
+            'Farm',
         )
         second = plugin._profile_settings_path(
             config_dir,
-            'C:\\phBot\\Config\\Venus_Bob.Farm.json',
+            'C:\\phBot\\Config\\Venus_Bob.json',
+            'Farm',
         )
         alternate = plugin._profile_settings_path(
             config_dir,
-            'C:\\phBot\\Config\\Venus_Alice.Trade.json',
+            'C:\\phBot\\Config\\Venus_Alice.json',
+            'Trade',
         )
-        self.assertTrue(first.endswith(os.path.join('PhMon', 'Venus_Alice.Farm.cfg')))
+        default = plugin._profile_settings_path(
+            config_dir,
+            'C:\\phBot\\Config\\Venus_Alice.json',
+            '',
+        )
+        self.assertIn(os.path.join('PhMon', 'Venus_Alice.Farm-'), first)
+        self.assertTrue(first.endswith('.cfg'))
+        self.assertTrue(default.endswith(os.path.join('PhMon', 'Venus_Alice.default.cfg')))
         self.assertNotEqual(first, second)
         self.assertNotEqual(first, alternate)
+        self.assertNotEqual(first, default)
 
     def test_saved_profile_config_round_trip(self):
         root = tempfile.mkdtemp()
