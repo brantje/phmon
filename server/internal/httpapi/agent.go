@@ -126,8 +126,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	connectedAt := time.Now().UTC()
 	updateCtx, updateCancel := context.WithTimeout(r.Context(), 2*time.Second)
-	err = h.store.MarkConnected(updateCtx, hello.AgentID, hello.ProtocolVersion, hello.PluginVersion, hello.PhBotVersion)
+	err = h.store.MarkConnected(updateCtx, hello.AgentID, connectedAt, hello.ProtocolVersion, hello.PluginVersion, hello.PhBotVersion)
 	updateCancel()
 	if err != nil {
 		_ = conn.Close(websocket.StatusInternalError, "state unavailable")
@@ -146,7 +147,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if err := h.store.MarkDisconnected(ctx, hello.AgentID); err != nil {
+		if err := h.store.MarkDisconnected(ctx, hello.AgentID, connectedAt); err != nil {
 			slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
 		}
 	}()

@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	agentdomain "phmon/server/internal/agents"
 )
 
 type AgentStore interface {
 	AuthenticateToken(context.Context, string) (string, error)
-	MarkConnected(context.Context, string, int, string, string) error
+	MarkConnected(context.Context, string, time.Time, int, string, string) error
 	MarkSeen(context.Context, string) error
-	MarkDisconnected(context.Context, string) error
+	MarkDisconnected(context.Context, string, time.Time) error
 	ListSeen(context.Context) ([]agentdomain.Record, error)
 }
 

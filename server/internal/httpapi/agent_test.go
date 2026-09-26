@@ -38,14 +38,15 @@ func (s *fakeAgentStore) AuthenticateToken(_ context.Context, token string) (str
 	return s.agentID, nil
 }
 
-func (s *fakeAgentStore) MarkConnected(_ context.Context, agentID string, protocol int, plugin, phbot string) error {
+func (s *fakeAgentStore) MarkConnected(_ context.Context, agentID string, connectedAt time.Time, protocol int, plugin, phbot string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now().UTC()
 	s.record.AgentID = agentID
-	s.record.FirstSeenAt = &now
-	s.record.LastSeenAt = &now
-	s.record.LastConnectedAt = &now
+	if s.record.FirstSeenAt == nil {
+		s.record.FirstSeenAt = &connectedAt
+	}
+	s.record.LastSeenAt = &connectedAt
+	s.record.LastConnectedAt = &connectedAt
 	s.record.ProtocolVersion = &protocol
 	s.record.PluginVersion = &plugin
 	s.record.PhBotVersion = &phbot
@@ -61,9 +62,12 @@ func (s *fakeAgentStore) MarkSeen(_ context.Context, _ string) error {
 	return nil
 }
 
-func (s *fakeAgentStore) MarkDisconnected(_ context.Context, _ string) error {
+func (s *fakeAgentStore) MarkDisconnected(_ context.Context, _ string, connectedAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.record.LastConnectedAt != nil && s.record.LastConnectedAt.After(connectedAt) {
+		return nil
+	}
 	s.disconnectedCount++
 	now := time.Now().UTC()
 	s.record.LastDisconnectedAt = &now
@@ -348,11 +352,11 @@ type failingAgentStore struct{}
 func (failingAgentStore) AuthenticateToken(context.Context, string) (string, error) {
 	return "", errors.New("password=super-secret")
 }
-func (failingAgentStore) MarkConnected(context.Context, string, int, string, string) error {
+func (failingAgentStore) MarkConnected(context.Context, string, time.Time, int, string, string) error {
 	return errors.New("unused")
 }
 func (failingAgentStore) MarkSeen(context.Context, string) error { return errors.New("unused") }
-func (failingAgentStore) MarkDisconnected(context.Context, string) error {
+func (failingAgentStore) MarkDisconnected(context.Context, string, time.Time) error {
 	return errors.New("unused")
 }
 func (failingAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error) {

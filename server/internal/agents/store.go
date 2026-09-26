@@ -101,15 +101,15 @@ func (s *Store) AuthenticateToken(ctx context.Context, token string) (string, er
 	return agentID, nil
 }
 
-func (s *Store) MarkConnected(ctx context.Context, agentID string, protocolVersion int, pluginVersion, phBotVersion string) error {
+func (s *Store) MarkConnected(ctx context.Context, agentID string, connectedAt time.Time, protocolVersion int, pluginVersion, phBotVersion string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE agents
-SET first_seen_at = COALESCE(first_seen_at, now()),
-    last_seen_at = now(),
-    last_connected_at = now(),
-    protocol_version = $2,
-    plugin_version = $3,
-    phbot_version = $4
-WHERE agent_id = $1`, agentID, protocolVersion, pluginVersion, phBotVersion)
+SET first_seen_at = COALESCE(first_seen_at, $2),
+    last_seen_at = $2,
+    last_connected_at = $2,
+    protocol_version = $3,
+    plugin_version = $4,
+    phbot_version = $5
+WHERE agent_id = $1`, agentID, connectedAt, protocolVersion, pluginVersion, phBotVersion)
 	if err != nil {
 		return fmt.Errorf("mark agent connected: %w", err)
 	}
@@ -124,8 +124,12 @@ func (s *Store) MarkSeen(ctx context.Context, agentID string) error {
 	return nil
 }
 
-func (s *Store) MarkDisconnected(ctx context.Context, agentID string) error {
-	_, err := s.pool.Exec(ctx, "UPDATE agents SET last_seen_at = now(), last_disconnected_at = now() WHERE agent_id = $1", agentID)
+func (s *Store) MarkDisconnected(ctx context.Context, agentID string, connectedAt time.Time) error {
+	_, err := s.pool.Exec(ctx, `UPDATE agents
+SET last_seen_at = now(),
+    last_disconnected_at = now()
+WHERE agent_id = $1
+  AND (last_connected_at IS NULL OR last_connected_at <= $2)`, agentID, connectedAt)
 	if err != nil {
 		return fmt.Errorf("mark agent disconnected: %w", err)
 	}
