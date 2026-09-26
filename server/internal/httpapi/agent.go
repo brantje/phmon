@@ -174,6 +174,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
 			}
 		}
+		// Publish again after durable session/disconnect cleanup. The earlier
+		// invalidation exposes the in-memory socket transition promptly; this one
+		// guarantees the replacement snapshot observes committed cleanup.
+		h.live.Invalidate()
 	}()
 
 	ack := helloAck{
