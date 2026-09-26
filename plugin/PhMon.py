@@ -329,6 +329,9 @@ class WebSocketClient(object):
     def _wait_for_frame_start(self, sock, timeout):
         if self._buffer:
             return True
+        pending = getattr(sock, 'pending', None)
+        if callable(pending) and pending() > 0:
+            return True
         if timeout is None:
             return True
         readable, _, _ = select.select([sock], [], [], timeout)
@@ -405,10 +408,6 @@ class WebSocketClient(object):
         if sock is None:
             return
         try:
-            self._send_frame(0x8, struct.pack('!H', 1000))
-        except Exception:
-            pass
-        try:
             sock.shutdown(socket.SHUT_RDWR)
         except Exception:
             pass
@@ -456,10 +455,6 @@ class AgentWorker(object):
 
     def stop(self):
         self.stop_event.set()
-        with self._socket_lock:
-            active = self._socket
-        if active is not None:
-            active.close()
 
     def _set_socket(self, value):
         with self._socket_lock:
@@ -555,7 +550,6 @@ def _stop_worker():
     global _worker
     if _worker is not None:
         _worker.stop()
-        _worker.join(2.0)
         _worker = None
 
 

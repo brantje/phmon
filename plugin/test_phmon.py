@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import Mock, patch
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), 'PhMon.py')
 spec = importlib.util.spec_from_file_location('phmon_plugin', MODULE_PATH)
@@ -127,6 +128,15 @@ class WebSocketFrameTests(unittest.TestCase):
             plugin._expected_accept('dGhlIHNhbXBsZSBub25jZQ=='),
             's3pPLMBiTxaQ9kYGzzhZRbK+xOo=',
         )
+
+    def test_tls_pending_bytes_skip_socket_select(self):
+        class PendingSocket:
+            def pending(self):
+                return 2
+
+        with patch.object(plugin.select, 'select', side_effect=AssertionError('select called')):
+            self.assertTrue(plugin.WebSocketClient('ws://localhost/agent', 'token')
+                            ._wait_for_frame_start(PendingSocket(), 1))
 
     def test_reads_server_text_and_answers_ping(self):
         client_sock, server_sock = socket.socketpair()
@@ -259,6 +269,20 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(interval, 10)
         with self.assertRaises(plugin.WebSocketClosed):
             worker._validate_ack({'type': 'hello.ack', 'protocol_version': 2})
+
+
+class WorkerStopTests(unittest.TestCase):
+    def test_stop_worker_signals_without_joining_callback(self):
+        worker = Mock()
+        original = plugin._worker
+        plugin._worker = worker
+        try:
+            plugin._stop_worker()
+        finally:
+            plugin._worker = original
+
+        worker.stop.assert_called_once_with()
+        worker.join.assert_not_called()
 
 
 if __name__ == '__main__':

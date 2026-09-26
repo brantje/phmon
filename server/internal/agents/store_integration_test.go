@@ -22,7 +22,7 @@ func TestAgentStoreLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal("cannot initialize test database pool")
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := database.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestStaleDisconnectDoesNotOverwriteNewConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal("cannot initialize test database pool")
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := database.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
