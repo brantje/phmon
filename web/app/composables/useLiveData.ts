@@ -30,6 +30,7 @@ const groups = ref<CharacterGroup[]>([])
 const characterDetail = ref<CharacterView | null>(null)
 const connectionState = ref<LiveConnectionState>('idle')
 const hasSnapshot = ref(false)
+const staleCycle = ref(false)
 
 const subscriptions = new Map<string, Subscription>()
 let socket: WebSocket | null = null
@@ -39,12 +40,7 @@ let reconnectAttempt = 0
 let lastMessageAt = 0
 let users = 0
 
-const liveStale = computed(
-  () =>
-    hasSnapshot.value &&
-    connectionState.value !== 'current' &&
-    connectionState.value !== 'idle',
-)
+const liveStale = computed(() => hasSnapshot.value && staleCycle.value)
 const liveLoading = computed(
   () =>
     !hasSnapshot.value &&
@@ -288,6 +284,7 @@ function handleFrame(frame: LiveServerFrame) {
   if (frame.type === 'subscription.unavailable') {
     subscription.current = false
     subscription.unavailable = true
+    staleCycle.value = true
     connectionState.value = 'stale'
     return
   }
@@ -295,6 +292,7 @@ function handleFrame(frame: LiveServerFrame) {
     subscription.current = false
     if (frame.reason !== 'obsolete_revision') {
       subscription.unavailable = true
+      staleCycle.value = true
       connectionState.value = 'stale'
     }
     return
@@ -366,6 +364,12 @@ function updateCurrentState() {
   if (allCurrent) {
     connectionState.value = 'current'
     reconnectAttempt = 0
+    staleCycle.value = false
+  } else if (
+    [...subscriptions.values()].some((subscription) => subscription.unavailable)
+  ) {
+    connectionState.value = 'stale'
+    staleCycle.value = true
   } else if (hasSnapshot.value && connectionState.value !== 'reconnecting') {
     connectionState.value = 'syncing'
   }
@@ -375,6 +379,7 @@ function markSubscriptionsStale() {
   for (const subscription of subscriptions.values()) {
     subscription.current = false
   }
+  staleCycle.value = true
   connectionState.value = hasSnapshot.value ? 'stale' : 'reconnecting'
 }
 
