@@ -82,6 +82,8 @@ jobs:
       - name: Verify database outage
         id: outage
         continue-on-error: true
+        env:
+          PHMON_COMPOSE_PROJECT: phmon
         run: |
           python3 scripts/outage_session_smoke.py
       - name: Verify database recovery

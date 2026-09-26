@@ -575,16 +575,15 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   including multiple concurrent sockets on one agent ID/token and several live
   characters. The review-specific authority race and outage cases are simulator and
   automated-test evidence, not new phBot validation.
-- Next action: commit and push the validated UI/proxy/smoke increment, verify the PR
-  head, then report exact remaining Slice 2 runtime checks. Do not merge PR #3 or begin
-  Slice 3.
+- This UI/proxy/smoke increment was committed and pushed as `725dd3d`; subsequent
+  recovery fixes and main integration are recorded in the following entry.
 
-### PR #3 recovery and multiplexing correctness follow-up (2026-09-27)
+### PR #3 recovery and multiplexing correctness follow-up (2026-09-26)
 
-- Status: implementation committed; full-stack outage/recovery validation is pending.
-  Commit `4d95b5e` adds dead-generation session reconciliation, explicit nonfatal
-  ownership rejection, fresh current-state semantics for updates/new claims, a
-  disconnect metadata race fence, and simulator/CI coverage.
+- Status: implementation and automated validation passed. Commit `4d95b5e` adds
+  dead-generation session reconciliation, explicit nonfatal ownership rejection,
+  fresh current-state semantics for updates/new claims, a disconnect metadata race
+  fence, and simulator/CI coverage.
 - `RunSessionReconciler` pings PostgreSQL and repeatedly runs an idempotent bounded
   reconciliation while available. It closes only sessions whose exact
   `(agent_id, connection_generation)` is absent from the in-memory Registry; the
@@ -606,11 +605,25 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
 - Focused validation passed on isolated PostgreSQL at port 5536:
   `go test -race ./internal/agents ./internal/characters ./internal/httpapi` and
   `python3 -m unittest plugin.test_phmon` (26 tests). Run the canonical full check and
-  full-stack outage/recovery scenario before closing this entry.
-- Exact remaining work: finish `bash scripts/check.sh`, run the full Compose stack,
-  simulator/restart/outage/recovery paths, integrate current main with the feature
-  matrix additions preserved, and report any remaining Slice 2 real-runtime gates.
-  Do not merge PR #3 or start Slice 3.
+  `bash scripts/check.sh` with PostgreSQL enabled under Node 24.20.0. ESLint reports
+  only the three existing input self-closing warnings. Production Compose build and
+  normal `scripts/smoke.py` passed on ports 5536/8181/3505. The character lifecycle
+  simulator passed before and after Go server restart, followed by disconnect
+  verification. `scripts/outage_session_smoke.py` stopped PostgreSQL while two
+  production-plugin simulator sockets shared one credential, closed A during the
+  outage, restored the database without restarting Go, and verified A offline, B
+  online, and the logical agent connected with one active socket. Outage health/data
+  APIs and post-recovery normal smoke checks passed.
+- `origin/main` was integrated in merge commit `ca30d62`. Its newer Slice 2.5
+  game-data catalog and PK2 requirements were preserved in the feature matrix and
+  roadmap; Slice 2 progress and review records were retained and updated.
+- Real phBot evidence remains only the already recorded phBot 20.1.1/plugin 1.1.0
+  multiple-socket/multiple-character observation. The stale-operation and database
+  outage/recovery cases remain simulator plus automated backend evidence. Remaining
+  manual Slice 2 checks are recording embedded Python and observing character
+  switch/teleport/reconnect/repeated-disconnect behavior; botting remains unknown
+  because official docs expose mutations but no read-only getter. Do not merge PR #3
+  or start Slice 3.
 
 ## Canonical slice roadmap
 

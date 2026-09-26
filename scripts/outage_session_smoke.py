@@ -21,6 +21,10 @@ server = os.environ.get("SMOKE_SERVER_URL", "http://127.0.0.1:8081")
 agent_url = os.environ.get("PHMON_AGENT_URL", "ws://127.0.0.1:8081/agent")
 simulators = []
 recovered = False
+compose_project = os.environ.get("PHMON_COMPOSE_PROJECT")
+if not compose_project:
+    raise SystemExit("PHMON_COMPOSE_PROJECT must name the disposable Compose test stack")
+compose = ["docker", "compose", "--project-name", compose_project]
 
 
 def request_json(url, data=None, headers=None):
@@ -89,14 +93,14 @@ def main():
         return bool(first and first["online"] and second and second["online"] and agent and agent.get("active_connections") == 2)
 
     wait_for("two shared-credential sockets publish two online characters", both_online)
-    subprocess.run(["docker", "compose", "stop", "postgres"], check=True)
+    subprocess.run(compose + ["stop", "postgres"], check=True)
     wait_for("database readiness reports outage", lambda: _status(server + "/readyz") == 503)
     stop_process(simulators[0])
 
     outage_env = os.environ.copy()
     outage_env["EXPECT_UNAVAILABLE"] = "1"
     subprocess.run([sys.executable, "scripts/smoke.py"], env=outage_env, check=True)
-    subprocess.run(["docker", "compose", "up", "-d", "--wait", "--wait-timeout", "120", "postgres"], check=True)
+    subprocess.run(compose + ["up", "-d", "--wait", "--wait-timeout", "120", "postgres"], check=True)
 
     def recovered_characters():
         _, a_body = request_json(web + "/api/characters?q=" + names[0])
@@ -126,4 +130,4 @@ finally:
     for process in simulators:
         stop_process(process)
     if not recovered:
-        subprocess.run(["docker", "compose", "up", "-d", "--wait", "--wait-timeout", "120", "postgres"], check=False)
+        subprocess.run(compose + ["up", "-d", "--wait", "--wait-timeout", "120", "postgres"], check=False)
