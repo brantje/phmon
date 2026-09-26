@@ -73,7 +73,7 @@ remain required even when the demo shows empty data.
 
 The public demo was inspected on **2026-09-26**, displaying **v0.5.0**, at a
 1440 × 1000 desktop viewport. Dashboard, Stats, Chat, Economy, Alchemy, Academy,
-Map, Item Search, Skill Builder, Settings and Server List were navigable. Most data
+Map, Item Search, Skill Builder and Settings were navigable. Most data
 was empty because its connection was unavailable. Some advanced navigation and
 subtabs appeared in the page markup but were hidden in the active easy mode;
 those labels establish intended areas, not proof that their workflows executed.
@@ -124,8 +124,8 @@ These preserve the original project boundaries; they are not implementation gaps
   plugin's connection/version status through the normal connection model.
 - Keep the demo's server-information/dashboard-card layout where useful, but use
   operator-managed server information, optional own artwork and local metadata.
-  The public server directory must be self-hosted/operator-managed or explicitly
-  sourced from an allowed feed, never scraped from a private phMonitor backend.
+  Third-party/public server-directory functionality is outside this project's scope;
+  it is not part of monitoring/control parity and must not be reproduced or scraped.
 - Community links and promotional slots are optional operator configuration, with
   sensible empty/hidden states. Use PhMon's own identity and instance URL in
   the mobile QR/copy-link panel; never expose credentials in that URL.
@@ -210,7 +210,6 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
 | Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
 | Record management | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal. | 14, 15 |
-| Server List | Self-hosted directory with search, version/cap/model filters, ranking/table metadata and pagination. Server detail includes only operator-managed or explicitly sourced facts: status/online information when verifiable, version/cap/concept, XP/SP/drop rates, short/full description, detailed specifications, rules, website/Discord links and optional artwork. If PhMon implements its own voting/score/ranking flow, persist and derive it locally rather than copying phMonitor claims. Never invent player/online counts or depend on the reference directory. | 15 |
 | Operations | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions. | 1, 14 |
 
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
@@ -1358,8 +1357,8 @@ core screens or visual direction until the end; build them in their owning slice
   and live-character comparison. Show unsupported versions honestly. Remote skill
   execution, if supported, uses the existing command lifecycle and confirmation.
 - Complete persistent appearance/mode/language/chat/notification settings, local
-  sound library, safe record-management dialogs, instance QR/copy-link utilities,
-  self-hosted server directory and operator-managed dashboard information cards.
+  sound library, safe record-management dialogs, instance QR/copy-link utilities
+  and operator-managed dashboard information cards.
 - Complete backend/API validation for preferences, uploads, webhook destinations,
   local assets and deletion operations; avoid introducing privileged arbitrary file
   access or outbound requests to internal services through user-supplied URLs.
@@ -1368,10 +1367,6 @@ core screens or visual direction until the end; build them in their owning slice
   Item Search and Analytics without fabricating unavailable fields.
 - Finish Conditions placeholder/variable behavior with documented bounded context,
   deterministic preview/execution and no executable template language.
-- Complete the self-hosted Server List detail model: search/filter/ranking table,
-  version/cap/concept/rates, descriptions, specifications, rules and external
-  website/Discord metadata; any local vote/score/ranking feature is derived solely
-  from this PhMon instance's own data.
 - Reconcile the demo navigation, filters, detail surfaces and responsive layouts
   across every implemented area. Replace temporary scaffolding, broken controls,
   misleading mock data and unintended framework-default styling.
@@ -1390,8 +1385,7 @@ core screens or visual direction until the end; build them in their owning slice
 - Live-monster expiry and special-map coordinate fixtures are tested, and representative
   rare/normal items verify seal/color/blues/detail consistency across surfaces.
 - Conditions template variables have deterministic preview/execution tests, including
-  missing values and output bounds. Server List detail/ranking never depends on
-  unverified phMonitor/player-count data.
+  missing values and output bounds.
 - Representative populated and empty screens, detail views, dialogs and failure/
   recovery flows pass browser checks at all target viewports. No reference outage
   popup, phMonitor branding, paid gating or dependency is carried into our product.
