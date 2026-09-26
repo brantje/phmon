@@ -353,17 +353,21 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
-**Slice 0: complete and locally validated (2026-09-26). Slices 1–15: not started.**
-Slice 0 acceptance criteria are satisfied locally. **Next implementation action:
-Slice 1 — Agent registration and connectivity**, including the reference application
-shell. On an implementation request, continue through the remaining roadmap without
-per-slice approval gates under the execution contract above. Each completed slice
-must record status, decisions, deviations, limitations and deliberately deferred work.
+**Slice 0: complete and locally validated (2026-09-26). Slice 1: in progress
+(implementation and automated validation complete; runtime/browser gates pending).
+Slices 2–15: not started.**
+The active work is **Slice 1 — Agent registration and connectivity**. Its production
+path and simulator-backed automated coverage are implemented and hosted CI is green.
+Do not begin Slice 2 until the remaining Slice 1 validation gates are closed or
+explicitly accepted as blocked.
 
-**Current turn (2026-09-26): specification update only.** Demo parity and autonomous
-execution are now the target; no Slice 1 or later implementation occurred in this
-update. Slices 1–15 remain not started. Resume by verifying Slice 0 checks, inspecting
-phBot plugin APIs, and defining Slice 1's authenticated connection contract.
+**Current turn (2026-09-26): Slice 1 completion/validation.** The authenticated
+connection contract, durable agent identity, plugin, simulator, backend registry/API,
+reference shell and stack lifecycle tests are implemented. The WebSocket client now
+polls for readiness before consuming a frame and treats a stall after frame decoding
+begins as a broken connection, preventing partial-frame stream corruption. Real
+Windows/phBot runtime validation and same-viewport browser screenshot comparison
+remain explicit open gates rather than being inferred from simulator/source results.
 
 For each subsequent slice keep a completion entry with: status (`not started`,
 `in progress`, `blocked`, `complete`), implemented behavior/files, tests actually run,
@@ -400,6 +404,64 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   connectivity**. No executable plugin, WebSocket or `/agent` route exists.
 - See README for reproducible commands and configuration. Never describe planned
   roadmap behavior as implemented.
+
+### Slice 1 progress record
+
+- Added protocol v1 over bearer-authenticated outbound WebSocket: hello/ack,
+  application heartbeat, bounded message size, explicit compatibility rejection and
+  automatic reconnect semantics. Per-agent tokens are stored only as SHA-256 hashes
+  and are bound to stable UUID agent IDs.
+- Added embedded transactional migrations, durable agent metadata, a generation-fenced
+  in-memory active registry and a safe read-only agent presentation API. New valid
+  sessions supersede old sockets without stale cleanup marking the replacement
+  offline.
+- Added one-time credential provisioning through both `phmonctl agent create` and
+  the web dashboard. Both call the same server-side generator/store path. The web POST
+  returns only the newly generated plaintext token once with no-store semantics;
+  existing tokens/hashes are never listable or retrievable. Because user auth is not
+  implemented yet, web provisioning is explicitly a trusted-network capability.
+- Plugin configuration now uses phBot's native QtBind GUI instead of requiring
+  operators to create PhMon.json. URL, agent ID and token are persisted in PhMon-owned
+  settings keyed by both phBot's active get_config_path() and get_profile(), so
+  multiple accounts/characters and multiple named profiles for one character remain
+  isolated. PhMon never modifies phBot's player JSON. The GUI clears the token field
+  after load/save and only reuses the stored token when URL and agent ID still match.
+- Added plugin/PhMon.py using only Python standard-library networking. Public phBot
+  documentation verifies socket support, while actual embedded-runtime availability
+  of ssl, select, threading, hashlib, base64, struct and urllib.parse still requires
+  the real phBot validation gate. A dedicated worker owns network I/O; phBot callbacks
+  never block on the backend. Added scripts/agent_simulator.py using the exact same
+  transport/worker contract.
+- Replaced the temporary Slice 0 page with the first reference-style PhMon shell:
+  compact sidebar/header, persisted easy/advanced and collapse preferences, live
+  agent list, one-time web credential creation, loading/stale/error/recovery states,
+  responsive agent cards and credential-free instance copy/QR access. Health remains
+  an operational diagnostic.
+- Extended CI to provision a real test credential through the Nuxt web endpoint and
+  exercise
+  connect -> Go restart -> automatic reconnect -> disconnect through
+  plugin transport -> Go -> PostgreSQL -> Nuxt, in addition to database
+  outage/recovery checks.
+- Validation actually observed in this completion pass: the focused stdlib plugin
+  protocol/config/backoff suite now contains 16 tests, including per-profile settings
+  isolation, saved-config round-trip and hidden-token reuse rules. GitHub Actions run
+  36256686626 passed both jobs on profile-GUI head 3c28b41: validate ran
+  bash scripts/check.sh with TEST_DATABASE_URL against PostgreSQL, and stack exercised
+  credential creation -> production PhMon.py transport/simulator connect -> Nuxt API
+  visibility -> backend restart -> automatic reconnect -> disconnect, plus database
+  outage/recovery. Existing PR review threads remain resolved.
+- Real-runtime limitation: no compatible Windows/phBot process is available in this
+  environment. Record the actual phBot version, embedded Python version and imported
+  stdlib-module behavior in docs/phbot-capabilities.md when that gate is exercised.
+  Simulator results are not a substitute.
+- Visual limitation: same-viewport screenshots at 1440x1000, 1280x800 and 390x844
+  could not be captured from a runnable local Nuxt stack in this environment and
+  remain BLOCKED. The sidebar also has no canonical PhMon app version/build metadata
+  to display; docs/reference-parity.md records that gap rather than treating the
+  existing "slice 1" development label as a version.
+- Exact next action: validate PhMon.py inside a real supported phBot runtime and run
+  side-by-side browser screenshot checks at all three required viewports. Do not
+  start Slice 2 as part of this task.
 
 ## Canonical slice roadmap
 

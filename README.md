@@ -1,13 +1,14 @@
 # PhMon
 
-A self-hosted phBot monitoring and remote-control project. **Slice 0 only:** a Go
-backend, PostgreSQL, and Nuxt + Nuxt UI development foundation. No agents, game data
-or remote commands are implemented. [AGENTS.md](AGENTS.md) is the canonical guide
-and complete Slice 0–15 roadmap. The target is applicable feature, layout and style
-parity with [the phMonitor demo](https://phmonitor.com/demo). The next implementation
-slice is **Slice 1 — Agent registration and connectivity**. When asked to implement
-AGENTS.md, continue through the remaining roadmap under its autonomous execution
-contract; a documentation-only request does not start implementation.
+A self-hosted phBot monitoring and remote-control project. **Slice 0 is complete;
+Slice 1 implementation and automated validation are complete, with real Windows/phBot
+runtime validation and same-viewport browser comparison still pending.** The
+Go/PostgreSQL/Nuxt foundation includes durable per-agent identity, authenticated
+outbound phBot WebSockets, heartbeat/reconnect handling and a live agent-status shell.
+Character/game state and remote commands deliberately remain for later slices.
+[AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap. The target is applicable
+feature, layout and style parity with [the phMonitor demo](https://phmonitor.com/demo).
+Slice 2 is planned next but is not started by this Slice 1 completion task.
 
 ## Start the local stack
 
@@ -21,9 +22,9 @@ docker compose up --build -d --wait --wait-timeout 180
 Open **http://127.0.0.1:3005** on the host, or **http://<host-LAN-IP>:3005** from
 another device on the same network. Find the host address with `hostname -I` on
 Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
-port 3005 through the host firewall for your private LAN. “All systems ready” means
-Nuxt successfully called Go and Go successfully pinged PostgreSQL. “Check again”
-makes a fresh request.
+port 3005 through the host firewall for your private LAN. The Slice 1 dashboard shows
+backend readiness plus the currently connected/disconnected phBot agent set and
+retries transient failures automatically.
 
 ```sh
 docker compose ps
@@ -40,6 +41,48 @@ project's local database**. Compose runs built images; run `up --build` after so
 changes, or use the host workflow below for frontend hot reload. Dependencies and
 container images require internet access during initial install/build; the running
 stack has no external-service dependency. UI fonts are system fonts.
+
+
+## Connect a phBot agent
+
+Provision one stable identity/token pair for each phBot account/profile that should
+appear as its own PhMon agent. The normal path is the dashboard's **Create credential**
+action. It generates a new agent ID/token through Nuxt -> Go -> PostgreSQL and displays
+the plaintext token only in that one response. Save it immediately.
+
+The CLI remains available for headless/operator workflows:
+
+```sh
+docker compose exec server phmonctl agent create
+```
+
+Both paths use the same server-side credential generator and PostgreSQL stores only
+the token's SHA-256 hash. Copy `plugin/PhMon.py` into phBot's Plugins directory and
+reload the plugin. In the phBot **Plugins -> PhMon** tab, enter the backend WebSocket
+URL, provisioned agent ID and token, then click **Save & Connect**.
+
+PhMon stores these values separately for the active phBot player/profile under
+`Config/PhMon/<active-profile>.cfg`. The active player configuration returned by
+`get_config_path()` and the explicit profile name returned by `get_profile()` are
+both part of the storage key. PhMon never edits phBot's own player JSON. This lets
+multiple accounts/characters and multiple named profiles for the same character keep
+distinct PhMon identities and credentials in one phBot installation.
+
+The token is persisted locally because reconnects must be unattended, but after a
+profile is loaded or saved the GUI token field is cleared instead of continuously
+displaying the secret. Keep the phBot Config directory private. Leaving the token
+field blank preserves the saved token only while the backend URL and agent ID are
+unchanged; changing either identity field requires pasting the token again.
+
+The agent should appear on the dashboard after the authenticated hello succeeds. The
+plugin reconnects automatically after backend loss and never puts credentials in the
+URL. The default Compose binding keeps port 8081 on loopback. For a phBot host on
+another machine, terminate TLS in front of the Go backend and configure a reachable
+`wss://` URL; do not expose cleartext bearer authentication to an untrusted network.
+A deliberate trusted-LAN development setup may override `SERVER_BIND_ADDR`, but
+`ws://` is development-only.
+See [plugin/README.md](plugin/README.md) and
+[docs/phbot-capabilities.md](docs/phbot-capabilities.md).
 
 ## Host development with frontend hot reload
 
@@ -79,10 +122,15 @@ environment (Compose does this). Host Go needs a restart after edits.
 ## Configuration
 
 All examples are **local development only**. The web UI is reachable on the LAN by
-default; Go and PostgreSQL host ports bind to loopback. Set `WEB_BIND_ADDR=127.0.0.1`
-to restrict the web UI to the host. The defaults avoid common 3000/8080/5432
-conflicts. This foundation is not a public deployment: TLS, user auth, and product
-authorization are not implemented.
+default; PostgreSQL and the authenticated agent/API port bind to loopback. Set
+`WEB_BIND_ADDR=127.0.0.1` when host-only web access is sufficient. Remote agents
+should connect through operator-managed TLS termination using `wss://`; overriding
+`SERVER_BIND_ADDR` is intended only for an explicitly trusted development network.
+The defaults avoid common 3000/8080/5432 conflicts. This is not a public deployment:
+user authentication is not implemented yet; only the agent WebSocket is
+token-authenticated. In particular, any user who can reach the current web UI can use
+the Create credential action, so keep the UI on a trusted network until user
+authentication/authorization is implemented.
 
 | Variable | Default/example | Purpose |
 | --- | --- | --- |
@@ -91,11 +139,13 @@ authorization are not implemented.
 | `POSTGRES_DB` | `phmon` | Initial database name |
 | `POSTGRES_PORT` | `5435` | Host port for Compose PostgreSQL |
 | `SERVER_PORT` | `8081` | Host port for Compose Go |
+| `SERVER_BIND_ADDR` | `127.0.0.1` | Host address for the agent/API port; override only for an explicitly trusted development network |
 | `WEB_PORT` | `3005` | Host port for Compose Nuxt |
 | `WEB_BIND_ADDR` | `0.0.0.0` | Host address for the Compose web UI; use `127.0.0.1` for host-only access |
 | `HTTP_ADDR` | `127.0.0.1:8081` | Host Go listener; Compose uses `0.0.0.0:8081` |
 | `DATABASE_URL` | See `.env.example` | Required host Go PostgreSQL URL |
 | `NUXT_BACKEND_URL` | `http://127.0.0.1:8081` | Private Nuxt server URL; Compose uses `http://server:8081` |
+| `NUXT_PUBLIC_INSTANCE_URL` | Unset | Optional reachable browser-facing origin for the mobile QR/copy panel |
 | `TEST_DATABASE_URL` | Unset | Enables real PostgreSQL Go integration test |
 | `SMOKE_BACKEND_URL` / `SMOKE_WEB_URL` | Local defaults above | Smoke-test target overrides |
 | `EXPECT_UNAVAILABLE` | Unset | Set `1` for database-outage smoke test |
@@ -106,7 +156,10 @@ YOUR_PORT`. For local simplicity, use URL-safe alphanumeric/underscore database
 credentials: Compose constructs its internal database URL from these values. Custom
 host URLs must percent-encode special characters. PostgreSQL initialization values
 apply only to a new volume; changing `.env` does not change existing database users.
-Never commit `.env` or use these example credentials in production.
+Never commit `.env` or use these example credentials in production. If PhMon is
+usually opened as `http://localhost:3005` but the mobile QR must work from another
+device, set `NUXT_PUBLIC_INSTANCE_URL` to the reachable HTTPS or LAN origin. Loopback
+origins are detected and are not offered as mobile QR targets.
 
 ## Validation
 
@@ -121,11 +174,13 @@ TEST_DATABASE_URL='postgres://phmon:phmon_local_only@127.0.0.1:5435/phmon?sslmod
 npm --prefix web run format
 ```
 
-`check.sh` runs Go formatting verification, vet, race-enabled tests and build;
-frontend Prettier, ESLint, type checking and production build; and Compose config
-validation. Without `TEST_DATABASE_URL`, the Go database integration test explicitly
-skips; unit/API tests still run. Frontend behavior is tested through the real stack
-smoke test, with no separate frontend unit framework for this skeleton.
+`check.sh` runs Go formatting verification, vet, race-enabled tests and both Go
+binaries; the stdlib-only phBot transport tests; frontend Prettier, ESLint, type
+checking and production build; and Compose config validation. Without
+`TEST_DATABASE_URL`, PostgreSQL integration tests explicitly skip; unit/API/protocol
+tests still run. CI additionally provisions an agent credential through the Nuxt web
+endpoint and proves connect → backend restart → automatic reconnect → disconnect
+through the real Go/PostgreSQL/Nuxt stack.
 
 With the full Compose stack running, verify outage and recovery:
 
@@ -137,20 +192,30 @@ docker compose up -d --wait --wait-timeout 120
 python3 scripts/smoke.py
 ```
 
-CI runs both validation and a complete Docker build/start/smoke/outage/recovery
-sequence. A local pass is not a claim that hosted GitHub Actions has run.
+CI runs validation plus complete Docker build/start, authenticated agent lifecycle,
+database outage and recovery sequences. The Slice 1 completion pass observed both
+hosted jobs green after the frame-safe transport regression tests were added. For
+manual development without phBot, the same plugin transport can be exercised with
+`scripts/agent_simulator.py`; simulator success is fixture coverage and is never
+reported as real phBot runtime validation.
 
 ## Architecture and references
 
-Go uses standard-library HTTP handlers and a pgx pool; `/healthz` is liveness and
-`/readyz` checks PostgreSQL with a bounded deadline. The process stays alive during
-database outages so readiness can recover. The Nuxt server route is a thin,
-same-origin health transport; it holds no domain policy or database connection.
-See [the HTTP contract and protocol status](docs/protocol.md).
+Go uses standard-library HTTP handlers, pgx and embedded transactional migrations.
+The first durable `agents` table stores stable agent IDs, token hashes and
+connection/version metadata. `/agent` is the authenticated protocol-v1 WebSocket;
+an in-memory generation-fenced registry owns current socket presence while
+PostgreSQL remains the durable authority. `GET /api/agents` exposes only safe
+presentation fields. `POST /api/agents/credentials` creates a new credential and
+returns its plaintext token once with no-store semantics; there is no endpoint for
+retrieving an existing token.
 
-There are no database tables or migrations yet, and `plugin/` is documentation only.
-Commands, WebSockets, identity, authentication, analytics and other product behavior
-remain in their designated future slices.
+Nuxt keeps browser access same-origin through `/api/health`, `/api/agents` and the
+credential-creation proxy.
+`plugin/PhMon.py` uses only Python standard-library networking, performs no backend
+I/O in phBot callbacks, and reconnects on a worker thread. See
+[docs/protocol.md](docs/protocol.md) for the wire contract. Commands, character/game
+state, events, analytics and other later behavior remain in their designated slices.
 
 Version/setup references: [Go releases](https://go.dev/dl/),
 [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation),

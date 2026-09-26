@@ -21,21 +21,29 @@ def request(url):
 
 for url, expected_code, expected in [
     (backend + "/healthz", 200, {"status": "ok"}),
-    (backend + "/readyz", 503 if unavailable else 200,
-     {"status": "unavailable", "database": "unavailable"} if unavailable
-     else {"status": "ok", "database": "ok"}),
-    (web + "/api/health", 503 if unavailable else 200,
-     {"status": "unavailable", "database": "unavailable"} if unavailable
-     else {"status": "ok", "database": "ok"}),
+    (
+        backend + "/readyz",
+        503 if unavailable else 200,
+        {"status": "unavailable", "database": "unavailable"}
+        if unavailable
+        else {"status": "ok", "database": "ok"},
+    ),
+    (
+        web + "/api/health",
+        503 if unavailable else 200,
+        {"status": "unavailable", "database": "unavailable"}
+        if unavailable
+        else {"status": "ok", "database": "ok"},
+    ),
 ]:
     code, headers, body = request(url)
     assert code == expected_code, (url, code, body)
     assert json.loads(body) == expected, (url, body)
     assert headers.get("Cache-Control") == "no-store", url
-    print(f"PASS {url}: HTTP {code}")
+    print("PASS {}: HTTP {}".format(url, code))
 
 code, _, body = request(web + "/")
 assert code == 200, code
-expected_text = "Connection unavailable" if unavailable else "All systems ready"
-assert expected_text in body, f"Missing rendered state: {expected_text}"
-print(f"PASS page renders: {expected_text}")
+assert "PhMon" in body, "Missing application brand"
+assert "Agent connections" in body, "Missing Slice 1 agent screen"
+print("PASS page renders PhMon agent shell")
