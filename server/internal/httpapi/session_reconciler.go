@@ -14,10 +14,11 @@ import (
 // PostgreSQL during an outage without restarting the server. It may be stopped
 // by canceling ctx and never blocks shutdown on a database operation longer
 // than its bounded context.
-func RunSessionReconciler(ctx context.Context, db Pinger, registry *agents.Registry, store *characters.Store, interval time.Duration) {
+func RunSessionReconciler(ctx context.Context, db Pinger, registry *agents.Registry, store *characters.Store, live *LiveHub, interval time.Duration) {
 	if interval <= 0 {
 		interval = 3 * time.Second
 	}
+	databaseUnavailable := false
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -28,13 +29,22 @@ func RunSessionReconciler(ctx context.Context, db Pinger, registry *agents.Regis
 		}
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		if err := db.Ping(checkCtx); err != nil {
+			databaseUnavailable = true
 			cancel()
 			continue
 		}
-		err := store.ReconcileInactiveSessions(checkCtx, registry.HasGeneration)
+		changed, err := store.ReconcileInactiveSessionsChanged(checkCtx, registry.HasGeneration)
 		cancel()
-		if err != nil && ctx.Err() == nil {
-			slog.Warn("failed to reconcile inactive character sessions")
+		if err != nil {
+			databaseUnavailable = true
+			if ctx.Err() == nil {
+				slog.Warn("failed to reconcile inactive character sessions")
+			}
+			continue
 		}
+		if changed || databaseUnavailable {
+			live.Invalidate()
+		}
+		databaseUnavailable = false
 	}
 }
