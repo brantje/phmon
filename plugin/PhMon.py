@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.0.0'
+pVersion = '1.1.0'
 pUrl = ''
 
 PROTOCOL_VERSION = 2
@@ -607,7 +607,9 @@ _gui_agent_token = None
 _gui_status = None
 _last_character_signature = None
 _last_character_sample_at = 0.0
-_character_joined = False
+# None means the plugin loaded after phBot may already have joined. In that case
+# event_loop can establish presence once get_character_data() returns a character.
+_character_joined = None
 
 
 def _set_gui_status(message):
@@ -722,16 +724,18 @@ def save_config():
 
 def connected():
     # phBot calls this when its client connects to the game server.
+    global _character_joined
+    _character_joined = False
     _load_active_profile()
 
 
 def disconnected():
-	global _last_character_signature, _character_joined
-	_last_character_signature = None
-	_character_joined = False
-	if _worker is not None:
-		_worker.leave_character()
-	_set_gui_status('SRO client disconnected. Waiting for login...')
+    global _last_character_signature, _character_joined
+    _last_character_signature = None
+    _character_joined = False
+    if _worker is not None:
+        _worker.leave_character()
+    _set_gui_status('SRO client disconnected. Waiting for login...')
 
 
 def joined_game():
@@ -755,8 +759,8 @@ def event_loop():
 
 
 def _sample_character():
-    global _last_character_signature, _last_character_sample_at
-    if not _PHBOT_AVAILABLE or _worker is None or not _character_joined:
+    global _last_character_signature, _last_character_sample_at, _character_joined
+    if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False:
         return
     try:
         data = _get_character_data()
@@ -764,6 +768,11 @@ def _sample_character():
         data = None
     if not isinstance(data, dict) or not data.get('name') or not data.get('server'):
         return
+    # phBot may load/reload a plugin after joined_game() already fired. A complete
+    # get_character_data() identity is the documented signal that character data
+    # has finished loading, so recover without waiting for another callback.
+    if _character_joined is None:
+        _character_joined = True
     state = {}
     for source in ('level','hp','hp_max','mp','mp_max','current_exp','max_exp','sp','gold','region'):
         value = data.get(source)

@@ -106,6 +106,9 @@ Sources checked 2026-09-26:
   loaded yet. `disconnected()` describes game-server disconnection and may be called
   repeatedly. `event_loop()` runs every 500 ms. The plugin therefore waits for a
   populated identity during `event_loop()` and never performs network I/O there.
+  Plugin v1.1.0 also handles the case where the plugin is loaded after
+  `joined_game()` has already fired: it treats a complete documented
+  `get_character_data()` server/name identity as proof the data load finished.
 - [Character](https://plugins.phbot.org/phbot-api/character): documented no-argument
   `get_character_data()` returns `None` or an object including server, name, guild,
   region, coordinates, HP/MP, level, gold, current/max EXP and SP. Its example also

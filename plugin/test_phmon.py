@@ -113,12 +113,61 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(current['agent_token'], 'phm_secret')
 
         with self.assertRaisesRegex(ValueError, 'agent token is required'):
-            plugin.config_from_gui_values(
-                'wss://other.example.test/agent',
-                saved['agent_id'],
-                '',
-                saved,
-            )
+                plugin.config_from_gui_values(
+                    'wss://other.example.test/agent',
+                    saved['agent_id'],
+                    '',
+                    saved,
+                )
+
+
+class CharacterCollectorTests(unittest.TestCase):
+    def test_recovers_character_when_plugin_loads_after_join_callback(self):
+        worker = Mock()
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+        )
+        try:
+            plugin._worker = worker
+            plugin._character_joined = None
+            plugin._last_character_signature = None
+            plugin._last_character_sample_at = 0
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_character_data', return_value={
+                        'server': 'Test Server', 'name': 'nuker1', 'guild': 'Test Guild',
+                        'level': 90, 'hp': 100, 'hp_max': 200, 'mp': 300,
+                        'mp_max': 400, 'current_exp': 5, 'max_exp': 10,
+                        'sp': 6, 'gold': 7, 'region': 25000,
+                    }), \
+                    patch.object(plugin, '_get_position', return_value={
+                        'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 3.0,
+                    }), \
+                    patch.object(plugin, '_get_zone_name', return_value='Jangan'):
+                plugin._sample_character()
+
+            worker.update_character.assert_called_once()
+            identity, state = worker.update_character.call_args.args
+            self.assertEqual(identity['name'], 'nuker1')
+            self.assertEqual(identity['server'], 'Test Server')
+            self.assertEqual(state['zone'], 'Jangan')
+            self.assertTrue(plugin._character_joined)
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at) = previous
+
+    def test_does_not_resurrect_character_after_disconnect(self):
+        worker = Mock()
+        with patch.object(plugin, '_worker', worker), \
+                patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_character_joined', False), \
+                patch.object(plugin, '_get_character_data', return_value={
+                    'server': 'Test Server', 'name': 'nuker1',
+                }):
+            plugin._sample_character()
+        worker.update_character.assert_not_called()
 
 
 class WebSocketFrameTests(unittest.TestCase):

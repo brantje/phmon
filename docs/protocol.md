@@ -32,7 +32,7 @@ Agent to server:
       "type": "hello",
       "protocol_version": 2,
       "agent_id": "9d63c35b-1ff2-4d76-a17c-10514af2f664",
-      "plugin_version": "1.0.0",
+      "plugin_version": "1.1.0",
       "phbot_version": "21.1.9",
       "sent_at": "2026-09-26T14:00:00Z"
     }

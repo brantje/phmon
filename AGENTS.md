@@ -480,6 +480,11 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   `get_zone_name(region)` on the callback thread, coalesces changed state in a
   bounded queue, and leaves backend networking to the existing worker. The Botting
   API has no documented read-only state getter; botting remains unknown, not guessed.
+- Follow-up fix after observing a connected agent with no character registration:
+  plugin v1.1.0 can recover when loaded after `joined_game()` by detecting the
+  populated server/name returned from `get_character_data()`. It still refuses to
+  sample after an observed disconnect. The connected runtime was reporting plugin
+  v1.0.0, so this fix requires updating/reloading the plugin before live verification.
 - Added searchable character/detail and persisted group APIs, same-origin Nuxt
   proxies, a compact character overview with group membership controls, and a
   `/characters/{character_id}` detail surface. Later inventory/pet/party/map/action
@@ -495,6 +500,10 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   `python3 scripts/smoke.py` passed. Simulator E2E passed through plugin transport,
   Go, PostgreSQL and Nuxt. Browser screenshots were captured at 1440 × 1000,
   1280 × 800 and 390 × 844; the 390 px viewport has no document-level overflow.
+  The follow-up collector regression test and complete PostgreSQL-enabled check
+  passed again. Two simulator-created fixture characters and their sessions/agent
+  were removed from the local development database; the live API now correctly
+  returns an empty character list until the connected plugin registers its character.
 - Real runtime evidence: basic plugin/backend connectivity is operator-verified.
   Slice 2 API behavior is documentation-backed but has not been manually checked in
   phBot. Simulator fixture coverage remains separately labelled.
