@@ -535,6 +535,28 @@ still expose only one active character per phBot instance, but the backend and
 wire contract must not bake in that limitation. Commands and other mutations must
 validate both the authenticated agent and explicit `character_id` before routing.
 
+Character discovery is automatic. There is no required manual “add character” flow:
+when an authenticated agent observes a previously unknown joined character, the
+backend creates/upserts its stable character record and establishes its
+`character_id`. The character must then appear automatically in the UI. Previously
+known characters retain their identity and history across disconnects, agent
+reconnects, backend restarts and later use by the same or another authorized agent.
+
+Track character presence separately from agent connectivity. An agent may be
+connected while no character is online (for example at login/character selection).
+A joined character is online only while the backend has a current live character
+session for that explicit `character_id`. Track enough session/presence state to
+deterministically derive online/offline, including the serving `agent_id`,
+join/start time, last-seen/activity time and leave/end reason/time where available.
+On normal leave, character switch, agent disconnect or heartbeat/session expiry,
+close the affected live character session and mark that character offline. Switching
+from character A to B must not leave A falsely online.
+
+Do not derive character presence merely from the existence of a stored character
+record or from agent connectivity. The model must remain capable of representing
+multiple simultaneous character sessions behind one agent if a future runtime
+supports that, without changing the character-scoped wire contract.
+
 **Implement:**
 
 joined-game detection
@@ -544,6 +566,10 @@ server identity
 character identity
 
 stable backend character record
+
+automatic discovery/registration of previously unknown joined characters
+
+durable per-character online/offline presence and live-session tracking
 
 current character state
 
@@ -565,7 +591,11 @@ Nuxt character overview/dashboard
 
 **Acceptance criteria:**
 
-character appears after joining the game
+previously unknown characters are registered automatically and appear in the UI without manual setup
+
+character online/offline status reflects its live game session independently of agent connectivity
+
+character switching closes the previous character session so stale online state is not retained
 
 current statistics update live
 
