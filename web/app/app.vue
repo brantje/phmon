@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import QrcodeVue from 'qrcode.vue'
-import type { AgentCredential } from '../shared/types/agent'
-import type { CharacterView as Character } from '../shared/types/live'
-import type { Health } from '../shared/types/health'
+import type { AgentCredential } from '~~/shared/types/agent'
+import type { CharacterView as Character } from '~~/shared/types/live'
+import type { Health } from '~~/shared/types/health'
 
 const mode = useCookie<'easy' | 'advanced'>('phmon-mode', {
   default: () => 'easy',
