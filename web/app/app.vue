@@ -71,15 +71,35 @@ const characterDetailID = computed(() => {
   return match?.[1] || ''
 })
 const characterSearch = ref('')
+const debouncedCharacterSearch = ref('')
+let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
+watch(characterSearch, (value) => {
+  if (characterSearchTimer) clearTimeout(characterSearchTimer)
+  characterSearchTimer = setTimeout(() => {
+    debouncedCharacterSearch.value = value.trim()
+  }, 250)
+})
 const selectedGroup = ref('')
 const manageGroupMembers = ref(false)
 const groupName = ref('')
 const groupActionError = ref('')
+const characterListQuery = computed(() => ({
+  q: debouncedCharacterSearch.value,
+  group_id:
+    selectedGroup.value && !manageGroupMembers.value
+      ? selectedGroup.value
+      : undefined,
+}))
 const {
   data: characterResponse,
   refresh: refreshCharacters,
   error: characterError,
-} = await useFetch<CharacterList>('/api/characters', { retry: 0 })
+} = await useFetch<CharacterList>('/api/characters', {
+  retry: 0,
+  dedupe: 'cancel',
+  query: characterListQuery,
+  watch: [characterListQuery],
+})
 const { data: groupResponse, refresh: refreshGroups } = await useFetch<{
   groups: CharacterGroup[]
 }>('/api/groups', { retry: 0 })
@@ -96,15 +116,6 @@ watch(groupResponse, (value) => {
 })
 const visibleCharacters = computed(() =>
   lastCharacters.value.filter((character) => {
-    const q = characterSearch.value.trim().toLocaleLowerCase()
-    const matches =
-      !q ||
-      [
-        character.name,
-        character.guild || '',
-        character.server,
-        character.zone || '',
-      ].some((value) => value.toLocaleLowerCase().includes(q))
     const groupMatches =
       !selectedGroup.value ||
       manageGroupMembers.value ||
@@ -113,7 +124,7 @@ const visibleCharacters = computed(() =>
         ?.members.some(
           (member) => member.character_id === character.character_id,
         )
-    return matches && groupMatches
+    return groupMatches
   }),
 )
 async function createCharacterGroup() {
@@ -242,6 +253,14 @@ const connectedAgents = computed<number | null>(() =>
     ? null
     : lastAgents.value.filter((agent) => agent.connected).length,
 )
+const activeSockets = computed<number | null>(() =>
+  agentsUnavailable.value
+    ? null
+    : lastAgents.value.reduce(
+        (count, agent) => count + (agent.active_connections || 0),
+        0,
+      ),
+)
 const disconnectedAgents = computed<number | null>(() =>
   agentsUnavailable.value || connectedAgents.value === null
     ? null
@@ -280,6 +299,7 @@ onUnmounted(() => {
   if (characterTimer) clearInterval(characterTimer)
   if (healthTimer) clearInterval(healthTimer)
   if (clockTimer) clearInterval(clockTimer)
+  if (characterSearchTimer) clearTimeout(characterSearchTimer)
 })
 
 const primaryNavigation = [
@@ -662,6 +682,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                 <div class="panel-actions character-filters">
                   <input
                     v-model="characterSearch"
+                    maxlength="100"
                     aria-label="Search characters, guild, server or zone"
                     placeholder="Search characters, guild, server, zone"
                   />
@@ -874,12 +895,12 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                 <small>agents seen</small>
               </article>
               <article class="summary-card">
-                <span>Online</span>
+                <span>Connected agents</span>
                 <strong>{{ connectedAgents ?? '—' }}</strong>
                 <small>{{
                   agentsUnavailable
                     ? 'last loaded state retained'
-                    : 'active sockets'
+                    : `${activeSockets} active sockets`
                 }}</small>
               </article>
               <article class="summary-card">
@@ -959,9 +980,10 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   <div>
                     <strong>Create agent credential</strong>
                     <p>
-                      Generate one identity/token pair for one phBot
-                      account/profile. The token can only be recovered from this
-                      response.
+                      An agent ID/token identifies one logical PhMon agent.
+                      Reuse it across phBot connections that belong together, or
+                      create separate credentials for separate agents. The token
+                      can only be recovered from this response.
                     </p>
                   </div>
                 </div>
@@ -1020,9 +1042,9 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                     copy it manually.
                   </p>
                   <p class="credential-message" role="status">
-                    Save this token in the matching phBot PhMon profile now.
-                    PostgreSQL stores only its SHA-256 hash, so PhMon cannot
-                    show this token again.
+                    Save this token in each phBot PhMon profile that should use
+                    this logical agent now. PostgreSQL stores only its SHA-256
+                    hash, so PhMon cannot show this token again.
                   </p>
                   <div class="credential-actions">
                     <button

@@ -80,13 +80,22 @@ jobs:
           trap - EXIT
           cat /tmp/phmon-agent.log
       - name: Verify database outage
+        id: outage
+        continue-on-error: true
         run: |
           docker compose stop postgres
           EXPECT_UNAVAILABLE=1 python3 scripts/smoke.py
       - name: Verify database recovery
+        id: recovery
+        if: always()
         run: |
           docker compose up -d --wait --wait-timeout 120
           python3 scripts/smoke.py
+      - name: Require outage and recovery checks to pass
+        if: always()
+        run: |
+          test "${{ steps.outage.outcome }}" = success
+          test "${{ steps.recovery.outcome }}" = success
       - if: failure()
         run: docker compose logs --no-color
       - if: always()

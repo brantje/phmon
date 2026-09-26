@@ -1,9 +1,11 @@
 # PhMon
 
 A self-hosted phBot monitoring and remote-control project. Slice 0 and the Slice 1
-implementation are complete. The operator has manually verified real phBot → PhMon
-plugin/backend connectivity; the phBot build, embedded Python version and data API
-behavior are not recorded yet. Same-viewport reference comparison remains open.
+implementation are complete. Real phBot 20.1.1/plugin 1.1.0 connectivity and live
+character fields have been manually observed, including multiple concurrent sockets
+sharing one agent ID/token. Embedded Python version and remaining lifecycle checks are
+open; see [docs/phbot-capabilities.md](docs/phbot-capabilities.md). Same-viewport
+reference comparison remains open.
 Slice 2 adds server-scoped durable character identity, live state/sessions, groups
 and character overview/detail surfaces. Remote commands remain in Slice 3.
 [AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap. The target is applicable
@@ -46,10 +48,12 @@ stack has no external-service dependency. UI fonts are system fonts.
 
 ## Connect a phBot agent
 
-Provision one stable identity/token pair for each phBot account/profile that should
-appear as its own PhMon agent. The normal path is the dashboard's **Create credential**
-action. It generates a new agent ID/token through Nuxt -> Go -> PostgreSQL and displays
-the plaintext token only in that one response. Save it immediately.
+Provision one stable identity/token pair for each logical PhMon agent. The same
+agent ID/token may be intentionally reused by multiple concurrent phBot connections
+or profiles when they should belong to that logical agent. Create a different
+credential when they should appear as a separate logical agent. The dashboard's
+**Create credential** action generates the pair through Nuxt -> Go -> PostgreSQL and
+displays the plaintext token only in that one response. Save it immediately.
 
 The CLI remains available for headless/operator workflows:
 
@@ -62,12 +66,13 @@ the token's SHA-256 hash. Copy `plugin/PhMon.py` into phBot's Plugins directory 
 reload the plugin. In the phBot **Plugins -> PhMon** tab, enter the backend WebSocket
 URL, provisioned agent ID and token, then click **Save & Connect**.
 
-PhMon stores these values separately for the active phBot player/profile under
+PhMon can store these values separately for each active phBot player/profile under
 `Config/PhMon/<active-profile>.cfg`. The active player configuration returned by
 `get_config_path()` and the explicit profile name returned by `get_profile()` are
 both part of the storage key. PhMon never edits phBot's own player JSON. This lets
-multiple accounts/characters and multiple named profiles for the same character keep
-distinct PhMon identities and credentials in one phBot installation.
+multiple accounts/characters and named profiles can use distinct credentials when
+separate logical agents are desired, or intentionally share one credential when they
+should belong to the same logical agent. One credential is not required per profile.
 
 The token is persisted locally because reconnects must be unattended, but after a
 profile is loaded or saved the GUI token field is cleared instead of continuously

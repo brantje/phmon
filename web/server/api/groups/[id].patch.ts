@@ -1,25 +1,24 @@
+import { defineEventHandler, getRouterParam, setHeader } from 'h3'
 import {
-  defineEventHandler,
-  getRouterParam,
-  readBody,
-  setHeader,
-  setResponseStatus,
-} from 'h3'
+  forwardProxyError,
+  forwardProxyResponse,
+  readBoundedJSON,
+} from '../../utils/proxy'
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store')
   try {
-    return await $fetch(
+    const response = await $fetch.raw(
       '/api/groups/' + encodeURIComponent(getRouterParam(event, 'id') || ''),
       {
         baseURL: useRuntimeConfig(event).backendUrl,
         method: 'PATCH',
-        body: await readBody(event),
+        body: await readBoundedJSON(event),
         timeout: 3000,
         retry: 0,
       },
     )
-  } catch {
-    setResponseStatus(event, 400)
-    return { error: 'group update failed' }
+    return forwardProxyResponse(event, response)
+  } catch (error) {
+    return forwardProxyError(event, error)
   }
 })

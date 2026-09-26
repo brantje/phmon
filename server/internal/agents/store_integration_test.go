@@ -179,20 +179,44 @@ func TestFinalSocketDisconnectPersistsForBothCloseOrders(t *testing.T) {
 			t.Cleanup(func() {
 				_, _ = pool.Exec(context.Background(), `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
 			})
-			firstAt := time.Now().UTC().Add(-2 * time.Second)
-			secondAt := firstAt.Add(time.Second)
+			registry := NewRegistry()
+			first, firstAt := registry.Register(credential.AgentID)
+			second, secondAt := registry.Register(credential.AgentID)
 			if err := store.MarkConnected(ctx, credential.AgentID, firstAt, 2, "1.1.0", "test"); err != nil {
 				t.Fatal(err)
 			}
 			if err := store.MarkConnected(ctx, credential.AgentID, secondAt, 2, "1.1.0", "test"); err != nil {
 				t.Fatal(err)
 			}
-			// The first close does not persist a logical disconnect. Once the
-			// registry reaches zero, the cutoff is the newest socket's timestamp.
-			if err := store.MarkDisconnected(ctx, credential.AgentID, secondAt); err != nil {
-				t.Fatal(err)
+			closeOne, closeTwo := first, second
+			if order == "second-then-first" {
+				closeOne, closeTwo = second, first
+			}
+			removed, stillConnected := registry.Unregister(credential.AgentID, closeOne)
+			if !removed || !stillConnected || registry.ConnectionCount(credential.AgentID) != 1 {
+				t.Fatalf("first close changed logical presence: removed=%v connected=%v", removed, stillConnected)
 			}
 			records, err := store.ListSeen(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, record := range records {
+				if record.AgentID == credential.AgentID && record.LastDisconnectedAt != nil {
+					t.Fatal("first socket close marked the logical agent disconnected")
+				}
+			}
+			removed, stillConnected = registry.Unregister(credential.AgentID, closeTwo)
+			if !removed || stillConnected || registry.ConnectionCount(credential.AgentID) != 0 {
+				t.Fatalf("last close did not clear presence: removed=%v connected=%v", removed, stillConnected)
+			}
+			latest, ok := registry.LatestConnectedAt(credential.AgentID)
+			if !ok || latest.Before(secondAt) {
+				t.Fatalf("latest connect cutoff = %v, want >= %v", latest, secondAt)
+			}
+			if err := store.MarkDisconnected(ctx, credential.AgentID, latest); err != nil {
+				t.Fatal(err)
+			}
+			records, err = store.ListSeen(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}

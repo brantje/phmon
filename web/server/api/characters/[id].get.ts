@@ -1,9 +1,5 @@
-import {
-  defineEventHandler,
-  getRouterParam,
-  setHeader,
-  setResponseStatus,
-} from 'h3'
+import { defineEventHandler, getRouterParam, setHeader } from 'h3'
+import { forwardProxyError } from '../../utils/proxy'
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store')
@@ -17,8 +13,7 @@ export default defineEventHandler(async (event) => {
         retry: 0,
       },
     )
-  } catch {
-    setResponseStatus(event, 503)
-    return { error: 'unavailable' }
+  } catch (error) {
+    return forwardProxyError(event, error)
   }
 })

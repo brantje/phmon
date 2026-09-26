@@ -1,13 +1,9 @@
-import {
-  defineEventHandler,
-  getRouterParam,
-  setHeader,
-  setResponseStatus,
-} from 'h3'
+import { defineEventHandler, getRouterParam, setHeader } from 'h3'
+import { forwardProxyError, forwardProxyResponse } from '../../utils/proxy'
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store')
   try {
-    return await $fetch(
+    const response = await $fetch.raw(
       '/api/groups/' + encodeURIComponent(getRouterParam(event, 'id') || ''),
       {
         baseURL: useRuntimeConfig(event).backendUrl,
@@ -16,8 +12,8 @@ export default defineEventHandler(async (event) => {
         retry: 0,
       },
     )
-  } catch {
-    setResponseStatus(event, 400)
-    return { error: 'group deletion failed' }
+    return forwardProxyResponse(event, response)
+  } catch (error) {
+    return forwardProxyError(event, error)
   }
 })

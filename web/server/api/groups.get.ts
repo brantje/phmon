@@ -1,4 +1,5 @@
-import { defineEventHandler, setHeader, setResponseStatus } from 'h3'
+import { defineEventHandler, setHeader } from 'h3'
+import { forwardProxyError } from '../utils/proxy'
 
 export default defineEventHandler(
   async (event): Promise<Record<string, unknown>> => {
@@ -9,9 +10,11 @@ export default defineEventHandler(
         timeout: 3000,
         retry: 0,
       })
-    } catch {
-      setResponseStatus(event, 503)
-      return { groups: [] }
+    } catch (error) {
+      const response = forwardProxyError(event, error)
+      return (event.node.res.statusCode || 503) === 503
+        ? { groups: [] }
+        : response
     }
   },
 )

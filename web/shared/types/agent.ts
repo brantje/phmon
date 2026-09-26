@@ -1,6 +1,7 @@
 export interface AgentView {
   agent_id: string
   connected: boolean
+  active_connections: number
   connected_at?: string
   first_seen_at?: string
   last_seen_at?: string

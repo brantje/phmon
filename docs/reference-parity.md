@@ -71,8 +71,8 @@ loaded and operated the plugin successfully.
 
 ## Slice 2 — character overview and detail
 
-Status: implementation and automated checks complete for the implementable Slice 2
-scope; final visual parity and real phBot data-API validation remain open.
+Status: Slice 2 UI implementation and PR #3 correctness follow-up are validated.
+Visual parity and remaining real phBot lifecycle/data checks remain open.
 
 ### Reference evidence reviewed
 
@@ -90,12 +90,15 @@ scope; final visual parity and real phBot data-API validation remain open.
 
 - Go/PostgreSQL automatically resolves joined identities by normalized server plus
   character name, tracks generation-scoped live sessions/current stats and closes
-  sessions on leave, replacement, disconnect and backend startup.
+  sessions on leave, replacement, disconnect and backend startup. An explicit identify
+  claims per-character session authority; snapshots replace current fields and clear
+  unavailable values rather than making old-session state appear fresh.
 - Protocol v2 identifies a character before registration, then requires explicit
   `character_id` on each snapshot/state/left message. The plugin reports documented
   state fields and sends full snapshots after reconnect.
-- Character overview supports server/name/guild/zone search, persisted group
-  filtering and membership controls. Stable detail path is
+- Character overview sends debounced server/name/guild/zone search to the backend,
+  keeps persisted group filtering and membership controls, and separates logical
+  connected-agent counts from socket counts. Stable detail path is
   `/characters/{character_id}`. It shows known state and labels later inventory,
   pets, party, map and action areas as not yet implemented.
 - Empty character state explains automatic phBot discovery. Group operations are
@@ -119,7 +122,8 @@ scope; final visual parity and real phBot data-API validation remain open.
   has no direct reference capture; its hierarchy follows the shared shell while later
   panels remain explicit gaps.
 - Botting/training remains unknown because official docs expose start/stop mutations
-  but no read-only getter. No phBot data API has been manually validated yet,
-  despite operator confirmation of basic plugin/backend connectivity. The plugin's
-  v2 lifecycle was exercised through the deterministic simulator over the same
-  production transport, not a phBot runtime.
+  but no read-only getter. Real phBot 20.1.1/plugin 1.1.0 evidence separately shows
+  server, character name, zone, level, HP/MP, XP/SP, gold, region and position in live
+  records; it does not validate every lifecycle edge or botting state. The PR review
+  fixes were exercised through the deterministic simulator over the production
+  transport, not manually revalidated on phBot.
