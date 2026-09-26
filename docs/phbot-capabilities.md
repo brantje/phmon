@@ -76,9 +76,13 @@ been manually verified.** The repository does not record the phBot build, embedd
 Python version, profile count, or which Slice 2 data APIs were exercised. This
 confirms basic connectivity only; it does not validate character collection.
 
-The Slice 2 character/stat APIs below are confirmed in the official documentation,
-but have not yet been independently recorded as manually exercised in a live
-phBot session. Track that separately from the verified basic connection fact.
+Live-runtime update (2026-09-26): a phBot 20.1.1 agent running plugin 1.1.0
+registered one online character through protocol v2. The character API returned
+server, character name, guild, zone, level, HP/MP, XP/SP, gold, region, and position;
+the same-origin character detail API showed its active agent/session and advancing
+state timestamps. This manually exercises the current character/state path in one
+runtime/profile. It does not verify multiple profiles, character switching, or
+botting-state reporting.
 
 The deterministic simulator added with Slice 1 imports the production PhMon.py
 transport and exercises the same protocol contract. Hosted CI has verified credential
@@ -132,10 +136,10 @@ Identity is lowercased/trimmed character name scoped by lowercased/trimmed serve
 name. This assumes game character names are unique within a Silkroad server; PhMon
 does not claim a globally unique game ID. Guild is mutable metadata, not identity.
 
-Manual Slice 2 runtime checks still needed: record the actual build/runtime; inspect
-the return types and timing of `get_character_data`, `get_position` and
-`get_zone_name`; verify login delay, repeated disconnect callbacks, character switch,
-teleport/region change and reconnect snapshot behavior. Botting state remains
+Remaining Slice 2 runtime checks: record embedded Python version; verify repeated
+disconnect callbacks, character switch, teleport/region change, and reconnect
+snapshot behavior. The collector recovery after loading post-join is implemented
+and unit-tested, but not isolated as a manual runtime scenario. Botting state remains
 unavailable until an authoritative documented/read-only API is verified.
 
 The real-runtime gate requires installing PhMon.py in a supported phBot build,

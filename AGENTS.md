@@ -483,8 +483,8 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
 - Follow-up fix after observing a connected agent with no character registration:
   plugin v1.1.0 can recover when loaded after `joined_game()` by detecting the
   populated server/name returned from `get_character_data()`. It still refuses to
-  sample after an observed disconnect. The connected runtime was reporting plugin
-  v1.0.0, so this fix requires updating/reloading the plugin before live verification.
+  sample after an observed disconnect. The live phBot instance initially reported
+  v1.0.0; after reload, it reports v1.1.0 and its character state is visible.
 - Added searchable character/detail and persisted group APIs, same-origin Nuxt
   proxies, a compact character overview with group membership controls, and a
   `/characters/{character_id}` detail surface. Later inventory/pet/party/map/action
@@ -494,7 +494,7 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   API tests and simulator fixture checks pass. The same-origin overview/search/group
   and character detail were built and smoke checked against the full Compose stack.
 - Validation: baseline and final `bash scripts/check.sh` passed with
-  `TEST_DATABASE_URL` enabled (Go race tests/PostgreSQL, 22 plugin tests, Prettier,
+  `TEST_DATABASE_URL` enabled (Go race tests/PostgreSQL, 24 plugin tests, Prettier,
   ESLint with three self-closing-input warnings, Nuxt typecheck/build and
   Compose config). `docker compose up --build -d --wait --wait-timeout 180` and
   `python3 scripts/smoke.py` passed. Simulator E2E passed through plugin transport,
@@ -502,19 +502,18 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   1280 × 800 and 390 × 844; the 390 px viewport has no document-level overflow.
   The follow-up collector regression test and complete PostgreSQL-enabled check
   passed again. Two simulator-created fixture characters and their sessions/agent
-  were removed from the local development database; the live API now correctly
-  returns an empty character list until the connected plugin registers its character.
-- Real runtime evidence: basic plugin/backend connectivity is operator-verified.
-  Slice 2 API behavior is documentation-backed but has not been manually checked in
-  phBot. Simulator fixture coverage remains separately labelled.
-- Exact remaining Slice 2 work before claiming full completion: manually validate
-  the documented character/state APIs in a real phBot runtime and determine whether
-  botting state has a supported read-only source. Current official botting docs show
-  start/stop operations but no state getter; botting is returned as unknown. Basic
-  real phBot → PhMon plugin/backend connectivity is manually verified by the
-  operator, but it does not close those API checks. Simulator evidence cannot close
-  the runtime gate. Continue only Slice 2 validation when a phBot runtime/API
-  observation is available; do not start Slice 3.
+  were removed from the local development database.
+- Real runtime evidence: a live phBot 20.1.1 agent running plugin 1.1.0 registered
+  one online character. Search/detail APIs showed server, name, guild, zone, level,
+  HP/MP, XP/SP, gold, region, position, serving agent, active session, and advancing
+  state timestamps. This verifies one profile's collection/API path. Basic real
+  phBot → PhMon connectivity had been operator-confirmed earlier. Simulator coverage
+  remains separately labelled and was not used for this runtime claim.
+- Exact remaining Slice 2 work before claiming full completion: record embedded
+  Python version, manually validate character switch/teleport/reconnect snapshot and
+  repeated disconnect behavior, and determine whether botting state has a supported
+  read-only source. Official botting docs show start/stop operations but no state
+  getter; botting remains unknown. Do not start Slice 3.
 
 ## Canonical slice roadmap
 
