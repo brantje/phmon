@@ -1,4 +1,4 @@
-# ByteMonitor
+# PhMon
 
 A self-hosted phBot monitoring and remote-control project. **Slice 0 only:** a Go
 backend, PostgreSQL, and Nuxt + Nuxt UI development foundation. No agents, game data
@@ -18,8 +18,12 @@ cp .env.example .env
 docker compose up --build -d --wait --wait-timeout 180
 ```
 
-Open **http://127.0.0.1:3005**. “All systems ready” means Nuxt successfully called
-Go and Go successfully pinged PostgreSQL. “Check again” makes a fresh request.
+Open **http://127.0.0.1:3005** on the host, or **http://<host-LAN-IP>:3005** from
+another device on the same network. Find the host address with `hostname -I` on
+Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
+port 3005 through the host firewall for your private LAN. “All systems ready” means
+Nuxt successfully called Go and Go successfully pinged PostgreSQL. “Check again”
+makes a fresh request.
 
 ```sh
 docker compose ps
@@ -74,9 +78,11 @@ environment (Compose does this). Host Go needs a restart after edits.
 
 ## Configuration
 
-All examples are **local development only**. Ports bind to loopback. The defaults
-avoid common 3000/8080/5432 conflicts. This foundation is not a public deployment:
-TLS, user auth, and product authorization are not implemented.
+All examples are **local development only**. The web UI is reachable on the LAN by
+default; Go and PostgreSQL host ports bind to loopback. Set `WEB_BIND_ADDR=127.0.0.1`
+to restrict the web UI to the host. The defaults avoid common 3000/8080/5432
+conflicts. This foundation is not a public deployment: TLS, user auth, and product
+authorization are not implemented.
 
 | Variable | Default/example | Purpose |
 | --- | --- | --- |
@@ -86,6 +92,7 @@ TLS, user auth, and product authorization are not implemented.
 | `POSTGRES_PORT` | `5435` | Host port for Compose PostgreSQL |
 | `SERVER_PORT` | `8081` | Host port for Compose Go |
 | `WEB_PORT` | `3005` | Host port for Compose Nuxt |
+| `WEB_BIND_ADDR` | `0.0.0.0` | Host address for the Compose web UI; use `127.0.0.1` for host-only access |
 | `HTTP_ADDR` | `127.0.0.1:8081` | Host Go listener; Compose uses `0.0.0.0:8081` |
 | `DATABASE_URL` | See `.env.example` | Required host Go PostgreSQL URL |
 | `NUXT_BACKEND_URL` | `http://127.0.0.1:8081` | Private Nuxt server URL; Compose uses `http://server:8081` |

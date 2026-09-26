@@ -6,5 +6,5 @@ export default defineNuxtConfig({
   ui: { fonts: false },
   icon: { provider: 'server', fallbackToApi: false },
   runtimeConfig: { backendUrl: 'http://127.0.0.1:8081' },
-  app: { head: { title: 'ByteMonitor', htmlAttrs: { lang: 'en' } } },
+  app: { head: { title: 'PhMon', htmlAttrs: { lang: 'en' } } },
 })

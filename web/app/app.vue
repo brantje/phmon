@@ -14,7 +14,7 @@ const ready = computed(() => !error.value && data.value?.status === 'ok')
         <p
           class="mb-3 text-sm font-semibold tracking-widest text-primary uppercase"
         >
-          ByteMonitor
+          PhMon
         </p>
         <h1 class="text-4xl font-semibold tracking-tight text-highlighted">
           A foundation for your fleet.

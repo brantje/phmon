@@ -1,4 +1,4 @@
-# ByteMonitor engineering guide
+# PhMon engineering guide
 
 This is the canonical architecture and implementation plan. Read it before changes;
 update it whenever decisions or slice status change. `prompt.md` is the historical
@@ -62,7 +62,7 @@ commands and outbound integrations against local test recipients/adapters first.
 
 ## Target product: phMonitor demo parity
 
-**End goal: ByteMonitor has the same applicable feature set, information layout,
+**End goal: PhMon has the same applicable feature set, information layout,
 interaction structure and visual style as https://phmonitor.com/demo, implemented
 independently on this project's self-hosted architecture.** A generic monitoring
 app with roughly similar functionality is insufficient. Both functional parity and
@@ -87,7 +87,7 @@ Repository reference screenshots (inspection evidence only, not application asse
 Desktop captures are 1440 × 1000; mobile is 390 × 844. The recurring connection-error
 modal/backdrop were hidden only in the inspection browser. Captures retain the
 reference's branding/ads for comparison; the explicit adaptations below govern
-what ByteMonitor actually implements.
+what PhMon actually implements.
 
 - Open the demo in a real browser before implementing each major screen. Inspect
   easy/advanced modes, navigation, tabs, filters, drawers/dialogs and responsive
@@ -104,7 +104,7 @@ what ByteMonitor actually implements.
 - Capture reference and local screenshots at the same viewport, mode and screen.
   Keep a concise comparison ledger in `docs/reference-parity.md`, with links to
   local evidence artifacts where practical. Avoid relying solely on memory or a URL.
-- Match the product's design with ByteMonitor branding and independently authored
+- Match the product's design with PhMon branding and independently authored
   components. Use locally served original, licensed or operator-supplied artwork,
   map tiles and item icons. Record asset provenance. Do not hotlink phMonitor assets,
   embed its application, copy its client bundle or connect to its services.
@@ -127,7 +127,7 @@ These preserve the original project boundaries; they are not implementation gaps
   The public server directory must be self-hosted/operator-managed or explicitly
   sourced from an allowed feed, never scraped from a private phMonitor backend.
 - Community links and promotional slots are optional operator configuration, with
-  sensible empty/hidden states. Use ByteMonitor's own identity and instance URL in
+  sensible empty/hidden states. Use PhMon's own identity and instance URL in
   the mobile QR/copy-link panel; never expose credentials in that URL.
 
 All other observed functional areas are in scope subject to verified phBot source
