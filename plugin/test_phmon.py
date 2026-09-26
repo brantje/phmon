@@ -1,5 +1,4 @@
 import importlib.util
-import json
 import os
 import socket
 import tempfile
@@ -36,16 +35,69 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 plugin.validate_config(value)
 
-    def test_load_config(self):
-        handle, path = tempfile.mkstemp()
-        os.close(handle)
+    def test_profile_settings_path_is_scoped_to_active_bot_profile(self):
+        config_dir = os.path.join('C:', 'phBot', 'Config')
+        first = plugin._profile_settings_path(
+            config_dir,
+            'C:\\phBot\\Config\\Venus_Alice.Farm.json',
+        )
+        second = plugin._profile_settings_path(
+            config_dir,
+            'C:\\phBot\\Config\\Venus_Bob.Farm.json',
+        )
+        alternate = plugin._profile_settings_path(
+            config_dir,
+            'C:\\phBot\\Config\\Venus_Alice.Trade.json',
+        )
+        self.assertTrue(first.endswith(os.path.join('PhMon', 'Venus_Alice.Farm.cfg')))
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(first, alternate)
+
+    def test_saved_profile_config_round_trip(self):
+        root = tempfile.mkdtemp()
+        path = os.path.join(root, 'PhMon', 'Venus_Alice.Farm.cfg')
+        config = {
+            'backend_url': 'wss://example.test/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_secret',
+        }
         try:
-            with open(path, 'w') as stream:
-                json.dump({'backend_url': 'wss://example.test/agent', 'agent_id': AGENT_ID, 'agent_token': 'token'}, stream)
-            loaded = plugin.load_config(path)
-            self.assertEqual(loaded['agent_id'], AGENT_ID)
+            saved = plugin.save_saved_config(path, config)
+            loaded = plugin.load_saved_config(path)
+            self.assertEqual(loaded, saved)
+            with open(path, 'r') as stream:
+                content = stream.read()
+            self.assertNotIn('{', content)
+            self.assertIn('agent_token=phm_secret', content)
         finally:
-            os.unlink(path)
+            if os.path.exists(path):
+                os.unlink(path)
+            directory = os.path.dirname(path)
+            if os.path.isdir(directory):
+                os.rmdir(directory)
+            os.rmdir(root)
+
+    def test_gui_config_reuses_hidden_token_only_for_same_identity(self):
+        saved = plugin.validate_config({
+            'backend_url': 'wss://example.test/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_secret',
+        })
+        current = plugin.config_from_gui_values(
+            saved['backend_url'],
+            saved['agent_id'],
+            '',
+            saved,
+        )
+        self.assertEqual(current['agent_token'], 'phm_secret')
+
+        with self.assertRaisesRegex(ValueError, 'agent token is required'):
+            plugin.config_from_gui_values(
+                'wss://other.example.test/agent',
+                saved['agent_id'],
+                '',
+                saved,
+            )
 
 
 class WebSocketFrameTests(unittest.TestCase):
