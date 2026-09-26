@@ -193,9 +193,12 @@ still use HTTP.
 A browser connection may keep up to 32 subscriptions. Subscription IDs are stable
 browser-owned identifiers and revisions are monotonically increasing integers.
 Changing a filter or detail identity sends a newer revision for the same subscription
-ID. The server rejects an equal/older replacement as `obsolete_revision`, and the
-browser also ignores any response whose subscription ID, revision or stream no longer
-matches its active subscription.
+ID. Revisions remain monotonic even when an ID is unsubscribed and later recreated on
+the same socket. The server retains the highest accepted revision for that connection
+and rejects an equal/older replacement as `obsolete_revision`; the browser also ignores
+any response whose subscription ID, revision or stream no longer matches its active
+subscription. This prevents an already-queued snapshot from an earlier detail identity
+being accepted as the current detail after subscription reuse.
 
 Examples:
 
@@ -261,9 +264,12 @@ even when no new agent event occurs.
 
 Relevant committed changes invalidate active subscriptions: agent connect/disconnect
 and heartbeat metadata, character identify/snapshot/state/leave, group create/rename/
-delete/member mutations and session reconciliation. Invalidations are coalesced per
-browser. A notification that arrives while a snapshot is being built remains queued,
-so another snapshot pass observes changes committed during the first pass.
+delete/member mutations and session reconciliation. Invalidations are coalesced for
+500 ms per browser, which also enforces a minimum interval between rebuild passes. The
+hub permits at most two browser snapshot rebuild passes to query live state at once,
+leaving database-pool capacity available for agent ingestion. A notification that
+arrives while a snapshot is being built remains queued, so another throttled snapshot
+pass observes changes committed during the first pass.
 
 ### Heartbeats, reconnect and bounds
 
