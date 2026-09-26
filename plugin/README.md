@@ -20,8 +20,8 @@ history and future command policy remain server-owned.
 3. Join the game with the account/profile you want to configure.
 4. Open **Plugins -> PhMon** and enter:
    - Backend WebSocket URL, for example `wss://phmon.example.internal/agent`
-   - Agent ID from `phmonctl agent create`
-   - Agent token from the same provisioning command
+   - Agent ID from the dashboard or CLI provisioning result
+   - Agent token from that same one-time result
 5. Click **Save & Connect**. The agent should appear in PhMon after the authenticated
    hello handshake succeeds.
 

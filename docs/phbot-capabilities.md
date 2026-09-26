@@ -26,8 +26,8 @@ coverage is tracked separately and is never treated as proof of a real phBot run
   - get_config_dir() returns the phBot Config directory with a trailing slash.
   - get_config_path() returns the active player's JSON configuration path when in
     game; the docs warn direct changes to that JSON may later be overwritten.
-  - PhMon therefore uses get_config_path() only as the active profile identity and
-    keeps its own per-profile settings file under Config/PhMon/.
+  - PhMon uses get_config_path() as the player/account portion of its settings key
+    and keeps its own per-profile settings file under Config/PhMon/.
 - Misc: https://plugins.phbot.org/phbot-api/misc
   - get_version() returns the phBot version string.
   - get_profile() returns the active profile name, an empty string for the default
