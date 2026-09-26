@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          agent_json=$(docker compose exec -T server phmonctl agent create --json)
+          agent_json=$(python3 -c 'from urllib.request import Request,urlopen; request=Request("http://127.0.0.1:3005/api/agents/credentials", method="POST"); print(urlopen(request, timeout=10).read().decode())')
           export EXPECT_AGENT_ID
           export PHMON_AGENT_ID
           export PHMON_AGENT_TOKEN

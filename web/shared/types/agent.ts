@@ -15,3 +15,8 @@ export interface AgentListResponse {
   status: 'ok' | 'unavailable'
   agents: AgentView[]
 }
+
+export interface AgentCredential {
+  agent_id: string
+  agent_token: string
+}

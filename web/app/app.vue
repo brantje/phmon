@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import QrcodeVue from 'qrcode.vue'
-import type { AgentListResponse, AgentView } from '../shared/types/agent'
+import type {
+  AgentCredential,
+  AgentListResponse,
+  AgentView,
+} from '../shared/types/agent'
 import type { Health } from '../shared/types/health'
 
 const mode = useCookie<'easy' | 'advanced'>('phmon-mode', {
@@ -20,6 +24,12 @@ const sidebarCollapsed = useCookie<boolean>('phmon-sidebar-collapsed', {
 })
 const mobileNavigationOpen = ref(false)
 const mobileAccessOpen = ref(false)
+const credentialPanelOpen = ref(false)
+const credentialCreating = ref(false)
+const createdCredential = ref<AgentCredential | null>(null)
+const credentialError = ref('')
+const credentialCopied = ref<'agent_id' | 'agent_token' | null>(null)
+const credentialCopyFallback = ref<'agent_id' | 'agent_token' | null>(null)
 const copied = ref(false)
 const copyFallbackNeeded = ref(false)
 const now = ref<number | null>(null)
@@ -182,6 +192,63 @@ async function copyInstanceUrl() {
   } catch {
     copied.value = false
     copyFallbackNeeded.value = true
+  }
+}
+
+function toggleCredentialPanel() {
+  if (credentialPanelOpen.value) {
+    dismissCredential()
+    return
+  }
+  credentialError.value = ''
+  credentialCopied.value = null
+  credentialCopyFallback.value = null
+  credentialPanelOpen.value = true
+}
+
+function dismissCredential() {
+  credentialPanelOpen.value = false
+  createdCredential.value = null
+  credentialError.value = ''
+  credentialCopied.value = null
+  credentialCopyFallback.value = null
+}
+
+async function createAgentCredential() {
+  credentialCreating.value = true
+  credentialError.value = ''
+  createdCredential.value = null
+  credentialCopied.value = null
+  credentialCopyFallback.value = null
+  try {
+    createdCredential.value = await $fetch<AgentCredential>(
+      '/api/agents/credentials',
+      {
+        method: 'POST',
+        retry: 0,
+      },
+    )
+  } catch {
+    credentialError.value =
+      'Could not create a credential. Check backend/database readiness and try again.'
+  } finally {
+    credentialCreating.value = false
+  }
+}
+
+async function copyCredential(field: 'agent_id' | 'agent_token') {
+  if (!import.meta.client || !createdCredential.value) return
+  credentialCopied.value = null
+  credentialCopyFallback.value = null
+  const value = createdCredential.value[field]
+  try {
+    await navigator.clipboard.writeText(value)
+    credentialCopied.value = field
+    window.setTimeout(() => {
+      if (credentialCopied.value === field) credentialCopied.value = null
+    }, 1800)
+  } catch {
+    credentialCopyFallback.value = field
   }
 }
 
@@ -435,18 +502,28 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   Credentials are never exposed here.
                 </p>
               </div>
-              <button
-                class="compact-button"
-                type="button"
-                :disabled="agentsStatus === 'pending'"
-                @click="refreshAgents()"
-              >
-                <UIcon
-                  name="i-lucide-refresh-cw"
-                  :class="{ spinning: agentsStatus === 'pending' }"
-                />
-                Refresh
-              </button>
+              <div class="panel-actions">
+                <button
+                  class="compact-button"
+                  type="button"
+                  @click="toggleCredentialPanel"
+                >
+                  <UIcon name="i-lucide-key-round" />
+                  {{ credentialPanelOpen ? 'Close credential' : 'Create credential' }}
+                </button>
+                <button
+                  class="compact-button"
+                  type="button"
+                  :disabled="agentsStatus === 'pending'"
+                  @click="refreshAgents()"
+                >
+                  <UIcon
+                    name="i-lucide-refresh-cw"
+                    :class="{ spinning: agentsStatus === 'pending' }"
+                  />
+                  Refresh
+                </button>
+              </div>
             </div>
 
             <div
@@ -464,6 +541,123 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               </div>
             </div>
 
+            <section
+              v-if="credentialPanelOpen"
+              class="credential-panel"
+              aria-label="Create agent credential"
+            >
+              <div class="credential-panel-head">
+                <div>
+                  <strong>Create agent credential</strong>
+                  <p>
+                    Generate one identity/token pair for one phBot account/profile.
+                    The token can only be recovered from this response.
+                  </p>
+                </div>
+              </div>
+
+              <template v-if="createdCredential">
+                <div class="credential-row">
+                  <span>Agent ID</span>
+                  <code tabindex="0">{{ createdCredential.agent_id }}</code>
+                  <button
+                    class="compact-button"
+                    type="button"
+                    @click="copyCredential('agent_id')"
+                  >
+                    <UIcon
+                      :name="
+                        credentialCopied === 'agent_id'
+                          ? 'i-lucide-check'
+                          : 'i-lucide-copy'
+                      "
+                    />
+                    {{ credentialCopied === 'agent_id' ? 'Copied' : 'Copy ID' }}
+                  </button>
+                </div>
+                <div class="credential-row">
+                  <span>Agent token</span>
+                  <code tabindex="0">{{ createdCredential.agent_token }}</code>
+                  <button
+                    class="compact-button"
+                    type="button"
+                    @click="copyCredential('agent_token')"
+                  >
+                    <UIcon
+                      :name="
+                        credentialCopied === 'agent_token'
+                          ? 'i-lucide-check'
+                          : 'i-lucide-copy'
+                      "
+                    />
+                    {{
+                      credentialCopied === 'agent_token'
+                        ? 'Copied'
+                        : 'Copy token'
+                    }}
+                  </button>
+                </div>
+                <p
+                  v-if="credentialCopyFallback"
+                  class="credential-message warning"
+                  role="status"
+                >
+                  Clipboard access is unavailable. Select the value above and copy
+                  it manually.
+                </p>
+                <p class="credential-message" role="status">
+                  Save this token in the matching phBot PhMon profile now. PostgreSQL
+                  stores only its SHA-256 hash, so PhMon cannot show this token again.
+                </p>
+                <div class="credential-actions">
+                  <button
+                    class="compact-button"
+                    type="button"
+                    @click="dismissCredential"
+                  >
+                    Done
+                  </button>
+                </div>
+              </template>
+
+              <template v-else>
+                <p class="credential-risk">
+                  PhMon user authentication is not implemented yet. Until it is,
+                  anyone who can access this web UI can create an agent credential.
+                  Keep this instance on a trusted network.
+                </p>
+                <p
+                  v-if="credentialError"
+                  class="credential-message warning"
+                  role="alert"
+                >
+                  {{ credentialError }}
+                </p>
+                <div class="credential-actions">
+                  <button
+                    class="compact-button"
+                    type="button"
+                    :disabled="credentialCreating"
+                    @click="createAgentCredential"
+                  >
+                    <UIcon
+                      :name="
+                        credentialCreating
+                          ? 'i-lucide-loader-circle'
+                          : 'i-lucide-key-round'
+                      "
+                      :class="{ spinning: credentialCreating }"
+                    />
+                    {{
+                      credentialCreating
+                        ? 'Creating…'
+                        : 'Generate one-time credential'
+                    }}
+                  </button>
+                </div>
+              </template>
+            </section>
+
             <div
               v-if="agentsStatus === 'pending' && lastAgents.length === 0"
               class="empty-state"
@@ -476,9 +670,9 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               <UIcon name="i-lucide-plug-zap" />
               <strong>No agents have connected yet</strong>
               <p>
-                Provision a credential with
-                <code>phmonctl agent create</code>, then configure PhMon.py in
-                phBot.
+                Create a credential above (or use
+                <code>phmonctl agent create</code>), then configure the matching
+                profile in phBot's PhMon plugin tab.
               </p>
             </div>
 

@@ -477,6 +477,12 @@ input:focus-visible {
   min-height: 52px;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .panel-header h2 {
   margin: 0;
   color: #dbe5f5;
@@ -549,6 +555,76 @@ input:focus-visible {
 
 .status-banner span {
   color: #a99879;
+}
+
+.credential-panel {
+  margin: 10px;
+  border: 1px solid #314158;
+  border-radius: 4px;
+  background: #0a111a;
+  padding: 12px;
+}
+
+.credential-panel-head strong {
+  color: #d5e0ef;
+  font-size: 12px;
+}
+
+.credential-panel-head p,
+.credential-risk,
+.credential-message {
+  margin: 4px 0 0;
+  color: #77869a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.credential-risk {
+  margin-top: 10px;
+  border-left: 2px solid var(--ph-amber);
+  padding-left: 9px;
+  color: #b7a27e;
+}
+
+.credential-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.credential-row > span {
+  color: #68798f;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.credential-row code {
+  overflow: hidden;
+  border: 1px solid var(--ph-border-soft);
+  border-radius: 4px;
+  background: #070d14;
+  padding: 7px 8px;
+  color: #a8bdd9;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  user-select: all;
+  white-space: nowrap;
+}
+
+.credential-message {
+  margin-top: 10px;
+}
+
+.credential-message.warning {
+  color: var(--ph-amber);
+}
+
+.credential-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
 }
 
 .empty-state {
@@ -898,6 +974,19 @@ input:focus-visible {
 
   .panel-header {
     align-items: flex-start;
+  }
+
+  .panel-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .credential-row {
+    grid-template-columns: 1fr;
+  }
+
+  .credential-row .compact-button {
+    justify-self: start;
   }
 
   .agent-table {
