@@ -19,11 +19,11 @@ import (
 const testAgentID = "11111111-2222-4333-8444-555555555555"
 
 type fakeAgentStore struct {
-	mu               sync.Mutex
-	token            string
-	agentID          string
-	record           agentdomain.Record
-	seenCount        int
+	mu                sync.Mutex
+	token             string
+	agentID           string
+	record            agentdomain.Record
+	seenCount         int
 	disconnectedCount int
 }
 
