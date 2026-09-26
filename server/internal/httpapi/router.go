@@ -10,6 +10,7 @@ import (
 )
 
 type AgentStore interface {
+	CreateCredential(context.Context, agentdomain.Credential) error
 	AuthenticateToken(context.Context, string) (string, error)
 	MarkConnected(context.Context, string, time.Time, int, string, string) error
 	MarkSeen(context.Context, string) error
@@ -35,6 +36,7 @@ func New(deps Dependencies) http.Handler {
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		mux.HandleFunc("GET /api/agents", handler.list)
+		mux.HandleFunc("POST /api/agents/credentials", handler.createCredential)
 	}
 	return mux
 }

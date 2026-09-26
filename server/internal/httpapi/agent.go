@@ -56,6 +56,11 @@ type helloAck struct {
 	HeartbeatTimeoutSeconds  int    `json:"heartbeat_timeout_seconds"`
 }
 
+type AgentCredentialView struct {
+	AgentID    string `json:"agent_id"`
+	AgentToken string `json:"agent_token"`
+}
+
 type AgentView struct {
 	AgentID            string     `json:"agent_id"`
 	Connected          bool       `json:"connected"`
@@ -188,6 +193,26 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("failed to persist agent heartbeat", "agent_id", hello.AgentID)
 		}
 	}
+}
+
+func (h *agentHandler) createCredential(w http.ResponseWriter, r *http.Request) {
+	credential, err := agentdomain.NewCredential()
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "cannot create credential"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.store.CreateCredential(ctx, credential); err != nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, AgentCredentialView{
+		AgentID:    credential.AgentID,
+		AgentToken: credential.Token,
+	})
 }
 
 func (h *agentHandler) list(w http.ResponseWriter, r *http.Request) {

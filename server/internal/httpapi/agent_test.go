@@ -25,10 +25,18 @@ type fakeAgentStore struct {
 	record            agentdomain.Record
 	seenCount         int
 	disconnectedCount int
+	created           []agentdomain.Credential
 }
 
 func newFakeAgentStore() *fakeAgentStore {
 	return &fakeAgentStore{token: "phm_test_token", agentID: testAgentID}
+}
+
+func (s *fakeAgentStore) CreateCredential(_ context.Context, credential agentdomain.Credential) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.created = append(s.created, credential)
+	return nil
 }
 
 func (s *fakeAgentStore) AuthenticateToken(_ context.Context, token string) (string, error) {
@@ -81,6 +89,42 @@ func (s *fakeAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error)
 		return []agentdomain.Record{}, nil
 	}
 	return []agentdomain.Record{s.record}, nil
+}
+
+func TestCreateAgentCredential(t *testing.T) {
+	store := newFakeAgentStore()
+	server := newAgentTestServer(t, store, AgentOptions{})
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/agents/credentials", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("unexpected status: %d", response.StatusCode)
+	}
+	if response.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("credential response must not be cacheable: %q", response.Header.Get("Cache-Control"))
+	}
+
+	var credential AgentCredentialView
+	if err := json.NewDecoder(response.Body).Decode(&credential); err != nil {
+		t.Fatal(err)
+	}
+	if !agentdomain.ValidAgentID(credential.AgentID) || !strings.HasPrefix(credential.AgentToken, "phm_") {
+		t.Fatalf("unexpected credential shape: %+v", credential)
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.created) != 1 || store.created[0].AgentID != credential.AgentID || store.created[0].Token != credential.AgentToken {
+		t.Fatalf("credential was not stored exactly once: %+v", store.created)
+	}
 }
 
 func TestAgentAuthenticationIsEnforced(t *testing.T) {
@@ -349,6 +393,9 @@ func TestAgentStoreFailureIsSanitized(t *testing.T) {
 
 type failingAgentStore struct{}
 
+func (failingAgentStore) CreateCredential(context.Context, agentdomain.Credential) error {
+	return errors.New("password=super-secret")
+}
 func (failingAgentStore) AuthenticateToken(context.Context, string) (string, error) {
 	return "", errors.New("password=super-secret")
 }
