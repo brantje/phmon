@@ -9,13 +9,20 @@ type RelayState = {
   closed: boolean
 }
 
+type RelayPeer = {
+  id: string
+  bufferedAmount: number
+  send(message: string): void
+  close(code?: number, reason?: string): void
+}
+
 const relays = new Map<string, RelayState>()
 
 function byteLength(value: string) {
   return Buffer.byteLength(value, 'utf8')
 }
 
-function closeRelay(peer: Parameters<NonNullable<Parameters<typeof defineWebSocketHandler>[0]['close']>>[0], code: number, reason: string) {
+function closeRelay(peer: RelayPeer, code: number, reason: string) {
   const state = relays.get(peer.id)
   if (state) {
     state.closed = true
