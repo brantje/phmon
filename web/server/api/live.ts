@@ -27,7 +27,10 @@ function closeRelay(peer: RelayPeer, code: number, reason: string) {
   if (state) {
     state.closed = true
     relays.delete(peer.id)
-    if (state.upstream.readyState === WebSocket.CONNECTING || state.upstream.readyState === WebSocket.OPEN) {
+    if (
+      state.upstream.readyState === WebSocket.CONNECTING ||
+      state.upstream.readyState === WebSocket.OPEN
+    ) {
       state.upstream.close(code, reason)
     }
   }
@@ -70,13 +73,14 @@ function sameOriginUpgrade(request: Request) {
     request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim(),
     requestURL.protocol.replace(':', ''),
   ].filter(
-    (value): value is 'http' | 'https' =>
-      value === 'http' || value === 'https',
+    (value): value is 'http' | 'https' => value === 'http' || value === 'https',
   )
 
   return (
     hosts.includes(parsedOrigin.host) &&
-    protocols.includes(parsedOrigin.protocol.replace(':', '') as 'http' | 'https')
+    protocols.includes(
+      parsedOrigin.protocol.replace(':', '') as 'http' | 'https',
+    )
   )
 }
 
@@ -171,7 +175,10 @@ export default defineWebSocketHandler({
     if (!state) return
     state.closed = true
     relays.delete(peer.id)
-    if (state.upstream.readyState === WebSocket.CONNECTING || state.upstream.readyState === WebSocket.OPEN) {
+    if (
+      state.upstream.readyState === WebSocket.CONNECTING ||
+      state.upstream.readyState === WebSocket.OPEN
+    ) {
       state.upstream.close(1000, 'browser disconnected')
     }
   },
