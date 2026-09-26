@@ -2,6 +2,7 @@ const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024
 const MAX_SERVER_MESSAGE_BYTES = 512 * 1024
 const MAX_PENDING_MESSAGES = 32
 const MAX_BROWSER_BUFFERED_BYTES = 512 * 1024
+const MAX_UPSTREAM_BUFFERED_BYTES = 512 * 1024
 
 type RelayState = {
   upstream: WebSocket
@@ -156,6 +157,10 @@ export default defineWebSocketHandler({
       return
     }
     if (state.upstream.readyState === WebSocket.OPEN) {
+      if (state.upstream.bufferedAmount > MAX_UPSTREAM_BUFFERED_BYTES) {
+        closeRelay(peer, 1013, 'live backend is not consuming')
+        return
+      }
       state.upstream.send(text)
       return
     }
