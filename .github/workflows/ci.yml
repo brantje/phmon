@@ -41,6 +41,41 @@ jobs:
       - run: cp .env.example .env
       - run: docker compose up --build -d --wait --wait-timeout 180
       - run: python3 scripts/smoke.py
+      - name: Verify authenticated agent connect, reconnect and disconnect
+        shell: bash
+        run: |
+          set -euo pipefail
+          agent_json=$(docker compose exec -T server phmonctl agent create --json)
+          export EXPECT_AGENT_ID
+          export PHMON_AGENT_ID
+          export PHMON_AGENT_TOKEN
+          EXPECT_AGENT_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["agent_id"])' <<<"$agent_json")
+          PHMON_AGENT_ID="$EXPECT_AGENT_ID"
+          PHMON_AGENT_TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["agent_token"])' <<<"$agent_json")
+          export PHMON_AGENT_URL=ws://127.0.0.1:8081/agent
+
+          python3 scripts/agent_simulator.py >/tmp/phmon-agent.log 2>&1 &
+          simulator_pid=$!
+          cleanup() {
+            if [[ -n "${simulator_pid:-}" ]]; then
+              kill -TERM "$simulator_pid" 2>/dev/null || true
+              wait "$simulator_pid" 2>/dev/null || true
+            fi
+            cat /tmp/phmon-agent.log || true
+          }
+          trap cleanup EXIT
+
+          python3 scripts/agent_smoke.py
+          docker compose stop server
+          docker compose up -d --wait --wait-timeout 120 server
+          python3 scripts/agent_smoke.py
+
+          kill -TERM "$simulator_pid"
+          wait "$simulator_pid" || true
+          simulator_pid=
+          EXPECT_AGENT_CONNECTED=0 python3 scripts/agent_smoke.py
+          trap - EXIT
+          cat /tmp/phmon-agent.log
       - name: Verify database outage
         run: |
           docker compose stop postgres
