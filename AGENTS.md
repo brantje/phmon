@@ -105,9 +105,11 @@ what PhMon actually implements.
   Keep a concise comparison ledger in `docs/reference-parity.md`, with links to
   local evidence artifacts where practical. Avoid relying solely on memory or a URL.
 - Match the product's design with PhMon branding and independently authored
-  components. Use locally served original, licensed or operator-supplied artwork,
-  map tiles and item icons. Record asset provenance. Do not hotlink phMonitor assets,
-  embed its application, copy its client bundle or connect to its services.
+  components. Use locally served original, licensed, operator-supplied or
+  operator-imported game-client artwork/map tiles/item icons where their local use is
+  permitted. Record asset provenance; do not commit or redistribute extracted
+  copyrighted client assets by default. Do not hotlink phMonitor assets, embed its
+  application, copy its client bundle or connect to its services.
 
 ### Explicit adaptations to the demo
 
@@ -190,27 +192,28 @@ slice; Slice 15 closes remaining presentation/tool gaps and verifies the whole a
 For each row, record backend/plugin/UI evidence and any capability blocker in
 `docs/reference-parity.md`. A navigation label or empty placeholder is not completion.
 
-| Area / navigation           | Required behavior and layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Owning slices   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| Shell and instance access   | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 1, 2, 15        |
-| Dashboard                   | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 2, 5, 6, 13, 15 |
-| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts.                                                                                                                                                                                                                                                                                                                                | 2–4, 12         |
-| Events                      | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties.                                                                                                                                                                                                                                                                                                               | 5, 7, 13        |
-| Chat                        | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 6, 13, 15       |
-| Economy                     | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 6, 13           |
-| Alchemy                     | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 5, 12           |
-| Academy                     | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 5, 7, 12     |
-| Guild Storage               | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 13, 15       |
-| phBot tools                 | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15        |
-| Analytics                   | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 12, 13          |
-| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                                                                                                                                                               | 7–9             |
-| Item Search                 | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 4, 13           |
-| Skill Builder               | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Verify skill datasets and rules per supported version; distinguish planning from execution.                                                                                                                                                                                                                                                                                                                                                                                                  | 15              |
-| Automations                 | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits.                                                                                                                                                                                                                                                                                                    | 10, 11          |
-| Settings                    | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1, 6, 15        |
-| Notifications               | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results.                                                                                                                                                                                                                                                                                                                                                                     | 5, 6, 10, 15    |
-| Record management           | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 14, 15          |
-| Operations                  | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 1, 14           |
+| Area / navigation | Required behavior and layout | Owning slices |
+| --- | --- | --- |
+| Shell and instance access | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently. | 1, 2, 15 |
+| Dashboard | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links. | 2, 5, 6, 13, 15 |
+| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
+| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties. | 5, 7, 13 |
+| Chat | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends. | 6, 13, 15 |
+| Economy | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data. | 6, 13 |
+| Alchemy | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities. | 5, 12 |
+| Academy | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported. | 4, 5, 7, 12 |
+| Guild Storage | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records. | 4, 13, 15 |
+| phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
+| Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
+| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned game-data profile for imported region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
+| Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts from their observed source. | 2.5, 4, 13 |
+| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's imported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
+| Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
+| Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
+| Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
+| Record management | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal. | 14, 15 |
+| Operations | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions. | 1, 14 |
+
 
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
 reference inspection when accessible. Their labels were visible in public markup;
@@ -359,13 +362,15 @@ same-viewport visual gates remain open; basic connectivity must not be described
 blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
 
 **Current turn (2026-09-26): Slice 2 PR #3 correctness follow-up.** Scope remains
-Slice 2 only. This review fixes character-level authority/snapshot semantics,
-multi-socket disconnect metadata, queued leave reconnect ordering, guild clearing,
-backend search, agent socket-count presentation, Nuxt proxy behavior and outage
-smoke/recovery. The existing multi-socket Registry is intentional: one agent ID/token
-may have several independent active socket generations; closing one generation closes
-only its sessions, and the logical agent remains connected while another socket lives.
-Do not start Slice 3.
+Slice 2 only. This follow-up adds periodic dead-generation session reconciliation
+after database recovery, nonfatal per-character rejection for stale writes, plugin
+suppression of a rejected observation, full-current-observation semantics for state
+updates, and an atomic logical-agent disconnect fence. The multi-socket Registry is
+intentional: one agent ID/token may have several independent active socket generations;
+one socket may own several explicit character sessions; closing a generation or
+rejecting one of its stale character operations must leave sibling generations and
+characters alone. Main's newer Slice 2.5 game-data catalog requirements remain in the
+roadmap below. Do not start Slice 3.
 
 For each subsequent slice keep a completion entry with: status (`not started`,
 `in progress`, `blocked`, `complete`), implemented behavior/files, tests actually run,
@@ -495,8 +500,18 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   current session for the socket generation. `character.snapshot` and
   `character.state` require that current session and cannot open or reclaim it. A
   later explicit identify can hand off one character without invalidating other
-  characters owned by the same or another socket. Snapshot fields replace current
-  state, so unavailable fields become unknown; state messages remain patch-oriented.
+  characters owned by the same or another socket. Identify makes the claimed character
+  online and clears old current stats until its full snapshot arrives. Snapshot and
+  plugin state messages both replace current observed fields, so unavailable values
+  become unknown rather than appearing freshly observed from stale retained data.
+  Ownership rejection returns a nonfatal `character.rejected` response, scoped to the
+  explicit character ID; the plugin suppresses repeated writes for that identity
+  until another identity is observed or the socket reconnects. A healthy-server
+  reconciler compares persisted live sessions with exact registry generations every
+  three seconds and ends dead-generation sessions after database recovery without
+  affecting live sibling sockets. Logical-agent disconnect writes use the final
+  cohort's atomically captured connection timestamp, so a newer socket cannot be
+  marked disconnected by delayed cleanup.
   An observed empty guild clears guild metadata; omitted guild means unavailable.
 - Added searchable character/detail and persisted group APIs, same-origin Nuxt
   proxies, backend-backed debounced search, a compact character overview with group membership controls, and a
@@ -563,6 +578,39 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
 - Next action: commit and push the validated UI/proxy/smoke increment, verify the PR
   head, then report exact remaining Slice 2 runtime checks. Do not merge PR #3 or begin
   Slice 3.
+
+### PR #3 recovery and multiplexing correctness follow-up (2026-09-27)
+
+- Status: implementation committed; full-stack outage/recovery validation is pending.
+  Commit `4d95b5e` adds dead-generation session reconciliation, explicit nonfatal
+  ownership rejection, fresh current-state semantics for updates/new claims, a
+  disconnect metadata race fence, and simulator/CI coverage.
+- `RunSessionReconciler` pings PostgreSQL and repeatedly runs an idempotent bounded
+  reconciliation while available. It closes only sessions whose exact
+  `(agent_id, connection_generation)` is absent from the in-memory Registry; the
+  Registry remains authoritative for live connectivity. Backend startup reconciliation
+  continues to end all pre-restart sessions.
+- Protocol v2 responds to valid stale snapshot/state/left messages with
+  `character.rejected` and keeps the socket open. PostgreSQL-backed WebSocket tests
+  prove one socket can retain B while a second socket takes A, and stale A operations
+  cannot alter A or close either socket. Plugin unit coverage proves repeated writes
+  for a rejected identity are suppressed until reconnect or a new identity.
+- State and snapshot both replace current observations. Identify remains the session
+  publication point for Slice 2; a newly claimed session clears prior stats, so the
+  UI may show online identity with unknown state until the authoritative snapshot.
+- CI's outage scenario uses two production-plugin simulator workers with one token,
+  stops PostgreSQL, closes one socket during the outage, restores PostgreSQL without
+  restarting Go, and checks that only the dead character is taken offline while the
+  sibling character and logical agent stay connected. This is simulator/Compose
+  evidence, not real phBot runtime evidence.
+- Focused validation passed on isolated PostgreSQL at port 5536:
+  `go test -race ./internal/agents ./internal/characters ./internal/httpapi` and
+  `python3 -m unittest plugin.test_phmon` (26 tests). Run the canonical full check and
+  full-stack outage/recovery scenario before closing this entry.
+- Exact remaining work: finish `bash scripts/check.sh`, run the full Compose stack,
+  simulator/restart/outage/recovery paths, integrate current main with the feature
+  matrix additions preserved, and report any remaining Slice 2 real-runtime gates.
+  Do not merge PR #3 or start Slice 3.
 
 ## Canonical slice roadmap
 
@@ -784,6 +832,104 @@ all character-scoped protocol messages carry explicit character_id and are never
 
 one agent can address multiple character identities without a protocol/schema redesign
 
+### Slice 2.5 — Game-data catalog and PK2 import
+
+**Objective:**
+
+Establish a versioned, self-hosted catalog of static Silkroad game data from
+operator-provided client `*.pk2` files before inventory, map and later item/skill
+features depend on ad-hoc metadata.
+
+**Authority and ownership boundary:**
+
+phBot remains authoritative for dynamic runtime facts: the current character/item
+instance, slot, quantity, plus, blues/attributes, durability/current values, live
+position, nearby entities and other observed session state. The game-data catalog is
+authoritative only for static/reference data imported from a specific client dataset,
+such as model/ref/code identity, localized/display metadata, taxonomy and local assets.
+
+Do not make the plugin repeatedly transmit static names, icons, map imagery or other
+catalog data when a stable model/ref/code can be resolved against the active game-data
+profile. Equally, never let static PK2 metadata overwrite a conflicting value that was
+actually observed on a live item/entity instance; preserve both provenance and the
+runtime observation where their semantics differ.
+
+vSRO servers may ship modified client data. Do not assume one universal iSRO/vSRO
+catalog. Model an explicit **game-data profile** with a deterministic fingerprint of
+its imported source files/version and associate servers with the profile they use.
+Multiple profiles must be able to coexist without ID/name collisions leaking across
+servers.
+
+This is an offline/operator-driven import path, not another runtime agent. The backend
+must not reach into an operator's Windows/phBot filesystem. Accept only explicitly
+provided/mounted/imported PK2 inputs. Treat PK2 contents as untrusted data: parse with
+bounds, reject malformed inputs cleanly, never execute embedded content and never turn
+file paths from imported data into arbitrary host filesystem access.
+
+Extracted copyrighted game assets are for the operator's local instance where their
+use is permitted. Do not commit or redistribute extracted client assets in this
+repository. Store provenance/fingerprints so an operator can tell which local client
+dataset produced a catalog or asset.
+
+**Implement:**
+
+a deterministic PK2 import/extraction command or tool suitable for local/self-hosted
+operation, separate from the phBot plugin transport
+
+a durable `game_data_profile` model with source-file fingerprints/import metadata and
+explicit server association
+
+normalized static catalogs, where present in the supplied client data, for:
+
+- items: stable model/ref/code identity, names/localization, degree and
+  type/category/subcategory, static requirements/properties and icon references
+- monsters/NPCs: stable model/ref/code identity, names/types and useful static metadata
+- skills: stable identity, names, race/mastery/tree/prerequisite/cap metadata and icon
+  references needed by the later Skill Builder, only where the source data supports it
+- regions/teleports and other map/navigation reference records useful to later map work
+- locally served item/skill/entity icons and available minimap/map assets
+
+a backend lookup/catalog boundary used by later slices to enrich live phBot model/ref
+IDs without copying static catalog fields into every observation
+
+an asset manifest keyed to the game-data profile, with safe generated/local paths and
+source provenance; no hotlinking and no dependence on phMonitor infrastructure
+
+idempotent re-import of an unchanged profile and safe replacement/versioning when the
+operator imports a changed client dataset. A failed import must not leave a partially
+active catalog/profile.
+
+Do not over-normalize speculative PK2 tables merely because they exist. Import the
+minimum static data required by current/later roadmap features, and extend the importer
+when a concrete slice needs another verified source.
+
+PK2 map assets/region records are inputs to Slice 7, **not proof that a coordinate
+transform is correct**. Slice 7 must still validate world/region-to-map transforms,
+especially Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job
+Temple / Temple.
+
+**Acceptance criteria:**
+
+given a deterministic test/fixture PK2 dataset, importing it resolves a known item
+model/ref to the expected static metadata and local icon, resolves a known monster/NPC
+and skill record, and enumerates the available region/map assets that are actually
+present in that dataset
+
+re-importing the unchanged dataset is idempotent and does not duplicate catalog rows
+or assets
+
+two different game-data profiles can contain different metadata for the same numeric
+model/ref ID without cross-contaminating server lookups
+
+downstream code can enrich a live phBot item/entity ID through the server's active
+profile while dynamic instance fields remain sourced from the live observation
+
+malformed/unsupported PK2 input fails clearly without activating partial data or
+reading/writing arbitrary host paths
+
+the import path has no phMonitor dependency, does not require the phBot plugin to be
+running and does not commit or redistribute extracted client assets
+
 ### Slice 3 — Remote commands
 
 **Objective:**
@@ -856,23 +1002,136 @@ command history is inspectable
 
 **Objective:**
 
-Expose important operational game state.
+Expose important operational game state while reproducing phMonitor's compact,
+icon-first inventory/item presentation rather than falling back to generic data tables.
+
+**Reference behavior and visual contract (phMonitor v0.5.0):**
+
+The reference Stats experience treats bag inventory, character set/equipment, storage
+and applicable pet inventory as visual Silkroad item collections. Items are identified
+primarily by their game icon and in-game presentation; numeric values are overlaid or
+shown compactly with the item rather than replacing the collection with a spreadsheet.
+Preserve the source slot order and empty slots wherever the source exposes slot
+indices, so the UI still reads like the character's actual inventory/storage rather
+than a sorted search result. Item Search in Slice 13 is the searchable/table-oriented
+cross-source surface; Slice 4 is the per-character operational view.
+
+Do not guess an exact grid column count from an unavailable/empty reference state.
+The final responsive slot geometry must be compared against the stored Stats reference
+and a populated reference/runtime when available. What is fixed here is the
+information hierarchy: compact icon/slot collection -> item preview/detail -> source
+and freshness context.
+
+Every occupied item slot uses the best legally usable local item icon available,
+preferably resolved from the server's active Slice 2.5 game-data profile, and shows
+the source-provided stack/quantity value when applicable. Preserve actual empty
+slots. A plus value, rarity/seal or other status may affect the compact label/accent
+only when that value is actually observed; never derive item quality from icon color
+alone. Missing icons use one deliberate placeholder while retaining the item's name
+and identity.
+
+Selecting an item opens one shared **Silkroad-style item detail card** used by bag
+inventory, equipped/character-set items, personal storage, guild storage and pet
+inventory. Desktop may expose the same card on hover/focus for quick inspection, but
+click/tap must pin/open it so touch users can inspect items. Keyboard users must be
+able to focus slots and open/close the detail surface. Long item details scroll inside
+the popover/drawer/dialog instead of overflowing the page.
+
+The detail card must look like an in-game/phMonitor item description, **not** a generic
+two-column key/value table:
+
+- dark navy/blue compact panel, thin blue-gray border and dense line spacing
+- item display name first in gold/yellow; append the observed plus value in the normal
+  item-name treatment when present
+- seal/rarity directly below the name when observed, for example `Seal of Star`
+- item classification next, using the reference wording/presentation such as
+  `Sort of item: Staff`; show degree/category/subcategory only when the source
+  actually exposes them
+- base stats as individual readable lines in the same logical order as Silkroad item
+  information, with the label/value and any observed percentage/modifier kept on the
+  same line
+- requirement lines after the base stats; unmet/important requirements may use the
+  reference red emphasis. Race such as `European` or `Chinese`, required level,
+  gender or other restrictions are shown only when observed/known from verified game
+  data
+- magical options/blues form the final group and use the reference cyan/blue accent,
+  one modifier per line
+- static catalog fields such as canonical name, taxonomy, degree, race/requirements
+  and base/reference properties may be enriched from the server's active Slice 2.5
+  game-data profile when their semantics are static for that model/ref; item-instance
+  state such as plus, quantity, observed blues, current durability and other mutable
+  values remains sourced from the live/historical observation
+- no invented blank rows such as `Critical: -`, no fabricated seals, blues,
+  percentages, degree, gender, race or enhancement properties
+
+The public reference item preview demonstrates the expected ordering and semantics for
+a weapon: gold item name, seal line, `Sort of item`, attack/reinforce statistics,
+critical, durability, attack distance/rate, required level/race, then blue magical
+options. The implementation must support that shape without hard-coding it to one
+weapon. Render only the fields meaningful to the observed item family:
+
+- **Weapons:** physical/magical attack power, physical/magical reinforce,
+  durability, critical, attack distance/range, attack rate/rating and other verified
+  weapon stats.
+- **Armor/garments/shields:** physical/magical defense or absorption/reinforce,
+  durability, parry/blocking and other verified defensive stats.
+- **Accessories:** physical/magical absorption and other verified accessory stats.
+- **Consumables/materials/stackables:** stack/quantity plus the meaningful verified
+  item description/properties; do not force weapon/armor rows.
+- **Magic options/blues:** preserve each observed modifier as its own name/value line
+  (for example STR/INT increases or blocking-rate modifiers). Preserve the original
+  semantic value; do not flatten multiple blues into an opaque JSON string.
+
+The shared item view needs a normalized presentation model, but it must retain the raw
+observed/source fields required to improve rendering later. At minimum, where the
+verified source provides them, retain:
+
+- stable item/model identity and server/code name
+- display name and local icon key/path
+- source slot index and stack/quantity
+- plus/enhancement value
+- item family/type/subtype and degree/level
+- seal/rarity/grade/color metadata when actually observed
+- durability/current and maximum durability
+- physical/magical attack values and reinforcement values
+- physical/magical defense/absorption values and reinforcement values
+- critical, parry/blocking, attack distance/range and attack rate/rating
+- required level, race, gender and other explicit requirements
+- all individually observed magical options/blues/attributes
+- any other verified item-family-specific lines needed to reproduce the source item
+  description without reducing it to a lossy summary
+
+Exact field names and availability must be mapped from the connected phBot runtime/API
+and recorded in `docs/phbot-capabilities.md`. Game-data lookups may enrich stable
+catalog metadata such as name/type/level, but current mutable item-instance properties
+must come from the observed item instance. Unknown means absent/unknown.
+
+Container-level operational metadata stays visually separate from the in-game item
+description. Show owner/character, server, source (`Inventory`, `Character Set`,
+`Storage`, `Guild Storage`, or the applicable pet), observer and freshness/last
+observed state around the collection/detail surface. Do not inject those PhMon
+operational fields into the middle of the Silkroad stat block. Last-known storage or
+guild-storage data must be clearly marked stale/last observed rather than visually
+indistinguishable from currently opened/live state.
 
 **Implement:**
 
-character inventory
+character inventory as a slot-preserving icon collection with empty slots, quantities
+and the shared item detail card above
 
-equipped/character-set items as a distinct source from bag inventory
+equipped/character-set items as a distinct visual source from bag inventory, preserving
+equipment-slot semantics and using the same item detail card
 
-character storage and guild storage where cleanly available, carrying source,
-observer/freshness metadata so last-known data is not presented as live without context
+character storage and guild storage where cleanly available, preserving slot/source
+identity and carrying observer/freshness metadata so last-known data is not presented
+as live without context; use the same icon/detail treatment as character inventory
 
 pet model covering the supported phMonitor categories Attack, Fellow, Pick and
 Transport; retain stable pet identity/type and expose the state the verified phBot API
 actually provides
 
-pet inventory per applicable pet category; do not synthesize inventories for pet types
-whose runtime source has none
+pet inventory per applicable pet category using the same slot/icon/item-detail
+presentation; do not synthesize inventories for pet types whose runtime source has none
 
 party members/current party state
 
@@ -888,18 +1147,39 @@ management only when actually supported) use explicit character targets and the 
 audited command/result lifecycle. Do not invent controls merely because phBot has a
 similarly named internal setting.
 
-delta/change handling where appropriate
+delta/change handling keyed by stable source + slot/item identity where appropriate;
+do not churn/re-render the entire collection for one changed stack or slot if the
+protocol can safely communicate a bounded update
 
-Nuxt inventory/equipment/storage views with source/freshness indicators
+Nuxt inventory/equipment/storage views with slot-preserving icon collections,
+source/freshness indicators and responsive item detail surfaces
 
-Nuxt pet view grouped by supported pet category
+Nuxt pet view grouped by supported pet category, with applicable pet inventory
 
 Nuxt party view with current-membership and Party Setup sections
 
 **Acceptance criteria:**
 
+current inventory is recognizable as the character's slot-based bag: item icons,
+occupied and empty slots, source-provided quantities/stacks and source slot positions
+are preserved instead of being rendered as a generic table
+
+selecting representative weapon, armor/shield, accessory, stackable and blue/magic
+items opens the shared dark item detail card with the correct per-family fields,
+ordering, semantic accents and requirements; fields not supplied by the source are
+absent rather than fabricated
+
+a representative sealed/plussed item preserves its observed display name, plus,
+seal/rarity and item-instance stats; a representative item with blues preserves each
+observed blue as a separate cyan/blue modifier line
+
+inventory, equipment/character set, personal storage, guild storage and applicable pet
+inventory reuse the same item-detail semantics so the same item does not render
+differently solely because its container changed
+
 current inventory, equipment/character set and available storage sources are visible
-without conflating their ownership/source
+without conflating their ownership/source; stale/last-known storage is visibly distinct
+from current/live observations
 
 Attack/Fellow/Pick/Transport pets are represented when observed, and applicable pet
 state/inventory remains associated with the correct pet across updates
@@ -909,6 +1189,10 @@ party membership is visible independently from Party Setup configuration
 Party Setup loads the plugin's current supported values, applies verified edits through
 an audited command, reports pending/success/failure, then refreshes to prove the
 effective runtime configuration
+
+desktop hover/focus and click behavior plus mobile tap behavior can inspect the same
+item information, with keyboard/focus handling and no page-level overflow at the
+project's target viewports
 
 updates do not require blindly resending excessive full state when unnecessary
 
@@ -1048,7 +1332,12 @@ not present historical drop events as currently lying on the ground
 
 Nuxt map component with pan/zoom and layer controls
 
-legally usable/private map assets for outdoor and required special-area maps
+map/region reference data and locally served assets from the active Slice 2.5
+game-data profile where the imported client contains them, with explicit fallback
+provenance for any additional operator-supplied/licensed assets
+
+legally usable/private map assets for outdoor and required special-area maps; imported
+PK2 imagery does not remove the requirement to validate coordinate transforms
 
 **Acceptance criteria:**
 
@@ -1455,9 +1744,10 @@ core screens or visual direction until the end; build them in their owning slice
   live nearby monsters with freshness, Academy members, recent event overlays and
   historical mob-density/type layers. Validate coordinates rather than accepting
   visually plausible but incorrect placement.
-- Skill Builder with legally usable/versioned skill datasets, race/cap/mastery and
-  prerequisite rules, editable/saved plans, calculated SP costs, reset/bulk controls
-  and live-character comparison. Show unsupported versions honestly. Remote skill
+- Skill Builder using the active Slice 2.5 game-data profile for versioned skill
+  identity/icons/reference metadata where available, plus verified race/cap/mastery
+  and prerequisite rules, editable/saved plans, calculated SP costs, reset/bulk
+  controls and live-character comparison. Show unsupported versions honestly. Remote skill
   execution, if supported, uses the existing command lifecycle and confirmation.
 - Complete persistent appearance/mode/language/chat/notification settings, local
   sound library, safe record-management dialogs, instance QR/copy-link utilities
@@ -1497,8 +1787,8 @@ core screens or visual direction until the end; build them in their owning slice
 
 ## Milestones and dependency order
 
-- Slices 0–4: first usable monitoring/control system.
-- Slices 0–9: complete phMonitor-replacement MVP target.
+- Slices 0–4, including Slice 2.5: first usable monitoring/control system.
+- Slices 0–9, including Slice 2.5: complete phMonitor-replacement MVP target.
 - Slices 10–14: advanced self-hosted platform.
 - Slice 15 and all final gates: complete applicable demo feature/layout/style parity.
 
@@ -1506,8 +1796,9 @@ Milestones organize progress. Respect dependencies, but do not stop at a milesto
 when the full implementation contract is active.
 
 ```text
-foundation -> connectivity -> character state -> commands -> events
-           -> map observations -> heatmaps -> conditions / scheduling / analytics
+foundation -> connectivity -> character state -> game-data catalog -> commands
+           -> inventory/events -> map observations -> heatmaps
+           -> conditions / scheduling / analytics
 ```
 
 Reuse earlier concrete abstractions where appropriate; do not create speculative
