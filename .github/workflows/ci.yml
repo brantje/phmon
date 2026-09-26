@@ -33,6 +33,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
+      - name: Format and print app
+        run: |
+          npm --prefix web run format
+          echo '===PHMON_FORMATTED_APP_BEGIN==='
+          cat web/app/app.vue
+          echo '===PHMON_FORMATTED_APP_END==='
       - run: bash scripts/check.sh
   stack:
     runs-on: ubuntu-latest
