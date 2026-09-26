@@ -612,8 +612,8 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                 </p>
                 <p class="credential-message" role="status">
                   Save this token in the matching phBot PhMon profile now.
-                  PostgreSQL stores only its SHA-256 hash, so PhMon cannot
-                  show this token again.
+                  PostgreSQL stores only its SHA-256 hash, so PhMon cannot show
+                  this token again.
                 </p>
                 <div class="credential-actions">
                   <button

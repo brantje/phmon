@@ -33,13 +33,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
-      - name: Show exact Prettier correction
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm --prefix web run format
-          git diff -- web/app/app.vue
-          exit 1
       - run: bash scripts/check.sh
   stack:
     runs-on: ubuntu-latest
