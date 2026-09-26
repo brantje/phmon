@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"phmon/server/internal/config"
+	"phmon/server/internal/database"
 	"phmon/server/internal/httpapi"
 )
 
@@ -40,6 +41,12 @@ func run() error {
 		return errors.New("cannot initialize database pool")
 	}
 	defer pool.Close()
+
+	migrationCtx, migrationCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer migrationCancel()
+	if err := database.Migrate(migrationCtx, pool); err != nil {
+		return errors.New("database migrations failed")
+	}
 
 	// Keep liveness available during database outages; readiness checks the pool.
 	srv := &http.Server{
