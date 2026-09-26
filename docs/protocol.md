@@ -315,15 +315,18 @@ the same domain generator/store path as phmonctl. The plaintext token is returne
 that creation response only; PostgreSQL persists only its SHA-256 hash. Both endpoints
 are no-store.
 
-Nuxt exposes same-origin equivalents. Slice 1 still has no human-user authentication,
-so browser credential provisioning is for a trusted deployment only until later auth
-work owns that boundary.
+Nuxt retains same-origin diagnostic read equivalents and HTTP action routes. The live
+browser UI does not call those diagnostic reads; it uses the browser live-data
+WebSocket protocol above. Slice 1 still has no human-user authentication, so browser
+credential provisioning is for a trusted deployment only until later auth work owns
+that boundary.
 
-Slice 2 adds `GET /api/characters?q=&group_id=` for name/guild/server/zone search,
-`GET /api/characters/{character_id}` for stable details, and persisted groups under
-`/api/groups` with explicit `/members/{character_id}` operations. Responses never
-contain agent credential material. Human-user authentication remains unimplemented,
-so group edits and credential provisioning require a trusted network.
+Slice 2 retains diagnostic `GET /api/characters?q=&group_id=` for
+name/guild/server/zone search, `GET /api/characters/{character_id}` for stable
+details, and persisted groups under `/api/groups` with explicit
+`/members/{character_id}` mutation operations. Responses never contain agent
+credential material. Human-user authentication remains unimplemented, so group edits
+and credential provisioning require a trusted network.
 
 ## Foundation health contract
 
