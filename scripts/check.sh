@@ -14,6 +14,7 @@ cd "$(dirname "$0")/.."
   go build -o bin/phmonctl ./cmd/phmonctl
 )
 python3 -m unittest discover -s plugin -p 'test_*.py'
+python3 scripts/live_transport_audit.py
 npm --prefix web run format:check
 npm --prefix web run lint
 npm --prefix web run typecheck
