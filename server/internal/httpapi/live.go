@@ -116,7 +116,6 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		CompressionMode: websocket.CompressionDisabled,
-		OriginPatterns:  []string{r.Host},
 	})
 	if err != nil {
 		return
