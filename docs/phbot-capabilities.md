@@ -30,8 +30,12 @@ coverage is tracked separately and is never treated as proof of a real phBot run
 The official documentation verifies Python socket support but does not document a
 bundled third-party WebSocket client. PhMon therefore does not depend on an
 unverified websocket package inside phBot. The plugin implements the small RFC 6455
-client subset it needs using Python standard-library socket, ssl, hashlib, base64,
-struct and select modules.
+client subset it needs with Python standard-library modules.
+
+Idle receive polling uses select before any bytes of the next WebSocket frame are
+consumed. Once frame decoding starts, reads run under a bounded socket deadline; a
+mid-frame stall fails the connection and lets the worker reconnect rather than
+discarding partial frame bytes and continuing on a corrupted stream.
 
 The plugin keeps backend networking on a worker thread. phBot callbacks never wait
 for backend network I/O. The plugin is authoritative only for its current process;
@@ -39,10 +43,29 @@ the Go backend owns durable identity, authentication and connection history.
 
 ## Runtime validation
 
-Status: not yet validated against a real Windows/phBot process in this repository
-environment.
+Status: BLOCKED — no compatible real Windows/phBot process is available in this
+execution environment.
 
-The deterministic simulator added with Slice 1 exercises the same protocol contract,
-but simulator success must not be recorded as real phBot validation. The real-runtime
-gate requires installing the plugin in a supported phBot build and recording the
-observed phBot version and embedded Python behavior here.
+The deterministic simulator added with Slice 1 imports the production PhMon.py
+transport and exercises the same protocol contract. Hosted CI has verified credential
+creation, connect, backend restart, automatic reconnect and disconnect through that
+transport, but simulator success must not be recorded as real phBot validation.
+
+Public phBot documentation explicitly supports socket. The actual embedded runtime
+still needs to prove that every imported module used by this path is available and
+behaves as expected, especially:
+
+- socket
+- ssl
+- select
+- threading
+- hashlib
+- base64
+- struct
+- urllib.parse
+
+The real-runtime gate requires installing PhMon.py and PhMon.json in a supported phBot
+build, recording the observed phBot version and embedded Python version, confirming
+the authenticated hello/UI appearance, then exercising reload/disconnect/restart and
+automatic reconnect. Record the observed module/import behavior and results here; do
+not infer them from desktop CPython or the simulator.

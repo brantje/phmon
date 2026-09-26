@@ -1,13 +1,14 @@
 # PhMon
 
-A self-hosted phBot monitoring and remote-control project. **Slices 0 and 1 are
-implemented:** the Go/PostgreSQL/Nuxt foundation now includes durable per-agent
-identity, authenticated outbound phBot WebSockets, heartbeat/reconnect handling and
-a live agent-status shell. Character/game state and remote commands deliberately
-remain for later slices. [AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap.
-The target is applicable feature, layout and style parity with
-[the phMonitor demo](https://phmonitor.com/demo). The next implementation slice is
-**Slice 2 — Character identity and core live stats**.
+A self-hosted phBot monitoring and remote-control project. **Slice 0 is complete;
+Slice 1 implementation and automated validation are complete, with real Windows/phBot
+runtime validation and same-viewport browser comparison still pending.** The
+Go/PostgreSQL/Nuxt foundation includes durable per-agent identity, authenticated
+outbound phBot WebSockets, heartbeat/reconnect handling and a live agent-status shell.
+Character/game state and remote commands deliberately remain for later slices.
+[AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap. The target is applicable
+feature, layout and style parity with [the phMonitor demo](https://phmonitor.com/demo).
+Slice 2 is planned next but is not started by this Slice 1 completion task.
 
 ## Start the local stack
 
@@ -178,9 +179,11 @@ python3 scripts/smoke.py
 ```
 
 CI runs validation plus complete Docker build/start, authenticated agent lifecycle,
-database outage and recovery sequences. For manual development without phBot, the
-same plugin transport can be exercised with `scripts/agent_simulator.py`; simulator
-success is fixture coverage and is never reported as real phBot runtime validation.
+database outage and recovery sequences. The Slice 1 completion pass observed both
+hosted jobs green after the frame-safe transport regression tests were added. For
+manual development without phBot, the same plugin transport can be exercised with
+`scripts/agent_simulator.py`; simulator success is fixture coverage and is never
+reported as real phBot runtime validation.
 
 ## Architecture and references
 

@@ -6,8 +6,8 @@ inspection evidence only and are never shipped as PhMon application assets.
 
 ## Slice 1 — shell and instance access
 
-Status: implementation complete; automated/full browser validation pending the Slice
-1 PR validation cycle.
+Status: Slice 1 shell implementation and automated CI validation complete; required
+same-viewport browser comparison remains BLOCKED in the current execution environment.
 
 ### Implemented behavior
 
@@ -45,10 +45,23 @@ game-world artwork is still required before final visual completion. Character/s
 data, dashboard game panels and server scoping depend on later owning slices and are
 not represented as working controls.
 
-Same-viewport local screenshots at 1440x1000, 1280x800 and 390x844 remain a validation
-gate for the PR because this execution environment cannot run the project's Docker
-browser stack. Passing source/CI checks alone must not be recorded as screenshot
-parity.
+Hosted CI is green for the Slice 1 transport/test head, including the complete Docker
+agent lifecycle and database outage/recovery path. That automated evidence does not
+substitute for same-viewport visual comparison.
+
+Required browser evidence remains open because this execution environment cannot run
+the complete local Nuxt/Docker browser stack:
+
+- 1440x1000: BLOCKED — no screenshot captured or side-by-side comparison observed.
+- 1280x800: BLOCKED — no screenshot captured or side-by-side comparison observed.
+- 390x844: BLOCKED — no screenshot captured or side-by-side comparison observed.
+
+The sidebar contract calls for a PhMon version/build identifier. The current
+"self-hosted · slice 1" text is a development/slice label, not an application version.
+No canonical PhMon application version/build value currently exists in package
+metadata or runtime configuration. A hardcoded invented version would be misleading,
+so the version portion of the parity ledger remains explicitly open until canonical
+release/build metadata exists.
 
 Real Windows/phBot runtime validation is also still open. The simulator exercises the
 same production wire contract but is not evidence that the embedded phBot runtime has

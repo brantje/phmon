@@ -41,13 +41,17 @@ access logs.
 
 The plugin uses only Python standard-library networking. Public phBot documentation
 verifies socket support but does not document a bundled third-party WebSocket client,
-so no pip install inside phBot is required.
+so no pip install inside phBot is required. A real phBot runtime still needs to verify
+the embedded availability/behavior of ssl, select, threading, hashlib, base64, struct
+and urllib.parse; simulator CPython is not evidence for that gate.
 
-A dedicated worker thread owns WebSocket connect/read/write work. It sends the
-protocol-v1 hello, follows the server heartbeat interval and reconnects automatically
-with bounded exponential backoff and jitter. finished() only signals shutdown and
-closes the worker socket; latency-sensitive phBot callbacks never wait for backend
-I/O.
+A dedicated worker thread owns WebSocket connect/read/write work. It polls readiness
+before starting a frame, then completes the frame under a bounded socket deadline; a
+mid-frame stall fails the connection rather than resuming from a partially consumed
+stream. The worker sends the protocol-v1 hello, follows the server heartbeat interval
+and reconnects automatically with bounded exponential backoff and jitter. finished()
+only signals shutdown and closes the worker socket; latency-sensitive phBot callbacks
+never wait for backend I/O.
 
 The plugin stores no durable event queue. Later slices will add current-state and
 event messages over the same authenticated connection.
