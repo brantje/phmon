@@ -58,11 +58,11 @@ phBot **Plugins -> PhMon** tab, enter the backend WebSocket URL, provisioned age
 and token, then click **Save & Connect**.
 
 PhMon stores these values separately for the active phBot player/profile under
-`Config/PhMon/<active-profile>.cfg`. The active path returned by phBot's
-`get_config_path()` is used only to select the matching PhMon settings file; PhMon
-never edits phBot's own player JSON. This lets multiple accounts/characters and
-alternate bot profiles keep distinct PhMon identities and credentials in one phBot
-installation.
+`Config/PhMon/<active-profile>.cfg`. The active player configuration returned by
+`get_config_path()` and the explicit profile name returned by `get_profile()` are
+both part of the storage key. PhMon never edits phBot's own player JSON. This lets
+multiple accounts/characters and multiple named profiles for the same character keep
+distinct PhMon identities and credentials in one phBot installation.
 
 The token is persisted locally because reconnects must be unattended, but after a
 profile is loaded or saved the GUI token field is cleared instead of continuously
