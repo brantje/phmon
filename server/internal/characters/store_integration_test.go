@@ -59,24 +59,21 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err := store.Snapshot(ctx, credential.AgentID, a, 1, fullState); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.End(ctx, credential.AgentID, a, 1, "left"); err != nil {
-		t.Fatal(err)
-	}
 	b, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Beta"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Snapshot(ctx, credential.AgentID, b, 1, fullState); err != nil {
+	if err := store.Snapshot(ctx, credential.AgentID, b, 2, fullState); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Update(ctx, credential.AgentID, a, 1, State{Level: &level}); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("stale switched character update accepted: %v", err)
+	if err := store.Update(ctx, credential.AgentID, a, 2, State{Level: &level}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-generation character update accepted: %v", err)
 	}
 	alpha, err := store.Get(ctx, a)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alpha.Online || alpha.Level == nil || *alpha.Level != 110 {
+	if !alpha.Online || alpha.Level == nil || *alpha.Level != 110 {
 		t.Fatalf("alpha presence/state incorrect: %+v", alpha)
 	}
 	beta, err := store.Get(ctx, b)
@@ -89,13 +86,20 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if _, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Beta"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Snapshot(ctx, credential.AgentID, b, 2, fullState); err != nil {
+	if err := store.EndAgent(ctx, credential.AgentID, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Update(ctx, credential.AgentID, b, 1, State{Level: &level}); !errors.Is(err, ErrNotFound) {
+	alpha, err = store.Get(ctx, a)
+	if err != nil || alpha.Online {
+		t.Fatalf("closing one socket did not only close its character: %+v err=%v", alpha, err)
+	}
+	if err := store.Snapshot(ctx, credential.AgentID, b, 3, fullState); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(ctx, credential.AgentID, b, 2, State{Level: &level}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("stale generation update accepted: %v", err)
 	}
-	if err := store.EndAgent(ctx, credential.AgentID, 1); err != nil {
+	if err := store.EndAgent(ctx, credential.AgentID, 2); err != nil {
 		t.Fatal(err)
 	}
 	beta, err = store.Get(ctx, b)
@@ -105,7 +109,7 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if !beta.Online {
 		t.Fatal("stale agent cleanup ended replacement generation")
 	}
-	if err := store.EndAgent(ctx, credential.AgentID, 2); err != nil {
+	if err := store.EndAgent(ctx, credential.AgentID, 3); err != nil {
 		t.Fatal(err)
 	}
 	beta, err = store.Get(ctx, b)

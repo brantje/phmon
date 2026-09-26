@@ -214,7 +214,7 @@ func TestAgentHelloHeartbeatAndList(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&agents); err != nil {
 		t.Fatal(err)
 	}
-	if len(agents) != 1 || agents[0].AgentID != testAgentID || !agents[0].Connected || agents[0].ConnectedAt == nil {
+	if len(agents) != 1 || agents[0].AgentID != testAgentID || !agents[0].Connected || agents[0].ActiveConnections != 1 || agents[0].ConnectedAt == nil {
 		t.Fatalf("unexpected agent list: %+v", agents)
 	}
 
@@ -229,7 +229,7 @@ func TestAgentHelloHeartbeatAndList(t *testing.T) {
 	})
 }
 
-func TestNewSessionSupersedesOldWithoutStaleDisconnect(t *testing.T) {
+func TestMultipleSocketsForOneAgentRemainConnectedIndependently(t *testing.T) {
 	store := newFakeAgentStore()
 	registry := agentdomain.NewRegistry()
 	server := httptest.NewServer(New(Dependencies{
@@ -257,21 +257,37 @@ func TestNewSessionSupersedesOldWithoutStaleDisconnect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	var ignored agentMessage
-	if err := wsjson.Read(ctx, first, &ignored); err == nil {
-		t.Fatal("superseded connection remained readable")
+	for _, conn := range []*websocket.Conn{first, second} {
+		if err := wsjson.Write(context.Background(), conn, agentMessage{
+			Type:            "heartbeat",
+			ProtocolVersion: 2,
+			SentAt:          time.Now().UTC().Format(time.RFC3339),
+		}); err != nil {
+			t.Fatalf("agent socket stopped working after same-agent connect: %v", err)
+		}
 	}
-	time.Sleep(25 * time.Millisecond)
+	response, err := http.Get(server.URL + "/api/agents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var agents []AgentView
+	if err := json.NewDecoder(response.Body).Decode(&agents); err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if len(agents) != 1 || agents[0].ActiveConnections != 2 {
+		t.Fatalf("same agent should report two live sockets: %+v", agents)
+	}
+	_ = first.Close(websocket.StatusNormalClosure, "first socket done")
+	waitFor(t, time.Second, func() bool { return registry.ConnectionCount(testAgentID) == 1 })
 	store.mu.Lock()
 	disconnected := store.disconnectedCount
 	store.mu.Unlock()
 	if disconnected != 0 {
-		t.Fatalf("stale session recorded disconnect count=%d", disconnected)
+		t.Fatalf("agent marked disconnected while another socket remains: count=%d", disconnected)
 	}
 	if _, ok := registry.ConnectedAt(testAgentID); !ok {
-		t.Fatal("replacement session was removed by stale cleanup")
+		t.Fatal("agent was marked offline while second socket remains")
 	}
 
 	_ = second.Close(websocket.StatusNormalClosure, "done")

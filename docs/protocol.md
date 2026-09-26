@@ -40,10 +40,12 @@ Agent to server:
 plugin_version and phbot_version are bounded to 64 characters. sent_at is diagnostic
 agent time; server-owned timestamps remain authoritative.
 
-A valid hello authenticates the durable agent, updates first/last-seen and version
-metadata, and installs the socket as that agent's active session. A newer valid
-session for the same agent supersedes the older socket. Cleanup from the old socket
-must not remove the newer active session.
+A valid hello authenticates the durable agent and updates first/last-seen and version
+metadata. An agent may have multiple active WebSocket connections and observe
+multiple characters at the same time. Each socket receives a distinct server-owned
+connection generation; reconnecting or closing one socket must not cancel another
+socket for the same agent. The agent is connected while any authenticated socket is
+active.
 
 Server to agent:
 
@@ -68,9 +70,11 @@ After hello acknowledgement, the plugin sends:
     }
 
 A valid heartbeat refreshes the server-owned last_seen_at value. If no valid
-application message arrives for 30 seconds, the server closes the session and marks
-the agent disconnected. WebSocket ping/pong control frames may exist at the transport
-layer but do not replace the application heartbeat.
+application message arrives for 30 seconds, the server closes that socket and ends
+only character sessions owned by its connection generation. The agent is marked
+disconnected only when its last authenticated socket closes. WebSocket ping/pong
+control frames may exist at the transport layer but do not replace the application
+heartbeat.
 
 ## Character identity and registration
 
@@ -113,17 +117,18 @@ diagnostic only.
 `sent_at`. The plugin sends it before identifying a switched character. Identity
 registration creates/resolves the durable record but does not itself mark the
 character online. A full `character.snapshot` opens the live session; updates are
-accepted only for that active agent/generation/session. Agent socket close, heartbeat
-expiry and backend process startup close sessions with distinct end reasons. After
+accepted only for that active agent/generation/session. Socket close and heartbeat
+expiry close sessions owned by that generation; backend process startup closes all
+persisted live sessions with a distinct end reason. After
 reconnect a character starts offline and becomes online only after registration and
 a full snapshot. Backend restart retains durable records/state and never resurrects
 live sessions.
 
-The backend fences writes with the active agent connection generation and stores that
-generation on character sessions, preventing an old socket from changing a newer
-session. At most one live observer is represented per character; another authorized
-observer supersedes it. The schema supports one agent observing multiple concurrent
-character sessions.
+The backend fences writes with the authenticated agent ID and socket's connection
+generation, which is stored on character sessions. A socket cannot modify another
+socket's session, and at most one live observer is represented per character; a new
+authorized observer for the same character supersedes the old session. Different
+characters observed over different sockets for one agent can remain online together.
 
 ## reconnect
 

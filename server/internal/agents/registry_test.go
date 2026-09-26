@@ -1,33 +1,38 @@
 package agents
 
-import (
-	"context"
-	"testing"
-)
+import "testing"
 
-func TestRegistryGenerationFencesStaleCleanup(t *testing.T) {
+func TestRegistryTracksConcurrentConnectionsPerAgent(t *testing.T) {
 	registry := NewRegistry()
-	_, cancelOne := context.WithCancel(context.Background())
-	genOne, _, previous := registry.Register("agent", cancelOne)
-	if previous != nil {
-		t.Fatal("first registration unexpectedly replaced a session")
+	genOne, atOne := registry.Register("agent")
+	genTwo, atTwo := registry.Register("agent")
+
+	if genOne == genTwo {
+		t.Fatal("connections shared a generation")
+	}
+	if !registry.IsCurrent("agent", genOne) || !registry.IsCurrent("agent", genTwo) {
+		t.Fatal("one agent's connection invalidated another connection")
+	}
+	if registry.ConnectionCount("agent") != 2 {
+		t.Fatalf("connection count = %d, want 2", registry.ConnectionCount("agent"))
+	}
+	if connectedAt, ok := registry.ConnectedAt("agent"); !ok || !connectedAt.Equal(atOne) || atTwo.Before(atOne) {
+		t.Fatalf("unexpected connected-at value %v (atOne %v, atTwo %v)", connectedAt, atOne, atTwo)
 	}
 
-	_, cancelTwo := context.WithCancel(context.Background())
-	genTwo, _, previous := registry.Register("agent", cancelTwo)
-	if previous == nil {
-		t.Fatal("second registration did not return the previous cancellation")
+	removed, stillConnected := registry.Unregister("agent", genOne)
+	if !removed || !stillConnected {
+		t.Fatalf("first unregister = (%v, %v), want (true, true)", removed, stillConnected)
 	}
-	if registry.Unregister("agent", genOne) {
-		t.Fatal("stale session removed the replacement")
+	if !registry.IsCurrent("agent", genTwo) || registry.IsCurrent("agent", genOne) {
+		t.Fatal("unregister did not fence only the removed generation")
 	}
-	if _, ok := registry.ConnectedAt("agent"); !ok {
-		t.Fatal("replacement session disappeared")
-	}
-	if !registry.Unregister("agent", genTwo) {
-		t.Fatal("current session did not unregister")
+
+	removed, stillConnected = registry.Unregister("agent", genTwo)
+	if !removed || stillConnected {
+		t.Fatalf("last unregister = (%v, %v), want (true, false)", removed, stillConnected)
 	}
 	if _, ok := registry.ConnectedAt("agent"); ok {
-		t.Fatal("session remained registered")
+		t.Fatal("agent remained connected after its last socket closed")
 	}
 }

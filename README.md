@@ -218,8 +218,10 @@ same-origin API.
 
 Go uses standard-library HTTP handlers, pgx and embedded transactional migrations.
 PostgreSQL stores durable agents, server-scoped characters, current state, character
-sessions, groups and membership. `/agent` is the authenticated protocol-v2 WebSocket;
-the generation-fenced registry and generation-scoped sessions fence stale sockets.
+sessions, groups and membership. `/agent` is the authenticated protocol-v2 WebSocket.
+One agent may keep multiple authenticated sockets active; each socket receives its
+own connection generation and can only update the character sessions it owns. The
+agent remains connected until its last socket closes.
 Character identity is the case-folded character name within a case-folded server
 name; it assumes Silkroad character names are unique per game server and does not
 claim a universal game identifier. Startup ends stale sessions but retains identity

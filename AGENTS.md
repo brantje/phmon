@@ -409,9 +409,9 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   automatic reconnect semantics. Per-agent tokens are stored only as SHA-256 hashes
   and are bound to stable UUID agent IDs.
 - Added embedded transactional migrations, durable agent metadata, a generation-fenced
-  in-memory active registry and a safe read-only agent presentation API. New valid
-  sessions supersede old sockets without stale cleanup marking the replacement
-  offline.
+  in-memory active registry and a safe read-only agent presentation API. Each
+  authenticated socket has its own generation; agent presence stays online while any
+  socket remains active, and stale cleanup cannot mark a concurrent socket offline.
 - Added one-time credential provisioning through both `phmonctl agent create` and
   the web dashboard. Both call the same server-side generator/store path. The web POST
   returns only the newly generated plaintext token once with no-store semantics;
@@ -485,6 +485,11 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   populated server/name returned from `get_character_data()`. It still refuses to
   sample after an observed disconnect. The live phBot instance initially reported
   v1.0.0; after reload, it reports v1.1.0 and its character state is visible.
+- Runtime churn follow-up: multiple live characters appeared under one authenticated
+  agent while a single-socket-per-agent registry repeatedly canceled the prior
+  socket. The registry now tracks concurrent sockets independently, closes only the
+  character sessions owned by a closing generation, and marks the agent offline only
+  after its last socket closes. `/api/agents` reports `active_connections`.
 - Added searchable character/detail and persisted group APIs, same-origin Nuxt
   proxies, a compact character overview with group membership controls, and a
   `/characters/{character_id}` detail surface. Later inventory/pet/party/map/action
@@ -503,14 +508,16 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   The follow-up collector regression test and complete PostgreSQL-enabled check
   passed again. Two simulator-created fixture characters and their sessions/agent
   were removed from the local development database.
-- Real runtime evidence: phBot 20.1.1 agents running plugin 1.1.0 registered two
-  online characters, `nuker1` and `nuker2`, with distinct stable character IDs and
-  distinct serving agent IDs. Search/detail APIs showed server, name, zone, level,
-  HP/MP, XP/SP, gold, region, position, active sessions, and advancing state
-  timestamps. This verifies two live character paths across agents; it does not
-  establish multiple-profile behavior within one process. Basic real phBot → PhMon
-  connectivity had been operator-confirmed earlier. Simulator coverage remains
-  separately labelled and was not used for this runtime claim.
+- Real runtime evidence: phBot 20.1.1 agents running plugin 1.1.0 registered four
+  online characters. `/api/agents` showed three active sockets for one agent ID and
+  one socket for another; `/api/characters` showed three distinct live character
+  IDs/sessions under the first agent and another under the second, with advancing
+  current-state timestamps. Server, name, zone, level, HP/MP, XP/SP, gold, region,
+  and position were visible. This manually verifies multiple concurrent character
+  sessions behind one agent and isolation across agents. It does not establish
+  multiple phBot profiles in one process. Basic real phBot → PhMon connectivity was
+  operator-confirmed earlier. Simulator coverage remains separately labelled and
+  was not used for this runtime claim.
 - Exact remaining Slice 2 work before claiming full completion: record embedded
   Python version, manually validate character switch/teleport/reconnect snapshot and
   repeated disconnect behavior, and determine whether botting state has a supported

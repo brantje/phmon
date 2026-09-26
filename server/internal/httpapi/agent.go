@@ -71,6 +71,7 @@ type AgentCredentialView struct {
 type AgentView struct {
 	AgentID            string     `json:"agent_id"`
 	Connected          bool       `json:"connected"`
+	ActiveConnections  int        `json:"active_connections"`
 	ConnectedAt        *time.Time `json:"connected_at,omitempty"`
 	FirstSeenAt        *time.Time `json:"first_seen_at,omitempty"`
 	LastSeenAt         *time.Time `json:"last_seen_at,omitempty"`
@@ -148,13 +149,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionCtx, sessionCancel := context.WithCancel(r.Context())
-	generation, _, previous := h.registry.Register(hello.AgentID, sessionCancel)
-	if previous != nil {
-		previous()
-	}
+	generation, _ := h.registry.Register(hello.AgentID)
 	defer func() {
 		sessionCancel()
-		if !h.registry.Unregister(hello.AgentID, generation) {
+		removed, stillConnected := h.registry.Unregister(hello.AgentID, generation)
+		if !removed {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -164,8 +163,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to close character sessions", "agent_id", hello.AgentID)
 			}
 		}
-		if err := h.store.MarkDisconnected(ctx, hello.AgentID, connectedAt); err != nil {
-			slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
+		if !stillConnected {
+			if err := h.store.MarkDisconnected(ctx, hello.AgentID, connectedAt); err != nil {
+				slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
+			}
 		}
 	}()
 
@@ -305,6 +306,7 @@ func (h *agentHandler) list(w http.ResponseWriter, r *http.Request) {
 	for _, record := range records {
 		view := AgentView{
 			AgentID:            record.AgentID,
+			ActiveConnections:  h.registry.ConnectionCount(record.AgentID),
 			FirstSeenAt:        record.FirstSeenAt,
 			LastSeenAt:         record.LastSeenAt,
 			LastConnectedAt:    record.LastConnectedAt,
