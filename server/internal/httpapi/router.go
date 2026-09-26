@@ -1,0 +1,46 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+
+	agentdomain "phmon/server/internal/agents"
+)
+
+type AgentStore interface {
+	AuthenticateToken(context.Context, string) (string, error)
+	MarkConnected(context.Context, string, int, string, string) error
+	MarkSeen(context.Context, string) error
+	MarkDisconnected(context.Context, string) error
+	ListSeen(context.Context) ([]agentdomain.Record, error)
+}
+
+type Dependencies struct {
+	Database     Pinger
+	Agents       AgentStore
+	Registry     *agentdomain.Registry
+	AgentOptions AgentOptions
+}
+
+func New(deps Dependencies) http.Handler {
+	mux := http.NewServeMux()
+	registerHealth(mux, deps.Database)
+	if deps.Agents != nil && deps.Registry != nil {
+		handler := &agentHandler{
+			store:    deps.Agents,
+			registry: deps.Registry,
+			options:  deps.AgentOptions.withDefaults(),
+		}
+		mux.HandleFunc("GET /agent", handler.connect)
+		mux.HandleFunc("GET /api/agents", handler.list)
+	}
+	return mux
+}
+
+func respondJSON(w http.ResponseWriter, code int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(value)
+}

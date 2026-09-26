@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"phmon/server/internal/agents"
 	"phmon/server/internal/config"
 	"phmon/server/internal/database"
 	"phmon/server/internal/httpapi"
@@ -48,9 +49,17 @@ func run() error {
 		return errors.New("database migrations failed")
 	}
 
+	store := agents.NewStore(pool)
+	registry := agents.NewRegistry()
+	handler := httpapi.New(httpapi.Dependencies{
+		Database: pool,
+		Agents:   store,
+		Registry: registry,
+	})
+
 	// Keep liveness available during database outages; readiness checks the pool.
 	srv := &http.Server{
-		Addr: cfg.HTTPAddr, Handler: httpapi.New(pool),
+		Addr: cfg.HTTPAddr, Handler: handler,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
 		WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,
 	}

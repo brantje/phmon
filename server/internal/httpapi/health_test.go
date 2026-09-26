@@ -29,18 +29,18 @@ func TestHealth(t *testing.T) {
 		{"ready", "GET", "/readyz", nil, 200, Health{Status: "ok", Database: "ok"}, 1},
 		{"not ready", "GET", "/readyz", errors.New("password=secret"), 503, Health{Status: "unavailable", Database: "unavailable"}, 1},
 		{"wrong method", "POST", "/readyz", nil, 405, Health{}, 0},
-		{"unknown route", "GET", "/agent", nil, 404, Health{}, 0},
+		{"unknown route", "GET", "/missing", nil, 404, Health{}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			h := New(pingFunc(func(ctx context.Context) error {
+			h := New(Dependencies{Database: pingFunc(func(ctx context.Context) error {
 				calls++
 				deadline, ok := ctx.Deadline()
 				if !ok || time.Until(deadline) > 2*time.Second {
 					t.Fatal("missing bounded database timeout")
 				}
 				return tc.dbErr
-			}))
+			})})
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
 			if w.Code != tc.code || calls != tc.calls {
@@ -65,7 +65,7 @@ func TestHealth(t *testing.T) {
 func TestReadinessPropagatesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	h := New(pingFunc(func(ctx context.Context) error { return ctx.Err() }))
+	h := New(Dependencies{Database: pingFunc(func(ctx context.Context) error { return ctx.Err() })})
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil).WithContext(ctx))
 	if w.Code != 503 {
@@ -86,7 +86,7 @@ func TestPostgresReadiness(t *testing.T) {
 	}
 	defer pool.Close()
 	w := httptest.NewRecorder()
-	New(pool).ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil).WithContext(ctx))
+	New(Dependencies{Database: pool}).ServeHTTP(w, httptest.NewRequest("GET", "/readyz", nil).WithContext(ctx))
 	if w.Code != http.StatusOK {
 		t.Fatalf("PostgreSQL readiness failed: %d", w.Code)
 	}
