@@ -29,14 +29,21 @@ _WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
 try:
     from phBot import get_config_dir as _get_config_dir
+    from phBot import get_config_path as _get_config_path
     from phBot import get_version as _get_phbot_version
     from phBot import log as _phbot_log
     _PHBOT_AVAILABLE = True
 except ImportError:
     _PHBOT_AVAILABLE = False
     _get_config_dir = None
+    _get_config_path = None
     _get_phbot_version = None
     _phbot_log = None
+
+try:
+    import QtBind as _QtBind
+except ImportError:
+    _QtBind = None
 
 
 def _log(message):
@@ -74,13 +81,15 @@ def _validate_agent_id(agent_id):
 
 def validate_config(config):
     if not isinstance(config, dict):
-        raise ValueError('configuration must be a JSON object')
+        raise ValueError('configuration must be a mapping')
     backend_url = config.get('backend_url', '')
     agent_id = config.get('agent_id', '')
     agent_token = config.get('agent_token', '')
 
     if not isinstance(backend_url, str) or len(backend_url) > 2048:
         raise ValueError('backend_url must be a WebSocket URL')
+    if any(ch.isspace() for ch in backend_url):
+        raise ValueError('backend_url must not contain whitespace')
     parsed = urlparse(backend_url)
     if parsed.scheme not in ('ws', 'wss') or not parsed.hostname:
         raise ValueError('backend_url must use ws:// or wss://')
@@ -101,9 +110,74 @@ def validate_config(config):
     return normalized
 
 
-def load_config(path):
+_CONFIG_KEYS = ('backend_url', 'agent_id', 'agent_token')
+
+
+def _profile_settings_path(config_dir, bot_config_path):
+    if not bot_config_path:
+        raise ValueError('active phBot profile is unavailable')
+    profile_file = str(bot_config_path).replace('\\', '/').rsplit('/', 1)[-1]
+    profile_name = os.path.splitext(profile_file)[0]
+    if not profile_name:
+        raise ValueError('active phBot profile is invalid')
+    return os.path.join(config_dir, pName, profile_name + '.cfg')
+
+
+def load_saved_config(path):
+    values = {}
     with open(path, 'r') as handle:
-        return validate_config(json.load(handle))
+        for raw_line in handle:
+            line = raw_line.rstrip('\r\n')
+            if not line:
+                continue
+            if '=' not in line:
+                raise ValueError('invalid saved configuration')
+            key, value = line.split('=', 1)
+            if key not in _CONFIG_KEYS or key in values:
+                raise ValueError('invalid saved configuration')
+            values[key] = value
+    if set(values) != set(_CONFIG_KEYS):
+        raise ValueError('saved configuration is incomplete')
+    return validate_config(values)
+
+
+def save_saved_config(path, config):
+    normalized = validate_config(config)
+    directory = os.path.dirname(path)
+    if not os.path.isdir(directory):
+        try:
+            os.makedirs(directory)
+        except OSError:
+            if not os.path.isdir(directory):
+                raise
+    temporary = path + '.tmp'
+    with open(temporary, 'w') as handle:
+        for key in _CONFIG_KEYS:
+            handle.write(key + '=' + normalized[key] + '\n')
+    os.replace(temporary, path)
+    return normalized
+
+
+def config_from_gui_values(backend_url, agent_id, agent_token, saved_config=None):
+    backend_url = str(backend_url).strip()
+    agent_id = str(agent_id).strip()
+    agent_token = str(agent_token).strip()
+
+    if not agent_token and saved_config is not None:
+        if (
+            backend_url == saved_config.get('backend_url') and
+            agent_id == saved_config.get('agent_id')
+        ):
+            agent_token = saved_config.get('agent_token', '')
+
+    if not agent_token:
+        raise ValueError('agent token is required for this identity')
+
+    return validate_config({
+        'backend_url': backend_url,
+        'agent_id': agent_id,
+        'agent_token': agent_token,
+    })
 
 
 def _expected_accept(key):
@@ -435,26 +509,31 @@ class AgentWorker(object):
 
 
 _worker = None
+_active_settings_path = None
+_profile_config = None
+_gui = None
+_gui_backend_url = None
+_gui_agent_id = None
+_gui_agent_token = None
+_gui_status = None
 
 
-def _start_phbot_worker():
-    global _worker
-    path = os.path.join(_get_config_dir(), 'PhMon.json')
-    try:
-        config = load_config(path)
-    except Exception as error:
-        _log('not started: ' + error.__class__.__name__ + '. Configure ' + path)
+def _set_gui_status(message):
+    if _QtBind is not None and _gui is not None and _gui_status is not None:
+        _QtBind.setText(_gui, _gui_status, str(message))
+
+
+def _set_gui_config(config=None):
+    if _QtBind is None or _gui is None:
         return
-    try:
-        version = _get_phbot_version()
-    except Exception:
-        version = 'unknown'
-    _worker = AgentWorker(config, version)
-    _worker.start()
-    _log(pVersion + ' loaded')
+    config = config or {}
+    _QtBind.setText(_gui, _gui_backend_url, config.get('backend_url', ''))
+    _QtBind.setText(_gui, _gui_agent_id, config.get('agent_id', ''))
+    # QtBind has no documented password field. Never keep the persisted token visible.
+    _QtBind.setText(_gui, _gui_agent_token, '')
 
 
-def finished():
+def _stop_worker():
     global _worker
     if _worker is not None:
         _worker.stop()
@@ -462,5 +541,122 @@ def finished():
         _worker = None
 
 
-if _PHBOT_AVAILABLE:
-    _start_phbot_worker()
+def _start_worker(config):
+    global _worker
+    _stop_worker()
+    try:
+        version = _get_phbot_version()
+    except Exception:
+        version = 'unknown'
+    _worker = AgentWorker(config, version)
+    _worker.start()
+
+
+def _current_settings_path():
+    bot_config_path = _get_config_path()
+    if not bot_config_path:
+        return None
+    return _profile_settings_path(_get_config_dir(), bot_config_path)
+
+
+def _load_active_profile(force=False):
+    global _active_settings_path
+    global _profile_config
+
+    path = _current_settings_path()
+    if path is None:
+        _set_gui_status('Join the game to select a bot profile.')
+        return
+    if not force and path == _active_settings_path:
+        return
+
+    _active_settings_path = path
+    _profile_config = None
+    _stop_worker()
+
+    try:
+        config = load_saved_config(path)
+    except IOError:
+        _set_gui_config()
+        _set_gui_status('Configure this bot profile, then click Save & Connect.')
+        return
+    except Exception as error:
+        _set_gui_config()
+        _set_gui_status('Saved profile is invalid; enter the settings again.')
+        _log('profile configuration invalid (' + error.__class__.__name__ + ')')
+        return
+
+    _profile_config = config
+    _set_gui_config(config)
+    _set_gui_status('Profile loaded. Token is stored but hidden.')
+    _start_worker(config)
+
+
+def save_config():
+    global _active_settings_path
+    global _profile_config
+
+    path = _current_settings_path()
+    if path is None:
+        _set_gui_status('Join the game before saving PhMon settings.')
+        return
+
+    saved = _profile_config if path == _active_settings_path else None
+    try:
+        config = config_from_gui_values(
+            _QtBind.text(_gui, _gui_backend_url),
+            _QtBind.text(_gui, _gui_agent_id),
+            _QtBind.text(_gui, _gui_agent_token),
+            saved,
+        )
+        save_saved_config(path, config)
+    except Exception as error:
+        _set_gui_status('Invalid settings. Check URL, agent ID and token.')
+        _log('configuration not saved (' + error.__class__.__name__ + ')')
+        return
+
+    _active_settings_path = path
+    _profile_config = config
+    _set_gui_config(config)
+    _set_gui_status('Saved for this bot profile. Connecting...')
+    _start_worker(config)
+
+
+def joined_game():
+    _load_active_profile(force=True)
+
+
+def event_loop():
+    # Profile changes can occur without reloading the plugin. The callback is cheap:
+    # it only compares phBot's active config path unless the profile changed.
+    try:
+        _load_active_profile()
+    except Exception as error:
+        _log('profile sync failed (' + error.__class__.__name__ + ')')
+
+
+def finished():
+    _stop_worker()
+
+
+if _PHBOT_AVAILABLE and _QtBind is not None:
+    _gui = _QtBind.init(__name__, pName)
+    _QtBind.createLabel(_gui, 'Backend WebSocket URL', 10, 10)
+    _gui_backend_url = _QtBind.createLineEdit(_gui, '', 10, 30, 360, 20)
+    _QtBind.createLabel(_gui, 'Agent ID', 10, 60)
+    _gui_agent_id = _QtBind.createLineEdit(_gui, '', 10, 80, 360, 20)
+    _QtBind.createLabel(_gui, 'Agent token (paste to set or replace)', 10, 110)
+    _gui_agent_token = _QtBind.createLineEdit(_gui, '', 10, 130, 360, 20)
+    _QtBind.createButton(_gui, 'save_config', 'Save & Connect', 10, 165)
+    _gui_status = _QtBind.createLabel(
+        _gui,
+        'Join the game to select a bot profile.',
+        10,
+        200,
+    )
+    try:
+        _load_active_profile(force=True)
+    except Exception as error:
+        _log('profile sync failed (' + error.__class__.__name__ + ')')
+elif _PHBOT_AVAILABLE:
+    _log('QtBind GUI API is unavailable; PhMon cannot be configured')
