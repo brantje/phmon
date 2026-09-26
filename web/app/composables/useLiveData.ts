@@ -34,8 +34,8 @@ const staleCycle = ref(false)
 
 const subscriptions = new Map<string, Subscription>()
 let socket: WebSocket | null = null
-let reconnectTimer: ReturnType<typeof setTimeout> | undefined
-let watchdogTimer: ReturnType<typeof setInterval> | undefined
+let reconnectTimer: number | undefined
+let watchdogTimer: number | undefined
 let reconnectAttempt = 0
 let lastMessageAt = 0
 let users = 0
@@ -100,14 +100,16 @@ function ensureSubscription(
   subscriptions.set(id, subscription)
   clear?.()
   if (hasSnapshot.value) connectionState.value = 'syncing'
-  if (!send({
-    type: 'subscribe',
-    protocol_version: LIVE_PROTOCOL_VERSION,
-    subscription_id: id,
-    revision: subscription.revision,
-    stream,
-    filter,
-  })) {
+  if (
+    !send({
+      type: 'subscribe',
+      protocol_version: LIVE_PROTOCOL_VERSION,
+      subscription_id: id,
+      revision: subscription.revision,
+      stream,
+      filter,
+    })
+  ) {
     ensureConnection()
   }
 }
@@ -265,12 +267,7 @@ function handleFrame(frame: LiveServerFrame) {
     return
   }
 
-  if (
-    !frame.subscription_id ||
-    !frame.revision ||
-    !frame.stream
-  )
-    return
+  if (!frame.subscription_id || !frame.revision || !frame.stream) return
   const subscription = subscriptions.get(frame.subscription_id)
   if (
     !subscription ||
