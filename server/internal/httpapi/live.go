@@ -273,7 +273,7 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 	}
 
 	c.mu.Lock()
-	current, exists := c.subscriptions[subscription.ID]
+	_, exists := c.subscriptions[subscription.ID]
 	highestRevision := c.revisions[subscription.ID]
 	if subscription.Revision <= highestRevision {
 		c.mu.Unlock()
@@ -292,7 +292,6 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 		c.fail(websocket.StatusPolicyViolation, "too many subscriptions")
 		return false
 	}
-	_ = current
 	c.subscriptions[subscription.ID] = subscription
 	c.revisions[subscription.ID] = subscription.Revision
 	c.mu.Unlock()
