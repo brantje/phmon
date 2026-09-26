@@ -84,9 +84,4 @@ export interface GroupsSnapshot {
 }
 
 export type LiveConnectionState =
-  | 'idle'
-  | 'connecting'
-  | 'syncing'
-  | 'current'
-  | 'stale'
-  | 'reconnecting'
+  'idle' | 'connecting' | 'syncing' | 'current' | 'stale' | 'reconnecting'
