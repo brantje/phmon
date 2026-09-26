@@ -45,7 +45,6 @@ const {
   refresh: refreshAgents,
 } = await useFetch<AgentListResponse>('/api/agents', {
   retry: 0,
-  default: () => ({ status: 'ok', agents: [] }),
 })
 const lastAgents = ref<AgentView[]>(
   agentResponse.value?.status === 'ok' ? agentResponse.value.agents : [],
