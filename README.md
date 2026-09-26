@@ -46,16 +46,20 @@ stack has no external-service dependency. UI fonts are system fonts.
 ## Connect a phBot agent
 
 Provision one stable identity/token pair for each phBot account/profile that should
-appear as its own PhMon agent:
+appear as its own PhMon agent. The normal path is the dashboard's **Create credential**
+action. It generates a new agent ID/token through Nuxt -> Go -> PostgreSQL and displays
+the plaintext token only in that one response. Save it immediately.
+
+The CLI remains available for headless/operator workflows:
 
 ```sh
 docker compose exec server phmonctl agent create
 ```
 
-The command prints the plaintext token once; PostgreSQL stores only its SHA-256 hash.
-Copy `plugin/PhMon.py` into phBot's Plugins directory and reload the plugin. In the
-phBot **Plugins -> PhMon** tab, enter the backend WebSocket URL, provisioned agent ID
-and token, then click **Save & Connect**.
+Both paths use the same server-side credential generator and PostgreSQL stores only
+the token's SHA-256 hash. Copy `plugin/PhMon.py` into phBot's Plugins directory and
+reload the plugin. In the phBot **Plugins -> PhMon** tab, enter the backend WebSocket
+URL, provisioned agent ID and token, then click **Save & Connect**.
 
 PhMon stores these values separately for the active phBot player/profile under
 `Config/PhMon/<active-profile>.cfg`. The active player configuration returned by
@@ -123,7 +127,10 @@ default; PostgreSQL and the authenticated agent/API port bind to loopback. Set
 should connect through operator-managed TLS termination using `wss://`; overriding
 `SERVER_BIND_ADDR` is intended only for an explicitly trusted development network.
 The defaults avoid common 3000/8080/5432 conflicts. This is not a public deployment:
-user authentication is not implemented yet; only the agent WebSocket is token-authenticated.
+user authentication is not implemented yet; only the agent WebSocket is
+token-authenticated. In particular, any user who can reach the current web UI can use
+the Create credential action, so keep the UI on a trusted network until user
+authentication/authorization is implemented.
 
 | Variable | Default/example | Purpose |
 | --- | --- | --- |
@@ -171,9 +178,9 @@ npm --prefix web run format
 binaries; the stdlib-only phBot transport tests; frontend Prettier, ESLint, type
 checking and production build; and Compose config validation. Without
 `TEST_DATABASE_URL`, PostgreSQL integration tests explicitly skip; unit/API/protocol
-tests still run. CI additionally provisions an agent credential and proves
-connect → backend restart → automatic reconnect → disconnect through the real
-Go/PostgreSQL/Nuxt stack.
+tests still run. CI additionally provisions an agent credential through the Nuxt web
+endpoint and proves connect → backend restart → automatic reconnect → disconnect
+through the real Go/PostgreSQL/Nuxt stack.
 
 With the full Compose stack running, verify outage and recovery:
 
@@ -198,10 +205,13 @@ Go uses standard-library HTTP handlers, pgx and embedded transactional migration
 The first durable `agents` table stores stable agent IDs, token hashes and
 connection/version metadata. `/agent` is the authenticated protocol-v1 WebSocket;
 an in-memory generation-fenced registry owns current socket presence while
-PostgreSQL remains the durable authority. `/api/agents` exposes only safe
-presentation fields.
+PostgreSQL remains the durable authority. `GET /api/agents` exposes only safe
+presentation fields. `POST /api/agents/credentials` creates a new credential and
+returns its plaintext token once with no-store semantics; there is no endpoint for
+retrieving an existing token.
 
-Nuxt keeps browser access same-origin through `/api/health` and `/api/agents`.
+Nuxt keeps browser access same-origin through `/api/health`, `/api/agents` and the
+credential-creation proxy.
 `plugin/PhMon.py` uses only Python standard-library networking, performs no backend
 I/O in phBot callbacks, and reconnects on a worker thread. See
 [docs/protocol.md](docs/protocol.md) for the wire contract. Commands, character/game

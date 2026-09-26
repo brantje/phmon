@@ -9,9 +9,12 @@ and events are deliberately outside this version's implemented message set.
 - Production deployments use wss:// with normal certificate validation. Plain ws://
   is for trusted local development only.
 - Every upgrade request carries Authorization: Bearer <agent-token>.
-- Tokens are created per agent with phmonctl agent create. PostgreSQL stores only a
+- Tokens are created per agent through the dashboard or `phmonctl agent create`.
+  Both use the same server-side generator/store path. PostgreSQL stores only a
   SHA-256 token hash. A token is permanently bound to one stable agent_id.
-- Tokens never belong in URLs, logs, QR codes or browser-visible API responses.
+- Tokens never belong in URLs, logs or QR codes. The credential-creation response is
+  the sole browser-visible exception: it returns the newly generated plaintext token
+  once with `Cache-Control: no-store`. Existing tokens are never retrievable.
 - The server rejects a missing/invalid token before WebSocket upgrade.
 - The first application message must be hello within 5 seconds. The agent_id in
   hello must match the identity authenticated by the bearer token.
@@ -74,12 +77,21 @@ near 1 second, doubles to a 30-second cap, adds bounded jitter, and resets after
 successful hello/ack. On reconnect the plugin sends hello again before normal
 messages. There is no durable local event store in Slice 1.
 
-## HTTP read model
+## HTTP agent API
 
 GET /api/agents returns safe presentation fields for agents that have connected at
 least once: stable id, connected state, first/last seen, connect/disconnect times,
 current connection start when active, protocol version, plugin version and phBot
-version. Credential hashes and tokens are never returned. Responses are no-store.
+version. Stored credential hashes/tokens are never returned.
+
+POST /api/agents/credentials creates one new stable agent identity/token pair using
+the same domain generator/store path as phmonctl. The plaintext token is returned in
+that creation response only; PostgreSQL persists only its SHA-256 hash. Both endpoints
+are no-store.
+
+Nuxt exposes same-origin equivalents. Slice 1 still has no human-user authentication,
+so browser credential provisioning is for a trusted deployment only until later auth
+work owns that boundary.
 
 ## Foundation health contract
 

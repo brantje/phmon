@@ -32,7 +32,9 @@ same-viewport browser comparison remains BLOCKED in the current execution enviro
   last successful list and show stale/unavailable state instead of a recurring modal.
 - The Slice 1 dashboard is backed by GET /api/agents and shows real connected state,
   stable agent ID, plugin/phBot/protocol versions, connection age and last-seen time.
-  No fabricated monitoring data is used.
+  It can also create a new agent ID/token pair through a no-store same-origin POST;
+  the plaintext token remains visible only in the current provisioning panel and is
+  not recoverable later. No fabricated monitoring data is used.
 
 ### Evidence and deliberate deferrals
 

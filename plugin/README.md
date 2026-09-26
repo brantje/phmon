@@ -7,12 +7,14 @@ history and future command policy remain server-owned.
 
 ## Install
 
-1. Provision a credential on the PhMon server:
+1. Provision a credential from the PhMon dashboard with **Create credential**, or
+   use the CLI for a headless/operator flow:
 
        docker compose exec server phmonctl agent create
 
-   The command prints an agent_id and agent_token once. PostgreSQL stores only the
-   token hash. Keep the plaintext token private.
+   Both paths generate the credential in the Go backend. The agent_id and agent_token
+   are shown once while PostgreSQL stores only the token hash. Keep the plaintext
+   token private.
 
 2. Copy plugin/PhMon.py into the phBot Plugins directory and reload the plugin.
 3. Join the game with the account/profile you want to configure.
@@ -24,13 +26,15 @@ history and future command policy remain server-owned.
    hello handshake succeeds.
 
 Configuration is profile-scoped. PhMon asks phBot for the active player's
-`get_config_path()`, derives a matching filename, and stores its own settings in:
+`get_config_path()` and `get_profile()`, derives a matching filename, and stores
+its own settings in:
 
     <phBot Config>/PhMon/<active-profile>.cfg
 
 PhMon never modifies phBot's player JSON; the documented phBot API warns that direct
-changes to that JSON may be overwritten. Distinct characters/profiles therefore get
-distinct PhMon settings even when several accounts share the same phBot installation.
+changes to that JSON may be overwritten. The player configuration separates
+accounts/characters and the explicit profile name separates multiple named profiles
+for the same character.
 
 The saved file contains the bearer token because automatic reconnect requires it.
 Keep the phBot Config directory private. QtBind documents a normal line edit rather

@@ -30,6 +30,8 @@ coverage is tracked separately and is never treated as proof of a real phBot run
     keeps its own per-profile settings file under Config/PhMon/.
 - Misc: https://plugins.phbot.org/phbot-api/misc
   - get_version() returns the phBot version string.
+  - get_profile() returns the active profile name, an empty string for the default
+    profile, or None while no player is logged in.
 
 ## Slice 1 integration decisions
 
@@ -45,12 +47,12 @@ discarding partial frame bytes and continuing on a corrupted stream.
 
 Configuration is operator-facing through phBot's native QtBind GUI rather than a
 hand-edited PhMon JSON file. The GUI contains backend URL, agent ID and token fields
-plus Save & Connect. Persistence is scoped to the active phBot player/profile:
-get_config_path() selects Config/PhMon/<active-profile>.cfg, but PhMon never writes to
-the JSON path returned by phBot. Profile changes are detected from the active config
-path so several accounts/characters or alternate profiles do not accidentally share
-one agent identity. The token field is cleared after load/save; the persisted local
-token is reused only while URL and agent ID are unchanged.
+plus Save & Connect. Persistence is scoped with both get_config_path() and
+get_profile(): the player configuration identifies the account/character and the
+explicit profile name distinguishes named profiles for that player. PhMon stores its
+own file under Config/PhMon/ and never writes to the JSON path returned by phBot.
+The token field is cleared after load/save; the persisted local token is reused only
+while URL and agent ID are unchanged.
 
 The plugin keeps backend networking on a worker thread. phBot callbacks never wait
 for backend network I/O. The plugin is authoritative only for its current process;
