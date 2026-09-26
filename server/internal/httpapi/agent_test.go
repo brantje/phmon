@@ -127,6 +127,32 @@ func TestCreateAgentCredential(t *testing.T) {
 	}
 }
 
+func TestCreateAgentCredentialStoreFailureIsSanitized(t *testing.T) {
+	server := newAgentTestServer(t, failingAgentStore{}, AgentOptions{})
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodPost, server.URL+"/api/agents/credentials", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status: %d", response.StatusCode)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["error"] != "service unavailable" {
+		t.Fatalf("unexpected error response: %+v", body)
+	}
+}
+
 func TestAgentAuthenticationIsEnforced(t *testing.T) {
 	store := newFakeAgentStore()
 	server := newAgentTestServer(t, store, AgentOptions{})
