@@ -61,16 +61,23 @@ function sameOriginUpgrade(request: Request) {
   if (parsedOrigin.username || parsedOrigin.password) return false
 
   const requestURL = new URL(request.url)
-  const forwardedHost =
-    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() ||
-    request.headers.get('host') ||
-    requestURL.host
-  const forwardedProto =
-    request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
-    requestURL.protocol.replace(':', '')
-  if (forwardedProto !== 'http' && forwardedProto !== 'https') return false
+  const hosts = [
+    request.headers.get('host')?.trim(),
+    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim(),
+    requestURL.host,
+  ].filter((value): value is string => Boolean(value))
+  const protocols = [
+    request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim(),
+    requestURL.protocol.replace(':', ''),
+  ].filter(
+    (value): value is 'http' | 'https' =>
+      value === 'http' || value === 'https',
+  )
 
-  return parsedOrigin.origin === `${forwardedProto}://${forwardedHost}`
+  return (
+    hosts.includes(parsedOrigin.host) &&
+    protocols.includes(parsedOrigin.protocol.replace(':', '') as 'http' | 'https')
+  )
 }
 
 export default defineWebSocketHandler({
