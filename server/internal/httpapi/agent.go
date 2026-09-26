@@ -40,6 +40,7 @@ type agentHandler struct {
 	registry   *agentdomain.Registry
 	options    AgentOptions
 	characters *characters.Store
+	live       *LiveHub
 }
 
 type agentMessage struct {
@@ -150,12 +151,14 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 
 	sessionCtx, sessionCancel := context.WithCancel(r.Context())
 	generation, _ := h.registry.Register(hello.AgentID)
+	h.live.Invalidate()
 	defer func() {
 		sessionCancel()
 		removed, stillConnected, disconnectFence := h.registry.UnregisterWithFence(hello.AgentID, generation)
 		if !removed {
 			return
 		}
+		h.live.Invalidate()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if h.characters != nil {
@@ -212,6 +215,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			cancel()
 			if err != nil {
 				slog.Warn("failed to persist agent heartbeat", "agent_id", hello.AgentID)
+			} else {
+				h.live.Invalidate()
 			}
 		case "character.identify":
 			if h.characters == nil {
@@ -232,6 +237,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				_ = conn.Close(websocket.StatusPolicyViolation, "invalid character identity")
 				return
 			}
+			h.live.Invalidate()
 			if e = wsjson.Write(sessionCtx, conn, map[string]any{"type": "character.registered", "protocol_version": agentProtocolVersion, "character_id": id}); e != nil {
 				return
 			}
@@ -263,6 +269,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				_ = conn.Close(websocket.StatusInternalError, "character state unavailable")
 				return
 			}
+			h.live.Invalidate()
 		case "character.left":
 			if !agentdomain.ValidAgentID(message.CharacterID) || h.characters == nil {
 				_ = conn.Close(websocket.StatusPolicyViolation, "character_id required")
@@ -285,6 +292,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				_ = conn.Close(websocket.StatusInternalError, "character state unavailable")
 				return
 			}
+			h.live.Invalidate()
 		default:
 			_ = conn.Close(websocket.StatusPolicyViolation, "unexpected agent message")
 			return
@@ -326,16 +334,24 @@ func (h *agentHandler) createCredential(w http.ResponseWriter, r *http.Request) 
 func (h *agentHandler) list(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	records, err := h.store.ListSeen(ctx)
+	views, err := loadAgentViews(ctx, h.store, h.registry)
 	if err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
 		return
+	}
+	respondJSON(w, http.StatusOK, views)
+}
+
+func loadAgentViews(ctx context.Context, store AgentStore, registry *agentdomain.Registry) ([]AgentView, error) {
+	records, err := store.ListSeen(ctx)
+	if err != nil {
+		return nil, err
 	}
 	views := make([]AgentView, 0, len(records))
 	for _, record := range records {
 		view := AgentView{
 			AgentID:            record.AgentID,
-			ActiveConnections:  h.registry.ConnectionCount(record.AgentID),
+			ActiveConnections:  registry.ConnectionCount(record.AgentID),
 			FirstSeenAt:        record.FirstSeenAt,
 			LastSeenAt:         record.LastSeenAt,
 			LastConnectedAt:    record.LastConnectedAt,
@@ -344,13 +360,13 @@ func (h *agentHandler) list(w http.ResponseWriter, r *http.Request) {
 			PluginVersion:      record.PluginVersion,
 			PhBotVersion:       record.PhBotVersion,
 		}
-		if connectedAt, ok := h.registry.ConnectedAt(record.AgentID); ok {
+		if connectedAt, ok := registry.ConnectedAt(record.AgentID); ok {
 			view.Connected = true
 			view.ConnectedAt = &connectedAt
 		}
 		views = append(views, view)
 	}
-	respondJSON(w, http.StatusOK, views)
+	return views, nil
 }
 
 func bearerToken(header string) (string, bool) {
