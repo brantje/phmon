@@ -1,0 +1,442 @@
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
+import base64
+import hashlib
+import json
+import os
+import random
+import select
+import socket
+import ssl
+import struct
+import threading
+import time
+try:
+    from urllib.parse import urlparse
+except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmless for embedded variants.
+    from urlparse import urlparse
+
+pName = 'PhMon'
+pVersion = '1.0.0'
+pUrl = ''
+
+PROTOCOL_VERSION = 1
+DEFAULT_HEARTBEAT_INTERVAL = 10
+DEFAULT_HEARTBEAT_TIMEOUT = 30
+MAX_MESSAGE_BYTES = 8192
+_WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+
+try:
+    from phBot import get_config_dir as _get_config_dir
+    from phBot import get_version as _get_phbot_version
+    from phBot import log as _phbot_log
+    _PHBOT_AVAILABLE = True
+except ImportError:
+    _PHBOT_AVAILABLE = False
+    _get_config_dir = None
+    _get_phbot_version = None
+    _phbot_log = None
+
+
+def _log(message):
+    text = 'Plugin: PhMon ' + str(message)
+    if _phbot_log is not None:
+        _phbot_log(text)
+    else:
+        print(text)
+
+
+def _utc_now():
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+
+def _monotonic():
+    if hasattr(time, 'monotonic'):
+        return time.monotonic()
+    return time.time()
+
+
+def _validate_agent_id(agent_id):
+    if not isinstance(agent_id, str) or len(agent_id) != 36:
+        return False
+    parts = agent_id.split('-')
+    if [len(part) for part in parts] != [8, 4, 4, 4, 12]:
+        return False
+    if agent_id.lower() != agent_id:
+        return False
+    try:
+        int(''.join(parts), 16)
+    except ValueError:
+        return False
+    return True
+
+
+def validate_config(config):
+    if not isinstance(config, dict):
+        raise ValueError('configuration must be a JSON object')
+    backend_url = config.get('backend_url', '')
+    agent_id = config.get('agent_id', '')
+    agent_token = config.get('agent_token', '')
+
+    if not isinstance(backend_url, str) or len(backend_url) > 2048:
+        raise ValueError('backend_url must be a WebSocket URL')
+    parsed = urlparse(backend_url)
+    if parsed.scheme not in ('ws', 'wss') or not parsed.hostname:
+        raise ValueError('backend_url must use ws:// or wss://')
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError('backend_url must not contain credentials, query parameters, or fragments')
+    if parsed.path not in ('', '/', '/agent'):
+        raise ValueError('backend_url path must be /agent')
+    if not _validate_agent_id(agent_id):
+        raise ValueError('agent_id must be a lowercase UUID')
+    if not isinstance(agent_token, str) or not agent_token or len(agent_token) > 256:
+        raise ValueError('agent_token is missing or invalid')
+    if any(ch.isspace() for ch in agent_token):
+        raise ValueError('agent_token must not contain whitespace')
+
+    normalized = dict(config)
+    if parsed.path in ('', '/'):
+        normalized['backend_url'] = backend_url.rstrip('/') + '/agent'
+    return normalized
+
+
+def load_config(path):
+    with open(path, 'r') as handle:
+        return validate_config(json.load(handle))
+
+
+def _expected_accept(key):
+    raw = (key + _WEBSOCKET_GUID).encode('ascii')
+    return base64.b64encode(hashlib.sha1(raw).digest()).decode('ascii')
+
+
+def _mask_payload(payload, mask_key):
+    data = bytearray(payload)
+    for index in range(len(data)):
+        data[index] ^= mask_key[index % 4]
+    return bytes(data)
+
+
+def _encode_client_frame(opcode, payload, mask_key=None):
+    if isinstance(payload, str):
+        payload = payload.encode('utf-8')
+    if mask_key is None:
+        mask_key = os.urandom(4)
+    if len(mask_key) != 4:
+        raise ValueError('mask key must be four bytes')
+    length = len(payload)
+    if length > MAX_MESSAGE_BYTES:
+        raise ValueError('WebSocket message exceeds limit')
+    header = bytearray([0x80 | (opcode & 0x0f)])
+    if length < 126:
+        header.append(0x80 | length)
+    elif length <= 0xffff:
+        header.append(0x80 | 126)
+        header.extend(struct.pack('!H', length))
+    else:
+        header.append(0x80 | 127)
+        header.extend(struct.pack('!Q', length))
+    return bytes(header) + mask_key + _mask_payload(payload, mask_key)
+
+
+class WebSocketClosed(Exception):
+    pass
+
+
+class WebSocketClient(object):
+    def __init__(self, url, token, connect_timeout=10.0):
+        self.url = url
+        self.token = token
+        self.connect_timeout = connect_timeout
+        self._socket = None
+        self._buffer = b''
+        self._send_lock = threading.Lock()
+
+    def connect(self):
+        parsed = urlparse(self.url)
+        secure = parsed.scheme == 'wss'
+        port = parsed.port or (443 if secure else 80)
+        path = parsed.path or '/agent'
+        if parsed.query:
+            path += '?' + parsed.query
+
+        raw_socket = socket.create_connection((parsed.hostname, port), self.connect_timeout)
+        if secure:
+            context = ssl.create_default_context()
+            raw_socket = context.wrap_socket(raw_socket, server_hostname=parsed.hostname)
+        raw_socket.settimeout(self.connect_timeout)
+        self._socket = raw_socket
+
+        key = base64.b64encode(os.urandom(16)).decode('ascii')
+        default_port = 443 if secure else 80
+        host = parsed.hostname if port == default_port else parsed.hostname + ':' + str(port)
+        request = (
+            'GET ' + path + ' HTTP/1.1\r\n'
+            'Host: ' + host + '\r\n'
+            'Upgrade: websocket\r\n'
+            'Connection: Upgrade\r\n'
+            'Sec-WebSocket-Key: ' + key + '\r\n'
+            'Sec-WebSocket-Version: 13\r\n'
+            'Authorization: Bearer ' + self.token + '\r\n'
+            '\r\n'
+        ).encode('ascii')
+        raw_socket.sendall(request)
+        response = self._read_http_headers()
+        status_line = response[0]
+        headers = response[1]
+        if ' 101 ' not in status_line:
+            raise WebSocketClosed('WebSocket upgrade rejected')
+        if headers.get('upgrade', '').lower() != 'websocket':
+            raise WebSocketClosed('invalid WebSocket upgrade response')
+        if 'upgrade' not in headers.get('connection', '').lower():
+            raise WebSocketClosed('invalid WebSocket connection response')
+        if headers.get('sec-websocket-accept', '') != _expected_accept(key):
+            raise WebSocketClosed('invalid WebSocket accept value')
+        raw_socket.settimeout(None)
+        return self
+
+    def _read_http_headers(self):
+        data = b''
+        while b'\r\n\r\n' not in data:
+            chunk = self._socket.recv(4096)
+            if not chunk:
+                raise WebSocketClosed('connection closed during WebSocket upgrade')
+            data += chunk
+            if len(data) > 16384:
+                raise WebSocketClosed('WebSocket upgrade response is too large')
+        header_bytes, self._buffer = data.split(b'\r\n\r\n', 1)
+        lines = header_bytes.decode('iso-8859-1').split('\r\n')
+        headers = {}
+        for line in lines[1:]:
+            if ':' not in line:
+                continue
+            name, value = line.split(':', 1)
+            headers[name.strip().lower()] = value.strip()
+        return lines[0], headers
+
+    def _recv_exact(self, length):
+        chunks = []
+        if self._buffer:
+            take = self._buffer[:length]
+            chunks.append(take)
+            self._buffer = self._buffer[len(take):]
+            length -= len(take)
+        while length > 0:
+            chunk = self._socket.recv(length)
+            if not chunk:
+                raise WebSocketClosed('WebSocket closed')
+            chunks.append(chunk)
+            length -= len(chunk)
+        return b''.join(chunks)
+
+    def _read_frame(self, timeout=None):
+        if self._socket is None:
+            raise WebSocketClosed('WebSocket is not connected')
+        self._socket.settimeout(timeout)
+        first, second = struct.unpack('!BB', self._recv_exact(2))
+        fin = bool(first & 0x80)
+        rsv = first & 0x70
+        opcode = first & 0x0f
+        masked = bool(second & 0x80)
+        length = second & 0x7f
+        if rsv or not fin:
+            raise WebSocketClosed('fragmented or extended frames are unsupported')
+        if masked:
+            raise WebSocketClosed('server frames must not be masked')
+        if length == 126:
+            length = struct.unpack('!H', self._recv_exact(2))[0]
+        elif length == 127:
+            length = struct.unpack('!Q', self._recv_exact(8))[0]
+        if length > MAX_MESSAGE_BYTES:
+            raise WebSocketClosed('WebSocket message exceeds limit')
+        payload = self._recv_exact(length)
+        return opcode, payload
+
+    def send_json(self, value):
+        payload = json.dumps(value, separators=(',', ':'))
+        self._send_frame(0x1, payload.encode('utf-8'))
+
+    def receive_json(self, timeout=None):
+        while True:
+            opcode, payload = self._read_frame(timeout)
+            if opcode == 0x1:
+                try:
+                    return json.loads(payload.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    raise WebSocketClosed('invalid JSON message')
+            if opcode == 0x8:
+                raise WebSocketClosed('server closed WebSocket')
+            if opcode == 0x9:
+                self._send_frame(0xA, payload)
+                continue
+            if opcode == 0xA:
+                continue
+            raise WebSocketClosed('unsupported WebSocket frame')
+
+    def _send_frame(self, opcode, payload):
+        if self._socket is None:
+            raise WebSocketClosed('WebSocket is not connected')
+        frame = _encode_client_frame(opcode, payload)
+        with self._send_lock:
+            self._socket.sendall(frame)
+
+    def close(self):
+        sock = self._socket
+        if sock is None:
+            return
+        try:
+            self._send_frame(0x8, struct.pack('!H', 1000))
+        except Exception:
+            pass
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+        try:
+            sock.close()
+        except Exception:
+            pass
+        self._socket = None
+
+
+class ReconnectBackoff(object):
+    def __init__(self, random_function=None):
+        self._base = 1.0
+        self._random = random_function or random.uniform
+
+    def reset(self):
+        self._base = 1.0
+
+    def next_delay(self):
+        delay = self._base * self._random(0.75, 1.0)
+        self._base = min(self._base * 2.0, 30.0)
+        return delay
+
+
+class AgentWorker(object):
+    def __init__(self, config, phbot_version, websocket_factory=None):
+        self.config = validate_config(config)
+        self.phbot_version = str(phbot_version)
+        self.websocket_factory = websocket_factory or WebSocketClient
+        self.stop_event = threading.Event()
+        self._thread = None
+        self._socket = None
+        self._socket_lock = threading.Lock()
+
+    def start(self):
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(target=self._run, name='PhMon-network')
+        self._thread.daemon = True
+        self._thread.start()
+
+    def join(self, timeout=None):
+        if self._thread is not None:
+            self._thread.join(timeout)
+
+    def stop(self):
+        self.stop_event.set()
+        with self._socket_lock:
+            active = self._socket
+        if active is not None:
+            active.close()
+
+    def _set_socket(self, value):
+        with self._socket_lock:
+            self._socket = value
+
+    def _run(self):
+        backoff = ReconnectBackoff()
+        while not self.stop_event.is_set():
+            client = None
+            try:
+                client = self.websocket_factory(self.config['backend_url'], self.config['agent_token'])
+                self._set_socket(client)
+                client.connect()
+                client.send_json({
+                    'type': 'hello',
+                    'protocol_version': PROTOCOL_VERSION,
+                    'agent_id': self.config['agent_id'],
+                    'plugin_version': pVersion,
+                    'phbot_version': self.phbot_version,
+                    'sent_at': _utc_now(),
+                })
+                ack = client.receive_json(timeout=10.0)
+                interval = self._validate_ack(ack)
+                backoff.reset()
+                _log('connected to backend')
+                next_heartbeat = _monotonic() + interval
+
+                while not self.stop_event.is_set():
+                    now = _monotonic()
+                    if now >= next_heartbeat:
+                        client.send_json({
+                            'type': 'heartbeat',
+                            'protocol_version': PROTOCOL_VERSION,
+                            'sent_at': _utc_now(),
+                        })
+                        next_heartbeat = now + interval
+                        continue
+                    wait = min(next_heartbeat - now, 1.0)
+                    try:
+                        message = client.receive_json(timeout=wait)
+                        if message is not None:
+                            raise WebSocketClosed('unexpected server application message')
+                    except socket.timeout:
+                        pass
+            except Exception as error:
+                if not self.stop_event.is_set():
+                    _log('backend unavailable (' + error.__class__.__name__ + '); reconnecting')
+            finally:
+                if client is not None:
+                    client.close()
+                self._set_socket(None)
+
+            if not self.stop_event.is_set():
+                self.stop_event.wait(backoff.next_delay())
+
+    def _validate_ack(self, ack):
+        if not isinstance(ack, dict) or ack.get('type') != 'hello.ack':
+            raise WebSocketClosed('hello acknowledgement required')
+        if ack.get('protocol_version') != PROTOCOL_VERSION:
+            raise WebSocketClosed('unsupported protocol version')
+        interval = ack.get('heartbeat_interval_seconds', DEFAULT_HEARTBEAT_INTERVAL)
+        timeout = ack.get('heartbeat_timeout_seconds', DEFAULT_HEARTBEAT_TIMEOUT)
+        if not isinstance(interval, int) or interval < 1:
+            raise WebSocketClosed('invalid heartbeat interval')
+        if not isinstance(timeout, int) or timeout <= interval:
+            raise WebSocketClosed('invalid heartbeat timeout')
+        return interval
+
+
+_worker = None
+
+
+def _start_phbot_worker():
+    global _worker
+    path = os.path.join(_get_config_dir(), 'PhMon.json')
+    try:
+        config = load_config(path)
+    except Exception as error:
+        _log('not started: ' + error.__class__.__name__ + '. Configure ' + path)
+        return
+    try:
+        version = _get_phbot_version()
+    except Exception:
+        version = 'unknown'
+    _worker = AgentWorker(config, version)
+    _worker.start()
+    _log(pVersion + ' loaded')
+
+
+def finished():
+    global _worker
+    if _worker is not None:
+        _worker.stop()
+        _worker.join(2.0)
+        _worker = None
+
+
+if _PHBOT_AVAILABLE:
+    _start_phbot_worker()

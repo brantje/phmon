@@ -11,7 +11,9 @@ cd "$(dirname "$0")/.."
   go vet ./...
   go test -race ./...
   go build -o bin/server ./cmd/server
+  go build -o bin/phmonctl ./cmd/phmonctl
 )
+python3 -m unittest discover -s plugin -p 'test_*.py'
 npm --prefix web run format:check
 npm --prefix web run lint
 npm --prefix web run typecheck

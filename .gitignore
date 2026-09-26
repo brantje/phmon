@@ -5,5 +5,7 @@ node_modules/
 .nuxt/
 .output/
 server/bin/
+__pycache__/
+*.pyc
 *.log
 .DS_Store
