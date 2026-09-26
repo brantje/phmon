@@ -215,7 +215,11 @@ class WebSocketClient(object):
             headers[name.strip().lower()] = value.strip()
         return lines[0], headers
 
-    def _recv_exact(self, length):
+    def _recv_exact(self, length, sock=None):
+        if sock is None:
+            sock = self._socket
+        if sock is None:
+            raise WebSocketClosed('WebSocket is not connected')
         chunks = []
         if self._buffer:
             take = self._buffer[:length]
@@ -223,35 +227,55 @@ class WebSocketClient(object):
             self._buffer = self._buffer[len(take):]
             length -= len(take)
         while length > 0:
-            chunk = self._socket.recv(length)
+            chunk = sock.recv(length)
             if not chunk:
                 raise WebSocketClosed('WebSocket closed')
             chunks.append(chunk)
             length -= len(chunk)
         return b''.join(chunks)
 
+    def _wait_for_frame_start(self, sock, timeout):
+        if self._buffer:
+            return True
+        if timeout is None:
+            return True
+        readable, _, _ = select.select([sock], [], [], timeout)
+        return bool(readable)
+
     def _read_frame(self, timeout=None):
-        if self._socket is None:
+        sock = self._socket
+        if sock is None:
             raise WebSocketClosed('WebSocket is not connected')
-        self._socket.settimeout(timeout)
-        first, second = struct.unpack('!BB', self._recv_exact(2))
-        fin = bool(first & 0x80)
-        rsv = first & 0x70
-        opcode = first & 0x0f
-        masked = bool(second & 0x80)
-        length = second & 0x7f
-        if rsv or not fin:
-            raise WebSocketClosed('fragmented or extended frames are unsupported')
-        if masked:
-            raise WebSocketClosed('server frames must not be masked')
-        if length == 126:
-            length = struct.unpack('!H', self._recv_exact(2))[0]
-        elif length == 127:
-            length = struct.unpack('!Q', self._recv_exact(8))[0]
-        if length > MAX_MESSAGE_BYTES:
-            raise WebSocketClosed('WebSocket message exceeds limit')
-        payload = self._recv_exact(length)
-        return opcode, payload
+        if not self._wait_for_frame_start(sock, timeout):
+            return None
+
+        sock.settimeout(self.connect_timeout)
+        try:
+            first, second = struct.unpack('!BB', self._recv_exact(2, sock))
+            fin = bool(first & 0x80)
+            rsv = first & 0x70
+            opcode = first & 0x0f
+            masked = bool(second & 0x80)
+            length = second & 0x7f
+            if rsv or not fin:
+                raise WebSocketClosed('fragmented or extended frames are unsupported')
+            if masked:
+                raise WebSocketClosed('server frames must not be masked')
+            if length == 126:
+                length = struct.unpack('!H', self._recv_exact(2, sock))[0]
+            elif length == 127:
+                length = struct.unpack('!Q', self._recv_exact(8, sock))[0]
+            if length > MAX_MESSAGE_BYTES:
+                raise WebSocketClosed('WebSocket message exceeds limit')
+            payload = self._recv_exact(length, sock)
+            return opcode, payload
+        except socket.timeout:
+            raise WebSocketClosed('timeout while receiving WebSocket frame')
+        finally:
+            try:
+                sock.settimeout(None)
+            except Exception:
+                pass
 
     def send_json(self, value):
         payload = json.dumps(value, separators=(',', ':'))
@@ -259,7 +283,10 @@ class WebSocketClient(object):
 
     def receive_json(self, timeout=None):
         while True:
-            opcode, payload = self._read_frame(timeout)
+            frame = self._read_frame(timeout)
+            if frame is None:
+                return None
+            opcode, payload = frame
             if opcode == 0x1:
                 try:
                     return json.loads(payload.decode('utf-8'))
@@ -379,12 +406,9 @@ class AgentWorker(object):
                         next_heartbeat = now + interval
                         continue
                     wait = min(next_heartbeat - now, 1.0)
-                    try:
-                        message = client.receive_json(timeout=wait)
-                        if message is not None:
-                            raise WebSocketClosed('unexpected server application message')
-                    except socket.timeout:
-                        pass
+                    message = client.receive_json(timeout=wait)
+                    if message is not None:
+                        raise WebSocketClosed('unexpected server application message')
             except Exception as error:
                 if not self.stop_event.is_set():
                     _log('backend unavailable (' + error.__class__.__name__ + '); reconnecting')
