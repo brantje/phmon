@@ -754,23 +754,130 @@ command history is inspectable
 
 **Objective:**
 
-Expose important operational game state.
+Expose important operational game state while reproducing phMonitor's compact,
+icon-first inventory/item presentation rather than falling back to generic data tables.
+
+**Reference behavior and visual contract (phMonitor v0.5.0):**
+
+The reference Stats experience treats bag inventory, character set/equipment, storage
+and applicable pet inventory as visual Silkroad item collections. Items are identified
+primarily by their game icon and in-game presentation; numeric values are overlaid or
+shown compactly with the item rather than replacing the collection with a spreadsheet.
+Preserve the source slot order and empty slots wherever the source exposes slot
+indices, so the UI still reads like the character's actual inventory/storage rather
+than a sorted search result. Item Search in Slice 13 is the searchable/table-oriented
+cross-source surface; Slice 4 is the per-character operational view.
+
+Do not guess an exact grid column count from an unavailable/empty reference state.
+The final responsive slot geometry must be compared against the stored Stats reference
+and a populated reference/runtime when available. What is fixed here is the
+information hierarchy: compact icon/slot collection -> item preview/detail -> source
+and freshness context.
+
+Every occupied item slot uses the best legally usable local item icon available and
+shows the source-provided stack/quantity value when applicable. Preserve actual empty
+slots. A plus value, rarity/seal or other status may affect the compact label/accent
+only when that value is actually observed; never derive item quality from icon color
+alone. Missing icons use one deliberate placeholder while retaining the item's name
+and identity.
+
+Selecting an item opens one shared **Silkroad-style item detail card** used by bag
+inventory, equipped/character-set items, personal storage, guild storage and pet
+inventory. Desktop may expose the same card on hover/focus for quick inspection, but
+click/tap must pin/open it so touch users can inspect items. Keyboard users must be
+able to focus slots and open/close the detail surface. Long item details scroll inside
+the popover/drawer/dialog instead of overflowing the page.
+
+The detail card must look like an in-game/phMonitor item description, **not** a generic
+two-column key/value table:
+
+- dark navy/blue compact panel, thin blue-gray border and dense line spacing
+- item display name first in gold/yellow; append the observed plus value in the normal
+  item-name treatment when present
+- seal/rarity directly below the name when observed, for example `Seal of Star`
+- item classification next, using the reference wording/presentation such as
+  `Sort of item: Staff`; show degree/category/subcategory only when the source
+  actually exposes them
+- base stats as individual readable lines in the same logical order as Silkroad item
+  information, with the label/value and any observed percentage/modifier kept on the
+  same line
+- requirement lines after the base stats; unmet/important requirements may use the
+  reference red emphasis. Race such as `European` or `Chinese`, required level,
+  gender or other restrictions are shown only when observed/known from verified game
+  data
+- magical options/blues form the final group and use the reference cyan/blue accent,
+  one modifier per line
+- no invented blank rows such as `Critical: -`, no fabricated seals, blues,
+  percentages, degree, gender, race or enhancement properties
+
+The public reference item preview demonstrates the expected ordering and semantics for
+a weapon: gold item name, seal line, `Sort of item`, attack/reinforce statistics,
+critical, durability, attack distance/rate, required level/race, then blue magical
+options. The implementation must support that shape without hard-coding it to one
+weapon. Render only the fields meaningful to the observed item family:
+
+- **Weapons:** physical/magical attack power, physical/magical reinforce,
+  durability, critical, attack distance/range, attack rate/rating and other verified
+  weapon stats.
+- **Armor/garments/shields:** physical/magical defense or absorption/reinforce,
+  durability, parry/blocking and other verified defensive stats.
+- **Accessories:** physical/magical absorption and other verified accessory stats.
+- **Consumables/materials/stackables:** stack/quantity plus the meaningful verified
+  item description/properties; do not force weapon/armor rows.
+- **Magic options/blues:** preserve each observed modifier as its own name/value line
+  (for example STR/INT increases or blocking-rate modifiers). Preserve the original
+  semantic value; do not flatten multiple blues into an opaque JSON string.
+
+The shared item view needs a normalized presentation model, but it must retain the raw
+observed/source fields required to improve rendering later. At minimum, where the
+verified source provides them, retain:
+
+- stable item/model identity and server/code name
+- display name and local icon key/path
+- source slot index and stack/quantity
+- plus/enhancement value
+- item family/type/subtype and degree/level
+- seal/rarity/grade/color metadata when actually observed
+- durability/current and maximum durability
+- physical/magical attack values and reinforcement values
+- physical/magical defense/absorption values and reinforcement values
+- critical, parry/blocking, attack distance/range and attack rate/rating
+- required level, race, gender and other explicit requirements
+- all individually observed magical options/blues/attributes
+- any other verified item-family-specific lines needed to reproduce the source item
+  description without reducing it to a lossy summary
+
+Exact field names and availability must be mapped from the connected phBot runtime/API
+and recorded in `docs/phbot-capabilities.md`. Game-data lookups may enrich stable
+catalog metadata such as name/type/level, but current mutable item-instance properties
+must come from the observed item instance. Unknown means absent/unknown.
+
+Container-level operational metadata stays visually separate from the in-game item
+description. Show owner/character, server, source (`Inventory`, `Character Set`,
+`Storage`, `Guild Storage`, or the applicable pet), observer and freshness/last
+observed state around the collection/detail surface. Do not inject those PhMon
+operational fields into the middle of the Silkroad stat block. Last-known storage or
+guild-storage data must be clearly marked stale/last observed rather than visually
+indistinguishable from currently opened/live state.
 
 **Implement:**
 
-character inventory
+character inventory as a slot-preserving icon collection with empty slots, quantities
+and the shared item detail card above
 
-equipped/character-set items as a distinct source from bag inventory
+equipped/character-set items as a distinct visual source from bag inventory, preserving
+equipment-slot semantics and using the same item detail card
 
-character storage and guild storage where cleanly available, carrying source,
-observer/freshness metadata so last-known data is not presented as live without context
+character storage and guild storage where cleanly available, preserving slot/source
+identity and carrying observer/freshness metadata so last-known data is not presented
+as live without context; use the same icon/detail treatment as character inventory
 
 pet model covering the supported phMonitor categories Attack, Fellow, Pick and
 Transport; retain stable pet identity/type and expose the state the verified phBot API
 actually provides
 
-pet inventory per applicable pet category; do not synthesize inventories for pet types
-whose runtime source has none
+pet inventory per applicable pet category using the same slot/icon/item-detail
+presentation; do not synthesize inventories for pet types whose runtime source has none
 
 party members/current party state
 
@@ -786,18 +893,39 @@ management only when actually supported) use explicit character targets and the 
 audited command/result lifecycle. Do not invent controls merely because phBot has a
 similarly named internal setting.
 
-delta/change handling where appropriate
+delta/change handling keyed by stable source + slot/item identity where appropriate;
+do not churn/re-render the entire collection for one changed stack or slot if the
+protocol can safely communicate a bounded update
 
-Nuxt inventory/equipment/storage views with source/freshness indicators
+Nuxt inventory/equipment/storage views with slot-preserving icon collections,
+source/freshness indicators and responsive item detail surfaces
 
-Nuxt pet view grouped by supported pet category
+Nuxt pet view grouped by supported pet category, with applicable pet inventory
 
 Nuxt party view with current-membership and Party Setup sections
 
 **Acceptance criteria:**
 
+current inventory is recognizable as the character's slot-based bag: item icons,
+occupied and empty slots, source-provided quantities/stacks and source slot positions
+are preserved instead of being rendered as a generic table
+
+selecting representative weapon, armor/shield, accessory, stackable and blue/magic
+items opens the shared dark item detail card with the correct per-family fields,
+ordering, semantic accents and requirements; fields not supplied by the source are
+absent rather than fabricated
+
+a representative sealed/plussed item preserves its observed display name, plus,
+seal/rarity and item-instance stats; a representative item with blues preserves each
+observed blue as a separate cyan/blue modifier line
+
+inventory, equipment/character set, personal storage, guild storage and applicable pet
+inventory reuse the same item-detail semantics so the same item does not render
+differently solely because its container changed
+
 current inventory, equipment/character set and available storage sources are visible
-without conflating their ownership/source
+without conflating their ownership/source; stale/last-known storage is visibly distinct
+from current/live observations
 
 Attack/Fellow/Pick/Transport pets are represented when observed, and applicable pet
 state/inventory remains associated with the correct pet across updates
@@ -807,6 +935,10 @@ party membership is visible independently from Party Setup configuration
 Party Setup loads the plugin's current supported values, applies verified edits through
 an audited command, reports pending/success/failure, then refreshes to prove the
 effective runtime configuration
+
+desktop hover/focus and click behavior plus mobile tap behavior can inspect the same
+item information, with keyboard/focus handling and no page-level overflow at the
+project's target viewports
 
 updates do not require blindly resending excessive full state when unnecessary
 
