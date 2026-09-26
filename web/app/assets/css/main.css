@@ -371,6 +371,7 @@ input:focus-visible {
 
 .workspace-content {
   width: min(100%, 1440px);
+  margin-inline: auto;
   padding: 20px 22px 34px;
 }
 
