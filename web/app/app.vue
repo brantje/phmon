@@ -45,7 +45,6 @@ const {
   characterDetail: detailCharacter,
   connectionState: liveConnectionState,
   liveStale,
-  liveLoading,
   setCharacterListFilter,
   setCharacterDetail,
   refreshLiveData,
