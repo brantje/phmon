@@ -190,27 +190,27 @@ slice; Slice 15 closes remaining presentation/tool gaps and verifies the whole a
 For each row, record backend/plugin/UI evidence and any capability blocker in
 `docs/reference-parity.md`. A navigation label or empty placeholder is not completion.
 
-| Area / navigation | Required behavior and layout | Owning slices |
-| --- | --- | --- |
-| Shell and instance access | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently. | 1, 2, 15 |
-| Dashboard | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links. | 2, 5, 6, 13, 15 |
-| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
-| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties. | 5, 7, 13 |
-| Chat | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends. | 6, 13, 15 |
-| Economy | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data. | 6, 13 |
-| Alchemy | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities. | 5, 12 |
-| Academy | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported. | 4, 5, 7, 12 |
-| Guild Storage | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records. | 4, 13, 15 |
-| phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
-| Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
-| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 7–9 |
-| Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. | 4, 13 |
-| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Verify skill datasets and rules per supported version; distinguish planning from execution. | 15 |
-| Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
-| Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
-| Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
-| Record management | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal. | 14, 15 |
-| Operations | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions. | 1, 14 |
+| Area / navigation           | Required behavior and layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Owning slices   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| Shell and instance access   | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 1, 2, 15        |
+| Dashboard                   | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 2, 5, 6, 13, 15 |
+| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts.                                                                                                                                                                                                                                                                                                                                | 2–4, 12         |
+| Events                      | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties.                                                                                                                                                                                                                                                                                                               | 5, 7, 13        |
+| Chat                        | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 6, 13, 15       |
+| Economy                     | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 6, 13           |
+| Alchemy                     | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 5, 12           |
+| Academy                     | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 5, 7, 12     |
+| Guild Storage               | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 13, 15       |
+| phBot tools                 | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15        |
+| Analytics                   | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 12, 13          |
+| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                                                                                                                                                               | 7–9             |
+| Item Search                 | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 4, 13           |
+| Skill Builder               | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Verify skill datasets and rules per supported version; distinguish planning from execution.                                                                                                                                                                                                                                                                                                                                                                                                  | 15              |
+| Automations                 | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits.                                                                                                                                                                                                                                                                                                    | 10, 11          |
+| Settings                    | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1, 6, 15        |
+| Notifications               | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results.                                                                                                                                                                                                                                                                                                                                                                     | 5, 6, 10, 15    |
+| Record management           | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 14, 15          |
+| Operations                  | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 1, 14           |
 
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
 reference inspection when accessible. Their labels were visible in public markup;
@@ -352,21 +352,19 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
-**Slice 0: complete and locally validated (2026-09-26). Slice 1: in progress
-(implementation and automated validation complete; runtime/browser gates pending).
-Slices 2–15: not started.**
-The active work is **Slice 1 — Agent registration and connectivity**. Its production
-path and simulator-backed automated coverage are implemented and hosted CI is green.
-Do not begin Slice 2 until the remaining Slice 1 validation gates are closed or
-explicitly accepted as blocked.
+**Slice 0: complete. Slice 1: implementation and automated validation complete;
+operator has manually verified basic real phBot → PhMon connectivity. Slice 2: in
+progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API and
+same-viewport visual gates remain open; basic connectivity must not be described as
+blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
 
-**Current turn (2026-09-26): Slice 1 completion/validation.** The authenticated
-connection contract, durable agent identity, plugin, simulator, backend registry/API,
-reference shell and stack lifecycle tests are implemented. The WebSocket client now
-polls for readiness before consuming a frame and treats a stall after frame decoding
-begins as a broken connection, preventing partial-frame stream corruption. Real
-Windows/phBot runtime validation and same-viewport browser screenshot comparison
-remain explicit open gates rather than being inferred from simulator/source results.
+**Current turn (2026-09-26): Slice 2 — Character identity and core live stats.** The
+scope is explicitly Slice 2 only. The durable character/session/group migration,
+protocol v2 registration/state messages, plugin sampler, character/group API and
+overview/detail UI are implemented. Full regression checks with PostgreSQL, Nuxt
+typecheck/build, Compose startup/smoke and browser captures at 1440 × 1000,
+1280 × 800 and 390 × 844 passed. The 390 px page has no horizontal overflow. Do not
+start Slice 3.
 
 For each subsequent slice keep a completion entry with: status (`not started`,
 `in progress`, `blocked`, `complete`), implemented behavior/files, tests actually run,
@@ -458,9 +456,56 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   remain BLOCKED. The sidebar also has no canonical PhMon app version/build metadata
   to display; docs/reference-parity.md records that gap rather than treating the
   existing "slice 1" development label as a version.
-- Exact next action: validate PhMon.py inside a real supported phBot runtime and run
-  side-by-side browser screenshot checks at all three required viewports. Do not
-  start Slice 2 as part of this task.
+- Original Slice 1 next action at the time of that validation: exercise PhMon.py in a
+  real supported phBot runtime and compare screenshots at all three viewports. The
+  operator has since confirmed basic real connectivity; API/profile-specific runtime
+  validation and screenshot comparison remain open. Slice 2 implementation is now
+  authorized independently and does not claim those gates are closed.
+
+### Slice 2 progress record (2026-09-26)
+
+- Status: implementation and simulator-backed automated checks complete for
+  implementable Slice 2 requirements; real phBot data API validation and botting
+  state remain open. Scope was limited to Slice 2; no Slice 3 command path was added.
+- Added migrations for server-scoped characters/current state, generation-fenced
+  character sessions, persisted groups/membership, and startup stale-session
+  reconciliation. Stable identity uses normalized `(server_name, character_name)`;
+  the server-scoped name uniqueness assumption and lack of a verified global game ID
+  are documented.
+- Protocol v2 adds authenticated `character.identify` → `character.registered`,
+  explicit-ID `character.snapshot`, `character.state`, and `character.left`. Every
+  post-resolution message is checked against character UUID, agent ID and active
+  connection generation. Reconnect requires full state after resolving identity.
+- Plugin sampling uses documented `get_character_data()`, `get_position()` and
+  `get_zone_name(region)` on the callback thread, coalesces changed state in a
+  bounded queue, and leaves backend networking to the existing worker. The Botting
+  API has no documented read-only state getter; botting remains unknown, not guessed.
+- Added searchable character/detail and persisted group APIs, same-origin Nuxt
+  proxies, a compact character overview with group membership controls, and a
+  `/characters/{character_id}` detail surface. Later inventory/pet/party/map/action
+  panels are explicitly marked unavailable for their owning slices.
+- Added PostgreSQL integration coverage for server-scoped identity reuse, state,
+  switch/offline handling, generation fencing, search and group membership; protocol
+  API tests and simulator fixture checks pass. The same-origin overview/search/group
+  and character detail were built and smoke checked against the full Compose stack.
+- Validation: baseline and final `bash scripts/check.sh` passed with
+  `TEST_DATABASE_URL` enabled (Go race tests/PostgreSQL, 22 plugin tests, Prettier,
+  ESLint with three self-closing-input warnings, Nuxt typecheck/build and
+  Compose config). `docker compose up --build -d --wait --wait-timeout 180` and
+  `python3 scripts/smoke.py` passed. Simulator E2E passed through plugin transport,
+  Go, PostgreSQL and Nuxt. Browser screenshots were captured at 1440 × 1000,
+  1280 × 800 and 390 × 844; the 390 px viewport has no document-level overflow.
+- Real runtime evidence: basic plugin/backend connectivity is operator-verified.
+  Slice 2 API behavior is documentation-backed but has not been manually checked in
+  phBot. Simulator fixture coverage remains separately labelled.
+- Exact remaining Slice 2 work before claiming full completion: manually validate
+  the documented character/state APIs in a real phBot runtime and determine whether
+  botting state has a supported read-only source. Current official botting docs show
+  start/stop operations but no state getter; botting is returned as unknown. Basic
+  real phBot → PhMon plugin/backend connectivity is manually verified by the
+  operator, but it does not close those API checks. Simulator evidence cannot close
+  the runtime gate. Continue only Slice 2 validation when a phBot runtime/API
+  observation is available; do not start Slice 3.
 
 ## Canonical slice roadmap
 
@@ -921,6 +966,7 @@ character current position
 position history where useful
 
 map/region normalization, including explicit transform/asset validation for:
+
 - Jangan Cave / Tomb of Qin-Shi
 - Donwhang Cave / Donwhang Stone Cave
 - Job Temple / Temple

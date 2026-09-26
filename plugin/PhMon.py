@@ -13,6 +13,10 @@ import struct
 import threading
 import time
 try:
+    import queue as _queue
+except ImportError:  # pragma: no cover
+    import Queue as _queue
+try:
     from urllib.parse import urlparse
 except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmless for embedded variants.
     from urlparse import urlparse
@@ -21,7 +25,7 @@ pName = 'PhMon'
 pVersion = '1.0.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 8192
@@ -32,6 +36,9 @@ try:
     from phBot import get_config_path as _get_config_path
     from phBot import get_profile as _get_profile
     from phBot import get_version as _get_phbot_version
+    from phBot import get_character_data as _get_character_data
+    from phBot import get_position as _get_position
+    from phBot import get_zone_name as _get_zone_name
     from phBot import log as _phbot_log
     _PHBOT_AVAILABLE = True
 except ImportError:
@@ -40,6 +47,9 @@ except ImportError:
     _get_config_path = None
     _get_profile = None
     _get_phbot_version = None
+    _get_character_data = None
+    _get_position = None
+    _get_zone_name = None
     _phbot_log = None
 
 try:
@@ -442,6 +452,29 @@ class AgentWorker(object):
         self._socket = None
         self._socket_lock = threading.Lock()
         self.status = 'Connecting to PhMon backend...'
+        self._samples = _queue.Queue(maxsize=1)
+        self._latest_sample = None
+        self.character_id = None
+        self._current_identity = None
+
+    def update_character(self, identity, state):
+        self._replace_sample({'identity': dict(identity), 'state': dict(state)})
+
+    def leave_character(self):
+        self._replace_sample({'leave': True})
+
+    def _replace_sample(self, value):
+        try:
+            self._samples.put_nowait(value)
+        except _queue.Full:
+            try:
+                self._samples.get_nowait()
+            except _queue.Empty:
+                pass
+            try:
+                self._samples.put_nowait(value)
+            except _queue.Full:
+                pass
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
@@ -484,8 +517,26 @@ class AgentWorker(object):
                 self.status = 'Connected to PhMon backend.'
                 _log('connected to backend')
                 next_heartbeat = _monotonic() + interval
+                self.character_id = None
+                self._current_identity = None
+                if self._latest_sample is not None:
+                    self._publish_sample(client, self._latest_sample, True)
 
                 while not self.stop_event.is_set():
+                    try:
+                        sample = self._samples.get_nowait()
+                        if sample.get('leave'):
+                            if self.character_id is not None:
+                                client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
+                            self.character_id = None
+                            self._current_identity = None
+                            self._latest_sample = None
+                        else:
+                            self._latest_sample = sample
+                            self._publish_sample(client, sample, False)
+                        continue
+                    except _queue.Empty:
+                        pass
                     now = _monotonic()
                     if now >= next_heartbeat:
                         client.send_json({
@@ -498,7 +549,8 @@ class AgentWorker(object):
                     wait = min(next_heartbeat - now, 1.0)
                     message = client.receive_json(timeout=wait)
                     if message is not None:
-                        raise WebSocketClosed('unexpected server application message')
+                        if message.get('type') != 'character.registered':
+                            raise WebSocketClosed('unexpected server application message')
             except Exception as error:
                 if not self.stop_event.is_set():
                     self.status = 'Backend unavailable; retrying...'
@@ -507,9 +559,29 @@ class AgentWorker(object):
                 if client is not None:
                     client.close()
                 self._set_socket(None)
+                self.character_id = None
+                self._current_identity = None
 
             if not self.stop_event.is_set():
                 self.stop_event.wait(backoff.next_delay())
+
+    def _publish_sample(self, client, sample, snapshot):
+        identity, state = sample['identity'], sample['state']
+        if identity != self._current_identity or self.character_id is None:
+            if self.character_id is not None and self._current_identity is not None:
+                previous_key = (self._current_identity.get('server','').lower(), self._current_identity.get('name','').lower())
+                next_key = (identity.get('server','').lower(), identity.get('name','').lower())
+                if previous_key != next_key:
+                    client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
+                    self.character_id = None
+            client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_utc_now()})
+            reply = client.receive_json(timeout=5.0)
+            if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')):
+                raise WebSocketClosed('character registration rejected')
+            self.character_id = reply['character_id']
+            self._current_identity = identity
+            snapshot = True
+        client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'state':state,'sent_at':_utc_now()})
 
     def _validate_ack(self, ack):
         if not isinstance(ack, dict) or ack.get('type') != 'hello.ack':
@@ -533,6 +605,9 @@ _gui_backend_url = None
 _gui_agent_id = None
 _gui_agent_token = None
 _gui_status = None
+_last_character_signature = None
+_last_character_sample_at = 0.0
+_character_joined = False
 
 
 def _set_gui_status(message):
@@ -651,14 +726,19 @@ def connected():
 
 
 def disconnected():
-    global _active_settings_path
-    _stop_worker()
-    _active_settings_path = None
-    _set_gui_status('SRO client disconnected. Waiting for login...')
+	global _last_character_signature, _character_joined
+	_last_character_signature = None
+	_character_joined = False
+	if _worker is not None:
+		_worker.leave_character()
+	_set_gui_status('SRO client disconnected. Waiting for login...')
 
 
 def joined_game():
     # This callback runs after the player selects a character.
+    global _last_character_signature, _character_joined
+    _last_character_signature = None
+    _character_joined = True
     _load_active_profile()
 
 
@@ -671,6 +751,58 @@ def event_loop():
         _log('profile sync failed (' + error.__class__.__name__ + ')')
     if _worker is not None:
         _set_gui_status(_worker.status)
+        _sample_character()
+
+
+def _sample_character():
+    global _last_character_signature, _last_character_sample_at
+    if not _PHBOT_AVAILABLE or _worker is None or not _character_joined:
+        return
+    try:
+        data = _get_character_data()
+    except Exception:
+        data = None
+    if not isinstance(data, dict) or not data.get('name') or not data.get('server'):
+        return
+    state = {}
+    for source in ('level','hp','hp_max','mp','mp_max','current_exp','max_exp','sp','gold','region'):
+        value = data.get(source)
+        if isinstance(value, (int,float)) and not isinstance(value,bool) and value >= 0:
+            state[source] = int(value)
+    try:
+        position = _get_position()
+    except Exception:
+        position = None
+    if isinstance(position, dict):
+        for axis in ('x','y','z'):
+            value = position.get(axis)
+            if isinstance(value,(int,float)) and not isinstance(value,bool):
+                state[axis] = float(value)
+        region = position.get('region')
+        if isinstance(region,int) and not isinstance(region,bool) and region >= 0:
+            state['region'] = region
+    if isinstance(state.get('region'),int):
+        try:
+            zone = _get_zone_name(state['region'])
+            if isinstance(zone,str) and zone.strip():
+                state['zone'] = zone.strip()[:100]
+        except Exception:
+            pass
+    # Official Botting docs expose start/stop mutations but no state getter.
+    state['botting'] = None
+    identity = {
+        'server':str(data['server']).strip()[:100],
+        'name':str(data['name']).strip()[:64],
+        'guild':str(data.get('guild') or '').strip()[:100],
+    }
+    if not identity['server'] or not identity['name']:
+        return
+    signature = json.dumps([identity,state],sort_keys=True,separators=(',',':'))
+    now = _monotonic()
+    if signature != _last_character_signature or now-_last_character_sample_at >= 5.0:
+        _worker.update_character(identity,state)
+        _last_character_signature = signature
+        _last_character_sample_at = now
 
 
 def finished():

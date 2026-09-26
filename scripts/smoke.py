@@ -45,5 +45,13 @@ for url, expected_code, expected in [
 code, _, body = request(web + "/")
 assert code == 200, code
 assert "PhMon" in body, "Missing application brand"
-assert "Agent connections" in body, "Missing Slice 1 agent screen"
-print("PASS page renders PhMon agent shell")
+assert "Character overview" in body, "Missing Slice 2 character overview"
+print("PASS page renders PhMon character overview")
+
+for path, key in (("/api/agents", "agents"), ("/api/characters", "characters"), ("/api/groups", "groups")):
+    code, _, body = request(web + path)
+    assert code == 200, (path, code, body)
+    response = json.loads(body)
+    records = response.get(key) if key != "agents" else response.get("agents")
+    assert isinstance(records, list), (path, body)
+    print("PASS {}: {} records".format(path, len(records)))

@@ -190,7 +190,7 @@ func TestAgentHelloHeartbeatAndList(t *testing.T) {
 	if err := wsjson.Read(context.Background(), conn, &ack); err != nil {
 		t.Fatal(err)
 	}
-	if ack.Type != "hello.ack" || ack.ProtocolVersion != 1 {
+	if ack.Type != "hello.ack" || ack.ProtocolVersion != 2 {
 		t.Fatalf("unexpected ack: %+v", ack)
 	}
 	if _, ok := registry.ConnectedAt(testAgentID); !ok {
@@ -199,7 +199,7 @@ func TestAgentHelloHeartbeatAndList(t *testing.T) {
 
 	if err := wsjson.Write(context.Background(), conn, agentMessage{
 		Type:            "heartbeat",
-		ProtocolVersion: 1,
+		ProtocolVersion: 2,
 		SentAt:          time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
 		t.Fatal(err)
@@ -357,7 +357,7 @@ func writeHello(t *testing.T, conn *websocket.Conn, agentID string) {
 	t.Helper()
 	err := wsjson.Write(context.Background(), conn, agentMessage{
 		Type:            "hello",
-		ProtocolVersion: 1,
+		ProtocolVersion: 2,
 		AgentID:         agentID,
 		PluginVersion:   "1.0.0",
 		PhBotVersion:    "fixture-phbot",

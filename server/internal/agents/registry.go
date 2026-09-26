@@ -58,3 +58,10 @@ func (r *Registry) ConnectedAt(agentID string) (time.Time, bool) {
 	}
 	return current.connectedAt, true
 }
+
+func (r *Registry) IsCurrent(agentID string, generation uint64) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	current, ok := r.sessions[agentID]
+	return ok && current.generation == generation
+}

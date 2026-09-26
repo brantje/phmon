@@ -38,6 +38,166 @@ const accessDialog = ref<HTMLElement | null>(null)
 const accessCloseButton = ref<HTMLButtonElement | null>(null)
 const runtimeConfig = useRuntimeConfig()
 const requestURL = useRequestURL()
+type Character = {
+  character_id: string
+  server: string
+  name: string
+  guild?: string
+  zone?: string
+  online: boolean
+  agent_id?: string
+  session_started_at?: string
+  last_activity_at?: string
+  state_updated_at?: string
+  level?: number
+  hp?: number
+  hp_max?: number
+  mp?: number
+  mp_max?: number
+  current_exp?: number
+  max_exp?: number
+  sp?: number
+  gold?: number
+  region?: number
+  x?: number
+  y?: number
+  z?: number
+  botting?: boolean | null
+}
+type CharacterList = { characters: Character[]; status?: string }
+type CharacterGroup = { group_id: string; name: string; members: Character[] }
+const characterDetailID = computed(() => {
+  const match = requestURL.pathname.match(/^\/characters\/([0-9a-f-]{36})\/?$/i)
+  return match?.[1] || ''
+})
+const characterSearch = ref('')
+const selectedGroup = ref('')
+const manageGroupMembers = ref(false)
+const groupName = ref('')
+const groupActionError = ref('')
+const {
+  data: characterResponse,
+  refresh: refreshCharacters,
+  error: characterError,
+} = await useFetch<CharacterList>('/api/characters', { retry: 0 })
+const { data: groupResponse, refresh: refreshGroups } = await useFetch<{
+  groups: CharacterGroup[]
+}>('/api/groups', { retry: 0 })
+const lastCharacters = ref<Character[]>(
+  characterResponse.value?.characters || [],
+)
+const lastGroups = ref<CharacterGroup[]>(groupResponse.value?.groups || [])
+watch(characterResponse, (value) => {
+  if (value?.status !== 'unavailable')
+    lastCharacters.value = value?.characters || []
+})
+watch(groupResponse, (value) => {
+  if (value?.groups) lastGroups.value = value.groups
+})
+const visibleCharacters = computed(() =>
+  lastCharacters.value.filter((character) => {
+    const q = characterSearch.value.trim().toLocaleLowerCase()
+    const matches =
+      !q ||
+      [
+        character.name,
+        character.guild || '',
+        character.server,
+        character.zone || '',
+      ].some((value) => value.toLocaleLowerCase().includes(q))
+    const groupMatches =
+      !selectedGroup.value ||
+      manageGroupMembers.value ||
+      lastGroups.value
+        .find((group) => group.group_id === selectedGroup.value)
+        ?.members.some(
+          (member) => member.character_id === character.character_id,
+        )
+    return matches && groupMatches
+  }),
+)
+async function createCharacterGroup() {
+  groupActionError.value = ''
+  try {
+    await $fetch('/api/groups', {
+      method: 'POST',
+      body: { name: groupName.value },
+    })
+    groupName.value = ''
+    await refreshGroups()
+  } catch {
+    groupActionError.value = 'Could not create this group.'
+  }
+}
+async function renameCharacterGroup() {
+  const group = lastGroups.value.find(
+    (item) => item.group_id === selectedGroup.value,
+  )
+  if (!group) return
+  const name = groupName.value.trim()
+  if (!name) return
+  groupActionError.value = ''
+  try {
+    await $fetch('/api/groups/' + group.group_id, {
+      method: 'PATCH',
+      body: { name },
+    })
+    groupName.value = ''
+    await refreshGroups()
+  } catch {
+    groupActionError.value = 'Could not rename this group.'
+  }
+}
+async function deleteCharacterGroup() {
+  const group = lastGroups.value.find(
+    (item) => item.group_id === selectedGroup.value,
+  )
+  if (
+    !group ||
+    !window.confirm(
+      'Delete group "' + group.name + '"? Characters will be kept.',
+    )
+  )
+    return
+  groupActionError.value = ''
+  try {
+    await $fetch('/api/groups/' + group.group_id, { method: 'DELETE' })
+    selectedGroup.value = ''
+    await refreshGroups()
+  } catch {
+    groupActionError.value = 'Could not delete this group.'
+  }
+}
+async function toggleGroupMember(character: Character) {
+  const group = lastGroups.value.find(
+    (item) => item.group_id === selectedGroup.value,
+  )
+  if (!group) return
+  const isMember = group.members.some(
+    (item) => item.character_id === character.character_id,
+  )
+  groupActionError.value = ''
+  try {
+    await $fetch(
+      '/api/groups/' + group.group_id + '/members/' + character.character_id,
+      { method: isMember ? 'DELETE' : 'PUT' },
+    )
+    await refreshGroups()
+  } catch {
+    groupActionError.value = 'Could not update group membership.'
+  }
+}
+async function refreshCharacterData() {
+  await refreshCharacters()
+  await refreshGroups()
+}
+const { data: detailCharacter, refresh: refreshCharacterDetail } =
+  await useFetch<Character>(
+    characterDetailID.value
+      ? '/api/characters/' + characterDetailID.value
+      : '/api/characters/none',
+    { retry: 0 },
+  )
 const configuredInstanceUrl = normalizeInstanceUrl(
   String(runtimeConfig.public.instanceUrl || ''),
 )
@@ -96,6 +256,7 @@ const fleetStatus = computed(() => {
 let agentTimer: ReturnType<typeof setInterval> | undefined
 let healthTimer: ReturnType<typeof setInterval> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
+let characterTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(() => {
   if (!configuredInstanceUrl) {
@@ -103,6 +264,11 @@ onMounted(() => {
   }
   now.value = Date.now()
   agentTimer = setInterval(() => void refreshAgents(), 3000)
+  characterTimer = setInterval(() => {
+    void refreshCharacters()
+    if (characterDetailID.value) void refreshCharacterDetail()
+    void refreshGroups()
+  }, 2000)
   healthTimer = setInterval(() => void refreshHealth(), 10000)
   clockTimer = setInterval(() => {
     now.value = Date.now()
@@ -111,6 +277,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (agentTimer) clearInterval(agentTimer)
+  if (characterTimer) clearInterval(characterTimer)
   if (healthTimer) clearInterval(healthTimer)
   if (clockTimer) clearInterval(clockTimer)
 })
@@ -151,6 +318,24 @@ function formatConnectionAge(value?: string) {
   }
   const hours = Math.floor(elapsed / 3600)
   return String(hours) + 'h ' + String(Math.floor((elapsed % 3600) / 60)) + 'm'
+}
+
+function formatHealthMana(character: Character) {
+  return `HP ${character.hp?.toLocaleString() ?? '—'} / ${character.hp_max?.toLocaleString() ?? '—'} · MP ${character.mp?.toLocaleString() ?? '—'} / ${character.mp_max?.toLocaleString() ?? '—'}`
+}
+
+function formatProgress(character: Character) {
+  const xp =
+    character.current_exp == null
+      ? '—'
+      : `${character.current_exp.toLocaleString()} / ${character.max_exp?.toLocaleString() ?? '—'} XP`
+  const ratio =
+    character.current_exp != null &&
+    character.max_exp != null &&
+    character.max_exp > 0
+      ? ` (${Math.min(100, Math.round((character.current_exp / character.max_exp) * 100))}%)`
+      : ''
+  return `${xp}${ratio} · ${character.sp?.toLocaleString() ?? '—'} SP`
 }
 
 function normalizeInstanceUrl(value: string) {
@@ -314,7 +499,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
           <div class="brand-mark" aria-hidden="true">P</div>
           <div class="brand-copy">
             <strong>PhMon</strong>
-            <span>self-hosted · slice 1</span>
+            <span>self-hosted · slice 2</span>
           </div>
           <span
             class="connection-dot"
@@ -451,254 +636,535 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
         </div>
 
         <main class="workspace-content">
-          <header class="page-header">
-            <div class="page-icon">
-              <UIcon name="i-lucide-radio-tower" />
-            </div>
-            <div>
-              <h1>Agent connections</h1>
-              <p>
-                Authenticated phBot instances connected to this PhMon server.
-              </p>
-            </div>
-          </header>
-
-          <section class="summary-grid" aria-label="Fleet summary">
-            <article class="summary-card">
-              <span>Registered</span>
-              <strong>{{ lastAgents.length }}</strong>
-              <small>agents seen</small>
-            </article>
-            <article class="summary-card">
-              <span>Online</span>
-              <strong>{{ connectedAgents ?? '—' }}</strong>
-              <small>{{
-                agentsUnavailable
-                  ? 'last loaded state retained'
-                  : 'active sockets'
-              }}</small>
-            </article>
-            <article class="summary-card">
-              <span>Offline</span>
-              <strong>{{ disconnectedAgents ?? '—' }}</strong>
-              <small>{{
-                agentsUnavailable
-                  ? 'last loaded state retained'
-                  : 'last known agents'
-              }}</small>
-            </article>
-            <article class="summary-card summary-wide">
-              <span>Connection state</span>
-              <strong class="summary-state">{{ fleetStatus }}</strong>
-              <small>protocol v1 · automatic reconnect</small>
-            </article>
-          </section>
-
-          <section class="panel agent-panel">
-            <div class="panel-header">
+          <template v-if="!characterDetailID">
+            <header class="page-header">
+              <div class="page-icon">
+                <UIcon name="i-lucide-users-round" />
+              </div>
               <div>
-                <h2>phBot agents</h2>
+                <h1>Character overview</h1>
                 <p>
-                  Live connection state, plugin version and phBot version.
-                  Credentials are never exposed here.
+                  Current character presence and live state across connected
+                  phBot agents.
                 </p>
               </div>
-              <div class="panel-actions">
-                <button
-                  class="compact-button"
-                  type="button"
-                  @click="toggleCredentialPanel"
-                >
-                  <UIcon name="i-lucide-key-round" />
-                  {{
-                    credentialPanelOpen
-                      ? 'Close credential'
-                      : 'Create credential'
-                  }}
-                </button>
-                <button
-                  class="compact-button"
-                  type="button"
-                  :disabled="agentsStatus === 'pending'"
-                  @click="refreshAgents()"
-                >
-                  <UIcon
-                    name="i-lucide-refresh-cw"
-                    :class="{ spinning: agentsStatus === 'pending' }"
-                  />
-                  Refresh
-                </button>
-              </div>
-            </div>
+            </header>
 
-            <div
-              v-if="agentsUnavailable"
-              class="status-banner warning"
-              role="status"
-            >
-              <UIcon name="i-lucide-triangle-alert" />
-              <div>
-                <strong>Agent service unavailable</strong>
-                <span v-if="lastAgents.length">
-                  Showing the last successfully loaded agent list.
-                </span>
-                <span v-else>PhMon will retry automatically.</span>
-              </div>
-            </div>
-
-            <section
-              v-if="credentialPanelOpen"
-              class="credential-panel"
-              aria-label="Create agent credential"
-            >
-              <div class="credential-panel-head">
+            <section class="panel character-panel">
+              <div class="panel-header">
                 <div>
-                  <strong>Create agent credential</strong>
+                  <h2>Characters</h2>
                   <p>
-                    Generate one identity/token pair for one phBot
-                    account/profile. The token can only be recovered from this
-                    response.
+                    Identity is scoped by game server. State refreshes
+                    automatically.
                   </p>
                 </div>
+                <div class="panel-actions character-filters">
+                  <input
+                    v-model="characterSearch"
+                    aria-label="Search characters, guild, server or zone"
+                    placeholder="Search characters, guild, server, zone"
+                  />
+                  <select
+                    v-model="selectedGroup"
+                    aria-label="Filter by character group"
+                  >
+                    <option value="">All groups</option>
+                    <option
+                      v-for="group in lastGroups"
+                      :key="group.group_id"
+                      :value="group.group_id"
+                    >
+                      {{ group.name }}
+                    </option>
+                  </select>
+                  <button
+                    v-if="selectedGroup"
+                    class="compact-button"
+                    type="button"
+                    @click="manageGroupMembers = !manageGroupMembers"
+                  >
+                    {{
+                      manageGroupMembers ? 'Filter members' : 'Manage members'
+                    }}
+                  </button>
+                  <input
+                    v-model="groupName"
+                    aria-label="Character group name"
+                    placeholder="Group name"
+                  />
+                  <button
+                    class="compact-button"
+                    type="button"
+                    @click="createCharacterGroup"
+                  >
+                    New group
+                  </button>
+                  <button
+                    v-if="selectedGroup"
+                    class="compact-button"
+                    type="button"
+                    @click="renameCharacterGroup"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    v-if="selectedGroup"
+                    class="compact-button"
+                    type="button"
+                    @click="deleteCharacterGroup"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    class="compact-button"
+                    type="button"
+                    @click="refreshCharacterData"
+                  >
+                    Refresh
+                  </button>
+                </div>
               </div>
-
-              <template v-if="createdCredential">
-                <div class="credential-row">
-                  <span>Agent ID</span>
-                  <code tabindex="0">{{ createdCredential.agent_id }}</code>
-                  <button
-                    class="compact-button"
-                    type="button"
-                    @click="copyCredential('agent_id')"
-                  >
-                    <UIcon
-                      :name="
-                        credentialCopied === 'agent_id'
-                          ? 'i-lucide-check'
-                          : 'i-lucide-copy'
-                      "
-                    />
-                    {{ credentialCopied === 'agent_id' ? 'Copied' : 'Copy ID' }}
-                  </button>
-                </div>
-                <div class="credential-row">
-                  <span>Agent token</span>
-                  <code tabindex="0">{{ createdCredential.agent_token }}</code>
-                  <button
-                    class="compact-button"
-                    type="button"
-                    @click="copyCredential('agent_token')"
-                  >
-                    <UIcon
-                      :name="
-                        credentialCopied === 'agent_token'
-                          ? 'i-lucide-check'
-                          : 'i-lucide-copy'
-                      "
-                    />
-                    {{
-                      credentialCopied === 'agent_token'
-                        ? 'Copied'
-                        : 'Copy token'
-                    }}
-                  </button>
-                </div>
-                <p
-                  v-if="credentialCopyFallback"
-                  class="credential-message warning"
-                  role="status"
-                >
-                  Clipboard access is unavailable. Select the value above and
-                  copy it manually.
+              <div
+                v-if="groupActionError"
+                class="status-banner warning"
+                role="alert"
+              >
+                {{ groupActionError }}
+              </div>
+              <div
+                v-if="characterError"
+                class="status-banner warning"
+                role="status"
+              >
+                <UIcon name="i-lucide-triangle-alert" /> Character service
+                unavailable. Showing the last received records as stale.
+              </div>
+              <div v-if="visibleCharacters.length" class="agent-table-wrap">
+                <table class="agent-table character-table">
+                  <thead>
+                    <tr>
+                      <th>Character</th>
+                      <th>Presence</th>
+                      <th>Level</th>
+                      <th>HP / MP</th>
+                      <th>Progress</th>
+                      <th>Gold</th>
+                      <th>Server · Zone</th>
+                      <th>Training</th>
+                      <th>Freshness</th>
+                      <th>Group</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="character in visibleCharacters"
+                      :key="character.character_id"
+                    >
+                      <td>
+                        <a
+                          class="character-link"
+                          :href="'/characters/' + character.character_id"
+                          >{{ character.name }}</a
+                        ><small v-if="character.guild">{{
+                          character.guild
+                        }}</small>
+                      </td>
+                      <td>
+                        <span
+                          class="status-chip"
+                          :class="
+                            characterError
+                              ? 'stale'
+                              : character.online
+                                ? 'online'
+                                : 'offline'
+                          "
+                          ><span />{{
+                            characterError
+                              ? 'Stale'
+                              : character.online
+                                ? 'Online'
+                                : 'Offline'
+                          }}</span
+                        >
+                      </td>
+                      <td>{{ character.level ?? '—' }}</td>
+                      <td>{{ formatHealthMana(character) }}</td>
+                      <td>{{ formatProgress(character) }}</td>
+                      <td>
+                        {{
+                          character.gold == null
+                            ? '—'
+                            : character.gold.toLocaleString()
+                        }}
+                      </td>
+                      <td>
+                        {{ character.server
+                        }}<small>{{ character.zone || 'Zone unknown' }}</small>
+                      </td>
+                      <td>
+                        {{
+                          character.botting == null
+                            ? 'Unknown'
+                            : character.botting
+                              ? 'Training'
+                              : 'Idle'
+                        }}
+                      </td>
+                      <td>
+                        {{
+                          formatTimestamp(
+                            character.last_activity_at ||
+                              character.state_updated_at,
+                          )
+                        }}
+                      </td>
+                      <td>
+                        <button
+                          v-if="selectedGroup && manageGroupMembers"
+                          class="compact-button"
+                          type="button"
+                          @click="toggleGroupMember(character)"
+                        >
+                          {{
+                            lastGroups
+                              .find((group) => group.group_id === selectedGroup)
+                              ?.members.some(
+                                (member) =>
+                                  member.character_id ===
+                                  character.character_id,
+                              )
+                              ? 'Remove'
+                              : 'Add'
+                          }}</button
+                        ><span v-else>—</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div v-else class="empty-state character-empty">
+                <UIcon
+                  :name="
+                    characterError
+                      ? 'i-lucide-cloud-off'
+                      : 'i-lucide-user-round-search'
+                  "
+                />
+                <strong>{{
+                  characterError
+                    ? 'Character data unavailable'
+                    : 'No characters observed yet'
+                }}</strong>
+                <p>
+                  {{
+                    characterError
+                      ? 'The last known character records remain stored when the service recovers.'
+                      : 'Join a character in phBot. PhMon will register its server-scoped identity automatically.'
+                  }}
                 </p>
-                <p class="credential-message" role="status">
-                  Save this token in the matching phBot PhMon profile now.
-                  PostgreSQL stores only its SHA-256 hash, so PhMon cannot show
-                  this token again.
-                </p>
-                <div class="credential-actions">
-                  <button
-                    class="compact-button"
-                    type="button"
-                    @click="dismissCredential"
-                  >
-                    Done
-                  </button>
-                </div>
-              </template>
-
-              <template v-else>
-                <p class="credential-risk">
-                  PhMon user authentication is not implemented yet. Until it is,
-                  anyone who can access this web UI can create an agent
-                  credential. Keep this instance on a trusted network.
-                </p>
-                <p
-                  v-if="credentialError"
-                  class="credential-message warning"
-                  role="alert"
-                >
-                  {{ credentialError }}
-                </p>
-                <div class="credential-actions">
-                  <button
-                    class="compact-button"
-                    type="button"
-                    :disabled="credentialCreating"
-                    @click="createAgentCredential"
-                  >
-                    <UIcon
-                      :name="
-                        credentialCreating
-                          ? 'i-lucide-loader-circle'
-                          : 'i-lucide-key-round'
-                      "
-                      :class="{ spinning: credentialCreating }"
-                    />
-                    {{
-                      credentialCreating
-                        ? 'Creating…'
-                        : 'Generate one-time credential'
-                    }}
-                  </button>
-                </div>
-              </template>
+              </div>
             </section>
 
-            <div
-              v-if="agentsStatus === 'pending' && lastAgents.length === 0"
-              class="empty-state"
-            >
-              <UIcon name="i-lucide-loader-circle" class="spinning" />
-              <strong>Loading agents…</strong>
-            </div>
+            <section class="summary-grid" aria-label="Fleet summary">
+              <article class="summary-card">
+                <span>Registered</span>
+                <strong>{{ lastAgents.length }}</strong>
+                <small>agents seen</small>
+              </article>
+              <article class="summary-card">
+                <span>Online</span>
+                <strong>{{ connectedAgents ?? '—' }}</strong>
+                <small>{{
+                  agentsUnavailable
+                    ? 'last loaded state retained'
+                    : 'active sockets'
+                }}</small>
+              </article>
+              <article class="summary-card">
+                <span>Offline</span>
+                <strong>{{ disconnectedAgents ?? '—' }}</strong>
+                <small>{{
+                  agentsUnavailable
+                    ? 'last loaded state retained'
+                    : 'last known agents'
+                }}</small>
+              </article>
+              <article class="summary-card summary-wide">
+                <span>Connection state</span>
+                <strong class="summary-state">{{ fleetStatus }}</strong>
+                <small>protocol v2 · automatic reconnect</small>
+              </article>
+            </section>
 
-            <div v-else-if="lastAgents.length === 0" class="empty-state">
-              <UIcon name="i-lucide-plug-zap" />
-              <strong>No agents have connected yet</strong>
-              <p>
-                Create a credential above (or use
-                <code>phmonctl agent create</code>), then configure the matching
-                profile in phBot's PhMon plugin tab.
-              </p>
-            </div>
+            <section class="panel agent-panel">
+              <div class="panel-header">
+                <div>
+                  <h2>phBot agents</h2>
+                  <p>
+                    Live connection state, plugin version and phBot version.
+                    Credentials are never exposed here.
+                  </p>
+                </div>
+                <div class="panel-actions">
+                  <button
+                    class="compact-button"
+                    type="button"
+                    @click="toggleCredentialPanel"
+                  >
+                    <UIcon name="i-lucide-key-round" />
+                    {{
+                      credentialPanelOpen
+                        ? 'Close credential'
+                        : 'Create credential'
+                    }}
+                  </button>
+                  <button
+                    class="compact-button"
+                    type="button"
+                    :disabled="agentsStatus === 'pending'"
+                    @click="refreshAgents()"
+                  >
+                    <UIcon
+                      name="i-lucide-refresh-cw"
+                      :class="{ spinning: agentsStatus === 'pending' }"
+                    />
+                    Refresh
+                  </button>
+                </div>
+              </div>
 
-            <div v-else class="agent-table-wrap">
-              <table class="agent-table">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Agent</th>
-                    <th>Plugin</th>
-                    <th>phBot</th>
-                    <th>Protocol</th>
-                    <th>Connected</th>
-                    <th>Last seen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="agent in lastAgents" :key="agent.agent_id">
-                    <td>
+              <div
+                v-if="agentsUnavailable"
+                class="status-banner warning"
+                role="status"
+              >
+                <UIcon name="i-lucide-triangle-alert" />
+                <div>
+                  <strong>Agent service unavailable</strong>
+                  <span v-if="lastAgents.length">
+                    Showing the last successfully loaded agent list.
+                  </span>
+                  <span v-else>PhMon will retry automatically.</span>
+                </div>
+              </div>
+
+              <section
+                v-if="credentialPanelOpen"
+                class="credential-panel"
+                aria-label="Create agent credential"
+              >
+                <div class="credential-panel-head">
+                  <div>
+                    <strong>Create agent credential</strong>
+                    <p>
+                      Generate one identity/token pair for one phBot
+                      account/profile. The token can only be recovered from this
+                      response.
+                    </p>
+                  </div>
+                </div>
+
+                <template v-if="createdCredential">
+                  <div class="credential-row">
+                    <span>Agent ID</span>
+                    <code tabindex="0">{{ createdCredential.agent_id }}</code>
+                    <button
+                      class="compact-button"
+                      type="button"
+                      @click="copyCredential('agent_id')"
+                    >
+                      <UIcon
+                        :name="
+                          credentialCopied === 'agent_id'
+                            ? 'i-lucide-check'
+                            : 'i-lucide-copy'
+                        "
+                      />
+                      {{
+                        credentialCopied === 'agent_id' ? 'Copied' : 'Copy ID'
+                      }}
+                    </button>
+                  </div>
+                  <div class="credential-row">
+                    <span>Agent token</span>
+                    <code tabindex="0">{{
+                      createdCredential.agent_token
+                    }}</code>
+                    <button
+                      class="compact-button"
+                      type="button"
+                      @click="copyCredential('agent_token')"
+                    >
+                      <UIcon
+                        :name="
+                          credentialCopied === 'agent_token'
+                            ? 'i-lucide-check'
+                            : 'i-lucide-copy'
+                        "
+                      />
+                      {{
+                        credentialCopied === 'agent_token'
+                          ? 'Copied'
+                          : 'Copy token'
+                      }}
+                    </button>
+                  </div>
+                  <p
+                    v-if="credentialCopyFallback"
+                    class="credential-message warning"
+                    role="status"
+                  >
+                    Clipboard access is unavailable. Select the value above and
+                    copy it manually.
+                  </p>
+                  <p class="credential-message" role="status">
+                    Save this token in the matching phBot PhMon profile now.
+                    PostgreSQL stores only its SHA-256 hash, so PhMon cannot
+                    show this token again.
+                  </p>
+                  <div class="credential-actions">
+                    <button
+                      class="compact-button"
+                      type="button"
+                      @click="dismissCredential"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <p class="credential-risk">
+                    PhMon user authentication is not implemented yet. Until it
+                    is, anyone who can access this web UI can create an agent
+                    credential. Keep this instance on a trusted network.
+                  </p>
+                  <p
+                    v-if="credentialError"
+                    class="credential-message warning"
+                    role="alert"
+                  >
+                    {{ credentialError }}
+                  </p>
+                  <div class="credential-actions">
+                    <button
+                      class="compact-button"
+                      type="button"
+                      :disabled="credentialCreating"
+                      @click="createAgentCredential"
+                    >
+                      <UIcon
+                        :name="
+                          credentialCreating
+                            ? 'i-lucide-loader-circle'
+                            : 'i-lucide-key-round'
+                        "
+                        :class="{ spinning: credentialCreating }"
+                      />
+                      {{
+                        credentialCreating
+                          ? 'Creating…'
+                          : 'Generate one-time credential'
+                      }}
+                    </button>
+                  </div>
+                </template>
+              </section>
+
+              <div
+                v-if="agentsStatus === 'pending' && lastAgents.length === 0"
+                class="empty-state"
+              >
+                <UIcon name="i-lucide-loader-circle" class="spinning" />
+                <strong>Loading agents…</strong>
+              </div>
+
+              <div v-else-if="lastAgents.length === 0" class="empty-state">
+                <UIcon name="i-lucide-plug-zap" />
+                <strong>No agents have connected yet</strong>
+                <p>
+                  Create a credential above (or use
+                  <code>phmonctl agent create</code>), then configure the
+                  matching profile in phBot's PhMon plugin tab.
+                </p>
+              </div>
+
+              <div v-else class="agent-table-wrap">
+                <table class="agent-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Agent</th>
+                      <th>Plugin</th>
+                      <th>phBot</th>
+                      <th>Protocol</th>
+                      <th>Connected</th>
+                      <th>Last seen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="agent in lastAgents" :key="agent.agent_id">
+                      <td>
+                        <span
+                          class="status-chip"
+                          :class="
+                            agentsUnavailable
+                              ? 'stale'
+                              : agent.connected
+                                ? 'online'
+                                : 'offline'
+                          "
+                        >
+                          <span />{{
+                            agentsUnavailable
+                              ? agent.connected
+                                ? 'Last known online'
+                                : 'Last known offline'
+                              : agent.connected
+                                ? 'Online'
+                                : 'Offline'
+                          }}
+                        </span>
+                      </td>
+                      <td>
+                        <code class="agent-id">{{ agent.agent_id }}</code>
+                      </td>
+                      <td>{{ agent.plugin_version || '—' }}</td>
+                      <td>{{ agent.phbot_version || '—' }}</td>
+                      <td>
+                        {{
+                          agent.protocol_version
+                            ? 'v' + agent.protocol_version
+                            : '—'
+                        }}
+                      </td>
+                      <td>
+                        {{
+                          agentsUnavailable
+                            ? '—'
+                            : agent.connected
+                              ? formatConnectionAge(agent.connected_at)
+                              : '—'
+                        }}
+                      </td>
+                      <td>
+                        <time :datetime="agent.last_seen_at">
+                          {{ formatTimestamp(agent.last_seen_at) }}
+                        </time>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div class="agent-cards">
+                  <article
+                    v-for="agent in lastAgents"
+                    :key="'mobile-' + agent.agent_id"
+                    class="agent-card"
+                  >
+                    <div class="agent-card-head">
                       <span
                         class="status-chip"
                         :class="
@@ -719,141 +1185,208 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                               : 'Offline'
                         }}
                       </span>
-                    </td>
-                    <td>
-                      <code class="agent-id">{{ agent.agent_id }}</code>
-                    </td>
-                    <td>{{ agent.plugin_version || '—' }}</td>
-                    <td>{{ agent.phbot_version || '—' }}</td>
-                    <td>
-                      {{
-                        agent.protocol_version
-                          ? 'v' + agent.protocol_version
-                          : '—'
-                      }}
-                    </td>
-                    <td>
-                      {{
-                        agentsUnavailable
-                          ? '—'
-                          : agent.connected
-                            ? formatConnectionAge(agent.connected_at)
-                            : '—'
-                      }}
-                    </td>
-                    <td>
-                      <time :datetime="agent.last_seen_at">
-                        {{ formatTimestamp(agent.last_seen_at) }}
-                      </time>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="agent-cards">
-                <article
-                  v-for="agent in lastAgents"
-                  :key="'mobile-' + agent.agent_id"
-                  class="agent-card"
-                >
-                  <div class="agent-card-head">
-                    <span
-                      class="status-chip"
-                      :class="
-                        agentsUnavailable
-                          ? 'stale'
-                          : agent.connected
-                            ? 'online'
-                            : 'offline'
-                      "
-                    >
-                      <span />{{
-                        agentsUnavailable
-                          ? agent.connected
-                            ? 'Last known online'
-                            : 'Last known offline'
-                          : agent.connected
-                            ? 'Online'
-                            : 'Offline'
-                      }}
-                    </span>
-                    <span>
-                      {{
-                        agentsUnavailable
-                          ? formatTimestamp(agent.last_seen_at)
-                          : agent.connected
-                            ? formatConnectionAge(agent.connected_at)
-                            : formatTimestamp(agent.last_seen_at)
-                      }}
-                    </span>
-                  </div>
-                  <code>{{ agent.agent_id }}</code>
-                  <dl>
-                    <div>
-                      <dt>Plugin</dt>
-                      <dd>{{ agent.plugin_version || '—' }}</dd>
-                    </div>
-                    <div>
-                      <dt>phBot</dt>
-                      <dd>{{ agent.phbot_version || '—' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Protocol</dt>
-                      <dd>
+                      <span>
                         {{
-                          agent.protocol_version
-                            ? 'v' + agent.protocol_version
-                            : '—'
+                          agentsUnavailable
+                            ? formatTimestamp(agent.last_seen_at)
+                            : agent.connected
+                              ? formatConnectionAge(agent.connected_at)
+                              : formatTimestamp(agent.last_seen_at)
                         }}
-                      </dd>
+                      </span>
                     </div>
-                  </dl>
-                </article>
+                    <code>{{ agent.agent_id }}</code>
+                    <dl>
+                      <div>
+                        <dt>Plugin</dt>
+                        <dd>{{ agent.plugin_version || '—' }}</dd>
+                      </div>
+                      <div>
+                        <dt>phBot</dt>
+                        <dd>{{ agent.phbot_version || '—' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Protocol</dt>
+                        <dd>
+                          {{
+                            agent.protocol_version
+                              ? 'v' + agent.protocol_version
+                              : '—'
+                          }}
+                        </dd>
+                      </div>
+                    </dl>
+                  </article>
+                </div>
               </div>
+            </section>
+
+            <section class="lower-grid">
+              <article class="panel operations-panel">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Operations</h2>
+                    <p>
+                      Slice 0 health stays available as an operational
+                      diagnostic.
+                    </p>
+                  </div>
+                </div>
+                <dl class="operation-list">
+                  <div>
+                    <dt>API / database</dt>
+                    <dd :class="backendReady ? 'text-ok' : 'text-warning'">
+                      {{ backendReady ? 'Ready' : 'Unavailable' }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Agent protocol</dt>
+                    <dd>v2</dd>
+                  </div>
+                  <div>
+                    <dt>Polling</dt>
+                    <dd>3 seconds</dd>
+                  </div>
+                </dl>
+              </article>
+
+              <article class="panel next-panel">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Presence model</h2>
+                    <p>
+                      Agent connection and joined character sessions are tracked
+                      separately.
+                    </p>
+                  </div>
+                </div>
+                <dl class="operation-list">
+                  <div>
+                    <dt>Character identity</dt>
+                    <dd>Server + character name</dd>
+                  </div>
+                  <div>
+                    <dt>Session recovery</dt>
+                    <dd>Full snapshot on reconnect</dd>
+                  </div>
+                  <div>
+                    <dt>Training state</dt>
+                    <dd>Unknown until API getter is verified</dd>
+                  </div>
+                </dl>
+              </article>
+            </section>
+          </template>
+          <section v-else class="character-detail-view">
+            <header class="page-header">
+              <div class="page-icon"><UIcon name="i-lucide-user-round" /></div>
+              <div>
+                <h1>{{ detailCharacter?.name || 'Character detail' }}</h1>
+                <p>
+                  {{ detailCharacter?.server || 'Loading identity' }} · stable
+                  character record
+                </p>
+              </div>
+              <a class="compact-button" href="/">Back to overview</a>
+            </header>
+            <div v-if="detailCharacter" class="detail-grid">
+              <article class="panel detail-identity">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Current status</h2>
+                    <p>{{ detailCharacter.guild || 'Guild unknown' }}</p>
+                  </div>
+                  <span
+                    class="status-chip"
+                    :class="detailCharacter.online ? 'online' : 'offline'"
+                    ><span />{{
+                      detailCharacter.online ? 'Online' : 'Offline'
+                    }}</span
+                  >
+                </div>
+                <dl class="operation-list">
+                  <div>
+                    <dt>Serving agent</dt>
+                    <dd>{{ detailCharacter.agent_id || 'None' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Level</dt>
+                    <dd>{{ detailCharacter.level ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>HP / MP</dt>
+                    <dd>
+                      {{ formatHealthMana(detailCharacter) }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>XP / SP</dt>
+                    <dd>
+                      {{ formatProgress(detailCharacter) }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Gold</dt>
+                    <dd>{{ detailCharacter.gold?.toLocaleString() ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Location</dt>
+                    <dd>
+                      {{ detailCharacter.zone || 'Unknown zone' }} ·
+                      {{ detailCharacter.x ?? '—' }},
+                      {{ detailCharacter.y ?? '—' }},
+                      {{ detailCharacter.z ?? '—' }} (region
+                      {{ detailCharacter.region ?? '—' }})
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Training state</dt>
+                    <dd>
+                      {{
+                        detailCharacter.botting == null
+                          ? 'Not reported by documented phBot API'
+                          : detailCharacter.botting
+                            ? 'Training'
+                            : 'Idle'
+                      }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Session started</dt>
+                    <dd>
+                      {{ formatTimestamp(detailCharacter.session_started_at) }}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Last activity</dt>
+                    <dd>
+                      {{ formatTimestamp(detailCharacter.last_activity_at) }}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+              <article class="panel detail-future">
+                <div class="panel-header compact">
+                  <div>
+                    <h2>Character tools</h2>
+                    <p>These panels will use this stable character ID.</p>
+                  </div>
+                </div>
+                <div class="detail-links">
+                  <span>Inventory / equipment · Slice 4</span
+                  ><span>Pets and party · Slice 4</span
+                  ><span>Map position · Slice 7</span
+                  ><span>Verified actions · Slice 3</span>
+                </div>
+              </article>
             </div>
-          </section>
-
-          <section class="lower-grid">
-            <article class="panel operations-panel">
-              <div class="panel-header compact">
-                <div>
-                  <h2>Operations</h2>
-                  <p>
-                    Slice 0 health stays available as an operational diagnostic.
-                  </p>
-                </div>
-              </div>
-              <dl class="operation-list">
-                <div>
-                  <dt>API / database</dt>
-                  <dd :class="backendReady ? 'text-ok' : 'text-warning'">
-                    {{ backendReady ? 'Ready' : 'Unavailable' }}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Agent protocol</dt>
-                  <dd>v1</dd>
-                </div>
-                <div>
-                  <dt>Polling</dt>
-                  <dd>3 seconds</dd>
-                </div>
-              </dl>
-            </article>
-
-            <article class="panel next-panel">
-              <div class="panel-header compact">
-                <div>
-                  <h2>Next data layer</h2>
-                  <p>
-                    Character identity and live statistics belong to Slice 2.
-                  </p>
-                </div>
-              </div>
-              <div class="placeholder-lines" aria-hidden="true">
-                <span /><span /><span />
-              </div>
-            </article>
+            <div v-else class="panel empty-state">
+              <strong>Character unavailable</strong>
+              <p>
+                The character ID may be invalid, or the backend is temporarily
+                unavailable.
+              </p>
+            </div>
           </section>
         </main>
       </div>

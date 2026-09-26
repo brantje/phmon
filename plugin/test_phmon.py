@@ -271,13 +271,36 @@ class BackoffTests(unittest.TestCase):
         }, 'fixture')
         interval = worker._validate_ack({
             'type': 'hello.ack',
-            'protocol_version': 1,
+            'protocol_version': 2,
             'heartbeat_interval_seconds': 10,
             'heartbeat_timeout_seconds': 30,
         })
         self.assertEqual(interval, 10)
         with self.assertRaises(plugin.WebSocketClosed):
-            worker._validate_ack({'type': 'hello.ack', 'protocol_version': 2})
+            worker._validate_ack({'type': 'hello.ack', 'protocol_version': 1})
+
+    def test_character_messages_resolve_identity_then_use_explicit_id(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture')
+
+        class Transport:
+            sent = []
+            def send_json(self, value): self.sent.append(value)
+            def receive_json(self, timeout=None):
+                return {'type':'character.registered','protocol_version':2,'character_id':AGENT_ID}
+
+        transport = Transport()
+        sample = {'identity':{'server':'Silkroad','name':'Alpha','guild':''},'state':{'level':110,'hp':500,'botting':None}}
+        worker._publish_sample(transport, sample, False)
+        worker._publish_sample(transport, sample, False)
+        self.assertEqual(transport.sent[0]['type'], 'character.identify')
+        self.assertEqual(transport.sent[1]['type'], 'character.snapshot')
+        self.assertEqual(transport.sent[1]['character_id'], AGENT_ID)
+        self.assertEqual(transport.sent[2]['type'], 'character.state')
+        self.assertEqual(transport.sent[2]['character_id'], AGENT_ID)
 
 
 class WorkerStopTests(unittest.TestCase):

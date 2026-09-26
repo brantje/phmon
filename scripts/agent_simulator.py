@@ -41,6 +41,31 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     worker.start()
 
+    if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "character-lifecycle":
+        deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+        while time.time() < deadline and "Connected" not in worker.status:
+            time.sleep(0.1)
+        if "Connected" not in worker.status:
+            worker.stop()
+            worker.join(2.0)
+            raise SystemExit("simulator could not establish backend connection")
+        # Deterministic fixtures exercise identity reuse, state replacement,
+        # explicit leave/switch and rejoin over the production PhMon.py worker.
+        alpha = {"server": "Fixture Silkroad", "name": "FixtureAlpha", "guild": "FixtureGuild"}
+        beta = {"server": "Fixture Silkroad", "name": "FixtureBeta", "guild": ""}
+        worker.update_character(alpha, {"level": 75, "hp": 900, "hp_max": 1000, "mp": 400, "mp_max": 500, "current_exp": 1000, "max_exp": 5000, "sp": 250, "gold": 123456, "region": 25000, "zone": "Fixture Jangan", "x": 10.0, "y": 20.0, "z": 0.0, "botting": False})
+        time.sleep(1.2)
+        worker.update_character(alpha, {"level": 76, "hp": 950, "hp_max": 1000, "mp": 410, "mp_max": 500, "current_exp": 1800, "max_exp": 5000, "sp": 255, "gold": 123999, "region": 25000, "zone": "Fixture Jangan", "x": 11.0, "y": 21.0, "z": 0.0, "botting": True})
+        time.sleep(1.2)
+        worker.update_character(beta, {"level": 42, "hp": 300, "hp_max": 600, "mp": 700, "mp_max": 900, "current_exp": 12, "max_exp": 120, "sp": 17, "gold": 456, "region": 25200, "zone": "Fixture Donwhang", "x": 50.0, "y": 75.0, "z": 2.0, "botting": False})
+        time.sleep(1.2)
+        worker.leave_character()
+        time.sleep(0.5)
+        worker.update_character(alpha, {"level": 76, "hp": 950, "hp_max": 1000, "mp": 410, "mp_max": 500, "current_exp": 1800, "max_exp": 5000, "sp": 255, "gold": 123999, "region": 25000, "zone": "Fixture Jangan", "x": 11.0, "y": 21.0, "z": 0.0, "botting": True})
+        time.sleep(1.2)
+        worker.update_character(beta, {"level": 42, "hp": 300, "hp_max": 600, "mp": 700, "mp_max": 900, "current_exp": 12, "max_exp": 120, "sp": 17, "gold": 456, "region": 25200, "zone": "Fixture Donwhang", "x": 50.0, "y": 75.0, "z": 2.0, "botting": False})
+        print("PASS deterministic character lifecycle fixture completed")
+
     run_seconds = float(os.environ.get('PHMON_SIMULATOR_RUN_SECONDS', '0'))
     deadline = time.time() + run_seconds if run_seconds > 0 else None
     try:

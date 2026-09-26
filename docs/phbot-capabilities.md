@@ -20,7 +20,7 @@ coverage is tracked separately and is never treated as proof of a real phBot run
   - event_loop() runs every 500 ms, but Slice 1 does not need to perform networking
     in that latency-sensitive callback.
 - GUI API: https://plugins.phbot.org/gui-api
-  - QtBind.init(__name__, ...) creates a plugin tab and must be called at module load.
+  - QtBind.init(**name**, ...) creates a plugin tab and must be called at module load.
   - createLineEdit/createButton provide operator-editable fields and actions.
   - text()/setText() read and update widget values.
 - Config: https://plugins.phbot.org/phbot-api/config
@@ -71,8 +71,14 @@ the Go backend owns durable identity, authentication and connection history.
 
 ## Runtime validation
 
-Status: BLOCKED — no compatible real Windows/phBot process is available in this
-execution environment.
+Operator-provided evidence: **Real phBot → PhMon plugin/backend connectivity has
+been manually verified.** The repository does not record the phBot build, embedded
+Python version, profile count, or which Slice 2 data APIs were exercised. This
+confirms basic connectivity only; it does not validate character collection.
+
+The Slice 2 character/stat APIs below are confirmed in the official documentation,
+but have not yet been independently recorded as manually exercised in a live
+phBot session. Track that separately from the verified basic connection fact.
 
 The deterministic simulator added with Slice 1 imports the production PhMon.py
 transport and exercises the same protocol contract. Hosted CI has verified credential
@@ -80,8 +86,7 @@ creation, connect, backend restart, automatic reconnect and disconnect through t
 transport, but simulator success must not be recorded as real phBot validation.
 
 Public phBot documentation explicitly supports socket. The actual embedded runtime
-still needs to prove that every imported module used by this path is available and
-behaves as expected, especially:
+still needs to record which imports/data APIs behave as expected, especially:
 
 - socket
 - ssl
@@ -91,6 +96,44 @@ behaves as expected, especially:
 - base64
 - struct
 - urllib.parse
+
+## Slice 2 character and state APIs
+
+Sources checked 2026-09-26:
+
+- [Events](https://plugins.phbot.org/phbot-api/events): `joined_game()` is called
+  after character selection, but the docs explicitly say character data is not
+  loaded yet. `disconnected()` describes game-server disconnection and may be called
+  repeatedly. `event_loop()` runs every 500 ms. The plugin therefore waits for a
+  populated identity during `event_loop()` and never performs network I/O there.
+- [Character](https://plugins.phbot.org/phbot-api/character): documented no-argument
+  `get_character_data()` returns `None` or an object including server, name, guild,
+  region, coordinates, HP/MP, level, gold, current/max EXP and SP. Its example also
+  includes `player_id` and `account_id`, but the page does not specify their
+  stability or uniqueness scope. PhMon does not use those undocumented semantics as
+  a durable key.
+- The same Character page documents no-argument `get_position()`, returning x/y/z
+  and region, or `None`.
+- [Game Data](https://plugins.phbot.org/phbot-api/game-data) documents
+  `get_zone_name(region)` for deriving a display zone from the region code.
+- [Botting](https://plugins.phbot.org/phbot-api/botting) documents `start_bot()` and
+  `stop_bot()` mutations but no read-only botting/training-state getter. Slice 2
+  reports this field as unknown rather than inferring state from commands or UI.
+
+Implementation imports only these documented APIs. It copies primitive values on
+the callback thread, change-detects at a one-second minimum and refreshes at five
+seconds while unchanged. A bounded one-entry worker queue coalesces intermediate
+samples. After reconnect the worker resolves the identity again and sends a full
+snapshot. The backend timestamp is authoritative; `sent_at` is diagnostic only.
+Identity is lowercased/trimmed character name scoped by lowercased/trimmed server
+name. This assumes game character names are unique within a Silkroad server; PhMon
+does not claim a globally unique game ID. Guild is mutable metadata, not identity.
+
+Manual Slice 2 runtime checks still needed: record the actual build/runtime; inspect
+the return types and timing of `get_character_data`, `get_position` and
+`get_zone_name`; verify login delay, repeated disconnect callbacks, character switch,
+teleport/region change and reconnect snapshot behavior. Botting state remains
+unavailable until an authoritative documented/read-only API is verified.
 
 The real-runtime gate requires installing PhMon.py in a supported phBot build,
 configuring at least two distinct bot profiles through the PhMon QtBind tab, and

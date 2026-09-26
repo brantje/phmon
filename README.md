@@ -1,14 +1,15 @@
 # PhMon
 
-A self-hosted phBot monitoring and remote-control project. **Slice 0 is complete;
-Slice 1 implementation and automated validation are complete, with real Windows/phBot
-runtime validation and same-viewport browser comparison still pending.** The
-Go/PostgreSQL/Nuxt foundation includes durable per-agent identity, authenticated
-outbound phBot WebSockets, heartbeat/reconnect handling and a live agent-status shell.
-Character/game state and remote commands deliberately remain for later slices.
+A self-hosted phBot monitoring and remote-control project. Slice 0 and the Slice 1
+implementation are complete. The operator has manually verified real phBot → PhMon
+plugin/backend connectivity; the phBot build, embedded Python version and data API
+behavior are not recorded yet. Same-viewport reference comparison remains open.
+Slice 2 adds server-scoped durable character identity, live state/sessions, groups
+and character overview/detail surfaces. Remote commands remain in Slice 3.
 [AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap. The target is applicable
 feature, layout and style parity with [the phMonitor demo](https://phmonitor.com/demo).
-Slice 2 is planned next but is not started by this Slice 1 completion task.
+The active implementation scope is Slice 2 only; see the completion ledger in
+[AGENTS.md](AGENTS.md).
 
 ## Start the local stack
 
@@ -22,9 +23,10 @@ docker compose up --build -d --wait --wait-timeout 180
 Open **http://127.0.0.1:3005** on the host, or **http://<host-LAN-IP>:3005** from
 another device on the same network. Find the host address with `hostname -I` on
 Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
-port 3005 through the host firewall for your private LAN. The Slice 1 dashboard shows
-backend readiness plus the currently connected/disconnected phBot agent set and
-retries transient failures automatically.
+port 3005 through the host firewall for your private LAN. The dashboard shows
+character presence and current stats, with the agent connections and backend
+readiness available below. It refreshes automatically and retains the last received
+records with a stale indicator during temporary outages.
 
 ```sh
 docker compose ps
@@ -41,7 +43,6 @@ project's local database**. Compose runs built images; run `up --build` after so
 changes, or use the host workflow below for frontend hot reload. Dependencies and
 container images require internet access during initial install/build; the running
 stack has no external-service dependency. UI fonts are system fonts.
-
 
 ## Connect a phBot agent
 
@@ -132,23 +133,23 @@ token-authenticated. In particular, any user who can reach the current web UI ca
 the Create credential action, so keep the UI on a trusted network until user
 authentication/authorization is implemented.
 
-| Variable | Default/example | Purpose |
-| --- | --- | --- |
-| `POSTGRES_USER` | `phmon` | Initial local database user |
-| `POSTGRES_PASSWORD` | `phmon_local_only` | Required by Compose; local-only password |
-| `POSTGRES_DB` | `phmon` | Initial database name |
-| `POSTGRES_PORT` | `5435` | Host port for Compose PostgreSQL |
-| `SERVER_PORT` | `8081` | Host port for Compose Go |
-| `SERVER_BIND_ADDR` | `127.0.0.1` | Host address for the agent/API port; override only for an explicitly trusted development network |
-| `WEB_PORT` | `3005` | Host port for Compose Nuxt |
-| `WEB_BIND_ADDR` | `0.0.0.0` | Host address for the Compose web UI; use `127.0.0.1` for host-only access |
-| `HTTP_ADDR` | `127.0.0.1:8081` | Host Go listener; Compose uses `0.0.0.0:8081` |
-| `DATABASE_URL` | See `.env.example` | Required host Go PostgreSQL URL |
-| `NUXT_BACKEND_URL` | `http://127.0.0.1:8081` | Private Nuxt server URL; Compose uses `http://server:8081` |
-| `NUXT_PUBLIC_INSTANCE_URL` | Unset | Optional reachable browser-facing origin for the mobile QR/copy panel |
-| `TEST_DATABASE_URL` | Unset | Enables real PostgreSQL Go integration test |
-| `SMOKE_BACKEND_URL` / `SMOKE_WEB_URL` | Local defaults above | Smoke-test target overrides |
-| `EXPECT_UNAVAILABLE` | Unset | Set `1` for database-outage smoke test |
+| Variable                              | Default/example         | Purpose                                                                                          |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `POSTGRES_USER`                       | `phmon`                 | Initial local database user                                                                      |
+| `POSTGRES_PASSWORD`                   | `phmon_local_only`      | Required by Compose; local-only password                                                         |
+| `POSTGRES_DB`                         | `phmon`                 | Initial database name                                                                            |
+| `POSTGRES_PORT`                       | `5435`                  | Host port for Compose PostgreSQL                                                                 |
+| `SERVER_PORT`                         | `8081`                  | Host port for Compose Go                                                                         |
+| `SERVER_BIND_ADDR`                    | `127.0.0.1`             | Host address for the agent/API port; override only for an explicitly trusted development network |
+| `WEB_PORT`                            | `3005`                  | Host port for Compose Nuxt                                                                       |
+| `WEB_BIND_ADDR`                       | `0.0.0.0`               | Host address for the Compose web UI; use `127.0.0.1` for host-only access                        |
+| `HTTP_ADDR`                           | `127.0.0.1:8081`        | Host Go listener; Compose uses `0.0.0.0:8081`                                                    |
+| `DATABASE_URL`                        | See `.env.example`      | Required host Go PostgreSQL URL                                                                  |
+| `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt server URL; Compose uses `http://server:8081`                                       |
+| `NUXT_PUBLIC_INSTANCE_URL`            | Unset                   | Optional reachable browser-facing origin for the mobile QR/copy panel                            |
+| `TEST_DATABASE_URL`                   | Unset                   | Enables real PostgreSQL Go integration test                                                      |
+| `SMOKE_BACKEND_URL` / `SMOKE_WEB_URL` | Local defaults above    | Smoke-test target overrides                                                                      |
+| `EXPECT_UNAVAILABLE`                  | Unset                   | Set `1` for database-outage smoke test                                                           |
 
 When changing ports, update the corresponding host URL too; Compose internal ports
 stay fixed. Change the Nuxt host dev port with `npm --prefix web run dev -- --port
@@ -199,23 +200,44 @@ manual development without phBot, the same plugin transport can be exercised wit
 `scripts/agent_simulator.py`; simulator success is fixture coverage and is never
 reported as real phBot runtime validation.
 
+To run its explicit fixture character lifecycle scenario against a local test stack:
+
+```sh
+PHMON_AGENT_URL=ws://127.0.0.1:8081/agent \
+PHMON_AGENT_ID='<agent-id>' PHMON_AGENT_TOKEN='<agent-token>' \
+PHMON_SIMULATOR_SCENARIO=character-lifecycle \
+python3 scripts/agent_simulator.py
+```
+
+This creates clearly named `FixtureAlpha`/`FixtureBeta` records. Run this only
+against a development/test database; fixture data is not a production monitoring
+source. `python3 scripts/character_smoke.py` verifies the switched state through the
+same-origin API.
+
 ## Architecture and references
 
 Go uses standard-library HTTP handlers, pgx and embedded transactional migrations.
-The first durable `agents` table stores stable agent IDs, token hashes and
-connection/version metadata. `/agent` is the authenticated protocol-v1 WebSocket;
-an in-memory generation-fenced registry owns current socket presence while
-PostgreSQL remains the durable authority. `GET /api/agents` exposes only safe
-presentation fields. `POST /api/agents/credentials` creates a new credential and
-returns its plaintext token once with no-store semantics; there is no endpoint for
-retrieving an existing token.
+PostgreSQL stores durable agents, server-scoped characters, current state, character
+sessions, groups and membership. `/agent` is the authenticated protocol-v2 WebSocket;
+the generation-fenced registry and generation-scoped sessions fence stale sockets.
+Character identity is the case-folded character name within a case-folded server
+name; it assumes Silkroad character names are unique per game server and does not
+claim a universal game identifier. Startup ends stale sessions but retains identity
+and last state. `GET /api/characters?q=&group_id=` searches name, guild, server and
+zone; `/api/characters/{character_id}` is the stable detail route. Groups are
+operator-managed metadata under `/api/groups` and never affect identity/routing.
+`GET /api/agents` exposes safe presentation fields. Credential creation returns a
+new token once with no-store semantics; existing tokens cannot be retrieved.
 
-Nuxt keeps browser access same-origin through `/api/health`, `/api/agents` and the
-credential-creation proxy.
+Nuxt keeps browser access same-origin through health, agent, character and group API
+proxies plus the credential-creation endpoint.
 `plugin/PhMon.py` uses only Python standard-library networking, performs no backend
-I/O in phBot callbacks, and reconnects on a worker thread. See
-[docs/protocol.md](docs/protocol.md) for the wire contract. Commands, character/game
-state, events, analytics and other later behavior remain in their designated slices.
+I/O in phBot callbacks, and reconnects on a worker thread. It samples documented
+`get_character_data()`, `get_position()` and `get_zone_name(region)` APIs; botting
+state remains unknown because the official Botting API lists mutations but no
+read-only state getter. See [docs/protocol.md](docs/protocol.md) and
+[docs/phbot-capabilities.md](docs/phbot-capabilities.md). Remote commands, inventory,
+events, analytics and later roadmap areas remain in their designated slices.
 
 Version/setup references: [Go releases](https://go.dev/dl/),
 [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation),

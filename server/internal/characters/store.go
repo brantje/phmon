@@ -1,0 +1,255 @@
+package characters
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var ErrNotFound = errors.New("character not found")
+
+type Identity struct{ Server, Name, Guild string }
+type State struct {
+	Level      *int     `json:"level"`
+	HP         *int64   `json:"hp"`
+	HPMax      *int64   `json:"hp_max"`
+	MP         *int64   `json:"mp"`
+	MPMax      *int64   `json:"mp_max"`
+	CurrentEXP *int64   `json:"current_exp"`
+	MaxEXP     *int64   `json:"max_exp"`
+	SP         *int64   `json:"sp"`
+	Gold       *int64   `json:"gold"`
+	Region     *int     `json:"region"`
+	Zone       *string  `json:"zone"`
+	X          *float64 `json:"x"`
+	Y          *float64 `json:"y"`
+	Z          *float64 `json:"z"`
+	Botting    *bool    `json:"botting"`
+}
+type Character struct {
+	ID               string     `json:"character_id"`
+	Server           string     `json:"server"`
+	Name             string     `json:"name"`
+	Guild            *string    `json:"guild,omitempty"`
+	Zone             *string    `json:"zone,omitempty"`
+	Online           bool       `json:"online"`
+	AgentID          *string    `json:"agent_id,omitempty"`
+	SessionStartedAt *time.Time `json:"session_started_at,omitempty"`
+	LastActivityAt   *time.Time `json:"last_activity_at,omitempty"`
+	StateUpdatedAt   *time.Time `json:"state_updated_at,omitempty"`
+	Level            *int       `json:"level,omitempty"`
+	HP               *int64     `json:"hp,omitempty"`
+	HPMax            *int64     `json:"hp_max,omitempty"`
+	MP               *int64     `json:"mp,omitempty"`
+	MPMax            *int64     `json:"mp_max,omitempty"`
+	CurrentEXP       *int64     `json:"current_exp,omitempty"`
+	MaxEXP           *int64     `json:"max_exp,omitempty"`
+	SP               *int64     `json:"sp,omitempty"`
+	Gold             *int64     `json:"gold,omitempty"`
+	Region           *int       `json:"region,omitempty"`
+	X                *float64   `json:"x,omitempty"`
+	Y                *float64   `json:"y,omitempty"`
+	Z                *float64   `json:"z,omitempty"`
+	Botting          *bool      `json:"botting,omitempty"`
+}
+type Group struct {
+	ID      string      `json:"group_id"`
+	Name    string      `json:"name"`
+	Members []Character `json:"members"`
+}
+type Store struct{ pool *pgxpool.Pool }
+
+func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+// Resolve uses server-scoped, case-folded character names. Silkroad names are
+// assumed unique within a server; no undocumented player/account ID is trusted.
+func (s *Store) Resolve(ctx context.Context, identity Identity) (string, error) {
+	server, name := strings.TrimSpace(identity.Server), strings.TrimSpace(identity.Name)
+	if len(server) < 1 || len(server) > 100 || len(name) < 1 || len(name) > 64 || strings.ContainsRune(server, 0) || strings.ContainsRune(name, 0) {
+		return "", errors.New("invalid character identity")
+	}
+	key, serverKey := strings.ToLower(name), strings.ToLower(server)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))`, serverKey, key); err != nil {
+		return "", err
+	}
+	var id string
+	err = tx.QueryRow(ctx, `INSERT INTO characters(server_name,server_key,character_name,identity_key,guild_name)
+VALUES($1,$2,$3,$4,NULLIF($5,'')) ON CONFLICT(server_key,identity_key) DO UPDATE SET server_name=EXCLUDED.server_name,character_name=EXCLUDED.character_name,guild_name=COALESCE(EXCLUDED.guild_name,characters.guild_name),updated_at=now() RETURNING character_id::text`, server, serverKey, name, key, strings.TrimSpace(identity.Guild)).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("resolve character: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
+		return err
+	}
+	var existing string
+	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation).Scan(&existing)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		if _, err = tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),end_reason='switched' WHERE character_id=$1 AND ended_at IS NULL`, characterID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO character_sessions(character_id,agent_id,connection_generation) VALUES($1,$2,$3)`, characterID, agentID, generation); err != nil {
+			return fmt.Errorf("open character session: %w", err)
+		}
+	}
+	if _, err = tx.Exec(ctx, `UPDATE characters SET level=COALESCE($2,level),hp=COALESCE($3,hp),hp_max=COALESCE($4,hp_max),mp=COALESCE($5,mp),mp_max=COALESCE($6,mp_max),current_exp=COALESCE($7,current_exp),max_exp=COALESCE($8,max_exp),sp=COALESCE($9,sp),gold=COALESCE($10,gold),region=COALESCE($11,region),zone_name=COALESCE($12,zone_name),x=COALESCE($13,x),y=COALESCE($14,y),z=COALESCE($15,z),botting=$16,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+func (s *Store) Update(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
+	result, err := s.pool.Exec(ctx, `UPDATE characters c SET
+level=COALESCE($4,c.level),hp=COALESCE($5,c.hp),hp_max=COALESCE($6,c.hp_max),mp=COALESCE($7,c.mp),mp_max=COALESCE($8,c.mp_max),
+current_exp=COALESCE($9,c.current_exp),max_exp=COALESCE($10,c.max_exp),sp=COALESCE($11,c.sp),gold=COALESCE($12,c.gold),region=COALESCE($13,c.region),zone_name=COALESCE($14,c.zone_name),
+x=COALESCE($15,c.x),y=COALESCE($16,c.y),z=COALESCE($17,c.z),botting=$18,state_updated_at=now(),updated_at=now()
+WHERE c.character_id=$1 AND EXISTS(SELECT 1 FROM character_sessions cs WHERE cs.character_id=c.character_id AND cs.agent_id=$2 AND cs.connection_generation=$3 AND cs.ended_at IS NULL)`, characterID, agentID, generation, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting)
+	if err != nil {
+		return fmt.Errorf("update character state: %w", err)
+	}
+	if result.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	_, err = s.pool.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation)
+	return err
+}
+func (s *Store) End(ctx context.Context, agentID, characterID string, generation uint64, reason string) error {
+	if reason != "left" && reason != "agent_disconnected" {
+		return errors.New("invalid session end reason")
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason=$4 WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation, reason)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+func (s *Store) EndAgent(ctx context.Context, agentID string, generation uint64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='agent_disconnected' WHERE agent_id=$1 AND connection_generation=$2 AND ended_at IS NULL`, agentID, generation)
+	return err
+}
+
+func (s *Store) ReconcileSessions(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='backend_restart' WHERE ended_at IS NULL`)
+	return err
+}
+
+const selectCharacters = `SELECT c.character_id::text,c.server_name,c.character_name,c.guild_name,c.zone_name,
+(cs.session_id IS NOT NULL),cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting
+FROM characters c LEFT JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL`
+
+func scanCharacter(row pgx.Row) (Character, error) {
+	var c Character
+	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting)
+	return c, err
+}
+func (s *Store) List(ctx context.Context, query string, groupID string) ([]Character, error) {
+	q := selectCharacters + ` WHERE ($1='' OR c.character_name ILIKE '%'||$1||'%' OR COALESCE(c.guild_name,'') ILIKE '%'||$1||'%' OR c.server_name ILIKE '%'||$1||'%' OR COALESCE(c.zone_name,'') ILIKE '%'||$1||'%') AND ($2='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=c.character_id AND m.group_id=$2::uuid)) ORDER BY c.server_name,c.character_name LIMIT 500`
+	rows, err := s.pool.Query(ctx, q, strings.TrimSpace(query), groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Character{}
+	for rows.Next() {
+		c, e := scanCharacter(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+func (s *Store) Get(ctx context.Context, id string) (Character, error) {
+	c, err := scanCharacter(s.pool.QueryRow(ctx, selectCharacters+` WHERE c.character_id=$1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return c, ErrNotFound
+	}
+	return c, err
+}
+func (s *Store) Groups(ctx context.Context) ([]Group, error) {
+	rows, err := s.pool.Query(ctx, `SELECT group_id::text,name FROM character_groups ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Group{}
+	for rows.Next() {
+		var g Group
+		if err := rows.Scan(&g.ID, &g.Name); err != nil {
+			return nil, err
+		}
+		g.Members = []Character{}
+		members, e := s.List(ctx, "", g.ID)
+		if e != nil {
+			return nil, e
+		}
+		g.Members = members
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+func (s *Store) CreateGroup(ctx context.Context, name string) (Group, error) {
+	var g Group
+	name = strings.TrimSpace(name)
+	if len(name) < 1 || len(name) > 80 {
+		return g, errors.New("group name must be 1 to 80 characters")
+	}
+	err := s.pool.QueryRow(ctx, `INSERT INTO character_groups(name) VALUES($1) RETURNING group_id::text,name`, name).Scan(&g.ID, &g.Name)
+	g.Members = []Character{}
+	return g, err
+}
+func (s *Store) RenameGroup(ctx context.Context, id, name string) error {
+	name = strings.TrimSpace(name)
+	if len(name) < 1 || len(name) > 80 {
+		return errors.New("group name must be 1 to 80 characters")
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE character_groups SET name=$2,updated_at=now() WHERE group_id=$1`, id, name)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+func (s *Store) DeleteGroup(ctx context.Context, id string) error {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM character_groups WHERE group_id=$1`, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+func (s *Store) SetMember(ctx context.Context, gid, cid string, add bool) error {
+	if add {
+		_, err := s.pool.Exec(ctx, `INSERT INTO character_group_members(group_id,character_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, gid, cid)
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `DELETE FROM character_group_members WHERE group_id=$1 AND character_id=$2`, gid, cid)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}

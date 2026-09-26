@@ -68,3 +68,58 @@ release/build metadata exists.
 Real Windows/phBot runtime validation is also still open. The simulator exercises the
 same production wire contract but is not evidence that the embedded phBot runtime has
 loaded and operated the plugin successfully.
+
+## Slice 2 — character overview and detail
+
+Status: implementation and automated checks complete for the implementable Slice 2
+scope; final visual parity and real phBot data-API validation remain open.
+
+### Reference evidence reviewed
+
+- Reopened `docs/reference/phmonitor-dashboard.png` and
+  `docs/reference/phmonitor-stats.png` (1440 × 1000). Dashboard uses an asymmetric
+  panel layout with fleet character counters, last deaths, server information, a
+  broad recent-events panel, rare-drop/chat stack and offers. Stats opens with a
+  compact thematic header and a large grouped-character surface; its empty state
+  offers a first-group prompt rather than implying characters have loaded.
+- These saved captures are from the recorded 2026-09-26 public-demo inspection. The
+  live demo and advanced character subtabs were not independently re-exercised in
+  this slice; hidden details are not inferred from these screenshots.
+
+### Implemented and evidenced behavior
+
+- Go/PostgreSQL automatically resolves joined identities by normalized server plus
+  character name, tracks generation-scoped live sessions/current stats and closes
+  sessions on leave, replacement, disconnect and backend startup.
+- Protocol v2 identifies a character before registration, then requires explicit
+  `character_id` on each snapshot/state/left message. The plugin reports documented
+  state fields and sends full snapshots after reconnect.
+- Character overview supports server/name/guild/zone search, persisted group
+  filtering and membership controls. Stable detail path is
+  `/characters/{character_id}`. It shows known state and labels later inventory,
+  pets, party, map and action areas as not yet implemented.
+- Empty character state explains automatic phBot discovery. Group operations are
+  persisted but remain organizational metadata.
+- No external phMonitor assets or service calls were introduced. The neutral
+  development backdrop remains; approved local artwork and final visual treatment
+  remain open.
+
+### Comparison and gaps
+
+- A compact character table now appears above the existing agent/operations panels;
+  the reference's deaths, server-information artwork, events, drops/chat and offers
+  remain owned by later slices. This is the Slice 2 state surface, not complete
+  dashboard parity.
+- Local overview evidence: [1440 × 1000](evidence/slice2-overview-1440x1000.png),
+  [1280 × 800](evidence/slice2-overview-1280x800.png) and
+  [390 × 844](evidence/slice2-overview-390x844.png). The 1440 capture was reviewed
+  against the saved dashboard/stats references. At 390 px, document/body scroll width
+  equals the viewport width; the mobile navigation remains collapsed and content
+  stacks without page-level horizontal overflow. [Character detail at 1440 × 1000](evidence/slice2-character-detail-1440x1000.png)
+  has no direct reference capture; its hierarchy follows the shared shell while later
+  panels remain explicit gaps.
+- Botting/training remains unknown because official docs expose start/stop mutations
+  but no read-only getter. No phBot data API has been manually validated yet,
+  despite operator confirmation of basic plugin/backend connectivity. The plugin's
+  v2 lifecycle was exercised through the deterministic simulator over the same
+  production transport, not a phBot runtime.

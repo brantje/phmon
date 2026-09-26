@@ -11,9 +11,10 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/characters"
 )
 
-const agentProtocolVersion = 1
+const agentProtocolVersion = 2
 
 type AgentOptions struct {
 	HelloTimeout      time.Duration
@@ -35,18 +36,24 @@ func (o AgentOptions) withDefaults() AgentOptions {
 }
 
 type agentHandler struct {
-	store    AgentStore
-	registry *agentdomain.Registry
-	options  AgentOptions
+	store      AgentStore
+	registry   *agentdomain.Registry
+	options    AgentOptions
+	characters *characters.Store
 }
 
 type agentMessage struct {
-	Type            string `json:"type"`
-	ProtocolVersion int    `json:"protocol_version"`
-	AgentID         string `json:"agent_id,omitempty"`
-	PluginVersion   string `json:"plugin_version,omitempty"`
-	PhBotVersion    string `json:"phbot_version,omitempty"`
-	SentAt          string `json:"sent_at,omitempty"`
+	Type            string           `json:"type"`
+	ProtocolVersion int              `json:"protocol_version"`
+	AgentID         string           `json:"agent_id,omitempty"`
+	PluginVersion   string           `json:"plugin_version,omitempty"`
+	PhBotVersion    string           `json:"phbot_version,omitempty"`
+	SentAt          string           `json:"sent_at,omitempty"`
+	CharacterID     string           `json:"character_id,omitempty"`
+	Server          string           `json:"server,omitempty"`
+	Name            string           `json:"name,omitempty"`
+	Guild           string           `json:"guild,omitempty"`
+	State           characters.State `json:"state,omitempty"`
 }
 
 type helloAck struct {
@@ -152,6 +159,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
+		if h.characters != nil {
+			if err := h.characters.EndAgent(ctx, hello.AgentID, generation); err != nil {
+				slog.Warn("failed to close character sessions", "agent_id", hello.AgentID)
+			}
+		}
 		if err := h.store.MarkDisconnected(ctx, hello.AgentID, connectedAt); err != nil {
 			slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
 		}
@@ -178,19 +190,85 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
-		if message.Type != "heartbeat" || message.ProtocolVersion != agentProtocolVersion {
-			_ = conn.Close(websocket.StatusPolicyViolation, "heartbeat expected")
+		if !h.registry.IsCurrent(hello.AgentID, generation) {
 			return
 		}
-		if _, err := time.Parse(time.RFC3339, message.SentAt); err != nil {
-			_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+		if message.ProtocolVersion != agentProtocolVersion {
+			_ = conn.Close(websocket.StatusUnsupportedData, "unsupported protocol version")
 			return
 		}
-		ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
-		err = h.store.MarkSeen(ctx, hello.AgentID)
-		cancel()
-		if err != nil {
-			slog.Warn("failed to persist agent heartbeat", "agent_id", hello.AgentID)
+		switch message.Type {
+		case "heartbeat":
+			if _, err := time.Parse(time.RFC3339, message.SentAt); err != nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			err = h.store.MarkSeen(ctx, hello.AgentID)
+			cancel()
+			if err != nil {
+				slog.Warn("failed to persist agent heartbeat", "agent_id", hello.AgentID)
+			}
+		case "character.identify":
+			if h.characters == nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "character state unavailable")
+				return
+			}
+			if !validMessageTime(message.SentAt) {
+				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			id, e := h.characters.Resolve(ctx, characters.Identity{Server: message.Server, Name: message.Name, Guild: message.Guild})
+			cancel()
+			if e != nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "invalid character identity")
+				return
+			}
+			if e = wsjson.Write(sessionCtx, conn, map[string]any{"type": "character.registered", "protocol_version": agentProtocolVersion, "character_id": id}); e != nil {
+				return
+			}
+		case "character.snapshot", "character.state":
+			if !agentdomain.ValidAgentID(message.CharacterID) || !validWireState(message.State) || h.characters == nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "invalid character state")
+				return
+			}
+			if !validMessageTime(message.SentAt) {
+				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			var e error
+			if message.Type == "character.snapshot" {
+				e = h.characters.Snapshot(ctx, hello.AgentID, message.CharacterID, generation, message.State)
+			} else {
+				e = h.characters.Update(ctx, hello.AgentID, message.CharacterID, generation, message.State)
+			}
+			cancel()
+			if e != nil {
+				slog.Warn("character state update rejected", "agent_id", hello.AgentID, "message_type", message.Type, "reason", e.Error())
+				_ = conn.Close(websocket.StatusPolicyViolation, "unknown character session")
+				return
+			}
+		case "character.left":
+			if !agentdomain.ValidAgentID(message.CharacterID) || h.characters == nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "character_id required")
+				return
+			}
+			if !validMessageTime(message.SentAt) {
+				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			e := h.characters.End(ctx, hello.AgentID, message.CharacterID, generation, "left")
+			cancel()
+			if e != nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "unknown character session")
+				return
+			}
+		default:
+			_ = conn.Close(websocket.StatusPolicyViolation, "unexpected agent message")
+			return
 		}
 	}
 }

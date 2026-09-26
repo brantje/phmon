@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/characters"
 )
 
 type AgentStore interface {
@@ -23,6 +24,7 @@ type Dependencies struct {
 	Agents       AgentStore
 	Registry     *agentdomain.Registry
 	AgentOptions AgentOptions
+	Characters   *characters.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -30,13 +32,26 @@ func New(deps Dependencies) http.Handler {
 	registerHealth(mux, deps.Database)
 	if deps.Agents != nil && deps.Registry != nil {
 		handler := &agentHandler{
-			store:    deps.Agents,
-			registry: deps.Registry,
-			options:  deps.AgentOptions.withDefaults(),
+			store:      deps.Agents,
+			registry:   deps.Registry,
+			options:    deps.AgentOptions.withDefaults(),
+			characters: deps.Characters,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		mux.HandleFunc("GET /api/agents", handler.list)
 		mux.HandleFunc("POST /api/agents/credentials", handler.createCredential)
+		if deps.Characters != nil {
+			ch := &characterHandler{store: deps.Characters}
+			mux.HandleFunc("GET /api/characters", ch.list)
+			mux.HandleFunc("GET /api/characters/{id}", ch.get)
+			mux.HandleFunc("GET /api/groups", ch.groups)
+			mux.HandleFunc("POST /api/groups", ch.createGroup)
+			mux.HandleFunc("PATCH /api/groups/{id}", ch.renameGroup)
+			mux.HandleFunc("DELETE /api/groups/{id}", ch.deleteGroup)
+			mux.HandleFunc("PUT /api/groups/{id}/members/{characterID}", ch.addMember)
+			mux.HandleFunc("DELETE /api/groups/{id}/members/{characterID}", ch.removeMember)
+			handler.characters = deps.Characters
+		}
 	}
 	return mux
 }
