@@ -102,16 +102,32 @@ const {
   query: characterListQuery,
   watch: [characterListQuery],
 })
+const {
+  data: fleetCharacterResponse,
+  refresh: refreshFleetCharacters,
+  error: fleetCharacterError,
+} = await useFetch<CharacterList>('/api/characters', {
+  key: 'fleet-characters',
+  retry: 0,
+  dedupe: 'cancel',
+})
 const { data: groupResponse, refresh: refreshGroups } = await useFetch<{
   groups: CharacterGroup[]
 }>('/api/groups', { retry: 0 })
 const lastCharacters = ref<Character[]>(
   characterResponse.value?.characters || [],
 )
+const lastFleetCharacters = ref<Character[]>(
+  fleetCharacterResponse.value?.characters || [],
+)
 const lastGroups = ref<CharacterGroup[]>(groupResponse.value?.groups || [])
 watch(characterResponse, (value) => {
   if (value?.status !== 'unavailable')
     lastCharacters.value = value?.characters || []
+})
+watch(fleetCharacterResponse, (value) => {
+  if (value?.status !== 'unavailable')
+    lastFleetCharacters.value = value?.characters || []
 })
 watch(groupResponse, (value) => {
   if (value?.groups) lastGroups.value = value.groups
@@ -130,27 +146,29 @@ const visibleCharacters = computed(() =>
   }),
 )
 const onlineCharacterCount = computed(
-  () => lastCharacters.value.filter((character) => character.online).length,
+  () =>
+    lastFleetCharacters.value.filter((character) => character.online).length,
 )
 const offlineCharacterCount = computed(
-  () => lastCharacters.value.filter((character) => !character.online).length,
+  () =>
+    lastFleetCharacters.value.filter((character) => !character.online).length,
 )
 const characterCountsUnknown = computed(
   () =>
-    (!characterResponse.value ||
-      Boolean(characterError.value) ||
-      characterResponse.value?.status === 'unavailable') &&
-    lastCharacters.value.length === 0,
+    (!fleetCharacterResponse.value ||
+      Boolean(fleetCharacterError.value) ||
+      fleetCharacterResponse.value?.status === 'unavailable') &&
+    lastFleetCharacters.value.length === 0,
 )
 function displayCharacterCount(value: number) {
   return characterCountsUnknown.value ? '—' : String(value)
 }
 const combinedVitals = computed(() => {
-  const withHP = lastCharacters.value.filter(
+  const withHP = lastFleetCharacters.value.filter(
     (character) =>
       character.hp != null && character.hp_max != null && character.hp_max > 0,
   )
-  const withMP = lastCharacters.value.filter(
+  const withMP = lastFleetCharacters.value.filter(
     (character) =>
       character.mp != null && character.mp_max != null && character.mp_max > 0,
   )
@@ -168,7 +186,7 @@ const combinedVitals = computed(() => {
   }
 })
 const observedGold = computed(() => {
-  const values = lastCharacters.value
+  const values = lastFleetCharacters.value
     .map((character) => character.gold)
     .filter((value): value is number => value != null)
   return values.length
@@ -251,6 +269,7 @@ async function toggleGroupMember(character: Character) {
 }
 async function refreshCharacterData() {
   await refreshCharacters()
+  await refreshFleetCharacters()
   await refreshGroups()
 }
 const { data: detailCharacter, refresh: refreshCharacterDetail } =
@@ -322,6 +341,7 @@ onMounted(() => {
   agentTimer = setInterval(() => void refreshAgents(), 3000)
   characterTimer = setInterval(() => {
     void refreshCharacters()
+    void refreshFleetCharacters()
     if (characterDetailID.value) void refreshCharacterDetail()
     void refreshGroups()
   }, 2000)
