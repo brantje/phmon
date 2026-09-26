@@ -169,6 +169,140 @@ near 1 second, doubles to a 30-second cap, adds bounded jitter, and resets after
 successful hello/ack. On reconnect the plugin sends hello, resolves its observed
 characters and publishes full snapshots. There is no durable local event store.
 
+## Browser live-data protocol v1
+
+All live monitoring data exposed to the browser uses a separate versioned WebSocket
+protocol. The browser connects only to the same-origin Nuxt endpoint
+`GET /api/live`; Nitro 2 relays that WebSocket to the private Go `/api/live`
+endpoint. `NUXT_BACKEND_URL` stays server-only, the relay does not forward browser
+cookies, authorization headers or other credentials upstream, and streamed payloads
+contain monitoring presentation data only.
+
+Protocol version: 1.
+
+This is the only browser transport for current/live monitoring state. Initial
+snapshots, filtered character lists, character details, agent status, groups,
+dashboard-derived values, manual refresh, committed-state replacements and reconnect
+synchronization all use this WebSocket. XHR, `fetch`, `useFetch`, HTTP polling,
+long polling, SSE and server-side HTTP bootstrap are prohibited for live views.
+Future map positions and live layers follow the same rule; static map tiles/icons may
+still use HTTP.
+
+### Subscriptions and revisions
+
+A browser connection may keep up to 32 subscriptions. Subscription IDs are stable
+browser-owned identifiers and revisions are monotonically increasing integers.
+Changing a filter or detail identity sends a newer revision for the same subscription
+ID. The server rejects an equal/older replacement as `obsolete_revision`, and the
+browser also ignores any response whose subscription ID, revision or stream no longer
+matches its active subscription.
+
+Examples:
+
+    {"type":"subscribe","protocol_version":1,
+     "subscription_id":"agents","revision":1,"stream":"agents"}
+
+    {"type":"subscribe","protocol_version":1,
+     "subscription_id":"character-list","revision":7,"stream":"characters",
+     "filter":{"q":"Fixture","group_id":"<group-uuid>"}}
+
+    {"type":"subscribe","protocol_version":1,
+     "subscription_id":"character-detail","revision":3,"stream":"character",
+     "filter":{"character_id":"<character-uuid>"}}
+
+    {"type":"subscribe","protocol_version":1,
+     "subscription_id":"groups","revision":1,"stream":"groups"}
+
+Character-list search preserves the existing backend search semantics for
+name/guild/server/zone and optional persisted `group_id`. Character detail uses the
+stable server-scoped `character_id`. Identity and filtering remain server-owned; the
+Nuxt relay does not reinterpret them.
+
+Manual refresh is a WebSocket protocol action against the current revision:
+
+    {"type":"refresh","protocol_version":1,
+     "subscription_id":"agents","revision":1}
+
+Unsubscribe uses the active subscription ID/revision:
+
+    {"type":"unsubscribe","protocol_version":1,
+     "subscription_id":"character-detail","revision":3}
+
+The server responds with whole replacement snapshots rather than incremental patches.
+That keeps one durable source of truth and makes reconnect synchronization explicit:
+
+    {"type":"snapshot","protocol_version":1,
+     "subscription_id":"agents","revision":1,"stream":"agents",
+     "data":{"agents":[...]}}
+
+    {"type":"snapshot","protocol_version":1,
+     "subscription_id":"character-list","revision":7,"stream":"characters",
+     "data":{"characters":[...]}}
+
+    {"type":"snapshot","protocol_version":1,
+     "subscription_id":"character-detail","revision":3,"stream":"character",
+     "data":{"character":{...}}}
+
+    {"type":"snapshot","protocol_version":1,
+     "subscription_id":"groups","revision":1,"stream":"groups",
+     "data":{"groups":[...]}}
+
+A missing character detail is represented by `{"character":null}`. A temporary
+database/read failure does not cause an HTTP fallback. It produces:
+
+    {"type":"subscription.unavailable","protocol_version":1,
+     "subscription_id":"character-list","revision":7,"stream":"characters",
+     "reason":"temporarily_unavailable"}
+
+The browser retains its last received data, marks it stale, and waits for a fresh
+WebSocket snapshot. PostgreSQL outage detection invalidates live subscriptions once so
+connected browsers become stale; recovery invalidates them again so they synchronize
+even when no new agent event occurs.
+
+Relevant committed changes invalidate active subscriptions: agent connect/disconnect
+and heartbeat metadata, character identify/snapshot/state/leave, group create/rename/
+delete/member mutations and session reconciliation. Invalidations are coalesced per
+browser. A notification that arrives while a snapshot is being built remains queued,
+so another snapshot pass observes changes committed during the first pass.
+
+### Heartbeats, reconnect and bounds
+
+The Go live endpoint sends an application heartbeat approximately every 10 seconds:
+
+    {"type":"heartbeat","protocol_version":1,"sent_at":"2026-09-27T00:00:00Z"}
+
+The browser responds with:
+
+    {"type":"heartbeat","protocol_version":1}
+
+A browser connection that does not exchange application messages within the heartbeat
+timeout is closed. Browser reconnect starts near one second, uses jittered exponential
+backoff and is capped at 30 seconds. On a new socket every active subscription is
+restored and must receive a fresh snapshot before the connection is marked current.
+Last snapshots remain visible and stale while reconnecting. HTTP fallback is never
+attempted.
+
+Client messages are limited to 16 KiB, server messages to 512 KiB, and per-client
+outgoing/pre-connect queues are bounded. Snapshot/database operations and writes have
+deadlines. Slow consumers are disconnected (1013) rather than being allowed to block
+agent ingestion; oversized messages are rejected (1009).
+
+Browser upgrades at the Nuxt relay require a same-origin `Origin`. The private Go
+endpoint independently rejects a cross-origin browser upgrade; server-to-server Nitro
+connections carry no browser credentials. This preserves the existing trusted-network
+deployment boundary and does not introduce human-user authentication.
+
+### HTTP compatibility boundary
+
+Existing read endpoints (`GET /api/agents`, `GET /api/characters`,
+`GET /api/characters/{character_id}` and `GET /api/groups`) remain available for
+diagnostics/backward compatibility only. The Nuxt live UI MUST NOT call them.
+
+HTTP remains the action transport for credential creation and group mutations, as well
+as static assets, uploads/downloads, health checks and future non-live historical
+queries. A successful action response acknowledges that action only; browser live
+state changes exclusively when the corresponding WebSocket replacement arrives.
+
 ## HTTP agent API
 
 GET /api/agents returns safe presentation fields for agents that have connected at
