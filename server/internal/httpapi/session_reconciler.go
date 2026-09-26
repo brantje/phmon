@@ -29,6 +29,9 @@ func RunSessionReconciler(ctx context.Context, db Pinger, registry *agents.Regis
 		}
 		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		if err := db.Ping(checkCtx); err != nil {
+			if !databaseUnavailable {
+				live.Invalidate()
+			}
 			databaseUnavailable = true
 			cancel()
 			continue
@@ -36,6 +39,9 @@ func RunSessionReconciler(ctx context.Context, db Pinger, registry *agents.Regis
 		changed, err := store.ReconcileInactiveSessionsChanged(checkCtx, registry.HasGeneration)
 		cancel()
 		if err != nil {
+			if !databaseUnavailable {
+				live.Invalidate()
+			}
 			databaseUnavailable = true
 			if ctx.Err() == nil {
 				slog.Warn("failed to reconcile inactive character sessions")
