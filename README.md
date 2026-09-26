@@ -62,14 +62,13 @@ hash. Copy `plugin/PhMon.py` into phBot's Plugins directory, then create
 }
 ```
 
-Use the PhMon host's LAN address in `backend_url` when phBot runs on another
-machine. Allow inbound TCP 8081 only from the trusted LAN as needed. Reload the
-plugin or restart phBot; the agent should appear on the dashboard after its
-authenticated hello succeeds. The plugin reconnects automatically after backend
-loss and never puts credentials in the URL.
-
-Plain `ws://` is for trusted local development only. A deployment beyond that
-boundary must terminate TLS and use `wss://` with normal certificate validation.
+Reload the plugin or restart phBot; the agent should appear on the dashboard after
+its authenticated hello succeeds. The plugin reconnects automatically after backend
+loss and never puts credentials in the URL. The default Compose binding keeps port
+8081 on loopback. For a phBot host on another machine, terminate TLS in front of the
+Go backend and configure a reachable `wss://` URL; do not expose cleartext bearer
+authentication to an untrusted network. A deliberate trusted-LAN development setup
+may override `SERVER_BIND_ADDR`, but `ws://` is development-only.
 See [plugin/README.md](plugin/README.md) and
 [docs/phbot-capabilities.md](docs/phbot-capabilities.md).
 
@@ -110,12 +109,13 @@ environment (Compose does this). Host Go needs a restart after edits.
 
 ## Configuration
 
-All examples are **local development only**. The web UI and agent/API port are
-reachable on the LAN by default so a Windows phBot host can connect. PostgreSQL stays
-bound to loopback. Set `WEB_BIND_ADDR=127.0.0.1` and
-`SERVER_BIND_ADDR=127.0.0.1` when host-only access is sufficient. The defaults
-avoid common 3000/8080/5432 conflicts. This is not a public deployment: TLS and user
-authentication are not implemented yet; only the agent WebSocket is token-authenticated.
+All examples are **local development only**. The web UI is reachable on the LAN by
+default; PostgreSQL and the authenticated agent/API port bind to loopback. Set
+`WEB_BIND_ADDR=127.0.0.1` when host-only web access is sufficient. Remote agents
+should connect through operator-managed TLS termination using `wss://`; overriding
+`SERVER_BIND_ADDR` is intended only for an explicitly trusted development network.
+The defaults avoid common 3000/8080/5432 conflicts. This is not a public deployment:
+user authentication is not implemented yet; only the agent WebSocket is token-authenticated.
 
 | Variable | Default/example | Purpose |
 | --- | --- | --- |
@@ -124,12 +124,13 @@ authentication are not implemented yet; only the agent WebSocket is token-authen
 | `POSTGRES_DB` | `phmon` | Initial database name |
 | `POSTGRES_PORT` | `5435` | Host port for Compose PostgreSQL |
 | `SERVER_PORT` | `8081` | Host port for Compose Go |
-| `SERVER_BIND_ADDR` | `0.0.0.0` | Host address for the agent/API port; use `127.0.0.1` for host-only access |
+| `SERVER_BIND_ADDR` | `127.0.0.1` | Host address for the agent/API port; override only for an explicitly trusted development network |
 | `WEB_PORT` | `3005` | Host port for Compose Nuxt |
 | `WEB_BIND_ADDR` | `0.0.0.0` | Host address for the Compose web UI; use `127.0.0.1` for host-only access |
 | `HTTP_ADDR` | `127.0.0.1:8081` | Host Go listener; Compose uses `0.0.0.0:8081` |
 | `DATABASE_URL` | See `.env.example` | Required host Go PostgreSQL URL |
 | `NUXT_BACKEND_URL` | `http://127.0.0.1:8081` | Private Nuxt server URL; Compose uses `http://server:8081` |
+| `NUXT_PUBLIC_INSTANCE_URL` | Unset | Optional reachable browser-facing origin for the mobile QR/copy panel |
 | `TEST_DATABASE_URL` | Unset | Enables real PostgreSQL Go integration test |
 | `SMOKE_BACKEND_URL` / `SMOKE_WEB_URL` | Local defaults above | Smoke-test target overrides |
 | `EXPECT_UNAVAILABLE` | Unset | Set `1` for database-outage smoke test |
@@ -140,7 +141,10 @@ YOUR_PORT`. For local simplicity, use URL-safe alphanumeric/underscore database
 credentials: Compose constructs its internal database URL from these values. Custom
 host URLs must percent-encode special characters. PostgreSQL initialization values
 apply only to a new volume; changing `.env` does not change existing database users.
-Never commit `.env` or use these example credentials in production.
+Never commit `.env` or use these example credentials in production. If PhMon is
+usually opened as `http://localhost:3005` but the mobile QR must work from another
+device, set `NUXT_PUBLIC_INSTANCE_URL` to the reachable HTTPS or LAN origin. Loopback
+origins are detected and are not offered as mobile QR targets.
 
 ## Validation
 

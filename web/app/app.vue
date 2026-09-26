@@ -21,9 +21,20 @@ const sidebarCollapsed = useCookie<boolean>('phmon-sidebar-collapsed', {
 const mobileNavigationOpen = ref(false)
 const mobileAccessOpen = ref(false)
 const copied = ref(false)
+const copyFallbackNeeded = ref(false)
 const now = ref<number | null>(null)
+const mobileAccessTrigger = ref<HTMLButtonElement | null>(null)
+const accessDialog = ref<HTMLElement | null>(null)
+const accessCloseButton = ref<HTMLButtonElement | null>(null)
+const runtimeConfig = useRuntimeConfig()
 const requestURL = useRequestURL()
-const instanceUrl = ref(requestURL.origin)
+const configuredInstanceUrl = normalizeInstanceUrl(
+  String(runtimeConfig.public.instanceUrl || ''),
+)
+const instanceUrl = ref(
+  configuredInstanceUrl || normalizeInstanceUrl(requestURL.origin) || requestURL.origin,
+)
+const instanceUrlIsLoopback = computed(() => isLoopbackUrl(instanceUrl.value))
 
 const {
   data: agentResponse,
@@ -56,16 +67,22 @@ const agentsUnavailable = computed(
 const backendReady = computed(
   () => !healthError.value && health.value?.status === 'ok',
 )
-const connectedAgents = computed(
-  () => lastAgents.value.filter((agent) => agent.connected).length,
+const connectedAgents = computed<number | null>(() =>
+  agentsUnavailable.value
+    ? null
+    : lastAgents.value.filter((agent) => agent.connected).length,
 )
-const disconnectedAgents = computed(
-  () => lastAgents.value.length - connectedAgents.value,
+const disconnectedAgents = computed<number | null>(() =>
+  agentsUnavailable.value || connectedAgents.value === null
+    ? null
+    : lastAgents.value.length - connectedAgents.value,
 )
 const fleetStatus = computed(() => {
   if (agentsUnavailable.value) return 'Backend unavailable'
   if (lastAgents.value.length === 0) return 'Waiting for agents'
-  return connectedAgents.value > 0 ? 'Agents connected' : 'Fleet offline'
+  return (connectedAgents.value ?? 0) > 0
+    ? 'Agents connected'
+    : 'Fleet offline'
 })
 
 let agentTimer: ReturnType<typeof setInterval> | undefined
@@ -73,7 +90,9 @@ let healthTimer: ReturnType<typeof setInterval> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(() => {
-  instanceUrl.value = window.location.origin
+  if (!configuredInstanceUrl) {
+    instanceUrl.value = window.location.origin
+  }
   now.value = Date.now()
   agentTimer = setInterval(() => void refreshAgents(), 3000)
   healthTimer = setInterval(() => void refreshHealth(), 10000)
@@ -133,8 +152,36 @@ function formatConnectionAge(value?: string) {
   )
 }
 
+function normalizeInstanceUrl(value: string) {
+  const candidate = value.trim()
+  if (!candidate) return ''
+  try {
+    const url = new URL(candidate)
+    if (url.username || url.password) return ''
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
+    return url.origin
+  } catch {
+    return ''
+  }
+}
+
+function isLoopbackUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase()
+    return (
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]'
+    )
+  } catch {
+    return true
+  }
+}
+
 async function copyInstanceUrl() {
   if (!import.meta.client) return
+  copyFallbackNeeded.value = false
   try {
     await navigator.clipboard.writeText(instanceUrl.value)
     copied.value = true
@@ -143,6 +190,48 @@ async function copyInstanceUrl() {
     }, 1800)
   } catch {
     copied.value = false
+    copyFallbackNeeded.value = true
+  }
+}
+
+async function openMobileAccess() {
+  copyFallbackNeeded.value = false
+  mobileAccessOpen.value = true
+  await nextTick()
+  accessCloseButton.value?.focus()
+}
+
+async function closeMobileAccess() {
+  mobileAccessOpen.value = false
+  await nextTick()
+  mobileAccessTrigger.value?.focus()
+}
+
+function handleAccessDialogKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    void closeMobileAccess()
+    return
+  }
+  if (event.key !== 'Tab' || !accessDialog.value) return
+
+  const focusable = Array.from(
+    accessDialog.value.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  )
+  if (focusable.length === 0) {
+    event.preventDefault()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last?.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first?.focus()
   }
 }
 </script>
@@ -167,18 +256,22 @@ async function copyInstanceUrl() {
       >
         <div class="brand-block">
           <div class="brand-mark" aria-hidden="true">P</div>
-          <div v-if="!sidebarCollapsed" class="brand-copy">
+          <div class="brand-copy">
             <strong>PhMon</strong>
             <span>self-hosted · slice 1</span>
           </div>
           <span
             class="connection-dot"
-            :class="connectedAgents > 0 ? 'is-online' : 'is-offline'"
+            :class="
+              !agentsUnavailable && (connectedAgents ?? 0) > 0
+                ? 'is-online'
+                : 'is-offline'
+            "
             :title="fleetStatus"
           />
         </div>
 
-        <div v-if="!sidebarCollapsed" class="scope-block">
+        <div class="scope-block">
           <span>Server scope</span>
           <button type="button" disabled>
             <UIcon name="i-lucide-layers-3" />
@@ -198,16 +291,16 @@ async function copyInstanceUrl() {
             :title="sidebarCollapsed ? item.label : undefined"
           >
             <UIcon :name="item.icon" />
-            <span v-if="!sidebarCollapsed">{{ item.label }}</span>
+            <span>{{ item.label }}</span>
             <span
-              v-if="!item.active && !sidebarCollapsed"
+              v-if="!item.active"
               class="nav-soon"
               >later</span
             >
           </button>
 
           <template v-if="advancedMode">
-            <p v-if="!sidebarCollapsed" class="nav-heading">Tools</p>
+            <p class="nav-heading">Tools</p>
             <button
               v-for="item in advancedNavigation"
               :key="item.label"
@@ -217,12 +310,12 @@ async function copyInstanceUrl() {
               :title="sidebarCollapsed ? item.label : undefined"
             >
               <UIcon :name="item.icon" />
-              <span v-if="!sidebarCollapsed">{{ item.label }}</span>
-              <span v-if="!sidebarCollapsed" class="nav-soon">later</span>
+              <span>{{ item.label }}</span>
+              <span class="nav-soon">later</span>
             </button>
           </template>
 
-          <p v-if="!sidebarCollapsed" class="nav-heading">System</p>
+          <p class="nav-heading">System</p>
           <button
             class="nav-item"
             type="button"
@@ -230,26 +323,23 @@ async function copyInstanceUrl() {
             title="Settings arrive progressively"
           >
             <UIcon name="i-lucide-settings" />
-            <span v-if="!sidebarCollapsed">Settings</span>
-            <span v-if="!sidebarCollapsed" class="nav-soon">later</span>
+            <span>Settings</span>
+            <span class="nav-soon">later</span>
           </button>
         </nav>
 
         <div class="sidebar-footer">
           <button
+            ref="mobileAccessTrigger"
             class="instance-button"
             type="button"
             :title="sidebarCollapsed ? 'Mobile access' : undefined"
-            @click="mobileAccessOpen = true"
+            @click="openMobileAccess"
           >
             <UIcon name="i-lucide-qr-code" />
-            <span v-if="!sidebarCollapsed">Mobile access</span>
+            <span>Mobile access</span>
           </button>
-          <div
-            v-if="!sidebarCollapsed"
-            class="instance-url"
-            :title="instanceUrl"
-          >
+          <div class="instance-url" :title="instanceUrl">
             {{ instanceUrl }}
           </div>
         </div>
@@ -329,13 +419,17 @@ async function copyInstanceUrl() {
             </article>
             <article class="summary-card">
               <span>Online</span>
-              <strong>{{ connectedAgents }}</strong>
-              <small>active sockets</small>
+              <strong>{{ connectedAgents ?? '—' }}</strong>
+              <small>{{
+                agentsUnavailable ? 'last loaded state retained' : 'active sockets'
+              }}</small>
             </article>
             <article class="summary-card">
               <span>Offline</span>
-              <strong>{{ disconnectedAgents }}</strong>
-              <small>last known agents</small>
+              <strong>{{ disconnectedAgents ?? '—' }}</strong>
+              <small>{{
+                agentsUnavailable ? 'last loaded state retained' : 'last known agents'
+              }}</small>
             </article>
             <article class="summary-card summary-wide">
               <span>Connection state</span>
@@ -421,9 +515,23 @@ async function copyInstanceUrl() {
                     <td>
                       <span
                         class="status-chip"
-                        :class="agent.connected ? 'online' : 'offline'"
+                        :class="
+                          agentsUnavailable
+                            ? 'stale'
+                            : agent.connected
+                              ? 'online'
+                              : 'offline'
+                        "
                       >
-                        <span />{{ agent.connected ? 'Online' : 'Offline' }}
+                        <span />{{
+                          agentsUnavailable
+                            ? agent.connected
+                              ? 'Last known online'
+                              : 'Last known offline'
+                            : agent.connected
+                              ? 'Online'
+                              : 'Offline'
+                        }}
                       </span>
                     </td>
                     <td>
@@ -440,9 +548,11 @@ async function copyInstanceUrl() {
                     </td>
                     <td>
                       {{
-                        agent.connected
-                          ? formatConnectionAge(agent.connected_at)
-                          : '—'
+                        agentsUnavailable
+                          ? '—'
+                          : agent.connected
+                            ? formatConnectionAge(agent.connected_at)
+                            : '—'
                       }}
                     </td>
                     <td>
@@ -463,15 +573,31 @@ async function copyInstanceUrl() {
                   <div class="agent-card-head">
                     <span
                       class="status-chip"
-                      :class="agent.connected ? 'online' : 'offline'"
+                      :class="
+                        agentsUnavailable
+                          ? 'stale'
+                          : agent.connected
+                            ? 'online'
+                            : 'offline'
+                      "
                     >
-                      <span />{{ agent.connected ? 'Online' : 'Offline' }}
+                      <span />{{
+                        agentsUnavailable
+                          ? agent.connected
+                            ? 'Last known online'
+                            : 'Last known offline'
+                          : agent.connected
+                            ? 'Online'
+                            : 'Offline'
+                      }}
                     </span>
                     <span>
                       {{
-                        agent.connected
-                          ? formatConnectionAge(agent.connected_at)
-                          : formatTimestamp(agent.last_seen_at)
+                        agentsUnavailable
+                          ? formatTimestamp(agent.last_seen_at)
+                          : agent.connected
+                            ? formatConnectionAge(agent.connected_at)
+                            : formatTimestamp(agent.last_seen_at)
                       }}
                     </span>
                   </div>
@@ -552,13 +678,15 @@ async function copyInstanceUrl() {
         v-if="mobileAccessOpen"
         class="dialog-layer"
         role="presentation"
-        @click.self="mobileAccessOpen = false"
+        @click.self="closeMobileAccess"
       >
         <section
+          ref="accessDialog"
           class="access-dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="mobile-access-title"
+          @keydown="handleAccessDialogKeydown"
         >
           <div class="dialog-header">
             <div>
@@ -571,15 +699,25 @@ async function copyInstanceUrl() {
               </p>
             </div>
             <button
+              ref="accessCloseButton"
               class="icon-button"
               type="button"
               aria-label="Close"
-              @click="mobileAccessOpen = false"
+              @click="closeMobileAccess"
             >
               <UIcon name="i-lucide-x" />
             </button>
           </div>
-          <div class="qr-frame">
+          <div
+            v-if="instanceUrlIsLoopback"
+            class="access-warning"
+            role="status"
+          >
+            This URL points back to the device opening PhMon and cannot be used
+            from another device. Set NUXT_PUBLIC_INSTANCE_URL to a reachable
+            HTTPS or LAN URL.
+          </div>
+          <div v-else class="qr-frame">
             <QrcodeVue
               id="phmon-instance-qr"
               :value="instanceUrl"
@@ -588,7 +726,11 @@ async function copyInstanceUrl() {
               render-as="svg"
             />
           </div>
-          <code class="dialog-url">{{ instanceUrl }}</code>
+          <code class="dialog-url" tabindex="0">{{ instanceUrl }}</code>
+          <p v-if="copyFallbackNeeded" class="copy-fallback" role="status">
+            Clipboard access is unavailable here. Select the URL above and copy
+            it manually.
+          </p>
           <button
             class="compact-button dialog-copy"
             type="button"

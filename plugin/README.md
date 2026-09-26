@@ -19,7 +19,7 @@ history and future command policy remain server-owned.
    get_config_dir() API:
 
        {
-         "backend_url": "ws://192.168.1.10:8081/agent",
+         "backend_url": "wss://phmon.example.internal/agent",
          "agent_id": "11111111-2222-4333-8444-555555555555",
          "agent_token": "phm_replace_with_the_provisioned_token"
        }
@@ -27,9 +27,11 @@ history and future command policy remain server-owned.
 4. Reload the plugin or restart phBot. The agent should appear in PhMon after the
    authenticated hello handshake succeeds.
 
-Use ws:// only on a trusted local development network. A real deployment should put
-the Go backend behind TLS and configure wss://; the plugin uses normal system
-certificate validation and does not provide an insecure TLS bypass.
+The default Compose binding keeps the Go agent listener on loopback. Use ws:// only
+when the plugin runs on the same host or on an explicitly trusted development network
+with a deliberate SERVER_BIND_ADDR override. For remote agents, terminate TLS in
+front of Go and configure wss://; the plugin uses normal system certificate
+validation and does not provide an insecure TLS bypass.
 
 Do not put the token in the backend URL. The plugin rejects URL credentials, query
 parameters and fragments so secrets do not leak into logs, browser history or proxy

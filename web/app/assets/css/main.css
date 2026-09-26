@@ -218,6 +218,15 @@ input:focus-visible {
   text-transform: uppercase;
 }
 
+.is-collapsed .brand-copy,
+.is-collapsed .scope-block,
+.is-collapsed .nav-item span,
+.is-collapsed .nav-heading,
+.is-collapsed .instance-button span,
+.is-collapsed .instance-url {
+  display: none;
+}
+
 .is-collapsed .navigation,
 .is-collapsed .sidebar-footer {
   padding-inline: 8px;
@@ -576,7 +585,8 @@ input:focus-visible {
 }
 
 .agent-table-wrap {
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .agent-table {
@@ -640,6 +650,14 @@ input:focus-visible {
 
 .status-chip.offline > span {
   background: #748196;
+}
+
+.status-chip.stale {
+  color: var(--ph-amber);
+}
+
+.status-chip.stale > span {
+  background: var(--ph-amber);
 }
 
 .agent-cards {
@@ -765,7 +783,24 @@ input:focus-visible {
   color: #9db0ca;
   font-size: 10px;
   text-overflow: ellipsis;
+  user-select: all;
   white-space: nowrap;
+}
+
+.access-warning,
+.copy-fallback {
+  margin: 12px 0 0;
+  border: 1px solid rgba(240, 189, 99, 0.24);
+  border-radius: 4px;
+  background: rgba(84, 60, 22, 0.22);
+  padding: 8px 10px;
+  color: #c6aa78;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.copy-fallback {
+  margin-top: 8px;
 }
 
 .dialog-copy {
