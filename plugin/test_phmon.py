@@ -94,6 +94,33 @@ class WebSocketFrameTests(unittest.TestCase):
             client_sock.close()
             server_sock.close()
 
+    def test_invalid_json_is_rejected(self):
+        client_sock, server_sock = socket.socketpair()
+        try:
+            ws = plugin.WebSocketClient('ws://localhost/agent', 'token')
+            ws._socket = client_sock
+            server_sock.sendall(self._server_text_frame(b'not-json'))
+            with self.assertRaisesRegex(plugin.WebSocketClosed, 'invalid JSON message'):
+                ws.receive_json(timeout=1)
+        finally:
+            client_sock.close()
+            server_sock.close()
+
+    def test_oversized_server_frame_is_rejected_before_payload(self):
+        client_sock, server_sock = socket.socketpair()
+        try:
+            ws = plugin.WebSocketClient('ws://localhost/agent', 'token')
+            ws._socket = client_sock
+            server_sock.sendall(
+                bytes(bytearray([0x81, 126])) +
+                plugin.struct.pack('!H', plugin.MAX_MESSAGE_BYTES + 1)
+            )
+            with self.assertRaisesRegex(plugin.WebSocketClosed, 'WebSocket message exceeds limit'):
+                ws.receive_json(timeout=1)
+        finally:
+            client_sock.close()
+            server_sock.close()
+
     def test_no_data_poll_keeps_stream_parseable(self):
         client_sock, server_sock = socket.socketpair()
         try:
