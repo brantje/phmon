@@ -104,8 +104,8 @@ func (s *Store) AuthenticateToken(ctx context.Context, token string) (string, er
 func (s *Store) MarkConnected(ctx context.Context, agentID string, connectedAt time.Time, protocolVersion int, pluginVersion, phBotVersion string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE agents
 SET first_seen_at = COALESCE(first_seen_at, $2),
-    last_seen_at = $2,
-    last_connected_at = $2,
+    last_seen_at = GREATEST(COALESCE(last_seen_at, $2), $2),
+    last_connected_at = GREATEST(COALESCE(last_connected_at, $2), $2),
     protocol_version = $3,
     plugin_version = $4,
     phbot_version = $5

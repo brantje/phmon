@@ -68,3 +68,70 @@ release/build metadata exists.
 Real Windows/phBot runtime validation is also still open. The simulator exercises the
 same production wire contract but is not evidence that the embedded phBot runtime has
 loaded and operated the plugin successfully.
+
+## Slice 2 — character overview and detail
+
+Status: Slice 2 UI implementation and PR #3 correctness follow-up are validated.
+Visual parity and remaining real phBot lifecycle/data checks remain open.
+
+### Reference evidence reviewed
+
+- Reopened `docs/reference/phmonitor-dashboard.png` and
+  `docs/reference/phmonitor-stats.png` (1440 × 1000). Dashboard uses an asymmetric
+  panel layout with fleet character counters, last deaths, server information, a
+  broad recent-events panel, rare-drop/chat stack and offers. Stats opens with a
+  compact thematic header and a large grouped-character surface; its empty state
+  offers a first-group prompt rather than implying characters have loaded.
+- These saved captures are from the recorded 2026-09-26 public-demo inspection. The
+  live demo and advanced character subtabs were not independently re-exercised in
+  this slice; hidden details are not inferred from these screenshots.
+
+### Implemented and evidenced behavior
+
+- Go/PostgreSQL automatically resolves joined identities by normalized server plus
+  character name, tracks generation-scoped live sessions/current stats and closes
+  sessions on leave, replacement, disconnect and backend startup. An explicit identify
+  claims per-character session authority; snapshots replace current fields and clear
+  unavailable values rather than making old-session state appear fresh.
+- Protocol v2 identifies a character before registration, then requires explicit
+  `character_id` on each snapshot/state/left message. The plugin reports documented
+  state fields and sends full snapshots after reconnect.
+- Character overview sends debounced server/name/guild/zone search to the backend,
+  keeps persisted group filtering and membership controls, and separates logical
+  connected-agent counts from socket counts. Stable detail path is
+  `/characters/{character_id}`. It shows known state and labels later inventory,
+  pets, party, map and action areas as not yet implemented.
+- Empty character state explains automatic phBot discovery. Group operations are
+  persisted but remain organizational metadata.
+- No external phMonitor assets or service calls were introduced. The neutral
+  development backdrop remains; approved local artwork and final visual treatment
+  remain open.
+
+### Comparison and gaps
+
+- A compact character table now appears above the existing agent/operations panels;
+  the reference's deaths, server-information artwork, events, drops/chat and offers
+  remain owned by later slices. This is the Slice 2 state surface, not complete
+  dashboard parity.
+- Local overview evidence: [1440 × 1000](evidence/slice2-overview-1440x1000.png),
+  [1280 × 800](evidence/slice2-overview-1280x800.png) and
+  [390 × 844](evidence/slice2-overview-390x844.png). The 1440 capture was reviewed
+  against the saved dashboard/stats references. At 390 px, document/body scroll width
+  equals the viewport width; the mobile navigation remains collapsed and content
+  stacks without page-level horizontal overflow. [Character detail at 1440 × 1000](evidence/slice2-character-detail-1440x1000.png)
+  has no direct reference capture; its hierarchy follows the shared shell while later
+  panels remain explicit gaps.
+- Botting/training remains unknown because official docs expose start/stop mutations
+  but no read-only getter. Real phBot 20.1.1/plugin 1.1.0 evidence separately shows
+  server, character name, zone, level, HP/MP, XP/SP, gold, region and position in live
+  records; it does not validate every lifecycle edge or botting state. The PR review
+fixes were exercised through the deterministic simulator over the production
+transport, not manually revalidated on phBot.
+
+The review follow-up also verifies stale character-scoped state/snapshot/leave
+rejections over real WebSockets: the old socket remains usable for its unrelated
+character while the new observer retains the taken-over character. Compose CI runs a
+two-socket outage scenario: one same-agent character disconnects during a real
+PostgreSQL stop, the second socket remains live, and recovery reconciliation closes
+only the dead generation. Both are automated simulator/backend evidence, not new
+real-runtime validation.

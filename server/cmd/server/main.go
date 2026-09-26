@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"phmon/server/internal/agents"
+	"phmon/server/internal/characters"
 	"phmon/server/internal/config"
 	"phmon/server/internal/database"
 	"phmon/server/internal/httpapi"
@@ -50,11 +51,20 @@ func run() error {
 	}
 
 	store := agents.NewStore(pool)
+	characterStore := characters.NewStore(pool)
+	reconcileCtx, reconcileCancel := context.WithTimeout(ctx, 5*time.Second)
+	if err := characterStore.ReconcileSessions(reconcileCtx); err != nil {
+		reconcileCancel()
+		return errors.New("cannot reconcile character sessions")
+	}
+	reconcileCancel()
 	registry := agents.NewRegistry()
+	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
-		Database: pool,
-		Agents:   store,
-		Registry: registry,
+		Database:   pool,
+		Agents:     store,
+		Registry:   registry,
+		Characters: characterStore,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.

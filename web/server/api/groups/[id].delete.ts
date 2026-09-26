@@ -1,0 +1,19 @@
+import { defineEventHandler, getRouterParam, setHeader } from 'h3'
+import { forwardProxyError, forwardProxyResponse } from '../../utils/proxy'
+export default defineEventHandler(async (event) => {
+  setHeader(event, 'Cache-Control', 'no-store')
+  try {
+    const response = await $fetch.raw(
+      '/api/groups/' + encodeURIComponent(getRouterParam(event, 'id') || ''),
+      {
+        baseURL: useRuntimeConfig(event).backendUrl,
+        method: 'DELETE',
+        timeout: 3000,
+        retry: 0,
+      },
+    )
+    return forwardProxyResponse(event, response)
+  } catch (error) {
+    return forwardProxyError(event, error)
+  }
+})

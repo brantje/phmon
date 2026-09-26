@@ -53,6 +53,7 @@ jobs:
           PHMON_AGENT_ID="$EXPECT_AGENT_ID"
           PHMON_AGENT_TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["agent_token"])' <<<"$agent_json")
           export PHMON_AGENT_URL=ws://127.0.0.1:8081/agent
+          export PHMON_SIMULATOR_SCENARIO=character-lifecycle
 
           python3 scripts/agent_simulator.py >/tmp/phmon-agent.log 2>&1 &
           simulator_pid=$!
@@ -66,9 +67,11 @@ jobs:
           trap cleanup EXIT
 
           python3 scripts/agent_smoke.py
+          python3 scripts/character_smoke.py
           docker compose stop server
           docker compose up -d --wait --wait-timeout 120 server
           python3 scripts/agent_smoke.py
+          python3 scripts/character_smoke.py
 
           kill -TERM "$simulator_pid"
           wait "$simulator_pid" || true
@@ -77,13 +80,23 @@ jobs:
           trap - EXIT
           cat /tmp/phmon-agent.log
       - name: Verify database outage
+        id: outage
+        continue-on-error: true
+        env:
+          PHMON_COMPOSE_PROJECT: phmon
         run: |
-          docker compose stop postgres
-          EXPECT_UNAVAILABLE=1 python3 scripts/smoke.py
+          python3 scripts/outage_session_smoke.py
       - name: Verify database recovery
+        id: recovery
+        if: always()
         run: |
           docker compose up -d --wait --wait-timeout 120
           python3 scripts/smoke.py
+      - name: Require outage and recovery checks to pass
+        if: always()
+        run: |
+          test "${{ steps.outage.outcome }}" = success
+          test "${{ steps.recovery.outcome }}" = success
       - if: failure()
         run: docker compose logs --no-color
       - if: always()

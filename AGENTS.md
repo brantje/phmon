@@ -214,6 +214,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Record management | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal. | 14, 15 |
 | Operations | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions. | 1, 14 |
 
+
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
@@ -354,21 +355,22 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
-**Slice 0: complete and locally validated (2026-09-26). Slice 1: in progress
-(implementation and automated validation complete; runtime/browser gates pending).
-Slices 2–15: not started.**
-The active work is **Slice 1 — Agent registration and connectivity**. Its production
-path and simulator-backed automated coverage are implemented and hosted CI is green.
-Do not begin Slice 2 until the remaining Slice 1 validation gates are closed or
-explicitly accepted as blocked.
+**Slice 0: complete. Slice 1: implementation and automated validation complete;
+operator has manually verified basic real phBot → PhMon connectivity. Slice 2: in
+progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API and
+same-viewport visual gates remain open; basic connectivity must not be described as
+blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
 
-**Current turn (2026-09-26): Slice 1 completion/validation.** The authenticated
-connection contract, durable agent identity, plugin, simulator, backend registry/API,
-reference shell and stack lifecycle tests are implemented. The WebSocket client now
-polls for readiness before consuming a frame and treats a stall after frame decoding
-begins as a broken connection, preventing partial-frame stream corruption. Real
-Windows/phBot runtime validation and same-viewport browser screenshot comparison
-remain explicit open gates rather than being inferred from simulator/source results.
+**Current turn (2026-09-26): Slice 2 PR #3 correctness follow-up.** Scope remains
+Slice 2 only. This follow-up adds periodic dead-generation session reconciliation
+after database recovery, nonfatal per-character rejection for stale writes, plugin
+suppression of a rejected observation, full-current-observation semantics for state
+updates, and an atomic logical-agent disconnect fence. The multi-socket Registry is
+intentional: one agent ID/token may have several independent active socket generations;
+one socket may own several explicit character sessions; closing a generation or
+rejecting one of its stale character operations must leave sibling generations and
+characters alone. Main's newer Slice 2.5 game-data catalog requirements remain in the
+roadmap below. Do not start Slice 3.
 
 For each subsequent slice keep a completion entry with: status (`not started`,
 `in progress`, `blocked`, `complete`), implemented behavior/files, tests actually run,
@@ -413,9 +415,9 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   automatic reconnect semantics. Per-agent tokens are stored only as SHA-256 hashes
   and are bound to stable UUID agent IDs.
 - Added embedded transactional migrations, durable agent metadata, a generation-fenced
-  in-memory active registry and a safe read-only agent presentation API. New valid
-  sessions supersede old sockets without stale cleanup marking the replacement
-  offline.
+  in-memory active registry and a safe read-only agent presentation API. Each
+  authenticated socket has its own generation; agent presence stays online while any
+  socket remains active, and stale cleanup cannot mark a concurrent socket offline.
 - Added one-time credential provisioning through both `phmonctl agent create` and
   the web dashboard. Both call the same server-side generator/store path. The web POST
   returns only the newly generated plaintext token once with no-store semantics;
@@ -460,9 +462,170 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   remain BLOCKED. The sidebar also has no canonical PhMon app version/build metadata
   to display; docs/reference-parity.md records that gap rather than treating the
   existing "slice 1" development label as a version.
-- Exact next action: validate PhMon.py inside a real supported phBot runtime and run
-  side-by-side browser screenshot checks at all three required viewports. Do not
-  start Slice 2 as part of this task.
+- Original Slice 1 next action at the time of that validation: exercise PhMon.py in a
+  real supported phBot runtime and compare screenshots at all three viewports. The
+  operator has since confirmed basic real connectivity; API/profile-specific runtime
+  validation and screenshot comparison remain open. Slice 2 implementation is now
+  authorized independently and does not claim those gates are closed.
+
+### Slice 2 progress record (2026-09-26)
+
+- Status: in progress pending PR review-fix validation. Real phBot data API validation
+  remains partial and botting state remains unknown. Scope is Slice 2; no Slice 3
+  command path was added.
+- Added migrations for server-scoped characters/current state, generation-fenced
+  character sessions, persisted groups/membership, and startup stale-session
+  reconciliation. Stable identity uses normalized `(server_name, character_name)`;
+  the server-scoped name uniqueness assumption and lack of a verified global game ID
+  are documented.
+- Protocol v2 adds authenticated `character.identify` → `character.registered`,
+  explicit-ID `character.snapshot`, `character.state`, and `character.left`. Every
+  post-resolution message is checked against character UUID, agent ID and active
+  connection generation. Reconnect requires full state after resolving identity.
+- Plugin sampling uses documented `get_character_data()`, `get_position()` and
+  `get_zone_name(region)` on the callback thread, coalesces changed state in a
+  bounded queue, and leaves backend networking to the existing worker. The Botting
+  API has no documented read-only state getter; botting remains unknown, not guessed.
+- Follow-up fix after observing a connected agent with no character registration:
+  plugin v1.1.0 can recover when loaded after `joined_game()` by detecting the
+  populated server/name returned from `get_character_data()`. It still refuses to
+  sample after an observed disconnect. The live phBot instance initially reported
+  v1.0.0; after reload, it reports v1.1.0 and its character state is visible.
+- Runtime churn follow-up: multiple live characters appeared under one authenticated
+  agent while a single-socket-per-agent registry repeatedly canceled the prior
+  socket. The registry now tracks concurrent sockets independently, closes only the
+  character sessions owned by a closing generation, and marks the agent offline only
+  after its last socket closes. `/api/agents` reports `active_connections`.
+- Review correctness model: `character.identify` explicitly claims that character's
+  current session for the socket generation. `character.snapshot` and
+  `character.state` require that current session and cannot open or reclaim it. A
+  later explicit identify can hand off one character without invalidating other
+  characters owned by the same or another socket. Identify makes the claimed character
+  online and clears old current stats until its full snapshot arrives. Snapshot and
+  plugin state messages both replace current observed fields, so unavailable values
+  become unknown rather than appearing freshly observed from stale retained data.
+  Ownership rejection returns a nonfatal `character.rejected` response, scoped to the
+  explicit character ID; the plugin suppresses repeated writes for that identity
+  until another identity is observed or the socket reconnects. A healthy-server
+  reconciler compares persisted live sessions with exact registry generations every
+  three seconds and ends dead-generation sessions after database recovery without
+  affecting live sibling sockets. Logical-agent disconnect writes use the final
+  cohort's atomically captured connection timestamp, so a newer socket cannot be
+  marked disconnected by delayed cleanup.
+  An observed empty guild clears guild metadata; omitted guild means unavailable.
+- Added searchable character/detail and persisted group APIs, same-origin Nuxt
+  proxies, backend-backed debounced search, a compact character overview with group membership controls, and a
+  `/characters/{character_id}` detail surface. Later inventory/pet/party/map/action
+  panels are explicitly marked unavailable for their owning slices.
+- Added PostgreSQL integration coverage for server-scoped identity reuse, state,
+  switch/offline handling, generation fencing, search and group membership; protocol
+  API tests and simulator fixture checks pass. The same-origin overview/search/group
+  and character detail were built and smoke checked against the full Compose stack.
+- Validation: baseline and final `bash scripts/check.sh` passed with
+  `TEST_DATABASE_URL` enabled (Go race tests/PostgreSQL, 24 plugin tests, Prettier,
+  ESLint with three self-closing-input warnings, Nuxt typecheck/build and
+  Compose config). `docker compose up --build -d --wait --wait-timeout 180` and
+  `python3 scripts/smoke.py` passed. Simulator E2E passed through plugin transport,
+  Go, PostgreSQL and Nuxt. Browser screenshots were captured at 1440 × 1000,
+  1280 × 800 and 390 × 844; the 390 px viewport has no document-level overflow.
+  The follow-up collector regression test and complete PostgreSQL-enabled check
+  passed again. Two simulator-created fixture characters and their sessions/agent
+  were removed from the local development database.
+- Real runtime evidence: phBot 20.1.1 agents running plugin 1.1.0 registered four
+  online characters. `/api/agents` showed three active sockets for one agent ID and
+  one socket for another; `/api/characters` showed three distinct live character
+  IDs/sessions under the first agent and another under the second, with advancing
+  current-state timestamps. Server, name, zone, level, HP/MP, XP/SP, gold, region,
+  and position were visible. This manually verifies multiple concurrent character
+  sessions behind one agent and isolation across agents. It does not establish
+  multiple phBot profiles in one process. Basic real phBot → PhMon connectivity was
+  operator-confirmed earlier. Simulator coverage remains separately labelled and
+  was not used for this runtime claim.
+- The real evidence includes multiple concurrent sockets sharing one agent ID/token
+  and several simultaneous character sessions. Simulator tests separately cover both
+  physical socket close orders and backend restart; these are not claimed as manually
+  tested runtime scenarios.
+- Exact remaining Slice 2 work before claiming full completion: record embedded
+  Python version, manually validate character switch/teleport/reconnect snapshot and
+  repeated disconnect behavior, and determine whether botting state has a supported
+  read-only source. Official botting docs show start/stop operations but no state
+  getter; botting remains unknown. Do not start Slice 3.
+
+### PR #3 correctness review follow-up (2026-09-26)
+
+- Status: requested review fixes are implemented and validated. Slice 2 still has the
+  real-runtime checks listed above. Commits pushed to the existing PR branch:
+  `91e2d46` (authority/snapshot, leave ordering, multi-socket
+  metadata and guild semantics) and `2c2bba6` (concurrent identity discovery test).
+- Backend/UI/smoke changes in this follow-up include backend-backed
+  debounced search with request cancellation; connected-agent and active-socket counts
+  shown separately; same-logical-agent credential wording; upstream status/body
+  preservation for character/group proxies; 4 KiB pre-buffer group request bound; and
+  outage smoke expectations with a guaranteed CI recovery step.
+- Validation: PostgreSQL-backed `go test -race` for
+  `internal/agents`, `internal/characters`, and `internal/httpapi`; all 25 plugin unit
+  tests. The full `bash scripts/check.sh` passed under Node 24.20.0 with PostgreSQL
+  enabled; ESLint reports only the existing three self-closing-input warnings.
+- Isolated Compose stack on ports 5536/8181/3505 passed production build, normal
+  `scripts/smoke.py`, agent/character simulator scenarios, backend restart followed
+  by automatic full-snapshot recovery, database outage (`/healthz` 200, readiness,
+  health and data APIs 503), and recovery to normal 200/404/201/204 behavior. The
+  separate local stack with four real phBot sockets remained untouched.
+- Real-runtime evidence remains the already recorded phBot 20.1.1/plugin 1.1.0 run,
+  including multiple concurrent sockets on one agent ID/token and several live
+  characters. The review-specific authority race and outage cases are simulator and
+  automated-test evidence, not new phBot validation.
+- This UI/proxy/smoke increment was committed and pushed as `725dd3d`; subsequent
+  recovery fixes and main integration are recorded in the following entry.
+
+### PR #3 recovery and multiplexing correctness follow-up (2026-09-26)
+
+- Status: implementation and automated validation passed. Commit `4d95b5e` adds
+  dead-generation session reconciliation, explicit nonfatal ownership rejection,
+  fresh current-state semantics for updates/new claims, a disconnect metadata race
+  fence, and simulator/CI coverage.
+- `RunSessionReconciler` pings PostgreSQL and repeatedly runs an idempotent bounded
+  reconciliation while available. It closes only sessions whose exact
+  `(agent_id, connection_generation)` is absent from the in-memory Registry; the
+  Registry remains authoritative for live connectivity. Backend startup reconciliation
+  continues to end all pre-restart sessions.
+- Protocol v2 responds to valid stale snapshot/state/left messages with
+  `character.rejected` and keeps the socket open. PostgreSQL-backed WebSocket tests
+  prove one socket can retain B while a second socket takes A, and stale A operations
+  cannot alter A or close either socket. Plugin unit coverage proves repeated writes
+  for a rejected identity are suppressed until reconnect or a new identity.
+- State and snapshot both replace current observations. Identify remains the session
+  publication point for Slice 2; a newly claimed session clears prior stats, so the
+  UI may show online identity with unknown state until the authoritative snapshot.
+- CI's outage scenario uses two production-plugin simulator workers with one token,
+  stops PostgreSQL, closes one socket during the outage, restores PostgreSQL without
+  restarting Go, and checks that only the dead character is taken offline while the
+  sibling character and logical agent stay connected. This is simulator/Compose
+  evidence, not real phBot runtime evidence.
+- Focused validation passed on isolated PostgreSQL at port 5536:
+  `go test -race ./internal/agents ./internal/characters ./internal/httpapi` and
+  `python3 -m unittest plugin.test_phmon` (26 tests). Run the canonical full check and
+  `bash scripts/check.sh` with PostgreSQL enabled under Node 24.20.0. ESLint reports
+  only the three existing input self-closing warnings. Production Compose build and
+  normal `scripts/smoke.py` passed on ports 5536/8181/3505. The character lifecycle
+  simulator passed before and after Go server restart, followed by disconnect
+  verification. `scripts/outage_session_smoke.py` stopped PostgreSQL while two
+  production-plugin simulator sockets shared one credential, closed A during the
+  outage, restored the database without restarting Go, and verified A offline, B
+  online, and the logical agent connected with one active socket. Outage health/data
+  APIs and post-recovery normal smoke checks passed. GitHub Actions runs `36271335065`
+  and `36271338139` both passed `validate` and `stack`, including the new outage
+  scenario.
+- `origin/main` was integrated in merge commit `ca30d62`. Its newer Slice 2.5
+  game-data catalog and PK2 requirements were preserved in the feature matrix and
+  roadmap; Slice 2 progress and review records were retained and updated.
+- Real phBot evidence remains only the already recorded phBot 20.1.1/plugin 1.1.0
+  multiple-socket/multiple-character observation. The stale-operation and database
+  outage/recovery cases remain simulator plus automated backend evidence. Remaining
+  manual Slice 2 checks are recording embedded Python and observing character
+  switch/teleport/reconnect/repeated-disconnect behavior; botting remains unknown
+  because official docs expose mutations but no read-only getter. Do not merge PR #3
+  or start Slice 3.
 
 ## Canonical slice roadmap
 
@@ -1159,6 +1322,7 @@ character current position
 position history where useful
 
 map/region normalization, including explicit transform/asset validation for:
+
 - Jangan Cave / Tomb of Qin-Shi
 - Donwhang Cave / Donwhang Stone Cave
 - Job Temple / Temple
