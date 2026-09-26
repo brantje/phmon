@@ -73,7 +73,7 @@ remain required even when the demo shows empty data.
 
 The public demo was inspected on **2026-09-26**, displaying **v0.5.0**, at a
 1440 × 1000 desktop viewport. Dashboard, Stats, Chat, Economy, Alchemy, Academy,
-Map, Item Search, Skill Builder, Settings and Server List were navigable. Most data
+Map, Item Search, Skill Builder and Settings were navigable. Most data
 was empty because its connection was unavailable. Some advanced navigation and
 subtabs appeared in the page markup but were hidden in the active easy mode;
 those labels establish intended areas, not proof that their workflows executed.
@@ -124,8 +124,8 @@ These preserve the original project boundaries; they are not implementation gaps
   plugin's connection/version status through the normal connection model.
 - Keep the demo's server-information/dashboard-card layout where useful, but use
   operator-managed server information, optional own artwork and local metadata.
-  The public server directory must be self-hosted/operator-managed or explicitly
-  sourced from an allowed feed, never scraped from a private phMonitor backend.
+  Third-party/public server-directory functionality is outside this project's scope;
+  it is not part of monitoring/control parity and must not be reproduced or scraped.
 - Community links and promotional slots are optional operator configuration, with
   sensible empty/hidden states. Use PhMon's own identity and instance URL in
   the mobile QR/copy-link panel; never expose credentials in that URL.
@@ -194,23 +194,22 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | --- | --- | --- |
 | Shell and instance access | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently. | 1, 2, 15 |
 | Dashboard | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links. | 2, 5, 6, 13, 15 |
-| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, character details with inventory/equipment/pets/party and available actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
-| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Persist occurrences with reliable ordering. | 5, 7 |
+| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
+| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties. | 5, 7, 13 |
 | Chat | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends. | 6, 13, 15 |
 | Economy | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data. | 6, 13 |
 | Alchemy | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities. | 5, 12 |
 | Academy | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported. | 4, 5, 7, 12 |
 | Guild Storage | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records. | 4, 13, 15 |
-| phBot tools | Client/bot controls, party management, script management and quest information/actions where the public phBot API permits them. Investigate each tool's real controls; route all mutations through authenticated audited commands, never arbitrary remote Python/shell execution. | 3, 4, 15 |
+| phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
 | Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
-| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, mob-density/types. Safe confirmation and scoped deletion for heatmap reset. | 7–9 |
+| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 7–9 |
 | Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. | 4, 13 |
 | Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Verify skill datasets and rules per supported version; distinguish planning from execution. | 15 |
-| Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. No paid rule-count limits. | 10, 11 |
+| Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
 | Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
 | Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
 | Record management | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal. | 14, 15 |
-| Server List | Self-hosted directory with version/cap/model filters, server detail/rates/concept metadata, optional artwork and pagination. No invented online/player-count claims or dependency on the reference's directory. | 15 |
 | Operations | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions. | 1, 14 |
 
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
@@ -649,6 +648,14 @@ botting/training state
 
 full snapshot after join/reconnect
 
+searchable character overview across character name, guild, server and zone
+
+persisted character groups with create/rename/delete and explicit membership management
+
+dedicated Nuxt character detail route/surface with identity, live status, progress,
+location and links into inventory/equipment, pets, party, map and verified actions;
+later slices fill those linked panels without redesigning the detail route
+
 Nuxt character overview/dashboard
 
 **Acceptance criteria:**
@@ -660,6 +667,12 @@ character online/offline status reflects its live game session independently of 
 character switching closes the previous character session so stale online state is not retained
 
 current statistics update live
+
+character search filters and persisted groups survive reload/restart and never alter
+character identity or command targeting
+
+the character detail surface addresses one stable character_id and keeps links/actions
+scoped to that character even when multiple agents/characters are connected
 
 reconnect restores correct current state
 
@@ -689,17 +702,37 @@ command expiry
 
 audit/history persistence
 
-initial actions:
+initial actions, each with an explicit typed argument schema and capability check:
 
-start bot
+start bot / start training
 
-stop bot
+stop bot / stop training
+
+set training area using the exact verified phBot training-area representation; do not
+silently substitute stale backend coordinates for a user-selected/current client area
+
+set training radius with bounded numeric validation matching the verified runtime
+
+walk using the verified phBot walk/destination arguments and current server/region
+context; reject unsupported cross-region or malformed destinations rather than guessing
 
 disconnect
 
 return scroll
 
-Nuxt controls with pending/success/failure states
+go clientless where the installed phBot version/API exposes a safe supported primitive
+
+If phBot maps two reference controls to the same underlying primitive, document that
+alias and keep one canonical backend command implementation rather than duplicating
+side effects.
+
+Expose per-agent/per-character capability reporting so unsupported controls are
+disabled with a reason instead of being sent optimistically. Disruptive actions such
+as disconnect/go-clientless require an intentional confirmation in the UI. Every
+character-scoped command carries explicit character_id and validates that target
+against the authenticated agent/session before dispatch.
+
+Nuxt controls with pending/success/failure states and post-command state refresh
 
 **Acceptance criteria:**
 
@@ -708,6 +741,12 @@ commands reach only the intended connected agent
 frontend distinguishes sent from successfully executed
 
 expired commands are not replayed unexpectedly
+
+unsupported commands are rejected before dispatch and the UI explains the missing
+runtime capability/version requirement
+
+training-area/radius/walk arguments are validated server-side and results record the
+effective arguments acknowledged by the plugin where available
 
 command history is inspectable
 
@@ -721,29 +760,53 @@ Expose important operational game state.
 
 character inventory
 
-storage where cleanly available
+equipped/character-set items as a distinct source from bag inventory
 
-pets
+character storage and guild storage where cleanly available, carrying source,
+observer/freshness metadata so last-known data is not presented as live without context
 
-pet inventory
+pet model covering the supported phMonitor categories Attack, Fellow, Pick and
+Transport; retain stable pet identity/type and expose the state the verified phBot API
+actually provides
 
-party members/state
+pet inventory per applicable pet category; do not synthesize inventories for pet types
+whose runtime source has none
+
+party members/current party state
+
+Party Setup as a separate read/edit surface from current party membership. First
+inspect the connected phBot runtime/reference and record the exact available fields
+and value semantics in docs/phbot-capabilities.md. Persist only configuration that is
+meaningfully durable; apply changes through the Slice 3 command lifecycle, refresh
+from the plugin after success, and never claim a saved setup was applied from a socket
+write alone.
+
+Verified direct party actions exposed by phBot (for example invite/leave/member
+management only when actually supported) use explicit character targets and the same
+audited command/result lifecycle. Do not invent controls merely because phBot has a
+similarly named internal setting.
 
 delta/change handling where appropriate
 
-Nuxt inventory view
+Nuxt inventory/equipment/storage views with source/freshness indicators
 
-Nuxt pet view
+Nuxt pet view grouped by supported pet category
 
-Nuxt party view
+Nuxt party view with current-membership and Party Setup sections
 
 **Acceptance criteria:**
 
-current inventory is visible
+current inventory, equipment/character set and available storage sources are visible
+without conflating their ownership/source
 
-pet state/inventory is visible
+Attack/Fellow/Pick/Transport pets are represented when observed, and applicable pet
+state/inventory remains associated with the correct pet across updates
 
-party membership is visible
+party membership is visible independently from Party Setup configuration
+
+Party Setup loads the plugin's current supported values, applies verified edits through
+an audited command, reports pending/success/failure, then refreshes to prove the
+effective runtime configuration
 
 updates do not require blindly resending excessive full state when unnecessary
 
@@ -771,6 +834,9 @@ reconnect
 
 alchemy result
 
+custom event kind with a bounded payload so later Conditions can emit durable custom
+events without inventing a second timeline model
+
 **Implement:**
 
 event envelope/schema
@@ -781,6 +847,12 @@ nonblocking outbound queue
 
 durable backend event storage
 
+item-event payloads/snapshots that retain every actually observed display/detail field
+needed by later UI: canonical item identity/model/code, display name, plus value,
+quantity/stack where relevant, rarity/seal metadata, degree/category, observed item
+color/grade and observed blues/attributes. Fields absent from the source remain absent;
+never infer a seal, blue, rarity or probability from presentation alone.
+
 Nuxt activity timeline
 
 basic event filtering
@@ -790,6 +862,9 @@ basic event filtering
 events survive page reload/backend querying
 
 timeline ordering is reliable
+
+rare/normal drop rows and detail links can render the stored observed item semantics
+without re-querying mutable current inventory state
 
 event ingestion does not block normal phBot behavior
 
@@ -845,25 +920,49 @@ character current position
 
 position history where useful
 
-map/region normalization
+map/region normalization, including explicit transform/asset validation for:
+- Jangan Cave / Tomb of Qin-Shi
+- Donwhang Cave / Donwhang Stone Cave
+- Job Temple / Temple
 
-current character markers
+character picker plus jump-to-character
 
-optional nearby-monster overlay
+quick destination/region navigation
 
-optional nearby-drop overlay
+current cursor/viewport coordinates, tile identifier and zoom percentage
 
-Nuxt map component
+current character markers and Academy-member layer
 
-legally usable/private map assets
+live nearby-monster markers from current plugin observations, distinct from historical
+mob-density/type analytics. Track enough identity/model/type/position plus freshness/TTL
+to remove monsters that are no longer current instead of leaving stale markers.
+
+recent death and drop overlays sourced from durable events with bounded time-range
+filters and links back to their detail/event context
+
+nearby-drop/current-world overlay only where a verified live phBot source exists; do
+not present historical drop events as currently lying on the ground
+
+Nuxt map component with pan/zoom and layer controls
+
+legally usable/private map assets for outdoor and required special-area maps
 
 **Acceptance criteria:**
 
-live character position is visible on a map
+live character position is visible on a map and jump-to-character centers the expected
+character
 
 movement updates correctly
 
+nearby monsters appear/disappear according to current observations and freshness;
+the live-monster layer never derives "current" monsters from historical heatmap data
+
 region transitions are handled
+
+the three verified special-area map families use validated assets/transforms and do
+not silently fall back to incorrect outdoor coordinates
+
+recent-death/drop time filtering and Academy-member visibility work independently
 
 map architecture supports future heatmap layers
 
@@ -886,6 +985,11 @@ character/observer coordinates
 nearby monster identity/model/type
 
 nearby monster coordinates
+
+Reuse the canonical live-monster observation identity/coordinate model introduced in
+Slice 7 where practical, but keep current presence and historical density semantics
+separate. A monster disappearing from the live layer does not delete its valid sample,
+and a historical sample must never resurrect a live marker.
 
 Backend implements spatial aggregation.
 
@@ -934,6 +1038,10 @@ unique sightings
 
 player movement
 
+The live nearby-monster layer remains a current-state layer from Slice 7, not a
+heatmap. It may be displayed alongside these historical layers but must retain
+separate freshness semantics.
+
 **Useful filters:**
 
 time range
@@ -948,6 +1056,15 @@ server
 
 Add backend pre-aggregation where justified for larger ranges.
 
+Heatmap reset must show exactly which server/region/layer/time-derived aggregate will
+be removed. Default to the narrowest meaningful current scope; require explicit
+confirmation for broader deletion. Clear/rebuild derived aggregates without silently
+deleting unrelated canonical event history.
+
+Named special-area maps from Slice 7 must support the historical layers whose
+coordinates can be normalized correctly; unsupported combinations are shown as such
+rather than plotted with a guessed transform.
+
 **Acceptance criteria:**
 
 heatmaps render from backend data
@@ -955,6 +1072,11 @@ heatmaps render from backend data
 time filtering works
 
 layers can be enabled/disabled
+
+reset affects only the confirmed scope and leaves unrelated event/history sources
+intact
+
+heatmaps and event overlays align with validated coordinates on supported special maps
 
 performance remains reasonable for accumulated historical data
 
@@ -971,7 +1093,7 @@ Build a generic server-owned rules engine.
 WHEN conditions
 THEN actions
 
-**Possible initial inputs:**
+**Minimum initial inputs:**
 
 HP/MP thresholds
 
@@ -987,13 +1109,30 @@ unique seen
 
 item dropped
 
-**Possible actions:**
+**Minimum initial actions:**
 
 notification
 
 Discord webhook
 
 phBot command
+
+Model each rule with stable ID, enabled state, explicit character/server target scope,
+trigger/input, predicates, ordered actions and audit metadata. Inspect the reference
+Condition editor and verified phBot capabilities before expanding the trigger/operator/
+action catalog; newly discovered supported controls belong in this slice rather than
+being deferred to a separate automation system.
+
+Support the reference-style placeholders/variables used inside condition-generated
+messages/content. Define and document a bounded variable catalog sourced from the
+trigger event plus current character/server context. Expand templates on the backend
+at execution time with deterministic handling for missing/null values, explicit output
+length limits and escaping appropriate to the destination. Provide preview/test
+coverage using synthetic context. Templates are data only: no eval, Python, shell,
+arbitrary expressions or unrestricted property traversal.
+
+When a Condition intentionally creates a custom timeline event, emit the Slice 5
+canonical custom event so filtering/order/retention remain consistent.
 
 Keep rule evaluation on the backend.
 
@@ -1004,6 +1143,9 @@ Do not implement condition logic inside individual plugins.
 rules are persisted
 
 rules evaluate deterministically
+
+placeholder expansion is deterministic, tested for missing values and bounded against
+oversized/untrusted content
 
 triggered actions are auditable
 
@@ -1053,6 +1195,11 @@ missed/late commands follow documented semantics
 
 Convert monitoring history into useful performance data.
 
+At minimum reproduce the reference analytics areas for Deaths, Rare Drops, Normal
+Drops, Economy and Academy with explicit time-range filtering and server/character
+scope where the underlying records support it. Reuse canonical event/item/economy/
+academy records rather than creating analytics-only duplicate truth.
+
 **Potential metrics:**
 
 XP/hour
@@ -1073,7 +1220,9 @@ farming-area comparison
 
 daily/weekly summaries
 
-Implement historical charts in Nuxt.
+Implement historical charts/tables in Nuxt. Item analytics reuse the canonical item
+presentation/detail semantics from Slices 5/13 so seal, rarity and observed blues do
+not diverge between Events, Item Search and Analytics.
 
 **Acceptance criteria:**
 
@@ -1091,23 +1240,47 @@ dashboard remains usable over meaningful historical ranges
 
 Add item-centric historical/search functionality when the available phBot data supports it.
 
-**Potential functionality:**
+**Required functionality where the verified source data exists:**
 
-item acquisition history
+item acquisition/drop history with links back to canonical events
 
-valuable drop tracking
+valuable/rare drop tracking preserving observed rarity/color/seal metadata
 
-search across observed items
+one Item Search query surface across character inventory, equipped/character sets,
+character storage and guild storage; retain source/owner, server, observer/freshness
+and navigation back to the owning character/guild
 
-economy/stall information where available
+text/server/item-type/subcategory/degree filtering, include-character-sets behavior
+where it matches the reference, and deterministic reset controls
 
-price history where sufficiently reliable source data exists
+shared item detail presentation for current and historical records, including plus,
+quantity, degree/category, seal/rarity/color and observed blues/attributes when the
+source captured them; never synthesize absent item properties
+
+global economy offers with WTB/WTS/WTT classification and searchable observed offer
+text/item/seal/notes plus buyer/seller and item taxonomy filters
+
+stall sale/transaction history and source attribution where available
+
+price history only where sufficiently reliable observable source data exists
 
 Do not invent data that phBot cannot provide.
 
 Do not overbuild this slice before confirming actual source capabilities.
 
-Acceptance criteria should be defined based on the verified API/data available at implementation time.
+**Acceptance criteria:**
+
+Item Search finds the same canonical item regardless of whether it currently lives in
+inventory, equipment/character set, character storage or guild storage, while still
+showing its exact source/owner/freshness.
+
+Rare/normal historical item detail renders stored observed metadata consistently with
+Events and Analytics.
+
+Economy filters distinguish WTB/WTS/WTT and preserve source attribution.
+
+Unsupported/unobservable price or item fields remain absent/unknown rather than being
+estimated or copied from mutable current state.
 
 ### Slice 14 — Hardening
 
@@ -1169,16 +1342,31 @@ core screens or visual direction until the end; build them in their owning slice
 
 - Close every open row in the feature matrix, including any incomplete advanced
   phBot tools. Reinspect accessible advanced screens and document verified behavior.
+  Final phBot-tool parity includes the verified training/client command set, Party
+  Setup round-trip, explicit-target script execution/management and supported Quest
+  actions; generic placeholder buttons do not satisfy this gate.
+- Reconcile character detail so live state, inventory/equipment/storage, the
+  Attack/Fellow/Pick/Transport pet categories, party state/setup, map navigation and
+  supported actions use one stable character target and consistent drill-down model.
+- Reconcile map parity across outdoor and the verified special-area maps, including
+  live nearby monsters with freshness, Academy members, recent event overlays and
+  historical mob-density/type layers. Validate coordinates rather than accepting
+  visually plausible but incorrect placement.
 - Skill Builder with legally usable/versioned skill datasets, race/cap/mastery and
   prerequisite rules, editable/saved plans, calculated SP costs, reset/bulk controls
   and live-character comparison. Show unsupported versions honestly. Remote skill
   execution, if supported, uses the existing command lifecycle and confirmation.
 - Complete persistent appearance/mode/language/chat/notification settings, local
-  sound library, safe record-management dialogs, instance QR/copy-link utilities,
-  self-hosted server directory and operator-managed dashboard information cards.
+  sound library, safe record-management dialogs, instance QR/copy-link utilities
+  and operator-managed dashboard information cards.
 - Complete backend/API validation for preferences, uploads, webhook destinations,
   local assets and deletion operations; avoid introducing privileged arbitrary file
   access or outbound requests to internal services through user-supplied URLs.
+- Finish shared item-detail/event rendering so rare-item color/seal metadata and
+  observed normal-item blues/attributes agree across Events, character inventory,
+  Item Search and Analytics without fabricating unavailable fields.
+- Finish Conditions placeholder/variable behavior with documented bounded context,
+  deterministic preview/execution and no executable template language.
 - Reconcile the demo navigation, filters, detail surfaces and responsive layouts
   across every implemented area. Replace temporary scaffolding, broken controls,
   misleading mock data and unintended framework-default styling.
@@ -1191,6 +1379,13 @@ core screens or visual direction until the end; build them in their owning slice
   required gap is reclassified as optional merely to finish the roadmap.
 - Skill planning calculations/prerequisites have focused tests with known reference
   data; saved plans and settings survive reload/restart as appropriate.
+- Every supported phBot control has a capability-aware targeted command test; training
+  area/radius/walk arguments and Party Setup prove the plugin's effective resulting
+  state rather than treating dispatch as success.
+- Live-monster expiry and special-map coordinate fixtures are tested, and representative
+  rare/normal items verify seal/color/blues/detail consistency across surfaces.
+- Conditions template variables have deterministic preview/execution tests, including
+  missing values and output bounds.
 - Representative populated and empty screens, detail views, dialogs and failure/
   recovery flows pass browser checks at all target viewports. No reference outage
   popup, phMonitor branding, paid gating or dependency is carried into our product.
