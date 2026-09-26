@@ -1,4 +1,4 @@
-import type { AgentView } from '../../shared/types/agent'
+import type { AgentView } from '~~/shared/types/agent'
 import {
   LIVE_PROTOCOL_VERSION,
   type AgentsSnapshot,
@@ -12,7 +12,7 @@ import {
   type LiveFilter,
   type LiveServerFrame,
   type LiveStream,
-} from '../../shared/types/live'
+} from '~~/shared/types/live'
 
 type Subscription = {
   id: string
