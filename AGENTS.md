@@ -417,6 +417,12 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   offline.
 - Added phmonctl agent create for one-time credential provisioning. No browser route
   exposes tokens or hashes.
+- Plugin configuration now uses phBot's native QtBind GUI instead of requiring
+  operators to create PhMon.json. URL, agent ID and token are persisted in PhMon-owned
+  settings keyed by phBot's active get_config_path(), so multiple accounts/characters
+  and alternate bot profiles remain isolated. PhMon never modifies phBot's player
+  JSON. The GUI clears the token field after load/save and only reuses the stored
+  token when URL and agent ID still match.
 - Added plugin/PhMon.py using only Python standard-library networking. Public phBot
   documentation verifies socket support, while actual embedded-runtime availability
   of ssl, select, threading, hashlib, base64, struct and urllib.parse still requires
@@ -431,9 +437,10 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
   connect -> Go restart -> automatic reconnect -> disconnect through
   plugin transport -> Go -> PostgreSQL -> Nuxt, in addition to database
   outage/recovery checks.
-- Validation actually observed in this completion pass: Python compile checks and
-  14 focused stdlib plugin protocol/config/backoff tests pass locally. GitHub Actions
-  run 36256023045 passed both jobs on transport/test head 677804e: validate ran
+- Validation actually observed in this completion pass: the focused stdlib plugin
+  protocol/config/backoff suite now contains 16 tests, including per-profile settings
+  isolation, saved-config round-trip and hidden-token reuse rules. GitHub Actions run
+  36256686626 passed both jobs on profile-GUI head 3c28b41: validate ran
   bash scripts/check.sh with TEST_DATABASE_URL against PostgreSQL, and stack exercised
   credential creation -> production PhMon.py transport/simulator connect -> Nuxt API
   visibility -> backend restart -> automatic reconnect -> disconnect, plus database

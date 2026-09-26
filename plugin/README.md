@@ -14,18 +14,29 @@ history and future command policy remain server-owned.
    The command prints an agent_id and agent_token once. PostgreSQL stores only the
    token hash. Keep the plaintext token private.
 
-2. Copy plugin/PhMon.py into the phBot Plugins directory.
-3. Create PhMon.json in the phBot Config directory returned by phBot's
-   get_config_dir() API:
+2. Copy plugin/PhMon.py into the phBot Plugins directory and reload the plugin.
+3. Join the game with the account/profile you want to configure.
+4. Open **Plugins -> PhMon** and enter:
+   - Backend WebSocket URL, for example `wss://phmon.example.internal/agent`
+   - Agent ID from `phmonctl agent create`
+   - Agent token from the same provisioning command
+5. Click **Save & Connect**. The agent should appear in PhMon after the authenticated
+   hello handshake succeeds.
 
-       {
-         "backend_url": "wss://phmon.example.internal/agent",
-         "agent_id": "11111111-2222-4333-8444-555555555555",
-         "agent_token": "phm_replace_with_the_provisioned_token"
-       }
+Configuration is profile-scoped. PhMon asks phBot for the active player's
+`get_config_path()`, derives a matching filename, and stores its own settings in:
 
-4. Reload the plugin or restart phBot. The agent should appear in PhMon after the
-   authenticated hello handshake succeeds.
+    <phBot Config>/PhMon/<active-profile>.cfg
+
+PhMon never modifies phBot's player JSON; the documented phBot API warns that direct
+changes to that JSON may be overwritten. Distinct characters/profiles therefore get
+distinct PhMon settings even when several accounts share the same phBot installation.
+
+The saved file contains the bearer token because automatic reconnect requires it.
+Keep the phBot Config directory private. QtBind documents a normal line edit rather
+than a password widget, so the token is visible while being pasted; PhMon clears the
+token field immediately after loading/saving and reuses the stored token only when
+the displayed backend URL and agent ID still match.
 
 The default Compose binding keeps the Go agent listener on loopback. Use ws:// only
 when the plugin runs on the same host or on an explicitly trusted development network

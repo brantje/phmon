@@ -18,10 +18,16 @@ coverage is tracked separately and is never treated as proof of a real phBot run
     monitoring backend connection.
   - event_loop() runs every 500 ms, but Slice 1 does not need to perform networking
     in that latency-sensitive callback.
+- GUI API: https://plugins.phbot.org/gui-api
+  - QtBind.init(__name__, ...) creates a plugin tab and must be called at module load.
+  - createLineEdit/createButton provide operator-editable fields and actions.
+  - text()/setText() read and update widget values.
 - Config: https://plugins.phbot.org/phbot-api/config
   - get_config_dir() returns the phBot Config directory with a trailing slash.
-  - get_config_path() points at phBot's own player JSON and the docs warn changes
-    to it can be overwritten. PhMon therefore owns a separate PhMon.json file.
+  - get_config_path() returns the active player's JSON configuration path when in
+    game; the docs warn direct changes to that JSON may later be overwritten.
+  - PhMon therefore uses get_config_path() only as the active profile identity and
+    keeps its own per-profile settings file under Config/PhMon/.
 - Misc: https://plugins.phbot.org/phbot-api/misc
   - get_version() returns the phBot version string.
 
@@ -36,6 +42,15 @@ Idle receive polling uses select before any bytes of the next WebSocket frame ar
 consumed. Once frame decoding starts, reads run under a bounded socket deadline; a
 mid-frame stall fails the connection and lets the worker reconnect rather than
 discarding partial frame bytes and continuing on a corrupted stream.
+
+Configuration is operator-facing through phBot's native QtBind GUI rather than a
+hand-edited PhMon JSON file. The GUI contains backend URL, agent ID and token fields
+plus Save & Connect. Persistence is scoped to the active phBot player/profile:
+get_config_path() selects Config/PhMon/<active-profile>.cfg, but PhMon never writes to
+the JSON path returned by phBot. Profile changes are detected from the active config
+path so several accounts/characters or alternate profiles do not accidentally share
+one agent identity. The token field is cleared after load/save; the persisted local
+token is reused only while URL and agent ID are unchanged.
 
 The plugin keeps backend networking on a worker thread. phBot callbacks never wait
 for backend network I/O. The plugin is authoritative only for its current process;
@@ -64,8 +79,11 @@ behaves as expected, especially:
 - struct
 - urllib.parse
 
-The real-runtime gate requires installing PhMon.py and PhMon.json in a supported phBot
-build, recording the observed phBot version and embedded Python version, confirming
-the authenticated hello/UI appearance, then exercising reload/disconnect/restart and
-automatic reconnect. Record the observed module/import behavior and results here; do
-not infer them from desktop CPython or the simulator.
+The real-runtime gate requires installing PhMon.py in a supported phBot build,
+configuring at least two distinct bot profiles through the PhMon QtBind tab, and
+recording the observed phBot version and embedded Python version. Confirm each profile
+loads its own URL/agent ID, keeps the saved token hidden in the GUI, connects as the
+correct agent, and survives plugin reload/disconnect/restart with automatic reconnect.
+Also exercise a profile switch to prove one profile cannot silently reuse another
+profile's credentials. Record the observed module/import behavior and results here;
+do not infer them from desktop CPython or the simulator.

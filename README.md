@@ -45,31 +45,38 @@ stack has no external-service dependency. UI fonts are system fonts.
 
 ## Connect a phBot agent
 
-Provision one stable identity/token pair for each running phBot instance:
+Provision one stable identity/token pair for each phBot account/profile that should
+appear as its own PhMon agent:
 
 ```sh
 docker compose exec server phmonctl agent create
 ```
 
-The command prints the plaintext token once; PostgreSQL stores only its SHA-256
-hash. Copy `plugin/PhMon.py` into phBot's Plugins directory, then create
-`PhMon.json` in the phBot Config directory:
+The command prints the plaintext token once; PostgreSQL stores only its SHA-256 hash.
+Copy `plugin/PhMon.py` into phBot's Plugins directory and reload the plugin. In the
+phBot **Plugins -> PhMon** tab, enter the backend WebSocket URL, provisioned agent ID
+and token, then click **Save & Connect**.
 
-```json
-{
-  "backend_url": "ws://192.168.1.10:8081/agent",
-  "agent_id": "replace-with-provisioned-agent-id",
-  "agent_token": "replace-with-provisioned-agent-token"
-}
-```
+PhMon stores these values separately for the active phBot player/profile under
+`Config/PhMon/<active-profile>.cfg`. The active path returned by phBot's
+`get_config_path()` is used only to select the matching PhMon settings file; PhMon
+never edits phBot's own player JSON. This lets multiple accounts/characters and
+alternate bot profiles keep distinct PhMon identities and credentials in one phBot
+installation.
 
-Reload the plugin or restart phBot; the agent should appear on the dashboard after
-its authenticated hello succeeds. The plugin reconnects automatically after backend
-loss and never puts credentials in the URL. The default Compose binding keeps port
-8081 on loopback. For a phBot host on another machine, terminate TLS in front of the
-Go backend and configure a reachable `wss://` URL; do not expose cleartext bearer
-authentication to an untrusted network. A deliberate trusted-LAN development setup
-may override `SERVER_BIND_ADDR`, but `ws://` is development-only.
+The token is persisted locally because reconnects must be unattended, but after a
+profile is loaded or saved the GUI token field is cleared instead of continuously
+displaying the secret. Keep the phBot Config directory private. Leaving the token
+field blank preserves the saved token only while the backend URL and agent ID are
+unchanged; changing either identity field requires pasting the token again.
+
+The agent should appear on the dashboard after the authenticated hello succeeds. The
+plugin reconnects automatically after backend loss and never puts credentials in the
+URL. The default Compose binding keeps port 8081 on loopback. For a phBot host on
+another machine, terminate TLS in front of the Go backend and configure a reachable
+`wss://` URL; do not expose cleartext bearer authentication to an untrusted network.
+A deliberate trusted-LAN development setup may override `SERVER_BIND_ADDR`, but
+`ws://` is development-only.
 See [plugin/README.md](plugin/README.md) and
 [docs/phbot-capabilities.md](docs/phbot-capabilities.md).
 
