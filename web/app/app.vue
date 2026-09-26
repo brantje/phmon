@@ -92,8 +92,12 @@ const lastCharacters = liveCharacters
 const lastFleetCharacters = liveFleetCharacters
 const lastGroups = liveGroups
 const lastAgents = liveAgents
-const characterError = computed(() => liveStale.value)
-const agentsUnavailable = computed(() => liveStale.value)
+const characterError = computed(
+  () => liveStale.value || liveConnectionState.value === 'stale',
+)
+const agentsUnavailable = computed(
+  () => liveStale.value || liveConnectionState.value === 'stale',
+)
 const agentsStatus = computed(() =>
   liveConnectionState.value !== 'current' && lastAgents.value.length === 0
     ? 'pending'
