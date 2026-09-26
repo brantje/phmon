@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -85,6 +86,90 @@ func TestLiveAgentSubscriptionInitialAndReplacementSnapshots(t *testing.T) {
 	}
 	if len(secondData.Agents) != 1 || secondData.Agents[0].ActiveConnections != 2 {
 		t.Fatalf("live replacement did not observe registry change: %+v", secondData)
+	}
+}
+
+
+type blockingListAgentStore struct {
+	*fakeAgentStore
+	mu          sync.Mutex
+	calls       int
+	first       []agentdomain.Record
+	second      []agentdomain.Record
+	firstStarted chan struct{}
+	releaseFirst chan struct{}
+}
+
+func (s *blockingListAgentStore) ListSeen(ctx context.Context) ([]agentdomain.Record, error) {
+	s.mu.Lock()
+	s.calls++
+	call := s.calls
+	s.mu.Unlock()
+	if call == 1 {
+		close(s.firstStarted)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-s.releaseFirst:
+		}
+		return s.first, nil
+	}
+	return s.second, nil
+}
+
+func TestLiveInvalidationDuringSnapshotIsNotLost(t *testing.T) {
+	firstPlugin, secondPlugin := "before", "after"
+	store := &blockingListAgentStore{
+		fakeAgentStore: newFakeAgentStore(),
+		first: []agentdomain.Record{{AgentID: testAgentID, PluginVersion: &firstPlugin}},
+		second: []agentdomain.Record{{AgentID: testAgentID, PluginVersion: &secondPlugin}},
+		firstStarted: make(chan struct{}),
+		releaseFirst: make(chan struct{}),
+	}
+	registry := agentdomain.NewRegistry()
+	live := NewLiveHub(store, registry, nil)
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		Live:     live,
+	}))
+	defer server.Close()
+
+	conn := dialLive(t, server.URL, server.URL)
+	defer conn.CloseNow()
+	writeLive(t, conn, liveClientMessage{
+		Type:            "subscribe",
+		ProtocolVersion: liveProtocolVersion,
+		SubscriptionID:  "agents",
+		Revision:        1,
+		Stream:          "agents",
+	})
+
+	select {
+	case <-store.firstStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first snapshot did not start")
+	}
+	live.Invalidate()
+	close(store.releaseFirst)
+
+	first := readLiveType(t, conn, "snapshot")
+	second := readLiveType(t, conn, "snapshot")
+	var firstData, secondData struct {
+		Agents []AgentView `json:"agents"`
+	}
+	if err := json.Unmarshal(first.Data, &firstData); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(second.Data, &secondData); err != nil {
+		t.Fatal(err)
+	}
+	if len(firstData.Agents) != 1 || firstData.Agents[0].PluginVersion == nil || *firstData.Agents[0].PluginVersion != firstPlugin {
+		t.Fatalf("unexpected first snapshot: %+v", firstData)
+	}
+	if len(secondData.Agents) != 1 || secondData.Agents[0].PluginVersion == nil || *secondData.Agents[0].PluginVersion != secondPlugin {
+		t.Fatalf("invalidation during snapshot was lost: %+v", secondData)
 	}
 }
 
