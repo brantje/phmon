@@ -89,13 +89,12 @@ func TestLiveAgentSubscriptionInitialAndReplacementSnapshots(t *testing.T) {
 	}
 }
 
-
 type blockingListAgentStore struct {
 	*fakeAgentStore
-	mu          sync.Mutex
-	calls       int
-	first       []agentdomain.Record
-	second      []agentdomain.Record
+	mu           sync.Mutex
+	calls        int
+	first        []agentdomain.Record
+	second       []agentdomain.Record
 	firstStarted chan struct{}
 	releaseFirst chan struct{}
 }
@@ -121,10 +120,10 @@ func TestLiveInvalidationDuringSnapshotIsNotLost(t *testing.T) {
 	firstPlugin, secondPlugin := "before", "after"
 	store := &blockingListAgentStore{
 		fakeAgentStore: newFakeAgentStore(),
-		first: []agentdomain.Record{{AgentID: testAgentID, PluginVersion: &firstPlugin}},
-		second: []agentdomain.Record{{AgentID: testAgentID, PluginVersion: &secondPlugin}},
-		firstStarted: make(chan struct{}),
-		releaseFirst: make(chan struct{}),
+		first:          []agentdomain.Record{{AgentID: testAgentID, PluginVersion: &firstPlugin}},
+		second:         []agentdomain.Record{{AgentID: testAgentID, PluginVersion: &secondPlugin}},
+		firstStarted:   make(chan struct{}),
+		releaseFirst:   make(chan struct{}),
 	}
 	registry := agentdomain.NewRegistry()
 	live := NewLiveHub(store, registry, nil)
