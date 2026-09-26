@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          agent_json=$(python3 -c 'from urllib.request import Request,urlopen; request=Request("http://127.0.0.1:3005/api/agents/credentials", method="POST"); print(urlopen(request, timeout=10).read().decode())')
+          agent_json=$(python3 -c 'from urllib.request import Request,urlopen; request=Request("http://127.0.0.1:3005/api/agents/credentials", data=b"{}", headers={"Content-Type":"application/json", "Origin":"http://127.0.0.1:3005", "Sec-Fetch-Site":"same-origin"}, method="POST"); print(urlopen(request, timeout=10).read().decode())')
           export EXPECT_AGENT_ID
           export PHMON_AGENT_ID
           export PHMON_AGENT_TOKEN

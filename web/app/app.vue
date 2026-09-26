@@ -225,6 +225,7 @@ async function createAgentCredential() {
       '/api/agents/credentials',
       {
         method: 'POST',
+        body: {},
         retry: 0,
       },
     )
