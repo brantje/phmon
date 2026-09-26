@@ -32,7 +32,9 @@ const configuredInstanceUrl = normalizeInstanceUrl(
   String(runtimeConfig.public.instanceUrl || ''),
 )
 const instanceUrl = ref(
-  configuredInstanceUrl || normalizeInstanceUrl(requestURL.origin) || requestURL.origin,
+  configuredInstanceUrl ||
+    normalizeInstanceUrl(requestURL.origin) ||
+    requestURL.origin,
 )
 const instanceUrlIsLoopback = computed(() => isLoopbackUrl(instanceUrl.value))
 
@@ -61,8 +63,7 @@ const {
 
 const agentsUnavailable = computed(
   () =>
-    Boolean(agentsError.value) ||
-    agentResponse.value?.status === 'unavailable',
+    Boolean(agentsError.value) || agentResponse.value?.status === 'unavailable',
 )
 const backendReady = computed(
   () => !healthError.value && health.value?.status === 'ok',
@@ -80,9 +81,7 @@ const disconnectedAgents = computed<number | null>(() =>
 const fleetStatus = computed(() => {
   if (agentsUnavailable.value) return 'Backend unavailable'
   if (lastAgents.value.length === 0) return 'Waiting for agents'
-  return (connectedAgents.value ?? 0) > 0
-    ? 'Agents connected'
-    : 'Fleet offline'
+  return (connectedAgents.value ?? 0) > 0 ? 'Agents connected' : 'Fleet offline'
 })
 
 let agentTimer: ReturnType<typeof setInterval> | undefined
@@ -139,17 +138,10 @@ function formatConnectionAge(value?: string) {
   )
   if (elapsed < 60) return String(elapsed) + 's'
   if (elapsed < 3600) {
-    return (
-      String(Math.floor(elapsed / 60)) + 'm ' + String(elapsed % 60) + 's'
-    )
+    return String(Math.floor(elapsed / 60)) + 'm ' + String(elapsed % 60) + 's'
   }
   const hours = Math.floor(elapsed / 3600)
-  return (
-    String(hours) +
-    'h ' +
-    String(Math.floor((elapsed % 3600) / 60)) +
-    'm'
-  )
+  return String(hours) + 'h ' + String(Math.floor((elapsed % 3600) / 60)) + 'm'
 }
 
 function normalizeInstanceUrl(value: string) {
@@ -238,10 +230,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
 
 <template>
   <UApp>
-    <div
-      class="phmon-shell"
-      :class="{ 'is-collapsed': sidebarCollapsed }"
-    >
+    <div class="phmon-shell" :class="{ 'is-collapsed': sidebarCollapsed }">
       <button
         v-if="mobileNavigationOpen"
         class="mobile-backdrop"
@@ -292,11 +281,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
           >
             <UIcon :name="item.icon" />
             <span>{{ item.label }}</span>
-            <span
-              v-if="!item.active"
-              class="nav-soon"
-              >later</span
-            >
+            <span v-if="!item.active" class="nav-soon">later</span>
           </button>
 
           <template v-if="advancedMode">
@@ -421,14 +406,18 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               <span>Online</span>
               <strong>{{ connectedAgents ?? '—' }}</strong>
               <small>{{
-                agentsUnavailable ? 'last loaded state retained' : 'active sockets'
+                agentsUnavailable
+                  ? 'last loaded state retained'
+                  : 'active sockets'
               }}</small>
             </article>
             <article class="summary-card">
               <span>Offline</span>
               <strong>{{ disconnectedAgents ?? '—' }}</strong>
               <small>{{
-                agentsUnavailable ? 'last loaded state retained' : 'last known agents'
+                agentsUnavailable
+                  ? 'last loaded state retained'
+                  : 'last known agents'
               }}</small>
             </article>
             <article class="summary-card summary-wide">
@@ -508,10 +497,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
-                    v-for="agent in lastAgents"
-                    :key="agent.agent_id"
-                  >
+                  <tr v-for="agent in lastAgents" :key="agent.agent_id">
                     <td>
                       <span
                         class="status-chip"
@@ -640,9 +626,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               <dl class="operation-list">
                 <div>
                   <dt>API / database</dt>
-                  <dd
-                    :class="backendReady ? 'text-ok' : 'text-warning'"
-                  >
+                  <dd :class="backendReady ? 'text-ok' : 'text-warning'">
                     {{ backendReady ? 'Ready' : 'Unavailable' }}
                   </dd>
                 </div>
@@ -690,9 +674,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
         >
           <div class="dialog-header">
             <div>
-              <h2 id="mobile-access-title">
-                Open PhMon on another device
-              </h2>
+              <h2 id="mobile-access-title">Open PhMon on another device</h2>
               <p>
                 The QR code contains only this instance URL. Agent credentials
                 are never included.
@@ -736,9 +718,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
             type="button"
             @click="copyInstanceUrl"
           >
-            <UIcon
-              :name="copied ? 'i-lucide-check' : 'i-lucide-copy'"
-            />
+            <UIcon :name="copied ? 'i-lucide-check' : 'i-lucide-copy'" />
             {{ copied ? 'Copied' : 'Copy instance URL' }}
           </button>
         </section>
