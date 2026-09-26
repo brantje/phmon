@@ -1,0 +1,31 @@
+{
+  "name": "bytemonitor-web",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.11 <25"
+  },
+  "scripts": {
+    "dev": "nuxt dev --host 127.0.0.1 --port 3005 --dotenv ../.env",
+    "build": "nuxt build",
+    "start": "node .output/server/index.mjs",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint .",
+    "typecheck": "nuxt typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "1.2.137",
+    "@nuxt/ui": "4.11.2",
+    "h3": "1.15.11",
+    "nuxt": "4.5.2"
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "1.17.0",
+    "eslint": "10.11.0",
+    "prettier": "3.9.9",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.3.11"
+  }
+}
