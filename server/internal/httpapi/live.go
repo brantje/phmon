@@ -187,9 +187,9 @@ func (c *liveClient) fail(status websocket.StatusCode, reason string) {
 	if c.conn == nil {
 		return
 	}
-	go func() {
-		_ = c.conn.Close(status, reason)
-	}()
+	// Send protocol failures synchronously so the handler's normal-close defer
+	// cannot race and overwrite the close code observed by the peer.
+	_ = c.conn.Close(status, reason)
 }
 
 func (c *liveClient) enqueue(value liveServerMessage) bool {
