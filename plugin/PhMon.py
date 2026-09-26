@@ -441,6 +441,7 @@ class AgentWorker(object):
         self._thread = None
         self._socket = None
         self._socket_lock = threading.Lock()
+        self.status = 'Connecting to PhMon backend...'
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
@@ -465,6 +466,7 @@ class AgentWorker(object):
         while not self.stop_event.is_set():
             client = None
             try:
+                self.status = 'Connecting to PhMon backend...'
                 client = self.websocket_factory(self.config['backend_url'], self.config['agent_token'])
                 self._set_socket(client)
                 client.connect()
@@ -479,6 +481,7 @@ class AgentWorker(object):
                 ack = client.receive_json(timeout=10.0)
                 interval = self._validate_ack(ack)
                 backoff.reset()
+                self.status = 'Connected to PhMon backend.'
                 _log('connected to backend')
                 next_heartbeat = _monotonic() + interval
 
@@ -498,6 +501,7 @@ class AgentWorker(object):
                         raise WebSocketClosed('unexpected server application message')
             except Exception as error:
                 if not self.stop_event.is_set():
+                    self.status = 'Backend unavailable; retrying...'
                     _log('backend unavailable (' + error.__class__.__name__ + '); reconnecting')
             finally:
                 if client is not None:
@@ -565,10 +569,12 @@ def _start_worker(config):
 
 
 def _current_settings_path():
+    bot_profile = _get_profile()
+    if bot_profile is None:
+        return None
     bot_config_path = _get_config_path()
     if not bot_config_path:
         return None
-    bot_profile = _get_profile()
     return _profile_settings_path(
         _get_config_dir(),
         bot_config_path,
@@ -605,7 +611,7 @@ def _load_active_profile(force=False):
 
     _profile_config = config
     _set_gui_config(config)
-    _set_gui_status('Profile loaded. Token is stored but hidden.')
+    _set_gui_status('Profile loaded. Connecting to PhMon backend...')
     _start_worker(config)
 
 
@@ -635,21 +641,36 @@ def save_config():
     _active_settings_path = path
     _profile_config = config
     _set_gui_config(config)
-    _set_gui_status('Saved for this bot profile. Connecting...')
+    _set_gui_status('Settings saved for this bot profile. Connecting to PhMon backend...')
     _start_worker(config)
 
 
+def connected():
+    # phBot calls this when its client connects to the game server.
+    _load_active_profile()
+
+
+def disconnected():
+    global _active_settings_path
+    _stop_worker()
+    _active_settings_path = None
+    _set_gui_status('SRO client disconnected. Waiting for login...')
+
+
 def joined_game():
-    _load_active_profile(force=True)
+    # This callback runs after the player selects a character.
+    _load_active_profile()
 
 
 def event_loop():
-    # Profile changes can occur without reloading the plugin. The callback is cheap:
-    # it only compares phBot's active config path unless the profile changed.
+    # phBot calls this every 500 ms. Keep UI updates and profile detection here;
+    # the worker owns backend I/O and only publishes its latest status string.
     try:
         _load_active_profile()
     except Exception as error:
         _log('profile sync failed (' + error.__class__.__name__ + ')')
+    if _worker is not None:
+        _set_gui_status(_worker.status)
 
 
 def finished():

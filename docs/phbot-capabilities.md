@@ -15,7 +15,8 @@ coverage is tracked separately and is never treated as proof of a real phBot run
 - Events: https://plugins.phbot.org/phbot-api/events
   - finished() is called when Python unloads / phBot exits.
   - connected() and disconnected() describe the game-server connection, not the
-    monitoring backend connection.
+    monitoring backend connection. joined_game() runs after the player selects a
+    character.
   - event_loop() runs every 500 ms, but Slice 1 does not need to perform networking
     in that latency-sensitive callback.
 - GUI API: https://plugins.phbot.org/gui-api
@@ -32,6 +33,16 @@ coverage is tracked separately and is never treated as proof of a real phBot run
   - get_version() returns the phBot version string.
   - get_profile() returns the active profile name, an empty string for the default
     profile, or None while no player is logged in.
+
+## Login and connection status behavior
+
+Saved credentials are loaded only after get_profile() reports a logged-in player;
+None is not treated as the default profile. The connected() and joined_game()
+callbacks both trigger profile loading, while event_loop() checks for a newly
+available/changed profile every 500 ms. This covers login timing differences without
+network work in phBot callbacks. The worker publishes Connecting, Connected, and
+retrying states; event_loop() displays those states through QtBind on phBot's callback
+thread.
 
 ## Slice 1 integration decisions
 

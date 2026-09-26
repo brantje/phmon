@@ -16,6 +16,15 @@ AGENT_ID = '11111111-2222-4333-8444-555555555555'
 
 
 class ConfigTests(unittest.TestCase):
+    def test_profile_path_is_unavailable_until_phbot_reports_login(self):
+        with patch.object(plugin, '_get_profile', return_value=None):
+            self.assertIsNone(plugin._current_settings_path())
+
+    def test_connected_callback_loads_saved_profile(self):
+        with patch.object(plugin, '_load_active_profile') as load_profile:
+            plugin.connected()
+        load_profile.assert_called_once_with()
+
     def test_valid_config_normalizes_agent_path(self):
         config = plugin.validate_config({
             'backend_url': 'ws://127.0.0.1:8081',
@@ -283,6 +292,21 @@ class WorkerStopTests(unittest.TestCase):
 
         worker.stop.assert_called_once_with()
         worker.join.assert_not_called()
+
+    def test_event_loop_displays_worker_connection_state(self):
+        worker = Mock()
+        worker.status = 'Connected to PhMon backend.'
+        original = plugin._worker
+        plugin._worker = worker
+        try:
+            with patch.object(plugin, '_load_active_profile'), patch.object(
+                plugin, '_set_gui_status'
+            ) as set_status:
+                plugin.event_loop()
+        finally:
+            plugin._worker = original
+
+        set_status.assert_called_once_with('Connected to PhMon backend.')
 
 
 if __name__ == '__main__':
