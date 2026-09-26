@@ -554,8 +554,9 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                 <div>
                   <strong>Create agent credential</strong>
                   <p>
-                    Generate one identity/token pair for one phBot account/profile.
-                    The token can only be recovered from this response.
+                    Generate one identity/token pair for one phBot
+                    account/profile. The token can only be recovered from this
+                    response.
                   </p>
                 </div>
               </div>
@@ -606,12 +607,13 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   class="credential-message warning"
                   role="status"
                 >
-                  Clipboard access is unavailable. Select the value above and copy
-                  it manually.
+                  Clipboard access is unavailable. Select the value above and
+                  copy it manually.
                 </p>
                 <p class="credential-message" role="status">
-                  Save this token in the matching phBot PhMon profile now. PostgreSQL
-                  stores only its SHA-256 hash, so PhMon cannot show this token again.
+                  Save this token in the matching phBot PhMon profile now.
+                  PostgreSQL stores only its SHA-256 hash, so PhMon cannot
+                  show this token again.
                 </p>
                 <div class="credential-actions">
                   <button
@@ -626,9 +628,9 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
 
               <template v-else>
                 <p class="credential-risk">
-                  PhMon user authentication is not implemented yet. Until it is,
-                  anyone who can access this web UI can create an agent credential.
-                  Keep this instance on a trusted network.
+                  PhMon user authentication is not implemented yet. Until it
+                  is, anyone who can access this web UI can create an agent
+                  credential. Keep this instance on a trusted network.
                 </p>
                 <p
                   v-if="credentialError"
