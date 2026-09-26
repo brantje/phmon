@@ -59,6 +59,7 @@ func run() error {
 	}
 	reconcileCancel()
 	registry := agents.NewRegistry()
+	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
 		Database:   pool,
 		Agents:     store,

@@ -48,14 +48,28 @@ func (r *Registry) LatestConnectedAt(agentID string) (time.Time, bool) {
 // Unregister removes one connection generation and reports whether any
 // connections for the agent remain active.
 func (r *Registry) Unregister(agentID string, generation uint64) (removed bool, stillConnected bool) {
+	removed, stillConnected, _ = r.UnregisterWithFence(agentID, generation)
+	return removed, stillConnected
+}
+
+// UnregisterWithFence atomically removes one generation and captures the most
+// recent connect time in its logical-agent cohort when it was the last socket.
+// Persisting that value lets storage reject a disconnect if a newer connection
+// was durably recorded before cleanup reaches PostgreSQL.
+func (r *Registry) UnregisterWithFence(agentID string, generation uint64) (removed bool, stillConnected bool, disconnectFence time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	current, ok := r.sessions[generation]
 	if !ok || current.agentID != agentID {
-		return false, r.hasConnectionsLocked(agentID)
+		stillConnected = r.hasConnectionsLocked(agentID)
+		return false, stillConnected, time.Time{}
 	}
 	delete(r.sessions, generation)
-	return true, r.hasConnectionsLocked(agentID)
+	stillConnected = r.hasConnectionsLocked(agentID)
+	if !stillConnected {
+		disconnectFence = r.latest[agentID]
+	}
+	return true, stillConnected, disconnectFence
 }
 
 func (r *Registry) ConnectedAt(agentID string) (time.Time, bool) {
@@ -96,4 +110,11 @@ func (r *Registry) IsCurrent(agentID string, generation uint64) bool {
 	defer r.mu.RUnlock()
 	current, ok := r.sessions[generation]
 	return ok && current.agentID == agentID && current.generation == generation
+}
+
+// HasGeneration reports whether this exact authenticated socket is still live.
+// Character session reconciliation uses it to close only durable sessions whose
+// owning connection has disappeared, even when sibling sockets share the agent.
+func (r *Registry) HasGeneration(agentID string, generation uint64) bool {
+	return r.IsCurrent(agentID, generation)
 }

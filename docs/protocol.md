@@ -93,8 +93,9 @@ guild was unavailable, while an explicit empty string means the plugin observed 
 current guild and clears saved guild metadata. It does not use agent ID,
 connection generation, guild, or undocumented player/account ID stability. This is
 the only character-related request before the backend issues an ID and establishes a
-live session claim for that character on this connection generation. The backend
-responds:
+live session claim for that character on this connection generation. A successful
+identify makes presence online; until the following snapshot arrives, state fields
+are unknown for this newly claimed observation. The backend responds:
 
     {"type":"character.registered","protocol_version":2,"character_id":"<uuid>"}
 
@@ -126,9 +127,12 @@ diagnostic only.
 `character.left` carries protocol version, explicit character ID and diagnostic
 `sent_at`. The plugin sends it before identifying a switched character. A full
 `character.snapshot` replaces all current state fields, clearing unavailable values
-to unknown instead of carrying them from an earlier session. `character.state` is
-patch-oriented and preserves fields omitted from that delta. Updates are accepted
-only for that active agent/generation/session. Socket close and heartbeat
+to unknown instead of carrying them from an earlier session. Plugin `character.state`
+messages also carry the complete current observation: omitted/unavailable fields are
+cleared, including position/zone when the current position read fails. The server
+replaces current fields for both state and snapshot messages; neither message may
+make unavailable values look freshly observed by retaining earlier values. Updates
+are accepted only for that active agent/generation/session. Socket close and heartbeat
 expiry close sessions owned by that generation; backend process startup closes all
 persisted live sessions with a distinct end reason. After
 reconnect a character starts offline and becomes online after explicit identification;
@@ -140,6 +144,23 @@ generation, which is stored on character sessions. A socket cannot modify anothe
 socket's session, and at most one live observer is represented per character; a new
 authorized observer for the same character supersedes the old session. Different
 characters observed over different sockets for one agent can remain online together.
+
+If a valid snapshot, state update or leave targets a character session no longer owned
+by that socket generation, the server sends a nonfatal character-scoped response and
+keeps the socket and its other character sessions alive:
+
+    {"type":"character.rejected","protocol_version":2,
+     "character_id":"<uuid>","reason":"not_current_session"}
+
+The plugin stops publishing updates for that rejected identity until a different
+character is observed or the socket reconnects. Malformed protocol/state data remains
+connection-fatal. PostgreSQL cleanup is attempted when a socket closes; while the Go
+process is running it also periodically compares open durable sessions with the exact
+live `(agent_id, connection_generation)` registry entries. After a database outage,
+sessions for dead generations are ended as `agent_disconnected` without affecting
+still-live sibling sockets. This recovery check runs every three seconds while the
+database is healthy; outage/recovery lifecycle coverage is simulator/Compose evidence,
+not an additional real-phBot claim.
 
 ## reconnect
 

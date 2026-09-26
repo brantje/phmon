@@ -135,6 +135,12 @@ func (s *Store) ClaimSession(ctx context.Context, agentID, characterID string, g
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='switched' WHERE character_id=$1 AND ended_at IS NULL`, characterID); err != nil {
 		return err
 	}
+	// A new authority claim starts a fresh observation. Until its authoritative
+	// snapshot arrives, do not display values learned by an earlier observer as
+	// if they were current for this session.
+	if _, err = tx.Exec(ctx, `UPDATE characters SET level=NULL,hp=NULL,hp_max=NULL,mp=NULL,mp_max=NULL,current_exp=NULL,max_exp=NULL,sp=NULL,gold=NULL,region=NULL,zone_name=NULL,x=NULL,y=NULL,z=NULL,botting=NULL,state_updated_at=NULL,updated_at=now() WHERE character_id=$1`, characterID); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(ctx, `INSERT INTO character_sessions(character_id,agent_id,connection_generation) VALUES($1,$2,$3)`, characterID, agentID, generation); err != nil {
 		return fmt.Errorf("open character session: %w", err)
 	}
@@ -184,9 +190,8 @@ func (s *Store) Update(ctx context.Context, agentID, characterID string, generat
 		return err
 	}
 	_, err = tx.Exec(ctx, `UPDATE characters c SET
-level=COALESCE($2,c.level),hp=COALESCE($3,c.hp),hp_max=COALESCE($4,c.hp_max),mp=COALESCE($5,c.mp),mp_max=COALESCE($6,c.mp_max),
-current_exp=COALESCE($7,c.current_exp),max_exp=COALESCE($8,c.max_exp),sp=COALESCE($9,c.sp),gold=COALESCE($10,c.gold),region=COALESCE($11,c.region),zone_name=COALESCE($12,c.zone_name),
-x=COALESCE($13,c.x),y=COALESCE($14,c.y),z=COALESCE($15,c.z),botting=COALESCE($16,c.botting),state_updated_at=now(),updated_at=now()
+level=$2,hp=$3,hp_max=$4,mp=$5,mp_max=$6,current_exp=$7,max_exp=$8,sp=$9,gold=$10,region=$11,zone_name=$12,
+x=$13,y=$14,z=$15,botting=$16,state_updated_at=now(),updated_at=now()
 WHERE c.character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting)
 	if err != nil {
 		return fmt.Errorf("update character state: %w", err)
@@ -225,6 +230,48 @@ func (s *Store) EndAgent(ctx context.Context, agentID string, generation uint64)
 func (s *Store) ReconcileSessions(ctx context.Context) error {
 	_, err := s.pool.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='backend_restart' WHERE ended_at IS NULL`)
 	return err
+}
+
+// ReconcileInactiveSessions closes durable sessions whose exact socket
+// generation is no longer present in the in-memory registry. It is safe to run
+// repeatedly and deliberately leaves sibling generations of the same agent
+// untouched.
+func (s *Store) ReconcileInactiveSessions(ctx context.Context, generationIsActive func(agentID string, generation uint64) bool) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT session_id::text,agent_id::text,connection_generation FROM character_sessions WHERE ended_at IS NULL FOR UPDATE`)
+	if err != nil {
+		return err
+	}
+	type sessionOwner struct {
+		sessionID, agentID string
+		generation         uint64
+	}
+	var stale []sessionOwner
+	for rows.Next() {
+		var owner sessionOwner
+		if err := rows.Scan(&owner.sessionID, &owner.agentID, &owner.generation); err != nil {
+			rows.Close()
+			return err
+		}
+		if !generationIsActive(owner.agentID, owner.generation) {
+			stale = append(stale, owner)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, owner := range stale {
+		if _, err := tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='agent_disconnected' WHERE session_id=$1 AND ended_at IS NULL`, owner.sessionID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 const selectCharacters = `SELECT c.character_id::text,c.server_name,c.character_name,c.guild_name,c.zone_name,

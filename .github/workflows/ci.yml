@@ -83,8 +83,7 @@ jobs:
         id: outage
         continue-on-error: true
         run: |
-          docker compose stop postgres
-          EXPECT_UNAVAILABLE=1 python3 scripts/smoke.py
+          python3 scripts/outage_session_smoke.py
       - name: Verify database recovery
         id: recovery
         if: always()

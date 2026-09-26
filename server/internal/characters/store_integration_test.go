@@ -189,6 +189,15 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err := store.Update(ctx, credential.AgentID, b, 2, State{Level: &level}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("stale generation update accepted: %v", err)
 	}
+	// character.state carries a current observation from the plugin, so fields
+	// omitted after an API read failure are unknown rather than fresh old values.
+	if err := store.Update(ctx, credential.AgentID, b, 3, State{HP: &hp}); err != nil {
+		t.Fatal(err)
+	}
+	beta, err = store.Get(ctx, b)
+	if err != nil || beta.Zone != nil || beta.X != nil || beta.HP == nil || *beta.HP != hp {
+		t.Fatalf("current observation retained unavailable previous fields: %+v err=%v", beta, err)
+	}
 	if err := store.EndAgent(ctx, credential.AgentID, 2); err != nil {
 		t.Fatal(err)
 	}

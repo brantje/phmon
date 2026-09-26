@@ -456,6 +456,7 @@ class AgentWorker(object):
         self._latest_sample = None
         self.character_id = None
         self._current_identity = None
+        self._rejected_identity = None
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
@@ -519,6 +520,7 @@ class AgentWorker(object):
                 next_heartbeat = _monotonic() + interval
                 self.character_id = None
                 self._current_identity = None
+                self._rejected_identity = None
                 # Callbacks may have queued a leave while the backend was
                 # unavailable. Apply the newest queued fact before replaying
                 # the last sample so a departed character is never resurrected.
@@ -551,7 +553,9 @@ class AgentWorker(object):
                     wait = min(next_heartbeat - now, 1.0)
                     message = client.receive_json(timeout=wait)
                     if message is not None:
-                        if message.get('type') != 'character.registered':
+                        if message.get('type') == 'character.rejected':
+                            self._handle_character_rejected(message)
+                        elif message.get('type') != 'character.registered':
                             raise WebSocketClosed('unexpected server application message')
             except Exception as error:
                 if not self.stop_event.is_set():
@@ -569,6 +573,11 @@ class AgentWorker(object):
 
     def _publish_sample(self, client, sample, snapshot):
         identity, state = sample['identity'], sample['state']
+        identity_key = self._identity_key(identity)
+        if self._rejected_identity == identity_key:
+            return
+        if self._rejected_identity is not None and self._rejected_identity != identity_key:
+            self._rejected_identity = None
         if identity != self._current_identity or self.character_id is None:
             if self.character_id is not None and self._current_identity is not None:
                 previous_key = (self._current_identity.get('server','').lower(), self._current_identity.get('name','').lower())
@@ -584,6 +593,19 @@ class AgentWorker(object):
             self._current_identity = identity
             snapshot = True
         client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'state':state,'sent_at':_utc_now()})
+
+    def _handle_character_rejected(self, message):
+        if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id:
+            raise WebSocketClosed('invalid character rejection')
+        self._rejected_identity = self._identity_key(self._current_identity)
+        self.character_id = None
+        self.status = 'Character observation superseded; waiting for a new character observation.'
+
+    @staticmethod
+    def _identity_key(identity):
+        if not isinstance(identity, dict):
+            return None
+        return (identity.get('server', '').lower(), identity.get('name', '').lower())
 
     def _restore_latest_sample(self, client):
         # Drain pending callbacks before replaying state after reconnect. The

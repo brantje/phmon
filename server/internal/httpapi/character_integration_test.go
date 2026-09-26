@@ -191,3 +191,134 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 	}
 	t.Fatal("agent disconnect was not recorded")
 }
+
+func TestStaleCharacterOperationsDoNotCloseSiblingCharacterSessions(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run character API integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := agents.NewStore(pool)
+	if err := store.CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	charactersStore := characters.NewStore(pool)
+	registry := agents.NewRegistry()
+	server := httptest.NewServer(New(Dependencies{
+		Database: pool, Agents: store, Registry: registry, Characters: charactersStore,
+		AgentOptions: AgentOptions{HeartbeatTimeout: 5 * time.Second},
+	}))
+	defer server.Close()
+	serverName := "PhMonStaleTest-" + credential.AgentID
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM character_sessions WHERE agent_id=$1`, credential.AgentID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM characters WHERE server_key=$1`, strings.ToLower(serverName))
+		_, _ = pool.Exec(context.Background(), `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+
+	conn1 := dialAgent(t, server.URL, credential.Token)
+	defer conn1.CloseNow()
+	writeHello(t, conn1, credential.AgentID)
+	var ack helloAck
+	if err := wsjson.Read(ctx, conn1, &ack); err != nil {
+		t.Fatal(err)
+	}
+	aID := identifyAndSnapshot(t, ctx, conn1, serverName, "Alpha", int64(10))
+	bID := identifyAndSnapshot(t, ctx, conn1, serverName, "Beta", int64(20))
+
+	conn2 := dialAgent(t, server.URL, credential.Token)
+	defer conn2.CloseNow()
+	writeHello(t, conn2, credential.AgentID)
+	if err := wsjson.Read(ctx, conn2, &ack); err != nil {
+		t.Fatal(err)
+	}
+	if got := identifyAndSnapshot(t, ctx, conn2, serverName, "Alpha", int64(30)); got != aID {
+		t.Fatalf("takeover changed stable character ID: old=%s new=%s", aID, got)
+	}
+
+	for _, stale := range []struct {
+		name string
+		msg  agentMessage
+	}{
+		{name: "state", msg: agentMessage{Type: "character.state", CharacterID: aID, State: characters.State{HP: int64ptr(999)}}},
+		{name: "snapshot", msg: agentMessage{Type: "character.snapshot", CharacterID: aID, State: characters.State{HP: int64ptr(888)}}},
+		{name: "left", msg: agentMessage{Type: "character.left", CharacterID: aID}},
+	} {
+		t.Run(stale.name, func(t *testing.T) {
+			stale.msg.ProtocolVersion = agentProtocolVersion
+			stale.msg.SentAt = time.Now().UTC().Format(time.RFC3339)
+			if err := wsjson.Write(ctx, conn1, stale.msg); err != nil {
+				t.Fatal(err)
+			}
+			var rejected struct {
+				Type            string `json:"type"`
+				ProtocolVersion int    `json:"protocol_version"`
+				CharacterID     string `json:"character_id"`
+				Reason          string `json:"reason"`
+			}
+			if err := wsjson.Read(ctx, conn1, &rejected); err != nil {
+				t.Fatalf("stale operation closed multiplexed socket: %v", err)
+			}
+			if rejected.Type != "character.rejected" || rejected.ProtocolVersion != 2 || rejected.CharacterID != aID || rejected.Reason != "not_current_session" {
+				t.Fatalf("unexpected character rejection: %+v", rejected)
+			}
+		})
+	}
+
+	// The first connection still owns B after each stale operation targeting A.
+	if err := wsjson.Write(ctx, conn1, agentMessage{Type: "character.state", ProtocolVersion: 2, CharacterID: bID, State: characters.State{HP: int64ptr(40)}, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatalf("conn1 could not update unrelated B: %v", err)
+	}
+	for _, conn := range []*websocket.Conn{conn1, conn2} {
+		if err := wsjson.Write(ctx, conn, agentMessage{Type: "heartbeat", ProtocolVersion: 2, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+			t.Fatalf("sibling socket was closed: %v", err)
+		}
+	}
+	if registry.ConnectionCount(credential.AgentID) != 2 {
+		t.Fatalf("stale character messages closed a connection: active=%d", registry.ConnectionCount(credential.AgentID))
+	}
+	alpha, err := charactersStore.Get(ctx, aID)
+	if err != nil || !alpha.Online || alpha.HP == nil || *alpha.HP != 30 {
+		t.Fatalf("stale conn1 operation changed conn2's A: character=%+v err=%v", alpha, err)
+	}
+	waitFor(t, time.Second, func() bool {
+		beta, getErr := charactersStore.Get(ctx, bID)
+		return getErr == nil && beta.Online && beta.HP != nil && *beta.HP == 40
+	})
+}
+
+func identifyAndSnapshot(t *testing.T, ctx context.Context, conn *websocket.Conn, serverName, name string, hp int64) string {
+	t.Helper()
+	if err := wsjson.Write(ctx, conn, agentMessage{Type: "character.identify", ProtocolVersion: 2, Server: serverName, Name: name, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	var registered struct {
+		Type        string `json:"type"`
+		CharacterID string `json:"character_id"`
+	}
+	if err := wsjson.Read(ctx, conn, &registered); err != nil {
+		t.Fatal(err)
+	}
+	if registered.Type != "character.registered" || !agents.ValidAgentID(registered.CharacterID) {
+		t.Fatalf("unexpected identify response: %+v", registered)
+	}
+	if err := wsjson.Write(ctx, conn, agentMessage{Type: "character.snapshot", ProtocolVersion: 2, CharacterID: registered.CharacterID, State: characters.State{HP: int64ptr(hp)}, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	return registered.CharacterID
+}
+
+func int64ptr(value int64) *int64 { return &value }

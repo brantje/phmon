@@ -66,6 +66,24 @@ def main():
         worker.update_character(beta, {"level": 42, "hp": 300, "hp_max": 600, "mp": 700, "mp_max": 900, "current_exp": 12, "max_exp": 120, "sp": 17, "gold": 456, "region": 25200, "zone": "Fixture Donwhang", "x": 50.0, "y": 75.0, "z": 2.0, "botting": False})
         print("PASS deterministic character lifecycle fixture completed")
 
+    if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "stable-character":
+        deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+        while time.time() < deadline and "Connected" not in worker.status:
+            time.sleep(0.1)
+        if "Connected" not in worker.status:
+            worker.stop()
+            worker.join(2.0)
+            raise SystemExit("simulator could not establish backend connection")
+        worker.update_character(
+            {
+                "server": required("PHMON_SIMULATOR_SERVER"),
+                "name": required("PHMON_SIMULATOR_CHARACTER"),
+                "guild": "",
+            },
+            {"level": 75, "hp": 900, "region": 25000, "zone": "Fixture Jangan"},
+        )
+        print("PASS stable character session published")
+
     run_seconds = float(os.environ.get('PHMON_SIMULATOR_RUN_SECONDS', '0'))
     deadline = time.time() + run_seconds if run_seconds > 0 else None
     try:

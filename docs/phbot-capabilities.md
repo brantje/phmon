@@ -94,6 +94,10 @@ The deterministic simulator added with Slice 1 imports the production PhMon.py
 transport and exercises the same protocol contract. Hosted CI has verified credential
 creation, connect, backend restart, automatic reconnect and disconnect through that
 transport, but simulator success must not be recorded as real phBot validation.
+The outage/recovery scenario also uses two simulator workers with one token, closes
+one while PostgreSQL is stopped, then confirms the other socket and its character
+remain online after database recovery. This is automated backend/protocol evidence,
+not manual phBot runtime validation.
 
 Public phBot documentation explicitly supports socket. The actual embedded runtime
 still needs to record which imports/data APIs behave as expected, especially:

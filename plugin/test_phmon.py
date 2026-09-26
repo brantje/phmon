@@ -122,6 +122,29 @@ class ConfigTests(unittest.TestCase):
 
 
 class CharacterCollectorTests(unittest.TestCase):
+    def test_character_rejection_stops_repeated_stale_updates(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test',
+        }, 'fixture-phbot')
+        identity = {'server': 'Greatest', 'name': 'nuker1'}
+        worker.character_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = identity
+        worker._handle_character_rejected({
+            'type': 'character.rejected',
+            'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': worker.character_id,
+            'reason': 'not_current_session',
+        })
+
+        client = Mock()
+        worker._publish_sample(client, {'identity': identity, 'state': {'hp': 1}}, False)
+
+        self.assertIsNone(worker.character_id)
+        self.assertEqual(worker._rejected_identity, ('greatest', 'nuker1'))
+        client.send_json.assert_not_called()
+
     def test_recovers_character_when_plugin_loads_after_join_callback(self):
         worker = Mock()
         previous = (

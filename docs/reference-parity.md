@@ -125,5 +125,13 @@ Visual parity and remaining real phBot lifecycle/data checks remain open.
   but no read-only getter. Real phBot 20.1.1/plugin 1.1.0 evidence separately shows
   server, character name, zone, level, HP/MP, XP/SP, gold, region and position in live
   records; it does not validate every lifecycle edge or botting state. The PR review
-  fixes were exercised through the deterministic simulator over the production
-  transport, not manually revalidated on phBot.
+fixes were exercised through the deterministic simulator over the production
+transport, not manually revalidated on phBot.
+
+The review follow-up also verifies stale character-scoped state/snapshot/leave
+rejections over real WebSockets: the old socket remains usable for its unrelated
+character while the new observer retains the taken-over character. Compose CI runs a
+two-socket outage scenario: one same-agent character disconnects during a real
+PostgreSQL stop, the second socket remains live, and recovery reconciliation closes
+only the dead generation. Both are automated simulator/backend evidence, not new
+real-runtime validation.

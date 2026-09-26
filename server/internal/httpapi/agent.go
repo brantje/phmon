@@ -152,7 +152,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	generation, _ := h.registry.Register(hello.AgentID)
 	defer func() {
 		sessionCancel()
-		removed, stillConnected := h.registry.Unregister(hello.AgentID, generation)
+		removed, stillConnected, disconnectFence := h.registry.UnregisterWithFence(hello.AgentID, generation)
 		if !removed {
 			return
 		}
@@ -164,11 +164,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !stillConnected {
-			logicalConnectedAt, ok := h.registry.LatestConnectedAt(hello.AgentID)
-			if !ok {
-				logicalConnectedAt = connectedAt
+			if disconnectFence.IsZero() {
+				disconnectFence = connectedAt
 			}
-			if err := h.store.MarkDisconnected(ctx, hello.AgentID, logicalConnectedAt); err != nil {
+			if err := h.store.MarkDisconnected(ctx, hello.AgentID, disconnectFence); err != nil {
 				slog.Warn("failed to persist agent disconnect", "agent_id", hello.AgentID)
 			}
 		}
@@ -255,7 +254,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			cancel()
 			if e != nil {
 				slog.Warn("character state update rejected", "agent_id", hello.AgentID, "message_type", message.Type, "reason", e.Error())
-				_ = conn.Close(websocket.StatusPolicyViolation, "unknown character session")
+				if errors.Is(e, characters.ErrNotFound) {
+					if !writeCharacterRejected(sessionCtx, conn, message.CharacterID) {
+						return
+					}
+					continue
+				}
+				_ = conn.Close(websocket.StatusInternalError, "character state unavailable")
 				return
 			}
 		case "character.left":
@@ -271,7 +276,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			e := h.characters.End(ctx, hello.AgentID, message.CharacterID, generation, "left")
 			cancel()
 			if e != nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "unknown character session")
+				if errors.Is(e, characters.ErrNotFound) {
+					if !writeCharacterRejected(sessionCtx, conn, message.CharacterID) {
+						return
+					}
+					continue
+				}
+				_ = conn.Close(websocket.StatusInternalError, "character state unavailable")
 				return
 			}
 		default:
@@ -279,6 +290,17 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func writeCharacterRejected(ctx context.Context, conn *websocket.Conn, characterID string) bool {
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return wsjson.Write(writeCtx, conn, map[string]any{
+		"type":             "character.rejected",
+		"protocol_version": agentProtocolVersion,
+		"character_id":     characterID,
+		"reason":           "not_current_session",
+	}) == nil
 }
 
 func (h *agentHandler) createCredential(w http.ResponseWriter, r *http.Request) {

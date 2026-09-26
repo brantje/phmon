@@ -64,3 +64,21 @@ func TestEitherConcurrentSocketCloseOrderKeepsLogicalAgentOnlineUntilLastClose(t
 		})
 	}
 }
+
+func TestDisconnectFenceDoesNotAdvanceWhenANewerConnectionRegisters(t *testing.T) {
+	registry := NewRegistry()
+	first, _ := registry.Register("agent")
+	second, secondAt := registry.Register("agent")
+	registry.Unregister("agent", first)
+	removed, connected, fence := registry.UnregisterWithFence("agent", second)
+	if !removed || connected || !fence.Equal(secondAt) {
+		t.Fatalf("final close returned removed=%v connected=%v fence=%v, want %v", removed, connected, fence, secondAt)
+	}
+	third, thirdAt := registry.Register("agent")
+	if !registry.HasGeneration("agent", third) || !thirdAt.After(fence) {
+		t.Fatalf("new connection did not advance beyond final-close fence: fence=%v new=%v", fence, thirdAt)
+	}
+	if fence.Equal(thirdAt) {
+		t.Fatal("captured disconnect fence changed to include a newer connection")
+	}
+}

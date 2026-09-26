@@ -192,7 +192,7 @@ func TestFinalSocketDisconnectPersistsForBothCloseOrders(t *testing.T) {
 			if order == "second-then-first" {
 				closeOne, closeTwo = second, first
 			}
-			removed, stillConnected := registry.Unregister(credential.AgentID, closeOne)
+			removed, stillConnected, _ := registry.UnregisterWithFence(credential.AgentID, closeOne)
 			if !removed || !stillConnected || registry.ConnectionCount(credential.AgentID) != 1 {
 				t.Fatalf("first close changed logical presence: removed=%v connected=%v", removed, stillConnected)
 			}
@@ -205,15 +205,14 @@ func TestFinalSocketDisconnectPersistsForBothCloseOrders(t *testing.T) {
 					t.Fatal("first socket close marked the logical agent disconnected")
 				}
 			}
-			removed, stillConnected = registry.Unregister(credential.AgentID, closeTwo)
+			removed, stillConnected, disconnectFence := registry.UnregisterWithFence(credential.AgentID, closeTwo)
 			if !removed || stillConnected || registry.ConnectionCount(credential.AgentID) != 0 {
 				t.Fatalf("last close did not clear presence: removed=%v connected=%v", removed, stillConnected)
 			}
-			latest, ok := registry.LatestConnectedAt(credential.AgentID)
-			if !ok || latest.Before(secondAt) {
-				t.Fatalf("latest connect cutoff = %v, want >= %v", latest, secondAt)
+			if disconnectFence.Before(secondAt) {
+				t.Fatalf("disconnect cutoff = %v, want >= %v", disconnectFence, secondAt)
 			}
-			if err := store.MarkDisconnected(ctx, credential.AgentID, latest); err != nil {
+			if err := store.MarkDisconnected(ctx, credential.AgentID, disconnectFence); err != nil {
 				t.Fatal(err)
 			}
 			records, err = store.ListSeen(ctx)
@@ -231,6 +230,64 @@ func TestFinalSocketDisconnectPersistsForBothCloseOrders(t *testing.T) {
 			t.Fatal("agent record missing")
 		})
 	}
+}
+
+func TestNewConnectionBeforeOldDisconnectPersistenceIsFenced(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run agent store integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(pool)
+	if err := store.CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+	registry := NewRegistry()
+	old, oldAt := registry.Register(credential.AgentID)
+	if err := store.MarkConnected(ctx, credential.AgentID, oldAt, 2, "1.1.0", "test"); err != nil {
+		t.Fatal(err)
+	}
+	_, stillConnected, fence := registry.UnregisterWithFence(credential.AgentID, old)
+	if stillConnected {
+		t.Fatal("expected old generation to be final at unregister")
+	}
+	newAt := time.Now().UTC().Add(time.Second)
+	if err := store.MarkConnected(ctx, credential.AgentID, newAt, 2, "1.1.0", "test"); err != nil {
+		t.Fatal(err)
+	}
+	registry.Register(credential.AgentID)
+	if err := store.MarkDisconnected(ctx, credential.AgentID, fence); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := store.ListSeen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.AgentID == credential.AgentID {
+			if row.LastDisconnectedAt != nil || row.LastConnectedAt == nil || !row.LastConnectedAt.After(fence) {
+				t.Fatalf("stale close changed newer connection metadata: %+v", row)
+			}
+			return
+		}
+	}
+	t.Fatal("agent row not returned")
 }
 
 func TestCredentialShape(t *testing.T) {
