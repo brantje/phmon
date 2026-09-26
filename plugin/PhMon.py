@@ -30,6 +30,7 @@ _WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 try:
     from phBot import get_config_dir as _get_config_dir
     from phBot import get_config_path as _get_config_path
+    from phBot import get_profile as _get_profile
     from phBot import get_version as _get_phbot_version
     from phBot import log as _phbot_log
     _PHBOT_AVAILABLE = True
@@ -37,6 +38,7 @@ except ImportError:
     _PHBOT_AVAILABLE = False
     _get_config_dir = None
     _get_config_path = None
+    _get_profile = None
     _get_phbot_version = None
     _phbot_log = None
 
@@ -113,14 +115,30 @@ def validate_config(config):
 _CONFIG_KEYS = ('backend_url', 'agent_id', 'agent_token')
 
 
-def _profile_settings_path(config_dir, bot_config_path):
+def _profile_settings_path(config_dir, bot_config_path, bot_profile):
     if not bot_config_path:
         raise ValueError('active phBot profile is unavailable')
     profile_file = str(bot_config_path).replace('\\', '/').rsplit('/', 1)[-1]
-    profile_name = os.path.splitext(profile_file)[0]
-    if not profile_name:
+    player_config = os.path.splitext(profile_file)[0]
+    if not player_config:
         raise ValueError('active phBot profile is invalid')
-    return os.path.join(config_dir, pName, profile_name + '.cfg')
+
+    bot_profile = '' if bot_profile is None else str(bot_profile)
+    if bot_profile:
+        safe_profile = ''.join(
+            ch if ch.isalnum() or ch in ('-', '_') else '_'
+            for ch in bot_profile
+        )[:48].strip('_')
+        digest = hashlib.sha256(bot_profile.encode('utf-8')).hexdigest()[:8]
+        profile_key = (safe_profile or 'profile') + '-' + digest
+    else:
+        profile_key = 'default'
+
+    return os.path.join(
+        config_dir,
+        pName,
+        player_config + '.' + profile_key + '.cfg',
+    )
 
 
 def load_saved_config(path):
@@ -556,7 +574,12 @@ def _current_settings_path():
     bot_config_path = _get_config_path()
     if not bot_config_path:
         return None
-    return _profile_settings_path(_get_config_dir(), bot_config_path)
+    bot_profile = _get_profile()
+    return _profile_settings_path(
+        _get_config_dir(),
+        bot_config_path,
+        bot_profile,
+    )
 
 
 def _load_active_profile(force=False):
