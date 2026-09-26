@@ -628,8 +628,8 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
 
               <template v-else>
                 <p class="credential-risk">
-                  PhMon user authentication is not implemented yet. Until it
-                  is, anyone who can access this web UI can create an agent
+                  PhMon user authentication is not implemented yet. Until it is,
+                  anyone who can access this web UI can create an agent
                   credential. Keep this instance on a trusted network.
                 </p>
                 <p
