@@ -105,9 +105,11 @@ what PhMon actually implements.
   Keep a concise comparison ledger in `docs/reference-parity.md`, with links to
   local evidence artifacts where practical. Avoid relying solely on memory or a URL.
 - Match the product's design with PhMon branding and independently authored
-  components. Use locally served original, licensed or operator-supplied artwork,
-  map tiles and item icons. Record asset provenance. Do not hotlink phMonitor assets,
-  embed its application, copy its client bundle or connect to its services.
+  components. Use locally served original, licensed, operator-supplied or
+  operator-imported game-client artwork/map tiles/item icons where their local use is
+  permitted. Record asset provenance; do not commit or redistribute extracted
+  copyrighted client assets by default. Do not hotlink phMonitor assets, embed its
+  application, copy its client bundle or connect to its services.
 
 ### Explicit adaptations to the demo
 
@@ -203,9 +205,9 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Guild Storage | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records. | 4, 13, 15 |
 | phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
 | Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
-| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 7–9 |
-| Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. | 4, 13 |
-| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Verify skill datasets and rules per supported version; distinguish planning from execution. | 15 |
+| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned game-data profile for imported region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
+| Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts from their observed source. | 2.5, 4, 13 |
+| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's imported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
 | Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
 | Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
 | Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
@@ -682,6 +684,104 @@ all character-scoped protocol messages carry explicit character_id and are never
 
 one agent can address multiple character identities without a protocol/schema redesign
 
+### Slice 2.5 — Game-data catalog and PK2 import
+
+**Objective:**
+
+Establish a versioned, self-hosted catalog of static Silkroad game data from
+operator-provided client `*.pk2` files before inventory, map and later item/skill
+features depend on ad-hoc metadata.
+
+**Authority and ownership boundary:**
+
+phBot remains authoritative for dynamic runtime facts: the current character/item
+instance, slot, quantity, plus, blues/attributes, durability/current values, live
+position, nearby entities and other observed session state. The game-data catalog is
+authoritative only for static/reference data imported from a specific client dataset,
+such as model/ref/code identity, localized/display metadata, taxonomy and local assets.
+
+Do not make the plugin repeatedly transmit static names, icons, map imagery or other
+catalog data when a stable model/ref/code can be resolved against the active game-data
+profile. Equally, never let static PK2 metadata overwrite a conflicting value that was
+actually observed on a live item/entity instance; preserve both provenance and the
+runtime observation where their semantics differ.
+
+vSRO servers may ship modified client data. Do not assume one universal iSRO/vSRO
+catalog. Model an explicit **game-data profile** with a deterministic fingerprint of
+its imported source files/version and associate servers with the profile they use.
+Multiple profiles must be able to coexist without ID/name collisions leaking across
+servers.
+
+This is an offline/operator-driven import path, not another runtime agent. The backend
+must not reach into an operator's Windows/phBot filesystem. Accept only explicitly
+provided/mounted/imported PK2 inputs. Treat PK2 contents as untrusted data: parse with
+bounds, reject malformed inputs cleanly, never execute embedded content and never turn
+file paths from imported data into arbitrary host filesystem access.
+
+Extracted copyrighted game assets are for the operator's local instance where their
+use is permitted. Do not commit or redistribute extracted client assets in this
+repository. Store provenance/fingerprints so an operator can tell which local client
+dataset produced a catalog or asset.
+
+**Implement:**
+
+a deterministic PK2 import/extraction command or tool suitable for local/self-hosted
+operation, separate from the phBot plugin transport
+
+a durable `game_data_profile` model with source-file fingerprints/import metadata and
+explicit server association
+
+normalized static catalogs, where present in the supplied client data, for:
+
+- items: stable model/ref/code identity, names/localization, degree and
+  type/category/subcategory, static requirements/properties and icon references
+- monsters/NPCs: stable model/ref/code identity, names/types and useful static metadata
+- skills: stable identity, names, race/mastery/tree/prerequisite/cap metadata and icon
+  references needed by the later Skill Builder, only where the source data supports it
+- regions/teleports and other map/navigation reference records useful to later map work
+- locally served item/skill/entity icons and available minimap/map assets
+
+a backend lookup/catalog boundary used by later slices to enrich live phBot model/ref
+IDs without copying static catalog fields into every observation
+
+an asset manifest keyed to the game-data profile, with safe generated/local paths and
+source provenance; no hotlinking and no dependence on phMonitor infrastructure
+
+idempotent re-import of an unchanged profile and safe replacement/versioning when the
+operator imports a changed client dataset. A failed import must not leave a partially
+active catalog/profile.
+
+Do not over-normalize speculative PK2 tables merely because they exist. Import the
+minimum static data required by current/later roadmap features, and extend the importer
+when a concrete slice needs another verified source.
+
+PK2 map assets/region records are inputs to Slice 7, **not proof that a coordinate
+transform is correct**. Slice 7 must still validate world/region-to-map transforms,
+especially Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job
+Temple / Temple.
+
+**Acceptance criteria:**
+
+given a deterministic test/fixture PK2 dataset, importing it resolves a known item
+model/ref to the expected static metadata and local icon, resolves a known monster/NPC
+and skill record, and enumerates the available region/map assets that are actually
+present in that dataset
+
+re-importing the unchanged dataset is idempotent and does not duplicate catalog rows
+or assets
+
+two different game-data profiles can contain different metadata for the same numeric
+model/ref ID without cross-contaminating server lookups
+
+downstream code can enrich a live phBot item/entity ID through the server's active
+profile while dynamic instance fields remain sourced from the live observation
+
+malformed/unsupported PK2 input fails clearly without activating partial data or
+reading/writing arbitrary host paths
+
+the import path has no phMonitor dependency, does not require the phBot plugin to be
+running and does not commit or redistribute extracted client assets
+
 ### Slice 3 — Remote commands
 
 **Objective:**
@@ -774,8 +874,9 @@ and a populated reference/runtime when available. What is fixed here is the
 information hierarchy: compact icon/slot collection -> item preview/detail -> source
 and freshness context.
 
-Every occupied item slot uses the best legally usable local item icon available and
-shows the source-provided stack/quantity value when applicable. Preserve actual empty
+Every occupied item slot uses the best legally usable local item icon available,
+preferably resolved from the server's active Slice 2.5 game-data profile, and shows
+the source-provided stack/quantity value when applicable. Preserve actual empty
 slots. A plus value, rarity/seal or other status may affect the compact label/accent
 only when that value is actually observed; never derive item quality from icon color
 alone. Missing icons use one deliberate placeholder while retaining the item's name
@@ -807,6 +908,11 @@ two-column key/value table:
   data
 - magical options/blues form the final group and use the reference cyan/blue accent,
   one modifier per line
+- static catalog fields such as canonical name, taxonomy, degree, race/requirements
+  and base/reference properties may be enriched from the server's active Slice 2.5
+  game-data profile when their semantics are static for that model/ref; item-instance
+  state such as plus, quantity, observed blues, current durability and other mutable
+  values remains sourced from the live/historical observation
 - no invented blank rows such as `Critical: -`, no fabricated seals, blues,
   percentages, degree, gender, race or enhancement properties
 
@@ -1077,7 +1183,12 @@ not present historical drop events as currently lying on the ground
 
 Nuxt map component with pan/zoom and layer controls
 
-legally usable/private map assets for outdoor and required special-area maps
+map/region reference data and locally served assets from the active Slice 2.5
+game-data profile where the imported client contains them, with explicit fallback
+provenance for any additional operator-supplied/licensed assets
+
+legally usable/private map assets for outdoor and required special-area maps; imported
+PK2 imagery does not remove the requirement to validate coordinate transforms
 
 **Acceptance criteria:**
 
@@ -1484,9 +1595,10 @@ core screens or visual direction until the end; build them in their owning slice
   live nearby monsters with freshness, Academy members, recent event overlays and
   historical mob-density/type layers. Validate coordinates rather than accepting
   visually plausible but incorrect placement.
-- Skill Builder with legally usable/versioned skill datasets, race/cap/mastery and
-  prerequisite rules, editable/saved plans, calculated SP costs, reset/bulk controls
-  and live-character comparison. Show unsupported versions honestly. Remote skill
+- Skill Builder using the active Slice 2.5 game-data profile for versioned skill
+  identity/icons/reference metadata where available, plus verified race/cap/mastery
+  and prerequisite rules, editable/saved plans, calculated SP costs, reset/bulk
+  controls and live-character comparison. Show unsupported versions honestly. Remote skill
   execution, if supported, uses the existing command lifecycle and confirmation.
 - Complete persistent appearance/mode/language/chat/notification settings, local
   sound library, safe record-management dialogs, instance QR/copy-link utilities
@@ -1526,8 +1638,8 @@ core screens or visual direction until the end; build them in their owning slice
 
 ## Milestones and dependency order
 
-- Slices 0–4: first usable monitoring/control system.
-- Slices 0–9: complete phMonitor-replacement MVP target.
+- Slices 0–4, including Slice 2.5: first usable monitoring/control system.
+- Slices 0–9, including Slice 2.5: complete phMonitor-replacement MVP target.
 - Slices 10–14: advanced self-hosted platform.
 - Slice 15 and all final gates: complete applicable demo feature/layout/style parity.
 
@@ -1535,8 +1647,9 @@ Milestones organize progress. Respect dependencies, but do not stop at a milesto
 when the full implementation contract is active.
 
 ```text
-foundation -> connectivity -> character state -> commands -> events
-           -> map observations -> heatmaps -> conditions / scheduling / analytics
+foundation -> connectivity -> character state -> game-data catalog -> commands
+           -> inventory/events -> map observations -> heatmaps
+           -> conditions / scheduling / analytics
 ```
 
 Reuse earlier concrete abstractions where appropriate; do not create speculative
