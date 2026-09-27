@@ -9,6 +9,7 @@
     "dev": "nuxt dev --host 0.0.0.0 --port 3005 --dotenv ../.env",
     "build": "nuxt build",
     "start": "node .output/server/index.mjs",
+    "export:assets": "node scripts/export-assets.mjs",
     "postinstall": "nuxt prepare",
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",

@@ -205,9 +205,9 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Guild Storage | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records. | 4, 13, 15 |
 | phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
 | Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
-| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned game-data profile for imported region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
+| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
 | Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts from their observed source. | 2.5, 4, 13 |
-| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's imported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
+| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
 | Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
 | Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
 | Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
@@ -361,7 +361,190 @@ progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API a
 same-viewport visual gates remain open; basic connectivity must not be described as
 blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
 
-**Current turn (2026-09-26): Slice 2 PR #3 correctness follow-up.** Scope remains
+**Current turn (2026-09-27): Slice 2.5 exporter follow-up adds the Nuxt public asset
+destination and npm command; asset readiness remains incomplete.** Exporter `0.4.0`
+adds configurable `--asset-output`, stable PNG URL aliases and a source-independent
+`asset-index.json`; `web/package.json` adds `npm run export:assets`, defaulting to
+ignored `web/public/game-assets/`. The GreatestSRO source path remains a runtime CLI
+argument or `GREATESTSRO_SOURCE` environment variable, not hardcoded in PhMon. The
+public index maps all 30,276 verified semantic keys across 10,171 PNG aliases; raw
+asset-entry provenance stays in the exporter-only audit. A real `0.4.0` export took
+245.409 s. Copy-only validation passed for 17 catalogs, 8,921 content-addressed
+bundle assets and 10,171 public files without source/audit inputs. Nuxt served
+`/game-assets/icon/skill/china/bow_area_a.png` as `image/png` with its indexed SHA-256.
+The public tree is 487,358,758 bytes including `asset-index.json`; all extracted
+assets remain Git-ignored. Compileall and 18 fixture tests passed; targeted ESLint and
+Prettier checks passed. The copied 0.4.0 bundle preview returned HTTP 200. No
+database, backend, Docker or phBot process was needed. See the Slice 2.5 plan and
+coverage ledger addenda. Do not claim all-assets-ready.
+
+The npm export was rerun independently in 246.084 s with byte-identical bundle reuse.
+The Nuxt tree validated all 10,171 aliases and 30,276 keys. A fresh copy containing
+only `bundle/` (no audit or PK2 files) validated all catalogs/assets and served the
+standalone preview page, manifest, map catalog, a PNG and a tile sheet with HTTP 200;
+all 18 exporter tests passed. No dedicated mob-icon family was found, so entity-role
+gaps stay unresolved.
+
+**Active minimap verification follow-up (2026-09-27):** `docs/minimap-verification.md`
+records region/tile checks against GreatestSRO exports and the phBot reference. It
+confirms `Map\97\168` aligns with `gridX=168, gridZ=97` / `168x97`, identifies
+Donwhang as `Town_Dunhwang` in the source, and resolves the current live characters'
+region 25735 to root tile 135x100. Exporter 0.4.2/schema 1.2.1 links `mapAssetKeys`
+only for exact root minimap/grid pairs: the real catalog has 2,449 of 2,471 region
+records linked; 22 have no exact root tile. A full edge pass over 5,118 root tiles
+supports X increasing right (4,806 pairs, mean RGB edge error 17.010 vs 36.426;
+4,132 preferred) and Y/Z increasing upward (4,721 pairs, 16.576 vs 36.364; 4,100
+preferred). The separate 185-tile `arabia` set independently supports the same
+directions but remains geographically unjoined. Exporter 0.4.2 records per-set
+measurements and its standalone overview uses supported directions. Exact in-tile
+world coordinates, marker anchor and special-area registration remain unvalidated;
+the PhMon app has no Map screen, so no production marker transform was added.
+
+The 0.4.2 real export took 242.804 s and an identical rerun took 254.988 s and
+reused the byte-identical bundle. The copied bundle validates 17 catalogs, 8,921
+assets, 30,276 keys and zero dangling references; the Nuxt public tree validates
+10,171 files and 30,276 mappings. Bundle-only copied preview requests for the page,
+manifest, maps catalog, live-region PNG and both grid sheets returned HTTP 200; the
+root and `arabia` sheets were visually checked. Twenty fixture tests passed and
+compileall passed. A fresh read-only GET at 03:27:56 UTC returned four online
+characters in Region 25735 (X=98.1–101.5, Y=1551.1–1560.2; names omitted), which maps
+to `(135,100)` only. The screenshot is not identity/time linked to those rows. The
+confirmed Slice 2.5 exporter scope has no terrain renderer, so exact in-tile world
+coordinates and marker anchor carry forward unvalidated. Before a later map screen
+places markers, validate them from a trusted reference or identity/time-linked map
+observation. Slice 2.5 stops here; do not start Slice 3.
+
+**Current goal continuation (2026-09-27):** a full comparison with the installed
+phBot reference directory found 5,117 shared root tile names, 677 reference-only
+names, one GreatestSRO-only name, and 30 shared tiles whose raw GreatestSRO DDJ
+payloads are opaque black despite visible terrain in the phBot comparison. Other
+non-backup GreatestSRO archives contain no alternate raster entries; no phBot image
+was substituted. The selected-character label in the map screenshot matches one
+current API row, and all four online rows map by region 25735 to root tile
+`(135,100)`. This verifies tile selection, not exact placement: the local crop
+candidate favors increasing Y down while broader grid evidence favors increasing
+grid Y up; the screenshot and API row are not time-linked. Full evidence and the
+unresolved source/transform requests are in `docs/minimap-verification.md` and the
+coverage ledger. No production map screen or coordinate transform was added. Exact
+next action: use any operator-supplied authorized archive or synchronized map
+capture/trusted transform to resolve the respective gaps; otherwise retain them as
+unresolved. Do not substitute phBot source assets or start Slice 3.
+
+**Current Slice 2.5 follow-up (2026-09-27):** exporter `0.4.3` / schema `1.2.2`
+adds explicit opaque-black minimap raster status and a hatched preview treatment.
+The `web` npm command was run with `--asset-output public/game-assets` and again
+without an override; the first real run wrote dataset
+`gamedata-47c969ded0613d4c2a22` in 258.879 s (bundle 465,803,751 bytes; separate
+audit 24,243,119 bytes). A second run without `--asset-output` took 268.352 s,
+reused the byte-identical bundle and published to default `web/public/game-assets`.
+Current validation reports 17 catalogs, 8,921 bundle PNGs,
+30,276 semantic keys, 10,171 public files, zero dangling references and 207
+uniformly black map tiles (193 root and 14 secondary-set). `icon/skill/china/bow_area_a.png`
+exists; 3,183 `icon/item` aliases exist; no `icon/mob/` alias or verified entity
+portrait/pet/unique role was found. Sounds and interface controls remain excluded
+per operator instruction; 159 non-control symbol candidates remain in scope. A
+bundle-only copy validated without audit/source files, and its standalone browser
+preview rendered a 2,724 × 1,104 minimap overview with black source tiles hatched.
+All extracted files are Git-ignored. Asset coverage remains incomplete: 22 regions
+have no exact root tile; 677 phBot comparison-only tiles and 30 shared visible
+terrain mismatches are not substituted; in-tile coordinate/marker transforms remain
+unvalidated. Keep Slice 2.5 in progress for unresolved coverage, answer pending
+map-source/time-linked-capture questions when available, and do not start Slice 3.
+
+**Minimap goal continuation (2026-09-27 05:38 UTC):** re-inventoried the current
+GreatestSRO Map/Media archives and the phBot reference files. Verified again that
+`Map/97/168.o2` exists while `Map/168/97.o2` does not; `Media/minimap/168x97.ddj`
+and reference `168x97.jpg` are the corresponding X=168/Y=97 raster. All six
+Jangan and four Donwhang tiles exist on both sides at 256 × 256 (group RGB MAE
+5.8430 and 5.0927); live tile 133x95 has MAE 5.1911. A 05:36:29 UTC API snapshot
+of four rows mapped exactly through region grid indices: three to tile 135x100,
+one to 133x95, both nonblack. A later selected-character row mapped to 135x100.
+The API rows are current, but the saved Map screenshot is timestamped the prior
+day and no production Map component exists, so exact marker-pixel placement cannot
+be verified. Official phBot `get_position()` docs report region and X/Y/Z only;
+the Map guide cautions its map is not fully accurate, and neither provides the
+needed GreatestSRO pixel transform. Next action: obtain the previously requested
+synchronized character/map capture or trusted transform, then validate against a
+real marker render. Do not guess offsets, implement a production map UI in Slice
+2.5, or start Slice 3.
+
+**Minimap goal continuation (2026-09-27 05:52 UTC):** a fresh GET returned four
+online character rows with state timestamps within one second of the response. All
+four are in Region 25735 and resolve through the exported catalog to exact,
+nonblack root tile `(135,100)`. The source-independent `standalone-copy-0.4.3/bundle`
+preview served its page, manifest, maps catalog, resolved 135x100 PNG and both
+tile-set sheets with HTTP 200 and correct content types. Exact world-to-pixel
+mapping and the screenshot marker anchor remain unresolved; the app has no Map
+surface. Next action: obtain the previously requested synchronized capture or a
+trusted transform before validating any marker placement. Do not guess offsets,
+modify production map UI in Slice 2.5, or start Slice 3.
+
+At 05:58 UTC the current checkout's Nuxt dev server on port 3006 served the public
+135x100 map PNG, China bow skill PNG alias and asset index with expected MIME types;
+all three response hashes matched `web/public/game-assets`. The temporary server
+was stopped. Requests to `192.168.10.25:3005` returned HTML for asset paths, but
+there was no local listener on that port, so it is treated as a separate remote
+host rather than evidence about this checkout.
+
+At 06:05 UTC, re-hashed source archives and rechecked the selected Map inventory:
+`Map.pk2` is 1,092,251,648 bytes, SHA-256
+`a819141950fed83d2a293eed6ebb96e22ec6f8eceb407eb677fbc06656562183`, matching the
+selected-source audit. `Map - copia.pk2` has the same size but a different hash and
+remains excluded. `map/97/168.o2` and `map/102/152.o2` exist; reversed `map/168/97.o2`
+and `map/103/152.o2` do not. Recompared 12 exported GreatestSRO raster PNGs with
+phBot JPGs: all are 256 × 256; Jangan mean RGB MAE 5.8430, Donwhang 5.0927, live
+tiles 135x100 2.9955 and 133x95 5.1911. A 06:05:19 UTC API read had four rows
+updated within a second, all region 25735 -> exact nonblack tile (135,100), with
+X=85.800–98.157 and Y=1557.047–1562.200. The 07-map screenshot predates that read
+by over nine hours and remains insufficient to prove exact live marker pixels.
+Next action: acquire a synchronized position/map capture or trusted transform;
+keep exact placement unresolved and do not start Slice 3.
+
+An independent seam audit of the installed phBot reference's 5,794 flat root JPGs
+also supports the grid orientation: 5,407 horizontal pairs prefer X increasing
+right (mean edge RGB MAE 17.193 vs 35.320, 4,656 lower-error pairs) and 5,298
+vertical pairs prefer Y increasing up (16.555 vs 35.401, 4,647 lower-error pairs).
+This corroborates the GreatestSRO source-grid result, but does not prove the local
+world-to-pixel transform or current marker pixels.
+
+On goal resumption, a 07:32:48 UTC API GET returned four recently updated rows in
+two regions: three in Region 25735 -> `(135,100)`, and one in Region 23941 ->
+`(133,93)`. Both exact-grid tiles are nonblack and present in the phBot reference;
+the 133x93 PNG/JPG RGB MAE is 5.5813. This advances live tile-selection coverage,
+but the snapshot is over ten hours after the saved map screenshot and still cannot
+verify in-tile marker pixels. Keep the goal active during this fresh blocked audit;
+next needed evidence is a synchronized map/position capture or trusted transform.
+
+**Previous current turn (2026-09-27): Slice 2.5 standalone exporter implemented
+within the operator-confirmed scope; asset readiness remains incomplete.** Added
+`tools/game-data-exporter/` with inspect/export/validate/preview commands, bounded
+read-only PK2/DDJ conversion, normalized deterministic JSON/PNG bundle output,
+exporter-only audit and authored fixtures. Selected GreatestSRO `Media.pk2` for
+catalogs/art/minimap rasters; `Map.pk2` is inventoried and selected while
+`Map - copia.pk2` is excluded as backup. Sounds and interface controls are excluded;
+non-control symbols remain in scope. No PhMon/backend/plugin/database/API/UI changes.
+
+Real dataset `gamedata-66e9e3ee636c5a2a3f8f` (exporter 0.3.1, schema 1.1.0): 17
+catalogs, 8,921 PNG assets, 30,276 semantic keys and a 465,088,731-byte bundle. The
+repeat export reused byte-identical output. The copied bundle validates without
+source/audit paths: 0 dangling asset references and normalized relations validated.
+The manifest remains `incomplete`; item taxonomy/descriptions/names/icons, entity and
+pet/portrait/unique roles, skill/mastery rules, teleport metadata and map transforms
+still have explicit unresolved coverage. See the Slice 2.5 plan and asset ledger.
+
+Final environment checks: Python 3.12.10 virtualenv install and CLI version passed;
+compileall passed; 17 fixture tests passed; copied-bundle validate passed. The real
+export took 178.797 s, identical repeat 189.36 s; five working-set samples peaked at
+165,826,560 bytes (sampled, not guaranteed peak). The standalone preview rendered
+from the copied bundle, reviewed all in-scope families, observed no external requests,
+and had no horizontal overflow at CSS viewports 1440 x 1000, 1280 x 800 and 390 x
+844. Screenshot/preview outputs are ignored under `exports/`; extracted Nuxt assets
+are ignored under `web/public/game-assets/`. Source was
+kept read-only; no PhMon services, PostgreSQL, Docker or phBot were used. Exact next
+action: stop after Slice 2.5. Do not start Slice 3 in this task; carry unresolved
+coverage forward without inventing semantics or substituting sources.
+
+**Previous turn (2026-09-26): Slice 2 PR #3 correctness follow-up.** Scope remained
 Slice 2 only. This follow-up adds periodic dead-generation session reconciliation
 after database recovery, nonfatal per-character rejection for stale writes, plugin
 suppression of a rejected observation, full-current-observation semantics for state
@@ -847,103 +1030,76 @@ all character-scoped protocol messages carry explicit character_id and are never
 
 one agent can address multiple character identities without a protocol/schema redesign
 
-### Slice 2.5 — Game-data catalog and PK2 import
+### Slice 2.5 — Standalone game-data and asset exporter
 
-**Objective:**
+**Operator-confirmed boundary (2026-09-27):**
 
-Establish a versioned, self-hosted catalog of static Silkroad game data from
-operator-provided client `*.pk2` files before inventory, map and later item/skill
-features depend on ad-hoc metadata.
+Build a standalone offline exporter that reads the GreatestSRO archives and produces
+browser-ready assets plus normalized JSON catalogs in a folder the operator copies
+to PhMon. This supersedes the earlier PK2-import/backend-catalog implementation plan.
+The exporter uses GreatestSRO archives for maps too; do not substitute phBot tiles.
 
-**Authority and ownership boundary:**
+Only the exporter knows source media files, PK2 formats, paths, keys, table layouts
+and conversion logic. PhMon consumes only finished JSON and assets. No backend
+importer, migration, upload/catalog-management UI, database connection, API changes,
+phmonctl import commands or runtime archive access are part of this slice.
 
-phBot remains authoritative for dynamic runtime facts: the current character/item
-instance, slot, quantity, plus, blues/attributes, durability/current values, live
-position, nearby entities and other observed session state. The game-data catalog is
-authoritative only for static/reference data imported from a specific client dataset,
-such as model/ref/code identity, localized/display metadata, taxonomy and local assets.
-
-Do not make the plugin repeatedly transmit static names, icons, map imagery or other
-catalog data when a stable model/ref/code can be resolved against the active game-data
-profile. Equally, never let static PK2 metadata overwrite a conflicting value that was
-actually observed on a live item/entity instance; preserve both provenance and the
-runtime observation where their semantics differ.
-
-vSRO servers may ship modified client data. Do not assume one universal iSRO/vSRO
-catalog. Model an explicit **game-data profile** with a deterministic fingerprint of
-its imported source files/version and associate servers with the profile they use.
-Multiple profiles must be able to coexist without ID/name collisions leaking across
-servers.
-
-This is an offline/operator-driven import path, not another runtime agent. The backend
-must not reach into an operator's Windows/phBot filesystem. Accept only explicitly
-provided/mounted/imported PK2 inputs. Treat PK2 contents as untrusted data: parse with
-bounds, reject malformed inputs cleanly, never execute embedded content and never turn
-file paths from imported data into arbitrary host filesystem access.
-
-Extracted copyrighted game assets are for the operator's local instance where their
-use is permitted. Do not commit or redistribute extracted client assets in this
-repository. Store provenance/fingerprints so an operator can tell which local client
-dataset produced a catalog or asset.
+Read [the corrected plan](docs/slice-2.5-implementation-plan.md) and
+[all screenshot asset requirements](docs/slice-2.5-asset-coverage.md).
+Input: `C:\Users\sander\Documents\Silkroad Online\GreatestSRO`, read-only.
 
 **Implement:**
 
-a deterministic PK2 import/extraction command or tool suitable for local/self-hosted
-operation, separate from the phBot plugin transport
+- A standalone tool under `tools/game-data-exporter/`, with inspect/export/validate
+  commands, pinned dependencies, tests and reproducible operator instructions.
+- A portable versioned output folder containing JSON catalogs, a manifest and
+  browser-ready images/maps. Dataset identity and scoped record IDs support
+  multiple client versions without collisions. PhMon need not understand their
+  source archives. Future slices may associate servers with exported datasets.
+- Static item catalogs and supported item/entity/monster/unique art; verified
+  skill/mastery/group/localization/icon fields; regions/teleports/minimap tiles;
+  candidate portraits; a bounded set of non-control UI symbols; and suitable
+  backdrop artwork. Pet-role mapping, taxonomy and other unverified fields remain
+  unresolved. Sounds and interface controls are excluded by operator instruction.
+  Cover every screenshot plus later-slice requirements not shown in populated shots.
+- Source provenance and format diagnostics in exporter-only audit files, outside
+  the ready-to-copy app bundle. No source paths, raw client tables or archives in
+  the bundle. Keep proprietary outputs ignored and out of CI/build artifacts.
+- Deterministic exports, bounded parsing/conversion, staged output and atomic
+  publication. Preserve earlier valid output if a run fails or is cancelled.
+- A standalone visual preview and per-family/per-screenshot coverage report.
+  No PhMon feature implementation is needed to inspect or validate the output.
 
-a durable `game_data_profile` model with source-file fingerprints/import metadata and
-explicit server association
+phBot remains authoritative for dynamic facts such as plus, quantity, blues,
+current durability, positions, HP and learned skills. Exported reference metadata
+must not overwrite or fabricate live/historical observations. Unknown source fields
+remain unknown. Verify table semantics; opaque raw rows are not a finished catalog.
 
-normalized static catalogs, where present in the supplied client data, for:
-
-- items: stable model/ref/code identity, names/localization, degree and
-  type/category/subcategory, static requirements/properties and icon references
-- monsters/NPCs: stable model/ref/code identity, names/types and useful static metadata
-- skills: stable identity, names, race/mastery/tree/prerequisite/cap metadata and icon
-  references needed by the later Skill Builder, only where the source data supports it
-- regions/teleports and other map/navigation reference records useful to later map work
-- locally served item/skill/entity icons and available minimap/map assets
-
-a backend lookup/catalog boundary used by later slices to enrich live phBot model/ref
-IDs without copying static catalog fields into every observation
-
-an asset manifest keyed to the game-data profile, with safe generated/local paths and
-source provenance; no hotlinking and no dependence on phMonitor infrastructure
-
-idempotent re-import of an unchanged profile and safe replacement/versioning when the
-operator imports a changed client dataset. A failed import must not leave a partially
-active catalog/profile.
-
-Do not over-normalize speculative PK2 tables merely because they exist. Import the
-minimum static data required by current/later roadmap features, and extend the importer
-when a concrete slice needs another verified source.
-
-PK2 map assets/region records are inputs to Slice 7, **not proof that a coordinate
-transform is correct**. Slice 7 must still validate world/region-to-map transforms,
-especially Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job
-Temple / Temple.
+Export direct minimap imagery from GreatestSRO. `Media.pk2` contains grid-named
+raster minimap tiles; `Map.pk2` is selected and hash-checked but its terrain data
+is not rendered. Do not use phBot tiles. No region-to-tile or live coordinate
+transforms are claimed; Slice 7 owns alignment. Dungeon/floor labels and outdoor
+transforms remain unresolved when direct raster data does not establish them. Ask
+about uncertain semantics or missing required assets instead of inventing mappings
+or silently choosing replacements.
 
 **Acceptance criteria:**
 
-given a deterministic test/fixture PK2 dataset, importing it resolves a known item
-model/ref to the expected static metadata and local icon, resolves a known monster/NPC
-and skill record, and enumerates the available region/map assets that are actually
-present in that dataset
-
-re-importing the unchanged dataset is idempotent and does not duplicate catalog rows
-or assets
-
-two different game-data profiles can contain different metadata for the same numeric
-model/ref ID without cross-contaminating server lookups
-
-downstream code can enrich a live phBot item/entity ID through the server's active
-profile while dynamic instance fields remain sourced from the live observation
-
-malformed/unsupported PK2 input fails clearly without activating partial data or
-reading/writing arbitrary host paths
-
-the import path has no phMonitor dependency, does not require the phBot plugin to be
-running and does not commit or redistribute extracted client assets
+- Standalone exporter runs without PhMon, PostgreSQL, Docker or phBot.
+- Authored fixtures and real GreatestSRO export resolve known items, entities,
+  skills and maps through usable normalized JSON to decoded browser assets.
+- All in-scope asset families have coverage and visual review evidence. Missing
+  required families remain explicit blockers to an all-assets-ready claim.
+- Repeating with the same inputs/settings/tool versions produces identical bundle
+  bytes; changed inputs create separate versions. Scoped identities do not collide.
+- Copying only the finished bundle to a clean directory is sufficient to validate,
+  preview and resolve IDs to files with archives and source audits inaccessible.
+- Malformed inputs fail safely, processing is bounded, no arbitrary host paths are
+  accessed and no failed run publishes output as ready.
+- All 32 supplied screenshots and five baseline captures are accounted for, plus
+  later-slice needs absent from those images. No phMonitor assets are copied.
+- Documentation records actual tests, real output counts, unresolved gaps and exact
+  export/validate/preview/copy commands. Stop before Slice 3.
 
 ### Slice 3 — Remote commands
 
@@ -1348,7 +1504,7 @@ not present historical drop events as currently lying on the ground
 Nuxt map component with pan/zoom and layer controls
 
 map/region reference data and locally served assets from the active Slice 2.5
-game-data profile where the imported client contains them, with explicit fallback
+game-data profile where the exported bundle contains them, with explicit fallback
 provenance for any additional operator-supplied/licensed assets
 
 legally usable/private map assets for outdoor and required special-area maps; imported
@@ -1811,7 +1967,7 @@ Milestones organize progress. Respect dependencies, but do not stop at a milesto
 when the full implementation contract is active.
 
 ```text
-foundation -> connectivity -> character state -> game-data catalog -> commands
+foundation -> connectivity -> character state -> offline asset export -> commands
            -> inventory/events -> map observations -> heatmaps
            -> conditions / scheduling / analytics
 ```

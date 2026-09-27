@@ -9,3 +9,10 @@ __pycache__/
 *.pyc
 *.log
 .DS_Store
+/exports/
+/web/public/game-assets/
+/tools/game-data-exporter/.venv/
+/tools/game-data-exporter/.pytest_cache/
+/tools/game-data-exporter/src/*.egg-info/
+/tools/game-data-exporter/build/
+/tools/game-data-exporter/dist/
