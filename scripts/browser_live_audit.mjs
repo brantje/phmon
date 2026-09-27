@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const WEB_URL = (process.env.SMOKE_WEB_URL || 'http://127.0.0.1:3005').replace(/\/$/, '')
+const OPERATOR_ACCESS_SECRET = process.env.OPERATOR_ACCESS_SECRET || ''
 const READY_FILE = process.env.BROWSER_AUDIT_READY_FILE || ''
 const REQUIRE_RECONNECT = process.env.BROWSER_AUDIT_REQUIRE_RECONNECT === '1'
 const TIMEOUT_MS = Number(process.env.BROWSER_AUDIT_TIMEOUT_MS || 60000)
@@ -134,6 +135,9 @@ function forbiddenLiveRead(url, method, type) {
 }
 
 async function main() {
+  if (!OPERATOR_ACCESS_SECRET) {
+    throw new Error('OPERATOR_ACCESS_SECRET is required for the authenticated browser audit')
+  }
   const chrome = findChrome()
   const profile = mkdtempSync(join(tmpdir(), 'phmon-chrome-'))
   const stderr = []
@@ -189,6 +193,22 @@ async function main() {
       cdp.send('Page.enable'),
       cdp.send('Runtime.enable'),
     ])
+    await cdp.send('Page.navigate', { url: WEB_URL + '/' })
+    await waitFor(
+      () => evaluate(cdp, `document.readyState === 'complete'`),
+      'operator sign-in shell',
+    )
+    const login = await evaluate(
+      cdp,
+      `fetch(${JSON.stringify(WEB_URL + '/api/auth/login')}, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: ${JSON.stringify(OPERATOR_ACCESS_SECRET)} }),
+      }).then(async (response) => ({ ok: response.ok, body: await response.json() }))`,
+    )
+    if (!login?.ok || login.body?.authenticated !== true) {
+      throw new Error('operator login failed in browser audit')
+    }
     await cdp.send('Page.navigate', { url: WEB_URL + '/' })
 
     await waitFor(

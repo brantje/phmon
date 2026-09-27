@@ -65,13 +65,11 @@ print("PASS operator login establishes a cookie-backed session")
 code, _, body = request(web + "/")
 assert code == 200, code
 assert "PhMon" in body, "Missing application brand"
-assert "Dashboard" in body, "Missing dashboard"
-assert 'href="/stats"' in body, "Missing Stats navigation link"
+assert "Checking operator session" in body, "Missing operator-gated application shell"
 code, _, body = request(web + "/stats")
 assert code == 200, code
-assert "Stats" in body, "Missing Stats page"
-assert "Characters" in body, "Missing character list on Stats page"
-print("PASS dashboard and Stats pages render")
+assert "Checking operator session" in body, "Stats route bypassed the operator gate"
+print("PASS dashboard and Stats routes render behind the operator gate")
 
 for path, key in (("/api/agents", "agents"), ("/api/characters", "characters"), ("/api/groups", "groups")):
     code, _, body = request(web + path)
