@@ -138,4 +138,24 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	if _, _, _, err := service.Submit(ctx, "operator", stale); !errors.Is(err, ErrStaleSession) {
 		t.Fatalf("stale session error = %v", err)
 	}
+
+	now := time.Now().UTC()
+	if _, err := pool.Exec(ctx, `UPDATE commands SET expires_at=$2 WHERE command_id=$1`, first.ID, now.Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := store.Reconcile(ctx, now, 30*time.Second, 6*time.Minute)
+	if err != nil || !changed {
+		t.Fatalf("reconcile expired queued command = %v, err=%v", changed, err)
+	}
+	var state State
+	var eventCount int
+	if err := pool.QueryRow(ctx, `SELECT state FROM commands WHERE command_id=$1`, first.ID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM command_events WHERE command_id=$1 AND kind='expired'`, first.ID).Scan(&eventCount); err != nil {
+		t.Fatal(err)
+	}
+	if state != StateExpired || eventCount != 1 {
+		t.Fatalf("reconciled command state=%q expiry events=%d", state, eventCount)
+	}
 }

@@ -621,7 +621,16 @@ is pending rerun. The 390×844 Stats capture also showed a hidden character tabl
 mobile CSS hid every `.agent-table`, including the character table, but supplied no
 replacement cards. The rule now targets only `.agent-panel .agent-table`, and the
 production browser audit asserts that a live character row remains visible within the
-table's bounded scroller. The post-fix responsive capture awaits CI validation.
+table's bounded scroller.
+
+CI follow-up on `fd30d8c`: PostgreSQL/race validation, production fake-adapter
+command execution, the browser `/api/live` audit, authenticated agent reconnect and
+responsive assertions passed. The database-outage probe found a PostgreSQL type
+error in command reconciliation (`text * interval`); reconciliation now builds a
+typed interval and its integration test checks both the expired state and durable
+audit row. Local Go tests and vet pass; the host lacks Docker/PostgreSQL, so this
+integration fix awaits the next GitHub CI run. Exact next action is to push and rerun
+CI, then inspect review findings for that head.
 
 Remaining gates: real Walk route traversal on plugin 1.1.2 (not installed and no
 Walk action issued), safe per-session Clientless primitive, broad real-runtime API

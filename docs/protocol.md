@@ -545,3 +545,9 @@ smoke used the production plugin worker with fake adapters and received the resu
 submitted. Live plugin 1.1.0 does not satisfy Walk's 1.1.2 pathfinding requirement.
 These checks do not verify real Walk traversal, Clientless, or the remaining command
 mutations.
+
+The `fd30d8c` PostgreSQL/race job passed, but its database-outage smoke exposed a
+reconciliation query type error (`text * interval`). The query now constructs the
+timeout interval with a typed `make_interval` argument; the integration test asserts
+expired state and its audit event. CI must rerun this fix before the outage/recovery
+path can be reported as passing.

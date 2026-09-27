@@ -372,6 +372,18 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**Slice 3 acceptance follow-up (2026-09-27, active):** CI on `fd30d8c` passed the
+PostgreSQL-backed validation/race job, production fake-adapter command smoke, browser
+`/api/live` audit, authenticated agent reconnect, and responsive browser assertions at
+390×844 and 1440×1000. Its database-outage recovery probe exposed a PostgreSQL error
+in command reconciliation (`text * interval`). `Reconcile` now uses a typed
+`make_interval` argument, and the PostgreSQL integration test exercises expiry plus
+durable audit insertion. Local Go unit tests and vet pass; this Windows host has no
+Docker/PostgreSQL and cannot run the integration test locally. Exact next action:
+push the SQL/test fix, rerun current-head CI, inspect CodeRabbit findings, and retry
+Copilot only if its quota permits. Real Walk traversal and a safe per-session
+Clientless primitive remain unresolved; keep the PR draft and stop before Slice 4.
+
 **Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
 present: separate operator-cookie auth; durable idempotent command admission/audit;
 session/generation-targeted v3 dispatch; per-socket capability checks; callback-only

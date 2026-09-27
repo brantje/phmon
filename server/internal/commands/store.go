@@ -286,7 +286,7 @@ func (s *Store) Reconcile(ctx context.Context, now time.Time, resultWait, walkRe
 UPDATE commands SET state=CASE WHEN state='queued' THEN 'expired' ELSE 'unknown' END,
  finished_at=$1,result_code=CASE WHEN state='queued' THEN 'expired_before_dispatch' ELSE 'result_timeout' END,
  result_message=CASE WHEN state='queued' THEN 'command expired before dispatch' ELSE 'no authoritative result arrived; execution may have occurred' END
-WHERE (state='queued' AND expires_at<=$1) OR (state IN ('dispatching','sent','acknowledged') AND expires_at + (CASE WHEN command_name='character.walk' THEN $3 ELSE $2 END * interval '1 second') <= $1)
+WHERE (state='queued' AND expires_at<=$1) OR (state IN ('dispatching','sent','acknowledged') AND expires_at + make_interval(secs => CASE WHEN command_name='character.walk' THEN $3::double precision ELSE $2::double precision END) <= $1)
 RETURNING command_id,state,result_code)
 INSERT INTO command_events(command_id,kind,evidence) SELECT command_id,state,jsonb_build_object('reason',result_code) FROM changed`, now, resultWait.Seconds(), walkResultWait.Seconds())
 	return tag.RowsAffected() > 0, err
