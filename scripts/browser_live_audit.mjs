@@ -380,6 +380,22 @@ async function main() {
     if (READY_FILE) writeFileSync(READY_FILE, 'ready\n')
 
     if (REQUIRE_RECONNECT) {
+      const login = await evaluate(
+        cdp,
+        `fetch(${JSON.stringify(WEB_URL + '/api/auth/login')}, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: ${JSON.stringify(OPERATOR_ACCESS_SECRET)} }),
+        }).then(async (response) => ({ ok: response.ok, body: await response.json() }))`,
+      )
+      if (!login?.ok || login.body?.authenticated !== true) {
+        throw new Error('operator reauthentication failed after backend restart')
+      }
+      await cdp.send('Page.reload', { ignoreCache: true })
+      await waitFor(
+        () => evaluate(cdp, `document.readyState === 'complete'`),
+        'application reload after operator reauthentication',
+      )
       await waitFor(
         () => successfulLiveSockets > baselineSockets,
         'browser WebSocket reconnect after backend restart',
