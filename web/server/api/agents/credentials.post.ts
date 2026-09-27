@@ -30,6 +30,7 @@ export default defineEventHandler(async (event): Promise<AgentCredential> => {
   try {
     return await $fetch<AgentCredential>('/api/agents/credentials', {
       baseURL: backendUrl,
+      headers: backendAuthHeaders(event),
       method: 'POST',
       timeout: 3000,
       retry: 0,

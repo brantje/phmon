@@ -372,6 +372,16 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**Slice 3 implementation P1 (2026-09-27):** operator authentication is
+implemented on the Slice 3 branch. Go owns bounded hashed opaque sessions, an
+eight-hour absolute expiry, login throttling, strict named cookies, configured
+Origin validation and live-socket revocation. Production router wiring protects
+browser monitoring, credential creation and existing mutations while leaving
+`/agent` on its separate bearer-token boundary. Nuxt gates feature pages behind
+sign-in and forwards only the named operator cookie plus Origin to private Go
+routes and the live WebSocket. Loopback HTTP is explicit development-only; HTTPS
+cookies remain Secure. Next package: P2 command domain/schema/HTTP admission.
+
 **Slice 3 implementation P0 (2026-09-27):** implementation is now authorized on
 `codex/slice-3-plan`. The Slice 3 command/auth contract is frozen in
 `docs/protocol.md` and `docs/phbot-capabilities.md`: protocol v3 commands with v2

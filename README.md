@@ -273,3 +273,19 @@ Version/setup references: [Go releases](https://go.dev/dl/),
 [Nuxt UI setup](https://ui.nuxt.com/docs/getting-started/installation/nuxt),
 [Nuxt runtime configuration](https://nuxt.com/docs/4.x/guide/going-further/runtime-config),
 and [PostgreSQL support](https://www.postgresql.org/support/versioning/).
+
+
+## Operator authentication
+
+Slice 3 adds a separate operator control-plane session. Set a high-entropy
+`OPERATOR_ACCESS_SECRET`, list browser origins in `OPERATOR_ALLOWED_ORIGINS`, and
+keep the default `phmon_operator` cookie name unless the matching Nuxt private
+runtime setting is changed too. Plain HTTP cookies are permitted only when
+`OPERATOR_ALLOW_INSECURE_LOOPBACK=true` and the corresponding HTTP origin is
+loopback.
+
+The browser sends the access secret only to the same-origin login endpoint. Go stores
+only a hash of the opaque eight-hour session token in bounded process memory, so a
+backend restart requires sign-in again. The session cookie is HttpOnly and
+SameSite=Strict; HTTPS origins always receive a Secure cookie. Agent bearer
+credentials are a separate trust boundary and cannot authenticate operator APIs.

@@ -1,11 +1,32 @@
+// @ts-ignore - ws is pinned as the server-side client; runtime API is intentionally narrow.
+import WebSocketClient from 'ws'
+
 const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024
 const MAX_SERVER_MESSAGE_BYTES = 512 * 1024
 const MAX_PENDING_MESSAGES = 32
 const MAX_BROWSER_BUFFERED_BYTES = 512 * 1024
 const MAX_UPSTREAM_BUFFERED_BYTES = 512 * 1024
 
+type UpstreamSocket = {
+  readyState: number
+  bufferedAmount: number
+  send(message: string): void
+  close(code?: number, reason?: string): void
+  on(event: 'open', listener: () => void): void
+  on(
+    event: 'message',
+    listener: (data: { toString(): string }, isBinary: boolean) => void,
+  ): void
+  on(event: 'close', listener: (code: number) => void): void
+  on(event: 'unexpected-response', listener: () => void): void
+  on(event: 'error', listener: () => void): void
+}
+
+const WS_CONNECTING = 0
+const WS_OPEN = 1
+
 type RelayState = {
-  upstream: WebSocket
+  upstream: UpstreamSocket
   pending: string[]
   closed: boolean
 }
@@ -29,13 +50,27 @@ function closeRelay(peer: RelayPeer, code: number, reason: string) {
     state.closed = true
     relays.delete(peer.id)
     if (
-      state.upstream.readyState === WebSocket.CONNECTING ||
-      state.upstream.readyState === WebSocket.OPEN
+      state.upstream.readyState === WS_CONNECTING ||
+      state.upstream.readyState === WS_OPEN
     ) {
       state.upstream.close(code, reason)
     }
   }
   peer.close(code, reason)
+}
+
+function upstreamHeaders(request: Request) {
+  const config = useRuntimeConfig()
+  const cookieName = String(config.operatorCookieName || 'phmon_operator')
+  const cookie = (request.headers.get('cookie') || '')
+    .split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(cookieName + '='))
+  const headers: Record<string, string> = {}
+  if (cookie) headers.Cookie = cookie
+  const origin = request.headers.get('origin')
+  if (origin) headers.Origin = origin
+  return headers
 }
 
 function backendLiveURL() {
@@ -93,9 +128,16 @@ export default defineWebSocketHandler({
   },
 
   open(peer) {
-    let upstream: WebSocket
+    let upstream: UpstreamSocket
     try {
-      upstream = new WebSocket(backendLiveURL())
+      const request = (peer as typeof peer & { request?: Request }).request
+      if (!request) {
+        peer.close(1011, 'live request unavailable')
+        return
+      }
+      upstream = new WebSocketClient(backendLiveURL(), {
+        headers: upstreamHeaders(request),
+      }) as UpstreamSocket
     } catch {
       peer.close(1011, 'live backend unavailable')
       return
@@ -104,19 +146,20 @@ export default defineWebSocketHandler({
     const state: RelayState = { upstream, pending: [], closed: false }
     relays.set(peer.id, state)
 
-    upstream.addEventListener('open', () => {
+    upstream.on('open', () => {
       if (state.closed) return
       for (const message of state.pending) upstream.send(message)
       state.pending.length = 0
     })
 
-    upstream.addEventListener('message', (event) => {
+    upstream.on('message', (data, isBinary) => {
       if (state.closed) return
-      if (typeof event.data !== 'string') {
+      if (isBinary) {
         closeRelay(peer, 1003, 'text live protocol required')
         return
       }
-      if (byteLength(event.data) > MAX_SERVER_MESSAGE_BYTES) {
+      const message = data.toString()
+      if (byteLength(message) > MAX_SERVER_MESSAGE_BYTES) {
         closeRelay(peer, 1009, 'live snapshot too large')
         return
       }
@@ -124,20 +167,27 @@ export default defineWebSocketHandler({
         closeRelay(peer, 1013, 'slow live consumer')
         return
       }
-      peer.send(event.data)
+      peer.send(message)
     })
 
-    upstream.addEventListener('close', (event) => {
+    upstream.on('close', (code) => {
       if (state.closed) return
       state.closed = true
       relays.delete(peer.id)
       peer.close(
-        event.code >= 1000 && event.code <= 4999 ? event.code : 1011,
+        code >= 1000 && code <= 4999 ? code : 1011,
         'live backend disconnected',
       )
     })
 
-    upstream.addEventListener('error', () => {
+    upstream.on('unexpected-response', () => {
+      if (state.closed) return
+      state.closed = true
+      relays.delete(peer.id)
+      peer.close(4401, 'operator authentication required')
+    })
+
+    upstream.on('error', () => {
       if (state.closed) return
       state.closed = true
       relays.delete(peer.id)
@@ -156,7 +206,7 @@ export default defineWebSocketHandler({
       closeRelay(peer, 1009, 'live request too large')
       return
     }
-    if (state.upstream.readyState === WebSocket.OPEN) {
+    if (state.upstream.readyState === WS_OPEN) {
       if (state.upstream.bufferedAmount > MAX_UPSTREAM_BUFFERED_BYTES) {
         closeRelay(peer, 1013, 'live backend is not consuming')
         return
@@ -164,7 +214,7 @@ export default defineWebSocketHandler({
       state.upstream.send(text)
       return
     }
-    if (state.upstream.readyState !== WebSocket.CONNECTING) {
+    if (state.upstream.readyState !== WS_CONNECTING) {
       closeRelay(peer, 1011, 'live backend unavailable')
       return
     }
@@ -181,8 +231,8 @@ export default defineWebSocketHandler({
     state.closed = true
     relays.delete(peer.id)
     if (
-      state.upstream.readyState === WebSocket.CONNECTING ||
-      state.upstream.readyState === WebSocket.OPEN
+      state.upstream.readyState === WS_CONNECTING ||
+      state.upstream.readyState === WS_OPEN
     ) {
       state.upstream.close(1000, 'browser disconnected')
     }

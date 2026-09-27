@@ -7,6 +7,7 @@ export default defineEventHandler(
     try {
       return await $fetch<Record<string, unknown>>('/api/groups', {
         baseURL: useRuntimeConfig(event).backendUrl,
+        headers: backendAuthHeaders(event),
         timeout: 3000,
         retry: 0,
       })

@@ -8,6 +8,7 @@ export default defineNuxtConfig({
   icon: { provider: 'server', fallbackToApi: false },
   runtimeConfig: {
     backendUrl: 'http://127.0.0.1:8081',
+    operatorCookieName: 'phmon_operator',
     public: { instanceUrl: '' },
   },
   app: { head: { title: 'PhMon', htmlAttrs: { lang: 'en' } } },
