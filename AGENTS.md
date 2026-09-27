@@ -1577,97 +1577,359 @@ updates do not require blindly resending excessive full state when unnecessary
 
 **Objective:**
 
-Move from current-state monitoring to durable activity history.
+Build the canonical, extensible activity pipeline for every discrete occurrence observed
+directly by phBot, derived reliably from monitored state, or decoded from a verified
+Silkroad packet. Persist those occurrences durably so Timeline, Chat, Conditions,
+Notifications, Analytics, Map and Economy can reuse the same source of truth instead
+of creating parallel ingestion models.
 
-**Canonical events should include where available:**
+Slice 5 owns **ingestion, normalization, delivery, durability and generic event
+querying**. Feature-specific projections and workflows may live in later slices, but
+they must consume this canonical pipeline when the underlying fact is an event.
 
-death
+**Event model:**
 
-item drop
+Define a versioned event envelope with, at minimum:
 
-unique spawn
+- stable `event_id`
+- `schema_version`
+- canonical `kind` and broader `category`
+- `agent_id`, `character_id`, `server_id` and connection/session identity where known
+- per-session monotonic `sequence` where the source can provide it
+- `occurred_at` and backend `received_at`
+- explicit provenance via `source` plus bounded `source_ref`/decoder metadata
+- optional normalized position/region context where it was observed at event time
+- bounded typed payload
+- optional deterministic `dedupe_key` when the source cannot carry the same event ID
+  across retries
 
-teleport
+Supported provenance values should distinguish at least:
 
-level-up
+- direct phBot event/callback
+- phBot chat callback
+- phBot alchemy callback
+- reliable state-diff derivation
+- verified Joymax/Silkroad packet decoder
+- backend Condition/custom event
+- backend/system event
 
-disconnect
+Do not flatten every event into an unstructured JSON blob. Keep common searchable
+identity/time/source fields first-class while using bounded typed payloads for
+event-family detail. Unknown source fields remain absent/null; never synthesize facts
+from display text or presentation.
 
-reconnect
+**Direct phBot events/callbacks to ingest where verified:**
 
-alchemy result
+Cover the complete useful documented `handle_event` catalog, not only the subset
+currently visible in the phMonitor marketing page. At minimum investigate, document
+and implement supported events for:
 
-custom event kind with a bounded payload so later Conditions can emit durable custom
-events without inventing a second timeline model
+- character death
+- normal item drop
+- **rare item drop as its own canonical event**, preserving phBot's separate rare-drop
+  signal instead of trying to infer rarity from a normal-drop row
+- unique spawn
+- hunter/trader spawn
+- thief spawn
+- transport death
+- another player attacking the character
+- GM nearby/spawned
+- character level-up
+- alchemy completion/result
+- other useful documented `handle_event` values discovered during implementation
+- connection, disconnection, joined-game, reconnect/recovery and teleport callbacks
 
-**Implement:**
+Verify exact callback/event IDs, argument meanings and runtime behavior against the
+official phBot plugin documentation and the installed runtime before coding them.
+Document the verified mapping in `docs/phbot-capabilities.md`; do not copy guessed
+constants from third-party snippets.
 
-event envelope/schema
+Also ingest dedicated callbacks where they carry richer semantics than
+`handle_event`, especially alchemy callbacks/results and chat. Correlate duplicate
+signals deterministically rather than storing two independent copies of the same
+occurrence.
 
-plugin event publishing
+**Canonical event families should include where supported:**
 
-nonblocking outbound queue
+- `session.connected`
+- `session.disconnected`
+- `session.joined_game`
+- `session.teleported`
+- `character.died`
+- `character.level_up`
+- `character.attacked`
+- `drop.item`
+- `drop.rare`
+- `world.unique_spawned`
+- `world.gm_spawned`
+- `job.hunter_trader_seen`
+- `job.thief_seen`
+- `pet.transport_died`
+- `alchemy.finished`
+- `chat.message_received`
+- reliable party/academy/quest/pet lifecycle events derived from bounded state diffs
+  where no direct callback exists
+- bounded `custom.*` events emitted intentionally by later Conditions/backend logic
 
-durable backend event storage
+Names may be refined while implementing, but keep one stable canonical naming scheme
+and migration/version rules. Do not create separate timeline-only names for the same
+fact.
 
-item-event payloads/snapshots that retain every actually observed display/detail field
-needed by later UI: canonical item identity/model/code, display name, plus value,
-quantity/stack where relevant, rarity/seal metadata, degree/category, observed item
-color/grade and observed blues/attributes. Fields absent from the source remain absent;
-never infer a seal, blue, rarity or probability from presentation alone.
+**Chat boundary:**
 
-Nuxt activity timeline
+Inbound chat is an event source and therefore enters through Slice 5. Normalize every
+supported incoming chat message into the canonical pipeline with its verified channel,
+sender/recipient context, character/server scope, timestamp and bounded original
+message content.
 
-basic event filtering
+Slice 6 owns the chat-specific persistence/query projection if needed, conversation
+model, unread/navigation behavior, composer and outbound sending. It must consume the
+Slice 5 event instead of inventing a second plugin -> backend ingestion path.
+
+**Reliable derived events:**
+
+A state transition may become a canonical event when phBot exposes trustworthy current
+state but no direct callback. Candidate examples include:
+
+- party member joined/left
+- academy member joined/left/graduated or other verified membership/state changes
+- quest accepted/completed/removed where the available API can distinguish them
+  reliably
+- pet summoned/dismissed or other lifecycle changes where identity is stable enough
+
+Use bounded, identity-aware diffs over authoritative snapshots. Startup/reconnect state
+must not be misreported as a burst of historical joins/leaves. Record provenance as
+derived state and test reconnect/reload behavior. If the source cannot distinguish an
+actual transition from missing/stale data, do not emit the event.
+
+**Verified packet-derived events:**
+
+phBot exposes raw Joymax/Silkroad packet hooks. Use them only as an extension mechanism
+for valuable events that cannot be represented correctly from documented callbacks or
+state APIs.
+
+- maintain an explicit opcode/decoder allowlist
+- bind each decoder to the verified game/server/protocol assumptions it supports
+- unit-test decoders with captured/fixture packets whose provenance is documented
+- emit a normal canonical event after decoding; downstream code must not depend on raw
+  packet layout
+- retain only bounded decoder/source metadata needed for debugging
+- do not build an indiscriminate packet logger or persist all raw traffic
+- unknown/unverified opcodes remain unsupported instead of being guessed
+
+Prefer direct phBot callbacks over packet parsing whenever both provide the same fact.
+
+**Item/drop event snapshots:**
+
+Item events must retain every actually observed display/detail field needed by later
+UI and analytics without re-querying mutable inventory state:
+
+- canonical item identity/model/code where available
+- display name
+- plus value
+- quantity/stack where relevant
+- rarity/seal metadata actually observed
+- degree/category/type taxonomy when verified
+- observed item color/grade
+- observed blues/attributes
+- ground-drop identity and coordinates when the event can be reliably correlated with
+  a current phBot drop observation
+
+Fields absent from the source remain absent. Never infer a seal, blue, rarity,
+probability or item property from presentation alone. A rare-drop callback is evidence
+that the occurrence was a rare drop; it is not permission to invent missing item
+instance metadata.
+
+**Delivery and durability:**
+
+phBot callbacks must stay fast and nonblocking. Event publishing therefore uses a
+bounded asynchronous queue plus a bounded crash/reconnect-resistant local spool for
+events not yet durably acknowledged by the backend.
+
+Implement at-least-once transport with idempotent backend persistence:
+
+1. assign stable event identity and sequence before enqueue
+2. enqueue/spool without waiting on backend I/O in the phBot callback
+3. send ordered batches through the existing authenticated agent connection
+4. acknowledge only after durable backend persistence
+5. replay unacknowledged events after reconnect/plugin/backend restart
+6. enforce backend uniqueness/idempotency so retries do not duplicate history
+
+Define spool bounds and overflow behavior explicitly. High-volume/noncritical event
+families may use tighter retention or batching, but rare drops, deaths, alchemy
+results and other important discrete events must not silently disappear merely because
+the backend was briefly unavailable. Slice 14 may harden tuning/retention further; the
+basic reliable contract belongs here.
+
+**Backend/query/UI work:**
+
+Implement:
+
+- durable PostgreSQL event storage and indexes for server/character/kind/time queries
+- idempotent batch ingestion and acknowledgements
+- generic cursor-based event querying with deterministic ordering
+- server/character/date/event-family/event-kind filtering
+- item-aware filters where canonical item identity is present
+- bounded pagination/count behavior suitable for long-running self-hosted instances
+- Nuxt activity timeline matching the reference Events/History direction
+- specialized filters/views for deaths, normal drops, rare drops, uniques, level-ups,
+  alchemy and custom events where applicable
+- map/detail links when an event has validated coordinates or canonical item context
+
+Chat events may be hidden from the generic activity timeline by default to prevent
+noise, but they remain part of the same ingestion/durability architecture and are
+queryable for Slice 6.
 
 **Acceptance criteria:**
 
-events survive page reload/backend querying
-
-timeline ordering is reliable
-
-rare/normal drop rows and detail links can render the stored observed item semantics
-without re-querying mutable current inventory state
-
-event ingestion does not block normal phBot behavior
+- direct phBot event mapping is documented and covered by focused tests/fixtures
+- rare drops and normal drops remain distinct canonical event kinds
+- inbound chat reaches durable backend storage through the same Slice 5 ingestion
+  contract consumed by Slice 6
+- derived events do not create false transitions during startup/reconnect or stale
+  snapshots
+- any packet-derived event has an explicit verified decoder/version boundary and tests;
+  there is no generic raw-packet persistence path
+- events survive page reload, plugin reconnect and backend restart within the
+  documented spool/retention contract
+- retry/replay is idempotent: one real occurrence renders as one durable event
+- timeline ordering remains deterministic across reconnects and batched delivery
+- rare/normal drop rows and detail links render stored observed item semantics without
+  re-querying mutable current inventory state
+- event ingestion never blocks normal phBot behavior
+- later slices can subscribe/query the canonical stream without creating a second event
+  transport or history table for the same occurrence
 
 ### Slice 6 — Chat
 
 **Objective:**
 
-Provide remote chat visibility and sending.
+Provide phMonitor-style remote chat visibility and sending on top of the canonical
+Slice 5 event pipeline.
 
-Implement inbound chat where supported:
+Slice 6 owns chat-specific history/projections, conversation semantics, navigation,
+notifications/preferences and outbound messaging. It does **not** introduce a second
+plugin-to-backend inbound transport: incoming messages originate from the normalized
+`chat.message_received` events produced by Slice 5.
 
-private
+**Inbound chat:**
 
-party
+Support every verified phBot chat channel that maps cleanly to a user-visible
+conversation. At minimum investigate and implement where supported:
 
-guild
+- general/local
+- private
+- party
+- guild
+- union
+- global
+- other useful documented channels/types, with their raw verified chat type retained
+  as bounded source metadata when necessary
 
-union
+Normalize each inbound message with:
 
-general
+- stable message/event identity
+- server and observed character
+- canonical channel/type
+- sender name/identity as exposed by phBot
+- recipient/private peer when the source provides it
+- original bounded message text
+- occurred/received timestamps
+- inbound direction
+- optional canonical item/entity references only when they can be resolved reliably
+  without rewriting the original message
 
-other useful supported channels
+Preserve enough original channel/source metadata for later Economy parsing or other
+projections, but do not classify arbitrary chat as a trade offer in this slice.
 
-Implement remote sending where supported.
+**Chat history and projections:**
 
-**Add:**
+Build the chat read model from canonical events rather than mutating event history.
 
-persistent/appropriate history
+Implement:
 
-per-character chat UI
+- persistent history with cursor pagination in both directions
+- per-server/per-character scope
+- channel tabs matching the reference: General, Private, Party, Guild, Union and Global
+  where supported
+- stable private-conversation identity/contact list
+- unread/read state and jump-to-latest behavior where useful
+- deterministic ordering when inbound events arrive late after reconnect
+- retention behavior that is explicit and does not silently diverge from the canonical
+  source event
+- deduplication/correlation for outbound messages that are subsequently observed again
+  through phBot, so one sent message does not render twice
 
-command/result handling for outbound messages where necessary
+The event record remains the durable occurrence. A specialized chat table/index is
+allowed as a projection for efficient conversation queries, but it must be rebuildable
+or traceable to canonical event/message identity rather than becoming competing truth.
+
+**Outbound chat:**
+
+Implement remote sending only through the authenticated, capability-aware command
+lifecycle established in Slice 3.
+
+For each supported outbound channel:
+
+- validate sender character/server target
+- validate channel-specific recipient/arguments
+- enforce message length/encoding limits verified from phBot/runtime behavior
+- return explicit pending/sent/rejected/failed/timeout state
+- correlate successful sends with any later observed chat callback
+- require explicit confirmation for costly/global sends when applicable
+- never expose arbitrary Python, packet injection or unrestricted opcode sending as a
+  chat feature
+
+If a channel is visible inbound but cannot be sent through a verified supported phBot
+API, keep it read-only and report that capability honestly.
+
+**Reference-style Nuxt UI:**
+
+Reproduce the verified phMonitor chat structure rather than a generic log viewer:
+
+- sender/character selector
+- channel tabs
+- private contacts/new-conversation flow
+- recipient field where needed
+- conversation/history pane
+- jump-to-latest affordance
+- bottom composer with send state/error feedback
+- responsive contact/conversation navigation for narrow screens
+- loading, empty, disconnected/stale and recovered states
+- persisted chat preferences from Settings where applicable
+
+Support emoji and canonical item references/details where the verified source and
+reference behavior allow them. Do not fabricate rich item links from unverified text
+parsing. Item references that become canonical should reuse the shared item-detail
+semantics from Slices 4/5/13.
+
+**Notifications/integration boundary:**
+
+Message sound/browser/Discord preferences may subscribe to canonical chat events, but
+notification delivery/configuration follows the shared notification/Condition
+architecture. Do not bury notification side effects directly inside the phBot chat
+callback.
+
+Slice 13 may derive Economy/global-offer records from preserved chat data when the
+format/source can be verified. Slice 6 must preserve the source material needed for
+that work without claiming every trade-looking message is structured economy data.
 
 **Acceptance criteria:**
 
-incoming messages appear in the web UI
-
-supported outbound chat can be sent remotely
-
-messages are attributed to the correct character/channel
+- supported inbound messages appear in the web UI after passing through Slice 5 and
+  remain available after reload/backend restart according to retention
+- messages are attributed to the correct server, character, channel, sender and private
+  peer where those fields are available
+- General/Private/Party/Guild/Union/Global navigation matches supported source
+  capabilities and does not show writable controls for unsupported outbound channels
+- private conversations have stable identity and paginated history
+- reconnect/replayed events do not duplicate visible messages
+- supported outbound chat can be sent remotely through the normal command lifecycle
+  with visible success/failure state
+- outbound messages that are echoed back by phBot are correlated instead of duplicated
+- costly/global sends require the documented confirmation behavior where applicable
+- the chat UI remains usable at the project's desktop and mobile target viewports
+- Slice 6 does not maintain a second inbound transport or contradictory source of truth
 
 ### Slice 7 — Live map
 
