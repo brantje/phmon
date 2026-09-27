@@ -199,7 +199,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Shell and instance access | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently. | 1, 2, 15 |
 | Dashboard | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links. | 2, 5, 6, 13, 15 |
 | Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
-| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties. | 5, 7, 13 |
+| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes. | 5, 7, 13 |
 | Chat | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends. | 6, 13, 15 |
 | Economy | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data. | 6, 13 |
 | Alchemy | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities. | 5, 12 |
@@ -208,7 +208,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
 | Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
 | Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
-| Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts from their observed source. | 2.5, 4, 13 |
+| Item Search | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts and exact container provenance from their observed source. | 2.5, 4, 13 |
 | Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
 | Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
 | Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
@@ -1437,11 +1437,29 @@ must come from the observed item instance. Unknown means absent/unknown.
 
 Container-level operational metadata stays visually separate from the in-game item
 description. Show owner/character, server, source (`Inventory`, `Character Set`,
-`Storage`, `Guild Storage`, or the applicable pet), observer and freshness/last
-observed state around the collection/detail surface. Do not inject those PhMon
-operational fields into the middle of the Silkroad stat block. Last-known storage or
-guild-storage data must be clearly marked stale/last observed rather than visually
-indistinguishable from currently opened/live state.
+`Storage`, `Guild Storage`, the applicable pet, or `Job Pouch` where verified),
+observer and freshness/last observed state around the collection/detail surface. Do not
+inject those PhMon operational fields into the middle of the Silkroad stat block.
+Last-known storage, guild-storage, pet or job-pouch data must be clearly marked
+stale/last observed rather than visually indistinguishable from currently opened/live
+state.
+
+Treat these as **canonical item containers**, not unrelated ad-hoc payloads. Each
+container observation must carry enough stable source/container/slot/item identity to
+support Slice 5 acquisition/transfer reasoning without confusing a slot move with a new
+item. At minimum investigate and model, where the verified phBot API exposes them:
+
+- character bag inventory
+- equipped/character-set items
+- personal storage
+- guild storage
+- each applicable pet inventory, including Pick/Grab pets
+- job pouch
+- any additional verified item-bearing container discovered during capability review
+
+A container becoming observable after plugin load, pet summon, storage open, reconnect
+or refresh establishes current/last-known state; it does **not** by itself mean every
+visible item was newly acquired.
 
 **Implement:**
 
@@ -1499,9 +1517,12 @@ management only when actually supported) use explicit character targets and the 
 audited command/result lifecycle. Do not invent controls merely because phBot has a
 similarly named internal setting.
 
-delta/change handling keyed by stable source + slot/item identity where appropriate;
-do not churn/re-render the entire collection for one changed stack or slot if the
-protocol can safely communicate a bounded update
+delta/change handling keyed by stable source/container + slot/item identity where
+appropriate; do not churn/re-render the entire collection for one changed stack or
+slot if the protocol can safely communicate a bounded update. Preserve enough
+pre/post-state for Slice 5 to distinguish quantity gain, quantity loss, slot movement,
+stack split/merge and cross-container transfer without treating all changes as new
+acquisitions
 
 Nuxt inventory/equipment/storage views with slot-preserving icon collections,
 source/freshness indicators and responsive item detail surfaces
@@ -1554,9 +1575,10 @@ inventory, equipment/character set, personal storage, guild storage and applicab
 inventory reuse the same item-detail semantics so the same item does not render
 differently solely because its container changed
 
-current inventory, equipment/character set and available storage sources are visible
-without conflating their ownership/source; stale/last-known storage is visibly distinct
-from current/live observations
+current inventory, equipment/character set, applicable pet inventories, job pouch and
+available storage sources are visible without conflating ownership/source;
+stale/last-known storage/pet/job-pouch observations are visibly distinct from
+current/live observations
 
 Attack/Fellow/Pick/Transport pets are represented when observed, and applicable pet
 state/inventory remains associated with the correct pet across updates
@@ -1740,6 +1762,68 @@ probability or item property from presentation alone. A rare-drop callback is ev
 that the occurrence was a rare drop; it is not permission to invent missing item
 instance metadata.
 
+**Item acquisition, transfer and container-delta events:**
+
+A world drop and an owned-item acquisition are different facts. `drop.item` /
+`drop.rare` answer "what appeared as a drop"; they do not prove that this character,
+party member or pet received the item. Model actual possession changes separately.
+
+Add canonical item event kinds where the verified source supports them, including:
+
+- `item.acquired` when an observed owned container gains quantity that was not already
+  present in another known container for the same owner/session
+- `item.transferred` for a reliably correlated movement between known containers,
+  such as Pick-pet -> character bag or bag -> storage
+- `item.quantity_increased` / `item.quantity_decreased` when stack deltas are useful
+  and cannot yet be classified more specifically
+- optional more specific acquisition methods such as `party_distribution`,
+  `pet_pickup`, `ground_pickup`, `quest_reward`, `purchase`, `alchemy_output`
+  or similar **only when the callback/packet/state source actually proves that cause**
+
+Every acquisition/transfer payload should retain, where known:
+
+- canonical item identity and observed item snapshot
+- quantity delta
+- destination container type/identity and slot
+- source container type/identity and slot for transfers
+- owner/character/server/session
+- acquisition/transfer method and provenance only when proven
+- correlation IDs to related `drop.*`, packet or command events when reliable
+
+The key rule is: **inventory appearance proves possession, not provenance**. A bag or
+pet inventory delta may prove that an item was gained, while the reason remains
+`unknown`. Do not label a gain as party distribution, Pick-pet pickup, monster drop,
+purchase or another cause merely because it is plausible.
+
+Party item distribution needs special care. Current party state/configuration is not
+proof of who received a specific drop. If a verified Silkroad/phBot callback or packet
+identifies the allocation recipient, preserve that as acquisition provenance and
+correlate it with the receiving container delta. Otherwise emit the reliable
+`item.acquired` fact with unknown acquisition method.
+
+Pick/Grab pets and other item-bearing pets are first-class owned containers. An item
+newly observed in a pet inventory may produce `item.acquired`; a later move from that
+pet into the character bag is `item.transferred`, not a second acquisition. Apply the
+same principle to job pouch and other verified containers.
+
+Container-delta reconciliation must explicitly avoid false acquisitions:
+
+- initial inventory/pet/job-pouch/storage snapshots after startup/reconnect/open/summon
+  establish baseline state and do not emit acquisition events for existing contents
+- inventory sorting or slot reordering does not create acquisition/transfer events
+- stack split/merge does not change total owned quantity and is not an acquisition
+- quantity increase emits only the positive delta, not the whole resulting stack
+- storage becoming newly observable is not acquisition
+- pet summon/dismiss visibility changes are not acquisitions
+- a cross-container move must not be counted as both a loss and a new acquisition when
+  it can be correlated reliably
+- a rare/normal `drop.*` event and a later `item.acquired` event remain two distinct
+  facts and may be correlated; neither should be collapsed into the other
+
+Use bounded correlation windows and stable item/container identity. When correlation is
+ambiguous, preserve the separate observed facts rather than inventing a transfer or
+cause.
+
 **Delivery and durability:**
 
 phBot callbacks must stay fast and nonblocking. Event publishing therefore uses a
@@ -1796,6 +1880,16 @@ queryable for Slice 6.
 - timeline ordering remains deterministic across reconnects and batched delivery
 - rare/normal drop rows and detail links render stored observed item semantics without
   re-querying mutable current inventory state
+- acquisition tests cover character bag, Pick/Grab-pet inventory and job pouch where
+  supported, including positive stack deltas
+- startup/reconnect/storage-open/pet-summon baselines, slot sorting and stack split/merge
+  do not generate false acquisitions
+- a pet -> bag or other reliably correlated cross-container move is stored as a
+  transfer rather than a second acquisition
+- party-distribution provenance is attached only when a verified callback/packet/source
+  proves the recipient; otherwise the acquisition method remains unknown
+- a related `drop.*` and `item.acquired` can coexist and be correlated without being
+  deduplicated into one semantic event
 - event ingestion never blocks normal phBot behavior
 - later slices can subscribe/query the canonical stream without creating a second event
   transport or history table for the same occurrence
@@ -2273,13 +2367,20 @@ Add item-centric historical/search functionality when the available phBot data s
 
 **Required functionality where the verified source data exists:**
 
-item acquisition/drop history with links back to canonical events
+item acquisition, transfer and drop history with links back to canonical Slice 5
+events; keep world drops distinct from items actually acquired by this character/pet
 
 valuable/rare drop tracking preserving observed rarity/color/seal metadata
 
+acquisition analytics by destination/source container and proven method where available,
+including character bag, Pick/Grab-pet inventory, job pouch and party-distribution
+provenance when a verified source identifies the recipient. Unknown acquisition cause
+must remain unknown rather than being inferred from party/pet state.
+
 one Item Search query surface across character inventory, equipped/character sets,
-character storage and guild storage; retain source/owner, server, observer/freshness
-and navigation back to the owning character/guild
+character storage, guild storage, applicable pet inventories and job pouch where the
+verified source exposes them; retain source/container/owner, server,
+observer/freshness and navigation back to the owning character/guild/pet
 
 text/server/item-type/subcategory/degree filtering, include-character-sets behavior
 where it matches the reference, and deterministic reset controls
@@ -2302,8 +2403,17 @@ Do not overbuild this slice before confirming actual source capabilities.
 **Acceptance criteria:**
 
 Item Search finds the same canonical item regardless of whether it currently lives in
-inventory, equipment/character set, character storage or guild storage, while still
-showing its exact source/owner/freshness.
+inventory, equipment/character set, character storage, guild storage, an applicable
+pet inventory or job pouch, while still showing its exact
+source/container/owner/freshness.
+
+Item acquisition history distinguishes actual owned-item gains from world drops and
+cross-container transfers; moving an item from Pick/Grab pet to the character bag does
+not inflate acquisition counts.
+
+Party-distributed items show that provenance only when it was actually observed from a
+verified callback/packet/source; inventory-only evidence is displayed as an acquisition
+with unknown method.
 
 Rare/normal historical item detail renders stored observed metadata consistently with
 Events and Analytics.
