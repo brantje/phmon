@@ -554,4 +554,5 @@ path can be reported as passing. CI then showed the outage/recovery smoke fixtur
 were not carrying an operator session cookie through `/api/live` or protected API
 calls; they now use the shared login helper and await another run.
 The first integration assertion setup also violated `expires_at > created_at`; its
-timestamps are now backdated together while retaining the constraint.
+timestamps are now explicit typed arguments. CI also required the credential POST
+in the outage fixture to carry its operator cookie; that probe now sends it.

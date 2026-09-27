@@ -78,7 +78,12 @@ def main():
     token_response = Request(
         web + "/api/agents/credentials",
         data=b"{}",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Origin": web,
+            "Sec-Fetch-Site": "same-origin",
+            "Cookie": operator_cookie,
+        },
         method="POST",
     )
     with urlopen(token_response, timeout=10) as response:

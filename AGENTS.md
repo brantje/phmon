@@ -383,12 +383,13 @@ durable audit insertion. CI then showed the database recovery fixture itself ope
 the shared login helper. The first PostgreSQL run of the added expiry assertion then
 caught its own fixture violating `expires_at > created_at`; it now backdates both
 timestamps while preserving that invariant. Python compilation and all 32 plugin
-tests pass. Local Go unit tests and vet pass; this Windows host has no
-Docker/PostgreSQL and cannot run the integration test locally. Exact next action:
-push the corrected integration fixture, rerun current-head CI, inspect CodeRabbit
-findings, and retry Copilot only if its quota permits. Real Walk traversal and a safe
-per-session Clientless primitive remain unresolved; keep the PR draft and stop before
-Slice 4.
+tests pass. CI then caught timestamp parameter inference in the fixture and a
+missing session cookie in the outage credential-creation request; both are now fixed.
+Local Go unit tests and vet pass; this Windows host has no Docker/PostgreSQL and
+cannot run the integration test locally. Exact next action: push those two fixes,
+rerun current-head CI, inspect CodeRabbit findings, and retry Copilot only if its
+quota permits. Real Walk traversal and a safe per-session Clientless primitive
+remain unresolved; keep the PR draft and stop before Slice 4.
 
 **Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
 present: separate operator-cookie auth; durable idempotent command admission/audit;

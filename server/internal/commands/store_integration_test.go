@@ -140,7 +140,14 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	if _, err := pool.Exec(ctx, `UPDATE commands SET created_at=$2 - interval '2 seconds', expires_at=$2 - interval '1 second' WHERE command_id=$1`, first.ID, now); err != nil {
+	_, err = pool.Exec(
+		ctx,
+		`UPDATE commands SET created_at=$2, expires_at=$3 WHERE command_id=$1`,
+		first.ID,
+		now.Add(-2*time.Second),
+		now.Add(-time.Second),
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
 	changed, err := store.Reconcile(ctx, now, 30*time.Second, 6*time.Minute)
