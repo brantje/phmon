@@ -372,6 +372,15 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**Slice 3 implementation P2 (2026-09-27):** command admission now has a
+typed server-owned catalog, migration `000004_commands.sql`, durable command/audit
+records, idempotency hashing, one-in-flight-per-character enforcement, fixed-window
+bounded admission limits, current character/session fencing, same-region walk
+validation, disruptive-action confirmation and an authenticated
+`POST /api/commands` returning HTTP 202 only for durable acceptance. Until P3
+publishes exact v3 runtime capabilities, production admission fails closed as
+`plugin_upgrade_required`. Next package: P3 v3 transport and safe callback dispatch.
+
 **Slice 3 implementation P1 (2026-09-27):** operator authentication is
 implemented on the Slice 3 branch. Go owns bounded hashed opaque sessions, an
 eight-hour absolute expiry, login throttling, strict named cookies, configured

@@ -14,6 +14,7 @@ import (
 	"phmon/server/internal/agents"
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/commands"
 	"phmon/server/internal/config"
 	"phmon/server/internal/database"
 	"phmon/server/internal/httpapi"
@@ -65,6 +66,7 @@ func run() error {
 	}
 	reconcileCancel()
 	registry := agents.NewRegistry()
+	commandService := commands.NewService(commands.NewStore(pool), nil)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
 	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
@@ -73,6 +75,7 @@ func run() error {
 		Agents:     store,
 		Registry:   registry,
 		Characters: characterStore,
+		Commands:   commandService,
 		Live:       live,
 	})
 
