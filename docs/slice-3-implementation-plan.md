@@ -633,8 +633,10 @@ integration fix awaits the next GitHub CI run. CI also exposed missing operator
 cookies in the dedicated database-outage WebSocket and API fixtures; both now use
 the shared login helper. Python compilation and 32 plugin tests pass. Exact next
 CI then caught timestamp parameter inference in the expiry fixture and a missing
-session cookie on the outage credential POST; both are fixed. Exact next action is
-to push these corrections, rerun CI, then inspect review findings for that head.
+session cookie on the outage credential POST; both are fixed. The next stack run
+passed agent/live smoke but hit an intermittent Chrome DevTools startup timeout;
+the wait is now 30 seconds and will include Chrome stderr on failure. Exact next
+action is to push and rerun CI, then inspect review findings for that head.
 
 Remaining gates: real Walk route traversal on plugin 1.1.2 (not installed and no
 Walk action issued), safe per-session Clientless primitive, broad real-runtime API

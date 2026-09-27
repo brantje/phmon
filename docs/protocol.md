@@ -556,3 +556,6 @@ calls; they now use the shared login helper and await another run.
 The first integration assertion setup also violated `expires_at > created_at`; its
 timestamps are now explicit typed arguments. CI also required the credential POST
 in the outage fixture to carry its operator cookie; that probe now sends it.
+The subsequent stack run passed agent/live smoke but exceeded a 15-second Chrome
+DevTools startup deadline. The browser audit now allows 30 seconds and includes
+Chrome stderr if startup still fails.

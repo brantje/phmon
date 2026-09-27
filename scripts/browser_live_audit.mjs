@@ -160,7 +160,11 @@ async function main() {
   let cdp
   try {
     const portFile = join(profile, 'DevToolsActivePort')
-    await waitFor(() => existsSync(portFile), 'Chrome DevTools port', 15000)
+    try {
+      await waitFor(() => existsSync(portFile), 'Chrome DevTools port', 30000)
+    } catch (error) {
+      throw new Error(`${error.message}\n${stderr.join('')}`)
+    }
     const [port] = readFileSync(portFile, 'utf8').trim().split(/\s+/)
     const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) =>
       response.json(),
