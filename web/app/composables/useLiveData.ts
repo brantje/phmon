@@ -149,6 +149,12 @@ function ensureBaseSubscriptions() {
   ensureSubscription('groups', 'groups')
 }
 
+function clearCharacterListFilter() {
+  removeSubscription('character-list', () => {
+    characters.value = []
+  })
+}
+
 function setCharacterListFilter(query: string, groupID?: string) {
   ensureSubscription(
     'character-list',
@@ -453,6 +459,7 @@ export function useLiveData() {
     liveStale,
     liveLoading,
     setCharacterListFilter,
+    clearCharacterListFilter,
     setCharacterDetail,
     refreshLiveData,
   }

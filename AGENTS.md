@@ -344,6 +344,21 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 - Keep Go formatted with gofmt; use go vet and behavior-oriented Go tests. Use Nuxt
   ESLint, Prettier and TypeScript checks for the frontend. Prefer explicit types at
   boundaries; handle loading, unavailable and recovery states in UI.
+- Use Nuxt file-based routing in `web/app/pages/` for every implemented screen,
+  including dynamic routes such as `characters/[id].vue`. Follow the
+  [Nuxt pages convention](https://nuxt.com/docs/4.x/directory-structure/app/pages).
+  Keep `web/app/app.vue` limited to application providers and the
+  `<NuxtLayout><NuxtPage /></NuxtLayout>` outlet; never select whole screens with
+  pathname checks or accumulate feature markup/state there.
+- Put the persistent application shell in `web/app/layouts/` and reusable UI in
+  `web/app/components/`. Pages compose focused feature components; components own
+  their local forms, dialogs and interaction state. Extract shared reactive logic
+  into focused `web/app/composables/` and pure formatting into `web/app/utils/`.
+  Do not move a monolithic app into a single oversized layout or composable.
+  Keep one shared live-data transport, use `NuxtLink` for internal navigation,
+  and clean up page-specific subscriptions, watchers and timers on navigation.
+  Verify direct route loads, client navigation, back/forward navigation and mobile
+  shell behavior whenever this structure changes.
 - For each slice: inspect architecture; define minimal domain/API changes; implement
   backend, plugin and frontend as needed; add focused tests; update docs; run
   relevant validation and report exactly what passed and what remains.
@@ -356,6 +371,43 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
   instruction. Make grouped commits only if the environment expects commits.
 
 ## Scope and implementation status
+
+**PR #7 CodeRabbit follow-up (2026-09-27):** verified and fixed three functional
+findings. Credential creation disables dismissal and client route navigation until
+the one-time response settles; dismissal then clears the token. Empty stale or
+reconnecting agent lists display an unavailable state with an enabled refresh
+button. Group creation trims names and ignores blank input (the backend already
+rejects blank names). Typecheck, production build, formatting and transport audit
+passed; lint retains its three existing input warnings. Isolated browser fixtures
+verified pending/success/failure credential states, navigation blocking, dismissal,
+stale empty agents with retry, and blank/trimmed group request behavior. No real
+credentials or bot actions were used. Next action: push fixes, reply/resolve the
+three review threads, request another review, and wait for CI and CodeRabbit.
+
+**Nuxt structure refactor (2026-09-27):** completed on
+`codex/nuxt-pages-components` within the operator's explicit refactor-only scope.
+`web/app/app.vue` is now the provider/layout/page outlet. The persistent shell lives
+in `layouts/default.vue`; Dashboard, Stats and character detail use `pages/index.vue`,
+`pages/stats.vue` and `pages/characters/[id].vue`. Focused components own navigation,
+top summary, mobile access, dashboard panels, character/group controls, agents,
+one-time credentials, operations and page headers. Shared fleet calculations,
+health monitoring and pure formatters have dedicated composables/utilities.
+Internal links use Nuxt routing; page list/detail subscriptions are removed on
+unmount while the shell keeps the shared WebSocket alive. Health polling is owned
+by the layout and its lifecycle hooks are registered synchronously.
+
+Validation: frontend typecheck, production build, formatting and live-transport
+source audit passed; lint passed with the same three pre-existing self-closing-input
+warnings. An isolated WebSocket fixture exercised direct Dashboard/Stats/detail
+loads, client navigation, browser back/forward, search and subscription disposal;
+the navigation sequence retained one socket and the same shell DOM. Browser checks
+also covered mobile menu closing on navigation, credential panel opening and QR
+dialog Escape/focus restoration. No page errors were reported. Screenshots at
+1440×1000, 1280×800 and 390×844 are under ignored `exports/nuxt-refactor/`; the mobile
+document width stayed 390 px. This is fixture-based refactor evidence, not new
+phBot/backend integration validation or closure of the reference-parity gates.
+No roadmap slice was advanced. Next action: review this branch; resume outstanding
+Slice 2/2.5 work only under its existing scope. Do not start Slice 3.
 
 **Slice 0: complete. Slice 1: implementation and automated validation complete;
 operator has manually verified basic real phBot → PhMon connectivity. Slice 2: in
