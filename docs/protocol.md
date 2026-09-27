@@ -341,3 +341,89 @@ and credential provisioning require a trusted network.
 - GET /readyz: fresh PostgreSQL ping with a two-second deadline.
 - Nuxt GET /api/health proxies readiness server-side with a bounded timeout.
 - Health errors are sanitized and no credentials are returned.
+
+
+## Slice 3 command/auth contract (frozen 2026-09-27)
+
+Slice 3 introduces agent protocol v3 for command delivery while preserving v2
+monitoring. A v2 agent remains valid for monitoring and is always control-disabled
+with reason `plugin_upgrade_required`; the server never sends v3 command frames to
+a v2 connection.
+
+Operator mutations use a separate cookie-authenticated control plane. The operator
+secret is configured only in the Go server environment. Successful login creates a
+cryptographically-random opaque session token; only its SHA-256 hash is retained
+in bounded process memory. Sessions expire absolutely after eight hours and are
+lost on backend restart. The cookie is HttpOnly, SameSite=Strict, Path=/, and Secure
+except in explicitly configured loopback development. The agent bearer token is
+never accepted as operator authentication.
+
+Cookie-authenticated HTTP mutations and browser WebSocket upgrades validate Origin
+against configured instance origins. The Nuxt server forwards only the named PhMon
+operator-session cookie to private Go routes; it does not forward arbitrary browser
+cookies or Authorization headers. Credentials are never placed in URLs, localStorage,
+live payloads, or logs.
+
+Protocol v3 keeps the v2 hello/heartbeat/character message semantics and adds:
+
+    {"type":"character.registered","protocol_version":3,
+     "character_id":"<uuid>","session_id":"<uuid>"}
+
+    {"type":"agent.capabilities","protocol_version":3,
+     "schema_version":1,"commands":[
+       {"name":"bot.stop","supported":true},
+       {"name":"client.clientless","supported":false,
+        "reason":"unsupported_runtime_primitive"}
+     ]}
+
+    {"type":"command.execute","protocol_version":3,
+     "command_id":"cmd_<uuid>","character_id":"<uuid>",
+     "session_id":"<uuid>","name":"bot.stop","args":{},
+     "expires_at":"<UTC RFC3339>","ttl_ms":10000}
+
+    {"type":"command.ack","protocol_version":3,
+     "command_id":"cmd_<uuid>","character_id":"<uuid>",
+     "session_id":"<uuid>"}
+
+    {"type":"command.result","protocol_version":3,
+     "command_id":"cmd_<uuid>","character_id":"<uuid>",
+     "session_id":"<uuid>","status":"completed",
+     "verification":"api_confirmed","api_return":true,
+     "effective_args":{},"observed_after":{}}
+
+Every character-scoped command frame, acknowledgement, result, control-state report
+and revocation carries both explicit `character_id` and durable `session_id`.
+The server resolves the authenticated agent and exact connection generation from
+the current durable character session; neither is accepted from the browser.
+
+Canonical Slice 3 commands and application bounds:
+
+| name | arguments | application policy |
+| --- | --- | --- |
+| `bot.start` | `{}` | documented bool API result |
+| `bot.stop` | `{}` | documented bool API result |
+| `trace.start` | `{name:string}` | trimmed 1..64 chars |
+| `trace.stop` | `{}` | documented bool API result |
+| `training.area.set` | discriminated `current_position`, `position`, or `named` | region must be explicit/observed and positive; coordinates finite and abs <= 10,000,000; named area trimmed 1..100 chars |
+| `training.radius.set` | `{radius:number}` | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum |
+| `character.walk` | `{region:int,x:number,y:number,z:number}` | same observed region only; finite coordinates abs <= 10,000,000 |
+| `character.return` | `{}` | bool means scroll invocation accepted, not teleport completion |
+| `character.disconnect` | `{}` | void return; does not alter relog settings |
+| `client.clientless` | `{}` | unsupported until a safe documented/versioned per-instance primitive is verified |
+
+Unknown fields, wrong JSON types, booleans supplied as numbers, NaN/Infinity,
+oversized strings, stale session IDs, unavailable training areas and cross-region
+walks are rejected before dispatch. Python repeats equivalent validation against
+fresh callback-thread runtime context immediately before invocation.
+
+The command lifecycle is durable: `queued -> dispatching -> sent -> acknowledged ->
+completed|failed`, with `expired` for work that never becomes valid to invoke and
+`unknown` when execution may have occurred but a trustworthy final result was
+lost. Intent/audit is committed before dispatch. A socket write is not execution
+success. No remote action is automatically replayed after reconnect or backend
+restart. One in-flight action is admitted per character.
+
+Browser live protocol v1 remains one shared WebSocket and gains optional
+`controls` and `commands` streams. HTTP POST returns only acceptance/command ID;
+authoritative lifecycle/history/control-state replacement snapshots arrive over
+`/api/live`.

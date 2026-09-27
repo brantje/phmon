@@ -372,6 +372,18 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**Slice 3 implementation P0 (2026-09-27):** implementation is now authorized on
+`codex/slice-3-plan`. The Slice 3 command/auth contract is frozen in
+`docs/protocol.md` and `docs/phbot-capabilities.md`: protocol v3 commands with v2
+monitoring compatibility, explicit character+session targets, per-socket capability
+ownership, one in-flight command per character, durable no-replay lifecycle,
+same-region walking, bounded typed arguments, separate operator-cookie authentication,
+and honest API-result versus observed-state semantics. Public phBot docs were
+rechecked; core bot/trace/training/walk/return/disconnect primitives remain
+documented. No safe public clientless mutation is verified, so that capability
+remains blocked without blocking independent Slice 3 work. Next package: P1 operator
+authentication.
+
 **Slice 3 planning handoff (2026-09-27):** the operator requested a detailed plan
 for GPT-6 Luna, not implementation. Added
 [`docs/slice-3-implementation-plan.md`](docs/slice-3-implementation-plan.md), with

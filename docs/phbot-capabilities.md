@@ -163,3 +163,41 @@ correct agent, and survives plugin reload/disconnect/restart with automatic reco
 Also exercise a profile switch to prove one profile cannot silently reuse another
 profile's credentials. Record the observed module/import behavior and results here;
 do not infer them from desktop CPython or the simulator.
+
+
+## Slice 3 remote-command capability matrix (2026-09-27)
+
+The official API was rechecked during implementation. These rows describe public
+documented behavior and the PhMon adapter policy; they do not claim availability
+on every installed phBot build.
+
+| PhMon command | Public primitive | Result semantics | Slice 3 status |
+| --- | --- | --- | --- |
+| `bot.start` | `start_bot()` | bool | required |
+| `bot.stop` | `stop_bot()` | bool | required |
+| `trace.start` | `start_trace(name)` | bool | required |
+| `trace.stop` | `stop_trace()` | bool | required |
+| `training.area.set` named | `set_training_area(name)` | bool | required when runtime symbol exists |
+| `training.area.set` position/current | `set_training_position(region,x,y,z)` | bool | required when an active area exists |
+| `training.radius.set` | `set_training_radius(radius)` + `get_training_area()` | bool plus readback | required |
+| `character.walk` | `move_to_region(region,x,y,z)` | void; movement asynchronous | required, same-region initially |
+| `character.return` | `use_return_scroll()` | bool | required |
+| `character.disconnect` | `disconnect()` | void; relog unchanged | required |
+| `client.clientless` | no safe public mutation found in Client/Misc/index | n/a | blocked: `unsupported_runtime_primitive` |
+
+Optional imports are probed independently. One missing mutation symbol cannot disable
+monitoring or unrelated controls. Capability reports are attached to the exact v3
+socket/runtime and intersected with the server-owned catalog; capabilities from
+sibling sockets sharing one agent token are never unioned for authorization.
+
+Training readback exposes only typed region/x/y/z/radius availability and values.
+The documented local script `path` is deliberately not sent to the backend. A
+`current_position` training-area operation resolves position on the callback thread
+immediately before invocation. Region zero auto-derivation is not used. Named-area
+selection is separate from coordinate changes.
+
+Bool API success is recorded as `api_confirmed`. Void-return operations are
+`unverified` unless a fresh documented observation establishes the effect. Walk
+never claims arrival, return-scroll never claims teleport completion, disconnect
+never claims relog was disabled, and botting state remains unknown because the
+checked public Botting API still exposes no authoritative read-only getter.

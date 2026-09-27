@@ -165,3 +165,27 @@ two-socket outage scenario: one same-agent character disconnects during a real
 PostgreSQL stop, the second socket remains live, and recovery reconciliation closes
 only the dead generation. Both are automated simulator/backend evidence, not new
 real-runtime validation.
+
+
+## Slice 3 — remote commands planning evidence
+
+Status: implementation in progress on `codex/slice-3-plan`.
+
+The supplied 2560 × 1315 Stats/Actions and phBot Client captures establish a compact
+two-column Actions grid and a dedicated `phBot | Client` surface. Slice 3 preserves
+the observed action ordering: Start/Stop Training, Start/Stop Trace, Training
+Area/Radius, Return Scroll/Walk and Disconnect. The screenshot's Execute Script slot
+remains a later-slice placeholder; arbitrary script execution is not part of the
+remote-command API. Party Setup remains Slice 4.
+
+The Client reference is adapted to an explicit selected character. PhMon will not
+implement the reference text's machine-wide `sro_client.exe` termination behavior.
+Clientless stays visibly unsupported until a safe per-instance phBot mutation is
+verified. Reference captures are layout evidence only; hidden dialog semantics that
+cannot be observed are not invented.
+
+P0 application safety policy is now frozen in `docs/protocol.md`: exact
+character/session targeting, v3 per-runtime capabilities, same-region walking,
+finite numeric bounds, durable command lifecycle, honest bool/void verification,
+operator authentication, and no automatic command replay. These constraints are
+product safety boundaries rather than claims about undocumented phBot limits.
