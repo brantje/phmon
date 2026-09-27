@@ -52,8 +52,8 @@ await useBackendHealthMonitor()
       <p class="eyebrow">PhMon control plane</p>
       <h1>Operator sign in</h1>
       <p>
-        Enter the access secret configured on this self-hosted instance. The secret
-        is submitted once and is never stored in browser storage.
+        Enter the access secret configured on this self-hosted instance. The
+        secret is submitted once and is never stored in browser storage.
       </p>
       <label for="operator-secret">Access secret</label>
       <input

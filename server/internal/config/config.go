@@ -10,12 +10,12 @@ import (
 )
 
 type Config struct {
-	HTTPAddr                      string
-	DatabaseURL                   string
-	OperatorAccessSecret          string
-	OperatorSessionCookie         string
-	OperatorAllowedOrigins        []string
-	OperatorAllowInsecureLoopback bool
+	HTTPAddr                  string
+	DatabaseURL               string
+	OperatorAccessSecret      string
+	OperatorSessionCookie     string
+	OperatorAllowedOrigins    []string
+	OperatorAllowInsecureHTTP bool
 }
 
 func Load() (Config, error) {
@@ -54,12 +54,12 @@ func Load() (Config, error) {
 	if len(c.OperatorAllowedOrigins) == 0 {
 		return Config{}, errors.New("OPERATOR_ALLOWED_ORIGINS must contain at least one origin")
 	}
-	if raw := strings.TrimSpace(os.Getenv("OPERATOR_ALLOW_INSECURE_LOOPBACK")); raw != "" {
+	if raw := strings.TrimSpace(os.Getenv("OPERATOR_ALLOW_INSECURE_HTTP")); raw != "" {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, errors.New("OPERATOR_ALLOW_INSECURE_LOOPBACK must be true or false")
+			return Config{}, errors.New("OPERATOR_ALLOW_INSECURE_HTTP must be true or false")
 		}
-		c.OperatorAllowInsecureLoopback = value
+		c.OperatorAllowInsecureHTTP = value
 	}
 	return c, nil
 }

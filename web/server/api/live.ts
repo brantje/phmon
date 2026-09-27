@@ -1,4 +1,3 @@
-// @ts-ignore - ws is pinned as the server-side client; runtime API is intentionally narrow.
 import WebSocketClient from 'ws'
 
 const MAX_CLIENT_MESSAGE_BYTES = 16 * 1024
@@ -12,14 +11,15 @@ type UpstreamSocket = {
   bufferedAmount: number
   send(message: string): void
   close(code?: number, reason?: string): void
-  on(event: 'open', listener: () => void): void
+  on(
+    event: 'open' | 'unexpected-response' | 'error',
+    listener: () => void,
+  ): void
   on(
     event: 'message',
     listener: (data: { toString(): string }, isBinary: boolean) => void,
   ): void
   on(event: 'close', listener: (code: number) => void): void
-  on(event: 'unexpected-response', listener: () => void): void
-  on(event: 'error', listener: () => void): void
 }
 
 const WS_CONNECTING = 0

@@ -38,8 +38,9 @@ type Target struct {
 }
 
 type Capability struct {
-	Supported bool   `json:"supported"`
-	Reason    string `json:"reason,omitempty"`
+	Supported bool     `json:"supported"`
+	Reason    string   `json:"reason,omitempty"`
+	Modes     []string `json:"modes,omitempty"`
 }
 
 type CapabilityChecker interface {
@@ -85,4 +86,25 @@ type Command struct {
 	APIReturn            json.RawMessage `json:"api_return,omitempty"`
 	EffectiveArgs        json.RawMessage `json:"effective_args,omitempty"`
 	ObservedAfter        json.RawMessage `json:"observed_after,omitempty"`
+}
+
+type ResultInput struct {
+	Status        State
+	Code          string
+	Message       string
+	Verification  string
+	APIReturn     json.RawMessage
+	EffectiveArgs json.RawMessage
+	ObservedAfter json.RawMessage
+}
+
+type ControlState struct {
+	SessionID         string     `json:"session_id"`
+	TrainingAvailable bool       `json:"training_available"`
+	TrainingRegion    *int       `json:"training_region,omitempty"`
+	TrainingX         *float64   `json:"training_x,omitempty"`
+	TrainingY         *float64   `json:"training_y,omitempty"`
+	TrainingZ         *float64   `json:"training_z,omitempty"`
+	TrainingRadius    *float64   `json:"training_radius,omitempty"`
+	ObservedAt        *time.Time `json:"observed_at,omitempty"`
 }

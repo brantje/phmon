@@ -52,7 +52,7 @@ func run() error {
 		return errors.New("database migrations failed")
 	}
 
-	operatorAuth, err := authdomain.New(cfg.OperatorAccessSecret, cfg.OperatorSessionCookie, cfg.OperatorAllowedOrigins, cfg.OperatorAllowInsecureLoopback)
+	operatorAuth, err := authdomain.New(cfg.OperatorAccessSecret, cfg.OperatorSessionCookie, cfg.OperatorAllowedOrigins, cfg.OperatorAllowInsecureHTTP)
 	if err != nil {
 		return err
 	}
@@ -68,6 +68,14 @@ func run() error {
 	registry := agents.NewRegistry()
 	commandService := commands.NewService(commands.NewStore(pool), registry)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
+	live.SetCommands(commandService)
+	dispatchStore := commands.NewStore(pool)
+	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
+		return errors.New("cannot recover interrupted commands")
+	}
+	dispatcher := commands.NewDispatcher(dispatchStore, registry, live)
+	commandService.SetDispatcher(dispatcher)
+	go dispatcher.Run(ctx)
 	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
 		Database:   pool,
@@ -76,6 +84,7 @@ func run() error {
 		Registry:   registry,
 		Characters: characterStore,
 		Commands:   commandService,
+		Dispatcher: dispatcher,
 		Live:       live,
 	})
 

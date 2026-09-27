@@ -26,7 +26,10 @@ export default defineEventHandler(async (event) => {
   }
   const body = await readBody<{ secret?: unknown }>(event)
   if (!body || typeof body.secret !== 'string' || body.secret.length > 1024) {
-    throw createError({ statusCode: 400, statusMessage: 'Invalid login request' })
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid login request',
+    })
   }
   const { backendUrl } = useRuntimeConfig(event)
   try {
@@ -41,9 +44,7 @@ export default defineEventHandler(async (event) => {
     const setCookie = upstream.headers.get('set-cookie')
     if (setCookie) appendResponseHeader(event, 'set-cookie', setCookie)
     setResponseStatus(event, upstream.status)
-    return await upstream
-      .json()
-      .catch(() => ({ error: 'service_unavailable' }))
+    return await upstream.json().catch(() => ({ error: 'service_unavailable' }))
   } catch {
     throw createError({
       statusCode: 503,

@@ -10,6 +10,7 @@ export interface CharacterView {
   zone?: string
   online: boolean
   agent_id?: string
+  session_id?: string
   session_started_at?: string
   last_activity_at?: string
   state_updated_at?: string
@@ -35,12 +36,16 @@ export interface CharacterGroup {
   members: CharacterView[]
 }
 
-export type LiveStream = 'agents' | 'characters' | 'character' | 'groups'
+export type LiveStream =
+  'agents' | 'characters' | 'character' | 'groups' | 'commands' | 'controls'
 
 export interface LiveFilter {
   q?: string
   group_id?: string
   character_id?: string
+  command_name?: string
+  command_state?: string
+  limit?: number
 }
 
 export interface LiveClientFrame {
@@ -81,6 +86,53 @@ export interface CharacterSnapshot {
 
 export interface GroupsSnapshot {
   groups: CharacterGroup[]
+}
+
+export interface RemoteCommand {
+  command_id: string
+  character_id: string
+  session_id: string
+  name: string
+  args: Record<string, unknown>
+  state:
+    | 'queued'
+    | 'dispatching'
+    | 'sent'
+    | 'acknowledged'
+    | 'completed'
+    | 'failed'
+    | 'expired'
+    | 'unknown'
+  created_at: string
+  expires_at: string
+  message?: string
+  verification?: 'api_confirmed' | 'observed' | 'unverified'
+  api_return?: unknown
+  effective_args?: Record<string, unknown>
+  observed_after?: Record<string, unknown>
+}
+
+export interface CommandsSnapshot {
+  character_id: string
+  commands: RemoteCommand[]
+}
+export interface ControlsSnapshot {
+  character_id: string
+  session_id: string
+  capabilities: Record<
+    string,
+    { supported: boolean; reason?: string; modes?: string[] }
+  >
+  training?: {
+    session_id: string
+    training_available: boolean
+    training_region?: number
+    training_x?: number
+    training_y?: number
+    training_z?: number
+    training_radius?: number
+    observed_at?: string
+  }
 }
 
 export type LiveConnectionState =

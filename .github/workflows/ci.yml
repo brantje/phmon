@@ -49,6 +49,11 @@ jobs:
       - run: python3 scripts/smoke.py
       - name: Verify production browser live WebSocket path
         run: python3 scripts/live_smoke.py
+      - name: Verify authenticated remote command through production plugin worker
+        env:
+          OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
+          PHMON_AGENT_URL: ws://127.0.0.1:8081/agent
+        run: python3 scripts/command_smoke.py
       - name: Verify authenticated agent connect, reconnect and disconnect
         shell: bash
         run: |

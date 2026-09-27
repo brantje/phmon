@@ -19,7 +19,7 @@ const primaryNavigation = [
   { label: 'Alchemy', icon: 'i-lucide-flask-conical' },
   { label: 'Academy', icon: 'i-lucide-graduation-cap' },
   { label: 'Guild Storage', icon: 'i-lucide-warehouse' },
-  { label: 'phBot', icon: 'i-lucide-bot' },
+  { label: 'phBot', icon: 'i-lucide-bot', href: '/phbot/client' },
 ]
 
 const advancedNavigation = [

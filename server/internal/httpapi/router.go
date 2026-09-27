@@ -8,8 +8,8 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	authdomain "phmon/server/internal/auth"
-	"phmon/server/internal/commands"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/commands"
 )
 
 type AgentStore interface {
@@ -29,6 +29,7 @@ type Dependencies struct {
 	AgentOptions AgentOptions
 	Characters   *characters.Store
 	Commands     *commands.Service
+	Dispatcher   *commands.Dispatcher
 	Live         *LiveHub
 }
 
@@ -53,7 +54,7 @@ func New(deps Dependencies) http.Handler {
 		mux.HandleFunc("POST /api/auth/logout", authHandler.logout)
 	}
 	if deps.Commands != nil {
-		commandAPI := &commandHandler{service: deps.Commands}
+		commandAPI := &commandHandler{service: deps.Commands, live: deps.Live}
 		register("POST /api/commands", true, commandAPI.submit)
 	}
 	if deps.Agents != nil && deps.Registry != nil {
@@ -67,6 +68,7 @@ func New(deps Dependencies) http.Handler {
 			options:    deps.AgentOptions.withDefaults(),
 			characters: deps.Characters,
 			live:       live,
+			commands:   deps.Commands,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)

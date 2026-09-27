@@ -48,9 +48,10 @@ class Handshake:
 
 
 class WebSocketClient:
-    def __init__(self, url: str, origin: str):
+    def __init__(self, url: str, origin: str, cookie: str = ""):
         self.url = url
         self.origin = origin
+        self.cookie = cookie
         self.sock: socket.socket | ssl.SSLSocket | None = None
         self.buffer = b""
         self.pending: list[dict] = []
@@ -80,7 +81,8 @@ class WebSocketClient:
             f"Sec-WebSocket-Key: {key}\r\n"
             "Sec-WebSocket-Version: 13\r\n"
             f"Origin: {self.origin}\r\n"
-            "\r\n"
+            + (f"Cookie: {self.cookie}\r\n" if self.cookie else "")
+            + "\r\n"
         ).encode("ascii")
         raw.sendall(request)
         handshake = self._read_handshake()

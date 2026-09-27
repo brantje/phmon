@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/commands"
 )
 
 const (
@@ -44,29 +46,39 @@ type agentHandler struct {
 	options    AgentOptions
 	characters *characters.Store
 	live       *LiveHub
+	commands   *commands.Service
 }
 
 type agentCapability struct {
-	Name      string `json:"name"`
-	Supported bool   `json:"supported"`
-	Reason    string `json:"reason,omitempty"`
+	Name      string   `json:"name"`
+	Supported bool     `json:"supported"`
+	Reason    string   `json:"reason,omitempty"`
+	Modes     []string `json:"modes,omitempty"`
 }
 
 type agentMessage struct {
-	Type            string           `json:"type"`
-	ProtocolVersion int              `json:"protocol_version"`
-	AgentID         string           `json:"agent_id,omitempty"`
-	PluginVersion   string           `json:"plugin_version,omitempty"`
-	PhBotVersion    string           `json:"phbot_version,omitempty"`
-	SentAt          string           `json:"sent_at,omitempty"`
-	CharacterID     string           `json:"character_id,omitempty"`
-	Server          string           `json:"server,omitempty"`
-	Name            string           `json:"name,omitempty"`
-	Guild           *string          `json:"guild,omitempty"`
-	State           characters.State `json:"state,omitempty"`
-	SessionID       string           `json:"session_id,omitempty"`
-	SchemaVersion   int              `json:"schema_version,omitempty"`
+	Type            string            `json:"type"`
+	ProtocolVersion int               `json:"protocol_version"`
+	AgentID         string            `json:"agent_id,omitempty"`
+	PluginVersion   string            `json:"plugin_version,omitempty"`
+	PhBotVersion    string            `json:"phbot_version,omitempty"`
+	SentAt          string            `json:"sent_at,omitempty"`
+	CharacterID     string            `json:"character_id,omitempty"`
+	Server          string            `json:"server,omitempty"`
+	Name            string            `json:"name,omitempty"`
+	Guild           *string           `json:"guild,omitempty"`
+	State           characters.State  `json:"state,omitempty"`
+	SessionID       string            `json:"session_id,omitempty"`
+	SchemaVersion   int               `json:"schema_version,omitempty"`
 	Commands        []agentCapability `json:"commands,omitempty"`
+	CommandID       string            `json:"command_id,omitempty"`
+	Status          string            `json:"status,omitempty"`
+	Reason          string            `json:"reason,omitempty"`
+	Verification    string            `json:"verification,omitempty"`
+	APIReturn       json.RawMessage   `json:"api_return,omitempty"`
+	EffectiveArgs   json.RawMessage   `json:"effective_args,omitempty"`
+	ObservedAfter   json.RawMessage   `json:"observed_after,omitempty"`
+	ControlState    json.RawMessage   `json:"control_state,omitempty"`
 }
 
 type helloAck struct {
@@ -74,6 +86,7 @@ type helloAck struct {
 	ProtocolVersion          int    `json:"protocol_version"`
 	HeartbeatIntervalSeconds int    `json:"heartbeat_interval_seconds"`
 	HeartbeatTimeoutSeconds  int    `json:"heartbeat_timeout_seconds"`
+	ServerTime               string `json:"server_time"`
 }
 
 type AgentCredentialView struct {
@@ -128,27 +141,27 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	err = wsjson.Read(helloCtx, conn, &hello)
 	helloCancel()
 	if err != nil {
-		_ = conn.Close(websocket.StatusPolicyViolation, "hello required")
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "hello required", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 	if hello.Type != "hello" {
-		_ = conn.Close(websocket.StatusPolicyViolation, "hello required")
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "hello required", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 	if hello.ProtocolVersion < agentMinProtocolVersion || hello.ProtocolVersion > agentProtocolVersion {
-		_ = conn.Close(websocket.StatusUnsupportedData, "unsupported protocol version")
+		rejectAgentFrame(conn, websocket.StatusUnsupportedData, "unsupported protocol version", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 	if hello.AgentID != authenticatedID || !agentdomain.ValidAgentID(hello.AgentID) {
-		_ = conn.Close(websocket.StatusPolicyViolation, "agent identity mismatch")
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "agent identity mismatch", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 	if len(hello.PluginVersion) == 0 || len(hello.PluginVersion) > 64 || len(hello.PhBotVersion) == 0 || len(hello.PhBotVersion) > 64 {
-		_ = conn.Close(websocket.StatusPolicyViolation, "invalid version metadata")
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid version metadata", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 	if _, err := time.Parse(time.RFC3339, hello.SentAt); err != nil {
-		_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 
@@ -157,19 +170,25 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	err = h.store.MarkConnected(updateCtx, hello.AgentID, connectedAt, hello.ProtocolVersion, hello.PluginVersion, hello.PhBotVersion)
 	updateCancel()
 	if err != nil {
-		_ = conn.Close(websocket.StatusInternalError, "state unavailable")
+		rejectAgentFrame(conn, websocket.StatusInternalError, "state unavailable", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
 
 	sessionCtx, sessionCancel := context.WithCancel(r.Context())
 	generation, _ := h.registry.Register(hello.AgentID)
 	writer := newAgentWriter(sessionCtx, conn, sessionCancel)
-	if !h.registry.Configure(hello.AgentID, generation, hello.ProtocolVersion, writer.Send) {
+	if !h.registry.Configure(hello.AgentID, generation, hello.ProtocolVersion, hello.PluginVersion, writer.Send) {
 		sessionCancel()
 		return
 	}
 	h.live.Invalidate()
 	defer func() {
+		// Log only the transport close status. Plugin tokens and frame contents are
+		// intentionally excluded; this makes short post-handshake disconnects
+		// diagnosable without exposing credentials or character data.
+		if closeStatus := websocket.CloseStatus(r.Context().Err()); closeStatus != websocket.StatusNormalClosure {
+			slog.Warn("agent connection ended", "agent_id", hello.AgentID, "protocol", hello.ProtocolVersion, "close_status", closeStatus)
+		}
 		sessionCancel()
 		removed, stillConnected, disconnectFence := h.registry.UnregisterWithFence(hello.AgentID, generation)
 		if !removed {
@@ -202,6 +221,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		ProtocolVersion:          hello.ProtocolVersion,
 		HeartbeatIntervalSeconds: durationSeconds(h.options.HeartbeatInterval),
 		HeartbeatTimeoutSeconds:  durationSeconds(h.options.HeartbeatTimeout),
+		// Protocol v3 workers require the canonical whole-second RFC3339 UTC
+		// form so their clock offset parser can validate the Z suffix.
+		ServerTime: time.Now().UTC().Format(time.RFC3339),
 	}
 	writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
 	err = writer.Send(writeCtx, ack)
@@ -216,19 +238,20 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		err := wsjson.Read(readCtx, conn, &message)
 		readCancel()
 		if err != nil {
+			slog.Warn("agent websocket read failed", "agent_id", hello.AgentID, "protocol", hello.ProtocolVersion, "close_status", websocket.CloseStatus(err), "error", err.Error())
 			return
 		}
 		if !h.registry.IsCurrent(hello.AgentID, generation) {
 			return
 		}
 		if message.ProtocolVersion != hello.ProtocolVersion {
-			_ = conn.Close(websocket.StatusUnsupportedData, "unsupported protocol version")
+			rejectAgentFrame(conn, websocket.StatusUnsupportedData, "unsupported protocol version", hello.AgentID, hello.ProtocolVersion)
 			return
 		}
 		switch message.Type {
 		case "heartbeat":
 			if _, err := time.Parse(time.RFC3339, message.SentAt); err != nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
@@ -241,48 +264,118 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 		case "agent.capabilities":
 			if hello.ProtocolVersion < 3 || message.SchemaVersion != 1 || len(message.Commands) == 0 || len(message.Commands) > 32 {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid capability report")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability report", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			capabilities := make([]agentdomain.CommandCapability, 0, len(message.Commands))
 			seen := make(map[string]struct{}, len(message.Commands))
 			for _, capability := range message.Commands {
 				if !validReportedCommandName(capability.Name) || len(capability.Reason) > 64 {
-					_ = conn.Close(websocket.StatusPolicyViolation, "invalid capability report")
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability report", hello.AgentID, hello.ProtocolVersion)
 					return
 				}
+				for _, mode := range capability.Modes {
+					if capability.Name != "training.area.set" || (mode != "current_position" && mode != "position" && mode != "named") {
+						rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability mode", hello.AgentID, hello.ProtocolVersion)
+						return
+					}
+				}
 				if _, exists := seen[capability.Name]; exists {
-					_ = conn.Close(websocket.StatusPolicyViolation, "duplicate capability")
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "duplicate capability", hello.AgentID, hello.ProtocolVersion)
 					return
 				}
 				seen[capability.Name] = struct{}{}
 				capabilities = append(capabilities, agentdomain.CommandCapability{
 					Name: capability.Name, Supported: capability.Supported, Reason: capability.Reason,
+					Modes: capability.Modes,
 				})
 			}
 			if !h.registry.SetCapabilities(hello.AgentID, generation, capabilities) {
 				return
 			}
 			h.live.Invalidate()
+		case "command.ack":
+			if hello.ProtocolVersion < 3 || h.commands == nil || !validCommandFrame(message) {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid command acknowledgement", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			changed, e := h.commands.Acknowledge(ctx, message.CommandID, hello.AgentID, message.SessionID, generation, time.Now().UTC())
+			cancel()
+			if e != nil && !errors.Is(e, commands.ErrNotFound) {
+				rejectAgentFrame(conn, websocket.StatusInternalError, "command acknowledgement unavailable", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			if changed {
+				h.live.Invalidate()
+			}
+		case "command.result":
+			if hello.ProtocolVersion < 3 || h.commands == nil || !validCommandFrame(message) || !validCommandResultStatus(message.Status) || (message.Verification != "api_confirmed" && message.Verification != "observed" && message.Verification != "unverified") {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid command result", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			changed, e := h.commands.Result(ctx, message.CommandID, hello.AgentID, message.SessionID, generation, time.Now().UTC(), commands.ResultInput{Status: commands.State(message.Status), Code: message.Reason, Message: message.Reason, Verification: message.Verification, APIReturn: message.APIReturn, EffectiveArgs: message.EffectiveArgs, ObservedAfter: message.ObservedAfter})
+			cancel()
+			if e != nil && !errors.Is(e, commands.ErrNotFound) {
+				rejectAgentFrame(conn, websocket.StatusInternalError, "command result unavailable", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			if changed {
+				h.live.Invalidate()
+			}
+		case "character.control_state":
+			if hello.ProtocolVersion < 3 || h.commands == nil || !validCommandFrame(agentMessage{CommandID: "cmd_00000000-0000-4000-8000-000000000000", CharacterID: message.CharacterID, SessionID: message.SessionID}) || len(message.ControlState) == 0 || len(message.ControlState) > 2048 {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid control state", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			var control commands.ControlState
+			if err := json.Unmarshal(message.ControlState, &control); err != nil {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid control state", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			err := h.commands.SaveControlState(ctx, message.CharacterID, message.SessionID, hello.AgentID, generation, control)
+			cancel()
+			if errors.Is(err, commands.ErrStaleSession) {
+				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, message.CharacterID, message.SessionID) {
+					return
+				}
+				continue
+			}
+			if err != nil {
+				rejectAgentFrame(conn, websocket.StatusInternalError, "control state unavailable", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			h.live.Invalidate()
 		case "character.identify":
 			if h.characters == nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "character state unavailable")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			if !validMessageTime(message.SentAt) {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			id, e := h.characters.Resolve(ctx, characters.Identity{Server: message.Server, Name: message.Name, Guild: message.Guild})
 			var sessionID string
+			var previous commands.Target
+			if e == nil && h.commands != nil {
+				previous, _ = h.commands.ResolveTarget(ctx, id)
+			}
 			if e == nil {
 				sessionID, e = h.characters.ClaimSessionID(ctx, hello.AgentID, id, generation)
 			}
 			cancel()
 			if e != nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid character identity")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character identity", hello.AgentID, hello.ProtocolVersion)
 				return
+			}
+			if previous.SessionID != "" && (previous.AgentID != hello.AgentID || previous.Generation != generation) {
+				revokeCtx, revokeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				_ = h.registry.Send(revokeCtx, previous.AgentID, previous.Generation, map[string]any{"type": "command.revoke", "protocol_version": 3, "character_id": id, "session_id": previous.SessionID, "reason": "session_superseded"})
+				revokeCancel()
 			}
 			h.live.Invalidate()
 			reply := map[string]any{"type": "character.registered", "protocol_version": hello.ProtocolVersion, "character_id": id}
@@ -295,11 +388,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		case "character.snapshot", "character.state":
 			if !agentdomain.ValidAgentID(message.CharacterID) || !validWireState(message.State) || h.characters == nil ||
 				(hello.ProtocolVersion >= 3 && !agentdomain.ValidAgentID(message.SessionID)) {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid character state")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character state", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			if !validMessageTime(message.SentAt) {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
@@ -326,18 +419,18 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					}
 					continue
 				}
-				_ = conn.Close(websocket.StatusInternalError, "character state unavailable")
+				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			h.live.Invalidate()
 		case "character.left":
 			if !agentdomain.ValidAgentID(message.CharacterID) || h.characters == nil ||
 				(hello.ProtocolVersion >= 3 && !agentdomain.ValidAgentID(message.SessionID)) {
-				_ = conn.Close(websocket.StatusPolicyViolation, "character_id required")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "character_id required", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			if !validMessageTime(message.SentAt) {
-				_ = conn.Close(websocket.StatusPolicyViolation, "invalid timestamp")
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
@@ -355,15 +448,28 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					}
 					continue
 				}
-				_ = conn.Close(websocket.StatusInternalError, "character state unavailable")
+				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
 			h.live.Invalidate()
 		default:
-			_ = conn.Close(websocket.StatusPolicyViolation, "unexpected agent message")
+			rejectAgentFrame(conn, websocket.StatusPolicyViolation, "unexpected agent message", hello.AgentID, hello.ProtocolVersion)
 			return
 		}
 	}
+}
+
+func validCommandResultStatus(status string) bool {
+	return status == "completed" || status == "failed" || status == "unknown"
+}
+
+func validCommandFrame(message agentMessage) bool {
+	return len(message.CommandID) == 40 && strings.HasPrefix(message.CommandID, "cmd_") && agentdomain.ValidAgentID(message.CharacterID) && agentdomain.ValidAgentID(message.SessionID)
+}
+
+func rejectAgentFrame(conn *websocket.Conn, status websocket.StatusCode, reason, agentID string, protocol int) {
+	slog.Warn("agent frame rejected", "agent_id", agentID, "protocol", protocol, "close_status", status, "reason", reason)
+	_ = conn.Close(status, reason)
 }
 
 func writeCharacterRejected(ctx context.Context, writer *agentWriter, protocol int, characterID, sessionID string) bool {

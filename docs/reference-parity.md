@@ -169,7 +169,9 @@ real-runtime validation.
 
 ## Slice 3 — remote commands planning evidence
 
-Status: implementation in progress on `codex/slice-3-plan`.
+Status: Slice 3 Actions and Client surfaces are implemented on `codex/slice-3-plan`;
+automated command smoke and a live LAN browser check pass. Real mutation and full
+responsive screenshot gates remain open.
 
 The supplied 2560 × 1315 Stats/Actions and phBot Client captures establish a compact
 two-column Actions grid and a dedicated `phBot | Client` surface. Slice 3 preserves
@@ -189,3 +191,43 @@ character/session targeting, v3 per-runtime capabilities, same-region walking,
 finite numeric bounds, durable command lifecycle, honest bool/void verification,
 operator authentication, and no automatic command replay. These constraints are
 product safety boundaries rather than claims about undocumented phBot limits.
+
+### Slice 3 Actions and Client comparison (2026-09-27)
+
+Primary captures [`02-stats-05.png`](../phmonitor_screenshots/02-stats-05.png) and
+[`03-phbot-tools.png`](../phmonitor_screenshots/03-phbot-tools.png) were opened at
+their native 2560 × 1315 resolution. The Stats capture shows per-character compact
+tabs with Actions selected and a two-column action grid in this order: Start
+Training / Stop Training, Start Trace / Stop Trace, Set Training Area / Set Training
+Radius, Return Scroll / Walk, Disconnect / Execute Script. The current local detail
+surface now has a reusable compact two-column Actions grid, fixed target/server/
+session label, capability reasons, dialogs for trace/area/radius/walk and live command
+history. Group selection remains presentation only and never changes the target.
+Walk treats entered coordinates as a destination and follows the route from phBot's
+documented path finder, stepping same-region waypoints on callback ticks and checking
+arrival against live position. Teleport paths are not used.
+
+The supplied Client image shows a wide introductory panel, narrow local tool menu,
+Go Clientless action and inset result panel. It describes killing every
+`sro_client.exe`; the PhMon page instead selects one live character and disables the
+button when the runtime does not report a safe per-instance API. Party, Scripts and
+Quest are explicitly marked later work. No process kill, local broker or Windows
+command is used.
+
+The public [demo](https://phmonitor.com/demo) was opened on 2026-09-27. Its accessible
+page markup exposed the Client section and labels for Client/Party/Scripts/Quest but
+did not expose an interactive action dialog or trustworthy Set Training Area form
+semantics. No hidden paid content or private protocol was inspected. The local area
+form offers callback-time current position, explicit coordinates in the current
+region, and a manually entered named area only when the installed plugin reports the
+officially documented `set_training_area(name)` primitive. The name is not inferred
+from unavailable game data; the UI asks the operator for an exact phBot area name.
+
+The disposable Compose command smoke verifies accepted and completed states through
+the production worker with a fake adapter. Separately, the operator authorized one
+real `nuker1` check on phBot 20.1.1/plugin 1.1.0: setting its already-observed
+training radius to 20 completed as `observed`, and live `get_training_area()` readback
+remained 20 on the same session. This is narrow runtime evidence, not simulator
+evidence or validation of the other actions. Local screenshot comparison at the required
+1440 × 1000, 1280 × 800, 390 × 844 and reference-native 2560 × 1315 remains open.
+The saved evidence from Slice 2 is not presented as evidence for these new screens.

@@ -51,10 +51,10 @@ func TestRegistryKeepsCapabilitiesAndWritersPerSocket(t *testing.T) {
 	first, _ := registry.Register("agent")
 	second, _ := registry.Register("agent")
 	sent := make(chan string, 1)
-	if !registry.Configure("agent", first, 3, func(_ context.Context, value any) error {
+	if !registry.Configure("agent", first, 3, "1.1.2", func(_ context.Context, value any) error {
 		sent <- value.(string)
 		return nil
-	}) || !registry.Configure("agent", second, 2, nil) {
+	}) || !registry.Configure("agent", second, 2, "1.1.0", nil) {
 		t.Fatal("could not configure registered connections")
 	}
 	if !registry.SetCapabilities("agent", first, []CommandCapability{{Name: "bot.stop", Supported: true}}) {
@@ -71,6 +71,48 @@ func TestRegistryKeepsCapabilitiesAndWritersPerSocket(t *testing.T) {
 	}
 	if got := <-sent; got != "command" {
 		t.Fatalf("sent %q", got)
+	}
+}
+
+func TestRegistryGatesTrainingAreaModesPerSocket(t *testing.T) {
+	registry := NewRegistry()
+	generation, _ := registry.Register("agent")
+	if !registry.Configure("agent", generation, 3, "1.1.2", nil) {
+		t.Fatal("configure failed")
+	}
+	if !registry.SetCapabilities("agent", generation, []CommandCapability{{Name: "training.area.set", Supported: true, Modes: []string{"position"}}}) {
+		t.Fatal("capability update failed")
+	}
+	if supported, reason := registry.CommandModeSupport("agent", generation, "training.area.set", "position"); !supported || reason != "" {
+		t.Fatalf("position supported=%v reason=%q", supported, reason)
+	}
+	if supported, reason := registry.CommandModeSupport("agent", generation, "training.area.set", "current_position"); supported || reason != "unsupported_argument_mode" {
+		t.Fatalf("current position supported=%v reason=%q", supported, reason)
+	}
+}
+
+func TestWalkRequiresPathfindingPluginVersion(t *testing.T) {
+	for _, tc := range []struct {
+		version string
+		want    bool
+	}{{"1.1.0", false}, {"1.1.1", false}, {"1.1.2", true}, {"1.2.0", true}, {"1.1.2-beta", false}, {"unknown", false}} {
+		t.Run(tc.version, func(t *testing.T) {
+			registry := NewRegistry()
+			generation, _ := registry.Register("agent")
+			if !registry.Configure("agent", generation, 3, tc.version, nil) {
+				t.Fatal("configure failed")
+			}
+			if !registry.SetCapabilities("agent", generation, []CommandCapability{{Name: "character.walk", Supported: true}}) {
+				t.Fatal("capability update failed")
+			}
+			supported, reason := registry.CommandSupport("agent", generation, "character.walk")
+			if supported != tc.want {
+				t.Fatalf("Walk support for plugin %q = %v (%q), want %v", tc.version, supported, reason, tc.want)
+			}
+			if !tc.want && reason != "plugin_upgrade_required" {
+				t.Fatalf("Walk gate reason = %q, want plugin_upgrade_required", reason)
+			}
+		})
 	}
 }
 

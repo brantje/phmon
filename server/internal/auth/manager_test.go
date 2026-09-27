@@ -47,8 +47,15 @@ func TestManagerRejectsInvalidConfigurationAndSecret(t *testing.T) {
 	if _, err := New(testSecret, "bad cookie", []string{"https://example.test"}, false); err == nil {
 		t.Fatal("invalid cookie name accepted")
 	}
-	if _, err := New(testSecret, "phmon_operator", []string{"http://example.test"}, true); err == nil {
-		t.Fatal("non-loopback insecure origin accepted")
+	if _, err := New(testSecret, "phmon_operator", []string{"http://example.test"}, false); err == nil {
+		t.Fatal("plain HTTP origin accepted without explicit opt-in")
+	}
+	lan, err := New(testSecret, "phmon_operator", []string{"http://192.168.10.25:3005"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lan.OriginAllowed("http://192.168.10.25:3005") || lan.CookieSecureForOrigin("http://192.168.10.25:3005") {
+		t.Fatal("explicit LAN HTTP origin should be allowed with a non-Secure cookie")
 	}
 	manager, err := New(testSecret, "phmon_operator", []string{"https://example.test"}, false)
 	if err != nil {

@@ -6,6 +6,7 @@ import {
   setHeader,
 } from 'h3'
 import type { AgentCredential } from '../../../shared/types/agent'
+import { forwardProxyResponse } from '../../utils/proxy'
 
 export default defineEventHandler(async (event): Promise<AgentCredential> => {
   setHeader(event, 'Cache-Control', 'no-store')
@@ -28,13 +29,17 @@ export default defineEventHandler(async (event): Promise<AgentCredential> => {
   const { backendUrl } = useRuntimeConfig(event)
 
   try {
-    return await $fetch<AgentCredential>('/api/agents/credentials', {
-      baseURL: backendUrl,
-      headers: backendAuthHeaders(event),
-      method: 'POST',
-      timeout: 3000,
-      retry: 0,
-    })
+    const response = await $fetch.raw<AgentCredential>(
+      '/api/agents/credentials',
+      {
+        baseURL: backendUrl,
+        headers: backendAuthHeaders(event),
+        method: 'POST',
+        timeout: 3000,
+        retry: 0,
+      },
+    )
+    return forwardProxyResponse(event, response) as AgentCredential
   } catch {
     throw createError({
       statusCode: 503,

@@ -54,7 +54,7 @@ type Manager struct {
 	logins   map[string]loginBucket
 }
 
-func New(secret, cookieName string, allowedOrigins []string, allowInsecureLoopback bool) (*Manager, error) {
+func New(secret, cookieName string, allowedOrigins []string, allowInsecureHTTP bool) (*Manager, error) {
 	if len(secret) < 32 || len(secret) > 1024 || strings.TrimSpace(secret) != secret {
 		return nil, errors.New("OPERATOR_ACCESS_SECRET must be 32 to 1024 characters without surrounding whitespace")
 	}
@@ -66,12 +66,12 @@ func New(secret, cookieName string, allowedOrigins []string, allowInsecureLoopba
 	}
 	origins := make(map[string]bool, len(allowedOrigins))
 	for _, raw := range allowedOrigins {
-		origin, secure, loopback, err := canonicalOrigin(raw)
+		origin, secure, _, err := canonicalOrigin(raw)
 		if err != nil {
 			return nil, err
 		}
-		if !secure && (!allowInsecureLoopback || !loopback) {
-			return nil, errors.New("plain HTTP operator origins require OPERATOR_ALLOW_INSECURE_LOOPBACK=true and a loopback host")
+		if !secure && !allowInsecureHTTP {
+			return nil, errors.New("plain HTTP operator origins require OPERATOR_ALLOW_INSECURE_HTTP=true")
 		}
 		origins[origin] = secure
 	}

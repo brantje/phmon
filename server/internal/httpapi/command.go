@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ const commandRequestMaxBytes = 16 * 1024
 
 type commandHandler struct {
 	service *commands.Service
+	live    *LiveHub
 }
 
 type commandRequest struct {
@@ -52,6 +54,7 @@ func (h *commandHandler) submit(w http.ResponseWriter, r *http.Request) {
 		Confirmation:      request.Confirmation,
 	})
 	if err != nil {
+		slog.Error("command admission failed", "error", err.Error())
 		switch {
 		case errors.Is(err, commands.ErrInvalid):
 			respondCommandError(w, http.StatusBadRequest, "invalid_command", "command arguments are invalid")
@@ -81,6 +84,9 @@ func (h *commandHandler) submit(w http.ResponseWriter, r *http.Request) {
 		"state":      command.State,
 		"duplicate":  duplicate,
 	})
+	if h.live != nil {
+		h.live.Invalidate()
+	}
 }
 
 func respondCommandError(w http.ResponseWriter, status int, code, message string) {

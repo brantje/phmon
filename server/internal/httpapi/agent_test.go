@@ -18,6 +18,19 @@ import (
 
 const testAgentID = "11111111-2222-4333-8444-555555555555"
 
+func TestValidCommandResultStatus(t *testing.T) {
+	for _, status := range []string{"completed", "failed", "unknown"} {
+		if !validCommandResultStatus(status) {
+			t.Errorf("valid command result status %q was rejected", status)
+		}
+	}
+	for _, status := range []string{"queued", "dispatching", "sent", "acknowledged", "expired", "bogus"} {
+		if validCommandResultStatus(status) {
+			t.Errorf("non-result status %q was accepted", status)
+		}
+	}
+}
+
 type fakeAgentStore struct {
 	mu                sync.Mutex
 	token             string
@@ -192,6 +205,9 @@ func TestAgentHelloHeartbeatAndList(t *testing.T) {
 	}
 	if ack.Type != "hello.ack" || ack.ProtocolVersion != 2 {
 		t.Fatalf("unexpected ack: %+v", ack)
+	}
+	if len(ack.ServerTime) != len("2006-01-02T15:04:05Z") || ack.ServerTime[len(ack.ServerTime)-1] != 'Z' {
+		t.Fatalf("hello ack must use whole-second RFC3339 UTC: %q", ack.ServerTime)
 	}
 	if _, ok := registry.ConnectedAt(testAgentID); !ok {
 		t.Fatal("agent was not registered")

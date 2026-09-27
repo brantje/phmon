@@ -28,7 +28,10 @@ def main():
         'agent_id': required('PHMON_AGENT_ID'),
         'agent_token': required('PHMON_AGENT_TOKEN'),
     }
-    worker = PhMon.AgentWorker(config, 'simulator-fixture')
+    fake_calls = []
+    scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
+    api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or True}) if scenario == 'commands' else None
+    worker = PhMon.AgentWorker(config, 'simulator-fixture', api_adapter=api)
     stopping = [False]
 
     def stop(_signum=None, _frame=None):
@@ -83,6 +86,35 @@ def main():
             {"level": 75, "hp": 900, "region": 25000, "zone": "Fixture Jangan"},
         )
         print("PASS stable character session published")
+
+    if scenario == "commands":
+        deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+        while time.time() < deadline and "Connected" not in worker.status:
+            time.sleep(0.1)
+        if "Connected" not in worker.status:
+            worker.stop(); worker.join(2.0)
+            raise SystemExit("simulator could not establish backend connection")
+        identity = {"server": required("PHMON_SIMULATOR_SERVER"), "name": required("PHMON_SIMULATOR_CHARACTER"), "guild": ""}
+        worker.update_character(identity, {"level":75,"hp":900,"region":25000,"zone":"Fixture Jangan","x":10.0,"y":20.0,"z":0.0,"botting":None})
+        callback_deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_COMMAND_TIMEOUT", "60"))
+        try:
+            while time.time() < callback_deadline and not fake_calls and not stopping[0]:
+                if worker.character_id and worker.session_id:
+                    worker.process_one_command(identity, 25000)
+                time.sleep(0.5)
+            # The phBot callback only queues the result. Give the production
+            # network worker time to flush it before the fixture closes the socket.
+            flush_deadline = time.time() + 3.0
+            while fake_calls and not worker._outgoing.empty() and time.time() < flush_deadline:
+                time.sleep(0.05)
+            if fake_calls:
+                time.sleep(0.25)
+        finally:
+            stop(); worker.join(3.0)
+        if fake_calls != ['bot.stop']:
+            raise SystemExit("simulator did not invoke exactly one fake bot.stop adapter")
+        print("PASS production worker invoked bot.stop once through fake callback adapter")
+        return 0
 
     run_seconds = float(os.environ.get('PHMON_SIMULATOR_RUN_SECONDS', '0'))
     deadline = time.time() + run_seconds if run_seconds > 0 else None

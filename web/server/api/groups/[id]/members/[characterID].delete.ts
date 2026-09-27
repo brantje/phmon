@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   try {
     const response = await $fetch.raw(url, {
       baseURL: useRuntimeConfig(event).backendUrl,
-        headers: backendAuthHeaders(event),
+      headers: backendAuthHeaders(event),
       method: 'DELETE',
       timeout: 3000,
       retry: 0,

@@ -3,6 +3,8 @@ package agents
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,17 +15,48 @@ type CommandCapability struct {
 	Name      string
 	Supported bool
 	Reason    string
+	Modes     []string
+}
+
+func (r *Registry) CommandModeSupport(agentID string, generation uint64, name, mode string) (bool, string) {
+	supported, reason := r.CommandSupport(agentID, generation, name)
+	if !supported {
+		return false, reason
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID {
+		return false, "connection_unavailable"
+	}
+	capability, ok := current.capabilities[name]
+	if !ok {
+		return false, "capabilities_pending"
+	}
+	if len(capability.Modes) == 0 {
+		if name == "training.area.set" {
+			return false, "capability_modes_missing"
+		}
+		return true, ""
+	}
+	for _, allowed := range capability.Modes {
+		if allowed == mode {
+			return true, ""
+		}
+	}
+	return false, "unsupported_argument_mode"
 }
 
 type SendFunc func(context.Context, any) error
 
 type activeSession struct {
-	agentID      string
-	generation   uint64
-	connectedAt  time.Time
-	protocol     int
-	sender       SendFunc
-	capabilities map[string]CommandCapability
+	agentID       string
+	generation    uint64
+	connectedAt   time.Time
+	protocol      int
+	pluginVersion string
+	sender        SendFunc
+	capabilities  map[string]CommandCapability
 }
 
 type Registry struct {
@@ -42,6 +75,9 @@ func (r *Registry) Register(agentID string) (generation uint64, connectedAt time
 	defer r.mu.Unlock()
 	r.next++
 	connectedAt = time.Now().UTC()
+	if previous, ok := r.latest[agentID]; ok && !connectedAt.After(previous) {
+		connectedAt = previous.Add(time.Nanosecond)
+	}
 	r.sessions[r.next] = activeSession{
 		agentID:      agentID,
 		generation:   r.next,
@@ -52,7 +88,7 @@ func (r *Registry) Register(agentID string) (generation uint64, connectedAt time
 	return r.next, connectedAt
 }
 
-func (r *Registry) Configure(agentID string, generation uint64, protocol int, sender SendFunc) bool {
+func (r *Registry) Configure(agentID string, generation uint64, protocol int, pluginVersion string, sender SendFunc) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	current, ok := r.sessions[generation]
@@ -60,6 +96,7 @@ func (r *Registry) Configure(agentID string, generation uint64, protocol int, se
 		return false
 	}
 	current.protocol = protocol
+	current.pluginVersion = pluginVersion
 	current.sender = sender
 	r.sessions[generation] = current
 	return true
@@ -91,6 +128,9 @@ func (r *Registry) CommandSupport(agentID string, generation uint64, commandName
 	if current.protocol < 3 {
 		return false, "plugin_upgrade_required"
 	}
+	if commandName == "character.walk" && !pluginVersionAtLeast(current.pluginVersion, 1, 1, 2) {
+		return false, "plugin_upgrade_required"
+	}
 	capability, ok := current.capabilities[commandName]
 	if !ok {
 		return false, "capabilities_pending"
@@ -102,6 +142,33 @@ func (r *Registry) CommandSupport(agentID string, generation uint64, commandName
 		return false, capability.Reason
 	}
 	return true, ""
+}
+
+func pluginVersionAtLeast(version string, major, minor, patch int) bool {
+	version = strings.TrimSpace(version)
+	if version == "" || strings.Contains(version, "-") {
+		return false
+	}
+	version = strings.SplitN(version, "+", 2)[0]
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	got := [3]int{}
+	for i, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 0 {
+			return false
+		}
+		got[i] = value
+	}
+	want := [3]int{major, minor, patch}
+	for i := range got {
+		if got[i] != want[i] {
+			return got[i] > want[i]
+		}
+	}
+	return true
 }
 
 func (r *Registry) Send(ctx context.Context, agentID string, generation uint64, payload any) error {

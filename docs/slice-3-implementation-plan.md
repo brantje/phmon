@@ -1,8 +1,9 @@
 # Slice 3 — Remote commands: implementation plan for GPT-6 Luna
 
-Prepared 2026-09-27; final repository check at code head `9ce0828`, including the
-Nuxt pages/components refactor and supplied screenshots. Planning only; no Slice 3
-implementation or real-character actions were performed. “Stage 3” means
+Prepared 2026-09-27; baseline repository check was code head `9ce0828`, including the
+Nuxt pages/components refactor and supplied screenshots. Implementation is in
+progress on `codex/slice-3-plan`; this plan remains the sequential P0–P7 contract.
+No real-character actions have been performed. “Stage 3” means
 **Slice 3 — Remote commands** in `AGENTS.md`.
 
 ## 1. Execution scope
@@ -119,7 +120,7 @@ must not disable the existing monitoring plugin.
 | `trace.stop` | `{}` | `stop_trace()` returns bool. |
 | `training.area.set` | Discriminated modes below | `set_training_area(name)` selects a named area; `set_training_position(region,x,y,z)` changes the active area's location. These are distinct operations. |
 | `training.radius.set` | `{radius: number}` | `set_training_radius(radius)` returns bool; verify readback with `get_training_area()`. |
-| `character.walk` | `{region: integer,x: number,y: number,z: number}` | `move_to_region(region,x,y,z)` or a verified same-region `move_to(x,y,z)` adapter. Both document no return value; movement is asynchronous. |
+| `character.walk` | `{region: integer,x: number,y: number,z: number}` destination | Require `generate_path(x,y)`, step at most 256 returned waypoints via `move_to_region` from callback ticks, and use `get_position()` for waypoint/destination readback. Same-region only; no teleport; reject invalid/cross-region paths. |
 | `character.return` | `{}` | `use_return_scroll()` returns bool; consuming/starting the scroll does not prove teleport completion. |
 | `character.disconnect` | `{}` | `disconnect()` returns no value and leaves relog settings unchanged. Do not change auto-relog configuration. |
 | `client.clientless` | `{}` | No safe mutation was located in the checked public Client/Misc/API index or targeted documentation search. Investigate official versioned/runtime evidence; otherwise report unsupported with the precise blocker. |
@@ -181,7 +182,9 @@ Use one self-hosted operator identity in this slice; no accounts/RBAC framework.
   bounded in-memory store with an absolute expiry (proposed: 8 hours). Restart
   requires login again. Compare access secrets safely and rate-limit login attempts.
 - Use an HttpOnly, SameSite=Strict, path=/ cookie; Secure is mandatory under HTTPS.
-  Allow non-Secure cookies only in explicitly configured loopback development.
+  Reject plain HTTP origins by default. Permit them only with the explicit
+  `OPERATOR_ALLOW_INSECURE_HTTP` opt-in and an exact configured origin; this can
+  support trusted LAN deployments without TLS but sends session cookies unencrypted.
   Never put credentials in localStorage, URLs, live payloads or logs.
 - Protect command submission/history, credential creation, existing mutations and
   browser monitoring API access consistently. Keep `/agent` on its separate
@@ -559,7 +562,7 @@ do not describe connectivity as absent or simulator mutation tests as real runti
 | Delivery | Success; API false/exception/void; duplicate submit/ack/result; lost HTTP response; result before sent bookkeeping; queue full; writer failure; no automatic action retry. |
 | Time | Expired before send, expired in callback queue, transit delay/skew, duplicate TTL not refreshed, operation started before expiry but result later, uncertain result timeout. |
 | Recovery | Backend restart at each lifecycle phase; DB outage before intent/after send/during result; plugin reload/socket loss; no stale action replay; old-session result accepted only for its original audit. |
-| Truthfulness | Bool API success versus observed setting; walk does not claim arrival; disconnect does not promise relog disabled; return does not promise teleport finished; botting remains unknown without a getter. |
+| Truthfulness | Bool API success versus observed setting; walk reports observed arrival only from callback-time position readback after bounded same-region waypoints; disconnect does not promise relog disabled; return does not promise teleport finished; botting remains unknown without a getter. |
 | Live/UI | POST 202 is not success; cross-client updates; stale controls disabled; old dialog/filter revisions ignored; refresh/reconnect/history through WS only; auth expiry shown; keyboard/mobile forms. |
 | Resource limits | Bounded command/result queues and dedup cache; rate limits; history pagination/retention; oversized frames; slow browser and agent writers; shutdown leaves no leaked workers. |
 
@@ -580,7 +583,10 @@ do not describe connectivity as absent or simulator mutation tests as real runti
 - [ ] Required capabilities without a source/primitive remain explicit blockers;
   no invented `go_clientless()` or machine-wide process killing.
 - [ ] Real runtime results are recorded separately; absent mutation authorization/
-  runtime evidence keeps that gate open.
+  runtime evidence keeps that gate open. (Updated 2026-09-27: one authorized
+  `training.radius.set = 20` round trip/readback completed on nuker1, phBot
+  20.1.1/plugin 1.1.0; see `docs/phbot-capabilities.md`. Remaining command/runtime
+  catalog coverage is still open.)
 - [ ] Update `AGENTS.md`, `docs/protocol.md`, `docs/phbot-capabilities.md`,
   `docs/reference-parity.md`, `README.md`, `plugin/README.md` and configuration docs.
 
@@ -589,6 +595,21 @@ remain unresolved. Report implementation/simulator completion separately from
 blocked capability/runtime gates. At context boundaries write: active package,
 completed change, affected files, checks actually run, unresolved blockers and the
 exact next step. Preserve historical evidence and unrelated slice status.
+
+### 2026-09-27 LAN test update
+
+The operator-authorized same-value training-radius command on nuker1 reached durable
+acceptance, completed as `observed`, and its following live training-area readback
+remained radius 20. This confirms a narrow real-runtime command path and browser
+`/api/live` delivery only. Plain HTTP LAN form submission now generates
+cryptographically random idempotency keys with `crypto.getRandomValues()`; this fixes
+the secure-context restriction on `crypto.randomUUID()` without changing the HTTP LAN
+deployment settings. Remaining gates include current viewport screenshots/browser
+matrix, local PostgreSQL integration (no `TEST_DATABASE_URL` in this worktree), Go
+race test (CGO/compiler unavailable), local Compose/build validation (Docker absent),
+all other live command APIs, and safe per-session Clientless. A disposable Compose
+worker/fake-adapter smoke is separately recorded as passing. Do not claim Slice 3
+complete or proceed to Slice 4.
 
 ## 9. Ready-to-use implementation prompt for GPT-6 Luna
 

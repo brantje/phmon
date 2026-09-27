@@ -8,7 +8,7 @@ export default defineEventHandler(
     try {
       return await $fetch<Record<string, unknown>>('/api/characters', {
         baseURL: backendUrl,
-      headers: backendAuthHeaders(event),
+        headers: backendAuthHeaders(event),
         query: getQuery(event),
         timeout: 3000,
         retry: 0,

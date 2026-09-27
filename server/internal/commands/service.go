@@ -20,12 +20,12 @@ const (
 )
 
 type SubmitInput struct {
-	CharacterID      string
+	CharacterID       string
 	ExpectedSessionID string
-	Name             string
-	Args             json.RawMessage
-	IdempotencyKey   string
-	Confirmation     bool
+	Name              string
+	Args              json.RawMessage
+	IdempotencyKey    string
+	Confirmation      bool
 }
 
 type rateBucket struct {
@@ -36,11 +36,73 @@ type rateBucket struct {
 type Service struct {
 	store        *Store
 	capabilities CapabilityChecker
+	dispatcher   *Dispatcher
 	now          func() time.Time
 
-	mu            sync.Mutex
-	operatorRates map[string]rateBucket
+	mu             sync.Mutex
+	operatorRates  map[string]rateBucket
 	characterRates map[string]rateBucket
+}
+
+func (s *Service) SetDispatcher(dispatcher *Dispatcher) { s.dispatcher = dispatcher }
+func (s *Service) DispatchNow() {
+	if s.dispatcher != nil {
+		s.dispatcher.Notify()
+	}
+}
+func (s *Service) Acknowledge(ctx context.Context, id, agentID, sessionID string, generation uint64, at time.Time) (bool, error) {
+	return s.store.Acknowledge(ctx, id, agentID, sessionID, generation, at)
+}
+func (s *Service) Result(ctx context.Context, id, agentID, sessionID string, generation uint64, at time.Time, result ResultInput) (bool, error) {
+	return s.store.RecordResult(ctx, id, agentID, sessionID, generation, at, result)
+}
+func (s *Service) History(ctx context.Context, characterID string, limit int) ([]Command, error) {
+	return s.store.ListHistory(ctx, characterID, limit)
+}
+func (s *Service) ResolveTarget(ctx context.Context, characterID string) (Target, error) {
+	return s.store.ResolveTarget(ctx, characterID)
+}
+func (s *Service) SaveControlState(ctx context.Context, characterID, sessionID, agentID string, generation uint64, state ControlState) error {
+	target, err := s.store.ResolveTarget(ctx, characterID)
+	if err != nil {
+		return err
+	}
+	if target.SessionID != sessionID || target.AgentID != agentID || target.Generation != generation {
+		return ErrStaleSession
+	}
+	return s.store.SaveControlState(ctx, characterID, sessionID, state)
+}
+func (s *Service) Controls(ctx context.Context, characterID string) (map[string]any, error) {
+	target, err := s.store.ResolveTarget(ctx, characterID)
+	if err != nil {
+		return nil, err
+	}
+	state, err := s.store.CurrentControlState(ctx, characterID)
+	if err != nil {
+		return nil, err
+	}
+	capabilities := make(map[string]Capability)
+	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.return", "character.disconnect", "client.clientless"} {
+		ok, reason := false, "plugin_upgrade_required"
+		if s.capabilities != nil {
+			ok, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, name)
+		}
+		capability := Capability{Supported: ok, Reason: reason}
+		if name == "training.area.set" && ok {
+			if checker, exists := s.capabilities.(interface {
+				CommandModeSupport(string, uint64, string, string) (bool, string)
+			}); exists {
+				for _, mode := range []string{"current_position", "position", "named"} {
+					if supported, _ := checker.CommandModeSupport(target.AgentID, target.Generation, name, mode); supported {
+						capability.Modes = append(capability.Modes, mode)
+					}
+				}
+				capability.Supported = len(capability.Modes) > 0
+			}
+		}
+		capabilities[name] = capability
+	}
+	return map[string]any{"character_id": target.CharacterID, "session_id": target.SessionID, "capabilities": capabilities, "training": state}, nil
 }
 
 func NewService(store *Store, capabilities CapabilityChecker) *Service {
@@ -100,6 +162,15 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 			return Command{}, false, "", ErrInvalid
 		}
 	}
+	if validated.Name == "training.area.set" {
+		var args trainingAreaArgs
+		if err := json.Unmarshal(validated.Args, &args); err != nil {
+			return Command{}, false, "", ErrInvalid
+		}
+		if args.Mode == "position" && (target.Region == nil || args.Region == nil || *args.Region != *target.Region) {
+			return Command{}, false, "", ErrInvalid
+		}
+	}
 
 	supported, reason := false, "plugin_upgrade_required"
 	if s.capabilities != nil {
@@ -111,6 +182,19 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 		}
 		return Command{}, false, reason, ErrUnsupported
 	}
+	if mode, ok := commandMode(validated); ok {
+		if modeChecker, ok := s.capabilities.(interface {
+			CommandModeSupport(string, uint64, string, string) (bool, string)
+		}); ok {
+			supported, reason = modeChecker.CommandModeSupport(target.AgentID, target.Generation, validated.Name, mode)
+			if !supported {
+				if reason == "" {
+					reason = "unsupported_argument_mode"
+				}
+				return Command{}, false, reason, ErrUnsupported
+			}
+		}
+	}
 
 	admission := Admission{
 		OperatorIdentity:  operatorIdentity,
@@ -121,7 +205,23 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 		ExpiresAt:         now.Add(commandTTL),
 	}
 	command, duplicate, err := s.store.Admit(ctx, target, admission)
+	if err == nil && !duplicate {
+		s.DispatchNow()
+	}
 	return command, duplicate, "", err
+}
+
+func commandMode(validated Validated) (string, bool) {
+	if validated.Name != "training.area.set" {
+		return "", false
+	}
+	var args struct {
+		Mode string `json:"mode"`
+	}
+	if json.Unmarshal(validated.Args, &args) != nil {
+		return "", false
+	}
+	return args.Mode, args.Mode != ""
 }
 
 func hashRequest(characterID, sessionID, idempotencyKey string, validated Validated) [32]byte {
