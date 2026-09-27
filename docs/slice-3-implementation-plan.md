@@ -629,8 +629,11 @@ responsive assertions passed. The database-outage probe found a PostgreSQL type
 error in command reconciliation (`text * interval`); reconciliation now builds a
 typed interval and its integration test checks both the expired state and durable
 audit row. Local Go tests and vet pass; the host lacks Docker/PostgreSQL, so this
-integration fix awaits the next GitHub CI run. Exact next action is to push and rerun
-CI, then inspect review findings for that head.
+integration fix awaits the next GitHub CI run. CI also exposed missing operator
+cookies in the dedicated database-outage WebSocket and API fixtures; both now use
+the shared login helper. Python compilation and 32 plugin tests pass. Exact next
+action is to push these recovery-smoke fixes, rerun CI, then inspect review findings
+for that head.
 
 Remaining gates: real Walk route traversal on plugin 1.1.2 (not installed and no
 Walk action issued), safe per-session Clientless primitive, broad real-runtime API

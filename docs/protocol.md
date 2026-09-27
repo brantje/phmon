@@ -550,4 +550,6 @@ The `fd30d8c` PostgreSQL/race job passed, but its database-outage smoke exposed 
 reconciliation query type error (`text * interval`). The query now constructs the
 timeout interval with a typed `make_interval` argument; the integration test asserts
 expired state and its audit event. CI must rerun this fix before the outage/recovery
-path can be reported as passing.
+path can be reported as passing. CI then showed the outage/recovery smoke fixtures
+were not carrying an operator session cookie through `/api/live` or protected API
+calls; they now use the shared login helper and await another run.
