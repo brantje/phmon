@@ -363,6 +363,38 @@ progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API a
 same-viewport visual gates remain open; basic connectivity must not be described as
 blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
 
+**Live-data WebSocket transport enforcement (2026-09-27): complete.** The
+mandatory Live-data transport contract was recorded above before implementation. Go
+`/api/live`, the same-origin Nitro WebSocket relay, versioned subscriptions/revisions,
+the shared typed browser connection, stale/reconnect behavior, bounded backpressure and
+database recovery synchronization are implemented without changing the plugin protocol
+or database schema. Existing HTTP read endpoints remain diagnostic compatibility only;
+HTTP mutations do not refresh live state.
+
+Validation completed on code head `9c729c57679b5c38621044cff68308ef50f5e577`
+(GitHub Actions run `36278699555`): both `validate` and `stack` passed. Evidence
+includes PostgreSQL-backed Go race/integration tests, plugin tests, the source transport
+audit, frontend format/lint/typecheck/production build, production and Nuxt-development
+`/api/live` smoke coverage, filtered/detail/revision/cross-client group scenarios,
+simulator character switching and multiple-socket lifecycle coverage, malformed-frame/
+slow-consumer/cross-origin tests, backend restart/reconnect, PostgreSQL outage/recovery
+on the same browser-facing WebSocket, and a browser network audit showing zero HTTP/SSE
+live-data reads through startup, filtering, manual refresh, mutations and recovery.
+Responsive checks at 390×844 and 1440×1000 also passed. Future map positions/live
+layers remain outside this change and are bound by the same WebSocket-only contract.
+
+**Previous turn (2026-09-26): Slice 2 Dashboard/header verification.** Scope is the
+user-requested visual follow-up; no agent protocol, schema or phBot behavior changed.
+The Dashboard and Stats routes are now distinct, the top strip displays observed
+character counts/vitals/gold, the dashboard follows the reference's asymmetric card
+layout, and unimplemented dashboard/sidebar areas are labeled `LATER`. The sidebar
+shows an instance QR and copy-link control. Local Nuxt typecheck/build passed, lint
+passed with three existing input warnings, and formatting passed for changed files.
+The local browser at 1264 × 710 verified Dashboard/Stats navigation; its backend was
+unavailable, and the 1440 × 1000 populated-data comparison remains open. The LAN
+browser's older build could not be rebuilt because Docker is unavailable here. See
+`docs/reference-parity.md`. Do not start Slice 3.
+
 **Current turn (2026-09-27):** the operator explicitly requested that the generated
 Nuxt assets under `web/public/game-assets/` be tracked in Git. Removed that directory
 from `.gitignore`; the prepared public tree contains 10,172 files (10,171 asset URLs

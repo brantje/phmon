@@ -13,7 +13,10 @@ import (
 	"phmon/server/internal/characters"
 )
 
-type characterHandler struct{ store *characters.Store }
+type characterHandler struct {
+	store *characters.Store
+	live  *LiveHub
+}
 
 func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
 	groupID := r.URL.Query().Get("group_id")
@@ -94,6 +97,7 @@ func (h *characterHandler) createGroup(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 400, map[string]string{"error": "invalid group"})
 		return
 	}
+	h.live.Invalidate()
 	respondJSON(w, 201, g)
 }
 func (h *characterHandler) renameGroup(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +121,7 @@ func (h *characterHandler) renameGroup(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 400, map[string]string{"error": "invalid group"})
 		return
 	}
+	h.live.Invalidate()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *characterHandler) deleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +140,7 @@ func (h *characterHandler) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
+	h.live.Invalidate()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *characterHandler) member(w http.ResponseWriter, r *http.Request, add bool) {
@@ -153,6 +159,7 @@ func (h *characterHandler) member(w http.ResponseWriter, r *http.Request, add bo
 		respondJSON(w, code, map[string]string{"error": "membership update failed"})
 		return
 	}
+	h.live.Invalidate()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *characterHandler) addMember(w http.ResponseWriter, r *http.Request) { h.member(w, r, true) }

@@ -59,12 +59,14 @@ func run() error {
 	}
 	reconcileCancel()
 	registry := agents.NewRegistry()
-	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, 3*time.Second)
+	live := httpapi.NewLiveHub(store, registry, characterStore)
+	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
 		Database:   pool,
 		Agents:     store,
 		Registry:   registry,
 		Characters: characterStore,
+		Live:       live,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.
