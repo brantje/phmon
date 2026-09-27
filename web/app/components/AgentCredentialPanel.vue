@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import type { AgentCredential } from '~~/shared/types/agent'
 const credentialPanelOpen = defineModel<boolean>('open', { required: true })
-const credentialCreating = ref(false)
+const credentialCreating = defineModel<boolean>('creating', { required: true })
 const createdCredential = ref<AgentCredential | null>(null)
 const credentialError = ref('')
 const credentialCopied = ref<'agent_id' | 'agent_token' | null>(null)
 const credentialCopyFallback = ref<'agent_id' | 'agent_token' | null>(null)
 function dismissCredential() {
+  if (credentialCreating.value) {
+    credentialPanelOpen.value = true
+    return
+  }
   credentialPanelOpen.value = false
   createdCredential.value = null
   credentialError.value = ''
@@ -15,6 +19,7 @@ function dismissCredential() {
 }
 
 async function createAgentCredential() {
+  if (credentialCreating.value) return
   credentialCreating.value = true
   credentialError.value = ''
   createdCredential.value = null
@@ -56,6 +61,9 @@ async function copyCredential(field: 'agent_id' | 'agent_token') {
 watch(credentialPanelOpen, (open) => {
   if (!open) dismissCredential()
 })
+
+// The response is the only recoverable copy of a newly issued token.
+onBeforeRouteLeave(() => !credentialCreating.value)
 </script>
 
 <template>
@@ -134,6 +142,10 @@ watch(credentialPanelOpen, (open) => {
     </template>
 
     <template v-else>
+      <p v-if="credentialCreating" class="credential-message" role="status">
+        Creating your credential. This panel stays open until the request
+        finishes.
+      </p>
       <p class="credential-risk">
         PhMon user authentication is not implemented yet. Until it is, anyone
         who can access this web UI can create an agent credential. Keep this

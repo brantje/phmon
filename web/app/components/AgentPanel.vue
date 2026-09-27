@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const credentialPanelOpen = ref(false)
+const credentialCreating = ref(false)
 const {
   agents: lastAgents,
   connectionState: liveConnectionState,
@@ -20,11 +21,14 @@ onUnmounted(() => {
 const agentsUnavailable = computed(
   () => liveStale.value || liveConnectionState.value === 'stale',
 )
-const agentsStatus = computed(() =>
-  liveConnectionState.value !== 'current' && lastAgents.value.length === 0
+const agentsStatus = computed(() => {
+  if (agentsUnavailable.value || liveConnectionState.value === 'reconnecting')
+    return 'unavailable'
+  return liveConnectionState.value !== 'current' &&
+    lastAgents.value.length === 0
     ? 'pending'
-    : 'success',
-)
+    : 'success'
+})
 function formatConnectionAge(value?: string) {
   if (!value || now.value === null) return 'Connected'
   const elapsed = Math.max(
@@ -54,6 +58,7 @@ function formatConnectionAge(value?: string) {
         <button
           class="compact-button"
           type="button"
+          :disabled="credentialCreating"
           @click="credentialPanelOpen = !credentialPanelOpen"
         >
           <UIcon name="i-lucide-key-round" />
@@ -85,7 +90,10 @@ function formatConnectionAge(value?: string) {
       </div>
     </div>
 
-    <AgentCredentialPanel v-model:open="credentialPanelOpen" />
+    <AgentCredentialPanel
+      v-model:open="credentialPanelOpen"
+      v-model:creating="credentialCreating"
+    />
 
     <div
       v-if="agentsStatus === 'pending' && lastAgents.length === 0"
@@ -93,6 +101,17 @@ function formatConnectionAge(value?: string) {
     >
       <UIcon name="i-lucide-loader-circle" class="spinning" />
       <strong>Loading agents…</strong>
+    </div>
+
+    <div
+      v-else-if="agentsStatus === 'unavailable' && lastAgents.length === 0"
+      class="empty-state"
+    >
+      <UIcon name="i-lucide-cloud-off" />
+      <strong>Agent data unavailable</strong>
+      <p>
+        PhMon will retry automatically. Use Refresh to request the latest state.
+      </p>
     </div>
 
     <div v-else-if="lastAgents.length === 0" class="empty-state">

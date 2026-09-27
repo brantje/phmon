@@ -372,6 +372,18 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**PR #7 CodeRabbit follow-up (2026-09-27):** verified and fixed three functional
+findings. Credential creation disables dismissal and client route navigation until
+the one-time response settles; dismissal then clears the token. Empty stale or
+reconnecting agent lists display an unavailable state with an enabled refresh
+button. Group creation trims names and ignores blank input (the backend already
+rejects blank names). Typecheck, production build, formatting and transport audit
+passed; lint retains its three existing input warnings. Isolated browser fixtures
+verified pending/success/failure credential states, navigation blocking, dismissal,
+stale empty agents with retry, and blank/trimmed group request behavior. No real
+credentials or bot actions were used. Next action: push fixes, reply/resolve the
+three review threads, request another review, and wait for CI and CodeRabbit.
+
 **Nuxt structure refactor (2026-09-27):** completed on
 `codex/nuxt-pages-components` within the operator's explicit refactor-only scope.
 `web/app/app.vue` is now the provider/layout/page outlet. The persistent shell lives

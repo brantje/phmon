@@ -66,11 +66,13 @@ const visibleCharacters = computed(() =>
   }),
 )
 async function createCharacterGroup() {
+  const name = groupName.value.trim()
+  if (!name) return
   groupActionError.value = ''
   try {
     await $fetch('/api/groups', {
       method: 'POST',
-      body: { name: groupName.value },
+      body: { name },
     })
     groupName.value = ''
   } catch {
