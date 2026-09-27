@@ -122,17 +122,18 @@ const detailLoading = computed(
         <div class="panel-header compact">
           <div>
             <h2>Character tools</h2>
-            <p>These panels will use this stable character ID.</p>
+            <p>This panel is scoped to the current live session.</p>
           </div>
         </div>
         <div class="detail-links">
           <span>Inventory / equipment · Slice 4</span
           ><span>Pets and party · Slice 4</span
           ><span>Map position · Slice 7</span
-          ><span>Verified actions · Slice 3</span>
+          ><span>Actions / command history · below</span>
         </div>
       </article>
     </div>
+    <RemoteCommandActions v-if="detailCharacter" :character="detailCharacter" />
     <div v-else class="panel empty-state">
       <strong>{{
         detailLoading

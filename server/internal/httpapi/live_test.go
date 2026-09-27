@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	agentdomain "phmon/server/internal/agents"
+	authdomain "phmon/server/internal/auth"
 )
 
 type liveEnvelope struct {
@@ -86,6 +87,61 @@ func TestLiveAgentSubscriptionInitialAndReplacementSnapshots(t *testing.T) {
 	}
 	if len(secondData.Agents) != 1 || secondData.Agents[0].ActiveConnections != 2 {
 		t.Fatalf("live replacement did not observe registry change: %+v", secondData)
+	}
+}
+
+func TestLiveProxyOriginAcceptedOnlyAfterOperatorOriginValidation(t *testing.T) {
+	store := newFakeAgentStore()
+	now := time.Now().UTC()
+	store.record = agentdomain.Record{AgentID: testAgentID, FirstSeenAt: &now, LastSeenAt: &now}
+	registry := agentdomain.NewRegistry()
+	live := NewLiveHub(store, registry, nil)
+	manager, err := authdomain.New("0123456789abcdef0123456789abcdef", "phmon_operator", []string{"http://dashboard.example.test:3005"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Auth:     manager,
+		Agents:   store,
+		Registry: registry,
+		Live:     live,
+	}))
+	defer server.Close()
+	token, _, err := manager.CreateSession("0123456789abcdef0123456789abcdef", "127.0.0.1:1234", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dial := func(origin string) (*websocket.Conn, *http.Response, error) {
+		headers := http.Header{
+			"Origin": {origin},
+			"Cookie": {"phmon_operator=" + token},
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		return websocket.Dial(ctx, liveWSURL(server.URL), &websocket.DialOptions{HTTPHeader: headers})
+	}
+	conn, response, err := dial("http://dashboard.example.test:3005")
+	if err != nil {
+		if response != nil {
+			t.Fatalf("authorized proxied origin rejected: HTTP %d: %v", response.StatusCode, err)
+		}
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	writeLive(t, conn, liveClientMessage{Type: "subscribe", ProtocolVersion: liveProtocolVersion, SubscriptionID: "agents", Revision: 1, Stream: "agents"})
+	first := readLiveType(t, conn, "snapshot")
+	var data struct {
+		Agents []AgentView `json:"agents"`
+	}
+	if err := json.Unmarshal(first.Data, &data); err != nil || len(data.Agents) != 1 {
+		t.Fatalf("authorized proxy received invalid agent snapshot: count=%d err=%v", len(data.Agents), err)
+	}
+
+	_, response, err = dial("http://evil.example.test")
+	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
+		t.Fatalf("unauthorized origin response=%v err=%v", response, err)
 	}
 }
 
@@ -435,6 +491,15 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 		"detail": {
 			message: liveClientMessage{SubscriptionID: "detail", Revision: 1, Stream: "character", Filter: liveFilter{CharacterID: validCharacterID}},
 			valid:   true,
+		},
+		"command history": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 1, Stream: "commands", Filter: liveFilter{CharacterID: validCharacterID, CommandName: "bot.stop", CommandState: "completed", Limit: 25}}, valid: true,
+		},
+		"character controls": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 1, Stream: "controls", Filter: liveFilter{CharacterID: validCharacterID}}, valid: true,
+		},
+		"invalid command limit": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 1, Stream: "commands", Filter: liveFilter{CharacterID: validCharacterID, Limit: 101}}, valid: false,
 		},
 		"groups": {
 			message: liveClientMessage{SubscriptionID: "groups", Revision: 1, Stream: "groups"},

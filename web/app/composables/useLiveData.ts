@@ -6,6 +6,9 @@ import {
   type CharacterSnapshot,
   type CharactersSnapshot,
   type CharacterView,
+  type CommandsSnapshot,
+  type ControlsSnapshot,
+  type RemoteCommand,
   type GroupsSnapshot,
   type LiveClientFrame,
   type LiveConnectionState,
@@ -28,6 +31,8 @@ const characters = ref<CharacterView[]>([])
 const fleetCharacters = ref<CharacterView[]>([])
 const groups = ref<CharacterGroup[]>([])
 const characterDetail = ref<CharacterView | null>(null)
+const commandHistory = ref<RemoteCommand[]>([])
+const characterControls = ref<ControlsSnapshot | null>(null)
 const connectionState = ref<LiveConnectionState>('idle')
 const hasSnapshot = ref(false)
 const staleCycle = ref(false)
@@ -53,7 +58,10 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
   return (
     (left.q || '') === (right.q || '') &&
     (left.group_id || '') === (right.group_id || '') &&
-    (left.character_id || '') === (right.character_id || '')
+    (left.character_id || '') === (right.character_id || '') &&
+    (left.command_name || '') === (right.command_name || '') &&
+    (left.command_state || '') === (right.command_state || '') &&
+    (left.limit || 0) === (right.limit || 0)
   )
 }
 
@@ -184,6 +192,48 @@ function setCharacterDetail(characterID: string) {
       characterDetail.value = null
     },
   )
+}
+
+function setCharacterCommands(
+  characterID: string,
+  commandName = '',
+  commandState = '',
+) {
+  if (!characterID) return
+  ensureSubscription(
+    'character-commands',
+    'commands',
+    {
+      character_id: characterID,
+      command_name: commandName || undefined,
+      command_state: commandState || undefined,
+      limit: 25,
+    },
+    () => {
+      commandHistory.value = []
+    },
+  )
+}
+
+function setCharacterControls(characterID: string) {
+  if (!characterID) return
+  ensureSubscription(
+    'character-controls',
+    'controls',
+    { character_id: characterID },
+    () => {
+      characterControls.value = null
+    },
+  )
+}
+
+function clearCharacterCommandSubscriptions() {
+  removeSubscription('character-commands', () => {
+    commandHistory.value = []
+  })
+  removeSubscription('character-controls', () => {
+    characterControls.value = null
+  })
 }
 
 function refreshLiveData(ids?: string[]) {
@@ -361,6 +411,24 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       characterDetail.value = snapshot.character
       return true
     }
+    case 'character-commands': {
+      const snapshot = data as CommandsSnapshot
+      if (!Array.isArray(snapshot.commands)) return false
+      commandHistory.value = snapshot.commands
+      return true
+    }
+    case 'character-controls': {
+      const snapshot = data as ControlsSnapshot
+      if (
+        typeof snapshot.character_id !== 'string' ||
+        typeof snapshot.session_id !== 'string' ||
+        !snapshot.capabilities ||
+        typeof snapshot.capabilities !== 'object'
+      )
+        return false
+      characterControls.value = snapshot
+      return true
+    }
     default:
       return false
   }
@@ -455,12 +523,17 @@ export function useLiveData() {
     fleetCharacters: readonly(fleetCharacters),
     groups: readonly(groups),
     characterDetail: readonly(characterDetail),
+    commandHistory: readonly(commandHistory),
+    characterControls: readonly(characterControls),
     connectionState: readonly(connectionState),
     liveStale,
     liveLoading,
     setCharacterListFilter,
     clearCharacterListFilter,
     setCharacterDetail,
+    setCharacterCommands,
+    setCharacterControls,
+    clearCharacterCommandSubscriptions,
     refreshLiveData,
   }
 }

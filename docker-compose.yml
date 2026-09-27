@@ -20,6 +20,10 @@ services:
     environment:
       HTTP_ADDR: 0.0.0.0:8081
       DATABASE_URL: postgres://${POSTGRES_USER:-phmon}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-phmon}?sslmode=disable
+      OPERATOR_ACCESS_SECRET: ${OPERATOR_ACCESS_SECRET:?Set OPERATOR_ACCESS_SECRET}
+      OPERATOR_SESSION_COOKIE: ${OPERATOR_SESSION_COOKIE:-phmon_operator}
+      OPERATOR_ALLOWED_ORIGINS: ${OPERATOR_ALLOWED_ORIGINS:?Set OPERATOR_ALLOWED_ORIGINS}
+      OPERATOR_ALLOW_INSECURE_HTTP: ${OPERATOR_ALLOW_INSECURE_HTTP:-false}
     ports:
       - "${SERVER_BIND_ADDR:-127.0.0.1}:${SERVER_PORT:-8081}:8081"
     depends_on:
@@ -35,6 +39,7 @@ services:
     environment:
       NUXT_BACKEND_URL: http://server:8081
       NUXT_PUBLIC_INSTANCE_URL: ${NUXT_PUBLIC_INSTANCE_URL:-}
+      NUXT_OPERATOR_COOKIE_NAME: ${NUXT_OPERATOR_COOKIE_NAME:-phmon_operator}
     ports:
       - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PORT:-3005}:3000"
     depends_on:

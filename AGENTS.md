@@ -372,6 +372,167 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**Slice 3 acceptance follow-up (2026-09-27, active):** PR #9 base sync commit
+`481df89` is mergeable and both duplicate CI runs passed: PostgreSQL integration and
+Go race coverage, production-worker command smoke with fake adapters, authenticated
+reconnect, outage/recovery and responsive `/api/live` browser checks. CodeRabbit's
+review on the preceding `14e23f8a` head posted ten actionable findings; each was
+independently verified and fixed in the current worktree, including the example secret
+and outdated setup/protocol text, auth failure throttling, known-unsent command states,
+offline controls, pre-limit history filtering, logout failure state and rejected
+WebSocket handshake cleanup. The README warning outside the diff was also corrected.
+The dotenv key-order suggestions were a non-actionable style preference and were
+identified as such in the CodeRabbit replies. Local Go tests/vet, all 32 plugin tests, live
+transport audit, Nuxt format/lint/typecheck and production build pass (lint has 13
+existing self-closing warnings). PostgreSQL/race evidence for these latest code fixes
+must come from CI because this Windows host has no local Docker/PostgreSQL and CGO is
+disabled. No bot command was sent; Walk remains excluded by instruction, Clientless
+remains unsupported on the live 20.1.1/plugin 1.1.0 runtime, and Execute Script is
+outside the bounded catalog. On `fb76e09`, all tests and builds passed but both
+validation CI runs failed only at the final Compose config check because that job did
+not supply the now-required operator secret after `.env.example` was hardened. Commit
+`d30e4a0` supplies a disposable CI-only value to validation; both validation and stack
+jobs passed in runs `36332718330` and `36332721628`. This includes PostgreSQL integration
+and Go race tests, production-worker fake-adapter command flow, reconnect/outage recovery
+and browser `/api/live` checks. The latest-head CodeRabbit request was rate limited and
+Copilot returned the account quota limit; neither posted new finding text. Exact next
+action: request both automated reviews again when their quotas permit and inspect any
+new comments. No command was sent to a bot character; Walk remains excluded,
+Clientless remains unsupported on the live 20.1.1/plugin 1.1.0 runtime, and Execute
+Script remains outside the bounded catalog. Keep PR draft and Slice 3
+incomplete while real Walk, safe per-session Clientless and broad real-runtime
+mutation evidence remain open; stop before Slice 4.
+**Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
+present: separate operator-cookie auth; durable idempotent command admission/audit;
+session/generation-targeted v3 dispatch; per-socket capability checks; callback-only
+allowlisted plugin adapters with bounded queues; expiry/no-replay/unknown outcomes;
+and command/control live snapshots through the existing `/api/live` connection.
+Added the reference-shaped per-character Actions grid, session-selected Client view,
+authenticated Nuxt command proxy and a fake-adapter end-to-end stack smoke wired into
+CI. Clientless remains explicitly unsupported; Execute Script remains disabled because
+the documented `start_script(str)` has no safe trusted catalog/list contract and raw
+script bodies are outside this slice's command boundary. P7 local checks: `go vet ./...`,
+`go test ./...`, Go builds, 30 plugin tests, Python compile checks, live transport
+audit, Nuxt typecheck, lint (0 errors; 13 `vue/html-self-closing` warnings) and
+production Nuxt build pass. `npm run format:check` passes repository-wide after
+normalizing six previously unformatted files without behavior changes.
+Local PostgreSQL integration tests need `TEST_DATABASE_URL`; it is absent in this
+Windows worktree. Local Compose validation/container build cannot run here because
+Docker is not installed, and `go test -race ./...` cannot run because CGO is disabled
+and there is no C compiler. Separate disposable Compose worker/fake-adapter smoke was
+previously recorded as passing. A later operator-authorized real same-value training
+radius command on nuker1 completed and read back successfully; see the latest LAN
+checkpoint below. Thus a single runtime path has evidence, not broad runtime parity.
+Required responsive screenshots/browser matrix remains open. Keep Clientless,
+Execute Script and untested mutations gated; stop before Slice 4.
+
+**Slice 3 LAN deployment checkpoint (2026-09-27):** deployed to
+`node@192.168.10.25:/var/www/phmon`; original `0.0.0.0` server bind and Compose's
+all-interface web bind are preserved, PostgreSQL remains bound to loopback, and the
+existing `.env` backup and named database volume were preserved. All three Compose
+services report healthy; Go `/readyz`, Nuxt `/api/health`, and LAN-origin login
+admission (invalid test secret returned expected 401 rather than origin rejection)
+were checked. Because there is no HTTPS endpoint on this trusted LAN, added the
+explicit `OPERATOR_ALLOW_INSECURE_HTTP` opt-in and exact `http://192.168.10.25:3005`
+allowlist entry; this makes the session cookie unencrypted on the LAN. Focused Go
+auth/config/HTTP API tests pass. Next: operator opens `http://192.168.10.25:3005`,
+installs the plugin against `ws://192.168.10.25:8081/agent`, then run the simulator
+smoke against a disposable database and separately record real phBot evidence only
+when the operator has installed the plugin and authorized the named test character.
+No bot character was operated during deployment.
+
+**LAN dashboard live-path follow-up (2026-09-27):** browser verification exposed a
+proxy bug: `coder/websocket` rejected the allowed browser Origin because its Host
+was the internal `server:8081`. Go now skips only that duplicate library check after
+the existing operator-session and exact-origin middleware succeeds. Added a live
+regression test proving proxy-host/origin mismatch works while an unlisted origin
+still receives 403. `go test ./internal/httpapi ./internal/auth ./internal/config`
+passes. Deployed and verified through the authenticated browser: dashboard shows 2
+online v3/v2 agents and 3 online characters; the agent table is populated. No
+credentials were printed by diagnostics and no bot commands were sent.
+
+**Slice 3 timestamp, persistence and acceptance follow-up (2026-09-27):** the LAN
+plugin reconnect loop was traced to `hello.ack.server_time` using RFC3339Nano while
+the embedded worker only accepted whole-second UTC RFC3339. The server now sends the
+documented-compatible whole-second form. The disposable PostgreSQL/Compose command
+smoke then exposed PostgreSQL 18 rejecting the untyped generation parameter in the
+queued audit's `jsonb_build_object`; it is now explicitly cast to `bigint`. The
+production Go error response was also leaking the Go 201 credential-creation status
+as Nuxt 200; the proxy now preserves the upstream status. Durable command deadlines
+retain nanosecond precision; Go emits whole-second UTC RFC3339 on the wire for
+compatibility with deployed v3 plugins, while plugin 1.1.1 also parses fractional
+timestamps without `datetime.fromisoformat`. A
+disposable LAN Compose stack passed authenticated `/api/live` command smoke through
+durable admission/audit, exactly one production-worker fake callback and an
+`api_confirmed` result. Its temporary project, environment file, database and volume
+were removed. No smoke touched the production database or a real bot action.
+
+Deployed the server and web fixes to `node@192.168.10.25:/var/www/phmon`, rebuilding
+only server/web; PostgreSQL container and named volume were not restarted or removed.
+All three services are healthy, two protocol-v3 agents reconnect, four character
+sessions are live, and the LAN browser shows current data plus enabled supported
+actions. A live training-area readback is present. The running profiles still report
+plugin 1.1.0. The current server now emits whole-second wire expiry timestamps so
+these v3 profiles can parse command frames without extending their durable server
+deadline; no real command was sent.
+
+Checks on this follow-up: `go test ./...`, `go vet ./...`, Go server/phmonctl builds,
+30 Python plugin tests, Python compile, live transport audit, Prettier, Nuxt
+typecheck/lint/build and the disposable Compose command smoke passed. Lint has 13
+existing `vue/html-self-closing` warnings and zero errors. Slice 3 is **not complete**:
+no named real-character mutation/effect tests are authorized; the official clientless
+mutation remains unsupported; Execute
+Script remains outside the bounded command contract; PostgreSQL concurrency/race
+tests, responsive reference screenshots at all required viewports and final
+direct/browser regression flows remain open. Exact next action: finish remaining
+authorized fixture/browser checks and document named-character runtime effects only
+if explicit authorization is provided. Do not submit a production command or
+continue into Slice 4.
+
+**Slice 3 implementation P2 (2026-09-27):** command admission now has a
+typed server-owned catalog, migration `000004_commands.sql`, durable command/audit
+records, idempotency hashing, one-in-flight-per-character enforcement, fixed-window
+bounded admission limits, current character/session fencing, same-region walk and
+training-area region validation, disruptive-action confirmation and an authenticated
+`POST /api/commands` returning HTTP 202 only for durable acceptance. Later P3–P7
+status and exact remaining gates are recorded in the latest checkpoint above.
+
+**Slice 3 implementation P1 (2026-09-27):** operator authentication is
+implemented on the Slice 3 branch. Go owns bounded hashed opaque sessions, an
+eight-hour absolute expiry, login throttling, strict named cookies, configured
+Origin validation and live-socket revocation. Production router wiring protects
+browser monitoring, credential creation and existing mutations while leaving
+`/agent` on its separate bearer-token boundary. Nuxt gates feature pages behind
+sign-in and forwards only the named operator cookie plus Origin to private Go
+routes and the live WebSocket. Loopback HTTP is explicit development-only; HTTPS
+cookies remain Secure. Next package: P2 command domain/schema/HTTP admission.
+
+**Slice 3 implementation P0 (2026-09-27):** implementation is now authorized on
+`codex/slice-3-plan`. The Slice 3 command/auth contract is frozen in
+`docs/protocol.md` and `docs/phbot-capabilities.md`: protocol v3 commands with v2
+monitoring compatibility, explicit character+session targets, per-socket capability
+ownership, one in-flight command per character, durable no-replay lifecycle,
+same-region walking, bounded typed arguments, separate operator-cookie authentication,
+and honest API-result versus observed-state semantics. Public phBot docs were
+rechecked; core bot/trace/training/walk/return/disconnect primitives remain
+documented. No safe public clientless mutation is verified, so that capability
+remains blocked without blocking independent Slice 3 work. Next package: P1 operator
+authentication.
+
+**Slice 3 planning handoff (2026-09-27):** the operator requested a detailed plan
+for GPT-6 Luna, not implementation. Added
+[`docs/slice-3-implementation-plan.md`](docs/slice-3-implementation-plan.md), with
+sequential work packages, operator authentication, session-targeted command
+lifecycle, capability/API evidence, persistence, callback dispatch, WebSocket UI,
+tests and a scoped implementation prompt. Reviewed `phmonitor_screenshots/`
+Actions/Client and adjacent Stats captures; the plan uses the current Nuxt
+pages/components structure. Official docs confirm core primitives; a safe
+clientless mutation remains unverified. Validation in this planning turn is
+document/source/layout inspection only; no implementation tests or real bot
+actions were run. Slice 3 remains not started. Next action, when implementation
+is requested: execute P0 of the plan, then continue its Slice 3 packages and
+acceptance gates without starting later slices.
+
 **PR #7 CodeRabbit follow-up (2026-09-27):** verified and fixed three functional
 findings. Credential creation disables dismissal and client route navigation until
 the one-time response settles; dismissal then clears the token. Empty stale or
@@ -1517,6 +1678,20 @@ management only when actually supported) use explicit character targets and the 
 audited command/result lifecycle. Do not invent controls merely because phBot has a
 similarly named internal setting.
 
+**Opcode boundary and deferral:** Slice 4 uses the documented `get_pets()` and
+`get_party()` APIs for pet and party state, and implements only Party Setup fields and
+actions whose semantics are verified through a supported phBot API/runtime contract.
+The generic `handle_joymax` / `handle_silkroad` callbacks and `inject_joymax` /
+`inject_silkroad` functions are packet-level primitives, not dedicated pet/party API
+support. Do not make raw opcode decoding or packet injection a Slice 4/15 dependency.
+Additional opcode-based pet/party decoding or actions may be considered as follow-up
+work after Slice 15. Before that work is treated as supported, record the target
+server/client version, opcode direction, payload semantics, runtime evidence and
+limitations in `docs/phbot-capabilities.md`; route mutations through the audited
+command lifecycle and verify their effects. This sequencing defers implementation,
+not the evidence or parity requirement: document any unresolved required capability
+as an explicit gap, and do not claim full parity while it remains unresolved.
+
 delta/change handling keyed by stable source/container + slot/item identity where
 appropriate; do not churn/re-render the entire collection for one changed stack or
 slot if the protocol can safely communicate a bounded update. Preserve enough
@@ -2534,6 +2709,15 @@ core screens or visual direction until the end; build them in their owning slice
 - The entire final definition of done above passes, or remaining hard blockers are
   explicitly reported as incomplete. Passing Slice 9 or 14 alone is not final parity.
 
+### Post-Slice-15 candidate
+
+- **Trace target picker:** When the operator clicks Start Trace, show all player
+  characters currently available within trace range and let the operator select the
+  target. Verify the official phBot API/runtime source for how nearby players and
+  range are exposed before implementing; keep selection session-targeted and report
+  unavailable/stale results honestly. This is a later-phase backlog item, not part of
+  Slice 3's current `trace.start` name argument or a reason to infer botting state.
+
 ## Milestones and dependency order
 
 - Slices 0–4, including Slice 2.5: first usable monitoring/control system.
@@ -2553,3 +2737,82 @@ foundation -> connectivity -> character state -> offline asset export -> command
 Reuse earlier concrete abstractions where appropriate; do not create speculative
 infrastructure for later slices. UI parity develops alongside functional slices;
 Slice 15 consolidates it. Keep this guide aligned with repository reality.
+
+**Slice 3 LAN recovery checkpoint (2026-09-27 12:59 UTC):** after the server-only rebuild, PostgreSQL and web stayed up and both plugin 1.1.0 v3 profiles reconnected; the authenticated dashboard reports 4 online characters and fresh snapshots. The browser's former operator session had been lost at Go server restart because sessions are process-memory only; signing in again restored the existing `/api/live` stream. On `nuker1` detail, Actions buttons are enabled for the current session and Start Trace opens its session-locked form; it was cancelled without submitting a command. `/phbot/client` only exposes disabled Clientless because no safe documented per-session primitive exists. To support these still-deployed whole-second-only parsers, Go now sends whole-second command expiry timestamps while PostgreSQL/Go deadlines retain full precision; truncation only shortens validity and `ttl_ms` is still an upper bound. Added a dispatcher timestamp regression test; `go test ./internal/commands ./internal/httpapi` passed. The server-only Compose rebuild is healthy and the browser again shows both agents Online with 4 characters. No migration, DB restart, or real command occurred. Next: run final Slice 3 non-destructive acceptance checks; keep real mutation/effect validation open unless explicitly authorized, report clientless/runtime and reference-screen gates without claiming full completion; stop before Slice 4.
+
+**Slice 3 LAN command recovery and runtime checkpoint (2026-09-27):** on the
+LAN's plain HTTP origin, `crypto.randomUUID()` was unavailable because browsers
+restrict it to secure contexts. The UI swallowed that pre-request exception into
+“Command could not be accepted,” so Go/PostgreSQL correctly had no command row. Both
+command forms now use a shared `crypto.getRandomValues()` idempotency-key helper,
+available on this HTTP LAN origin; web was rebuilt and restarted. The first earlier
+web build failed for lack of disk space; the bounded Buildx cache prune retained
+containers, images and the PostgreSQL volume. A follow-up Compose command restarted
+Go and PostgreSQL unintentionally; the named data volume remained, PostgreSQL
+recovered, and 4 characters / 16 agent records were present. No database volume was
+deleted. The restart invalidated the in-memory operator session; services recovered,
+agents reconnected and the operator reauthenticated.
+
+The operator explicitly authorized testing with `nuker1`. From its live detail page,
+with session `84bb2a1f-36bf-4993-8b5a-7b0f60e83750`, observed radius 20, submitted
+only `Set Training Radius = 20`. UI reported durable acceptance and then showed
+`completed` / `observed` in command history over the existing `/api/live` browser
+connection; fresh training-area readback remained region 25735, position 100/1559/0,
+radius 20. Command id: `cmd_404e7465-956a-4802-8f6d-59e590fe59bd`. This validates one
+low-impact real-runtime round trip and readback for that runtime, not the rest of the
+catalog or botting effects. No other command was submitted.
+
+Latest targeted checks after the HTTP fix passed locally: Go tests and vet, 30 Python
+plugin tests, Python compile, Nuxt format check/typecheck/build and lint (13 existing
+`vue/html-self-closing` warnings, zero errors). Remaining P7 work: run current
+race/database/browser/container acceptance checks and capture the required
+1440×1000, 1280×800, 390×844 and 2560×1315 comparisons; these were not completed by
+the single real command check. Clientless still lacks a verified safe per-session
+API; scripts remain outside Slice 3's bounded command catalog. Do not claim Slice 3
+complete and stop before Slice 4. Exact next action: execute the remaining P7 matrix
+from `docs/slice-3-implementation-plan.md`, record real runtime radius evidence
+separately from simulator coverage, and report each unresolved gate.
+
+**Slice 3 Walk path implementation checkpoint (2026-09-27):** after the operator
+clarified Walk must navigate a path, verified the official
+[phBot Paths API](https://plugins.phbot.org/phbot-api/paths) and Movement API. The
+production `PhMon.py` worker now requires `generate_path`, `move_to_region` and
+`get_position` on its exact socket capability report; it validates a route of at most
+256 finite same-region waypoints and steps them from phBot's callback. Observed
+arrival uses a documented-in-project 12-unit horizontal tolerance, the route times
+out after five minutes, and path API `False`/`None`, invalid/cross-region routes,
+target changes and missing position have explicit failure/unknown outcomes. Server
+gives Walk a six-minute result grace around the plugin's five-minute route limit and
+accepts plugin-reported `unknown` outcomes. No teleport or generated script execution.
+UI and protocol/capability/plugin/setup/parity docs explain these semantics. Added
+production-worker fake-adapter tests for traversal, cross-region rejection and session
+supersession. Validation: 32 Python tests/compile, Go tests/vet, Nuxt
+format/lint/typecheck/production build, and `git diff --check` pass (13 existing
+self-closing lint warnings). Deployed server and web to `node@192.168.10.25` using
+web-only restart for the final copy update; `/api/health` and all Compose health checks
+are green, and the PostgreSQL container ID/start time stayed unchanged. Browser
+verification through the existing `/api/live` connection shows 4 online characters;
+the connected PhMon 1.1.0 runtime has Walk disabled with the explicit minimum-version
+message. Plugin 1.1.2 is intentionally not deployed because the operator will install
+it. No real walk/movement was issued; nuker1 authorization was only for the same-value
+radius check. Exact next step: after operator installs plugin 1.1.2, verify its
+capability report and route behavior with an explicitly authorized safe movement test;
+meanwhile finish remaining P7 checks and keep the real movement/runtime and reference
+capture gates open. Slice 3 remains incomplete; do not continue to Slice 4.
+
+**Slice 3 non-Walk P7 verification (2026-09-27):** the LAN browser was reviewed at
+1440×1000, 1280×800, 390×844 and 2560×1315. CI run `36330451436` passed the
+PostgreSQL integration/race checks, production-worker command smoke with fake
+adapters, authenticated reconnect, outage recovery and `/api/live` browser audits.
+The mobile audit confirms visible character rows in the bounded scroller. Screenshots
+were inspected in-session but not saved. The live nuker1 runtime reports
+`client.clientless.supported=false` / `unsupported_runtime_primitive`; the control
+stayed disabled and no command was sent. Walk traversal was excluded by instruction;
+plugin 1.1.0 does not meet the 1.1.2 pathfinding requirement. Execute Script remains
+outside the bounded catalog. Local base merge and status records are ready to commit;
+next run is to commit/push, rerun CI, request fresh Copilot and CodeRabbit reviews,
+and triage their results. Copilot has returned a quota-limit response, and CodeRabbit
+was processing the pre-merge head. Preserve untracked operator files
+`plugin/PhMon5.py`, `server/phmonctl.exe`, and `server/server.exe`. Keep PR draft and
+Slice 3 incomplete while real Walk, safe Clientless and broad real-runtime mutation
+gates remain open; stop before Slice 4.

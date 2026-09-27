@@ -174,9 +174,10 @@ characters and publishes full snapshots. There is no durable local event store.
 All live monitoring data exposed to the browser uses a separate versioned WebSocket
 protocol. The browser connects only to the same-origin Nuxt endpoint
 `GET /api/live`; Nitro 2 relays that WebSocket to the private Go `/api/live`
-endpoint. `NUXT_BACKEND_URL` stays server-only, the relay does not forward browser
-cookies, authorization headers or other credentials upstream, and streamed payloads
-contain monitoring presentation data only.
+endpoint. `NUXT_BACKEND_URL` stays server-only. The relay forwards only the named
+operator-session cookie and browser `Origin` needed for authentication; it does not
+forward arbitrary cookies, authorization headers or other credentials. Streamed
+payloads contain monitoring presentation data only.
 
 Protocol version: 1.
 
@@ -295,8 +296,9 @@ agent ingestion; oversized messages are rejected (1009).
 
 Browser upgrades at the Nuxt relay require a same-origin `Origin`. The private Go
 endpoint independently rejects a cross-origin browser upgrade; server-to-server Nitro
-connections carry no browser credentials. This preserves the existing trusted-network
-deployment boundary and does not introduce human-user authentication.
+connections carry only the named operator-session cookie and `Origin` needed for
+authentication. Browser live subscriptions require a valid operator session, while
+the trusted-network deployment boundary remains in effect.
 
 ### HTTP compatibility boundary
 
@@ -308,6 +310,100 @@ HTTP remains the action transport for credential creation and group mutations, a
 as static assets, uploads/downloads, health checks and future non-live historical
 queries. A successful action response acknowledges that action only; browser live
 state changes exclusively when the corresponding WebSocket replacement arrives.
+
+## Slice 3 protocol v3: remote commands (2026-09-27)
+
+Protocol v3 is negotiated per agent socket. Protocol v2 remains accepted for
+monitoring; the backend does not send v3 command frames to v2 sockets and admission
+reports `plugin_upgrade_required`. Multiple sockets under one logical agent remain
+independent; command routing uses the exact current `(agent_id, connection_generation)`
+and stable `character_id + session_id` recorded at admission.
+
+After `hello.ack` (which includes a server-owned whole-second UTC RFC3339
+`server_time` for compatibility with the embedded Python parser), a v3 worker sends
+one bounded `agent.capabilities` frame. The server intersects its fixed catalog
+with support reported by that exact socket. Capability modes are schema-bound; the
+current training-area modes are reported as `current_position`, `position` and
+`named` only when their documented primitives are importable. There is no sibling
+socket capability union.
+
+The server keeps both `server_time` and command `expires_at` at whole-second UTC
+RFC3339 for compatibility with deployed embedded parsers that validate `Z` at
+position 19. The durable PostgreSQL deadline and Go send deadline retain full
+precision; the wire timestamp is truncated, which can only shorten effective
+validity by less than one second. `ttl_ms` remains a second upper bound. Plugin
+1.1.1 also accepts up to nine fractional digits for forward compatibility.
+
+V3 `character.registered`, snapshots, state and leave frames carry `session_id`.
+Character-targeted controls and results always carry both character and session IDs.
+Training state is reported as `character.control_state`, scoped to the same session;
+the local training-script path is omitted. New ownership sends a `command.revoke` to
+the prior generation. A worker also clears queued commands on local character/profile
+switch, callback leave or revoke.
+
+Command dispatch is a Go-owned bounded queue and one ordered writer per agent socket.
+The durable command intent and audit event commit before the `queued` row is eligible
+for dispatch. Go claims `queued -> dispatching`, rechecks durable session ownership,
+then writes only to the recorded generation. A successful WebSocket write records
+`sent`; the plugin's `command.ack` means accepted to its bounded callback queue, not
+invoked. `command.result` is accepted only from the command's original authenticated
+agent generation and session. Duplicate acknowledgements/results do not duplicate
+effects or audit transitions.
+
+An execute frame carries `command_id`, `character_id`, `session_id`, fixed catalog
+`name`, validated `args`, server-owned `expires_at` and remaining `ttl_ms`. The
+callback rejects stale/expired frames, repeats all schema/runtime checks and invokes
+at most one fixed adapter per phBot `event_loop()` callback. The networking worker
+never calls phBot APIs. The plugin retains bounded command-ID deduplication but does
+not replay pending work after socket reconnect. If delivery or final evidence is
+ambiguous, the durable state is `unknown`; Go never re-dispatches it. A transport
+fence cannot retract an effect after phBot invocation.
+
+The wire `expires_at` uses whole-second UTC RFC3339. The durable server deadline is
+not rounded; flooring the wire value can only make the plugin expire the command
+earlier, and the minimum of that value and `ttl_ms` prevents extension. Plugin
+1.1.1 accepts both whole-second and fractional timestamps without relying on
+Python `datetime.fromisoformat`; older v3 plugins that support the rest of the
+command contract can continue using the whole-second server timestamp.
+
+Lifecycle states are `queued`, `dispatching`, `sent`, `acknowledged`, `completed`,
+`failed`, `expired` and `unknown`. Queued expiry, dispatch-deadline expiry before
+send, and known writer backpressure before enqueue are definitely unexecuted and
+record as `failed` or `expired`; `unknown` is reserved for delivery or execution that
+may have occurred without conclusive evidence. A 30-second result timeout after the
+10-second execution window becomes `unknown` for ordinary
+commands; `character.walk` has a six-minute result grace to cover its bounded
+five-minute callback-driven route. API booleans
+are stored as `api_return`; void calls complete only with `verification: unverified`
+unless a fresh documented readback verifies the setting. Walk uses the documented
+path finder and advances bounded same-region waypoints through callback-time movement
+calls; it never uses generated teleport scripts. Completion is reported only after
+live position readback reaches the last waypoint and destination within the documented
+application tolerance. Target/region changes, missing readback, or the five-minute
+route limit produce an honest unknown outcome. Return-scroll does not claim teleport
+completion from its API call; disconnect does not change relog configuration; botting
+remains unknown absent a documented getter.
+Walk admission additionally requires the serving socket to advertise plugin version
+1.1.2 or newer, so older v3 agents cannot receive the prior direct-movement behavior.
+
+Operator authentication is separate from agent bearer authentication. Browser
+control, monitoring, credential and group endpoints require the named HttpOnly
+operator cookie. The Nitro `/api/live` relay forwards only that cookie and the
+browser Origin to the private Go endpoint; it never forwards arbitrary browser
+headers/cookies. Same-origin browser WebSocket upgrades and configured Go Origin
+checks remain required. Logout/expiry closes associated live sockets. Live command
+history and control/capability replacements use the existing browser protocol v1
+`/api/live` subscriptions (`commands` and `controls`); no HTTP history/live polling
+is added. The command POST returns only durable acceptance and a command ID.
+
+The command catalog's application safety bounds are: JSON request body ≤16 KiB;
+trace name 1–64 UTF-8 bytes; named training area 1–100 UTF-8 bytes; coordinates
+finite and each absolute axis ≤10,000,000; positive explicit region; and radius from
+1 through 10,000. These are PhMon safety limits, not phBot-published maximums.
+Coordinate training-area mode must use the currently observed region; walking is
+same-region only. Frames remain ≤8 KiB, one action is in flight per character,
+callback queue capacity is 16, outbound result capacity is 32, and the plugin retains
+up to 256 command IDs during its process lifetime.
 
 ## HTTP agent API
 
@@ -323,16 +419,15 @@ are no-store.
 
 Nuxt retains same-origin diagnostic read equivalents and HTTP action routes. The live
 browser UI does not call those diagnostic reads; it uses the browser live-data
-WebSocket protocol above. Slice 1 still has no human-user authentication, so browser
-credential provisioning is for a trusted deployment only until later auth work owns
-that boundary.
+WebSocket protocol above. Browser credential provisioning requires the operator
+session described in the Slice 3 contract below.
 
 Slice 2 retains diagnostic `GET /api/characters?q=&group_id=` for
 name/guild/server/zone search, `GET /api/characters/{character_id}` for stable
 details, and persisted groups under `/api/groups` with explicit
 `/members/{character_id}` mutation operations. Responses never contain agent
-credential material. Human-user authentication remains unimplemented, so group edits
-and credential provisioning require a trusted network.
+credential material. Group edits and credential provisioning require the
+authenticated operator session and a trusted deployment network.
 
 ## Foundation health contract
 
@@ -341,3 +436,142 @@ and credential provisioning require a trusted network.
 - GET /readyz: fresh PostgreSQL ping with a two-second deadline.
 - Nuxt GET /api/health proxies readiness server-side with a bounded timeout.
 - Health errors are sanitized and no credentials are returned.
+
+
+## Slice 3 command/auth contract (frozen 2026-09-27)
+
+Slice 3 introduces agent protocol v3 for command delivery while preserving v2
+monitoring. A v2 agent remains valid for monitoring and is always control-disabled
+with reason `plugin_upgrade_required`; the server never sends v3 command frames to
+a v2 connection.
+
+Operator mutations use a separate cookie-authenticated control plane. The operator
+secret is configured only in the Go server environment. Successful login creates a
+cryptographically-random opaque session token; only its SHA-256 hash is retained
+in bounded process memory. Sessions expire absolutely after eight hours and are
+lost on backend restart. The cookie is HttpOnly, SameSite=Strict, Path=/, and Secure
+for HTTPS origins. Plain HTTP origins are rejected unless
+`OPERATOR_ALLOW_INSECURE_HTTP=true`; this is intended only for explicitly configured
+trusted LAN deployments and sends the cookie without encryption. The agent bearer token is
+never accepted as operator authentication.
+
+Cookie-authenticated HTTP mutations and browser WebSocket upgrades validate Origin
+against configured instance origins. The Nuxt server forwards only the named PhMon
+operator-session cookie to private Go routes; it does not forward arbitrary browser
+cookies or Authorization headers. Credentials are never placed in URLs, localStorage,
+live payloads, or logs. The Go live handler skips the WebSocket library's default
+Host-versus-Origin comparison only after this exact Origin allowlist and operator
+session middleware succeeds. This supports the same-origin browser-to-Nuxt-to-Go
+proxy where the backend Host differs from the browser Origin.
+
+Protocol v3 keeps the v2 hello/heartbeat/character message semantics and adds:
+
+    {"type":"character.registered","protocol_version":3,
+     "character_id":"<uuid>","session_id":"<uuid>"}
+
+    {"type":"agent.capabilities","protocol_version":3,
+     "schema_version":1,"commands":[
+       {"name":"bot.stop","supported":true},
+       {"name":"client.clientless","supported":false,
+        "reason":"unsupported_runtime_primitive"}
+     ]}
+
+    {"type":"command.execute","protocol_version":3,
+     "command_id":"cmd_<uuid>","character_id":"<uuid>",
+     "session_id":"<uuid>","name":"bot.stop","args":{},
+     "expires_at":"<UTC RFC3339>","ttl_ms":10000}
+
+    {"type":"command.ack","protocol_version":3,
+     "command_id":"cmd_<uuid>","character_id":"<uuid>",
+     "session_id":"<uuid>"}
+
+    {"type":"command.result","protocol_version":3,
+     "command_id":"cmd_<uuid>","character_id":"<uuid>",
+     "session_id":"<uuid>","status":"completed",
+     "verification":"api_confirmed","api_return":true,
+     "effective_args":{},"observed_after":{}}
+
+Every character-scoped command frame, acknowledgement, result, control-state report
+and revocation carries both explicit `character_id` and durable `session_id`.
+The server resolves the authenticated agent and exact connection generation from
+the current durable character session; neither is accepted from the browser.
+
+Canonical Slice 3 commands and application bounds:
+
+| name | arguments | application policy |
+| --- | --- | --- |
+| `bot.start` | `{}` | documented bool API result |
+| `bot.stop` | `{}` | documented bool API result |
+| `trace.start` | `{name:string}` | trimmed 1..64 chars |
+| `trace.stop` | `{}` | documented bool API result |
+| `training.area.set` | discriminated `current_position`, `position`, or `named` | region must be explicit/observed and positive; coordinates finite and abs <= 10,000,000; named area trimmed 1..100 chars |
+| `training.radius.set` | `{radius:number}` | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum |
+| `character.walk` | `{region:int,x:number,y:number,z:number}` | same observed region only; finite coordinates abs <= 10,000,000 |
+| `character.return` | `{}` | bool means scroll invocation accepted, not teleport completion |
+| `character.disconnect` | `{}` | void return; does not alter relog settings |
+| `client.clientless` | `{}` | unsupported until a safe documented/versioned per-instance primitive is verified |
+
+The documented phBot `start_script(str)` accepts script text, while the public API
+does not provide a trusted script catalog/list operation. Slice 3 intentionally does
+not accept raw script text or filesystem paths as a command; a future script surface
+needs a bounded reviewed catalog before it can be exposed.
+
+Unknown fields, wrong JSON types, booleans supplied as numbers, NaN/Infinity,
+oversized strings, stale session IDs, unavailable training areas and cross-region
+walks are rejected before dispatch. Python repeats equivalent validation against
+fresh callback-thread runtime context immediately before invocation.
+
+The command lifecycle is durable: `queued -> dispatching -> sent -> acknowledged ->
+completed|failed`, with `expired` for work that never becomes valid to invoke and
+`unknown` when execution may have occurred but a trustworthy final result was
+lost. Intent/audit is committed before dispatch. A socket write is not execution
+success. No remote action is automatically replayed after reconnect or backend
+restart. One in-flight action is admitted per character.
+
+Browser live protocol v1 remains one shared WebSocket and gains optional
+`controls` and `commands` streams. HTTP POST returns only acceptance/command ID;
+authoritative lifecycle/history/control-state replacement snapshots arrive over
+`/api/live`.
+
+LAN deployment note (2026-09-27): browser `crypto.randomUUID()` is restricted to
+secure contexts and therefore unavailable on the explicitly supported plain HTTP
+local-LAN setup. The command UI uses 16 bytes from `crypto.getRandomValues()` to
+produce the idempotency key instead; this remains cryptographically random in that
+context. A named operator-authorized `training.radius.set` same-value check completed
+on the live phBot 20.1.1/plugin 1.1.0 runtime and its durable `observed` result was
+received over `/api/live`. This evidence covers only that specific API/readback path.
+
+Verification update (2026-09-27): CI's PostgreSQL-backed validation job passed with
+`TEST_DATABASE_URL` set and ran `go test -race ./...`. The disposable stack command
+smoke used the production plugin worker with fake adapters and received the result on
+`/api/live`. A read-only LAN browser check of the selected nuker1 session received
+`client.clientless.supported=false` / `unsupported_runtime_primitive`; no action was
+submitted. Live plugin 1.1.0 does not satisfy Walk's 1.1.2 pathfinding requirement.
+These checks do not verify real Walk traversal, Clientless, or the remaining command
+mutations.
+
+The `fd30d8c` PostgreSQL/race job passed, but its database-outage smoke exposed a
+reconciliation query type error (`text * interval`). The query now constructs the
+timeout interval with a typed `make_interval` argument; the integration test asserts
+expired state and its audit event. CI must rerun this fix before the outage/recovery
+path can be reported as passing. CI then showed the outage/recovery smoke fixtures
+were not carrying an operator session cookie through `/api/live` or protected API
+calls; they now use the shared login helper and await another run.
+The first integration assertion setup also violated `expires_at > created_at`; its
+timestamps are now explicit typed arguments. CI also required the credential POST
+in the outage fixture to carry its operator cookie; that probe now sends it.
+The subsequent stack run passed agent/live smoke but exceeded a 15-second Chrome
+DevTools startup deadline. The browser audit now allows 30 seconds and includes
+Chrome stderr if startup still fails.
+
+### Latest Slice 3 acceptance verification (2026-09-27)
+
+CI run `36330451436` passed the PostgreSQL integration and Go race suites, including
+command expiry/audit persistence; production-worker command dispatch with fake
+adapters; authenticated agent reconnect and database-outage recovery; and browser
+checks through the existing `/api/live` path at desktop and mobile widths. This is
+simulator/CI evidence, not proof of broad real phBot command effects. The read-only
+nuker1 capability report still rejects Clientless with
+`unsupported_runtime_primitive`; no command was submitted. Walk path traversal was
+excluded from this test pass by operator instruction. Keep real Walk, safe per-session
+Clientless and broad real-runtime command validation open.

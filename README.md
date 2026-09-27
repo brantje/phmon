@@ -1,16 +1,16 @@
 # PhMon
 
-A self-hosted phBot monitoring and remote-control project. Slice 0 and the Slice 1
-implementation are complete. Real phBot 20.1.1/plugin 1.1.0 connectivity and live
-character fields have been manually observed, including multiple concurrent sockets
-sharing one agent ID/token. Embedded Python version and remaining lifecycle checks are
-open; see [docs/phbot-capabilities.md](docs/phbot-capabilities.md). Same-viewport
-reference comparison remains open.
-Slice 2 adds server-scoped durable character identity, live state/sessions, groups
-and character overview/detail surfaces. Remote commands remain in Slice 3.
+A self-hosted phBot monitoring and remote-control project. Slice 3 implementation is
+in progress through v3 transport, safe callback dispatch, durable command lifecycle,
+live command/control snapshots and reference-shaped controls. LAN HTTP operators can
+submit commands using secure random idempotency keys; one low-impact training-radius
+round trip has been validated on phBot 20.1.1/plugin 1.1.0 and its durable result was
+delivered over `/api/live`. Simulator evidence remains separate from that runtime
+result. Clientless, remaining action/runtime coverage and Slice 3 acceptance gates
+remain open. See [docs/phbot-capabilities.md](docs/phbot-capabilities.md).
 [AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap. The target is applicable
 feature, layout and style parity with [the phMonitor demo](https://phmonitor.com/demo).
-The active implementation scope is Slice 2 only; see the completion ledger in
+The active implementation scope is Slice 3 only; see the completion ledger in
 [AGENTS.md](AGENTS.md).
 
 ## Start the local stack
@@ -19,11 +19,14 @@ Requires Docker Engine and Docker Compose v2+ (with `--wait` support).
 
 ```sh
 cp .env.example .env
+# Set OPERATOR_ACCESS_SECRET in .env (for example, use: openssl rand -base64 48)
+# For plain HTTP on a trusted development/LAN network, also set OPERATOR_ALLOW_INSECURE_HTTP=true
 docker compose up --build -d --wait --wait-timeout 180
 ```
 
 Open **http://127.0.0.1:3005** on the host, or **http://<host-LAN-IP>:3005** from
-another device on the same network. Find the host address with `hostname -I` on
+another device on the same network. Set a unique `OPERATOR_ACCESS_SECRET` in `.env`
+before starting the stack, then sign in with that secret. Find the host address with `hostname -I` on
 Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
 port 3005 through the host firewall for your private LAN. The dashboard shows
 character presence and current stats, with the agent connections and backend
@@ -39,6 +42,7 @@ curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:3005/api/health
 python3 scripts/smoke.py
 python3 scripts/live_smoke.py
+python3 scripts/command_smoke.py
 docker compose down
 ```
 
@@ -140,11 +144,11 @@ default; PostgreSQL and the authenticated agent/API port bind to loopback. Set
 `WEB_BIND_ADDR=127.0.0.1` when host-only web access is sufficient. Remote agents
 should connect through operator-managed TLS termination using `wss://`; overriding
 `SERVER_BIND_ADDR` is intended only for an explicitly trusted development network.
-The defaults avoid common 3000/8080/5432 conflicts. This is not a public deployment:
-user authentication is not implemented yet; only the agent WebSocket is
-token-authenticated. In particular, any user who can reach the current web UI can use
-the Create credential action, so keep the UI on a trusted network until user
-authentication/authorization is implemented.
+The defaults avoid common 3000/8080/5432 conflicts. This setup is for a trusted
+development/LAN network. Browser monitoring, mutations and credential creation
+require the operator session. Keep the UI on a trusted network and use operator-managed
+TLS for remote agents; the configured secret is not a substitute for a protected
+network deployment.
 
 | Variable                              | Default/example         | Purpose                                                                                          |
 | ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
@@ -200,6 +204,12 @@ same-origin Nuxt WebSocket relay, initial snapshots, manual refresh, subscriptio
 filter/revision handling, character detail when available, cross-client group changes
 and cross-origin rejection without using HTTP live reads.
 
+`scripts/command_smoke.py` logs in using `OPERATOR_ACCESS_SECRET`, provisions a
+throwaway agent, then submits `bot.stop` to the production plugin worker running with
+a fake adapter. It verifies one callback invocation and the authoritative result on
+the same-origin `/api/live` stream. It creates fixture records and must run only on a
+disposable local/test database; it never connects to phBot.
+
 With the full Compose stack running, verify outage and recovery:
 
 ```sh
@@ -220,6 +230,17 @@ manual development without phBot, the same plugin transport can be exercised wit
 `scripts/agent_simulator.py`; simulator success is fixture coverage and is never
 reported as real phBot runtime validation.
 
+Slice 3 acceptance status: CI run `36330451436` passed PostgreSQL-backed integration
+and Go race coverage, the production plugin worker command smoke with fake adapters,
+authenticated agent reconnect and database-outage recovery, plus `/api/live` browser
+checks and responsive assertions at 390×844 and 1440×1000. Manual LAN inspection also
+covered 1280×800 and 2560×1315; no post-fix screenshot artifact was saved. The live
+nuker1 runtime reports Clientless unsupported and keeps the control disabled; no
+Clientless command was submitted. Walk traversal was not tested per instruction and
+requires plugin 1.1.2. Execute Script remains outside the bounded command catalog.
+Slice 3 is not complete while these runtime gates and broad real-command coverage
+remain open.
+
 To run its explicit fixture character lifecycle scenario against a local test stack:
 
 ```sh
@@ -239,7 +260,8 @@ WebSocket path.
 
 Go uses standard-library HTTP handlers, pgx and embedded transactional migrations.
 PostgreSQL stores durable agents, server-scoped characters, current state, character
-sessions, groups and membership. `/agent` is the authenticated protocol-v2 WebSocket.
+sessions, groups, membership and audited commands. `/agent` accepts authenticated
+protocol-v2 monitoring and protocol-v3 control sockets.
 One agent may keep multiple authenticated sockets active; each socket receives its
 own connection generation and can only update the character sessions it owns. The
 agent remains connected until its last socket closes.
@@ -264,12 +286,35 @@ positions/live layers must use the same WebSocket contract.
 I/O in phBot callbacks, and reconnects on a worker thread. It samples documented
 `get_character_data()`, `get_position()` and `get_zone_name(region)` APIs; botting
 state remains unknown because the official Botting API lists mutations but no
-read-only state getter. See [docs/protocol.md](docs/protocol.md) and
-[docs/phbot-capabilities.md](docs/phbot-capabilities.md). Remote commands, inventory,
-events, analytics and later roadmap areas remain in their designated slices.
+read-only state getter. Slice 3 uses per-session commands over v3, durable audit and
+lifecycle records, a callback-only phBot adapter and the existing live WebSocket for
+history/results. Walk uses the official same-region path finder and callback-stepped
+waypoints; it does not execute generated teleport scripts. Clientless stays
+unsupported without a verified safe primitive.
+See [docs/protocol.md](docs/protocol.md) and
+[docs/phbot-capabilities.md](docs/phbot-capabilities.md). Inventory, events, analytics
+and later roadmap areas remain in their designated slices.
 
 Version/setup references: [Go releases](https://go.dev/dl/),
 [Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation),
 [Nuxt UI setup](https://ui.nuxt.com/docs/getting-started/installation/nuxt),
 [Nuxt runtime configuration](https://nuxt.com/docs/4.x/guide/going-further/runtime-config),
 and [PostgreSQL support](https://www.postgresql.org/support/versioning/).
+
+
+## Operator authentication
+
+Slice 3 adds a separate operator control-plane session. Set a high-entropy
+`OPERATOR_ACCESS_SECRET`, list browser origins in `OPERATOR_ALLOWED_ORIGINS`, and
+keep the default `phmon_operator` cookie name unless the matching Nuxt private
+runtime setting is changed too. Plain HTTP origins are rejected by default. For an
+isolated trusted LAN without TLS, set `OPERATOR_ALLOW_INSECURE_HTTP=true` and list
+the exact LAN origin (for example `http://192.168.10.25:3005`). This sends the
+operator session cookie without encryption; use only on a trusted network. HTTPS
+origins always receive a Secure cookie.
+
+The browser sends the access secret only to the same-origin login endpoint. Go stores
+only a hash of the opaque eight-hour session token in bounded process memory, so a
+backend restart requires sign-in again. The session cookie is HttpOnly and
+SameSite=Strict; HTTPS origins always receive a Secure cookie. Agent bearer
+credentials are a separate trust boundary and cannot authenticate operator APIs.

@@ -163,3 +163,165 @@ correct agent, and survives plugin reload/disconnect/restart with automatic reco
 Also exercise a profile switch to prove one profile cannot silently reuse another
 profile's credentials. Record the observed module/import behavior and results here;
 do not infer them from desktop CPython or the simulator.
+
+
+## Slice 3 remote-command capability matrix (2026-09-27)
+
+The official API was rechecked during implementation. These rows describe public
+documented behavior and the PhMon adapter policy; they do not claim availability
+on every installed phBot build.
+
+| PhMon command | Public primitive | Result semantics | Slice 3 status |
+| --- | --- | --- | --- |
+| `bot.start` | `start_bot()` | bool | required |
+| `bot.stop` | `stop_bot()` | bool | required |
+| `trace.start` | `start_trace(name)` | bool | required |
+| `trace.stop` | `stop_trace()` | bool | required |
+| `training.area.set` named | `set_training_area(name)` | bool | required when runtime symbol exists |
+| `training.area.set` position/current | `set_training_position(region,x,y,z)` | bool | required when an active area exists |
+| `training.radius.set` | `set_training_radius(radius)` + `get_training_area()` | bool plus readback | required |
+| `character.walk` | `generate_path(x,y)` + `move_to_region(region,x,y,z)` + `get_position()` | async waypoint route; completion waits for live position readback | required when all three symbols exist; single region, no teleport |
+| `character.return` | `use_return_scroll()` | bool | required |
+| `character.disconnect` | `disconnect()` | void; relog unchanged | required |
+| `client.clientless` | no safe public mutation found in Client/Misc/index | n/a | blocked: `unsupported_runtime_primitive` |
+| Execute Script | `start_script(str)` / `stop_script()` | starts/stops a script string | not exposed in Slice 3: the public API supplies no trusted script catalog/listing contract; raw script bodies are an arbitrary game-action surface and are excluded by the Slice 3 safety boundary |
+
+Optional imports are probed independently. One missing mutation symbol cannot disable
+monitoring or unrelated controls. Capability reports are attached to the exact v3
+socket/runtime and intersected with the server-owned catalog; capabilities from
+sibling sockets sharing one agent token are never unioned for authorization.
+The server also requires the advertised plugin version to be at least 1.1.2 for
+`character.walk`; older v3 plugins expose only direct movement and are rejected for
+this command even if they report `move_to_region` support.
+
+Training readback exposes only typed region/x/y/z/radius availability and values.
+The documented local script `path` is deliberately not sent to the backend. A
+`current_position` training-area operation resolves position on the callback thread
+immediately before invocation. Region zero auto-derivation is not used. Named-area
+selection is separate from coordinate changes.
+
+After character registration the phBot callback queues an initial session-scoped
+training-area readback, refreshes it at most every 30 seconds, and queues another
+readback after a control mutation. The network worker publishes these queued reports;
+it never calls phBot APIs. A session change forces a fresh initial report.
+
+Bool API success is recorded as `api_confirmed`. Void-return operations are
+`unverified` unless a fresh documented observation establishes the effect. Walk
+uses `generate_path` to produce a bounded list of at most 256 same-region waypoints,
+then advances one `move_to_region` target from the phBot callback after `get_position`
+observes the current waypoint within the application-defined 12-unit horizontal
+tolerance. It reports completed/observed only when the final destination is also
+within that tolerance; the route becomes `unknown` on target/region change, timeout
+(five minutes), backend-session loss, or missing position evidence. This is a callback-driven route, not a
+teleport and not execution of `generate_script` output. The public API rate-limits
+path generation to once per five seconds and the plugin surfaces its documented
+`False` (rate-limited or not in game) and `None` (no path) outcomes as failed
+commands. Return-scroll never claims teleport completion, disconnect never claims
+relog was disabled, and botting state remains unknown because the checked public
+Botting API still exposes no authoritative read-only getter.
+
+### Slice 3 implementation evidence refresh (2026-09-27)
+
+Official docs rechecked on 2026-09-27:
+
+- [Botting](https://plugins.phbot.org/phbot-api/botting) documents `start_bot()` /
+  `stop_bot()` and `start_trace(name)` / `stop_trace()`, all with boolean results.
+- [Training Area](https://plugins.phbot.org/phbot-api/training-area) documents
+  `set_training_position(region,x,y,z)` and `set_training_radius(radius)` as
+  booleans, `get_training_area()` as `None` or a dictionary, and
+  `set_training_area(name)` as a distinct boolean name-selection operation. Region
+  zero auto-derivation is explicitly limited to non-cave areas.
+- [Movement](https://plugins.phbot.org/phbot-api/movement) documents
+  `move_to_region(region,x,y,z)` as returning `None`; the API does not wait for
+  arrival. PhMon uses only explicit positive same-region destinations.
+- [Paths](https://plugins.phbot.org/phbot-api/paths) documents
+  `generate_path(x,y)` as returning `None`, `False`, or a waypoint list; it is limited
+  to one call per five seconds and does not support teleporting. Cave waypoint tuples
+  include a region at index 0. PhMon consumes only same-region waypoints from
+  `generate_path`, rejects a route that changes region, and does not execute the
+  teleport/wait strings returned by `generate_script`.
+- [Inventory](https://plugins.phbot.org/phbot-api/inventory) documents
+  `use_return_scroll()` as boolean. [Misc](https://plugins.phbot.org/phbot-api/misc)
+  documents `disconnect()` as void and explicitly says it does not change relog
+  settings.
+- [Client](https://plugins.phbot.org/phbot-api/client) documents only `get_client()`
+  inspection (`window`, `pid`, `path`, `running`). No safe clientless mutation was
+  located in the official Client/Misc/API index; no process-kill substitute is
+  permitted.
+- [Script](https://plugins.phbot.org/phbot-api/script) documents
+  `start_script(str)` and `stop_script()`. The former runs script text in the
+  background. Slice 3 does not accept raw script text, a filesystem path, Python or
+  shell content as a remote command. The public API page documents no safe
+  list/discovery/manifest operation that could bind a named catalog entry to
+  reviewed game actions, so Execute Script remains unavailable pending that bounded
+  contract. This is separate from supported typed commands such as `character.walk`.
+
+The implementation probes these optional symbols independently at plugin startup
+and reports capabilities for its v3 socket. The callback adapter uses only the
+documented functions above. Training radius is exposed only when both setter and
+readback getter exist. `current_position` requires `get_position`; explicit
+coordinates require `set_training_position`; named selection requires
+`set_training_area`. Settings readback allowlists numeric region/x/y/z/radius and
+never sends the local `path` field.
+
+Runtime evidence boundary: the live operator LAN runtime is phBot 20.1.1/plugin
+1.1.0. Simulator adapter coverage is recorded separately and is not real-runtime
+evidence. One narrowly scoped real action is now validated below; remaining mutation
+APIs, action effects and clientless must not be inferred from it.
+
+### Live LAN Slice 3 evidence (2026-09-27)
+
+After the operator installed plugin 1.1.0, the deployed LAN stack observed two
+protocol-v3 agent identities and four simultaneous character sessions on phBot
+20.1.1. The browser received fresh `/api/live` agent/character/control snapshots;
+one character's documented training-area readback reported region 25735, coordinates
+100/1559/0 and radius 20. This confirms v3 handshake, multi-socket/session reporting,
+capability delivery and `get_training_area()` readback on that runtime. It does not
+confirm a mutation API or command side effect.
+
+The LAN incident exposed two timestamp compatibility defects. The server initially
+formatted `hello.ack.server_time` with fractional seconds although the embedded
+parser requires the whole-second `...Z` form; this made authenticated sockets close
+before capabilities/character registration. The server now sends whole-second UTC
+RFC3339 for both handshake time and wire command expiry. The durable Go/PostgreSQL
+command deadline keeps full precision; flooring only shortens wire validity and
+`ttl_ms` remains an upper bound. Plugin 1.1.1 parses fractional timestamps too,
+without using Python 3.7-only `datetime.fromisoformat`, for forward compatibility.
+The operator's live phBot profiles still report plugin 1.1.0; their v3 timestamp
+parser is compatible with the server's whole-second wire form.
+
+### Operator-approved radius command validation (2026-09-27)
+
+After explicit authorization to test with `nuker1`, one command set its already
+observed training radius to the same value, 20. It targeted the current session
+`84bb2a1f-36bf-4993-8b5a-7b0f60e83750`, completed with verification `observed`, and
+the browser received the durable command result through `/api/live`; the next live
+training-area readback remained region 25735, position 100/1559/0, radius 20. This is
+one runtime round trip/readback, not broad validation of every API or a claim about
+botting state. No other real command was issued. Remaining runtime checks require
+specific authorized actions/observations; Clientless still has no verified safe
+per-session primitive.
+
+### Read-only Clientless gate check (2026-09-27)
+
+On the live phBot 20.1.1 / PhMon plugin 1.1.0 deployment, the operator-selected
+nuker1 session reported `client.clientless.supported=false` with reason
+`unsupported_runtime_primitive` through the v3 capability stream. The authenticated
+browser received that result through `/api/live`; the Go Clientless action stayed
+disabled for that session. No command was submitted. This confirms fail-closed
+capability handling for that runtime, not a Clientless API or action. The current
+plugin version also predates the 1.1.2 Pathfinding Walk requirement; Walk remained
+disabled and no movement was issued.
+
+### CI and live capability status refresh (2026-09-27)
+
+CI run `36330451436` validates command lifecycle, expiry/audit persistence and the
+production plugin worker using fake adapters, with results delivered on `/api/live`.
+It does not establish real API effects for every command. The live phBot 20.1.1 /
+plugin 1.1.0 capability snapshot reports Clientless unsupported with
+`unsupported_runtime_primitive`; the UI leaves that action disabled and no request
+was sent. Walk traversal was not exercised per operator instruction; the installed
+plugin remains below the required 1.1.2 pathfinding capability. Execute Script stays
+outside Slice 3's bounded command catalog because no trusted script catalog contract
+is available. Do not infer or implement a Clientless primitive without official API
+and runtime evidence for a session-targeted safe action.

@@ -1,14 +1,65 @@
 package agents
 
 import (
+	"context"
+	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
+var (
+	ErrConnectionUnavailable = errors.New("agent connection unavailable")
+	ErrNotSent               = errors.New("agent command was not sent")
+)
+
+type CommandCapability struct {
+	Name      string
+	Supported bool
+	Reason    string
+	Modes     []string
+}
+
+func (r *Registry) CommandModeSupport(agentID string, generation uint64, name, mode string) (bool, string) {
+	supported, reason := r.CommandSupport(agentID, generation, name)
+	if !supported {
+		return false, reason
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID {
+		return false, "connection_unavailable"
+	}
+	capability, ok := current.capabilities[name]
+	if !ok {
+		return false, "capabilities_pending"
+	}
+	if len(capability.Modes) == 0 {
+		if name == "training.area.set" {
+			return false, "capability_modes_missing"
+		}
+		return true, ""
+	}
+	for _, allowed := range capability.Modes {
+		if allowed == mode {
+			return true, ""
+		}
+	}
+	return false, "unsupported_argument_mode"
+}
+
+type SendFunc func(context.Context, any) error
+
 type activeSession struct {
-	agentID     string
-	generation  uint64
-	connectedAt time.Time
+	agentID       string
+	generation    uint64
+	connectedAt   time.Time
+	protocol      int
+	pluginVersion string
+	sender        SendFunc
+	capabilities  map[string]CommandCapability
 }
 
 type Registry struct {
@@ -27,13 +78,122 @@ func (r *Registry) Register(agentID string) (generation uint64, connectedAt time
 	defer r.mu.Unlock()
 	r.next++
 	connectedAt = time.Now().UTC()
+	if previous, ok := r.latest[agentID]; ok && !connectedAt.After(previous) {
+		connectedAt = previous.Add(time.Nanosecond)
+	}
 	r.sessions[r.next] = activeSession{
-		agentID:     agentID,
-		generation:  r.next,
-		connectedAt: connectedAt,
+		agentID:      agentID,
+		generation:   r.next,
+		connectedAt:  connectedAt,
+		capabilities: make(map[string]CommandCapability),
 	}
 	r.latest[agentID] = connectedAt
 	return r.next, connectedAt
+}
+
+func (r *Registry) Configure(agentID string, generation uint64, protocol int, pluginVersion string, sender SendFunc) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID {
+		return false
+	}
+	current.protocol = protocol
+	current.pluginVersion = pluginVersion
+	current.sender = sender
+	r.sessions[generation] = current
+	return true
+}
+
+func (r *Registry) SetCapabilities(agentID string, generation uint64, capabilities []CommandCapability) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID || current.protocol < 3 {
+		return false
+	}
+	next := make(map[string]CommandCapability, len(capabilities))
+	for _, capability := range capabilities {
+		next[capability.Name] = capability
+	}
+	current.capabilities = next
+	r.sessions[generation] = current
+	return true
+}
+
+func (r *Registry) CommandSupport(agentID string, generation uint64, commandName string) (bool, string) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID {
+		return false, "connection_unavailable"
+	}
+	if current.protocol < 3 {
+		return false, "plugin_upgrade_required"
+	}
+	if commandName == "character.walk" && !pluginVersionAtLeast(current.pluginVersion, 1, 1, 2) {
+		return false, "plugin_upgrade_required"
+	}
+	capability, ok := current.capabilities[commandName]
+	if !ok {
+		return false, "capabilities_pending"
+	}
+	if !capability.Supported {
+		if capability.Reason == "" {
+			return false, "unsupported_runtime_primitive"
+		}
+		return false, capability.Reason
+	}
+	return true, ""
+}
+
+func pluginVersionAtLeast(version string, major, minor, patch int) bool {
+	version = strings.TrimSpace(version)
+	if version == "" || strings.Contains(version, "-") {
+		return false
+	}
+	version = strings.SplitN(version, "+", 2)[0]
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	got := [3]int{}
+	for i, part := range parts {
+		value, err := strconv.Atoi(part)
+		if err != nil || value < 0 {
+			return false
+		}
+		got[i] = value
+	}
+	want := [3]int{major, minor, patch}
+	for i := range got {
+		if got[i] != want[i] {
+			return got[i] > want[i]
+		}
+	}
+	return true
+}
+
+func (r *Registry) Send(ctx context.Context, agentID string, generation uint64, payload any) error {
+	r.mu.RLock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID || current.sender == nil {
+		r.mu.RUnlock()
+		return ErrConnectionUnavailable
+	}
+	sender := current.sender
+	r.mu.RUnlock()
+	return sender(ctx, payload)
+}
+
+func (r *Registry) Protocol(agentID string, generation uint64) (int, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID {
+		return 0, false
+	}
+	return current.protocol, true
 }
 
 // LatestConnectedAt is retained after disconnect so persistence can fence an
@@ -54,8 +214,6 @@ func (r *Registry) Unregister(agentID string, generation uint64) (removed bool, 
 
 // UnregisterWithFence atomically removes one generation and captures the most
 // recent connect time in its logical-agent cohort when it was the last socket.
-// Persisting that value lets storage reject a disconnect if a newer connection
-// was durably recorded before cleanup reaches PostgreSQL.
 func (r *Registry) UnregisterWithFence(agentID string, generation uint64) (removed bool, stillConnected bool, disconnectFence time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -112,9 +270,6 @@ func (r *Registry) IsCurrent(agentID string, generation uint64) bool {
 	return ok && current.agentID == agentID && current.generation == generation
 }
 
-// HasGeneration reports whether this exact authenticated socket is still live.
-// Character session reconciliation uses it to close only durable sessions whose
-// owning connection has disappeared, even when sibling sockets share the agent.
 func (r *Registry) HasGeneration(agentID string, generation uint64) bool {
 	return r.IsCurrent(agentID, generation)
 }

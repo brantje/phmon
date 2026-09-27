@@ -4,6 +4,7 @@ import {
   forwardProxyResponse,
   readBoundedJSON,
 } from '../../utils/proxy'
+import { backendAuthHeaders } from '../../utils/operatorAuth'
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store')
   try {
@@ -11,6 +12,7 @@ export default defineEventHandler(async (event) => {
       '/api/groups/' + encodeURIComponent(getRouterParam(event, 'id') || ''),
       {
         baseURL: useRuntimeConfig(event).backendUrl,
+        headers: backendAuthHeaders(event),
         method: 'PATCH',
         body: await readBoundedJSON(event),
         timeout: 3000,

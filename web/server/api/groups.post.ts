@@ -10,6 +10,7 @@ export default defineEventHandler(async (event) => {
     const body = await readBoundedJSON(event)
     const response = await $fetch.raw<Record<string, unknown>>('/api/groups', {
       baseURL: useRuntimeConfig(event).backendUrl,
+      headers: backendAuthHeaders(event),
       method: 'POST',
       body,
       timeout: 3000,

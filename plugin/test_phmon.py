@@ -343,13 +343,24 @@ class BackoffTests(unittest.TestCase):
         }, 'fixture')
         interval = worker._validate_ack({
             'type': 'hello.ack',
-            'protocol_version': 2,
+            'protocol_version': 3,
+            'server_time': plugin._utc_now(),
             'heartbeat_interval_seconds': 10,
             'heartbeat_timeout_seconds': 30,
         })
         self.assertEqual(interval, 10)
         with self.assertRaises(plugin.WebSocketClosed):
             worker._validate_ack({'type': 'hello.ack', 'protocol_version': 1})
+        fractional_ack = dict({
+            'type': 'hello.ack',
+            'protocol_version': 3,
+            'server_time': plugin._utc_now()[:-1] + '.123456789Z',
+            'heartbeat_interval_seconds': 10,
+            'heartbeat_timeout_seconds': 30,
+        })
+        self.assertEqual(worker._validate_ack(fractional_ack), 10)
+        with self.assertRaises(ValueError):
+            plugin._utc_epoch(plugin._utc_now()[:-1] + '.1234567890Z')
 
     def test_character_messages_resolve_identity_then_use_explicit_id(self):
         worker = plugin.AgentWorker({
@@ -362,7 +373,7 @@ class BackoffTests(unittest.TestCase):
             def __init__(self): self.sent = []
             def send_json(self, value): self.sent.append(value)
             def receive_json(self, timeout=None):
-                return {'type':'character.registered','protocol_version':2,'character_id':AGENT_ID}
+                return {'type':'character.registered','protocol_version':3,'character_id':AGENT_ID,'session_id':'22222222-3333-4444-8555-666666666666'}
 
         transport = Transport()
         sample = {'identity':{'server':'Silkroad','name':'Alpha','guild':''},'state':{'level':110,'hp':500,'botting':None}}
@@ -374,6 +385,7 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(transport.sent[1]['character_id'], AGENT_ID)
         self.assertEqual(transport.sent[2]['type'], 'character.state')
         self.assertEqual(transport.sent[2]['character_id'], AGENT_ID)
+        self.assertEqual(transport.sent[1]['session_id'], '22222222-3333-4444-8555-666666666666')
 
         unknown_guild = plugin.AgentWorker({
             'backend_url': 'ws://127.0.0.1:8081/agent',
@@ -386,6 +398,172 @@ class BackoffTests(unittest.TestCase):
             'state': {'level': 1},
         }, True)
         self.assertIsNone(transport.sent[0]['guild'])
+
+    def test_callback_dispatch_is_allowlisted_deduplicated_and_truthful(self):
+        calls = []
+        adapter = plugin.PhBotAdapter({'stop_bot': lambda: calls.append('stop') or False})
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000001',
+                 'character_id':AGENT_ID,'session_id':worker.session_id,'name':'bot.stop','args':{},'ttl_ms':10000,'expires_at':plugin._utc_now()}
+        frame['expires_at'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))
+        worker._accept_command(frame)
+        worker._accept_command(frame)
+        self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, 25000))
+        self.assertFalse(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, 25000))
+        self.assertEqual(calls, ['stop'])
+        ack = worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(ack['type'], 'command.ack')
+        self.assertEqual(result['status'], 'failed')
+        self.assertIs(result['api_return'], False)
+        self.assertEqual(result['verification'], 'api_confirmed')
+
+    def test_walk_generates_and_follows_a_bounded_path_before_reporting_observed_arrival(self):
+        calls = []
+        generated = []
+        position = {'region': 25000, 'x': 0.0, 'y': 0.0}
+        adapter = plugin.PhBotAdapter({
+            'generate_path': lambda x, y: generated.append((x, y)) or [(1, 2), (3, 4)],
+            'move_to_region': lambda *args: calls.append(args),
+            'get_position': lambda: dict(position),
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000002',
+                 'character_id':AGENT_ID,'session_id':worker.session_id,'name':'character.walk',
+                 'args':{'region':25000,'x':1,'y':2,'z':3},'ttl_ms':10000,'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
+        worker._accept_command(frame)
+        worker.process_one_command({'server':'Silkroad','name':'Alpha'}, 25001)
+        self.assertEqual(calls, [])
+        self.assertEqual(generated, [])
+        self.assertEqual(worker._outgoing.get_nowait()['type'], 'command.ack')
+        rejected = worker._outgoing.get_nowait()
+        self.assertEqual(rejected['status'], 'failed')
+        self.assertEqual(rejected['reason'], 'invalid_arguments')
+
+        frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000003'
+        worker._accept_command(frame)
+        worker.process_one_command({'server':'Silkroad','name':'Alpha'}, 25000)
+        self.assertEqual(worker._outgoing.get_nowait()['type'], 'command.ack')
+        self.assertEqual(generated, [(1.0, 2.0)])
+        self.assertEqual(calls, [(25000, 1.0, 2.0, 3.0)])
+        self.assertTrue(worker.process_walk_step({'server':'Silkroad','name':'Alpha'}, 25000))
+        self.assertEqual(calls[-1], (25000, 3.0, 4.0, 3.0))
+        position.update({'x': 3.0, 'y': 4.0})
+        self.assertTrue(worker.process_walk_step({'server':'Silkroad','name':'Alpha'}, 25000))
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['verification'], 'observed')
+        self.assertEqual(result['route_waypoints'], 2)
+        self.assertEqual(result['observed_after'], {'x': 3.0, 'y': 4.0, 'region': 25000})
+
+    def test_walk_rejects_cave_or_cross_region_waypoint_paths(self):
+        calls = []
+        adapter = plugin.PhBotAdapter({
+            'generate_path': lambda x, y: [(25001, x, y)],
+            'move_to_region': lambda *args: calls.append(args),
+            'get_position': lambda: {'region': 25000, 'x': 0, 'y': 0},
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000004',
+                 'character_id':AGENT_ID,'session_id':worker.session_id,'name':'character.walk',
+                 'args':{'region':25000,'x':1,'y':2,'z':3},'ttl_ms':10000,
+                 'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
+        worker._accept_command(frame)
+        worker.process_one_command({'server':'Silkroad','name':'Alpha'}, 25000)
+        worker._outgoing.get_nowait()
+        rejected = worker._outgoing.get_nowait()
+        self.assertEqual(rejected['status'], 'failed')
+        self.assertEqual(rejected['reason'], 'invalid_path')
+        self.assertEqual(calls, [])
+
+    def test_walk_stops_advancing_when_original_session_is_superseded(self):
+        calls = []
+        adapter = plugin.PhBotAdapter({
+            'generate_path': lambda x, y: [(20, 20), (40, 40)],
+            'move_to_region': lambda *args: calls.append(args),
+            'get_position': lambda: {'region': 25000, 'x': 20, 'y': 20},
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000005',
+                 'character_id':AGENT_ID,'session_id':worker.session_id,'name':'character.walk',
+                 'args':{'region':25000,'x':40,'y':40,'z':0},'ttl_ms':10000,
+                 'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
+        worker._accept_command(frame)
+        worker.process_one_command({'server':'Silkroad','name':'Alpha'}, 25000)
+        worker._outgoing.get_nowait()  # acknowledged
+        worker.session_id = '33333333-4444-4555-8666-777777777777'
+        self.assertTrue(worker.process_walk_step({'server':'Silkroad','name':'Alpha'}, 25000))
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'unknown')
+        self.assertEqual(result['reason'], 'walk_target_changed')
+        self.assertEqual(len(calls), 1)
+
+    def test_capability_probe_reports_only_complete_documented_primitives(self):
+        adapter = plugin.PhBotAdapter({
+            'set_training_position': lambda *args: True,
+            'set_training_radius': lambda radius: True,
+            'get_training_area': lambda: {'radius': 50.0, 'path': 'private.txt'},
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        frame = worker._capability_frame()
+        caps = {item['name']: item for item in frame['commands']}
+        self.assertEqual(caps['training.area.set']['modes'], ['position'])
+        self.assertTrue(caps['training.radius.set']['supported'])
+        self.assertFalse(caps['character.walk']['supported'])
+        self.assertFalse(caps['client.clientless']['supported'])
+        self.assertEqual(worker._safe_area({'region': 25000, 'x': 1, 'path': 'secret'}), {'training_region': 25000, 'training_x': 1.0})
+
+    def test_control_state_is_initial_session_scoped_and_rate_limited(self):
+        adapter = plugin.PhBotAdapter({
+            'get_training_area': lambda: {
+                'region': 25000, 'x': 12.5, 'y': 9, 'z': 0, 'radius': 50,
+                'path': 'must-not-leave-client.txt',
+            },
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+
+        self.assertTrue(worker.report_control_state())
+        self.assertFalse(worker.report_control_state())
+        frame = worker._outgoing.get_nowait()
+        self.assertEqual(frame['type'], 'character.control_state')
+        self.assertEqual(frame['session_id'], worker.session_id)
+        self.assertEqual(frame['control_state']['training_radius'], 50.0)
+        self.assertNotIn('path', frame['control_state'])
+
+        worker.session_id = '33333333-3333-4444-8555-666666666666'
+        self.assertTrue(worker.report_control_state())
 
     def test_queued_leave_prevents_reconnect_snapshot_resurrection(self):
         worker = plugin.AgentWorker({

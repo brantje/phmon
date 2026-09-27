@@ -5,9 +5,12 @@ import os
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from smoke_auth import login_cookie
+
 backend = os.environ.get("SMOKE_BACKEND_URL", "http://127.0.0.1:8081")
 web = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005")
 unavailable = os.environ.get("EXPECT_UNAVAILABLE") == "1"
+operator_cookie = ""
 
 
 def request(url, data=None, method=None):
@@ -15,7 +18,11 @@ def request(url, data=None, method=None):
         request = Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json"} if data is not None else {},
+            headers={
+                "Origin": web,
+                **({"Cookie": operator_cookie} if operator_cookie else {}),
+                **({"Content-Type": "application/json"} if data is not None else {}),
+            },
             method=method or ("POST" if data is not None else "GET"),
         )
         response = urlopen(request, timeout=10)
@@ -48,16 +55,24 @@ for url, expected_code, expected in [
     assert headers.get("Cache-Control") == "no-store", url
     print("PASS {}: HTTP {}".format(url, code))
 
+if unavailable:
+    code, _, body = request(web + "/")
+    assert code == 200, code
+    assert "PhMon" in body and "Checking operator session" in body, body[:500]
+    print("PASS application shell remains available behind auth while the database is unavailable")
+    raise SystemExit(0)
+
+operator_cookie = login_cookie(web, web, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+print("PASS operator login establishes a cookie-backed session")
+
 code, _, body = request(web + "/")
 assert code == 200, code
 assert "PhMon" in body, "Missing application brand"
-assert "Dashboard" in body, "Missing dashboard"
-assert 'href="/stats"' in body, "Missing Stats navigation link"
+assert "Checking operator session" in body, "Missing operator-gated application shell"
 code, _, body = request(web + "/stats")
 assert code == 200, code
-assert "Stats" in body, "Missing Stats page"
-assert "Characters" in body, "Missing character list on Stats page"
-print("PASS dashboard and Stats pages render")
+assert "Checking operator session" in body, "Stats route bypassed the operator gate"
+print("PASS dashboard and Stats routes render behind the operator gate")
 
 for path, key in (("/api/agents", "agents"), ("/api/characters", "characters"), ("/api/groups", "groups")):
     code, _, body = request(web + path)

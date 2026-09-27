@@ -8,6 +8,7 @@ import pathlib
 import time
 
 from live_smoke import LIVE_PROTOCOL_VERSION, WEB_URL, WebSocketClient, live_url, snapshot, subscribe, wait_for
+from smoke_auth import login_cookie
 
 READY_FILE = pathlib.Path(os.environ.get("LIVE_RECOVERY_READY_FILE", "/tmp/phmon-live-recovery-ready"))
 STALE_FILE = pathlib.Path(os.environ.get("LIVE_RECOVERY_STALE_FILE", "/tmp/phmon-live-recovery-stale"))
@@ -21,7 +22,9 @@ def main() -> None:
         except FileNotFoundError:
             pass
 
-    client = WebSocketClient(live_url(), WEB_URL).connect()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    operator_cookie = login_cookie(WEB_URL, WEB_URL, root)
+    client = WebSocketClient(live_url(), WEB_URL, operator_cookie).connect()
     try:
         subscribe(client, "groups", 1, "groups")
         initial = snapshot(client, "groups", 1, timeout=15)

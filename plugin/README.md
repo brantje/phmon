@@ -1,5 +1,11 @@
 # PhMon phBot plugin
 
+The recommended Slice 3 release is **1.1.2**. It adds capability-gated pathfinding
+Walk via phBot's documented Paths and Movement APIs. The server sends command expiry
+in whole-second UTC RFC3339 for compatibility with deployed v3 plugins; 1.1.1 and
+later also accept fractional timestamps for forward compatibility. Earlier v3 builds
+can reconnect and monitor but must be reloaded to get pathfinding Walk.
+
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket
 connection. The plugin reports connectivity facts; durable identity, authentication,
@@ -63,13 +69,31 @@ and urllib.parse; simulator CPython is not evidence for that gate.
 A dedicated worker thread owns WebSocket connect/read/write work. It polls readiness
 before starting a frame, then completes the frame under a bounded socket deadline; a
 mid-frame stall fails the connection rather than resuming from a partially consumed
-stream. The worker sends the protocol-v1 hello, follows the server heartbeat interval
-and reconnects automatically with bounded exponential backoff and jitter. finished()
-only signals shutdown and closes the worker socket; latency-sensitive phBot callbacks
-never wait for backend I/O.
+stream. The worker negotiates agent protocol v3 while the backend continues to accept
+v2 monitoring agents. It sends independently probed capabilities and current
+character/session state. A separate bounded command queue is never coalesced with
+state samples. Network callbacks only validate and enqueue; `event_loop()` checks
+the live target, expiry, input schema and optional API availability again, then calls
+at most one fixed adapter. No phBot mutation runs on the network worker and no API
+is selected through arbitrary callable names.
 
-The plugin stores no durable event queue. Later slices will add current-state and
-event messages over the same authenticated connection.
+Supported documented adapters include bot/trace start-stop, training area/radius,
+same-region walk, return scroll and disconnect. Walk requires `generate_path`,
+`move_to_region` and `get_position`; the plugin requests phBot's waypoint route and
+advances it callback-by-callback as live position reaches each node. Cross-region
+routes and teleports are not supported, and generated scripts are never executed.
+Training controls require their respective getters/setters; local training script
+paths are not sent. The documented
+Client API only inspects client state, so clientless stays unavailable. The plugin
+does not kill processes, change relog settings, run arbitrary scripts, persist
+commands locally or replay them after reconnect. Bool and void API returns remain
+distinct; walk, return-scroll and disconnect effects are unverified until separately
+observed. Botting status remains unknown.
+
+The stop path closes the worker socket to unblock bounded reads without joining from
+a phBot callback. Outbound results use their own bounded, non-coalescing queue and may
+be lost on transport loss; the backend then retains `unknown` rather than replaying
+the action.
 
 ## Simulator
 
@@ -80,6 +104,8 @@ For development without a Windows/phBot process:
     PHMON_AGENT_TOKEN='...' \
     python3 scripts/agent_simulator.py
 
-The simulator imports the exact same transport/worker implementation as the plugin
-and reports simulator-fixture as its phBot version. It is test tooling only and is
-never evidence that real phBot integration has been validated.
+The simulator imports the exact same transport/worker and command dispatcher as the
+plugin and reports simulator-fixture as its phBot version. The `commands` scenario
+uses a fake `stop_bot` adapter and exercises callback dispatch without real phBot.
+It is fixture coverage only and is never evidence that real phBot integration has
+been validated.

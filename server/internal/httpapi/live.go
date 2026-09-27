@@ -15,6 +15,7 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/commands"
 )
 
 const (
@@ -32,9 +33,12 @@ const (
 )
 
 type liveFilter struct {
-	Query       string `json:"q,omitempty"`
-	GroupID     string `json:"group_id,omitempty"`
-	CharacterID string `json:"character_id,omitempty"`
+	Query        string `json:"q,omitempty"`
+	GroupID      string `json:"group_id,omitempty"`
+	CharacterID  string `json:"character_id,omitempty"`
+	CommandName  string `json:"command_name,omitempty"`
+	CommandState string `json:"command_state,omitempty"`
+	Limit        int    `json:"limit,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -68,11 +72,14 @@ type LiveHub struct {
 	agents     AgentStore
 	registry   *agentdomain.Registry
 	characters *characters.Store
+	commands   *commands.Service
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
 	buildSlots chan struct{}
 }
+
+func (h *LiveHub) SetCommands(service *commands.Service) { h.commands = service }
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
@@ -112,13 +119,18 @@ func (h *LiveHub) unregister(client *liveClient) {
 }
 
 func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
-	if !liveOriginAllowed(r) {
+	_, authenticatedOperator := operatorSessionFromContext(r.Context())
+	if !authenticatedOperator && !liveOriginAllowed(r) {
 		respondJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin websocket rejected"})
 		return
 	}
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		CompressionMode: websocket.CompressionDisabled,
+		// The operator middleware has already validated the exact configured
+		// browser Origin and authenticated its session. The request reaches Go
+		// through Nuxt, so the backend Host differs from the browser Origin.
+		InsecureSkipVerify: true,
+		CompressionMode:    websocket.CompressionDisabled,
 	})
 	if err != nil {
 		return
@@ -126,6 +138,24 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(liveMaxClientMessageBytes)
 
 	ctx, cancel := context.WithCancel(r.Context())
+	if operatorSession, ok := operatorSessionFromContext(r.Context()); ok {
+		go func() {
+			delay := time.Until(operatorSession.watch.ExpiresAt)
+			if delay < 0 {
+				delay = 0
+			}
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-operatorSession.watch.Done:
+			case <-timer.C:
+			case <-ctx.Done():
+				return
+			}
+			cancel()
+			_ = conn.Close(websocket.StatusPolicyViolation, "operator session expired")
+		}()
+	}
 	client := &liveClient{
 		hub:           h,
 		conn:          conn,
@@ -496,6 +526,24 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, err
 		}
 		return map[string]any{"groups": groups}, nil
+	case "commands":
+		if h.commands == nil {
+			return nil, errors.New("command history unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 25
+		}
+		items, err := h.commands.History(ctx, subscription.Filter.CharacterID, subscription.Filter.CommandName, subscription.Filter.CommandState, limit)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"commands": items, "character_id": subscription.Filter.CharacterID}, nil
+	case "controls":
+		if h.commands == nil {
+			return nil, errors.New("character controls unavailable")
+		}
+		return h.commands.Controls(ctx, subscription.Filter.CharacterID)
 	default:
 		return nil, errors.New("unsupported live stream")
 	}
@@ -507,9 +555,12 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		Revision: message.Revision,
 		Stream:   message.Stream,
 		Filter: liveFilter{
-			Query:       strings.TrimSpace(message.Filter.Query),
-			GroupID:     message.Filter.GroupID,
-			CharacterID: message.Filter.CharacterID,
+			Query:        strings.TrimSpace(message.Filter.Query),
+			GroupID:      message.Filter.GroupID,
+			CharacterID:  message.Filter.CharacterID,
+			CommandName:  message.Filter.CommandName,
+			CommandState: message.Filter.CommandState,
+			Limit:        message.Filter.Limit,
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
@@ -534,6 +585,23 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
 			subscription.Filter.Query != "" || subscription.Filter.GroupID != "" {
 			return liveSubscription{}, false
+		}
+	case "commands", "controls":
+		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" {
+			return liveSubscription{}, false
+		}
+		if subscription.Stream == "controls" && (subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0) {
+			return liveSubscription{}, false
+		}
+		if subscription.Stream == "commands" {
+			if len(subscription.Filter.CommandName) > 64 || (subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > 100)) {
+				return liveSubscription{}, false
+			}
+			switch subscription.Filter.CommandState {
+			case "", "queued", "dispatching", "sent", "acknowledged", "completed", "failed", "expired", "unknown":
+			default:
+				return liveSubscription{}, false
+			}
 		}
 	default:
 		return liveSubscription{}, false

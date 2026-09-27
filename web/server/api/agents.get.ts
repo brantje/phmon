@@ -8,6 +8,7 @@ export default defineEventHandler(async (event): Promise<AgentListResponse> => {
   try {
     const agents = await $fetch<AgentView[]>('/api/agents', {
       baseURL: backendUrl,
+      headers: backendAuthHeaders(event),
       timeout: 3000,
       retry: 0,
     })

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const WEB_URL = (process.env.SMOKE_WEB_URL || 'http://127.0.0.1:3005').replace(/\/$/, '')
+const OPERATOR_ACCESS_SECRET = process.env.OPERATOR_ACCESS_SECRET || ''
 const READY_FILE = process.env.BROWSER_AUDIT_READY_FILE || ''
 const REQUIRE_RECONNECT = process.env.BROWSER_AUDIT_REQUIRE_RECONNECT === '1'
 const TIMEOUT_MS = Number(process.env.BROWSER_AUDIT_TIMEOUT_MS || 60000)
@@ -134,6 +135,9 @@ function forbiddenLiveRead(url, method, type) {
 }
 
 async function main() {
+  if (!OPERATOR_ACCESS_SECRET) {
+    throw new Error('OPERATOR_ACCESS_SECRET is required for the authenticated browser audit')
+  }
   const chrome = findChrome()
   const profile = mkdtempSync(join(tmpdir(), 'phmon-chrome-'))
   const stderr = []
@@ -156,7 +160,11 @@ async function main() {
   let cdp
   try {
     const portFile = join(profile, 'DevToolsActivePort')
-    await waitFor(() => existsSync(portFile), 'Chrome DevTools port', 15000)
+    try {
+      await waitFor(() => existsSync(portFile), 'Chrome DevTools port', 30000)
+    } catch (error) {
+      throw new Error(`${error.message}\n${stderr.join('')}`)
+    }
     const [port] = readFileSync(portFile, 'utf8').trim().split(/\s+/)
     const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) =>
       response.json(),
@@ -189,6 +197,22 @@ async function main() {
       cdp.send('Page.enable'),
       cdp.send('Runtime.enable'),
     ])
+    await cdp.send('Page.navigate', { url: WEB_URL + '/' })
+    await waitFor(
+      () => evaluate(cdp, `document.readyState === 'complete'`),
+      'operator sign-in shell',
+    )
+    const login = await evaluate(
+      cdp,
+      `fetch(${JSON.stringify(WEB_URL + '/api/auth/login')}, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: ${JSON.stringify(OPERATOR_ACCESS_SECRET)} }),
+      }).then(async (response) => ({ ok: response.ok, body: await response.json() }))`,
+    )
+    if (!login?.ok || login.body?.authenticated !== true) {
+      throw new Error('operator login failed in browser audit')
+    }
     await cdp.send('Page.navigate', { url: WEB_URL + '/' })
 
     await waitFor(
@@ -311,6 +335,27 @@ async function main() {
         `document.documentElement.scrollWidth <= window.innerWidth + 1`,
       )
       if (!fits) throw new Error(`responsive layout overflows at ${width}x${height}`)
+      if (width === 390) {
+        const characterTable = await evaluate(
+          cdp,
+          `(() => {
+            const table = document.querySelector('.character-table')
+            if (!table) return { present: false }
+            return {
+              present: true,
+              visible: getComputedStyle(table).display !== 'none',
+              rows: table.querySelectorAll('tbody tr').length,
+              scrollsInsidePanel: table.closest('.agent-table-wrap')?.scrollWidth >= table.closest('.agent-table-wrap')?.clientWidth,
+            }
+          })()`,
+        )
+        if (!characterTable.present || !characterTable.visible || characterTable.rows === 0) {
+          throw new Error(`character list is missing at ${width}x${height}: ${JSON.stringify(characterTable)}`)
+        }
+        if (!characterTable.scrollsInsidePanel) {
+          throw new Error(`character table has no bounded scroll region at ${width}x${height}`)
+        }
+      }
     }
 
     // Navigate to a streamed stable character detail when fixture/history data exists.
@@ -339,6 +384,22 @@ async function main() {
     if (READY_FILE) writeFileSync(READY_FILE, 'ready\n')
 
     if (REQUIRE_RECONNECT) {
+      const login = await evaluate(
+        cdp,
+        `fetch(${JSON.stringify(WEB_URL + '/api/auth/login')}, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret: ${JSON.stringify(OPERATOR_ACCESS_SECRET)} }),
+        }).then(async (response) => ({ ok: response.ok, body: await response.json() }))`,
+      )
+      if (!login?.ok || login.body?.authenticated !== true) {
+        throw new Error('operator reauthentication failed after backend restart')
+      }
+      await cdp.send('Page.reload', { ignoreCache: true })
+      await waitFor(
+        () => evaluate(cdp, `document.readyState === 'complete'`),
+        'application reload after operator reauthentication',
+      )
       await waitFor(
         () => successfulLiveSockets > baselineSockets,
         'browser WebSocket reconnect after backend restart',

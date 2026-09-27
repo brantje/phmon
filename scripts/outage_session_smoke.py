@@ -15,12 +15,16 @@ import uuid
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from smoke_auth import login_cookie
+
 
 web = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005")
 server = os.environ.get("SMOKE_SERVER_URL", "http://127.0.0.1:8081")
 agent_url = os.environ.get("PHMON_AGENT_URL", "ws://127.0.0.1:8081/agent")
 simulators = []
 recovered = False
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+operator_cookie = login_cookie(web, web, root)
 compose_project = os.environ.get("PHMON_COMPOSE_PROJECT")
 if not compose_project:
     raise SystemExit("PHMON_COMPOSE_PROJECT must name the disposable Compose test stack")
@@ -28,7 +32,18 @@ compose = ["docker", "compose", "--project-name", compose_project]
 
 
 def request_json(url, data=None, headers=None):
-    request = Request(url, data=data, headers=headers or {}, method="GET" if data is None else "POST")
+    request_headers = {
+        "Origin": web,
+        "Sec-Fetch-Site": "same-origin",
+        "Cookie": operator_cookie,
+        **(headers or {}),
+    }
+    request = Request(
+        url,
+        data=data,
+        headers=request_headers,
+        method="GET" if data is None else "POST",
+    )
     with urlopen(request, timeout=5) as response:
         return response.status, json.loads(response.read().decode())
 
@@ -63,7 +78,12 @@ def main():
     token_response = Request(
         web + "/api/agents/credentials",
         data=b"{}",
-        headers={"Content-Type": "application/json", "Origin": web, "Sec-Fetch-Site": "same-origin"},
+        headers={
+            "Content-Type": "application/json",
+            "Origin": web,
+            "Sec-Fetch-Site": "same-origin",
+            "Cookie": operator_cookie,
+        },
         method="POST",
     )
     with urlopen(token_response, timeout=10) as response:

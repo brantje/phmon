@@ -2,8 +2,10 @@
 from __future__ import print_function
 
 import base64
+import calendar
 import hashlib
 import json
+import math
 import os
 import random
 import select
@@ -22,14 +24,17 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.1.0'
+pVersion = '1.1.2'
 pUrl = ''
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 8192
 _WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+MAX_WALK_WAYPOINTS = 256
+WALK_ARRIVAL_TOLERANCE = 12.0
+WALK_TIMEOUT_SECONDS = 300.0
 
 try:
     from phBot import get_config_dir as _get_config_dir
@@ -56,6 +61,54 @@ try:
     import QtBind as _QtBind
 except ImportError:
     _QtBind = None
+
+def _optional_phbot_api(name):
+    try:
+        import phBot
+        return getattr(phBot, name, None)
+    except Exception:
+        return None
+
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','generate_path','set_training_position',
+              'set_training_radius','set_training_area','get_training_area','move_to_region',
+              'use_return_scroll','disconnect')
+
+class PhBotAdapter(object):
+    """Narrow allowlisted wrapper over documented phBot functions."""
+    def __init__(self, functions=None):
+        self.functions = functions or dict((name, _optional_phbot_api(name)) for name in _API_NAMES)
+        self.get_character_data = self.functions.get('get_character_data') or _optional_phbot_api('get_character_data')
+        self.get_position = self.functions.get('get_position') or _optional_phbot_api('get_position')
+    def has(self, name):
+        if name == 'get_position': return callable(self.get_position)
+        return callable(self.functions.get(name))
+    def call(self, name, *args):
+        function = self.functions.get(name)
+        if not callable(function): raise RuntimeError('unsupported_runtime_primitive')
+        return function(*args)
+    def character(self): return self.get_character_data() if callable(self.get_character_data) else None
+    def position(self): return self.get_position() if callable(self.get_position) else None
+
+def _result_json(value):
+    try: return json.dumps(value, separators=(',', ':'), allow_nan=False)
+    except Exception: return 'null'
+
+def _number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and abs(value) != float('inf')
+
+def _utc_epoch(value):
+    if (not isinstance(value, str) or len(value) < 20 or value[-1] != 'Z'
+            or value[19] not in ('Z', '.')):
+        raise ValueError('invalid server timestamp')
+    epoch = calendar.timegm(time.strptime(value[:19], '%Y-%m-%dT%H:%M:%S'))
+    if value[19] == 'Z':
+        if len(value) != 20:
+            raise ValueError('invalid server timestamp')
+        return float(epoch)
+    fraction = value[20:-1]
+    if not fraction or len(fraction) > 9 or not fraction.isdigit():
+        raise ValueError('invalid server timestamp')
+    return float(epoch) + int(fraction) / float(10 ** len(fraction))
 
 
 def _log(message):
@@ -443,10 +496,11 @@ class ReconnectBackoff(object):
 
 
 class AgentWorker(object):
-    def __init__(self, config, phbot_version, websocket_factory=None):
+    def __init__(self, config, phbot_version, websocket_factory=None, api_adapter=None):
         self.config = validate_config(config)
         self.phbot_version = str(phbot_version)
         self.websocket_factory = websocket_factory or WebSocketClient
+        self.api = api_adapter or PhBotAdapter()
         self.stop_event = threading.Event()
         self._thread = None
         self._socket = None
@@ -457,11 +511,24 @@ class AgentWorker(object):
         self.character_id = None
         self._current_identity = None
         self._rejected_identity = None
+        self.session_id = None
+        self._commands = _queue.Queue(maxsize=16)
+        self._outgoing = _queue.Queue(maxsize=32)
+        self._dedup = set()
+        self._dedup_order = []
+        self._profile_epoch = 0
+        self._active_walk = None
+        self._server_clock_offset = 0.0
+        self._last_control_sample_session = None
+        self._last_control_sample_at = 0.0
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
 
     def leave_character(self):
+        if self._active_walk is not None:
+            self._finish_walk('unknown', 'character_left_during_walk', 'unverified')
+        self._discard_pending_commands('character_left')
         self._replace_sample({'leave': True})
 
     def _replace_sample(self, value):
@@ -490,6 +557,11 @@ class AgentWorker(object):
 
     def stop(self):
         self.stop_event.set()
+        with self._socket_lock:
+            client = self._socket
+        if client is not None:
+            try: client.close()
+            except Exception: pass
 
     def _set_socket(self, value):
         with self._socket_lock:
@@ -514,6 +586,8 @@ class AgentWorker(object):
                 })
                 ack = client.receive_json(timeout=10.0)
                 interval = self._validate_ack(ack)
+                if PROTOCOL_VERSION >= 3:
+                    client.send_json(self._capability_frame())
                 backoff.reset()
                 self.status = 'Connected to PhMon backend.'
                 _log('connected to backend')
@@ -533,8 +607,10 @@ class AgentWorker(object):
                             if self.character_id is not None:
                                 client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
                             self.character_id = None
+                            self.session_id = None
                             self._current_identity = None
                             self._latest_sample = None
+
                         else:
                             self._latest_sample = sample
                             self._publish_sample(client, sample, False)
@@ -553,20 +629,25 @@ class AgentWorker(object):
                     wait = min(next_heartbeat - now, 1.0)
                     message = client.receive_json(timeout=wait)
                     if message is not None:
-                        if message.get('type') == 'character.rejected':
-                            self._handle_character_rejected(message)
-                        elif message.get('type') != 'character.registered':
-                            raise WebSocketClosed('unexpected server application message')
+                        self._handle_server_message(message)
+                    self._flush_results(client)
             except Exception as error:
                 if not self.stop_event.is_set():
                     self.status = 'Backend unavailable; retrying...'
                     _log('backend unavailable (' + error.__class__.__name__ + '); reconnecting')
             finally:
+                # Commands and results belong to the socket generation that
+                # accepted them. Never execute or publish them on a reconnect.
+                self._clear_pending_commands()
+                while True:
+                    try: self._outgoing.get_nowait()
+                    except _queue.Empty: break
                 if client is not None:
                     client.close()
                 self._set_socket(None)
                 self.character_id = None
                 self._current_identity = None
+                self.session_id = None
 
             if not self.stop_event.is_set():
                 self.stop_event.wait(backoff.next_delay())
@@ -579,26 +660,32 @@ class AgentWorker(object):
         if self._rejected_identity is not None and self._rejected_identity != identity_key:
             self._rejected_identity = None
         if identity != self._current_identity or self.character_id is None:
+            if self._current_identity is not None and identity != self._current_identity:
+                self._discard_pending_commands('character_changed')
             if self.character_id is not None and self._current_identity is not None:
                 previous_key = (self._current_identity.get('server','').lower(), self._current_identity.get('name','').lower())
                 next_key = (identity.get('server','').lower(), identity.get('name','').lower())
                 if previous_key != next_key:
                     client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
                     self.character_id = None
+            self._profile_epoch += 1
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_utc_now()})
-            reply = client.receive_json(timeout=5.0)
-            if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')):
+            reply = self._wait_for_registration(client)
+            if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):
                 raise WebSocketClosed('character registration rejected')
             self.character_id = reply['character_id']
+            self.session_id = reply['session_id']
             self._current_identity = identity
             snapshot = True
-        client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'state':state,'sent_at':_utc_now()})
+        client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'state':state,'sent_at':_utc_now()})
 
     def _handle_character_rejected(self, message):
-        if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id:
+        if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             raise WebSocketClosed('invalid character rejection')
+        self._discard_pending_commands('session_superseded')
         self._rejected_identity = self._identity_key(self._current_identity)
         self.character_id = None
+        self.session_id = None
         self.status = 'Character observation superseded; waiting for a new character observation.'
 
     @staticmethod
@@ -632,7 +719,351 @@ class AgentWorker(object):
             raise WebSocketClosed('invalid heartbeat interval')
         if not isinstance(timeout, int) or timeout <= interval:
             raise WebSocketClosed('invalid heartbeat timeout')
+        try:
+            self._server_clock_offset = _utc_epoch(ack.get('server_time')) - time.time()
+        except Exception:
+            if ack.get('protocol_version') >= 3:
+                raise WebSocketClosed('server clock evidence required')
         return interval
+
+    def _wait_for_registration(self, client):
+        deadline = _monotonic() + 5.0
+        while _monotonic() < deadline:
+            message = client.receive_json(timeout=max(0.05, min(0.5, deadline - _monotonic())))
+            if message is None: continue
+            if not isinstance(message,dict): raise WebSocketClosed('invalid server application frame')
+            if message.get('type') == 'character.registered': return message
+            if message.get('type') == 'command.execute':
+                # The newly claimed server session is not yet active in this worker.
+                # Reject it as known-unexecuted, then keep waiting for registration.
+                self._accept_command(message)
+                self._flush_results(client)
+                continue
+            if message.get('type') == 'command.revoke':
+                self._revoke_session(message)
+                continue
+            raise WebSocketClosed('unexpected frame during character registration')
+        raise WebSocketClosed('character registration timed out')
+
+    def _handle_server_message(self, message):
+        if not isinstance(message,dict): raise WebSocketClosed('invalid server application frame')
+        if message.get('type') == 'character.rejected': self._handle_character_rejected(message)
+        elif message.get('type') == 'command.execute': self._accept_command(message)
+        elif message.get('type') == 'command.revoke': self._revoke_session(message)
+        elif message.get('type') != 'character.registered': raise WebSocketClosed('unexpected server application message')
+
+    def _capability_frame(self):
+        mapping = {
+            'bot.start': ('start_bot', 'unsupported_runtime_primitive'),
+            'bot.stop': ('stop_bot', 'unsupported_runtime_primitive'),
+            'trace.start': ('start_trace', 'unsupported_runtime_primitive'),
+            'trace.stop': ('stop_trace', 'unsupported_runtime_primitive'),
+            'training.area.set': (None, 'unsupported_runtime_primitive'),
+            'training.radius.set': ('set_training_radius', 'unsupported_runtime_primitive'),
+            'character.walk': ('move_to_region', 'unsupported_runtime_primitive'),
+            'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
+            'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
+            'client.clientless': (None, 'unsupported_runtime_primitive'),
+        }
+        commands = []
+        for name, (function, reason) in mapping.items():
+            supported = bool(function and self.api.has(function))
+            extra = {}
+            if name == 'training.area.set':
+                modes=[]
+                if self.api.has('set_training_position'):
+                    modes.append('position')
+                    if self.api.has('get_position'): modes.append('current_position')
+                if self.api.has('set_training_area'): modes.append('named')
+                supported=bool(modes); extra['modes']=modes
+            if name == 'training.radius.set': supported = self.api.has('set_training_radius') and self.api.has('get_training_area')
+            if name == 'character.walk':
+                supported = all(self.api.has(symbol) for symbol in ('generate_path', 'move_to_region', 'get_position'))
+            commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
+            if extra: commands[-1].update(extra)
+        return {'type': 'agent.capabilities', 'protocol_version': 3, 'schema_version': 1, 'commands': commands}
+
+    def _accept_command(self, message):
+        command_id = message.get('command_id')
+        if (message.get('protocol_version') != 3 or not isinstance(command_id, str) or
+                len(command_id) != 40 or not command_id.startswith('cmd_') or
+                not _validate_agent_id(message.get('character_id')) or not _validate_agent_id(message.get('session_id')) or
+                not isinstance(message.get('name'), str) or not isinstance(message.get('args'), dict)):
+            raise WebSocketClosed('invalid or stale command target')
+        if message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
+            self._queue_result(self._base_result(message,'failed','session_not_active','unverified'))
+            return
+        if command_id in self._dedup:
+            return
+        if self._outgoing.qsize() > 29:
+            self._queue_result(self._base_result(message, 'failed', 'result_queue_full', 'unverified'))
+            return
+        ttl = message.get('ttl_ms')
+        if not isinstance(ttl, int) or isinstance(ttl, bool) or ttl <= 0 or ttl > 10000:
+            self._queue_result(self._base_result(message, 'failed', 'command_expired', 'unverified'))
+            return
+        try:
+            remaining = min(ttl / 1000.0, _utc_epoch(message.get('expires_at')) - (time.time() + self._server_clock_offset)) - 0.25
+        except Exception:
+            remaining = 0.0
+        if remaining <= 0:
+            self._queue_result(self._base_result(message, 'failed', 'command_expired', 'unverified'))
+            return
+        try:
+            self._commands.put_nowait({'message': dict(message), 'deadline': _monotonic() + remaining, 'epoch': self._profile_epoch})
+        except _queue.Full:
+            self._queue_result(self._base_result(message, 'failed', 'command_queue_full', 'unverified'))
+            return
+        self._remember_command(command_id)
+        self._queue_result({'type':'command.ack','protocol_version':3,'command_id':command_id,'character_id':self.character_id,'session_id':self.session_id})
+
+    def _remember_command(self, command_id):
+        self._dedup.add(command_id); self._dedup_order.append(command_id)
+        while len(self._dedup_order) > 256:
+            old = self._dedup_order.pop(0); self._dedup.discard(old)
+
+    def _queue_result(self, frame):
+        try: self._outgoing.put_nowait(frame)
+        except _queue.Full: self.status = 'Command result queue is full; backend may show an unknown outcome.'
+
+    def _flush_results(self, client):
+        while True:
+            try: frame = self._outgoing.get_nowait()
+            except _queue.Empty: return
+            client.send_json(frame)
+
+    def _base_result(self, message, status, code, verification):
+        return {'type':'command.result','protocol_version':3,'command_id':message.get('command_id'),
+                'character_id':message.get('character_id'),'session_id':message.get('session_id'),
+                'status':status,'reason':code,'verification':verification}
+
+    def _revoke_session(self, message):
+        if message.get('protocol_version') != 3 or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
+            return
+        self._discard_pending_commands('session_superseded')
+
+    def _clear_pending_commands(self):
+        while True:
+            try: self._commands.get_nowait()
+            except _queue.Empty: break
+
+    def _discard_pending_commands(self, reason):
+        while True:
+            try: item=self._commands.get_nowait()
+            except _queue.Empty: break
+            self._queue_result(self._base_result(item['message'],'failed',reason,'unverified'))
+
+    def process_one_command(self, current_identity=None, current_region=None):
+        """Invoke at most one validated command from phBot's event_loop callback."""
+        try: item = self._commands.get_nowait()
+        except _queue.Empty: return False
+        message = item['message']; name = message['name']; args = message['args']
+        if item['epoch'] != self._profile_epoch or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
+            self._queue_result(self._base_result(message, 'failed', 'stale_session', 'unverified')); return True
+        if _monotonic() >= item['deadline']:
+            self._queue_result(self._base_result(message, 'failed', 'command_expired', 'unverified')); return True
+        expected_identity = self._current_identity
+        if current_identity is not None and self._identity_key(current_identity) != self._identity_key(expected_identity):
+            self._queue_result(self._base_result(message, 'failed', 'character_changed', 'unverified')); return True
+        try:
+            if name == 'character.walk':
+                self._start_walk(message, args, current_region)
+                return True
+            outcome, effective, observed, verification = self._invoke(name, args, current_region)
+            status = 'failed' if outcome is False else 'completed'
+            result = self._base_result(message, status, 'api_return_false' if outcome is False else '', verification)
+            result['api_return'] = outcome
+            result['effective_args'] = effective
+            if observed is not None: result['observed_after'] = observed
+            self._queue_result(result)
+            self._queue_control_state(message)
+        except Exception as error:
+            self._queue_result(self._base_result(message, 'failed', str(error)[:64] or 'api_error', 'unverified'))
+        return True
+
+    def _start_walk(self, message, args, current_region):
+        if set(args) != set(('region', 'x', 'y', 'z')):
+            raise ValueError('invalid_arguments')
+        if self._active_walk is not None:
+            raise ValueError('walk_already_active')
+        if not all(self.api.has(symbol) for symbol in ('generate_path', 'move_to_region', 'get_position')):
+            raise ValueError('unsupported_runtime_primitive')
+        region = args.get('region')
+        if (not isinstance(region, int) or isinstance(region, bool) or region <= 0 or region != current_region or
+                not all(_number(args.get(axis)) and abs(args[axis]) <= 10000000 for axis in ('x', 'y', 'z'))):
+            raise ValueError('invalid_arguments')
+        generated = self.api.call('generate_path', float(args['x']), float(args['y']))
+        if generated is False:
+            raise ValueError('path_rate_limited_or_not_in_game')
+        if generated is None:
+            raise ValueError('path_not_found')
+        if not isinstance(generated, (list, tuple)) or not generated or len(generated) > MAX_WALK_WAYPOINTS:
+            raise ValueError('invalid_path')
+        points = []
+        for point in generated:
+            if not isinstance(point, (list, tuple)):
+                raise ValueError('invalid_path')
+            if len(point) == 2:
+                point_region, x, y = region, point[0], point[1]
+            elif len(point) == 3:
+                point_region, x, y = point[0], point[1], point[2]
+            else:
+                raise ValueError('invalid_path')
+            if (not isinstance(point_region, int) or isinstance(point_region, bool) or point_region != region or
+                    not _number(x) or not _number(y) or abs(x) > 10000000 or abs(y) > 10000000):
+                raise ValueError('invalid_path')
+            points.append({'region': region, 'x': float(x), 'y': float(y), 'z': float(args['z'])})
+
+        route = {
+            'message': message,
+            'identity': self._identity_key(self._current_identity),
+            'epoch': self._profile_epoch,
+            'session_id': self.session_id,
+            'region': region,
+            'points': points,
+            'index': 0,
+            'destination': {'region': region, 'x': float(args['x']), 'y': float(args['y']), 'z': float(args['z'])},
+            'deadline': _monotonic() + WALK_TIMEOUT_SECONDS,
+        }
+        self._active_walk = route
+        route['effective_args'] = dict(route['destination'])
+        try:
+            self.api.call('move_to_region', region, points[0]['x'], points[0]['y'], points[0]['z'])
+        except Exception:
+            self._finish_walk('unknown', 'walk_waypoint_dispatch_failed', 'unverified')
+
+    def process_walk_step(self, current_identity=None, current_region=None):
+        """Advance one path waypoint from phBot's callback; never called by the network worker."""
+        route = self._active_walk
+        if route is None:
+            return False
+        message = route['message']
+        if (route['epoch'] != self._profile_epoch or route['session_id'] != self.session_id or
+                self._identity_key(current_identity) != route['identity']):
+            self._finish_walk('unknown', 'walk_target_changed', 'unverified')
+            return True
+        if current_region != route['region']:
+            self._finish_walk('unknown', 'walk_region_changed', 'unverified')
+            return True
+        if _monotonic() >= route['deadline']:
+            self._finish_walk('unknown', 'walk_timeout', 'unverified')
+            return True
+        position = self.api.position()
+        if (not isinstance(position, dict) or position.get('region') != route['region'] or
+                not _number(position.get('x')) or not _number(position.get('y'))):
+            self._finish_walk('unknown', 'walk_position_unavailable', 'unverified')
+            return True
+        point = route['points'][route['index']]
+        if math.hypot(float(position['x']) - point['x'], float(position['y']) - point['y']) > WALK_ARRIVAL_TOLERANCE:
+            return False
+        route['index'] += 1
+        if route['index'] >= len(route['points']):
+            destination = route['destination']
+            reached = math.hypot(float(position['x']) - destination['x'], float(position['y']) - destination['y']) <= WALK_ARRIVAL_TOLERANCE
+            self._finish_walk('completed' if reached else 'unknown', '' if reached else 'destination_not_observed',
+                              'observed' if reached else 'unverified', position)
+            return True
+        next_point = route['points'][route['index']]
+        try:
+            self.api.call('move_to_region', next_point['region'], next_point['x'], next_point['y'], next_point['z'])
+        except Exception:
+            self._finish_walk('unknown', 'walk_waypoint_dispatch_failed', 'unverified')
+        return True
+
+    def _finish_walk(self, status, reason, verification, observed=None):
+        route = self._active_walk
+        if route is None:
+            return
+        self._active_walk = None
+        message = route['message']
+        result = self._base_result(message, status, reason, verification)
+        result['api_return'] = None
+        result['effective_args'] = route['effective_args']
+        result['route_waypoints'] = len(route['points'])
+        if observed is not None:
+            result['observed_after'] = {'x': float(observed['x']), 'y': float(observed['y']), 'region': int(observed['region'])}
+        self._queue_result(result)
+        self._queue_control_state(message)
+
+    def _invoke(self, name, args, current_region):
+        def exact(allowed):
+            if set(args) - set(allowed): raise ValueError('invalid_arguments')
+        empty = ('bot.start','bot.stop','trace.stop','character.return','character.disconnect')
+        if name in empty:
+            exact(())
+            function = {'bot.start':'start_bot','bot.stop':'stop_bot','trace.stop':'stop_trace','character.return':'use_return_scroll','character.disconnect':'disconnect'}[name]
+            result = self.api.call(function)
+            return result, {}, None, 'api_confirmed' if isinstance(result,bool) else 'unverified'
+        if name == 'trace.start':
+            exact(('name',)); value=args.get('name')
+            if not isinstance(value,str) or not value.strip() or len(value.strip().encode('utf-8'))>64: raise ValueError('invalid_arguments')
+            result=self.api.call('start_trace',value.strip()); return result,{'name':value.strip()},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
+        if name == 'training.area.set':
+            exact(('mode','name','region','x','y','z')); mode=args.get('mode')
+            if mode == 'current_position':
+                position=self.api.position()
+                if not isinstance(position,dict) or not all(_number(position.get(k)) and abs(position.get(k))<=10000000 for k in ('x','y','z')) or not isinstance(position.get('region'),int) or isinstance(position.get('region'),bool) or position.get('region')<=0: raise ValueError('position_unavailable')
+                region=int(position['region']); coords=[float(position[k]) for k in ('x','y','z')]
+            elif mode == 'position':
+                if not isinstance(args.get('region'),int) or isinstance(args.get('region'),bool) or args.get('region')<=0 or current_region!=args.get('region') or not all(_number(args.get(k)) and abs(args[k])<=10000000 for k in ('x','y','z')): raise ValueError('invalid_arguments')
+                region=args['region']; coords=[float(args[k]) for k in ('x','y','z')]
+            elif mode == 'named':
+                value=args.get('name')
+                if not isinstance(value,str) or not value.strip() or len(value.strip().encode('utf-8'))>100: raise ValueError('invalid_arguments')
+                result=self.api.call('set_training_area',value.strip()); area=self.api.call('get_training_area') if self.api.has('get_training_area') else None; return result,{'mode':'named','name':value.strip()},self._safe_area(area),'api_confirmed' if isinstance(result,bool) else 'unverified'
+            else: raise ValueError('invalid_arguments')
+            result=self.api.call('set_training_position',region,*coords)
+            area=self.api.call('get_training_area') if self.api.has('get_training_area') else None
+            return result,{'mode':mode,'region':region,'x':coords[0],'y':coords[1],'z':coords[2]},self._safe_area(area),'api_confirmed' if isinstance(result,bool) else 'unverified'
+        if name == 'training.radius.set':
+            exact(('radius',)); radius=args.get('radius')
+            if not _number(radius) or radius<1 or radius>10000: raise ValueError('invalid_arguments')
+            area=self.api.call('get_training_area') if self.api.has('get_training_area') else None
+            if not isinstance(area,dict): raise ValueError('training_area_unavailable')
+            result=self.api.call('set_training_radius',float(radius)); observed=self.api.call('get_training_area') if self.api.has('get_training_area') else None
+            confirmed=isinstance(observed,dict) and observed.get('radius')==float(radius)
+            return result,{'radius':float(radius)},self._safe_area(observed),'observed' if confirmed else ('api_confirmed' if isinstance(result,bool) else 'unverified')
+        if name == 'character.walk':
+            raise ValueError('walk_requires_callback_path')
+        raise ValueError('unsupported_command')
+
+    @staticmethod
+    def _safe_area(area):
+        if not isinstance(area,dict): return None
+        safe={}
+        for key in ('region','x','y','z','radius'):
+            value=area.get(key)
+            if key=='region':
+                if isinstance(value,int) and not isinstance(value,bool): safe['training_region']=value
+            elif _number(value): safe['training_'+key]=float(value)
+        return safe
+
+    def _queue_control_state(self, message):
+        area=None
+        try:
+            if self.api.has('get_training_area'): area=self.api.call('get_training_area')
+        except Exception: area=None
+        safe=self._safe_area(area) or {}
+        state={'training_available':bool(isinstance(area,dict)),'observed_at':_utc_now()}
+        state.update(safe)
+        self._queue_result({'type':'character.control_state','protocol_version':3,'character_id':message.get('character_id'),
+                            'session_id':message.get('session_id'),'control_state':state})
+
+    def report_control_state(self, force=False):
+        """Queue current training readback from the phBot callback, never network I/O."""
+        if self.character_id is None or self.session_id is None:
+            return False
+        now = _monotonic()
+        if (not force and self._last_control_sample_session == self.session_id
+                and now - self._last_control_sample_at < 30.0):
+            return False
+        self._queue_control_state({
+            'character_id': self.character_id,
+            'session_id': self.session_id,
+        })
+        self._last_control_sample_session = self.session_id
+        self._last_control_sample_at = now
+        return True
 
 
 _worker = None
@@ -854,6 +1285,17 @@ def _sample_character():
         _worker.update_character(identity,state)
         _last_character_signature = signature
         _last_character_sample_at = now
+    if hasattr(_worker, 'report_control_state'):
+        try: _worker.report_control_state()
+        except Exception as error: _log('control-state sample failed (' + error.__class__.__name__ + ')')
+    # Mutations run only on phBot's event_loop callback, after refreshing identity
+    # and region. The network worker only validates/enqueues command frames.
+    if hasattr(_worker, 'process_one_command'):
+        try: _worker.process_one_command(identity, state.get('region'))
+        except Exception as error: _log('command callback failed (' + error.__class__.__name__ + ')')
+    if hasattr(_worker, 'process_walk_step'):
+        try: _worker.process_walk_step(identity, state.get('region'))
+        except Exception as error: _log('walk callback failed (' + error.__class__.__name__ + ')')
 
 
 def finished():

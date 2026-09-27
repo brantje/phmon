@@ -258,7 +258,7 @@ func TestStaleCharacterOperationsDoNotCloseSiblingCharacterSessions(t *testing.T
 		{name: "left", msg: agentMessage{Type: "character.left", CharacterID: aID}},
 	} {
 		t.Run(stale.name, func(t *testing.T) {
-			stale.msg.ProtocolVersion = agentProtocolVersion
+			stale.msg.ProtocolVersion = 2
 			stale.msg.SentAt = time.Now().UTC().Format(time.RFC3339)
 			if err := wsjson.Write(ctx, conn1, stale.msg); err != nil {
 				t.Fatal(err)
