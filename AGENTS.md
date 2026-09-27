@@ -390,13 +390,16 @@ disabled. No bot command was sent; Walk remains excluded by instruction, Clientl
 remains unsupported on the live 20.1.1/plugin 1.1.0 runtime, and Execute Script is
 outside the bounded catalog. On `fb76e09`, all tests and builds passed but both
 validation CI runs failed only at the final Compose config check because that job did
-not supply the now-required operator secret after `.env.example` was hardened. The
-workflow now injects a disposable CI-only value for validation; the stack job already
-uses its own CI-only value. Docker is unavailable on this Windows host, so the Compose
-config check awaits CI. Exact next action: commit and push this workflow fix, rerun CI,
-request Copilot and CodeRabbit on that head, and triage fresh feedback. Copilot has
-repeatedly returned the account quota limit; CodeRabbit's latest request was rate
-limited while the PR is draft. Keep PR draft and Slice 3
+not supply the now-required operator secret after `.env.example` was hardened. Commit
+`d30e4a0` supplies a disposable CI-only value to validation; both validation and stack
+jobs passed in runs `36332718330` and `36332721628`. This includes PostgreSQL integration
+and Go race tests, production-worker fake-adapter command flow, reconnect/outage recovery
+and browser `/api/live` checks. The latest-head CodeRabbit request was rate limited and
+Copilot returned the account quota limit; neither posted new finding text. Exact next
+action: request both automated reviews again when their quotas permit and inspect any
+new comments. No command was sent to a bot character; Walk remains excluded,
+Clientless remains unsupported on the live 20.1.1/plugin 1.1.0 runtime, and Execute
+Script remains outside the bounded catalog. Keep PR draft and Slice 3
 incomplete while real Walk, safe per-session Clientless and broad real-runtime
 mutation evidence remain open; stop before Slice 4.
 **Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
