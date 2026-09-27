@@ -2,3 +2,5 @@ node_modules
 .nuxt
 .output
 package-lock.json
+# Generated from the selected game-data dataset by npm run export:assets.
+public/game-assets/**

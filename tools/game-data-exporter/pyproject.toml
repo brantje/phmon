@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phmon-game-data-exporter"
+version = "0.4.3"
+description = "Standalone offline Silkroad client asset and catalog exporter for PhMon"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "Pillow==12.3.0",
+  "pycryptodome==3.23.0",
+]
+
+[project.scripts]
+phmon-game-data = "phmon_game_exporter.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest==8.4.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
