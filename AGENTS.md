@@ -1283,7 +1283,58 @@ command history is inspectable
 Expose important operational game state while reproducing phMonitor's compact,
 icon-first inventory/item presentation rather than falling back to generic data tables.
 
+This slice is also the first major visual reconstruction of the phMonitor Stats
+experience. Treat the current Slice 2 `/stats` composition, `CharacterPanel` and
+character-detail presentation as development scaffolding rather than a permanent
+page structure. Preserve their working data flows, character identity, grouping,
+search and targeting behavior, but do not preserve their generic panel/table layout
+when it conflicts with the supplied reference.
+
+By the end of Slice 4, the populated Stats experience must be recognizably derived
+from `phmonitor_screenshots/02-stats-01.png` through `02-stats-04.png` for all
+functionality whose owning slices have been implemented. Do not merely append new
+inventory, pet and party panels underneath the existing Slice 2 UI.
+
 **Reference behavior and visual contract (phMonitor v0.5.0):**
+
+The five supplied Stats screenshots are one connected character-management
+experience whose functionality spans several slices. Slice 4 owns the first major
+page-level integration pass and must use those captures as its visual baseline:
+
+- `02-stats-01.png` establishes the grouped-character summary hierarchy, compact
+  character statistics and location/minimap placement. Reuse the real Slice 2
+  character/group state now. Actual map-coordinate rendering remains owned by
+  Slice 7; do not fake a correctly positioned minimap before its transform is
+  validated.
+- `02-stats-02.png` establishes the expanded character-centric presentation:
+  character identity/art, live statistics, pet information, location panel and
+  compact resource/status cards. Slice 4 must implement the pet-related and
+  character-layout portions that are supported by real data. Slice 7 later makes
+  the map portion authoritative.
+- `02-stats-03.png` is directly owned by this slice: equipment/character-set items
+  arranged as a visual equipment surface around the character presentation, with
+  item icons, empty equipment positions and observed plus/quantity overlays.
+  A generic equipment table does not satisfy this reference.
+- `02-stats-04.png` establishes the visual treatment for character progress and
+  training/status information. Existing Slice 2 live values such as level, XP, SP,
+  HP/MP and gold should be integrated into this character-centric composition now
+  where available. Derived historical/rate metrics whose source does not yet exist
+  remain owned by Slice 12 and must stay explicitly unavailable rather than being
+  fabricated.
+- `02-stats-05.png` primarily belongs to Slice 3. When Slice 3 is present, Slice 4
+  must integrate its existing capability-aware command controls into the same
+  character-targeted Stats/detail experience instead of creating a second command
+  implementation or leaving the commands isolated in a generic operations panel.
+
+Slice ownership controls data/functionality, not whether the page may already adopt
+the reference composition. Build the reference layout progressively using everything
+that is genuinely available from completed slices, and leave only genuinely
+future-owned data unavailable.
+
+Do not wait for Slice 15 to introduce the Stats visual direction. Slice 15 is the
+cross-product parity and acceptance pass; it may reconcile spacing, responsive
+behavior, remaining controls and incomplete reference details, but Slice 4 must
+already establish the character-centric Stats structure.
 
 The reference Stats experience treats bag inventory, character set/equipment, storage
 and applicable pet inventory as visual Silkroad item collections. Items are identified
@@ -1394,6 +1445,29 @@ indistinguishable from currently opened/live state.
 
 **Implement:**
 
+Stats/detail visual integration:
+
+- restructure `/stats` and `/characters/{character_id}` as necessary around the
+  supplied Stats reference instead of treating the current Slice 2 component
+  composition as fixed architecture
+- retain the existing stable `character_id`, search, group membership, live state
+  and command-targeting behavior while changing presentation
+- provide a clear grouped-character -> selected/expanded-character drill-down model
+  matching the reference information hierarchy
+- integrate already-implemented Slice 2 live statistics into the new character
+  presentation rather than duplicating or replacing their backend sources
+- integrate Slice 3 controls through its existing command/capability/result lifecycle
+  when available; do not introduce frontend-owned command semantics
+- use Slice 2.5 game assets only when their semantic mapping is verified. Item icons
+  and validated static reference data may be used directly; unresolved character
+  portraits, pet roles or other uncertain mappings must use a deliberate fallback
+  rather than guessed associations
+- remove `LATER`/temporary scaffolding for functionality that is actually available
+  by the end of Slice 4. Keep future-slice gaps explicit only where the underlying
+  capability genuinely remains unavailable
+- do not create duplicate desktop-only and mobile-only information models; responsive
+  layouts must expose the same character/item/pet/party state
+
 character inventory as a slot-preserving icon collection with empty slots, quantities
 and the shared item detail card above
 
@@ -1437,6 +1511,31 @@ Nuxt pet view grouped by supported pet category, with applicable pet inventory
 Nuxt party view with current-membership and Party Setup sections
 
 **Acceptance criteria:**
+
+at the end of Slice 4, `/stats` is no longer primarily the generic Slice 2
+`CharacterPanel` + `AgentPanel` + `OperationsPanels` development composition; its
+main character experience is recognizably based on the supplied phMonitor Stats
+captures
+
+`02-stats-02.png` and `02-stats-03.png` are used as explicit same-viewport comparison
+targets for the character/equipment/pet portions implemented in this slice, with
+differences documented rather than silently deferred
+
+the reference-style character hierarchy incorporates existing Slice 2 identity,
+online state, level, HP/MP, XP/SP, gold and location information wherever actually
+observed, without creating a second source of truth
+
+when Slice 3 is already implemented, its supported character actions appear naturally
+inside the character-focused Stats/detail flow and retain exactly the same audited
+backend command lifecycle
+
+missing Slice 7 map transforms or Slice 12 historical/rate data do not block the
+rest of the reference layout from being implemented; those specific areas remain
+honestly unavailable without forcing the entire Stats page to remain scaffolding
+
+verified Slice 2.5 assets are used where appropriate, while unresolved portrait,
+pet-role, map-transform or item semantics are never guessed merely to make the
+screenshot look populated
 
 current inventory is recognizable as the character's slot-based bag: item icons,
 occupied and empty slots, source-provided quantities/stacks and source slot positions
