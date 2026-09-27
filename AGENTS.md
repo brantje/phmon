@@ -199,7 +199,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Shell and instance access | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently. | 1, 2, 15 |
 | Dashboard | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links. | 2, 5, 6, 13, 15 |
 | Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
-| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique filters; character/item/date filtering, counts, pagination and map links. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties. | 5, 7, 13 |
+| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes. | 5, 7, 13 |
 | Chat | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends. | 6, 13, 15 |
 | Economy | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data. | 6, 13 |
 | Alchemy | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities. | 5, 12 |
@@ -208,7 +208,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
 | Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
 | Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
-| Item Search | Search inventory/equipment/character sets, storage and guild storage; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts from their observed source. | 2.5, 4, 13 |
+| Item Search | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts and exact container provenance from their observed source. | 2.5, 4, 13 |
 | Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
 | Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
 | Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
@@ -372,28 +372,30 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
-**Slice 3 acceptance follow-up (2026-09-27, active):** CI on `fd30d8c` passed the
-PostgreSQL-backed validation/race job, production fake-adapter command smoke, browser
-`/api/live` audit, authenticated agent reconnect, and responsive browser assertions at
-390×844 and 1440×1000. Its database-outage recovery probe exposed a PostgreSQL error
-in command reconciliation (`text * interval`). `Reconcile` now uses a typed
-`make_interval` argument, and the PostgreSQL integration test exercises expiry plus
-durable audit insertion. CI then showed the database recovery fixture itself opened
-`/api/live` and protected routes without an operator cookie; both fixtures now use
-the shared login helper. The first PostgreSQL run of the added expiry assertion then
-caught its own fixture violating `expires_at > created_at`; it now backdates both
-timestamps while preserving that invariant. Python compilation and all 32 plugin
-tests pass. CI then caught timestamp parameter inference in the fixture and a
-missing session cookie in the outage credential-creation request; both are now fixed.
-The next stack run passed agent/live smoke but intermittently failed to start Chrome
-within the browser audit's 15-second DevTools window; that bounded wait is now 30
-seconds and preserves Chrome stderr on failure. Local Go unit tests and vet pass;
-this Windows host has no Docker/PostgreSQL and cannot run the integration test
-locally. Exact next action: push the Chrome startup diagnostic, rerun current-head
-CI, inspect CodeRabbit findings, and retry Copilot only if its quota permits. Real
-Walk traversal and a safe per-session Clientless primitive remain unresolved; keep
-the PR draft and stop before Slice 4.
-
+**Slice 3 acceptance follow-up (2026-09-27, active):** current PR head
+`14e23f8a` passed CI run `36330451436`: PostgreSQL-backed integration and Go race
+coverage; production plugin worker command smoke with fake adapters; authenticated
+agent reconnect; database-outage/recovery probes; and browser `/api/live` plus
+responsive assertions at 390×844 and 1440×1000. The database recovery probe found
+and fixed a typed interval issue; the integration assertion now verifies expired
+state and durable audit insertion. The mobile browser assertion verifies visible
+character rows inside the bounded table scroller. Manual LAN review also covered
+1440×1000, 1280×800, 390×844 and 2560×1315; no post-fix screenshot artifact was
+saved. This Windows host has no Docker/PostgreSQL and CGO is disabled, so those
+integration/race checks are evidenced by CI rather than local execution. The live
+nuker1 runtime reports plugin 1.1.0 and
+`client.clientless.supported=false` / `unsupported_runtime_primitive`; Clientless
+stayed disabled and no command was submitted. Walk was not tested per the operator's
+instruction; the installed plugin also lacks the 1.1.2 pathfinding capability.
+Execute Script remains outside the bounded command catalog. GitHub currently reports
+a merge conflict against `main`; the fetched base change is merged locally while
+preserving both Slice 4 opcode-boundary and item-provenance guidance. CodeRabbit's
+review for `14e23f8a` was still processing before the base merge. Copilot has
+repeatedly responded that the requesting account reached its quota limit. Exact next
+action: commit and push the base merge plus acceptance-record updates, rerun CI,
+request both reviewers for the resulting head, and continue triage. Keep the PR draft; do not claim Slice 3
+complete or continue to Slice 4 while real Walk, safe Clientless and broad real-runtime
+mutation evidence remain open.
 **Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
 present: separate operator-cookie auth; durable idempotent command admission/audit;
 session/generation-targeted v3 dispatch; per-socket capability checks; callback-only
@@ -1436,7 +1438,58 @@ command history is inspectable
 Expose important operational game state while reproducing phMonitor's compact,
 icon-first inventory/item presentation rather than falling back to generic data tables.
 
+This slice is also the first major visual reconstruction of the phMonitor Stats
+experience. Treat the current Slice 2 `/stats` composition, `CharacterPanel` and
+character-detail presentation as development scaffolding rather than a permanent
+page structure. Preserve their working data flows, character identity, grouping,
+search and targeting behavior, but do not preserve their generic panel/table layout
+when it conflicts with the supplied reference.
+
+By the end of Slice 4, the populated Stats experience must be recognizably derived
+from `phmonitor_screenshots/02-stats-01.png` through `02-stats-04.png` for all
+functionality whose owning slices have been implemented. Do not merely append new
+inventory, pet and party panels underneath the existing Slice 2 UI.
+
 **Reference behavior and visual contract (phMonitor v0.5.0):**
+
+The five supplied Stats screenshots are one connected character-management
+experience whose functionality spans several slices. Slice 4 owns the first major
+page-level integration pass and must use those captures as its visual baseline:
+
+- `02-stats-01.png` establishes the grouped-character summary hierarchy, compact
+  character statistics and location/minimap placement. Reuse the real Slice 2
+  character/group state now. Actual map-coordinate rendering remains owned by
+  Slice 7; do not fake a correctly positioned minimap before its transform is
+  validated.
+- `02-stats-02.png` establishes the expanded character-centric presentation:
+  character identity/art, live statistics, pet information, location panel and
+  compact resource/status cards. Slice 4 must implement the pet-related and
+  character-layout portions that are supported by real data. Slice 7 later makes
+  the map portion authoritative.
+- `02-stats-03.png` is directly owned by this slice: equipment/character-set items
+  arranged as a visual equipment surface around the character presentation, with
+  item icons, empty equipment positions and observed plus/quantity overlays.
+  A generic equipment table does not satisfy this reference.
+- `02-stats-04.png` establishes the visual treatment for character progress and
+  training/status information. Existing Slice 2 live values such as level, XP, SP,
+  HP/MP and gold should be integrated into this character-centric composition now
+  where available. Derived historical/rate metrics whose source does not yet exist
+  remain owned by Slice 12 and must stay explicitly unavailable rather than being
+  fabricated.
+- `02-stats-05.png` primarily belongs to Slice 3. When Slice 3 is present, Slice 4
+  must integrate its existing capability-aware command controls into the same
+  character-targeted Stats/detail experience instead of creating a second command
+  implementation or leaving the commands isolated in a generic operations panel.
+
+Slice ownership controls data/functionality, not whether the page may already adopt
+the reference composition. Build the reference layout progressively using everything
+that is genuinely available from completed slices, and leave only genuinely
+future-owned data unavailable.
+
+Do not wait for Slice 15 to introduce the Stats visual direction. Slice 15 is the
+cross-product parity and acceptance pass; it may reconcile spacing, responsive
+behavior, remaining controls and incomplete reference details, but Slice 4 must
+already establish the character-centric Stats structure.
 
 The reference Stats experience treats bag inventory, character set/equipment, storage
 and applicable pet inventory as visual Silkroad item collections. Items are identified
@@ -1539,13 +1592,54 @@ must come from the observed item instance. Unknown means absent/unknown.
 
 Container-level operational metadata stays visually separate from the in-game item
 description. Show owner/character, server, source (`Inventory`, `Character Set`,
-`Storage`, `Guild Storage`, or the applicable pet), observer and freshness/last
-observed state around the collection/detail surface. Do not inject those PhMon
-operational fields into the middle of the Silkroad stat block. Last-known storage or
-guild-storage data must be clearly marked stale/last observed rather than visually
-indistinguishable from currently opened/live state.
+`Storage`, `Guild Storage`, the applicable pet, or `Job Pouch` where verified),
+observer and freshness/last observed state around the collection/detail surface. Do not
+inject those PhMon operational fields into the middle of the Silkroad stat block.
+Last-known storage, guild-storage, pet or job-pouch data must be clearly marked
+stale/last observed rather than visually indistinguishable from currently opened/live
+state.
+
+Treat these as **canonical item containers**, not unrelated ad-hoc payloads. Each
+container observation must carry enough stable source/container/slot/item identity to
+support Slice 5 acquisition/transfer reasoning without confusing a slot move with a new
+item. At minimum investigate and model, where the verified phBot API exposes them:
+
+- character bag inventory
+- equipped/character-set items
+- personal storage
+- guild storage
+- each applicable pet inventory, including Pick/Grab pets
+- job pouch
+- any additional verified item-bearing container discovered during capability review
+
+A container becoming observable after plugin load, pet summon, storage open, reconnect
+or refresh establishes current/last-known state; it does **not** by itself mean every
+visible item was newly acquired.
 
 **Implement:**
+
+Stats/detail visual integration:
+
+- restructure `/stats` and `/characters/{character_id}` as necessary around the
+  supplied Stats reference instead of treating the current Slice 2 component
+  composition as fixed architecture
+- retain the existing stable `character_id`, search, group membership, live state
+  and command-targeting behavior while changing presentation
+- provide a clear grouped-character -> selected/expanded-character drill-down model
+  matching the reference information hierarchy
+- integrate already-implemented Slice 2 live statistics into the new character
+  presentation rather than duplicating or replacing their backend sources
+- integrate Slice 3 controls through its existing command/capability/result lifecycle
+  when available; do not introduce frontend-owned command semantics
+- use Slice 2.5 game assets only when their semantic mapping is verified. Item icons
+  and validated static reference data may be used directly; unresolved character
+  portraits, pet roles or other uncertain mappings must use a deliberate fallback
+  rather than guessed associations
+- remove `LATER`/temporary scaffolding for functionality that is actually available
+  by the end of Slice 4. Keep future-slice gaps explicit only where the underlying
+  capability genuinely remains unavailable
+- do not create duplicate desktop-only and mobile-only information models; responsive
+  layouts must expose the same character/item/pet/party state
 
 character inventory as a slot-preserving icon collection with empty slots, quantities
 and the shared item detail card above
@@ -1592,9 +1686,12 @@ command lifecycle and verify their effects. This sequencing defers implementatio
 not the evidence or parity requirement: document any unresolved required capability
 as an explicit gap, and do not claim full parity while it remains unresolved.
 
-delta/change handling keyed by stable source + slot/item identity where appropriate;
-do not churn/re-render the entire collection for one changed stack or slot if the
-protocol can safely communicate a bounded update
+delta/change handling keyed by stable source/container + slot/item identity where
+appropriate; do not churn/re-render the entire collection for one changed stack or
+slot if the protocol can safely communicate a bounded update. Preserve enough
+pre/post-state for Slice 5 to distinguish quantity gain, quantity loss, slot movement,
+stack split/merge and cross-container transfer without treating all changes as new
+acquisitions
 
 Nuxt inventory/equipment/storage views with slot-preserving icon collections,
 source/freshness indicators and responsive item detail surfaces
@@ -1604,6 +1701,31 @@ Nuxt pet view grouped by supported pet category, with applicable pet inventory
 Nuxt party view with current-membership and Party Setup sections
 
 **Acceptance criteria:**
+
+at the end of Slice 4, `/stats` is no longer primarily the generic Slice 2
+`CharacterPanel` + `AgentPanel` + `OperationsPanels` development composition; its
+main character experience is recognizably based on the supplied phMonitor Stats
+captures
+
+`02-stats-02.png` and `02-stats-03.png` are used as explicit same-viewport comparison
+targets for the character/equipment/pet portions implemented in this slice, with
+differences documented rather than silently deferred
+
+the reference-style character hierarchy incorporates existing Slice 2 identity,
+online state, level, HP/MP, XP/SP, gold and location information wherever actually
+observed, without creating a second source of truth
+
+when Slice 3 is already implemented, its supported character actions appear naturally
+inside the character-focused Stats/detail flow and retain exactly the same audited
+backend command lifecycle
+
+missing Slice 7 map transforms or Slice 12 historical/rate data do not block the
+rest of the reference layout from being implemented; those specific areas remain
+honestly unavailable without forcing the entire Stats page to remain scaffolding
+
+verified Slice 2.5 assets are used where appropriate, while unresolved portrait,
+pet-role, map-transform or item semantics are never guessed merely to make the
+screenshot look populated
 
 current inventory is recognizable as the character's slot-based bag: item icons,
 occupied and empty slots, source-provided quantities/stacks and source slot positions
@@ -1622,9 +1744,10 @@ inventory, equipment/character set, personal storage, guild storage and applicab
 inventory reuse the same item-detail semantics so the same item does not render
 differently solely because its container changed
 
-current inventory, equipment/character set and available storage sources are visible
-without conflating their ownership/source; stale/last-known storage is visibly distinct
-from current/live observations
+current inventory, equipment/character set, applicable pet inventories, job pouch and
+available storage sources are visible without conflating ownership/source;
+stale/last-known storage/pet/job-pouch observations are visibly distinct from
+current/live observations
 
 Attack/Fellow/Pick/Transport pets are represented when observed, and applicable pet
 state/inventory remains associated with the correct pet across updates
@@ -1645,97 +1768,431 @@ updates do not require blindly resending excessive full state when unnecessary
 
 **Objective:**
 
-Move from current-state monitoring to durable activity history.
+Build the canonical, extensible activity pipeline for every discrete occurrence observed
+directly by phBot, derived reliably from monitored state, or decoded from a verified
+Silkroad packet. Persist those occurrences durably so Timeline, Chat, Conditions,
+Notifications, Analytics, Map and Economy can reuse the same source of truth instead
+of creating parallel ingestion models.
 
-**Canonical events should include where available:**
+Slice 5 owns **ingestion, normalization, delivery, durability and generic event
+querying**. Feature-specific projections and workflows may live in later slices, but
+they must consume this canonical pipeline when the underlying fact is an event.
 
-death
+**Event model:**
 
-item drop
+Define a versioned event envelope with, at minimum:
 
-unique spawn
+- stable `event_id`
+- `schema_version`
+- canonical `kind` and broader `category`
+- `agent_id`, `character_id`, `server_id` and connection/session identity where known
+- per-session monotonic `sequence` where the source can provide it
+- `occurred_at` and backend `received_at`
+- explicit provenance via `source` plus bounded `source_ref`/decoder metadata
+- optional normalized position/region context where it was observed at event time
+- bounded typed payload
+- optional deterministic `dedupe_key` when the source cannot carry the same event ID
+  across retries
 
-teleport
+Supported provenance values should distinguish at least:
 
-level-up
+- direct phBot event/callback
+- phBot chat callback
+- phBot alchemy callback
+- reliable state-diff derivation
+- verified Joymax/Silkroad packet decoder
+- backend Condition/custom event
+- backend/system event
 
-disconnect
+Do not flatten every event into an unstructured JSON blob. Keep common searchable
+identity/time/source fields first-class while using bounded typed payloads for
+event-family detail. Unknown source fields remain absent/null; never synthesize facts
+from display text or presentation.
 
-reconnect
+**Direct phBot events/callbacks to ingest where verified:**
 
-alchemy result
+Cover the complete useful documented `handle_event` catalog, not only the subset
+currently visible in the phMonitor marketing page. At minimum investigate, document
+and implement supported events for:
 
-custom event kind with a bounded payload so later Conditions can emit durable custom
-events without inventing a second timeline model
+- character death
+- normal item drop
+- **rare item drop as its own canonical event**, preserving phBot's separate rare-drop
+  signal instead of trying to infer rarity from a normal-drop row
+- unique spawn
+- hunter/trader spawn
+- thief spawn
+- transport death
+- another player attacking the character
+- GM nearby/spawned
+- character level-up
+- alchemy completion/result
+- other useful documented `handle_event` values discovered during implementation
+- connection, disconnection, joined-game, reconnect/recovery and teleport callbacks
 
-**Implement:**
+Verify exact callback/event IDs, argument meanings and runtime behavior against the
+official phBot plugin documentation and the installed runtime before coding them.
+Document the verified mapping in `docs/phbot-capabilities.md`; do not copy guessed
+constants from third-party snippets.
 
-event envelope/schema
+Also ingest dedicated callbacks where they carry richer semantics than
+`handle_event`, especially alchemy callbacks/results and chat. Correlate duplicate
+signals deterministically rather than storing two independent copies of the same
+occurrence.
 
-plugin event publishing
+**Canonical event families should include where supported:**
 
-nonblocking outbound queue
+- `session.connected`
+- `session.disconnected`
+- `session.joined_game`
+- `session.teleported`
+- `character.died`
+- `character.level_up`
+- `character.attacked`
+- `drop.item`
+- `drop.rare`
+- `world.unique_spawned`
+- `world.gm_spawned`
+- `job.hunter_trader_seen`
+- `job.thief_seen`
+- `pet.transport_died`
+- `alchemy.finished`
+- `chat.message_received`
+- reliable party/academy/quest/pet lifecycle events derived from bounded state diffs
+  where no direct callback exists
+- bounded `custom.*` events emitted intentionally by later Conditions/backend logic
 
-durable backend event storage
+Names may be refined while implementing, but keep one stable canonical naming scheme
+and migration/version rules. Do not create separate timeline-only names for the same
+fact.
 
-item-event payloads/snapshots that retain every actually observed display/detail field
-needed by later UI: canonical item identity/model/code, display name, plus value,
-quantity/stack where relevant, rarity/seal metadata, degree/category, observed item
-color/grade and observed blues/attributes. Fields absent from the source remain absent;
-never infer a seal, blue, rarity or probability from presentation alone.
+**Chat boundary:**
 
-Nuxt activity timeline
+Inbound chat is an event source and therefore enters through Slice 5. Normalize every
+supported incoming chat message into the canonical pipeline with its verified channel,
+sender/recipient context, character/server scope, timestamp and bounded original
+message content.
 
-basic event filtering
+Slice 6 owns the chat-specific persistence/query projection if needed, conversation
+model, unread/navigation behavior, composer and outbound sending. It must consume the
+Slice 5 event instead of inventing a second plugin -> backend ingestion path.
+
+**Reliable derived events:**
+
+A state transition may become a canonical event when phBot exposes trustworthy current
+state but no direct callback. Candidate examples include:
+
+- party member joined/left
+- academy member joined/left/graduated or other verified membership/state changes
+- quest accepted/completed/removed where the available API can distinguish them
+  reliably
+- pet summoned/dismissed or other lifecycle changes where identity is stable enough
+
+Use bounded, identity-aware diffs over authoritative snapshots. Startup/reconnect state
+must not be misreported as a burst of historical joins/leaves. Record provenance as
+derived state and test reconnect/reload behavior. If the source cannot distinguish an
+actual transition from missing/stale data, do not emit the event.
+
+**Verified packet-derived events:**
+
+phBot exposes raw Joymax/Silkroad packet hooks. Use them only as an extension mechanism
+for valuable events that cannot be represented correctly from documented callbacks or
+state APIs.
+
+- maintain an explicit opcode/decoder allowlist
+- bind each decoder to the verified game/server/protocol assumptions it supports
+- unit-test decoders with captured/fixture packets whose provenance is documented
+- emit a normal canonical event after decoding; downstream code must not depend on raw
+  packet layout
+- retain only bounded decoder/source metadata needed for debugging
+- do not build an indiscriminate packet logger or persist all raw traffic
+- unknown/unverified opcodes remain unsupported instead of being guessed
+
+Prefer direct phBot callbacks over packet parsing whenever both provide the same fact.
+
+**Item/drop event snapshots:**
+
+Item events must retain every actually observed display/detail field needed by later
+UI and analytics without re-querying mutable inventory state:
+
+- canonical item identity/model/code where available
+- display name
+- plus value
+- quantity/stack where relevant
+- rarity/seal metadata actually observed
+- degree/category/type taxonomy when verified
+- observed item color/grade
+- observed blues/attributes
+- ground-drop identity and coordinates when the event can be reliably correlated with
+  a current phBot drop observation
+
+Fields absent from the source remain absent. Never infer a seal, blue, rarity,
+probability or item property from presentation alone. A rare-drop callback is evidence
+that the occurrence was a rare drop; it is not permission to invent missing item
+instance metadata.
+
+**Item acquisition, transfer and container-delta events:**
+
+A world drop and an owned-item acquisition are different facts. `drop.item` /
+`drop.rare` answer "what appeared as a drop"; they do not prove that this character,
+party member or pet received the item. Model actual possession changes separately.
+
+Add canonical item event kinds where the verified source supports them, including:
+
+- `item.acquired` when an observed owned container gains quantity that was not already
+  present in another known container for the same owner/session
+- `item.transferred` for a reliably correlated movement between known containers,
+  such as Pick-pet -> character bag or bag -> storage
+- `item.quantity_increased` / `item.quantity_decreased` when stack deltas are useful
+  and cannot yet be classified more specifically
+- optional more specific acquisition methods such as `party_distribution`,
+  `pet_pickup`, `ground_pickup`, `quest_reward`, `purchase`, `alchemy_output`
+  or similar **only when the callback/packet/state source actually proves that cause**
+
+Every acquisition/transfer payload should retain, where known:
+
+- canonical item identity and observed item snapshot
+- quantity delta
+- destination container type/identity and slot
+- source container type/identity and slot for transfers
+- owner/character/server/session
+- acquisition/transfer method and provenance only when proven
+- correlation IDs to related `drop.*`, packet or command events when reliable
+
+The key rule is: **inventory appearance proves possession, not provenance**. A bag or
+pet inventory delta may prove that an item was gained, while the reason remains
+`unknown`. Do not label a gain as party distribution, Pick-pet pickup, monster drop,
+purchase or another cause merely because it is plausible.
+
+Party item distribution needs special care. Current party state/configuration is not
+proof of who received a specific drop. If a verified Silkroad/phBot callback or packet
+identifies the allocation recipient, preserve that as acquisition provenance and
+correlate it with the receiving container delta. Otherwise emit the reliable
+`item.acquired` fact with unknown acquisition method.
+
+Pick/Grab pets and other item-bearing pets are first-class owned containers. An item
+newly observed in a pet inventory may produce `item.acquired`; a later move from that
+pet into the character bag is `item.transferred`, not a second acquisition. Apply the
+same principle to job pouch and other verified containers.
+
+Container-delta reconciliation must explicitly avoid false acquisitions:
+
+- initial inventory/pet/job-pouch/storage snapshots after startup/reconnect/open/summon
+  establish baseline state and do not emit acquisition events for existing contents
+- inventory sorting or slot reordering does not create acquisition/transfer events
+- stack split/merge does not change total owned quantity and is not an acquisition
+- quantity increase emits only the positive delta, not the whole resulting stack
+- storage becoming newly observable is not acquisition
+- pet summon/dismiss visibility changes are not acquisitions
+- a cross-container move must not be counted as both a loss and a new acquisition when
+  it can be correlated reliably
+- a rare/normal `drop.*` event and a later `item.acquired` event remain two distinct
+  facts and may be correlated; neither should be collapsed into the other
+
+Use bounded correlation windows and stable item/container identity. When correlation is
+ambiguous, preserve the separate observed facts rather than inventing a transfer or
+cause.
+
+**Delivery and durability:**
+
+phBot callbacks must stay fast and nonblocking. Event publishing therefore uses a
+bounded asynchronous queue plus a bounded crash/reconnect-resistant local spool for
+events not yet durably acknowledged by the backend.
+
+Implement at-least-once transport with idempotent backend persistence:
+
+1. assign stable event identity and sequence before enqueue
+2. enqueue/spool without waiting on backend I/O in the phBot callback
+3. send ordered batches through the existing authenticated agent connection
+4. acknowledge only after durable backend persistence
+5. replay unacknowledged events after reconnect/plugin/backend restart
+6. enforce backend uniqueness/idempotency so retries do not duplicate history
+
+Define spool bounds and overflow behavior explicitly. High-volume/noncritical event
+families may use tighter retention or batching, but rare drops, deaths, alchemy
+results and other important discrete events must not silently disappear merely because
+the backend was briefly unavailable. Slice 14 may harden tuning/retention further; the
+basic reliable contract belongs here.
+
+**Backend/query/UI work:**
+
+Implement:
+
+- durable PostgreSQL event storage and indexes for server/character/kind/time queries
+- idempotent batch ingestion and acknowledgements
+- generic cursor-based event querying with deterministic ordering
+- server/character/date/event-family/event-kind filtering
+- item-aware filters where canonical item identity is present
+- bounded pagination/count behavior suitable for long-running self-hosted instances
+- Nuxt activity timeline matching the reference Events/History direction
+- specialized filters/views for deaths, normal drops, rare drops, uniques, level-ups,
+  alchemy and custom events where applicable
+- map/detail links when an event has validated coordinates or canonical item context
+
+Chat events may be hidden from the generic activity timeline by default to prevent
+noise, but they remain part of the same ingestion/durability architecture and are
+queryable for Slice 6.
 
 **Acceptance criteria:**
 
-events survive page reload/backend querying
-
-timeline ordering is reliable
-
-rare/normal drop rows and detail links can render the stored observed item semantics
-without re-querying mutable current inventory state
-
-event ingestion does not block normal phBot behavior
+- direct phBot event mapping is documented and covered by focused tests/fixtures
+- rare drops and normal drops remain distinct canonical event kinds
+- inbound chat reaches durable backend storage through the same Slice 5 ingestion
+  contract consumed by Slice 6
+- derived events do not create false transitions during startup/reconnect or stale
+  snapshots
+- any packet-derived event has an explicit verified decoder/version boundary and tests;
+  there is no generic raw-packet persistence path
+- events survive page reload, plugin reconnect and backend restart within the
+  documented spool/retention contract
+- retry/replay is idempotent: one real occurrence renders as one durable event
+- timeline ordering remains deterministic across reconnects and batched delivery
+- rare/normal drop rows and detail links render stored observed item semantics without
+  re-querying mutable current inventory state
+- acquisition tests cover character bag, Pick/Grab-pet inventory and job pouch where
+  supported, including positive stack deltas
+- startup/reconnect/storage-open/pet-summon baselines, slot sorting and stack split/merge
+  do not generate false acquisitions
+- a pet -> bag or other reliably correlated cross-container move is stored as a
+  transfer rather than a second acquisition
+- party-distribution provenance is attached only when a verified callback/packet/source
+  proves the recipient; otherwise the acquisition method remains unknown
+- a related `drop.*` and `item.acquired` can coexist and be correlated without being
+  deduplicated into one semantic event
+- event ingestion never blocks normal phBot behavior
+- later slices can subscribe/query the canonical stream without creating a second event
+  transport or history table for the same occurrence
 
 ### Slice 6 — Chat
 
 **Objective:**
 
-Provide remote chat visibility and sending.
+Provide phMonitor-style remote chat visibility and sending on top of the canonical
+Slice 5 event pipeline.
 
-Implement inbound chat where supported:
+Slice 6 owns chat-specific history/projections, conversation semantics, navigation,
+notifications/preferences and outbound messaging. It does **not** introduce a second
+plugin-to-backend inbound transport: incoming messages originate from the normalized
+`chat.message_received` events produced by Slice 5.
 
-private
+**Inbound chat:**
 
-party
+Support every verified phBot chat channel that maps cleanly to a user-visible
+conversation. At minimum investigate and implement where supported:
 
-guild
+- general/local
+- private
+- party
+- guild
+- union
+- global
+- other useful documented channels/types, with their raw verified chat type retained
+  as bounded source metadata when necessary
 
-union
+Normalize each inbound message with:
 
-general
+- stable message/event identity
+- server and observed character
+- canonical channel/type
+- sender name/identity as exposed by phBot
+- recipient/private peer when the source provides it
+- original bounded message text
+- occurred/received timestamps
+- inbound direction
+- optional canonical item/entity references only when they can be resolved reliably
+  without rewriting the original message
 
-other useful supported channels
+Preserve enough original channel/source metadata for later Economy parsing or other
+projections, but do not classify arbitrary chat as a trade offer in this slice.
 
-Implement remote sending where supported.
+**Chat history and projections:**
 
-**Add:**
+Build the chat read model from canonical events rather than mutating event history.
 
-persistent/appropriate history
+Implement:
 
-per-character chat UI
+- persistent history with cursor pagination in both directions
+- per-server/per-character scope
+- channel tabs matching the reference: General, Private, Party, Guild, Union and Global
+  where supported
+- stable private-conversation identity/contact list
+- unread/read state and jump-to-latest behavior where useful
+- deterministic ordering when inbound events arrive late after reconnect
+- retention behavior that is explicit and does not silently diverge from the canonical
+  source event
+- deduplication/correlation for outbound messages that are subsequently observed again
+  through phBot, so one sent message does not render twice
 
-command/result handling for outbound messages where necessary
+The event record remains the durable occurrence. A specialized chat table/index is
+allowed as a projection for efficient conversation queries, but it must be rebuildable
+or traceable to canonical event/message identity rather than becoming competing truth.
+
+**Outbound chat:**
+
+Implement remote sending only through the authenticated, capability-aware command
+lifecycle established in Slice 3.
+
+For each supported outbound channel:
+
+- validate sender character/server target
+- validate channel-specific recipient/arguments
+- enforce message length/encoding limits verified from phBot/runtime behavior
+- return explicit pending/sent/rejected/failed/timeout state
+- correlate successful sends with any later observed chat callback
+- require explicit confirmation for costly/global sends when applicable
+- never expose arbitrary Python, packet injection or unrestricted opcode sending as a
+  chat feature
+
+If a channel is visible inbound but cannot be sent through a verified supported phBot
+API, keep it read-only and report that capability honestly.
+
+**Reference-style Nuxt UI:**
+
+Reproduce the verified phMonitor chat structure rather than a generic log viewer:
+
+- sender/character selector
+- channel tabs
+- private contacts/new-conversation flow
+- recipient field where needed
+- conversation/history pane
+- jump-to-latest affordance
+- bottom composer with send state/error feedback
+- responsive contact/conversation navigation for narrow screens
+- loading, empty, disconnected/stale and recovered states
+- persisted chat preferences from Settings where applicable
+
+Support emoji and canonical item references/details where the verified source and
+reference behavior allow them. Do not fabricate rich item links from unverified text
+parsing. Item references that become canonical should reuse the shared item-detail
+semantics from Slices 4/5/13.
+
+**Notifications/integration boundary:**
+
+Message sound/browser/Discord preferences may subscribe to canonical chat events, but
+notification delivery/configuration follows the shared notification/Condition
+architecture. Do not bury notification side effects directly inside the phBot chat
+callback.
+
+Slice 13 may derive Economy/global-offer records from preserved chat data when the
+format/source can be verified. Slice 6 must preserve the source material needed for
+that work without claiming every trade-looking message is structured economy data.
 
 **Acceptance criteria:**
 
-incoming messages appear in the web UI
-
-supported outbound chat can be sent remotely
-
-messages are attributed to the correct character/channel
+- supported inbound messages appear in the web UI after passing through Slice 5 and
+  remain available after reload/backend restart according to retention
+- messages are attributed to the correct server, character, channel, sender and private
+  peer where those fields are available
+- General/Private/Party/Guild/Union/Global navigation matches supported source
+  capabilities and does not show writable controls for unsupported outbound channels
+- private conversations have stable identity and paginated history
+- reconnect/replayed events do not duplicate visible messages
+- supported outbound chat can be sent remotely through the normal command lifecycle
+  with visible success/failure state
+- outbound messages that are echoed back by phBot are correlated instead of duplicated
+- costly/global sends require the documented confirmation behavior where applicable
+- the chat UI remains usable at the project's desktop and mobile target viewports
+- Slice 6 does not maintain a second inbound transport or contradictory source of truth
 
 ### Slice 7 — Live map
 
@@ -2079,13 +2536,20 @@ Add item-centric historical/search functionality when the available phBot data s
 
 **Required functionality where the verified source data exists:**
 
-item acquisition/drop history with links back to canonical events
+item acquisition, transfer and drop history with links back to canonical Slice 5
+events; keep world drops distinct from items actually acquired by this character/pet
 
 valuable/rare drop tracking preserving observed rarity/color/seal metadata
 
+acquisition analytics by destination/source container and proven method where available,
+including character bag, Pick/Grab-pet inventory, job pouch and party-distribution
+provenance when a verified source identifies the recipient. Unknown acquisition cause
+must remain unknown rather than being inferred from party/pet state.
+
 one Item Search query surface across character inventory, equipped/character sets,
-character storage and guild storage; retain source/owner, server, observer/freshness
-and navigation back to the owning character/guild
+character storage, guild storage, applicable pet inventories and job pouch where the
+verified source exposes them; retain source/container/owner, server,
+observer/freshness and navigation back to the owning character/guild/pet
 
 text/server/item-type/subcategory/degree filtering, include-character-sets behavior
 where it matches the reference, and deterministic reset controls
@@ -2108,8 +2572,17 @@ Do not overbuild this slice before confirming actual source capabilities.
 **Acceptance criteria:**
 
 Item Search finds the same canonical item regardless of whether it currently lives in
-inventory, equipment/character set, character storage or guild storage, while still
-showing its exact source/owner/freshness.
+inventory, equipment/character set, character storage, guild storage, an applicable
+pet inventory or job pouch, while still showing its exact
+source/container/owner/freshness.
+
+Item acquisition history distinguishes actual owned-item gains from world drops and
+cross-container transfers; moving an item from Pick/Grab pet to the character bag does
+not inflate acquisition counts.
+
+Party-distributed items show that provenance only when it was actually observed from a
+verified callback/packet/source; inventory-only evidence is displayed as an acquisition
+with unknown method.
 
 Rare/normal historical item detail renders stored observed metadata consistently with
 Events and Analytics.
@@ -2321,31 +2794,19 @@ capability report and route behavior with an explicitly authorized safe movement
 meanwhile finish remaining P7 checks and keep the real movement/runtime and reference
 capture gates open. Slice 3 remains incomplete; do not continue to Slice 4.
 
-**Slice 3 non-Walk P7 verification (2026-09-27):** authenticated browser review of
-the LAN stack covered Stats/Actions and phBot Client at 1440×1000, 1280×800,
-390×844 and reference-native 2560×1315. The mobile Actions grid remained two columns;
-command history was reachable by vertical scroll; the Stats table contained its
-horizontal scrolling. Reference differences and per-size observations are recorded
-in `docs/reference-parity.md`. The selected nuker1 session reported
-`client.clientless.supported=false` / `unsupported_runtime_primitive` over `/api/live`;
-the button stayed disabled and no command was submitted. Execute Script stayed
-disabled. CI `validate` passed its PostgreSQL-backed integration and race test run.
-Local race detector invocation still fails because `CGO_ENABLED=0`. The live runtime
-reports plugin 1.1.0; Walk remained disabled, and no movement was issued. A newer CI
-stack run passed the fake-adapter command smoke but failed its reconnect step because
-the smoke harness omitted operator login before credential creation. `.github/workflows/ci.yml`
-now logs in before that request. The 390px Stats capture also exposed a responsive bug:
-the generic mobile `.agent-table` hide rule concealed the character table and no
-mobile replacement existed. `main.css` now scopes that rule to `.agent-panel`, and
-`browser_live_audit.mjs` asserts mobile character rows remain visible inside their
-bounded scroller. The post-fix screenshot has not been captured yet. The correction
-and evidence updates in `README.md`,
-`docs/protocol.md`, `docs/phbot-capabilities.md`, `docs/reference-parity.md` and the
-Slice 3 plan are pending validation/commit. Untracked operator files
-`plugin/PhMon5.py`, `server/phmonctl.exe`, and `server/server.exe` remain preserved.
-Exact next action: run `npm --prefix web run format:check`, lint, typecheck, build,
-`node --check scripts/browser_live_audit.mjs`, Go/Python regression checks and YAML
-validation. Then push the CI harness and mobile-table fixes with evidence to PR #9,
-request both automated reviews again, and watch CI/CodeRabbit. Keep PR draft; real Walk
-traversal, broad runtime mutations, and safe per-session Clientless remain open. Stop
-before Slice 4.
+**Slice 3 non-Walk P7 verification (2026-09-27):** the LAN browser was reviewed at
+1440×1000, 1280×800, 390×844 and 2560×1315. CI run `36330451436` passed the
+PostgreSQL integration/race checks, production-worker command smoke with fake
+adapters, authenticated reconnect, outage recovery and `/api/live` browser audits.
+The mobile audit confirms visible character rows in the bounded scroller. Screenshots
+were inspected in-session but not saved. The live nuker1 runtime reports
+`client.clientless.supported=false` / `unsupported_runtime_primitive`; the control
+stayed disabled and no command was sent. Walk traversal was excluded by instruction;
+plugin 1.1.0 does not meet the 1.1.2 pathfinding requirement. Execute Script remains
+outside the bounded catalog. Local base merge and status records are ready to commit;
+next run is to commit/push, rerun CI, request fresh Copilot and CodeRabbit reviews,
+and triage their results. Copilot has returned a quota-limit response, and CodeRabbit
+was processing the pre-merge head. Preserve untracked operator files
+`plugin/PhMon5.py`, `server/phmonctl.exe`, and `server/server.exe`. Keep PR draft and
+Slice 3 incomplete while real Walk, safe Clientless and broad real-runtime mutation
+gates remain open; stop before Slice 4.

@@ -643,6 +643,25 @@ Walk action issued), safe per-session Clientless primitive, broad real-runtime A
 coverage, and subsequent review of the corrected CI head. Do not claim Slice 3
 complete or proceed to Slice 4.
 
+## Latest non-Walk acceptance verification (2026-09-27)
+
+Current PR head `14e23f8a` passed CI run `36330451436`. `validate` ran the PostgreSQL
+integration tests with `TEST_DATABASE_URL`, including `go test -race ./...`; the new
+command expiry integration assertion checks durable audit state. `stack` passed
+production-worker/fake-adapter command smoke, authenticated reconnect, database
+outage/recovery, and browser `/api/live` audits. Browser assertions passed at 390×844
+and 1440×1000, including visible character rows inside the mobile table scroller.
+Manual LAN review also covered 1280×800 and 2560×1315; screenshots were inspected but
+not saved as artifacts. This Windows host cannot run Docker/PostgreSQL and has CGO
+disabled, so integration/race evidence comes from CI. The live nuker1 session reports
+Clientless unsupported and remains disabled. Walk path traversal was excluded at the
+operator's direction. Execute Script remains outside the bounded command catalog.
+Copilot review requests returned the account quota-limit response; CodeRabbit was
+processing the pre-merge head. The PR reported a conflict with `main`; the local base
+merge is resolved. Commit and push it, then rerun CI and request fresh reviews on the
+resulting head. Keep the PR
+draft and Slice 3 incomplete while Walk, safe Clientless and broad real-runtime
+mutation gates remain unresolved.
 ## 9. Ready-to-use implementation prompt for GPT-6 Luna
 
 ```text

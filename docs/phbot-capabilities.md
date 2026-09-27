@@ -312,3 +312,16 @@ disabled for that session. No command was submitted. This confirms fail-closed
 capability handling for that runtime, not a Clientless API or action. The current
 plugin version also predates the 1.1.2 Pathfinding Walk requirement; Walk remained
 disabled and no movement was issued.
+
+### CI and live capability status refresh (2026-09-27)
+
+CI run `36330451436` validates command lifecycle, expiry/audit persistence and the
+production plugin worker using fake adapters, with results delivered on `/api/live`.
+It does not establish real API effects for every command. The live phBot 20.1.1 /
+plugin 1.1.0 capability snapshot reports Clientless unsupported with
+`unsupported_runtime_primitive`; the UI leaves that action disabled and no request
+was sent. Walk traversal was not exercised per operator instruction; the installed
+plugin remains below the required 1.1.2 pathfinding capability. Execute Script stays
+outside Slice 3's bounded command catalog because no trusted script catalog contract
+is available. Do not infer or implement a Clientless primitive without official API
+and runtime evidence for a session-targeted safe action.

@@ -559,3 +559,15 @@ in the outage fixture to carry its operator cookie; that probe now sends it.
 The subsequent stack run passed agent/live smoke but exceeded a 15-second Chrome
 DevTools startup deadline. The browser audit now allows 30 seconds and includes
 Chrome stderr if startup still fails.
+
+### Latest Slice 3 acceptance verification (2026-09-27)
+
+CI run `36330451436` passed the PostgreSQL integration and Go race suites, including
+command expiry/audit persistence; production-worker command dispatch with fake
+adapters; authenticated agent reconnect and database-outage recovery; and browser
+checks through the existing `/api/live` path at desktop and mobile widths. This is
+simulator/CI evidence, not proof of broad real phBot command effects. The read-only
+nuker1 capability report still rejects Clientless with
+`unsupported_runtime_primitive`; no command was submitted. Walk path traversal was
+excluded from this test pass by operator instruction. Keep real Walk, safe per-session
+Clientless and broad real-runtime command validation open.

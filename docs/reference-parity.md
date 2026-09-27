@@ -248,7 +248,7 @@ hide rule concealed the character table, with no mobile character-card replaceme
 The CSS rule is now scoped to the Agent panel, leaving the character table visible
 inside its bounded horizontal scroll container. The browser smoke now asserts that
 the mobile character table has a visible row and remains inside that container. A
-post-fix screenshot still needs to be captured after the revised CI browser check.
+CI run 36330451436 passed the mobile browser assertion for visible character rows inside the bounded table scroller. The in-session LAN review covered responsive sizes, but no post-fix screenshot artifact was saved.
 
 On the selected nuker1 session, `/api/live` delivered capability reason
 `unsupported_runtime_primitive` for Clientless; the Clientless button stayed disabled
