@@ -32,6 +32,10 @@ Working loop:
    when introducing durable data. Add UI progressively inside the reference shell.
 5. Run focused tests, existing regression checks and relevant browser flows. Fix
    failures. Record commands and results, reference comparisons and remaining gaps.
+   For every relevant live-data surface, verify the WebSocket-only live-data contract
+   below through browser network inspection or automated coverage. Any XHR/fetch,
+   useFetch, polling, long polling, SSE, server-side HTTP bootstrap or HTTP fallback
+   used to obtain live monitoring data is a contract failure.
 6. Update the slice ledger and feature matrix evidence, then **continue immediately**
    to the next slice. Routine package choices, small refactors, schema design,
    test fixtures, local builds and local restarts do not require a permission checkpoint.
@@ -245,6 +249,11 @@ All of the following must hold before reporting the end goal complete:
 - Automated checks, browser workflows and production/container builds pass. No
   unexplained runtime errors, inaccessible critical controls or external phMonitor
   service/asset requests remain. Integration limitations are explicit.
+- Browser network audits prove that startup, filtering, manual refresh, mutations,
+  reconnect/recovery and subscription restoration perform zero HTTP live-data reads.
+  Live monitoring data uses the WebSocket-only transport contract below end to end;
+  WebSocket failure retains clearly marked stale data and retries without HTTP
+  fallback.
 - Documentation and the completion ledger match the code. Setup, local development,
   upgrades, backup/restore and operational limitations are reproducible.
 
@@ -258,7 +267,12 @@ system or infrastructure; never reverse engineer or bypass paid-access controls.
 phBot -> custom Python plugin -> outbound HTTPS / WebSocket -> Go backend -> PostgreSQL
                                                               ^
                                                               |
+browser <-> Nuxt/Nitro same-origin WebSocket relay <-> /api/live
+                                                              |
                                                        Nuxt + Nuxt UI
+
+HTTP remains a separate action/static/operational/history path; it is never a live-data
+refresh or bootstrap path.
 ```
 
 Each active phBot instance connects directly over TLS, eventually at `/agent`; there
@@ -276,6 +290,27 @@ analytics, heatmaps, historical calculations, rules, schedules, authorization po
 or persistent business state in the plugin for convenience.
 
 ## Boundaries and protocol principles
+
+### Live-data transport contract
+
+All live monitoring data MUST travel over WebSocket, including agent status, character
+state, dashboard values, map positions and live layers, and future live features.
+
+This applies to initial snapshots, subscriptions, filtering, manual refreshes, updates
+and reconnect synchronization. Live views MUST NOT fetch their data through XHR,
+`fetch`, `useFetch`, HTTP polling, long polling or SSE. Server-side HTTP fetching
+must not be used to bootstrap those views.
+
+WebSocket failure MUST retain clearly marked stale data and retry the WebSocket
+connection. HTTP fallback is prohibited.
+
+HTTP remains permitted for user actions, static assets such as map tiles/icons,
+uploads/downloads, operational health checks and non-live historical queries. Action
+responses must not become an alternative live-data refresh mechanism.
+
+Every relevant slice MUST verify this contract through browser network inspection or
+automated coverage. Future map implementation is bound by this rule: map positions and
+live layers are WebSocket data even though static map assets may use HTTP.
 
 - Never block latency-sensitive phBot callbacks on network I/O. Callbacks collect
   and enqueue in memory, then return; a worker handles networking. Incoming commands
@@ -360,6 +395,26 @@ operator has manually verified basic real phBot → PhMon connectivity. Slice 2:
 progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API and
 same-viewport visual gates remain open; basic connectivity must not be described as
 blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
+
+**Live-data WebSocket transport enforcement (2026-09-27): complete.** The
+mandatory Live-data transport contract was recorded above before implementation. Go
+`/api/live`, the same-origin Nitro WebSocket relay, versioned subscriptions/revisions,
+the shared typed browser connection, stale/reconnect behavior, bounded backpressure and
+database recovery synchronization are implemented without changing the plugin protocol
+or database schema. Existing HTTP read endpoints remain diagnostic compatibility only;
+HTTP mutations do not refresh live state.
+
+Validation completed on code head `9c729c57679b5c38621044cff68308ef50f5e577`
+(GitHub Actions run `36278699555`): both `validate` and `stack` passed. Evidence
+includes PostgreSQL-backed Go race/integration tests, plugin tests, the source transport
+audit, frontend format/lint/typecheck/production build, production and Nuxt-development
+`/api/live` smoke coverage, filtered/detail/revision/cross-client group scenarios,
+simulator character switching and multiple-socket lifecycle coverage, malformed-frame/
+slow-consumer/cross-origin tests, backend restart/reconnect, PostgreSQL outage/recovery
+on the same browser-facing WebSocket, and a browser network audit showing zero HTTP/SSE
+live-data reads through startup, filtering, manual refresh, mutations and recovery.
+Responsive checks at 390×844 and 1440×1000 also passed. Future map positions/live
+layers remain outside this change and are bound by the same WebSocket-only contract.
 
 **Current turn (2026-09-26): Slice 2 Dashboard/header verification.** Scope is the
 user-requested visual follow-up; no agent protocol, schema or phBot behavior changed.
@@ -482,6 +537,13 @@ and the exact next action. Never overwrite the historical Slice 0 evidence.
 
 ### Slice 2 progress record (2026-09-26)
 
+- Live-data transport follow-up (2026-09-27): complete. All current browser
+  monitoring reads now use the versioned same-origin WebSocket path; dashboard values
+  derive from streamed state, manual refresh is a WebSocket protocol operation, action
+  responses are not refresh paths, and stale snapshots survive connection/database
+  outages until fresh subscription snapshots arrive. Diagnostic HTTP read endpoints
+  remain available but are prohibited from live views by source and browser-network
+  audits. Future map live data inherits this contract.
 - Status: in progress pending PR review-fix validation. Real phBot data API validation
   remains partial and botting state remains unknown. Scope is Slice 2; no Slice 3
   command path was added.

@@ -25,23 +25,30 @@ type Dependencies struct {
 	Registry     *agentdomain.Registry
 	AgentOptions AgentOptions
 	Characters   *characters.Store
+	Live         *LiveHub
 }
 
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	registerHealth(mux, deps.Database)
 	if deps.Agents != nil && deps.Registry != nil {
+		live := deps.Live
+		if live == nil {
+			live = NewLiveHub(deps.Agents, deps.Registry, deps.Characters)
+		}
 		handler := &agentHandler{
 			store:      deps.Agents,
 			registry:   deps.Registry,
 			options:    deps.AgentOptions.withDefaults(),
 			characters: deps.Characters,
+			live:       live,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
+		mux.HandleFunc("GET /api/live", live.connect)
 		mux.HandleFunc("GET /api/agents", handler.list)
 		mux.HandleFunc("POST /api/agents/credentials", handler.createCredential)
 		if deps.Characters != nil {
-			ch := &characterHandler{store: deps.Characters}
+			ch := &characterHandler{store: deps.Characters, live: live}
 			mux.HandleFunc("GET /api/characters", ch.list)
 			mux.HandleFunc("GET /api/characters/{id}", ch.get)
 			mux.HandleFunc("GET /api/groups", ch.groups)

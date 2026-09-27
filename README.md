@@ -27,8 +27,9 @@ another device on the same network. Find the host address with `hostname -I` on
 Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
 port 3005 through the host firewall for your private LAN. The dashboard shows
 character presence and current stats, with the agent connections and backend
-readiness available below. It refreshes automatically and retains the last received
-records with a stale indicator during temporary outages.
+readiness available below. Live monitoring state arrives through one same-origin
+WebSocket connection and retains the last received snapshots with a stale indicator
+during reconnect or database outages. There is no HTTP live-data fallback.
 
 ```sh
 docker compose ps
@@ -37,6 +38,7 @@ curl -fsS http://127.0.0.1:8081/healthz
 curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:3005/api/health
 python3 scripts/smoke.py
+python3 scripts/live_smoke.py
 docker compose down
 ```
 
@@ -123,7 +125,13 @@ npm --prefix web run dev
 
 Go reads the process environment; it does not load `.env` itself. Nuxt dev explicitly
 loads the root `.env`. Built Nuxt must receive `NUXT_BACKEND_URL` in its process
-environment (Compose does this). Host Go needs a restart after edits.
+environment (Compose does this). That value is private relay configuration: browsers
+connect to same-origin `/api/live` and never receive the backend address. Host Go
+needs a restart after edits.
+
+Any reverse proxy in front of Nuxt must allow WebSocket upgrade traffic on
+`/api/live`. Do not route browser `/api/live` directly to Go; Nuxt is the
+same-origin relay and the Go listener stays on the trusted/private backend boundary.
 
 ## Configuration
 
@@ -150,7 +158,7 @@ authentication/authorization is implemented.
 | `WEB_BIND_ADDR`                       | `0.0.0.0`               | Host address for the Compose web UI; use `127.0.0.1` for host-only access                        |
 | `HTTP_ADDR`                           | `127.0.0.1:8081`        | Host Go listener; Compose uses `0.0.0.0:8081`                                                    |
 | `DATABASE_URL`                        | See `.env.example`      | Required host Go PostgreSQL URL                                                                  |
-| `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt server URL; Compose uses `http://server:8081`                                       |
+| `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt relay upstream; Compose uses `http://server:8081`; never exposed to browsers          |
 | `NUXT_PUBLIC_INSTANCE_URL`            | Unset                   | Optional reachable browser-facing origin for the mobile QR/copy panel                            |
 | `TEST_DATABASE_URL`                   | Unset                   | Enables real PostgreSQL Go integration test                                                      |
 | `SMOKE_BACKEND_URL` / `SMOKE_WEB_URL` | Local defaults above    | Smoke-test target overrides                                                                      |
@@ -181,17 +189,22 @@ npm --prefix web run format
 ```
 
 `check.sh` runs Go formatting verification, vet, race-enabled tests and both Go
-binaries; the stdlib-only phBot transport tests; frontend Prettier, ESLint, type
-checking and production build; and Compose config validation. Without
+binaries; the stdlib-only phBot transport tests; the source-level WebSocket-only live
+transport audit; frontend Prettier, ESLint, type checking and production build; and
+Compose config validation. Without
 `TEST_DATABASE_URL`, PostgreSQL integration tests explicitly skip; unit/API/protocol
 tests still run. CI additionally provisions an agent credential through the Nuxt web
 endpoint and proves connect → backend restart → automatic reconnect → disconnect
-through the real Go/PostgreSQL/Nuxt stack.
+through the real Go/PostgreSQL/Nuxt stack. `scripts/live_smoke.py` exercises the
+same-origin Nuxt WebSocket relay, initial snapshots, manual refresh, subscription
+filter/revision handling, character detail when available, cross-client group changes
+and cross-origin rejection without using HTTP live reads.
 
 With the full Compose stack running, verify outage and recovery:
 
 ```sh
 python3 scripts/smoke.py
+python3 scripts/live_smoke.py
 docker compose stop postgres
 EXPECT_UNAVAILABLE=1 python3 scripts/smoke.py
 docker compose up -d --wait --wait-timeout 120
@@ -199,7 +212,9 @@ python3 scripts/smoke.py
 ```
 
 CI runs validation plus complete Docker build/start, authenticated agent lifecycle,
-database outage and recovery sequences. The Slice 1 completion pass observed both
+browser-facing live WebSocket coverage, database outage and recovery sequences. Live
+browser traffic must not perform GET reads against the diagnostic agent, character or
+group endpoints during startup, filtering, refresh, actions or recovery. The Slice 1 completion pass observed both
 hosted jobs green after the frame-safe transport regression tests were added. For
 manual development without phBot, the same plugin transport can be exercised with
 `scripts/agent_simulator.py`; simulator success is fixture coverage and is never
@@ -217,7 +232,8 @@ python3 scripts/agent_simulator.py
 This creates clearly named `FixtureAlpha`/`FixtureBeta` records. Run this only
 against a development/test database; fixture data is not a production monitoring
 source. `python3 scripts/character_smoke.py` verifies the switched state through the
-same-origin API.
+retained diagnostic HTTP API; `python3 scripts/live_smoke.py` verifies the browser
+WebSocket path.
 
 ## Architecture and references
 
@@ -236,8 +252,14 @@ operator-managed metadata under `/api/groups` and never affect identity/routing.
 `GET /api/agents` exposes safe presentation fields. Credential creation returns a
 new token once with no-store semantics; existing tokens cannot be retrieved.
 
-Nuxt keeps browser access same-origin through health, agent, character and group API
-proxies plus the credential-creation endpoint.
+Nuxt keeps browser access same-origin. Current monitoring data uses one browser
+WebSocket to Nuxt `/api/live`, which relays to private Go `/api/live`; initial
+snapshots, filters, manual refresh, updates and reconnect synchronization never use
+HTTP/SSE. Dashboard values are derived from streamed character state. Existing HTTP
+agent/character/group reads remain diagnostic compatibility endpoints only. HTTP is
+still used for credential/group actions, readiness, static assets and non-live
+historical queries; action responses are never a live refresh path. Future map
+positions/live layers must use the same WebSocket contract.
 `plugin/PhMon.py` uses only Python standard-library networking, performs no backend
 I/O in phBot callbacks, and reconnects on a worker thread. It samples documented
 `get_character_data()`, `get_position()` and `get_zone_name(region)` APIs; botting

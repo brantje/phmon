@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import QrcodeVue from 'qrcode.vue'
-import type {
-  AgentCredential,
-  AgentListResponse,
-  AgentView,
-} from '../shared/types/agent'
-import type { Health } from '../shared/types/health'
+import type { AgentCredential } from '~~/shared/types/agent'
+import type { CharacterView as Character } from '~~/shared/types/live'
+import type { Health } from '~~/shared/types/health'
 
 const mode = useCookie<'easy' | 'advanced'>('phmon-mode', {
   default: () => 'easy',
@@ -39,34 +36,20 @@ const accessCloseButton = ref<HTMLButtonElement | null>(null)
 const runtimeConfig = useRuntimeConfig()
 const requestURL = useRequestURL()
 const route = useRoute()
-type Character = {
-  character_id: string
-  server: string
-  name: string
-  guild?: string
-  zone?: string
-  online: boolean
-  agent_id?: string
-  session_started_at?: string
-  last_activity_at?: string
-  state_updated_at?: string
-  level?: number
-  hp?: number
-  hp_max?: number
-  mp?: number
-  mp_max?: number
-  current_exp?: number
-  max_exp?: number
-  sp?: number
-  gold?: number
-  region?: number
-  x?: number
-  y?: number
-  z?: number
-  botting?: boolean | null
-}
-type CharacterList = { characters: Character[]; status?: string }
-type CharacterGroup = { group_id: string; name: string; members: Character[] }
+
+const {
+  agents: liveAgents,
+  characters: liveCharacters,
+  fleetCharacters: liveFleetCharacters,
+  groups: liveGroups,
+  characterDetail: detailCharacter,
+  connectionState: liveConnectionState,
+  liveStale,
+  setCharacterListFilter,
+  setCharacterDetail,
+  refreshLiveData,
+} = useLiveData()
+
 const characterDetailID = computed(() => {
   const match = route.path.match(/^\/characters\/([0-9a-f-]{36})\/?$/i)
   return match?.[1] || ''
@@ -81,57 +64,55 @@ watch(characterSearch, (value) => {
     debouncedCharacterSearch.value = value.trim()
   }, 250)
 })
+
 const selectedGroup = ref('')
 const manageGroupMembers = ref(false)
 const groupName = ref('')
 const groupActionError = ref('')
-const characterListQuery = computed(() => ({
-  q: debouncedCharacterSearch.value,
-  group_id:
-    selectedGroup.value && !manageGroupMembers.value
-      ? selectedGroup.value
-      : undefined,
-}))
-const {
-  data: characterResponse,
-  refresh: refreshCharacters,
-  error: characterError,
-} = await useFetch<CharacterList>('/api/characters', {
-  retry: 0,
-  dedupe: 'cancel',
-  query: characterListQuery,
-  watch: [characterListQuery],
-})
-const {
-  data: fleetCharacterResponse,
-  refresh: refreshFleetCharacters,
-  error: fleetCharacterError,
-} = await useFetch<CharacterList>('/api/characters', {
-  key: 'fleet-characters',
-  retry: 0,
-  dedupe: 'cancel',
-})
-const { data: groupResponse, refresh: refreshGroups } = await useFetch<{
-  groups: CharacterGroup[]
-}>('/api/groups', { retry: 0 })
-const lastCharacters = ref<Character[]>(
-  characterResponse.value?.characters || [],
+
+watch(
+  [debouncedCharacterSearch, selectedGroup, manageGroupMembers],
+  ([query, groupID, managing]) => {
+    setCharacterListFilter(
+      query,
+      groupID && !managing ? String(groupID) : undefined,
+    )
+  },
+  { immediate: true },
 )
-const lastFleetCharacters = ref<Character[]>(
-  fleetCharacterResponse.value?.characters || [],
+watch(
+  characterDetailID,
+  (characterID) => {
+    setCharacterDetail(characterID)
+  },
+  { immediate: true },
 )
-const lastGroups = ref<CharacterGroup[]>(groupResponse.value?.groups || [])
-watch(characterResponse, (value) => {
-  if (value?.status !== 'unavailable')
-    lastCharacters.value = value?.characters || []
-})
-watch(fleetCharacterResponse, (value) => {
-  if (value?.status !== 'unavailable')
-    lastFleetCharacters.value = value?.characters || []
-})
-watch(groupResponse, (value) => {
-  if (value?.groups) lastGroups.value = value.groups
-})
+
+const lastCharacters = liveCharacters
+const lastFleetCharacters = liveFleetCharacters
+const lastGroups = liveGroups
+const lastAgents = liveAgents
+const characterError = computed(
+  () => liveStale.value || liveConnectionState.value === 'stale',
+)
+const agentsUnavailable = computed(
+  () => liveStale.value || liveConnectionState.value === 'stale',
+)
+const agentsStatus = computed(() =>
+  liveConnectionState.value !== 'current' && lastAgents.value.length === 0
+    ? 'pending'
+    : 'success',
+)
+const charactersLoading = computed(
+  () =>
+    liveConnectionState.value !== 'current' &&
+    !liveStale.value &&
+    lastCharacters.value.length === 0,
+)
+const detailLoading = computed(
+  () => liveConnectionState.value !== 'current' && !liveStale.value,
+)
+
 const visibleCharacters = computed(() =>
   lastCharacters.value.filter((character) => {
     const groupMatches =
@@ -155,9 +136,7 @@ const offlineCharacterCount = computed(
 )
 const characterCountsUnknown = computed(
   () =>
-    (!fleetCharacterResponse.value ||
-      Boolean(fleetCharacterError.value) ||
-      fleetCharacterResponse.value?.status === 'unavailable') &&
+    liveConnectionState.value !== 'current' &&
     lastFleetCharacters.value.length === 0,
 )
 function displayCharacterCount(value: number) {
@@ -178,7 +157,14 @@ const combinedVitals = computed(() => {
     max: 'hp_max' | 'mp_max',
   ) =>
     items.length
-      ? `${((items.reduce((sum, character) => sum + (character[current] || 0), 0) / items.reduce((sum, character) => sum + (character[max] || 0), 0)) * 100).toFixed(1)}%`
+      ? `${(
+          (items.reduce(
+            (sum, character) => sum + (character[current] || 0),
+            0,
+          ) /
+            items.reduce((sum, character) => sum + (character[max] || 0), 0)) *
+          100
+        ).toFixed(1)}%`
       : '—'
   return {
     hp: ratio(withHP, 'hp', 'hp_max'),
@@ -196,6 +182,7 @@ const observedGold = computed(() => {
       }).format(values.reduce((sum, value) => sum + value, 0))
     : '—'
 })
+
 async function createCharacterGroup() {
   groupActionError.value = ''
   try {
@@ -204,7 +191,6 @@ async function createCharacterGroup() {
       body: { name: groupName.value },
     })
     groupName.value = ''
-    await refreshGroups()
   } catch {
     groupActionError.value = 'Could not create this group.'
   }
@@ -223,7 +209,6 @@ async function renameCharacterGroup() {
       body: { name },
     })
     groupName.value = ''
-    await refreshGroups()
   } catch {
     groupActionError.value = 'Could not rename this group.'
   }
@@ -243,7 +228,6 @@ async function deleteCharacterGroup() {
   try {
     await $fetch('/api/groups/' + group.group_id, { method: 'DELETE' })
     selectedGroup.value = ''
-    await refreshGroups()
   } catch {
     groupActionError.value = 'Could not delete this group.'
   }
@@ -262,23 +246,14 @@ async function toggleGroupMember(character: Character) {
       '/api/groups/' + group.group_id + '/members/' + character.character_id,
       { method: isMember ? 'DELETE' : 'PUT' },
     )
-    await refreshGroups()
   } catch {
     groupActionError.value = 'Could not update group membership.'
   }
 }
-async function refreshCharacterData() {
-  await refreshCharacters()
-  await refreshFleetCharacters()
-  await refreshGroups()
+function refreshCharacterData() {
+  refreshLiveData(['character-list', 'fleet-characters', 'groups'])
 }
-const { data: detailCharacter, refresh: refreshCharacterDetail } =
-  await useFetch<Character>(
-    characterDetailID.value
-      ? '/api/characters/' + characterDetailID.value
-      : '/api/characters/none',
-    { retry: 0 },
-  )
+
 const configuredInstanceUrl = normalizeInstanceUrl(
   String(runtimeConfig.public.instanceUrl || ''),
 )
@@ -290,30 +265,11 @@ const instanceUrl = ref(
 const instanceUrlIsLoopback = computed(() => isLoopbackUrl(instanceUrl.value))
 
 const {
-  data: agentResponse,
-  status: agentsStatus,
-  error: agentsError,
-  refresh: refreshAgents,
-} = await useFetch<AgentListResponse>('/api/agents', {
-  retry: 0,
-})
-const lastAgents = ref<AgentView[]>(
-  agentResponse.value?.status === 'ok' ? agentResponse.value.agents : [],
-)
-watch(agentResponse, (value) => {
-  if (value?.status === 'ok') lastAgents.value = value.agents
-})
-
-const {
   data: health,
   error: healthError,
   refresh: refreshHealth,
 } = await useFetch<Health>('/api/health', { retry: 0 })
 
-const agentsUnavailable = computed(
-  () =>
-    Boolean(agentsError.value) || agentResponse.value?.status === 'unavailable',
-)
 const backendReady = computed(
   () => !healthError.value && health.value?.status === 'ok',
 )
@@ -323,28 +279,20 @@ const connectedAgents = computed<number | null>(() =>
     : lastAgents.value.filter((agent) => agent.connected).length,
 )
 const fleetStatus = computed(() => {
-  if (agentsUnavailable.value) return 'Backend unavailable'
+  if (liveStale.value) return 'Live data stale'
+  if (liveConnectionState.value !== 'current') return 'Connecting live data'
   if (lastAgents.value.length === 0) return 'Waiting for agents'
   return (connectedAgents.value ?? 0) > 0 ? 'Agents connected' : 'Fleet offline'
 })
 
-let agentTimer: ReturnType<typeof setInterval> | undefined
 let healthTimer: ReturnType<typeof setInterval> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
-let characterTimer: ReturnType<typeof setInterval> | undefined
 
 onMounted(() => {
   if (!configuredInstanceUrl) {
     instanceUrl.value = window.location.origin
   }
   now.value = Date.now()
-  agentTimer = setInterval(() => void refreshAgents(), 3000)
-  characterTimer = setInterval(() => {
-    void refreshCharacters()
-    void refreshFleetCharacters()
-    if (characterDetailID.value) void refreshCharacterDetail()
-    void refreshGroups()
-  }, 2000)
   healthTimer = setInterval(() => void refreshHealth(), 10000)
   clockTimer = setInterval(() => {
     now.value = Date.now()
@@ -352,8 +300,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (agentTimer) clearInterval(agentTimer)
-  if (characterTimer) clearInterval(characterTimer)
   if (healthTimer) clearInterval(healthTimer)
   if (clockTimer) clearInterval(clockTimer)
   if (characterSearchTimer) clearTimeout(characterSearchTimer)
@@ -1124,19 +1070,25 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                   :name="
                     characterError
                       ? 'i-lucide-cloud-off'
-                      : 'i-lucide-user-round-search'
+                      : charactersLoading
+                        ? 'i-lucide-loader-circle'
+                        : 'i-lucide-user-round-search'
                   "
                 />
                 <strong>{{
                   characterError
-                    ? 'Character data unavailable'
-                    : 'No characters observed yet'
+                    ? 'Character data stale'
+                    : charactersLoading
+                      ? 'Loading live characters'
+                      : 'No characters observed yet'
                 }}</strong>
                 <p>
                   {{
                     characterError
-                      ? 'The last known character records remain stored when the service recovers.'
-                      : 'Join a character in phBot. PhMon will register its server-scoped identity automatically.'
+                      ? 'The last received records remain visible and will be replaced after WebSocket recovery.'
+                      : charactersLoading
+                        ? 'Waiting for the initial WebSocket snapshot.'
+                        : 'Join a character in phBot. PhMon will register its server-scoped identity automatically.'
                   }}
                 </p>
               </div>
@@ -1168,7 +1120,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                     class="compact-button"
                     type="button"
                     :disabled="agentsStatus === 'pending'"
-                    @click="refreshAgents()"
+                    @click="refreshLiveData(['agents'])"
                   >
                     <UIcon
                       name="i-lucide-refresh-cw"
@@ -1489,7 +1441,7 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
                     <dd>v2</dd>
                   </div>
                   <div>
-                    <dt>Polling</dt>
+                    <dt>Session reconciliation</dt>
                     <dd>3 seconds</dd>
                   </div>
                 </dl>
@@ -1534,6 +1486,11 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               </div>
               <a class="compact-button" href="/">Back to overview</a>
             </header>
+            <div v-if="liveStale" class="status-banner warning" role="status">
+              <UIcon name="i-lucide-triangle-alert" />
+              Live character data is stale. PhMon is retrying the WebSocket
+              connection; HTTP fallback is disabled.
+            </div>
             <div v-if="detailCharacter" class="detail-grid">
               <article class="panel detail-identity">
                 <div class="panel-header compact">
@@ -1626,10 +1583,21 @@ function handleAccessDialogKeydown(event: KeyboardEvent) {
               </article>
             </div>
             <div v-else class="panel empty-state">
-              <strong>Character unavailable</strong>
+              <strong>{{
+                detailLoading
+                  ? 'Loading live character'
+                  : liveStale
+                    ? 'Last character snapshot unavailable'
+                    : 'Character unavailable'
+              }}</strong>
               <p>
-                The character ID may be invalid, or the backend is temporarily
-                unavailable.
+                {{
+                  detailLoading
+                    ? 'Waiting for the initial WebSocket detail snapshot.'
+                    : liveStale
+                      ? 'The WebSocket will retry and resynchronize without an HTTP fallback.'
+                      : 'The character ID is not present in the current live snapshot.'
+                }}
               </p>
             </div>
           </section>
