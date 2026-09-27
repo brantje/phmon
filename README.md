@@ -19,13 +19,14 @@ Requires Docker Engine and Docker Compose v2+ (with `--wait` support).
 
 ```sh
 cp .env.example .env
+# Set OPERATOR_ACCESS_SECRET in .env (for example, use: openssl rand -base64 48)
+# For plain HTTP on a trusted development/LAN network, also set OPERATOR_ALLOW_INSECURE_HTTP=true
 docker compose up --build -d --wait --wait-timeout 180
 ```
 
 Open **http://127.0.0.1:3005** on the host, or **http://<host-LAN-IP>:3005** from
-another device on the same network. Sign in with the development operator secret
-from `.env` (`OPERATOR_ACCESS_SECRET`); replace the example before exposing a real
-instance. Find the host address with `hostname -I` on
+another device on the same network. Set a unique `OPERATOR_ACCESS_SECRET` in `.env`
+before starting the stack, then sign in with that secret. Find the host address with `hostname -I` on
 Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
 port 3005 through the host firewall for your private LAN. The dashboard shows
 character presence and current stats, with the agent connections and backend
@@ -143,11 +144,11 @@ default; PostgreSQL and the authenticated agent/API port bind to loopback. Set
 `WEB_BIND_ADDR=127.0.0.1` when host-only web access is sufficient. Remote agents
 should connect through operator-managed TLS termination using `wss://`; overriding
 `SERVER_BIND_ADDR` is intended only for an explicitly trusted development network.
-The defaults avoid common 3000/8080/5432 conflicts. This is not a public deployment:
-user authentication is not implemented yet; only the agent WebSocket is
-token-authenticated. In particular, any user who can reach the current web UI can use
-the Create credential action, so keep the UI on a trusted network until user
-authentication/authorization is implemented.
+The defaults avoid common 3000/8080/5432 conflicts. This setup is for a trusted
+development/LAN network. Browser monitoring, mutations and credential creation
+require the operator session. Keep the UI on a trusted network and use operator-managed
+TLS for remote agents; the configured secret is not a substitute for a protected
+network deployment.
 
 | Variable                              | Default/example         | Purpose                                                                                          |
 | ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |

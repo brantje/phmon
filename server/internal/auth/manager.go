@@ -166,11 +166,11 @@ func (m *Manager) allowLogin(remoteAddr string, now time.Time) bool {
 }
 
 func (m *Manager) CreateSession(secret, remoteAddr string, now time.Time) (string, Watch, error) {
-	if !m.allowLogin(remoteAddr, now) {
-		return "", Watch{}, ErrRateLimited
-	}
 	candidate := sha256.Sum256([]byte(secret))
 	if subtle.ConstantTimeCompare(candidate[:], m.secretHash[:]) != 1 {
+		if !m.allowLogin(remoteAddr, now) {
+			return "", Watch{}, ErrRateLimited
+		}
 		return "", Watch{}, ErrInvalidSecret
 	}
 	random := make([]byte, 32)

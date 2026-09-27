@@ -78,7 +78,10 @@ func TestManagerRateLimitsLoginAttempts(t *testing.T) {
 	for i := 0; i < maxLoginAttempts; i++ {
 		_, _, _ = manager.CreateSession("wrong", "192.0.2.1:1234", now)
 	}
-	if _, _, err := manager.CreateSession(testSecret, "192.0.2.1:1234", now); err != ErrRateLimited {
-		t.Fatalf("expected rate limit, got %v", err)
+	if _, _, err := manager.CreateSession("wrong", "192.0.2.1:1234", now); err != ErrRateLimited {
+		t.Fatalf("expected rate limit for another invalid attempt, got %v", err)
+	}
+	if _, _, err := manager.CreateSession(testSecret, "192.0.2.1:1234", now); err != nil {
+		t.Fatalf("valid secret should not be locked out by failed attempts: %v", err)
 	}
 }

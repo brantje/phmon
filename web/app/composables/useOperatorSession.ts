@@ -56,9 +56,14 @@ async function logoutOperator() {
   operatorBusy.value = true
   try {
     await $fetch('/api/auth/logout', { method: 'POST' })
-  } finally {
     operatorAuthenticated.value = false
     operatorExpiresAt.value = null
+    operatorError.value = ''
+    return true
+  } catch {
+    operatorError.value = 'Sign-out failed. The session may still be active.'
+    return false
+  } finally {
     operatorBusy.value = false
   }
 }

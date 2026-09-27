@@ -534,21 +534,11 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if limit == 0 {
 			limit = 25
 		}
-		items, err := h.commands.History(ctx, subscription.Filter.CharacterID, limit)
+		items, err := h.commands.History(ctx, subscription.Filter.CharacterID, subscription.Filter.CommandName, subscription.Filter.CommandState, limit)
 		if err != nil {
 			return nil, err
 		}
-		filtered := items[:0]
-		for _, item := range items {
-			if subscription.Filter.CommandName != "" && item.Name != subscription.Filter.CommandName {
-				continue
-			}
-			if subscription.Filter.CommandState != "" && string(item.State) != subscription.Filter.CommandState {
-				continue
-			}
-			filtered = append(filtered, item)
-		}
-		return map[string]any{"commands": filtered, "character_id": subscription.Filter.CharacterID}, nil
+		return map[string]any{"commands": items, "character_id": subscription.Filter.CharacterID}, nil
 	case "controls":
 		if h.commands == nil {
 			return nil, errors.New("character controls unavailable")

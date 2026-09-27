@@ -372,30 +372,28 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
-**Slice 3 acceptance follow-up (2026-09-27, active):** current PR head
-`14e23f8a` passed CI run `36330451436`: PostgreSQL-backed integration and Go race
-coverage; production plugin worker command smoke with fake adapters; authenticated
-agent reconnect; database-outage/recovery probes; and browser `/api/live` plus
-responsive assertions at 390×844 and 1440×1000. The database recovery probe found
-and fixed a typed interval issue; the integration assertion now verifies expired
-state and durable audit insertion. The mobile browser assertion verifies visible
-character rows inside the bounded table scroller. Manual LAN review also covered
-1440×1000, 1280×800, 390×844 and 2560×1315; no post-fix screenshot artifact was
-saved. This Windows host has no Docker/PostgreSQL and CGO is disabled, so those
-integration/race checks are evidenced by CI rather than local execution. The live
-nuker1 runtime reports plugin 1.1.0 and
-`client.clientless.supported=false` / `unsupported_runtime_primitive`; Clientless
-stayed disabled and no command was submitted. Walk was not tested per the operator's
-instruction; the installed plugin also lacks the 1.1.2 pathfinding capability.
-Execute Script remains outside the bounded command catalog. GitHub currently reports
-a merge conflict against `main`; the fetched base change is merged locally while
-preserving both Slice 4 opcode-boundary and item-provenance guidance. CodeRabbit's
-review for `14e23f8a` was still processing before the base merge. Copilot has
-repeatedly responded that the requesting account reached its quota limit. Exact next
-action: commit and push the base merge plus acceptance-record updates, rerun CI,
-request both reviewers for the resulting head, and continue triage. Keep the PR draft; do not claim Slice 3
-complete or continue to Slice 4 while real Walk, safe Clientless and broad real-runtime
-mutation evidence remain open.
+**Slice 3 acceptance follow-up (2026-09-27, active):** PR #9 base sync commit
+`481df89` is mergeable and both duplicate CI runs passed: PostgreSQL integration and
+Go race coverage, production-worker command smoke with fake adapters, authenticated
+reconnect, outage/recovery and responsive `/api/live` browser checks. CodeRabbit's
+review on the preceding `14e23f8a` head posted ten actionable findings; each was
+independently verified and fixed in the current worktree, including the example secret
+and outdated setup/protocol text, auth failure throttling, known-unsent command states,
+offline controls, pre-limit history filtering, logout failure state and rejected
+WebSocket handshake cleanup. The README warning outside the diff was also corrected.
+The dotenv key-order suggestions are a non-actionable style preference; explicitly
+explain that in the CodeRabbit reply. Local Go tests/vet, all 32 plugin tests, live
+transport audit, Nuxt format/lint/typecheck and production build pass (lint has 13
+existing self-closing warnings). PostgreSQL/race evidence for these latest code fixes
+must come from CI because this Windows host has no local Docker/PostgreSQL and CGO is
+disabled. No bot command was sent; Walk remains excluded by instruction, Clientless
+remains unsupported on the live 20.1.1/plugin 1.1.0 runtime, and Execute Script is
+outside the bounded catalog. Exact next action: commit and push the verified review
+fixes, rerun CI, request Copilot and CodeRabbit on that head, and triage their current
+head results. Copilot has repeatedly returned the account quota limit; CodeRabbit's
+latest request was rate limited while the PR is draft. Keep PR draft and Slice 3
+incomplete while real Walk, safe per-session Clientless and broad real-runtime
+mutation evidence remain open; stop before Slice 4.
 **Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
 present: separate operator-cookie auth; durable idempotent command admission/audit;
 session/generation-targeted v3 dispatch; per-socket capability checks; callback-only

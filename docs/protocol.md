@@ -174,9 +174,10 @@ characters and publishes full snapshots. There is no durable local event store.
 All live monitoring data exposed to the browser uses a separate versioned WebSocket
 protocol. The browser connects only to the same-origin Nuxt endpoint
 `GET /api/live`; Nitro 2 relays that WebSocket to the private Go `/api/live`
-endpoint. `NUXT_BACKEND_URL` stays server-only, the relay does not forward browser
-cookies, authorization headers or other credentials upstream, and streamed payloads
-contain monitoring presentation data only.
+endpoint. `NUXT_BACKEND_URL` stays server-only. The relay forwards only the named
+operator-session cookie and browser `Origin` needed for authentication; it does not
+forward arbitrary cookies, authorization headers or other credentials. Streamed
+payloads contain monitoring presentation data only.
 
 Protocol version: 1.
 
@@ -295,8 +296,9 @@ agent ingestion; oversized messages are rejected (1009).
 
 Browser upgrades at the Nuxt relay require a same-origin `Origin`. The private Go
 endpoint independently rejects a cross-origin browser upgrade; server-to-server Nitro
-connections carry no browser credentials. This preserves the existing trusted-network
-deployment boundary and does not introduce human-user authentication.
+connections carry only the named operator-session cookie and `Origin` needed for
+authentication. Browser live subscriptions require a valid operator session, while
+the trusted-network deployment boundary remains in effect.
 
 ### HTTP compatibility boundary
 
@@ -365,8 +367,11 @@ Python `datetime.fromisoformat`; older v3 plugins that support the rest of the
 command contract can continue using the whole-second server timestamp.
 
 Lifecycle states are `queued`, `dispatching`, `sent`, `acknowledged`, `completed`,
-`failed`, `expired` and `unknown`. Queued expiry is definitely unexecuted. A 30-second
-result timeout after the 10-second execution window becomes `unknown` for ordinary
+`failed`, `expired` and `unknown`. Queued expiry, dispatch-deadline expiry before
+send, and known writer backpressure before enqueue are definitely unexecuted and
+record as `failed` or `expired`; `unknown` is reserved for delivery or execution that
+may have occurred without conclusive evidence. A 30-second result timeout after the
+10-second execution window becomes `unknown` for ordinary
 commands; `character.walk` has a six-minute result grace to cover its bounded
 five-minute callback-driven route. API booleans
 are stored as `api_return`; void calls complete only with `verification: unverified`
@@ -414,16 +419,15 @@ are no-store.
 
 Nuxt retains same-origin diagnostic read equivalents and HTTP action routes. The live
 browser UI does not call those diagnostic reads; it uses the browser live-data
-WebSocket protocol above. Slice 1 still has no human-user authentication, so browser
-credential provisioning is for a trusted deployment only until later auth work owns
-that boundary.
+WebSocket protocol above. Browser credential provisioning requires the operator
+session described in the Slice 3 contract below.
 
 Slice 2 retains diagnostic `GET /api/characters?q=&group_id=` for
 name/guild/server/zone search, `GET /api/characters/{character_id}` for stable
 details, and persisted groups under `/api/groups` with explicit
 `/members/{character_id}` mutation operations. Responses never contain agent
-credential material. Human-user authentication remains unimplemented, so group edits
-and credential provisioning require a trusted network.
+credential material. Group edits and credential provisioning require the
+authenticated operator session and a trusted deployment network.
 
 ## Foundation health contract
 

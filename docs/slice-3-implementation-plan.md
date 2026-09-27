@@ -55,7 +55,7 @@ not completion.
 | `web/app/composables/useLiveData.ts`, `web/shared/types/live.ts` | One browser socket, stale data and revision fencing. Add typed control/capability/history snapshots here. |
 | `web/app/pages/stats.vue`, `pages/characters/[id].vue` | Existing file-based Stats/detail routes. Add focused action/history components here and to `components/CharacterPanel.vue`. |
 | `web/app/app.vue`, `layouts/default.vue`, `components/AppSidebar.vue` | Provider/page outlet and persistent shell already extracted. Keep feature state out of the outlet/layout; add Client at `pages/phbot/client.vue`. |
-| `web/server/api/live.ts` | Relay currently forwards no browser credentials. Authentication below requires an explicit, narrow amendment, not accidental forwarding of all cookies/headers. |
+| `web/server/api/live.ts` | Relay forwards only the named operator-session cookie and browser Origin for authenticated live access; arbitrary browser cookies and headers remain excluded. |
 | `scripts/agent_simulator.py` | Imports the production Python worker. Extend with fake API adapters and a simulated callback loop; do not write a second command protocol. |
 | `scripts/live_transport_audit.py` | Currently has Slice 2-specific route checks. Extend its mutation allowlist and command-read prohibitions without weakening existing coverage. |
 
@@ -78,7 +78,7 @@ references, never application assets:
 | --- | --- |
 | [`02-stats-05.png`](../phmonitor_screenshots/02-stats-05.png) | Character card **Actions** tab; compact two-column button grid; order: Start/Stop Training, Start/Stop Trace, Training Area/Radius, Return Scroll/Walk, Disconnect/Execute Script. |
 | [`02-stats-02.png`](../phmonitor_screenshots/02-stats-02.png) | Character name/server/status header and compact tab strip around the Actions surface. |
-| [`03-phbot-tools.png`](../phmonitor_screenshots/03-phbot-tools.png) | phBot → Client navigation, `phBot | Client` title, wide introductory panel, narrow local section menu, main Go Clientless panel and inset result/status area. |
+| [`03-phbot-tools.png`](../phmonitor_screenshots/03-phbot-tools.png) | phBot → Client navigation, `phBot \| Client` title, wide introductory panel, narrow local section menu, main Go Clientless panel and inset result/status area. |
 | [`02-stats-01.png`](../phmonitor_screenshots/02-stats-01.png) | Group context around character controls. Group selection must not silently become a bulk command target. |
 | [`02-stats-03.png`](../phmonitor_screenshots/02-stats-03.png), [`02-stats-04.png`](../phmonitor_screenshots/02-stats-04.png) | Consistent card/tab sizing; equipment and analytics content belongs to later work. |
 
@@ -645,23 +645,22 @@ complete or proceed to Slice 4.
 
 ## Latest non-Walk acceptance verification (2026-09-27)
 
-Current PR head `14e23f8a` passed CI run `36330451436`. `validate` ran the PostgreSQL
-integration tests with `TEST_DATABASE_URL`, including `go test -race ./...`; the new
-command expiry integration assertion checks durable audit state. `stack` passed
-production-worker/fake-adapter command smoke, authenticated reconnect, database
-outage/recovery, and browser `/api/live` audits. Browser assertions passed at 390×844
-and 1440×1000, including visible character rows inside the mobile table scroller.
-Manual LAN review also covered 1280×800 and 2560×1315; screenshots were inspected but
-not saved as artifacts. This Windows host cannot run Docker/PostgreSQL and has CGO
-disabled, so integration/race evidence comes from CI. The live nuker1 session reports
-Clientless unsupported and remains disabled. Walk path traversal was excluded at the
-operator's direction. Execute Script remains outside the bounded command catalog.
-Copilot review requests returned the account quota-limit response; CodeRabbit was
-processing the pre-merge head. The PR reported a conflict with `main`; the local base
-merge is resolved. Commit and push it, then rerun CI and request fresh reviews on the
-resulting head. Keep the PR
-draft and Slice 3 incomplete while Walk, safe Clientless and broad real-runtime
-mutation gates remain unresolved.
+The base-sync head `481df898` passed both GitHub CI runs, including PostgreSQL
+integration tests with `TEST_DATABASE_URL`, `go test -race ./...`, production-worker
+command smoke using fake adapters, reconnect/outage recovery and `/api/live` browser
+checks. Those checks preceded the review fixes listed here. CodeRabbit's review on
+`14e23f8a` produced ten actionable findings, independently confirmed and fixed in the
+current worktree; its dotenv key-order warnings are style-only and will be identified
+as such in the reply. The README's out-of-diff authentication warning was also fixed.
+Local Go tests/vet, 32 plugin tests, live transport audit, Nuxt format/lint/typecheck
+and production build pass. Local PostgreSQL/race reruns are unavailable on this Windows
+host. The current review-fix head still needs CI and fresh automated review. Copilot
+has returned the account quota-limit response; CodeRabbit's automatic review is
+rate-limited while this PR is draft. Walk traversal was excluded per operator request;
+Clientless remains unsupported on the observed runtime; Execute Script remains outside
+the bounded command catalog. Keep the PR draft and Slice 3 incomplete. Next action:
+commit/push the current fixes, then rerun CI and request/review the new head. Do not
+continue to Slice 4.
 ## 9. Ready-to-use implementation prompt for GPT-6 Luna
 
 ```text

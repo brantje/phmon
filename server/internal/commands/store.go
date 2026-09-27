@@ -169,11 +169,11 @@ func (s *Store) transition(ctx context.Context, id, agentID, sessionID string, g
 	return true, nil
 }
 
-func (s *Store) ListHistory(ctx context.Context, characterID string, limit int) ([]Command, error) {
+func (s *Store) ListHistory(ctx context.Context, characterID, name, state string, limit int) ([]Command, error) {
 	if limit < 1 || limit > 100 {
 		return nil, ErrInvalid
 	}
-	rows, err := s.pool.Query(ctx, selectCommand+`WHERE character_id=$1 ORDER BY created_at DESC,command_id DESC LIMIT $2`, characterID, limit)
+	rows, err := s.pool.Query(ctx, selectCommand+`WHERE character_id=$1 AND ($2='' OR command_name=$2) AND ($3='' OR state=$3) ORDER BY created_at DESC,command_id DESC LIMIT $4`, characterID, name, state, limit)
 	if err != nil {
 		return nil, err
 	}

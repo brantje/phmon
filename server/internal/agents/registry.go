@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-var ErrConnectionUnavailable = errors.New("agent connection unavailable")
+var (
+	ErrConnectionUnavailable = errors.New("agent connection unavailable")
+	ErrNotSent               = errors.New("agent command was not sent")
+)
 
 type CommandCapability struct {
 	Name      string

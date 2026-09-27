@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
@@ -82,7 +83,10 @@ func (d *Dispatcher) dispatch(ctx context.Context, id string) {
 	}
 	remaining := time.Until(command.ExpiresAt)
 	if remaining <= 0 {
-		_ = d.store.MarkUnknown(ctx, id, "dispatch_deadline", time.Now().UTC())
+		_ = d.store.FailBeforeSend(ctx, id, "dispatch_deadline", time.Now().UTC())
+		if d.live != nil {
+			d.live.Invalidate()
+		}
 		return
 	}
 	payload := map[string]any{"type": "command.execute", "protocol_version": 3, "command_id": command.ID, "character_id": command.CharacterID, "session_id": command.SessionID, "name": command.Name, "args": command.Args, "expires_at": commandExpiryTimestamp(command.ExpiresAt), "ttl_ms": remaining.Milliseconds()}
@@ -90,7 +94,7 @@ func (d *Dispatcher) dispatch(ctx context.Context, id string) {
 	err = d.sender.Send(sendCtx, command.AgentID, command.ConnectionGeneration, payload)
 	sendCancel()
 	if err != nil {
-		if err == agentdomain.ErrConnectionUnavailable {
+		if errors.Is(err, agentdomain.ErrConnectionUnavailable) || errors.Is(err, agentdomain.ErrNotSent) {
 			_ = d.store.FailBeforeSend(ctx, id, "connection_unavailable", time.Now().UTC())
 			if d.live != nil {
 				d.live.Invalidate()

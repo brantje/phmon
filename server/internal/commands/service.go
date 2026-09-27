@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -56,8 +57,8 @@ func (s *Service) Acknowledge(ctx context.Context, id, agentID, sessionID string
 func (s *Service) Result(ctx context.Context, id, agentID, sessionID string, generation uint64, at time.Time, result ResultInput) (bool, error) {
 	return s.store.RecordResult(ctx, id, agentID, sessionID, generation, at, result)
 }
-func (s *Service) History(ctx context.Context, characterID string, limit int) ([]Command, error) {
-	return s.store.ListHistory(ctx, characterID, limit)
+func (s *Service) History(ctx context.Context, characterID, name, state string, limit int) ([]Command, error) {
+	return s.store.ListHistory(ctx, characterID, name, state, limit)
 }
 func (s *Service) ResolveTarget(ctx context.Context, characterID string) (Target, error) {
 	return s.store.ResolveTarget(ctx, characterID)
@@ -74,6 +75,9 @@ func (s *Service) SaveControlState(ctx context.Context, characterID, sessionID, 
 }
 func (s *Service) Controls(ctx context.Context, characterID string) (map[string]any, error) {
 	target, err := s.store.ResolveTarget(ctx, characterID)
+	if errors.Is(err, ErrStaleSession) || errors.Is(err, ErrNotFound) {
+		return map[string]any{"character_id": characterID, "session_id": "", "capabilities": map[string]Capability{}, "training": nil}, nil
+	}
 	if err != nil {
 		return nil, err
 	}

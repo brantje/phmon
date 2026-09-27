@@ -130,6 +130,16 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	if err := characterStore.End(ctx, credential.AgentID, characterID, 77, "left"); err != nil {
 		t.Fatal(err)
 	}
+	offlineControls, err := service.Controls(ctx, characterID)
+	if err != nil {
+		t.Fatalf("offline controls snapshot: %v", err)
+	}
+	if offlineControls["character_id"] != characterID || offlineControls["session_id"] != "" {
+		t.Fatalf("offline controls = %#v", offlineControls)
+	}
+	if capabilities, ok := offlineControls["capabilities"].(map[string]Capability); !ok || len(capabilities) != 0 {
+		t.Fatalf("offline capabilities = %#v", offlineControls["capabilities"])
+	}
 	if err := characterStore.ClaimSession(ctx, credential.AgentID, characterID, 78); err != nil {
 		t.Fatal(err)
 	}
@@ -164,5 +174,26 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	}
 	if state != StateExpired || eventCount != 1 {
 		t.Fatalf("reconciled command state=%q expiry events=%d", state, eventCount)
+	}
+
+	currentTarget, err := store.ResolveTarget(ctx, characterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := service.Submit(ctx, "operator", SubmitInput{
+		CharacterID:       characterID,
+		ExpectedSessionID: currentTarget.SessionID,
+		Name:              "bot.start",
+		Args:              json.RawMessage(`{}`),
+		IdempotencyKey:    "newer-command",
+	}); err != nil {
+		t.Fatalf("submit newer history row: %v", err)
+	}
+	history, err := service.History(ctx, characterID, "bot.stop", string(StateExpired), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].ID != first.ID {
+		t.Fatalf("filtered history = %+v, want expired bot.stop %s despite newer command", history, first.ID)
 	}
 }

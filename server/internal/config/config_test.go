@@ -42,6 +42,7 @@ func TestLoad(t *testing.T) {
 
 func TestLoadRequiresOperatorConfiguration(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://localhost/phmon")
+	t.Setenv("OPERATOR_ACCESS_SECRET", "")
 	t.Setenv("OPERATOR_ALLOWED_ORIGINS", "http://127.0.0.1:3005")
 	t.Setenv("OPERATOR_ALLOW_INSECURE_HTTP", "true")
 	if _, err := Load(); err == nil {

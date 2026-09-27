@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	agentdomain "phmon/server/internal/agents"
 )
 
 var errAgentWriterBackpressure = errors.New("agent writer queue full")
@@ -40,12 +42,12 @@ func (w *agentWriter) Send(ctx context.Context, value any) error {
 	request := agentWriteRequest{value: value, done: make(chan error, 1)}
 	select {
 	case <-w.ctx.Done():
-		return w.ctx.Err()
+		return fmt.Errorf("%w: %v", agentdomain.ErrNotSent, w.ctx.Err())
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("%w: %v", agentdomain.ErrNotSent, ctx.Err())
 	case w.queue <- request:
 	default:
-		return errAgentWriterBackpressure
+		return fmt.Errorf("%w: %v", agentdomain.ErrNotSent, errAgentWriterBackpressure)
 	}
 	select {
 	case <-w.ctx.Done():

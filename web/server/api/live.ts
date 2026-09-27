@@ -11,9 +11,13 @@ type UpstreamSocket = {
   bufferedAmount: number
   send(message: string): void
   close(code?: number, reason?: string): void
+  on(event: 'open' | 'error', listener: () => void): void
   on(
-    event: 'open' | 'unexpected-response' | 'error',
-    listener: () => void,
+    event: 'unexpected-response',
+    listener: (
+      request: { destroy(): void },
+      response: { statusCode?: number; resume(): void },
+    ) => void,
   ): void
   on(
     event: 'message',
@@ -180,11 +184,19 @@ export default defineWebSocketHandler({
       )
     })
 
-    upstream.on('unexpected-response', () => {
+    upstream.on('unexpected-response', (request, response) => {
+      response.resume()
+      request.destroy()
       if (state.closed) return
       state.closed = true
       relays.delete(peer.id)
-      peer.close(4401, 'operator authentication required')
+      const unauthorized = response.statusCode === 401
+      peer.close(
+        unauthorized ? 4401 : 1011,
+        unauthorized
+          ? 'operator authentication required'
+          : 'live backend unavailable',
+      )
     })
 
     upstream.on('error', () => {
