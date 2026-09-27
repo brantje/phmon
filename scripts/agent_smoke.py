@@ -4,12 +4,16 @@ import json
 import os
 import time
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+
+from smoke_auth import login_cookie
 
 web = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005")
 agent_id = os.environ.get("EXPECT_AGENT_ID")
 expected_connected = os.environ.get("EXPECT_AGENT_CONNECTED", "1") == "1"
 timeout = float(os.environ.get("AGENT_SMOKE_TIMEOUT", "45"))
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+operator_cookie = login_cookie(web, web, root)
 
 if not agent_id:
     raise SystemExit("EXPECT_AGENT_ID is required")
@@ -18,7 +22,8 @@ last_error = None
 deadline = time.time() + timeout
 while time.time() < deadline:
     try:
-        response = urlopen(web + "/api/agents", timeout=5)
+        request = Request(web + "/api/agents", headers={"Cookie": operator_cookie})
+        response = urlopen(request, timeout=5)
         with response:
             body = json.loads(response.read().decode())
         if body.get("status") != "ok":

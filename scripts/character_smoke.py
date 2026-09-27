@@ -6,14 +6,21 @@ Fixture records are produced only by scripts/agent_simulator.py in test stacks.
 import json
 import os
 import time
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
+
+from smoke_auth import login_cookie
 
 web = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005")
+root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+operator_cookie = login_cookie(web, web, root)
 deadline = time.time() + float(os.environ.get("CHARACTER_SMOKE_TIMEOUT", "30"))
 last_state = "no fixture records"
 while time.time() < deadline:
     try:
-        response = urlopen(web + "/api/characters?q=Fixture", timeout=5)
+        request = Request(
+            web + "/api/characters?q=Fixture", headers={"Cookie": operator_cookie}
+        )
+        response = urlopen(request, timeout=5)
         with response:
             body = json.loads(response.read().decode())
         characters = {item["name"]: item for item in body.get("characters", [])}
