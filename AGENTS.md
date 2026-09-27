@@ -381,17 +381,22 @@ independently verified and fixed in the current worktree, including the example 
 and outdated setup/protocol text, auth failure throttling, known-unsent command states,
 offline controls, pre-limit history filtering, logout failure state and rejected
 WebSocket handshake cleanup. The README warning outside the diff was also corrected.
-The dotenv key-order suggestions are a non-actionable style preference; explicitly
-explain that in the CodeRabbit reply. Local Go tests/vet, all 32 plugin tests, live
+The dotenv key-order suggestions were a non-actionable style preference and were
+identified as such in the CodeRabbit replies. Local Go tests/vet, all 32 plugin tests, live
 transport audit, Nuxt format/lint/typecheck and production build pass (lint has 13
 existing self-closing warnings). PostgreSQL/race evidence for these latest code fixes
 must come from CI because this Windows host has no local Docker/PostgreSQL and CGO is
 disabled. No bot command was sent; Walk remains excluded by instruction, Clientless
 remains unsupported on the live 20.1.1/plugin 1.1.0 runtime, and Execute Script is
-outside the bounded catalog. Exact next action: commit and push the verified review
-fixes, rerun CI, request Copilot and CodeRabbit on that head, and triage their current
-head results. Copilot has repeatedly returned the account quota limit; CodeRabbit's
-latest request was rate limited while the PR is draft. Keep PR draft and Slice 3
+outside the bounded catalog. On `fb76e09`, all tests and builds passed but both
+validation CI runs failed only at the final Compose config check because that job did
+not supply the now-required operator secret after `.env.example` was hardened. The
+workflow now injects a disposable CI-only value for validation; the stack job already
+uses its own CI-only value. Docker is unavailable on this Windows host, so the Compose
+config check awaits CI. Exact next action: commit and push this workflow fix, rerun CI,
+request Copilot and CodeRabbit on that head, and triage fresh feedback. Copilot has
+repeatedly returned the account quota limit; CodeRabbit's latest request was rate
+limited while the PR is draft. Keep PR draft and Slice 3
 incomplete while real Walk, safe per-session Clientless and broad real-runtime
 mutation evidence remain open; stop before Slice 4.
 **Slice 3 implementation P0–P6 checkpoint (2026-09-27):** P0–P6 implementation is
