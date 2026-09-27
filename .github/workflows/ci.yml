@@ -45,6 +45,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
       - run: cp .env.example .env
+      - name: Permit plain HTTP only for loopback Compose smoke tests
+        run: sed -i 's/^OPERATOR_ALLOW_INSECURE_HTTP=false$/OPERATOR_ALLOW_INSECURE_HTTP=true/' .env
       - run: docker compose up --build -d --wait --wait-timeout 180
       - run: python3 scripts/smoke.py
       - name: Verify production browser live WebSocket path
