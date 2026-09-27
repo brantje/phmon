@@ -416,3 +416,13 @@ Separate asset readiness from later feature implementation. Keep screenshot-visi
 requirements separate from roadmap-derived requirements and source availability.
 No screenshot covers every pet inventory, item tooltip, quest or dungeon; these
 must still be investigated. Do not omit unseen screens from the final audit.
+
+## Operator-directed Git tracking update (2026-09-27)
+
+After the export and coverage checks above, the operator requested that the Nuxt
+public asset tree be committed with the application. The tracked tree contains
+10,171 browser asset aliases plus `asset-index.json` (10,172 files; 487,358,758
+bytes). This supersedes the earlier ignored-output notes above, which describe the
+state at the time those checks ran. The source PK2 archives and exporter-only audit
+remain outside Git. Coverage and semantic gaps are unchanged by tracking these
+files.

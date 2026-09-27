@@ -100,7 +100,7 @@ Configurable, ignored output, for example `exports/greatestsro/<dataset-id>/`:
     unresolved.json
     preview/
 
-# Optional browser alias tree (default target; ignored by Git)
+# Optional browser alias tree (default target; tracked in the PhMon repository)
 web/public/game-assets/
   asset-index.json              # semantic asset key -> stable public URL
   icon/skill/china/bow_area_a.png
@@ -132,7 +132,7 @@ asset keys to relative public URLs. These public aliases do not include archive 
 raw entry metadata, table paths or conversion instructions; the audit retains exact
 source-entry provenance. Keep unresolved character/monster/unique roles unresolved
 even when an associated icon has a stable URL. `web/public/game-assets/` is the npm
-command's ignored default target. The root and URL prefix can be changed by the
+command's default target and is tracked with the PhMon repository. The root and URL prefix can be changed by the
 operator's `--asset-output` argument.
 
 Derive dataset identity deterministically from selected source content and export
@@ -527,5 +527,6 @@ No PhMon service, PostgreSQL, Docker or phBot process was used.
 > families. Keep source provenance in exporter-only audit files. Verify deterministic
 > real exports, standalone previews, coverage and copied-bundle use without source
 > files. Ask whenever required source availability, semantics or scope is uncertain.
-> Preserve unrelated work, keep extracted assets ignored, record actual results and
+> Preserve unrelated work, keep source archives/audits/temporary exports ignored,
+> track the public Nuxt asset tree as explicitly requested, record actual results and
 > blockers, and stop before Slice 3.

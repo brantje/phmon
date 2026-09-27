@@ -58,8 +58,9 @@ The public tree contains PNG aliases such as
 `game-assets/icon/skill/china/bow_area_a.png` and an `asset-index.json` mapping
 normalized semantic asset keys to public URLs. It contains no archive paths or
 source-table details; those stay under the separate exporter `audit/` directory.
-The default Nuxt destination is ignored by Git. A custom destination inside a Git
-checkout must also be kept out of version control.
+The default Nuxt destination is tracked with the PhMon repository. Source archives,
+audit files, and temporary exporter outputs remain outside the Nuxt public tree and
+are ignored under `exports/`. Choose a path outside the checkout for temporary outputs.
 
 From `web/`, the npm convenience command uses that Nuxt destination by default.
 Provide the read-only source with `--source` or the `GREATESTSRO_SOURCE` environment

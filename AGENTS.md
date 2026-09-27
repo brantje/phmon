@@ -108,7 +108,9 @@ what PhMon actually implements.
   components. Use locally served original, licensed, operator-supplied or
   operator-imported game-client artwork/map tiles/item icons where their local use is
   permitted. Record asset provenance; do not commit or redistribute extracted
-  copyrighted client assets by default. Do not hotlink phMonitor assets, embed its
+  copyrighted client assets by default. An explicit operator instruction may
+  authorize versioning the generated public asset tree; never include source
+  archives or exporter-only provenance audits. Do not hotlink phMonitor assets, embed its
   application, copy its client bundle or connect to its services.
 
 ### Explicit adaptations to the demo
@@ -360,6 +362,14 @@ operator has manually verified basic real phBot → PhMon connectivity. Slice 2:
 progress. Slices 3–15: not started.** Slice 1's detailed runtime/profile/API and
 same-viewport visual gates remain open; basic connectivity must not be described as
 blocked or as proof of all runtime APIs. See `docs/phbot-capabilities.md`.
+
+**Current turn (2026-09-27):** the operator explicitly requested that the generated
+Nuxt assets under `web/public/game-assets/` be tracked in Git. Removed that directory
+from `.gitignore`; the prepared public tree contains 10,172 files (10,171 asset URLs
+plus `asset-index.json`), 487,358,758 bytes total. Source PK2 archives and the
+exporter-only audit remain excluded. This supersedes earlier notes that the public
+tree was ignored; those entries record the state when their checks ran. Exact
+minimap marker placement and other coverage gaps remain unresolved.
 
 **Current turn (2026-09-27): Slice 2.5 exporter follow-up adds the Nuxt public asset
 destination and npm command; asset readiness remains incomplete.** Exporter `0.4.0`
@@ -1064,7 +1074,9 @@ Input: `C:\Users\sander\Documents\Silkroad Online\GreatestSRO`, read-only.
   Cover every screenshot plus later-slice requirements not shown in populated shots.
 - Source provenance and format diagnostics in exporter-only audit files, outside
   the ready-to-copy app bundle. No source paths, raw client tables or archives in
-  the bundle. Keep proprietary outputs ignored and out of CI/build artifacts.
+  the bundle. Keep source archives, exporter-only source audits and temporary
+  exports ignored and out of CI/build artifacts. The public alias tree under
+  `web/public/game-assets/` is tracked when explicitly requested by the operator.
 - Deterministic exports, bounded parsing/conversion, staged output and atomic
   publication. Preserve earlier valid output if a run fails or is cancelled.
 - A standalone visual preview and per-family/per-screenshot coverage report.

@@ -10,7 +10,6 @@ __pycache__/
 *.log
 .DS_Store
 /exports/
-/web/public/game-assets/
 /tools/game-data-exporter/.venv/
 /tools/game-data-exporter/.pytest_cache/
 /tools/game-data-exporter/src/*.egg-info/
