@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
+	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
 )
 
@@ -21,6 +22,7 @@ type AgentStore interface {
 
 type Dependencies struct {
 	Database     Pinger
+	Auth         *authdomain.Manager
 	Agents       AgentStore
 	Registry     *agentdomain.Registry
 	AgentOptions AgentOptions
@@ -31,6 +33,23 @@ type Dependencies struct {
 func New(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	registerHealth(mux, deps.Database)
+
+	register := func(pattern string, mutation bool, handler http.HandlerFunc) {
+		if deps.Auth != nil {
+			mux.HandleFunc(pattern, requireOperator(deps.Auth, mutation, handler))
+			return
+		}
+		// Low-level unit tests may omit Auth deliberately. Production wiring cannot:
+		// config.Load requires operator configuration and main always injects it.
+		mux.HandleFunc(pattern, handler)
+	}
+
+	if deps.Auth != nil {
+		authHandler := &operatorAuthHandler{manager: deps.Auth}
+		mux.HandleFunc("POST /api/auth/login", authHandler.login)
+		mux.HandleFunc("GET /api/auth/session", authHandler.session)
+		mux.HandleFunc("POST /api/auth/logout", authHandler.logout)
+	}
 	if deps.Agents != nil && deps.Registry != nil {
 		live := deps.Live
 		if live == nil {
@@ -44,19 +63,19 @@ func New(deps Dependencies) http.Handler {
 			live:       live,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
-		mux.HandleFunc("GET /api/live", live.connect)
-		mux.HandleFunc("GET /api/agents", handler.list)
-		mux.HandleFunc("POST /api/agents/credentials", handler.createCredential)
+		register("GET /api/live", true, live.connect)
+		register("GET /api/agents", false, handler.list)
+		register("POST /api/agents/credentials", true, handler.createCredential)
 		if deps.Characters != nil {
 			ch := &characterHandler{store: deps.Characters, live: live}
-			mux.HandleFunc("GET /api/characters", ch.list)
-			mux.HandleFunc("GET /api/characters/{id}", ch.get)
-			mux.HandleFunc("GET /api/groups", ch.groups)
-			mux.HandleFunc("POST /api/groups", ch.createGroup)
-			mux.HandleFunc("PATCH /api/groups/{id}", ch.renameGroup)
-			mux.HandleFunc("DELETE /api/groups/{id}", ch.deleteGroup)
-			mux.HandleFunc("PUT /api/groups/{id}/members/{characterID}", ch.addMember)
-			mux.HandleFunc("DELETE /api/groups/{id}/members/{characterID}", ch.removeMember)
+			register("GET /api/characters", false, ch.list)
+			register("GET /api/characters/{id}", false, ch.get)
+			register("GET /api/groups", false, ch.groups)
+			register("POST /api/groups", true, ch.createGroup)
+			register("PATCH /api/groups/{id}", true, ch.renameGroup)
+			register("DELETE /api/groups/{id}", true, ch.deleteGroup)
+			register("PUT /api/groups/{id}/members/{characterID}", true, ch.addMember)
+			register("DELETE /api/groups/{id}/members/{characterID}", true, ch.removeMember)
 			handler.characters = deps.Characters
 		}
 	}

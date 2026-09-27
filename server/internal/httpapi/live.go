@@ -112,7 +112,8 @@ func (h *LiveHub) unregister(client *liveClient) {
 }
 
 func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
-	if !liveOriginAllowed(r) {
+	_, authenticatedOperator := operatorSessionFromContext(r.Context())
+	if !authenticatedOperator && !liveOriginAllowed(r) {
 		respondJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin websocket rejected"})
 		return
 	}
@@ -126,6 +127,24 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 	conn.SetReadLimit(liveMaxClientMessageBytes)
 
 	ctx, cancel := context.WithCancel(r.Context())
+	if operatorSession, ok := operatorSessionFromContext(r.Context()); ok {
+		go func() {
+			delay := time.Until(operatorSession.watch.ExpiresAt)
+			if delay < 0 {
+				delay = 0
+			}
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-operatorSession.watch.Done:
+			case <-timer.C:
+			case <-ctx.Done():
+				return
+			}
+			cancel()
+			_ = conn.Close(websocket.StatusPolicyViolation, "operator session expired")
+		}()
+	}
 	client := &liveClient{
 		hub:           h,
 		conn:          conn,

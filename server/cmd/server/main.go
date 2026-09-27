@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"phmon/server/internal/agents"
+	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/config"
 	"phmon/server/internal/database"
@@ -50,6 +51,11 @@ func run() error {
 		return errors.New("database migrations failed")
 	}
 
+	operatorAuth, err := authdomain.New(cfg.OperatorAccessSecret, cfg.OperatorSessionCookie, cfg.OperatorAllowedOrigins, cfg.OperatorAllowInsecureLoopback)
+	if err != nil {
+		return err
+	}
+
 	store := agents.NewStore(pool)
 	characterStore := characters.NewStore(pool)
 	reconcileCtx, reconcileCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -63,6 +69,7 @@ func run() error {
 	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
 		Database:   pool,
+		Auth:       operatorAuth,
 		Agents:     store,
 		Registry:   registry,
 		Characters: characterStore,
