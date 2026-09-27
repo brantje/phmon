@@ -17,7 +17,11 @@ from urllib.error import HTTPError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from smoke_auth import login_cookie
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_URL = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005").rstrip("/")
+OPERATOR_COOKIE = ""
 LIVE_PROTOCOL_VERSION = 1
 MAX_FRAME = 1024 * 1024
 MAX_PENDING_FRAMES = 256
@@ -261,6 +265,7 @@ def http_json(path: str, method: str, body: dict | None = None):
             "Content-Type": "application/json",
             "Origin": WEB_URL,
             "Sec-Fetch-Site": "same-origin",
+            **({"Cookie": OPERATOR_COOKIE} if OPERATOR_COOKIE else {}),
         },
     )
     try:
@@ -274,7 +279,7 @@ def http_json(path: str, method: str, body: dict | None = None):
 
 def assert_cross_origin_rejected() -> None:
     try:
-        WebSocketClient(live_url(), "https://evil.example").connect()
+        WebSocketClient(live_url(), "https://evil.example", OPERATOR_COOKIE).connect()
     except WebSocketError as exc:
         if "HTTP 403" not in str(exc):
             raise AssertionError(f"unexpected cross-origin rejection: {exc}") from exc
@@ -291,10 +296,12 @@ def group_ids(data: dict) -> dict[str, str]:
 
 
 def main() -> None:
+    global OPERATOR_COOKIE
+    OPERATOR_COOKIE = login_cookie(WEB_URL, WEB_URL, ROOT)
     assert_cross_origin_rejected()
 
-    first = WebSocketClient(live_url(), WEB_URL).connect()
-    second = WebSocketClient(live_url(), WEB_URL).connect()
+    first = WebSocketClient(live_url(), WEB_URL, OPERATOR_COOKIE).connect()
+    second = WebSocketClient(live_url(), WEB_URL, OPERATOR_COOKIE).connect()
     try:
         subscribe(first, "agents", 1, "agents")
         subscribe(first, "fleet", 1, "characters")

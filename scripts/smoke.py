@@ -2,14 +2,15 @@
 """Verify a running stack; creates and removes one temporary group on healthy runs."""
 import json
 import os
-import http.cookiejar
 from urllib.error import HTTPError
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.request import Request, urlopen
+
+from smoke_auth import login_cookie
 
 backend = os.environ.get("SMOKE_BACKEND_URL", "http://127.0.0.1:8081")
 web = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:3005")
 unavailable = os.environ.get("EXPECT_UNAVAILABLE") == "1"
-opener = build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
+operator_cookie = ""
 
 
 def request(url, data=None, method=None):
@@ -19,11 +20,12 @@ def request(url, data=None, method=None):
             data=data,
             headers={
                 "Origin": web,
+                **({"Cookie": operator_cookie} if operator_cookie else {}),
                 **({"Content-Type": "application/json"} if data is not None else {}),
             },
             method=method or ("POST" if data is not None else "GET"),
         )
-        response = opener.open(request, timeout=10)
+        response = urlopen(request, timeout=10)
     except HTTPError as error:
         response = error
     with response:
@@ -51,15 +53,16 @@ for url, expected_code, expected in [
     assert code == expected_code, (url, code, body)
     assert json.loads(body) == expected, (url, body)
     assert headers.get("Cache-Control") == "no-store", url
-print("PASS {}: HTTP {}".format(url, code))
+    print("PASS {}: HTTP {}".format(url, code))
 
-secret = os.environ.get("OPERATOR_ACCESS_SECRET")
-assert secret, "OPERATOR_ACCESS_SECRET is required for authenticated stack smoke"
-code, _, body = request(
-    web + "/api/auth/login",
-    json.dumps({"secret": secret}).encode(),
-)
-assert code == 200, ("operator login status", code, body)
+if unavailable:
+    code, _, body = request(web + "/")
+    assert code == 200, code
+    assert "PhMon" in body and "Checking operator session" in body, body[:500]
+    print("PASS application shell remains available behind auth while the database is unavailable")
+    raise SystemExit(0)
+
+operator_cookie = login_cookie(web, web, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 print("PASS operator login establishes a cookie-backed session")
 
 code, _, body = request(web + "/")
