@@ -632,8 +632,8 @@ audit row. Local Go tests and vet pass; the host lacks Docker/PostgreSQL, so thi
 integration fix awaits the next GitHub CI run. CI also exposed missing operator
 cookies in the dedicated database-outage WebSocket and API fixtures; both now use
 the shared login helper. Python compilation and 32 plugin tests pass. Exact next
-action is to push these recovery-smoke fixes, rerun CI, then inspect review findings
-for that head.
+action is to push the corrected expiry fixture, rerun CI, then inspect review
+findings for that head.
 
 Remaining gates: real Walk route traversal on plugin 1.1.2 (not installed and no
 Walk action issued), safe per-session Clientless primitive, broad real-runtime API

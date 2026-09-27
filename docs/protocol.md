@@ -553,3 +553,5 @@ expired state and its audit event. CI must rerun this fix before the outage/reco
 path can be reported as passing. CI then showed the outage/recovery smoke fixtures
 were not carrying an operator session cookie through `/api/live` or protected API
 calls; they now use the shared login helper and await another run.
+The first integration assertion setup also violated `expires_at > created_at`; its
+timestamps are now backdated together while retaining the constraint.
