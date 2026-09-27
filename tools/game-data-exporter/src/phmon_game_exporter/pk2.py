@@ -23,6 +23,8 @@ ENTRY_SIZE = 128
 BLOCK_SIZE = BLOCK_ENTRIES * ENTRY_SIZE
 MAX_ENTRIES = 2_000_000
 MAX_DIRECTORY_DEPTH = 128
+MAX_DIRECTORY_BLOCKS = 100_000
+MAX_DIRECTORY_BYTES = 256 * 1024 * 1024
 MAX_ENTRY_BYTES = 512 * 1024 * 1024
 SALT = bytes((0x03, 0xF8, 0xE4, 0x44, 0x88, 0x99, 0x3F, 0x64, 0xFE, 0x35))
 CHECKSUM = b"Joymax Pak File\0"
@@ -213,6 +215,7 @@ class PK2Archive:
         self._require_open()
         entries: list[Entry] = []
         seen_directories: set[int] = set()
+        directory_blocks = 0
         stack: list[tuple[str, int, int]] = [("", HEADER_SIZE, 0)]
         while stack:
             parent, start, depth = stack.pop()
@@ -227,6 +230,9 @@ class PK2Archive:
                 if offset in chain_offsets:
                     raise PK2Error(f"cyclic PK2 block chain at offset {offset}")
                 chain_offsets.add(offset)
+                directory_blocks += 1
+                if directory_blocks > MAX_DIRECTORY_BLOCKS or directory_blocks * BLOCK_SIZE > MAX_DIRECTORY_BYTES:
+                    raise PK2Error("maximum PK2 directory block/byte limit exceeded")
                 block = self._read_block(offset)
                 block_entries: list[Entry] = []
                 for i in range(BLOCK_ENTRIES):

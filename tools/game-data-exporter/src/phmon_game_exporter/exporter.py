@@ -124,16 +124,17 @@ def _catalog(dataset_id: str, family: str, status: str, records: list[dict[str, 
 
 
 def _no_symlink_components(path: Path) -> None:
-    current = path
-    missing: list[Path] = []
-    while not current.exists() and current != current.parent:
-        missing.append(current)
-        current = current.parent
-    if current.is_symlink():
-        raise ExportError(f"symlink output path is not allowed: {current}")
-    for component in reversed(missing):
-        if component.exists() and component.is_symlink():
-            raise ExportError(f"symlink output path is not allowed: {component}")
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        if part == "..":
+            current = current.parent
+            continue
+        if part in ("", "."):
+            continue
+        current /= part
+        if current.is_symlink():
+            raise ExportError(f"symlink output path is not allowed: {current}")
 
 
 def _item_shards(media, index: dict[str, Entry]) -> list[tuple[str, Entry]]:
@@ -343,10 +344,10 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
     source = source.resolve(strict=True)
     if not source.is_dir():
         raise ExportError(f"source directory does not exist: {source}")
+    _no_symlink_components(output)
     output = output.resolve()
     if output == source or source in output.parents:
         raise ExportError("export output must be outside the source archives directory")
-    _no_symlink_components(output)
     if asset_output is not None:
         from .public_assets import ensure_public_asset_destination
 
@@ -520,7 +521,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                         continue
                     entity_shards.append((rel, media_index[rel.casefold()]))
                 entity_ids: set[int] = set()
-                for table_path, shard in entity_shards:
+                for shard_ordinal, (table_path, shard) in enumerate(entity_shards, start=1):
                     lines, encoding = _lines(media.read_payload(shard), table_path)
                     table_audit = {"sourcePath": table_path, "encoding": encoding, "sourceRows": len(lines), "normalized": 0}
                     for line_number, line in enumerate(lines, start=1):
@@ -570,7 +571,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                             "classification": "unmapped",
                         })
                         table_audit["normalized"] += 1
-                    _json_write(audit / "tables" / f"entities-{len(entity_records):06d}.json", table_audit)
+                    _json_write(audit / "tables" / f"entities-{shard_ordinal:06d}.json", table_audit)
             unresolved.append({"family": "entities", "reason": "character portrait, pet class and full-body artwork roles cannot be joined from the available verified references"})
             entity_records.sort(key=lambda row: row["referenceId"])
             _json_write(bundle / "catalogs" / "entities.json", _catalog(dataset_id, "entities", "partial", entity_records, recordCount=len(entity_records), locales=["en"]))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import struct
 from pathlib import Path
 
@@ -70,19 +71,25 @@ def make_pk2(
         stream.write(header)
         stream.write(cipher.transform(bytes(block), decrypt=False))
     if sparse:
-        import ctypes
+        if os.name == "nt":
+            import ctypes
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        handle = kernel32.CreateFileW(str(path), 0x40000000, 0x3, None, 3, 0x80, None)
-        if handle == ctypes.c_void_p(-1).value:
-            raise OSError(ctypes.get_last_error(), "CreateFileW failed for sparse fixture")
-        returned = ctypes.c_ulong()
-        ok = kernel32.DeviceIoControl(handle, 0x900C4, None, 0, None, 0, ctypes.byref(returned), None)
-        kernel32.CloseHandle(handle)
-        if not ok:
-            raise OSError(ctypes.get_last_error(), "FSCTL_SET_SPARSE failed")
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            handle = kernel32.CreateFileW(str(path), 0x40000000, 0x3, None, 3, 0x80, None)
+            if handle == ctypes.c_void_p(-1).value:
+                raise OSError(ctypes.get_last_error(), "CreateFileW failed for sparse fixture")
+            returned = ctypes.c_ulong()
+            ok = kernel32.DeviceIoControl(handle, 0x900C4, None, 0, None, 0, ctypes.byref(returned), None)
+            kernel32.CloseHandle(handle)
+            if not ok:
+                raise OSError(ctypes.get_last_error(), "FSCTL_SET_SPARSE failed")
     if name is not None:
         with path.open("r+b") as stream:
             stream.seek(payload_offset)
             stream.write(payload)
+        if sparse and os.name != "nt":
+            stats = path.stat()
+            allocated = getattr(stats, "st_blocks", None)
+            if allocated is not None and allocated * 512 >= stats.st_size:
+                raise OSError("filesystem allocated the complete sparse fixture")
     return payload_offset

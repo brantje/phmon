@@ -5,6 +5,7 @@ import struct
 import pytest
 
 from phmon_game_exporter.pk2 import ENTRY_SIZE, HEADER_SIZE, PK2Archive, PK2Error
+import phmon_game_exporter.pk2 as pk2_module
 from .helpers import TEST_KEY, make_pk2
 
 
@@ -30,6 +31,22 @@ def test_rejects_cyclic_root_block_chain(tmp_path):
     path = tmp_path / "cycle.pk2"
     make_pk2(path, name=None, next_block=HEADER_SIZE)
     with PK2Archive(path, key=TEST_KEY) as archive, pytest.raises(PK2Error, match="cyclic"):
+        archive.inventory()
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "limit_value"),
+    [("MAX_DIRECTORY_BLOCKS", 1), ("MAX_DIRECTORY_BYTES", pk2_module.BLOCK_SIZE)],
+)
+def test_rejects_directory_chain_over_block_or_byte_limit(tmp_path, monkeypatch, limit_name, limit_value):
+    path = tmp_path / "long-directory-chain.pk2"
+    second_block = HEADER_SIZE + pk2_module.BLOCK_SIZE
+    make_pk2(path, name=None, next_block=second_block)
+    with path.open("ab") as stream:
+        stream.write(b"\0" * pk2_module.BLOCK_SIZE)
+    monkeypatch.setattr(pk2_module, limit_name, limit_value)
+
+    with PK2Archive(path, key=TEST_KEY) as archive, pytest.raises(PK2Error, match="directory block/byte limit"):
         archive.inventory()
 
 

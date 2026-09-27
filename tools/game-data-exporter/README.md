@@ -65,7 +65,9 @@ are ignored under `exports/`. Choose a path outside the checkout for temporary o
 From `web/`, the npm convenience command uses that Nuxt destination by default.
 Provide the read-only source with `--source` or the `GREATESTSRO_SOURCE` environment
 variable; output locations can be overridden with `--output` and `--asset-output`:
-Relative `--asset-output` values and `PHMON_GAME_ASSETS_OUTPUT` resolve from `web/`.
+Relative `--source`, `--output`, and `--asset-output` values resolve from `web/`.
+Relative `GREATESTSRO_SOURCE` and `PHMON_GAME_ASSETS_OUTPUT` values also resolve
+from `web/`.
 
 ```powershell
 $env:GREATESTSRO_SOURCE = "C:\Users\sander\Documents\Silkroad Online\GreatestSRO"

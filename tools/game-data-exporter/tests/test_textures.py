@@ -42,6 +42,21 @@ def test_decodes_png_embedded_in_ddj_wrapper():
     assert (result.width, result.height) == (2, 3)
 
 
+def test_decodes_palette_png_transparency_embedded_in_ddj_wrapper():
+    source = Image.new("P", (1, 1), 0)
+    source.putpalette([255, 0, 0, 0, 0, 255] + [0] * (768 - 6))
+    stream = io.BytesIO()
+    source.save(stream, format="PNG", transparency=0)
+    embedded = stream.getvalue()
+    payload = b"JMXVDDJ 1000" + (len(embedded) + 8).to_bytes(4, "little") + b"\x03\0\0\0" + embedded
+
+    result = ddj_to_png(payload)
+
+    with Image.open(io.BytesIO(result.data)) as image:
+        assert image.mode == "RGBA"
+        assert image.getpixel((0, 0)) == (255, 0, 0, 0)
+
+
 @pytest.mark.parametrize(
     "payload",
     [b"", b"JMXVDDJ 1000" + b"\0" * 8 + b"\x03\0\0\0", b"JMXVDDJ 1000" + b"\0" * 4 + b"\x02\0\0\0DDS "],

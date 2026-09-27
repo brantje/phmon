@@ -12,7 +12,7 @@ from phmon_game_exporter import exporter
 from phmon_game_exporter.cli import validate_bundle
 from phmon_game_exporter.pk2 import ArchiveInfo, Entry
 from phmon_game_exporter.preview import _map_sheet, _safe_bundle_file
-from phmon_game_exporter.public_assets import validate_public_assets
+from phmon_game_exporter.public_assets import ensure_public_asset_destination, validate_public_assets
 from .helpers import ddj_rgba
 
 
@@ -76,8 +76,9 @@ def _make_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "server_dep/silkroad/textdata/skillgroup.txt": _text("1\tignored\t257\tignored\t0\tUIIT_STT_GROUP_TEST\tskillgroup\\test.ddj\r\n"),
         "server_dep/silkroad/textdata/teleportdata.txt": _text("1\t1\tGATE_TEST_1\t0\tSN_ZONE_TEST\t1001\t0\t0\t0\t0\t0\t0\t0\t\r\n1\t2\tGATE_TEST_2\t0\tSN_ZONE_TEST\t1001\t0\t0\t0\t0\t0\t0\t0\t\r\n"),
         "server_dep/silkroad/textdata/teleportlink.txt": _text("1\t1\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\r\n"),
-        "server_dep/silkroad/textdata/characterdata.txt": _text("CharacterData_5000.txt\r\n"),
+        "server_dep/silkroad/textdata/characterdata.txt": _text("CharacterData_5000.txt\r\nCharacterData_5001.txt\r\n"),
         "server_dep/silkroad/textdata/characterdata_5000.txt": _text(""),
+        "server_dep/silkroad/textdata/characterdata_5001.txt": _text(""),
         "server_dep/silkroad/textdata/textdata_equip&skill.txt": _text("\tSN_ITEM_TEST_BLADE\t\t0\t0\t0\t0\t0\tTest Blade\t\r\n\tSN_SKILL_TEST\t\t0\t0\t0\t0\t0\tTest Skill\tTest Skill\r\n\tSN_SKILL_TEST_DESC\t\t0\t0\t0\t0\t0\tVerified skill description\tVerified skill description\r\n\tUIIT_STT_MASTERY_TEST\t\t0\t0\t0\t0\t0\tTest mastery\tTest mastery\r\n\tUIIT_STT_MASTERY_DESC\t\t0\t0\t0\t0\t0\tVerified mastery description\tVerified mastery description\r\n\tUIIT_STT_GROUP_TEST\t\t0\t0\t0\t0\t0\tTest mastery group\tTest mastery group\r\n"),
         "server_dep/silkroad/textdata/textdata_object.txt": _text("\tSN_ZONE_TEST\t\t0\t0\t0\t0\t0\tTest Region\t\r\n"),
         "server_dep/silkroad/textdata/refregion.txt": _text("\t".join(["1001", "1", "1", "China", "Jangan", "0", "1001", "0", "0", "0", "", *(["0"] * 10)]) + "\r\n"),
@@ -120,6 +121,9 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
     assert first["teleportLinkCount"] == 1
     assert first["portraitCandidateCount"] == 1
     assert first["interfaceSymbolCount"] == 1
+    audit_tables = Path(first["auditPath"]) / "tables"
+    assert (audit_tables / "entities-000001.json").is_file()
+    assert (audit_tables / "entities-000002.json").is_file()
 
     bundle = Path(first["bundlePath"])
     report = validate_bundle(bundle)
@@ -246,6 +250,48 @@ def test_map_sheet_places_increasing_y_above_smaller_indices(tmp_path):
     assert sheet.size == (12, 24)
     assert sheet.getpixel((6, 6)) == (40, 80, 220, 255)
     assert sheet.getpixel((6, 18)) == (220, 30, 40, 255)
+
+
+def test_map_sheet_reverses_x_when_increasing_direction_is_left(tmp_path):
+    bundle = tmp_path / "bundle"
+    maps_dir = bundle / "assets" / "maps"
+    catalogs_dir = bundle / "catalogs"
+    maps_dir.mkdir(parents=True)
+    catalogs_dir.mkdir()
+    tiles = [(0, "left", (220, 30, 40, 255)), (1, "right", (40, 80, 220, 255))]
+    manifest_assets = []
+    records = []
+    for x, name, color in tiles:
+        key = f"map:{name}"
+        relative = f"assets/maps/{name}.png"
+        Image.new("RGBA", (24, 24), color).save(bundle / relative)
+        manifest_assets.append({"path": relative, "semanticKeys": [key]})
+        records.append({"id": f"record:{name}", "tileSetId": "tile-set-001", "x": x, "y": 0, "assetKey": key})
+    (bundle / "manifest.json").write_text(json.dumps({"assets": manifest_assets}), encoding="utf-8")
+    (catalogs_dir / "maps.json").write_text(json.dumps({
+        "records": records,
+        "tileSetOrientations": [{"tileSetId": "tile-set-001", "status": "edge-continuity-supported", "xIncreasingDirection": "left"}],
+    }), encoding="utf-8")
+
+    sheet = Image.open(BytesIO(_map_sheet(bundle, "tile-set-001"))).convert("RGBA")
+
+    assert sheet.getpixel((6, 6)) == (40, 80, 220, 255)
+    assert sheet.getpixel((18, 6)) == (220, 30, 40, 255)
+
+
+def test_output_path_rejects_symlinked_parent_before_resolution(tmp_path, monkeypatch):
+    link = tmp_path / "linked-parent"
+    is_symlink = Path.is_symlink
+
+    def classify_link(path: Path) -> bool:
+        return path == link or is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", classify_link)
+
+    with pytest.raises(exporter.ExportError, match="symlink output path"):
+        exporter._no_symlink_components(link / "new-output")
+    with pytest.raises(ValueError, match="asset output path contains a symlink"):
+        ensure_public_asset_destination(link / "new-public-assets")
 
 
 def test_public_asset_export_preserves_unowned_destination(tmp_path, monkeypatch):

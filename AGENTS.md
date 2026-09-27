@@ -371,6 +371,17 @@ exporter-only audit remain excluded. This supersedes earlier notes that the publ
 tree was ignored; those entries record the state when their checks ran. Exact
 minimap marker placement and other coverage gaps remain unresolved.
 
+**PR review follow-up (2026-09-27):** verified and fixed all seven actionable
+CodeRabbit findings: unique entity-shard audit names even for empty shards; raw
+output-path symlink checks before resolution; bounded PK2 directory traversal; X-axis
+map-sheet orientation; palette-PNG transparency; portable sparse-file fixtures; and
+web-relative resolution for npm `--source`, `--output` and `--asset-output` paths.
+Validation passed: 26 exporter fixture tests, Python compileall, Node syntax check,
+ESLint for the wrapper, Prettier for the changed text files, and `git diff --check`.
+The symlink-parent test simulates `Path.is_symlink()` because this Windows account
+cannot create filesystem symlinks (WinError 1314); a physical symlink test remains
+unverified here. No new real archive export was run for these code-only fixes.
+
 **Current turn (2026-09-27): Slice 2.5 exporter follow-up adds the Nuxt public asset
 destination and npm command; asset readiness remains incomplete.** Exporter `0.4.0`
 adds configurable `--asset-output`, stable PNG URL aliases and a source-independent

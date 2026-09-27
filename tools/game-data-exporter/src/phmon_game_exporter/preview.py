@@ -66,6 +66,7 @@ def _map_sheet(bundle: Path, tile_set_id: str) -> bytes:
         raise ValueError("unknown tile set")
     orientations = {row["tileSetId"]: row for row in maps_catalog.get("tileSetOrientations", [])}
     orientation = orientations.get(tile_set_id, {})
+    increasing_x_direction = orientation.get("xIncreasingDirection")
     increasing_y_direction = orientation.get("yIncreasingDirection")
     min_x = min(row["x"] for row in records)
     min_y = min(row["y"] for row in records)
@@ -79,7 +80,7 @@ def _map_sheet(bundle: Path, tile_set_id: str) -> bytes:
     sheet = Image.new("RGBA", (columns * scale, rows * scale), (13, 19, 29, 255))
     for tile in records:
         destination = (
-            (tile["x"] - min_x) * scale,
+            (max_x - tile["x"] if increasing_x_direction == "left" else tile["x"] - min_x) * scale,
             (max_y - tile["y"] if increasing_y_direction == "up" else tile["y"] - min_y) * scale,
         )
         if tile.get("rasterContentStatus") == "uniform-opaque-black":

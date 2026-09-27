@@ -60,16 +60,17 @@ def _contains_source_knowledge(value: object) -> bool:
 
 
 def _no_symlink_components(path: Path) -> None:
-    current = path
-    missing: list[Path] = []
-    while not current.exists() and current != current.parent:
-        missing.append(current)
-        current = current.parent
-    if current.is_symlink():
-        raise ValueError(f"asset output path contains a symlink: {current}")
-    for component in reversed(missing):
-        if component.exists() and component.is_symlink():
-            raise ValueError(f"asset output path contains a symlink: {component}")
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        if part == "..":
+            current = current.parent
+            continue
+        if part in ("", "."):
+            continue
+        current /= part
+        if current.is_symlink():
+            raise ValueError(f"asset output path contains a symlink: {current}")
 
 
 def _existing_generated_files(destination: Path) -> set[str] | None:

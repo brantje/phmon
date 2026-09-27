@@ -68,7 +68,8 @@ def ddj_to_png(payload: bytes) -> PNGImage:
             ):
                 raise TextureError(f"image dimensions exceed limits: {width}x{height}")
             decoded.load()
-            converted = decoded.convert("RGBA" if "A" in decoded.getbands() else "RGB")
+            has_transparency = "A" in decoded.getbands() or "transparency" in decoded.info
+            converted = decoded.convert("RGBA" if has_transparency else "RGB")
     except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
         raise TextureError(f"DDS decoding failed: {exc}") from exc
     output = io.BytesIO()

@@ -29,16 +29,22 @@ const hasOption = (name) =>
     (argument) => argument === name || argument.startsWith(`${name}=`),
   )
 for (let index = 0; index < forwarded.length; index += 1) {
-  if (forwarded[index] === '--asset-output' && forwarded[index + 1]) {
-    if (!path.isAbsolute(forwarded[index + 1])) {
-      forwarded[index + 1] = path.resolve(webDirectory, forwarded[index + 1])
+  const option = ['--asset-output', '--source', '--output'].find(
+    (name) =>
+      forwarded[index] === name || forwarded[index].startsWith(`${name}=`),
+  )
+  if (!option) continue
+
+  if (forwarded[index] === option) {
+    const value = forwarded[index + 1]
+    if (value && !value.startsWith('--') && !path.isAbsolute(value)) {
+      forwarded[index + 1] = path.resolve(webDirectory, value)
     }
     index += 1
-  } else if (forwarded[index].startsWith('--asset-output=')) {
-    const outputPath = forwarded[index].slice('--asset-output='.length)
-    if (outputPath && !path.isAbsolute(outputPath)) {
-      forwarded[index] =
-        `--asset-output=${path.resolve(webDirectory, outputPath)}`
+  } else {
+    const value = forwarded[index].slice(option.length + 1)
+    if (value && !path.isAbsolute(value)) {
+      forwarded[index] = `${option}=${path.resolve(webDirectory, value)}`
     }
   }
 }
@@ -46,7 +52,13 @@ const exporterArguments = ['-m', 'phmon_game_exporter.cli', 'export']
 
 if (!helpRequested) {
   if (!hasOption('--source') && process.env.GREATESTSRO_SOURCE) {
-    exporterArguments.push('--source', process.env.GREATESTSRO_SOURCE)
+    const sourcePath = process.env.GREATESTSRO_SOURCE
+    exporterArguments.push(
+      '--source',
+      path.isAbsolute(sourcePath)
+        ? sourcePath
+        : path.resolve(webDirectory, sourcePath),
+    )
   }
   if (!hasOption('--output')) {
     exporterArguments.push(
@@ -56,7 +68,7 @@ if (!helpRequested) {
   }
   if (!hasOption('--asset-output')) {
     const assetOutput = process.env.PHMON_GAME_ASSETS_OUTPUT
-      ? path.resolve(process.env.PHMON_GAME_ASSETS_OUTPUT)
+      ? path.resolve(webDirectory, process.env.PHMON_GAME_ASSETS_OUTPUT)
       : path.join(webDirectory, 'public', 'game-assets')
     exporterArguments.push('--asset-output', assetOutput)
   }
