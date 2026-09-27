@@ -36,6 +36,8 @@ jobs:
       - run: bash scripts/check.sh
   stack:
     runs-on: ubuntu-latest
+    env:
+      OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
