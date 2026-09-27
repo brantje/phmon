@@ -17,8 +17,8 @@ import (
 
 type allowCapabilities struct{}
 
-func (allowCapabilities) CommandCapability(_ string, _ uint64, _ string) Capability {
-	return Capability{Supported: true}
+func (allowCapabilities) CommandSupport(_ string, _ uint64, _ string) (bool, string) {
+	return true, ""
 }
 
 func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {

@@ -43,7 +43,7 @@ type Capability struct {
 }
 
 type CapabilityChecker interface {
-	CommandCapability(agentID string, generation uint64, commandName string) Capability
+	CommandSupport(agentID string, generation uint64, commandName string) (bool, string)
 }
 
 type Validated struct {

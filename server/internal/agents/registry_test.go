@@ -1,6 +1,9 @@
 package agents
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestRegistryTracksConcurrentConnectionsPerAgent(t *testing.T) {
 	registry := NewRegistry()
@@ -40,6 +43,34 @@ func TestRegistryTracksConcurrentConnectionsPerAgent(t *testing.T) {
 	}
 	if connectedAt, ok := registry.LatestConnectedAt("agent"); !ok || !connectedAt.Equal(atTwo) {
 		t.Fatalf("disconnect cutoff was not retained: %v, %v", connectedAt, ok)
+	}
+}
+
+func TestRegistryKeepsCapabilitiesAndWritersPerSocket(t *testing.T) {
+	registry := NewRegistry()
+	first, _ := registry.Register("agent")
+	second, _ := registry.Register("agent")
+	sent := make(chan string, 1)
+	if !registry.Configure("agent", first, 3, func(_ context.Context, value any) error {
+		sent <- value.(string)
+		return nil
+	}) || !registry.Configure("agent", second, 2, nil) {
+		t.Fatal("could not configure registered connections")
+	}
+	if !registry.SetCapabilities("agent", first, []CommandCapability{{Name: "bot.stop", Supported: true}}) {
+		t.Fatal("v3 capability update rejected")
+	}
+	if ok, reason := registry.CommandSupport("agent", first, "bot.stop"); !ok || reason != "" {
+		t.Fatalf("v3 support = %v %q", ok, reason)
+	}
+	if ok, reason := registry.CommandSupport("agent", second, "bot.stop"); ok || reason != "plugin_upgrade_required" {
+		t.Fatalf("v2 support = %v %q", ok, reason)
+	}
+	if err := registry.Send(context.Background(), "agent", first, "command"); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-sent; got != "command" {
+		t.Fatalf("sent %q", got)
 	}
 }
 

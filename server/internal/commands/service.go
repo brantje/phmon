@@ -101,15 +101,15 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 		}
 	}
 
-	capability := Capability{Supported: false, Reason: "plugin_upgrade_required"}
+	supported, reason := false, "plugin_upgrade_required"
 	if s.capabilities != nil {
-		capability = s.capabilities.CommandCapability(target.AgentID, target.Generation, validated.Name)
+		supported, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, validated.Name)
 	}
-	if !capability.Supported {
-		if capability.Reason == "" {
-			capability.Reason = "unsupported"
+	if !supported {
+		if reason == "" {
+			reason = "unsupported"
 		}
-		return Command{}, false, capability.Reason, ErrUnsupported
+		return Command{}, false, reason, ErrUnsupported
 	}
 
 	admission := Admission{

@@ -43,6 +43,7 @@ type Character struct {
 	Guild            *string    `json:"guild,omitempty"`
 	Zone             *string    `json:"zone,omitempty"`
 	Online           bool       `json:"online"`
+	SessionID        *string    `json:"session_id,omitempty"`
 	AgentID          *string    `json:"agent_id,omitempty"`
 	SessionStartedAt *time.Time `json:"session_started_at,omitempty"`
 	LastActivityAt   *time.Time `json:"last_activity_at,omitempty"`
@@ -111,43 +112,55 @@ func (s *Store) Resolve(ctx context.Context, identity Identity) (string, error) 
 // character. It transfers that character's live authority to this generation;
 // other characters observed by the same agent remain independent.
 func (s *Store) ClaimSession(ctx context.Context, agentID, characterID string, generation uint64) error {
+	_, err := s.ClaimSessionID(ctx, agentID, characterID, generation)
+	return err
+}
+
+func (s *Store) ClaimSessionID(ctx context.Context, agentID, characterID string, generation uint64) (string, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
-		return err
+		return "", err
 	}
-	var currentAgent string
+	var currentSession, currentAgent string
 	var currentGeneration uint64
-	err = tx.QueryRow(ctx, `SELECT agent_id::text,connection_generation FROM character_sessions WHERE character_id=$1 AND ended_at IS NULL FOR UPDATE`, characterID).Scan(&currentAgent, &currentGeneration)
+	err = tx.QueryRow(ctx, `SELECT session_id::text,agent_id::text,connection_generation FROM character_sessions WHERE character_id=$1 AND ended_at IS NULL FOR UPDATE`, characterID).Scan(&currentSession, &currentAgent, &currentGeneration)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return err
+		return "", err
 	}
 	if err == nil && currentAgent == agentID && currentGeneration == generation {
-		_, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND ended_at IS NULL`, characterID)
-		if err != nil {
-			return err
+		if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE session_id=$1`, currentSession); err != nil {
+			return "", err
 		}
-		return tx.Commit(ctx)
+		if err = tx.Commit(ctx); err != nil {
+			return "", err
+		}
+		return currentSession, nil
 	}
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='switched' WHERE character_id=$1 AND ended_at IS NULL`, characterID); err != nil {
-		return err
+		return "", err
 	}
-	// A new authority claim starts a fresh observation. Until its authoritative
-	// snapshot arrives, do not display values learned by an earlier observer as
-	// if they were current for this session.
 	if _, err = tx.Exec(ctx, `UPDATE characters SET level=NULL,hp=NULL,hp_max=NULL,mp=NULL,mp_max=NULL,current_exp=NULL,max_exp=NULL,sp=NULL,gold=NULL,region=NULL,zone_name=NULL,x=NULL,y=NULL,z=NULL,botting=NULL,state_updated_at=NULL,updated_at=now() WHERE character_id=$1`, characterID); err != nil {
-		return err
+		return "", err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO character_sessions(character_id,agent_id,connection_generation) VALUES($1,$2,$3)`, characterID, agentID, generation); err != nil {
-		return fmt.Errorf("open character session: %w", err)
+	var sessionID string
+	if err = tx.QueryRow(ctx, `INSERT INTO character_sessions(character_id,agent_id,connection_generation) VALUES($1,$2,$3) RETURNING session_id::text`, characterID, agentID, generation).Scan(&sessionID); err != nil {
+		return "", fmt.Errorf("open character session: %w", err)
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return "", err
+	}
+	return sessionID, nil
 }
 
 func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
+	return s.SnapshotSession(ctx, agentID, characterID, generation, "", state)
+}
+
+func (s *Store) SnapshotSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, state State) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -157,7 +170,7 @@ func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, gener
 		return err
 	}
 	var sessionID string
-	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation).Scan(&sessionID)
+	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ($4='' OR session_id=$4::uuid) AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation, expectedSessionID).Scan(&sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -173,6 +186,10 @@ func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, gener
 	return tx.Commit(ctx)
 }
 func (s *Store) Update(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
+	return s.UpdateSession(ctx, agentID, characterID, generation, "", state)
+}
+
+func (s *Store) UpdateSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, state State) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -182,7 +199,7 @@ func (s *Store) Update(ctx context.Context, agentID, characterID string, generat
 		return err
 	}
 	var sessionID string
-	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation).Scan(&sessionID)
+	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ($4='' OR session_id=$4::uuid) AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation, expectedSessionID).Scan(&sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -202,6 +219,10 @@ WHERE c.character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state
 	return tx.Commit(ctx)
 }
 func (s *Store) End(ctx context.Context, agentID, characterID string, generation uint64, reason string) error {
+	return s.EndSession(ctx, agentID, characterID, generation, "", reason)
+}
+
+func (s *Store) EndSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID, reason string) error {
 	if reason != "left" && reason != "agent_disconnected" {
 		return errors.New("invalid session end reason")
 	}
@@ -213,7 +234,7 @@ func (s *Store) End(ctx context.Context, agentID, characterID string, generation
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason=$4 WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation, reason)
+	tag, err := tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason=$4 WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ($5='' OR session_id=$5::uuid) AND ended_at IS NULL`, characterID, agentID, generation, reason, expectedSessionID)
 	if err != nil {
 		return err
 	}
@@ -286,12 +307,12 @@ func (s *Store) ReconcileInactiveSessionsChanged(ctx context.Context, generation
 }
 
 const selectCharacters = `SELECT c.character_id::text,c.server_name,c.character_name,c.guild_name,c.zone_name,
-(cs.session_id IS NOT NULL),cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting
+(cs.session_id IS NOT NULL),cs.session_id::text,cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting
 FROM characters c LEFT JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL`
 
 func scanCharacter(row pgx.Row) (Character, error) {
 	var c Character
-	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting)
+	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.SessionID, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting)
 	return c, err
 }
 func (s *Store) List(ctx context.Context, query string, groupID string) ([]Character, error) {
