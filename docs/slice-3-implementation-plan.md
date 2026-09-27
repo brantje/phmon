@@ -604,11 +604,28 @@ remained radius 20. This confirms a narrow real-runtime command path and browser
 `/api/live` delivery only. Plain HTTP LAN form submission now generates
 cryptographically random idempotency keys with `crypto.getRandomValues()`; this fixes
 the secure-context restriction on `crypto.randomUUID()` without changing the HTTP LAN
-deployment settings. Remaining gates include current viewport screenshots/browser
-matrix, local PostgreSQL integration (no `TEST_DATABASE_URL` in this worktree), Go
-race test (CGO/compiler unavailable), local Compose/build validation (Docker absent),
-all other live command APIs, and safe per-session Clientless. A disposable Compose
-worker/fake-adapter smoke is separately recorded as passing. Do not claim Slice 3
+deployment settings.
+
+P7 verification update: the LAN app was reviewed at 1440×1000, 1280×800,
+390×844 and the 2560×1315 reference resolution. The Actions grid remained two
+columns at mobile width, and the command history was reachable by vertical scrolling;
+the Stats table kept horizontal overflow inside its own scroll region. CI `validate`
+passed with PostgreSQL and `TEST_DATABASE_URL`, including `go test -race ./...`.
+Local race testing remains unavailable because this Windows toolchain has
+`CGO_ENABLED=0`. On the live nuker1 session, the browser received
+`unsupported_runtime_primitive` for Clientless and kept it disabled; no command was
+submitted. Execute Script remained disabled. The disposable production-worker
+fake-adapter command smoke passed. A CI reconnect-smoke harness request lacked the
+operator cookie; the workflow was corrected to log in before credential creation and
+is pending rerun. The 390×844 Stats capture also showed a hidden character table:
+mobile CSS hid every `.agent-table`, including the character table, but supplied no
+replacement cards. The rule now targets only `.agent-panel .agent-table`, and the
+production browser audit asserts that a live character row remains visible within the
+table's bounded scroller. The post-fix responsive capture awaits CI validation.
+
+Remaining gates: real Walk route traversal on plugin 1.1.2 (not installed and no
+Walk action issued), safe per-session Clientless primitive, broad real-runtime API
+coverage, and subsequent review of the corrected CI head. Do not claim Slice 3
 complete or proceed to Slice 4.
 
 ## 9. Ready-to-use implementation prompt for GPT-6 Luna

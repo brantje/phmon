@@ -1391,7 +1391,7 @@ input:focus-visible {
     justify-self: start;
   }
 
-  .agent-table {
+  .agent-panel .agent-table {
     display: none;
   }
 

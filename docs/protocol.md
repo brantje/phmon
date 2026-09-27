@@ -536,3 +536,12 @@ produce the idempotency key instead; this remains cryptographically random in th
 context. A named operator-authorized `training.radius.set` same-value check completed
 on the live phBot 20.1.1/plugin 1.1.0 runtime and its durable `observed` result was
 received over `/api/live`. This evidence covers only that specific API/readback path.
+
+Verification update (2026-09-27): CI's PostgreSQL-backed validation job passed with
+`TEST_DATABASE_URL` set and ran `go test -race ./...`. The disposable stack command
+smoke used the production plugin worker with fake adapters and received the result on
+`/api/live`. A read-only LAN browser check of the selected nuker1 session received
+`client.clientless.supported=false` / `unsupported_runtime_primitive`; no action was
+submitted. Live plugin 1.1.0 does not satisfy Walk's 1.1.2 pathfinding requirement.
+These checks do not verify real Walk traversal, Clientless, or the remaining command
+mutations.

@@ -229,6 +229,16 @@ manual development without phBot, the same plugin transport can be exercised wit
 `scripts/agent_simulator.py`; simulator success is fixture coverage and is never
 reported as real phBot runtime validation.
 
+Slice 3 acceptance status: CI's PostgreSQL-backed validation passed with the race
+detector enabled. The authenticated browser was also checked at the reference and
+responsive viewport sizes; observations and remaining visual differences are recorded
+in [`docs/reference-parity.md`](docs/reference-parity.md). A stack reconnect smoke
+then exposed an unauthenticated credential setup request; that CI harness path now
+logs in before credential creation and awaits its rerun. Real Walk traversal remains
+open until plugin 1.1.2 is installed and movement is explicitly authorized. The
+reported Clientless primitive remains unsupported, and Execute Script remains outside
+the bounded command catalog. These gates do not change the local setup steps above.
+
 To run its explicit fixture character lifecycle scenario against a local test stack:
 
 ```sh

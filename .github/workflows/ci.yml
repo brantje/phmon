@@ -62,7 +62,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          agent_json=$(python3 -c 'from urllib.request import Request,urlopen; request=Request("http://127.0.0.1:3005/api/agents/credentials", data=b"{}", headers={"Content-Type":"application/json", "Origin":"http://127.0.0.1:3005", "Sec-Fetch-Site":"same-origin"}, method="POST"); print(urlopen(request, timeout=10).read().decode())')
+          agent_json=$(python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from urllib.request import Request, urlopen
+
+          sys.path.insert(0, "scripts")
+          from smoke_auth import login_cookie
+
+          origin = "http://127.0.0.1:3005"
+          cookie = login_cookie(origin, origin, os.getcwd())
+          request = Request(
+              origin + "/api/agents/credentials",
+              data=b"{}",
+              headers={
+                  "Content-Type": "application/json",
+                  "Origin": origin,
+                  "Sec-Fetch-Site": "same-origin",
+                  "Cookie": cookie,
+              },
+              method="POST",
+          )
+          with urlopen(request, timeout=10) as response:
+              print(response.read().decode())
+          PY
+          )
           export EXPECT_AGENT_ID
           export PHMON_AGENT_ID
           export PHMON_AGENT_TOKEN

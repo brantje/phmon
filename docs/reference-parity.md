@@ -170,8 +170,9 @@ real-runtime validation.
 ## Slice 3 — remote commands planning evidence
 
 Status: Slice 3 Actions and Client surfaces are implemented on `codex/slice-3-plan`;
-automated command smoke and a live LAN browser check pass. Real mutation and full
-responsive screenshot gates remain open.
+automated command smoke and a live LAN browser check pass. Responsive behavior was
+visually reviewed at the reference and required responsive viewports below. Broad
+real mutation coverage remains open, including Walk traversal.
 
 The supplied 2560 × 1315 Stats/Actions and phBot Client captures establish a compact
 two-column Actions grid and a dedicated `phBot | Client` surface. Slice 3 preserves
@@ -229,5 +230,27 @@ real `nuker1` check on phBot 20.1.1/plugin 1.1.0: setting its already-observed
 training radius to 20 completed as `observed`, and live `get_training_area()` readback
 remained 20 on the same session. This is narrow runtime evidence, not simulator
 evidence or validation of the other actions. Local screenshot comparison at the required
-1440 × 1000, 1280 × 800, 390 × 844 and reference-native 2560 × 1315 remains open.
-The saved evidence from Slice 2 is not presented as evidence for these new screens.
+1440 × 1000, 1280 × 800, 390 × 844 and reference-native 2560 × 1315 was reviewed in
+the authenticated LAN browser on 2026-09-27. At 1440 × 1000 the Stats table contained
+its horizontal scroll and the Client screen retained its local-menu/result hierarchy.
+At 1280 × 800 the Client panels remained visible without page-width overflow. At
+390 × 844 the Client form fit the viewport and the character Actions grid remained
+two columns; command history was available by vertical scrolling. At 2560 × 1315,
+the Actions grid ordering and Client surface hierarchy remained consistent with the
+reference captures. Walk was disabled because the live agents report plugin 1.1.0,
+below the pathfinding capability version; Execute Script remained disabled. The
+reference artwork backdrop is still absent from the local UI. Screenshots were
+inspected in-session; they were not saved as repository artifacts. The saved evidence
+from Slice 2 is not presented as evidence for these new screens.
+
+The 390 × 844 Stats screenshot also exposed that the shared `.agent-table` mobile
+hide rule concealed the character table, with no mobile character-card replacement.
+The CSS rule is now scoped to the Agent panel, leaving the character table visible
+inside its bounded horizontal scroll container. The browser smoke now asserts that
+the mobile character table has a visible row and remains inside that container. A
+post-fix screenshot still needs to be captured after the revised CI browser check.
+
+On the selected nuker1 session, `/api/live` delivered capability reason
+`unsupported_runtime_primitive` for Clientless; the Clientless button stayed disabled
+and no command was submitted. This is real-runtime capability reporting evidence,
+not a Clientless action test.

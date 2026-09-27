@@ -331,6 +331,27 @@ async function main() {
         `document.documentElement.scrollWidth <= window.innerWidth + 1`,
       )
       if (!fits) throw new Error(`responsive layout overflows at ${width}x${height}`)
+      if (width === 390) {
+        const characterTable = await evaluate(
+          cdp,
+          `(() => {
+            const table = document.querySelector('.character-table')
+            if (!table) return { present: false }
+            return {
+              present: true,
+              visible: getComputedStyle(table).display !== 'none',
+              rows: table.querySelectorAll('tbody tr').length,
+              scrollsInsidePanel: table.closest('.agent-table-wrap')?.scrollWidth >= table.closest('.agent-table-wrap')?.clientWidth,
+            }
+          })()`,
+        )
+        if (!characterTable.present || !characterTable.visible || characterTable.rows === 0) {
+          throw new Error(`character list is missing at ${width}x${height}: ${JSON.stringify(characterTable)}`)
+        }
+        if (!characterTable.scrollsInsidePanel) {
+          throw new Error(`character table has no bounded scroll region at ${width}x${height}`)
+        }
+      }
     }
 
     // Navigate to a streamed stable character detail when fixture/history data exists.

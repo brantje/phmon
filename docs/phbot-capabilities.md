@@ -301,3 +301,14 @@ one runtime round trip/readback, not broad validation of every API or a claim ab
 botting state. No other real command was issued. Remaining runtime checks require
 specific authorized actions/observations; Clientless still has no verified safe
 per-session primitive.
+
+### Read-only Clientless gate check (2026-09-27)
+
+On the live phBot 20.1.1 / PhMon plugin 1.1.0 deployment, the operator-selected
+nuker1 session reported `client.clientless.supported=false` with reason
+`unsupported_runtime_primitive` through the v3 capability stream. The authenticated
+browser received that result through `/api/live`; the Go Clientless action stayed
+disabled for that session. No command was submitted. This confirms fail-closed
+capability handling for that runtime, not a Clientless API or action. The current
+plugin version also predates the 1.1.2 Pathfinding Walk requirement; Walk remained
+disabled and no movement was issued.

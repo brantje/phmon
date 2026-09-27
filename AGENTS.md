@@ -1556,6 +1556,20 @@ management only when actually supported) use explicit character targets and the 
 audited command/result lifecycle. Do not invent controls merely because phBot has a
 similarly named internal setting.
 
+**Opcode boundary and deferral:** Slice 4 uses the documented `get_pets()` and
+`get_party()` APIs for pet and party state, and implements only Party Setup fields and
+actions whose semantics are verified through a supported phBot API/runtime contract.
+The generic `handle_joymax` / `handle_silkroad` callbacks and `inject_joymax` /
+`inject_silkroad` functions are packet-level primitives, not dedicated pet/party API
+support. Do not make raw opcode decoding or packet injection a Slice 4/15 dependency.
+Additional opcode-based pet/party decoding or actions may be considered as follow-up
+work after Slice 15. Before that work is treated as supported, record the target
+server/client version, opcode direction, payload semantics, runtime evidence and
+limitations in `docs/phbot-capabilities.md`; route mutations through the audited
+command lifecycle and verify their effects. This sequencing defers implementation,
+not the evidence or parity requirement: document any unresolved required capability
+as an explicit gap, and do not claim full parity while it remains unresolved.
+
 delta/change handling keyed by stable source + slot/item identity where appropriate;
 do not churn/re-render the entire collection for one changed stack or slot if the
 protocol can safely communicate a bounded update
@@ -2284,3 +2298,32 @@ radius check. Exact next step: after operator installs plugin 1.1.2, verify its
 capability report and route behavior with an explicitly authorized safe movement test;
 meanwhile finish remaining P7 checks and keep the real movement/runtime and reference
 capture gates open. Slice 3 remains incomplete; do not continue to Slice 4.
+
+**Slice 3 non-Walk P7 verification (2026-09-27):** authenticated browser review of
+the LAN stack covered Stats/Actions and phBot Client at 1440×1000, 1280×800,
+390×844 and reference-native 2560×1315. The mobile Actions grid remained two columns;
+command history was reachable by vertical scroll; the Stats table contained its
+horizontal scrolling. Reference differences and per-size observations are recorded
+in `docs/reference-parity.md`. The selected nuker1 session reported
+`client.clientless.supported=false` / `unsupported_runtime_primitive` over `/api/live`;
+the button stayed disabled and no command was submitted. Execute Script stayed
+disabled. CI `validate` passed its PostgreSQL-backed integration and race test run.
+Local race detector invocation still fails because `CGO_ENABLED=0`. The live runtime
+reports plugin 1.1.0; Walk remained disabled, and no movement was issued. A newer CI
+stack run passed the fake-adapter command smoke but failed its reconnect step because
+the smoke harness omitted operator login before credential creation. `.github/workflows/ci.yml`
+now logs in before that request. The 390px Stats capture also exposed a responsive bug:
+the generic mobile `.agent-table` hide rule concealed the character table and no
+mobile replacement existed. `main.css` now scopes that rule to `.agent-panel`, and
+`browser_live_audit.mjs` asserts mobile character rows remain visible inside their
+bounded scroller. The post-fix screenshot has not been captured yet. The correction
+and evidence updates in `README.md`,
+`docs/protocol.md`, `docs/phbot-capabilities.md`, `docs/reference-parity.md` and the
+Slice 3 plan are pending validation/commit. Untracked operator files
+`plugin/PhMon5.py`, `server/phmonctl.exe`, and `server/server.exe` remain preserved.
+Exact next action: run `npm --prefix web run format:check`, lint, typecheck, build,
+`node --check scripts/browser_live_audit.mjs`, Go/Python regression checks and YAML
+validation. Then push the CI harness and mobile-table fixes with evidence to PR #9,
+request both automated reviews again, and watch CI/CodeRabbit. Keep PR draft; real Walk
+traversal, broad runtime mutations, and safe per-session Clientless remain open. Stop
+before Slice 4.
