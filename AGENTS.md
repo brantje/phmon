@@ -372,6 +372,20 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
 
 ## Scope and implementation status
 
+**Slice 3 planning handoff (2026-09-27):** the operator requested a detailed plan
+for GPT-6 Luna, not implementation. Added
+[`docs/slice-3-implementation-plan.md`](docs/slice-3-implementation-plan.md), with
+sequential work packages, operator authentication, session-targeted command
+lifecycle, capability/API evidence, persistence, callback dispatch, WebSocket UI,
+tests and a scoped implementation prompt. Reviewed `phmonitor_screenshots/`
+Actions/Client and adjacent Stats captures; the plan uses the current Nuxt
+pages/components structure. Official docs confirm core primitives; a safe
+clientless mutation remains unverified. Validation in this planning turn is
+document/source/layout inspection only; no implementation tests or real bot
+actions were run. Slice 3 remains not started. Next action, when implementation
+is requested: execute P0 of the plan, then continue its Slice 3 packages and
+acceptance gates without starting later slices.
+
 **PR #7 CodeRabbit follow-up (2026-09-27):** verified and fixed three functional
 findings. Credential creation disables dismissal and client route navigation until
 the one-time response settles; dismissal then clears the token. Empty stale or
