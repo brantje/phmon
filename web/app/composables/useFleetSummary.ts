@@ -7,30 +7,35 @@ export function useFleetSummary() {
     connectionState: liveConnectionState,
     liveStale,
   } = useLiveData()
+  const { matchesServer } = useServerScope()
+  const scopedCharacters = computed(() =>
+    lastFleetCharacters.value.filter((character) =>
+      matchesServer(character.server),
+    ),
+  )
   const onlineCharacterCount = computed(
-    () =>
-      lastFleetCharacters.value.filter((character) => character.online).length,
+    () => scopedCharacters.value.filter((character) => character.online).length,
   )
   const offlineCharacterCount = computed(
     () =>
-      lastFleetCharacters.value.filter((character) => !character.online).length,
+      scopedCharacters.value.filter((character) => !character.online).length,
   )
   const characterCountsUnknown = computed(
     () =>
       liveConnectionState.value !== 'current' &&
-      lastFleetCharacters.value.length === 0,
+      scopedCharacters.value.length === 0,
   )
   function displayCharacterCount(value: number) {
     return characterCountsUnknown.value ? '—' : String(value)
   }
   const combinedVitals = computed(() => {
-    const withHP = lastFleetCharacters.value.filter(
+    const withHP = scopedCharacters.value.filter(
       (character) =>
         character.hp != null &&
         character.hp_max != null &&
         character.hp_max > 0,
     )
-    const withMP = lastFleetCharacters.value.filter(
+    const withMP = scopedCharacters.value.filter(
       (character) =>
         character.mp != null &&
         character.mp_max != null &&
@@ -60,7 +65,7 @@ export function useFleetSummary() {
     }
   })
   const observedGold = computed(() => {
-    const values = lastFleetCharacters.value
+    const values = scopedCharacters.value
       .map((character) => character.gold)
       .filter((value): value is number => value != null)
     return values.length

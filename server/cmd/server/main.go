@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"phmon/server/internal/config"
 	"phmon/server/internal/database"
 	"phmon/server/internal/httpapi"
+	"phmon/server/internal/resources"
 )
 
 func main() {
@@ -59,6 +61,16 @@ func run() error {
 
 	store := agents.NewStore(pool)
 	characterStore := characters.NewStore(pool)
+	resourceStore := resources.NewStore(pool)
+	metadataDir := os.Getenv("ITEM_METADATA_DIR")
+	if metadataDir == "" {
+		metadataDir = "game-data"
+	}
+	metadata, metadataErr := resources.LoadItemMetadata(metadataDir)
+	if metadataErr != nil {
+		return fmt.Errorf("load item metadata: %w", metadataErr)
+	}
+	resourceStore.SetItemMetadata(metadata)
 	reconcileCtx, reconcileCancel := context.WithTimeout(ctx, 5*time.Second)
 	if err := characterStore.ReconcileSessions(reconcileCtx); err != nil {
 		reconcileCancel()
@@ -69,6 +81,7 @@ func run() error {
 	commandService := commands.NewService(commands.NewStore(pool), registry)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
 	live.SetCommands(commandService)
+	live.SetResources(resourceStore)
 	dispatchStore := commands.NewStore(pool)
 	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
 		return errors.New("cannot recover interrupted commands")
@@ -86,6 +99,7 @@ func run() error {
 		Commands:   commandService,
 		Dispatcher: dispatcher,
 		Live:       live,
+		Resources:  resourceStore,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.

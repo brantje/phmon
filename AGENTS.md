@@ -71,6 +71,13 @@ remain required even when the demo shows empty data.
 
 ### Reference baseline and inspection rules
 
+Operator exception (2026-09-27): the user explicitly authorized inspecting and
+decompiling the local `phMonitor-v0.5.0.exe` to understand Slice 4 item statistics
+and blue options. This overrides the client-inspection restriction for that bounded
+investigation. Keep the implementation independent and retain the restrictions on
+service dependencies, entitlement bypass and operating characters without approval.
+Evidence: [item tooltip investigation](docs/reference/item-tooltip-investigation.md).
+
 The public demo was inspected on **2026-09-26**, displaying **v0.5.0**, at a
 1440 × 1000 desktop viewport. Dashboard, Stats, Chat, Economy, Alchemy, Academy,
 Map, Item Search, Skill Builder and Settings were navigable. Most data
@@ -112,6 +119,20 @@ what PhMon actually implements.
   authorize versioning the generated public asset tree; never include source
   archives or exporter-only provenance audits. Do not hotlink phMonitor assets, embed its
   application, copy its client bundle or connect to its services.
+
+### Authorized phMonitor executable analysis
+
+The operator explicitly authorizes static inspection and decompilation of
+`%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` to understand phMonitor's behavior,
+data handling and calculations and inform PhMon's independent implementation.
+Use this username-free path when documenting the executable's location.
+
+This permission supersedes any earlier blanket prohibition or historical resume
+entry that says phMonitor's client cannot be reverse-engineered. Findings may be
+documented and used to guide independently authored code; do not commit or
+redistribute the executable, extracted client bundles or decompiled source.
+The restrictions on bypassing paid-access controls, accessing private services
+and depending on phMonitor infrastructure remain in force.
 
 ### Explicit adaptations to the demo
 
@@ -194,28 +215,27 @@ slice; Slice 15 closes remaining presentation/tool gaps and verifies the whole a
 For each row, record backend/plugin/UI evidence and any capability blocker in
 `docs/reference-parity.md`. A navigation label or empty placeholder is not completion.
 
-| Area / navigation | Required behavior and layout | Owning slices |
-| --- | --- | --- |
-| Shell and instance access | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently. | 1, 2, 15 |
-| Dashboard | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links. | 2, 5, 6, 13, 15 |
-| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts. | 2–4, 12 |
-| Events | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes. | 5, 7, 13 |
-| Chat | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends. | 6, 13, 15 |
-| Economy | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data. | 6, 13 |
-| Alchemy | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities. | 5, 12 |
-| Academy | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported. | 4, 5, 7, 12 |
-| Guild Storage | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records. | 4, 13, 15 |
-| phBot tools | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15 |
-| Analytics | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data. | 12, 13 |
-| Map | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset. | 2.5, 7–9 |
-| Item Search | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts and exact container provenance from their observed source. | 2.5, 4, 13 |
-| Skill Builder | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution. | 2.5, 15 |
-| Automations | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits. | 10, 11 |
-| Settings | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance. | 1, 6, 15 |
-| Notifications | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results. | 5, 6, 10, 15 |
-| Record management | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal. | 14, 15 |
-| Operations | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions. | 1, 14 |
-
+| Area / navigation           | Required behavior and layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Owning slices   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| Shell and instance access   | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 1, 2, 15        |
+| Dashboard                   | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 2, 5, 6, 13, 15 |
+| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts.                                                                                                                                                                                                                                                                                                                                | 2–4, 12         |
+| Events                      | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes.                                                                                                    | 5, 7, 13        |
+| Chat                        | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 6, 13, 15       |
+| Economy                     | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 6, 13           |
+| Alchemy                     | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 5, 12           |
+| Academy                     | Owned/joined academy tabs, membership/state, join/leave/graduation activity, unread log and mark-read action; map member layer and historical metrics where supported.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 5, 7, 12     |
+| Guild Storage               | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 13, 15       |
+| phBot tools                 | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15        |
+| Analytics                   | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 12, 13          |
+| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                               | 2.5, 7–9        |
+| Item Search                 | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts and exact container provenance from their observed source.                                                                                                                                                                                                                                                                                                           | 2.5, 4, 13      |
+| Skill Builder               | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution.                                                                                                                                                                                                                                                                                                                | 2.5, 15         |
+| Automations                 | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits.                                                                                                                                                                                                                                                                                                    | 10, 11          |
+| Settings                    | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1, 6, 15        |
+| Notifications               | Per-event sound/browser notification preferences for messages, deaths, rare drops, alchemy thresholds, uniques, academy changes, offline state, sales and level-ups; local WAV library upload/preview/assignment. Browser permissions are explicit. Discord webhook CRUD/test/delivery with redacted secrets, bounded retries and observable results.                                                                                                                                                                                                                                                                                                                                                                     | 5, 6, 10, 15    |
+| Record management           | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 14, 15          |
+| Operations                  | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 1, 14           |
 
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
 reference inspection when accessible. Their labels were visible in public markup;
@@ -254,7 +274,9 @@ All of the following must hold before reporting the end goal complete:
 
 Build a completely self-hosted alternative to phMonitor, using phMonitor only as a
 feature, layout and visual-style reference. Never depend on its backend, protocol, client, premium entitlement
-system or infrastructure; never reverse engineer or bypass paid-access controls.
+system or infrastructure.
+Local executable inspection and decompilation are permitted under
+"Authorized phMonitor executable analysis" above.
 
 ```text
 phBot -> custom Python plugin -> outbound HTTPS / WebSocket -> Go backend -> PostgreSQL
@@ -371,6 +393,33 @@ docker-compose.yml        local PostgreSQL, Go and Nuxt services
   instruction. Make grouped commits only if the environment expects commits.
 
 ## Scope and implementation status
+
+**Slice 4 implementation checkpoint (2026-09-27):** the local worktree now has
+protocol-v4 resource snapshots/deltas, bounded chunk assembly, revision/session
+fencing, PostgreSQL resource/item persistence, documented phBot API collectors,
+visible-card resource subscriptions, grouped Stats cards, four-column/eight-row bag
+pages, a shared accessible item preview, equipment/storage/pet/party/academy views,
+the existing character-targeted Actions component, a server/guild-scoped Guild
+Storage page with search/observer freshness, and a persisted server selector applied
+to fleet summaries, Stats and Guild Storage. Final local Go tests/vet, 39 plugin
+tests, Nuxt typecheck, lint, format check and production build pass; lint retains 13
+existing void-element style warnings. The PostgreSQL integration test is compiled but
+skips without `TEST_DATABASE_URL`; this host has no local PostgreSQL or Docker, and
+race coverage therefore remains pending. The operator-supplied LAN reference was
+opened and its Stats Overview, Info (character set), Progress, Inventory, Storage and
+Pet tabs inspected. The local browser still reaches the operator sign-in gate, so
+authenticated local screenshots remain unreviewed. The Stats card now follows the
+reference Info/Progress split and defaults Storage to personal storage. API
+capacity/equipment-slot mapping and current phBot runtime collection remain
+unverified; item packet parsing is disabled because the published
+vSRO 1.188 references available here do not provide a verified item layout or packet
+fixture. Static item catalog-to-server binding and Party Setup write/reload/readback
+also remain open, as does explicit guild-record deletion. Do not claim Slice 4
+acceptance until these gates are resolved or recorded as explicit acceptance
+blockers. The user explicitly scoped this run to Slice 4; stop before Slice 5. Exact
+next action: receive the updated plugin from the user and validate its live API/config
+observations; then review authenticated local screenshots and obtain version-specific
+item packet fixtures before closing the remaining data gates.
 
 **Slice 3 acceptance follow-up (2026-09-27, active):** PR #9 base sync commit
 `481df89` is mergeable and both duplicate CI runs passed: PostgreSQL integration and
@@ -803,8 +852,7 @@ compileall passed; 17 fixture tests passed; copied-bundle validate passed. The r
 export took 178.797 s, identical repeat 189.36 s; five working-set samples peaked at
 165,826,560 bytes (sampled, not guaranteed peak). The standalone preview rendered
 from the copied bundle, reviewed all in-scope families, observed no external requests,
-and had no horizontal overflow at CSS viewports 1440 x 1000, 1280 x 800 and 390 x
-844. Screenshot/preview outputs are ignored under `exports/`; extracted Nuxt assets
+and had no horizontal overflow at CSS viewports 1440 x 1000, 1280 x 800 and 390 x 844. Screenshot/preview outputs are ignored under `exports/`; extracted Nuxt assets
 are ignored under `web/public/game-assets/`. Source was
 kept read-only; no PhMon services, PostgreSQL, Docker or phBot were used. Exact next
 action: stop after Slice 2.5. Do not start Slice 3 in this task; carry unresolved
@@ -1678,19 +1726,20 @@ management only when actually supported) use explicit character targets and the 
 audited command/result lifecycle. Do not invent controls merely because phBot has a
 similarly named internal setting.
 
-**Opcode boundary and deferral:** Slice 4 uses the documented `get_pets()` and
-`get_party()` APIs for pet and party state, and implements only Party Setup fields and
-actions whose semantics are verified through a supported phBot API/runtime contract.
-The generic `handle_joymax` / `handle_silkroad` callbacks and `inject_joymax` /
-`inject_silkroad` functions are packet-level primitives, not dedicated pet/party API
-support. Do not make raw opcode decoding or packet injection a Slice 4/15 dependency.
-Additional opcode-based pet/party decoding or actions may be considered as follow-up
-work after Slice 15. Before that work is treated as supported, record the target
-server/client version, opcode direction, payload semantics, runtime evidence and
-limitations in `docs/phbot-capabilities.md`; route mutations through the audited
-command lifecycle and verify their effects. This sequencing defers implementation,
-not the evidence or parity requirement: document any unresolved required capability
-as an explicit gap, and do not claim full parity while it remains unresolved.
+**Opcode boundary and deferral:** Slice 4 uses documented `get_inventory()`,
+`get_storage()`, `get_guild_storage()`, `get_job_pouch()`, `get_pets()`, `get_party()`
+and `get_academy()` observations first. Passive item-instance enrichment from
+`handle_joymax` / `handle_silkroad` is permitted only for a version-verified generic
+vSRO 1.188 structure, with bounded decoding and exact session/container/slot binding.
+It must never inject packets or infer fields from arbitrary byte offsets. The generic
+packet callbacks and `inject_joymax` / `inject_silkroad` functions do not by themselves
+prove item, pet or party semantics. Keep enrichment disabled until published field
+layouts, captured fixtures and stale/mismatch handling are verified and recorded in
+`docs/phbot-capabilities.md`. Broader pet/party packet decoding or packet-based
+actions remain deferred beyond Slice 15; any later support must record the exact
+target version, direction, semantics, runtime evidence and limitations, route
+mutations through audited commands and verify effects. Unresolved required fields
+remain explicit acceptance gaps.
 
 delta/change handling keyed by stable source/container + slot/item identity where
 appropriate; do not churn/re-render the entire collection for one changed stack or
@@ -2816,3 +2865,206 @@ was processing the pre-merge head. Preserve untracked operator files
 `plugin/PhMon5.py`, `server/phmonctl.exe`, and `server/server.exe`. Keep PR draft and
 Slice 3 incomplete while real Walk, safe Clientless and broad real-runtime mutation
 gates remain open; stop before Slice 4.
+
+
+### Resume — 2026-09-27 Slice 4 item correction
+
+Scope remains Slice 4 only; Dashboard table preserved. Added explicit Greatest
+item dataset mapping, read-time backend resolver, independent exporter static
+metadata and compact-catalog builder. ItemSlot renders local images and white
+normal/gold rare borders/titles, ordered static fields and deliberate numbers.
+14,238 model definitions reference 3,411 verified local PNGs. Plugin 1.2.1 shows
+loaded version in QtBind and retains bounded lossless API evidence in api_fields.
+User transfers the plugin into phBot; no real-character commands were issued.
+
+Checks: plugin 40 tests; exporter 26 tests with PYTHONPATH=exporter/src; Go all
+package tests/vet; Nuxt typecheck/build passed, lint warnings only. Server/web
+initial update deployed preserving PostgreSQL. Browser confirmed 93 images,
+zero broken, white normal/gold rare borders, Casque and necklace static fields.
+Follow-up web build hit ENOSPC; inspect and remove only unused build cache before
+retrying. Operator signed in again after backend restart; keep backend running.
+
+Open: live rolled stats, percentages, max durability and blues still unverified;
+passive packet decoder not implemented. Slice 4 is NOT complete. Next after user
+transfers 1.2.1: inspect actual api_fields; if getter lacks instance data, finish
+generic vSRO 1.188 decoder against captured item-only fixtures. No guessed stats.
+
+Follow-up deployment recovered after pruning 3.528 GB of unused Docker build cache. Final web image built and restarted; backend and PostgreSQL remained running. Browser checked 1440x1000, 1280x800 and 390x844; mobile pinned tooltip fits, Escape dismisses, no page-wide horizontal overflow at 1280.
+
+
+### Resume — 2026-09-27 rolled item detail implementation
+
+Active scope: Slice 4 only. Plugin is now 1.2.2, and its loaded version remains
+visible in QtBind. `plugin/PhMon.py` adds bounded passive 0x3040/0x3052 readers,
+off-callback decoding, source-slot/model/session tracking, API reconciliation, and
+fail-closed invalidation on 0xB034, malformed packets, unsupported protocol, queue
+overflow, profile/session changes and mismatched API state. `server/internal/resources`
+adds dataset-gated family roll-quality percentages, exact 64-bit parsing and optional
+validated blue definitions. `web/app/components/ItemSlot.vue` renders quality,
+unavailable states and resolved blues. Protocol and runtime evidence are recorded in
+`docs/item-instance-evidence.md`, `docs/protocol.md`, `docs/phbot-capabilities.md`,
+`docs/reference-parity.md` and `plugin/README.md`.
+
+Validation completed: 48 plugin tests; 29 exporter tests; `go test ./...` and
+`go vet ./...`; 3 frontend formatting tests; Nuxt typecheck/build. ESLint reports
+only the existing self-closing-void warnings. `go test -race` could not run because
+this Windows Go environment has CGO disabled. The rebuilt dataset contains raw
+definitions for 615 magic options (298 with ranges), but no verified labels, units or
+scales. No Greatest packet fixture is available, and the packet layouts are
+corroborated by pinned RSBot code but not confirmed against the active runtime.
+Absolute stat formulas, max durability, named blue values/scaling, storage snapshots,
+full item moves/transfers and real tooltip values remain open.
+
+The additive server/frontend release was deployed at
+`node@192.168.10.25:/var/www/phmon`. Only `server` and `web` were rebuilt/recreated;
+PostgreSQL stayed healthy on `phmon_postgres_data`. The operator has loaded a plugin
+reporting 1.2.2: two agents connect, and current API-backed items continue arriving.
+However, the persisted `item_enrichment` payload on all four characters still reports
+`not_observed / unknown / passive_item_packet_decoder_not_enabled`, which is the disabled
+fallback rather than the parser-enabled workspace shape. Zero of 239 item rows has an
+`instance` object. Next: verify/reload the exact parser-enabled `plugin/PhMon.py` file,
+then recheck protocol detection and naturally arriving item packets; do not request item
+movement or other game actions to create traffic. Keep Slice 4 open until the real
+packet, formula and tooltip gates are met; stop before Slice 5.
+
+### Resume — 2026-09-27 persistent live WebSocket
+
+Fixed route navigation reconnects by moving WebSocket lifecycle ownership from
+component mount counts to the authenticated default layout in `web/app/layouts/default.vue`
+and `web/app/composables/useLiveData.ts`. Starting is idempotent; the shared socket
+remains alive while Dashboard and Stats subscriptions change. Reconnect waits for a
+closing socket's close event. Frontend unit tests, lint, typecheck and production build
+passed. The two changed files were copied to `node@192.168.10.25:/var/www/phmon`, the
+web image was rebuilt and only the web container was recreated. Browser verification
+showed no WebSocket event during Dashboard → Stats or Stats → Dashboard, with fleet
+summary, character list and inventory still visible. Server and PostgreSQL remained
+healthy. Next: resume the Slice 4 item-instance runtime gate; verify the loaded plugin
+parser state and wait for naturally observed item details without operating characters.
+
+### Resume — 2026-09-27 item parser reupload follow-up
+
+At 21:03 UTC, two agents reported plugin 1.2.2 / phBot 20.1.1 / agent protocol v4;
+four characters and 242 item rows were fresh, with zero `instance` objects. Do not
+interpret stored `passive_item_packet_decoder_not_enabled` JSON as proof of the loaded
+plugin: `resources.Store.Apply` kept old payload JSON for every non-observed resource.
+The deployed checkout's `plugin/PhMon.py` was also the older pre-parser file, unlike
+the workspace file. Implemented diagnostic release 1.2.3 with
+`decoder_build=vsro_1188_passive_r1` in QtBind and enrichment telemetry, and updated
+resource persistence to refresh only the `item_enrichment` diagnostic payload on
+`not_observed` while preserving its observed timestamp. Added plugin and DB integration
+tests. Next: validate, copy the updated server store and plugin release artifact to
+`/var/www/phmon`, rebuild/restart only the backend, then have the operator load this
+exact 1.2.3 file. Confirm the parser build/protocol before waiting for natural item
+packets. Do not operate characters; rolled tooltips stay open until real packet,
+layout and formula evidence arrives.
+
+### Resume — 2026-09-27 item protocol selection correction
+
+Live DB inspection at 21:24 UTC showed all four characters running plugin 1.2.3,
+phBot 20.1.1 and agent protocol v4. The `vsro_1188_passive_r1` parser marker was
+present, but each `item_enrichment` snapshot reported `protocol=unknown`; the 251 API
+item rows contained no instances. A read-only check of the installed phBot config
+identified the cause: `get_config_dir()` points to `Config`, but `vSRO.json` is its
+parent's file and profiles are a root mapping (`GreatestSRO` -> `servers: [Greatest]`).
+The installed flags select the 1.188 baseline; numeric `version=296` is ignored.
+Updated plugin detection to support this path/shape, added a reason code, and bumped
+the uniquely identifiable plugin to 1.2.4 / `vsro_1188_passive_r2`. Local detector
+verification returned `('vsro-1.188', 'v1.188_selected_by_phbot_flags')`; all 50
+plugin tests and `go test ./...` pass. The diagnostic persistence backend fix is
+already deployed and all three services are healthy. Exact next action: operator
+transfers [plugin/PhMon.py] and checks the QtBind label for 1.2.4, then recheck all
+four live diagnostics for `protocol=vsro-1.188` and the `r2` marker. Do not operate
+characters; actual item decoding, captured layouts, absolute formulas and blue values
+remain open gates. I did not inspect `phMonitor-v0.5.0.exe`; the project guidance
+explicitly forbids reverse-engineering that client, so the fix uses the installed
+phBot config and public phBot API documentation instead.
+
+### Resume — 2026-09-27 21:28 UTC plugin 1.2.4 verified live
+
+Operator uploaded the corrected file. Read-only LAN DB inspection confirmed all four
+active characters on plugin 1.2.4 / decoder r2, with `protocol=vsro-1.188` and
+`protocol_reason=v1.188_selected_by_phbot_flags`. Heartbeats were fresh, 239 item rows
+were present, and zero contained instances. `nuker1` reported
+`inventory_operation_unclassified`; the other three reported `protocol_changed`.
+Upload and protocol detection are now confirmed. Do not ask for another upload to
+solve missing details: full inventory snapshots/movements and verified absolute
+formulas/blue semantics remain implementation gaps. Next implementation work is the
+remaining decoder/reference-data scope, with natural live item evidence required
+before claiming rolled tooltip completion. No real game action was issued.
+
+### Resume — 2026-09-27 authorized reference inspection and API evidence fix
+
+The operator explicitly allowed local phMonitor executable inspection for item
+semantics. Static inspection of embedded Python/JavaScript found an API-backed
+tooltip path; see `docs/reference/item-tooltip-investigation.md` for the artifact
+hash, relevant offsets, formula observations and unresolved discrepancies. The
+earlier claim that richer fields necessarily require packets was too strong.
+PhMon discarded integer dictionary keys, potentially losing blue/attribute IDs;
+it also omitted several attribute aliases. Independently fixed these in plugin
+1.2.5 with evidence schema 2, ordered typed mapping entries and bounded field-type
+diagnostics. All 52 plugin tests pass. No third-party code/assets were copied into
+the app, no external service contacted, and no character operated. Next: operator
+loads 1.2.5, inspect live raw evidence/schema, then implement verified typed API
+instance conversion and family calculations. Do not blindly adopt reference name
+heuristics, accessory calculations or unexplained attack adjustments. Backend
+already accepts additive JSON evidence; no service restart is needed for this fix.
+The 1.2.5 single-file release is staged in the local plugin directory and
+`node@192.168.10.25:/var/www/phmon/plugin/PhMon.py`; checksums match. The running
+phBot processes were not changed. Only the plugin artifact and its README were
+copied; the existing stack and volumes were left running.
+
+
+### Resume — 2026-09-27 plugin 1.2.5 received; API tooltips deployed
+
+Verified all four agents on 1.2.5/phBot20.1.1 with fresh heartbeats and 244
+schema-2 items at 21:44:58 UTC. Captured 14 sanitized real API item observations in
+server/internal/resources/testdata/phbot-20.1.1-api-items.json. Added independent
+api_details.go resolver and tests: shape/count validation, family-specific white
+maps, four dataset-matched blue meanings, explicit unknowns, unchanged raw evidence,
+and no caching by slot. See docs/item-instance-evidence.md for exact supported scope.
+Updated shared ItemSlot to accept API presentation without manufacturing a packet
+instance. Deployed only server/web updates with compose build and up --no-deps;
+postgres and volumes preserved. Both production images built successfully.
+
+Validation: 53 Python tests, Go tests/vet, frontend unit tests/typecheck pass;
+lint has 14 existing void-element warnings and no errors. Browser live verification
+shows Python Casque rolls 12/22/19/3/32/9 with Int3/MP5 and Tiger Bone Coronet rolls
+61/45/32/0/9/0 with Steady2/Parry5%, simultaneously pinned on independent cards.
+All four characters recovered online after deployment. PostgreSQL integration/race
+and full viewport visual acceptance were not rerun for this increment. Existing
+format-notes.md has CRCRLF whitespace problems outside this change.
+
+Plugin 1.2.6 retains the exact named absolute-stat fields seen in live API schema;
+it is staged locally and remotely with matching SHA256
+7b380f5aad1b566d2257ed009ee7c9e3e733b078f2dee50840fa5c2dbf1ee960.
+User transfers it. Exact next action: after upload, inspect actual phys_def/mag_def,
+reinforcement/absorption/attack ranges and max_durability against matching reference
+items, determine units/scaling and modifiers, then add verified absolute rendering.
+Other white families and blue definitions remain open. Do not claim complete rolled
+stats, formula validation or safe-invalidation runtime acceptance yet. Do not operate
+real characters for fixtures. Dashboard layout and live socket architecture unchanged.
+
+### Resume — 2026-09-28 plugin 1.2.6 absolute tooltip values
+
+The operator transferred 1.2.6. Live phBot 20.1.1 items now contain 21 typed API
+field names, including attack/defense, reinforcement and absorption ranges,
+max durability, whites and blues. `server/internal/resources/api_details.go`
+resolves matching dataset/model/code evidence into ordered named stats, percentages
+and all observed blue entries; unknown option codes stay literal with raw values.
+`web/app/components/ItemSlot.vue` renders these shared details. Browser inspection
+after deployment confirmed Python Casque 54.8/73.3, durability 77/77, parry 23,
+reinforcement 13.9%/18.2%, Int3/MP5 and Phoenix Horn Spear's observed attack
+ranges, rate, critical, durability and reinforcement ranges. Missing white maps
+do not hide independent scalar data. The backend/web were updated in the existing
+stack with PostgreSQL and volumes untouched. Focused and full Go tests, vet,
+53 plugin tests, frontend unit/typecheck/lint/format/build passed; lint retains
+14 nonfatal void-element warnings. Evidence: `docs/item-instance-evidence.md`.
+
+Current API data does not report blue roll-quality percentages, maximum magic
+option capacity or Advanced elixir eligibility; these are omitted unless an
+actual option says otherwise. Full passive packet coverage and live safe-
+invalidation evidence remain open Slice 4 gates. Do not operate characters merely
+to generate fixtures. Next: verify reference semantics for remaining families and
+modifiers with naturally observed items, then complete packet and Party Setup
+gates before marking Slice 4 complete. Do not proceed to Slice 5 under the
+current explicit user scope.

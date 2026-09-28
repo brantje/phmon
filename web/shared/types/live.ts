@@ -37,7 +37,13 @@ export interface CharacterGroup {
 }
 
 export type LiveStream =
-  'agents' | 'characters' | 'character' | 'groups' | 'commands' | 'controls'
+  | 'agents'
+  | 'characters'
+  | 'character'
+  | 'groups'
+  | 'commands'
+  | 'controls'
+  | 'resources'
 
 export interface LiveFilter {
   q?: string
@@ -46,6 +52,7 @@ export interface LiveFilter {
   command_name?: string
   command_state?: string
   limit?: number
+  resource_keys?: string[]
 }
 
 export interface LiveClientFrame {
@@ -82,6 +89,21 @@ export interface CharactersSnapshot {
 
 export interface CharacterSnapshot {
   character: CharacterView | null
+}
+
+export interface ResourceObservation {
+  resource_key: string
+  availability: 'observed' | 'unavailable' | 'not_observed'
+  payload: Record<string, unknown>
+  observed_at?: string
+  checked_at?: string
+}
+
+export interface CharacterResourcesView {
+  character_id: string
+  revision: number
+  resources: Record<string, ResourceObservation>
+  updated_at?: string
 }
 
 export interface GroupsSnapshot {

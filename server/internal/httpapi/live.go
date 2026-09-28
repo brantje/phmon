@@ -16,6 +16,7 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
+	"phmon/server/internal/resources"
 )
 
 const (
@@ -33,12 +34,13 @@ const (
 )
 
 type liveFilter struct {
-	Query        string `json:"q,omitempty"`
-	GroupID      string `json:"group_id,omitempty"`
-	CharacterID  string `json:"character_id,omitempty"`
-	CommandName  string `json:"command_name,omitempty"`
-	CommandState string `json:"command_state,omitempty"`
-	Limit        int    `json:"limit,omitempty"`
+	Query        string   `json:"q,omitempty"`
+	GroupID      string   `json:"group_id,omitempty"`
+	CharacterID  string   `json:"character_id,omitempty"`
+	CommandName  string   `json:"command_name,omitempty"`
+	CommandState string   `json:"command_state,omitempty"`
+	Limit        int      `json:"limit,omitempty"`
+	ResourceKeys []string `json:"resource_keys,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -73,6 +75,7 @@ type LiveHub struct {
 	registry   *agentdomain.Registry
 	characters *characters.Store
 	commands   *commands.Service
+	resources  *resources.Store
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -80,6 +83,7 @@ type LiveHub struct {
 }
 
 func (h *LiveHub) SetCommands(service *commands.Service) { h.commands = service }
+func (h *LiveHub) SetResources(store *resources.Store)   { h.resources = store }
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
@@ -544,6 +548,11 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, errors.New("character controls unavailable")
 		}
 		return h.commands.Controls(ctx, subscription.Filter.CharacterID)
+	case "resources":
+		if h.resources == nil {
+			return nil, errors.New("character resources unavailable")
+		}
+		return h.resources.Character(ctx, subscription.Filter.CharacterID, subscription.Filter.ResourceKeys...)
 	default:
 		return nil, errors.New("unsupported live stream")
 	}
@@ -561,6 +570,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			CommandName:  message.Filter.CommandName,
 			CommandState: message.Filter.CommandState,
 			Limit:        message.Filter.Limit,
+			ResourceKeys: append([]string(nil), message.Filter.ResourceKeys...),
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
@@ -568,7 +578,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 	}
 	switch subscription.Stream {
 	case "agents", "groups":
-		if subscription.Filter != (liveFilter{}) {
+		if subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CharacterID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 {
 			return liveSubscription{}, false
 		}
 	case "characters":
@@ -586,11 +596,29 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			subscription.Filter.Query != "" || subscription.Filter.GroupID != "" {
 			return liveSubscription{}, false
 		}
-	case "commands", "controls":
+	case "commands", "controls", "resources":
 		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" {
 			return liveSubscription{}, false
 		}
-		if subscription.Stream == "controls" && (subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0) {
+		if subscription.Stream != "resources" && len(subscription.Filter.ResourceKeys) != 0 {
+			return liveSubscription{}, false
+		}
+		if subscription.Stream == "resources" {
+			if len(subscription.Filter.ResourceKeys) == 0 || len(subscription.Filter.ResourceKeys) > resources.MaxResources {
+				return liveSubscription{}, false
+			}
+			seen := make(map[string]struct{}, len(subscription.Filter.ResourceKeys))
+			for _, key := range subscription.Filter.ResourceKeys {
+				if !resources.ValidResourceKey(key) {
+					return liveSubscription{}, false
+				}
+				if _, exists := seen[key]; exists {
+					return liveSubscription{}, false
+				}
+				seen[key] = struct{}{}
+			}
+		}
+		if (subscription.Stream == "controls" || subscription.Stream == "resources") && (subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0) {
 			return liveSubscription{}, false
 		}
 		if subscription.Stream == "commands" {

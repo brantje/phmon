@@ -138,3 +138,38 @@ request; music and particle archives are not substituted.
 
 No game archive parser/decoder binary, PhMon process, PostgreSQL, Docker, phBot,
 external tile service or network download is needed when running the exporter.
+
+
+## Slice 4 static item presentation (2026-09-27)
+
+Column facts independently implemented from RSBot's reference loader at commit
+`1723fed61b7c75cdb7db58cf04cd5a19dc560fc5`:
+https://github.com/SDClowen/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Client/ReferenceObjects/RefObjItem.cs
+and sibling RefObjCommon/ObjectCountry/ObjectGender/ObjectRarity sources.
+Common columns 9–12 type IDs, 14 country, 15 rarity, 32–39 requirement pairs;
+item columns 58 gender, 59 strength, 60 intelligence, 61 item class. Equipment
+class determines degree and, for rarity 2 and legacy class 1–30, Star/Moon/Sun.
+No name-pattern classification or unverified rolled-stat formula is used.
+The local source definitions for the four operator screenshots agree with their
+visible static fields. Base stats are deliberately not displayed as instance stats.
+
+The exporter now carries item-table reference ranges separately as
+decimal strings under `presentation.reference_stats` for armor, shields, weapons and
+accessories. The column mapping follows the pinned `RefObjItem.Load` field indexes in
+the RSBot source; those values are reference inputs only and are not used to calculate
+rolled display stats until the vSRO 1.188 formula and rounding order are independently
+verified. The backend validates their shape, bounds and min/max ordering.
+
+When an unambiguous `server_dep/silkroad/**/magicoption.txt` table exists, the
+exporter writes a separate `magicOptions` catalog from RefMagicOpt row ID, group,
+level and packed raw ranges. It adds an English label only when the group exactly
+joins to one unique key in `textdata_object.txt`. It does not derive names from group
+codes or infer units/scaling. The compact server catalog retains the raw definitions;
+the backend omits a blue from display until both a validated label and value scale are
+available. The GreatestSRO bundle in this worktree has not been rebuilt from its source
+archive with that catalog, so no verified option definitions are packaged here.
+
+`build_item_presentation.py BUNDLE ASSET_INDEX OUTPUT [MEDIA_PK2]` produces a
+compact backend catalog. The optional local archive upgrades old bundles only
+when every ID/code matches. New exporter item records carry `presentation`.
+Generated output has no source archive paths; it references existing local PNGs.

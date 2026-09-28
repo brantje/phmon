@@ -105,6 +105,16 @@ func (r *Registry) Configure(agentID string, generation uint64, protocol int, pl
 	return true
 }
 
+func (r *Registry) ProtocolVersion(agentID string, generation uint64) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	current, ok := r.sessions[generation]
+	if !ok || current.agentID != agentID {
+		return 0
+	}
+	return current.protocol
+}
+
 func (r *Registry) SetCapabilities(agentID string, generation uint64, capabilities []CommandCapability) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

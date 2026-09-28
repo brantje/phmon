@@ -162,7 +162,7 @@ network deployment.
 | `WEB_BIND_ADDR`                       | `0.0.0.0`               | Host address for the Compose web UI; use `127.0.0.1` for host-only access                        |
 | `HTTP_ADDR`                           | `127.0.0.1:8081`        | Host Go listener; Compose uses `0.0.0.0:8081`                                                    |
 | `DATABASE_URL`                        | See `.env.example`      | Required host Go PostgreSQL URL                                                                  |
-| `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt relay upstream; Compose uses `http://server:8081`; never exposed to browsers          |
+| `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt relay upstream; Compose uses `http://server:8081`; never exposed to browsers        |
 | `NUXT_PUBLIC_INSTANCE_URL`            | Unset                   | Optional reachable browser-facing origin for the mobile QR/copy panel                            |
 | `TEST_DATABASE_URL`                   | Unset                   | Enables real PostgreSQL Go integration test                                                      |
 | `SMOKE_BACKEND_URL` / `SMOKE_WEB_URL` | Local defaults above    | Smoke-test target overrides                                                                      |
@@ -260,8 +260,9 @@ WebSocket path.
 
 Go uses standard-library HTTP handlers, pgx and embedded transactional migrations.
 PostgreSQL stores durable agents, server-scoped characters, current state, character
-sessions, groups, membership and audited commands. `/agent` accepts authenticated
-protocol-v2 monitoring and protocol-v3 control sockets.
+sessions, groups, membership, audited commands and Slice 4 resource observations.
+`/agent` accepts authenticated protocol-v2 monitoring, protocol-v3 control and
+protocol-v4 resource sockets.
 One agent may keep multiple authenticated sockets active; each socket receives its
 own connection generation and can only update the character sessions it owns. The
 agent remains connected until its last socket closes.
@@ -300,7 +301,6 @@ Version/setup references: [Go releases](https://go.dev/dl/),
 [Nuxt UI setup](https://ui.nuxt.com/docs/getting-started/installation/nuxt),
 [Nuxt runtime configuration](https://nuxt.com/docs/4.x/guide/going-further/runtime-config),
 and [PostgreSQL support](https://www.postgresql.org/support/versioning/).
-
 
 ## Operator authentication
 

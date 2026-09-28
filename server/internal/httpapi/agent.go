@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,10 +15,11 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
+	"phmon/server/internal/resources"
 )
 
 const (
-	agentProtocolVersion    = 3
+	agentProtocolVersion    = 4
 	agentMinProtocolVersion = 2
 )
 
@@ -47,6 +49,7 @@ type agentHandler struct {
 	characters *characters.Store
 	live       *LiveHub
 	commands   *commands.Service
+	resources  *resources.Store
 }
 
 type agentCapability struct {
@@ -57,28 +60,34 @@ type agentCapability struct {
 }
 
 type agentMessage struct {
-	Type            string            `json:"type"`
-	ProtocolVersion int               `json:"protocol_version"`
-	AgentID         string            `json:"agent_id,omitempty"`
-	PluginVersion   string            `json:"plugin_version,omitempty"`
-	PhBotVersion    string            `json:"phbot_version,omitempty"`
-	SentAt          string            `json:"sent_at,omitempty"`
-	CharacterID     string            `json:"character_id,omitempty"`
-	Server          string            `json:"server,omitempty"`
-	Name            string            `json:"name,omitempty"`
-	Guild           *string           `json:"guild,omitempty"`
-	State           characters.State  `json:"state,omitempty"`
-	SessionID       string            `json:"session_id,omitempty"`
-	SchemaVersion   int               `json:"schema_version,omitempty"`
-	Commands        []agentCapability `json:"commands,omitempty"`
-	CommandID       string            `json:"command_id,omitempty"`
-	Status          string            `json:"status,omitempty"`
-	Reason          string            `json:"reason,omitempty"`
-	Verification    string            `json:"verification,omitempty"`
-	APIReturn       json.RawMessage   `json:"api_return,omitempty"`
-	EffectiveArgs   json.RawMessage   `json:"effective_args,omitempty"`
-	ObservedAfter   json.RawMessage   `json:"observed_after,omitempty"`
-	ControlState    json.RawMessage   `json:"control_state,omitempty"`
+	Type             string                     `json:"type"`
+	ProtocolVersion  int                        `json:"protocol_version"`
+	AgentID          string                     `json:"agent_id,omitempty"`
+	PluginVersion    string                     `json:"plugin_version,omitempty"`
+	PhBotVersion     string                     `json:"phbot_version,omitempty"`
+	SentAt           string                     `json:"sent_at,omitempty"`
+	CharacterID      string                     `json:"character_id,omitempty"`
+	Server           string                     `json:"server,omitempty"`
+	Name             string                     `json:"name,omitempty"`
+	Guild            *string                    `json:"guild,omitempty"`
+	State            characters.State           `json:"state,omitempty"`
+	SessionID        string                     `json:"session_id,omitempty"`
+	SchemaVersion    int                        `json:"schema_version,omitempty"`
+	Commands         []agentCapability          `json:"commands,omitempty"`
+	CommandID        string                     `json:"command_id,omitempty"`
+	Status           string                     `json:"status,omitempty"`
+	Reason           string                     `json:"reason,omitempty"`
+	Verification     string                     `json:"verification,omitempty"`
+	APIReturn        json.RawMessage            `json:"api_return,omitempty"`
+	EffectiveArgs    json.RawMessage            `json:"effective_args,omitempty"`
+	ObservedAfter    json.RawMessage            `json:"observed_after,omitempty"`
+	ControlState     json.RawMessage            `json:"control_state,omitempty"`
+	ResourceRevision uint64                     `json:"revision,omitempty"`
+	BaseRevision     uint64                     `json:"base_revision,omitempty"`
+	ChunkIndex       uint64                     `json:"chunk_index,omitempty"`
+	ChunkCount       uint64                     `json:"chunk_count,omitempty"`
+	Full             bool                       `json:"full,omitempty"`
+	ResourceData     map[string]json.RawMessage `json:"resources,omitempty"`
 }
 
 type helloAck struct {
@@ -133,7 +142,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	conn.SetReadLimit(8192)
+	conn.SetReadLimit(resources.MaxFrameBytes)
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	helloCtx, helloCancel := context.WithTimeout(r.Context(), h.options.HelloTimeout)
@@ -232,6 +241,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resourceAssemblies := make(map[string]*resources.Assembly)
 	for {
 		readCtx, readCancel := context.WithTimeout(sessionCtx, h.options.HeartbeatTimeout)
 		var message agentMessage
@@ -247,6 +257,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		if message.ProtocolVersion != hello.ProtocolVersion {
 			rejectAgentFrame(conn, websocket.StatusUnsupportedData, "unsupported protocol version", hello.AgentID, hello.ProtocolVersion)
 			return
+		}
+		if hello.ProtocolVersion < 4 {
+			encoded, encodeErr := json.Marshal(message)
+			if encodeErr != nil || len(encoded) > 8192 {
+				rejectAgentFrame(conn, websocket.StatusMessageTooBig, "legacy frame too large", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
 		}
 		switch message.Type {
 		case "heartbeat":
@@ -374,7 +391,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			if previous.SessionID != "" && (previous.AgentID != hello.AgentID || previous.Generation != generation) {
 				revokeCtx, revokeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
-				_ = h.registry.Send(revokeCtx, previous.AgentID, previous.Generation, map[string]any{"type": "command.revoke", "protocol_version": 3, "character_id": id, "session_id": previous.SessionID, "reason": "session_superseded"})
+				previousProtocol := h.registry.ProtocolVersion(previous.AgentID, previous.Generation)
+				if previousProtocol >= 3 {
+					_ = h.registry.Send(revokeCtx, previous.AgentID, previous.Generation, map[string]any{"type": "command.revoke", "protocol_version": previousProtocol, "character_id": id, "session_id": previous.SessionID, "reason": "session_superseded"})
+				}
 				revokeCancel()
 			}
 			h.live.Invalidate()
@@ -449,6 +469,73 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			h.live.Invalidate()
+		case "resource.snapshot", "resource.delta":
+			if hello.ProtocolVersion < 4 || h.resources == nil || h.characters == nil ||
+				!agentdomain.ValidAgentID(message.CharacterID) || !agentdomain.ValidAgentID(message.SessionID) ||
+				message.ResourceRevision == 0 || !validMessageTime(message.SentAt) || len(message.ResourceData) == 0 ||
+				message.ChunkCount == 0 || message.ChunkCount > resources.MaxResources || message.ChunkIndex >= message.ChunkCount {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid resource snapshot", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			full := message.Type == "resource.snapshot"
+			if message.Full != full {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid resource snapshot kind", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			snapshot := resources.Snapshot{Revision: message.ResourceRevision, BaseRevision: message.BaseRevision, Full: full, Resources: message.ResourceData}
+			if _, _, err := resources.Validate(snapshot); err != nil {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid resource snapshot", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			assemblyKey := message.CharacterID + ":" + message.SessionID + ":" + strconv.FormatUint(message.ResourceRevision, 10)
+			assembly := resourceAssemblies[assemblyKey]
+			if assembly == nil {
+				prefix := message.CharacterID + ":" + message.SessionID + ":"
+				for key := range resourceAssemblies {
+					if strings.HasPrefix(key, prefix) {
+						delete(resourceAssemblies, key)
+					}
+				}
+				if len(resourceAssemblies) >= 4 {
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "too many incomplete resource baselines", hello.AgentID, hello.ProtocolVersion)
+					return
+				}
+				assembly = &resources.Assembly{}
+				resourceAssemblies[assemblyKey] = assembly
+			}
+			assembled, complete, err := assembly.Add(snapshot, message.ChunkIndex, message.ChunkCount)
+			if err != nil {
+				delete(resourceAssemblies, assemblyKey)
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid resource snapshot chunks", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			if !complete {
+				continue
+			}
+			delete(resourceAssemblies, assemblyKey)
+			ctx, cancel := context.WithTimeout(sessionCtx, 4*time.Second)
+			err = h.resources.Apply(ctx, hello.AgentID, message.CharacterID, generation, message.ResourceRevision, message.SessionID, assembled)
+			cancel()
+			if errors.Is(err, resources.ErrSequence) || errors.Is(err, resources.ErrStale) {
+				writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				writeErr := writer.Send(writeCtx, map[string]any{"type": "resource.resync", "protocol_version": hello.ProtocolVersion, "character_id": message.CharacterID, "session_id": message.SessionID, "reason": "baseline_required"})
+				writeCancel()
+				if writeErr != nil {
+					return
+				}
+				continue
+			}
+			if err != nil {
+				rejectAgentFrame(conn, websocket.StatusInternalError, "resource snapshot unavailable", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			err = writer.Send(writeCtx, map[string]any{"type": "resource.ack", "protocol_version": hello.ProtocolVersion, "character_id": message.CharacterID, "session_id": message.SessionID, "revision": message.ResourceRevision})
+			writeCancel()
+			if err != nil {
 				return
 			}
 			h.live.Invalidate()

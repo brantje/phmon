@@ -10,6 +10,7 @@ FROM alpine:3.23
 RUN apk add --no-cache ca-certificates
 COPY --from=build /server /usr/local/bin/server
 COPY --from=build /phmonctl /usr/local/bin/phmonctl
+COPY game-data /game-data
 USER 65532:65532
 EXPOSE 8081
 CMD ["server"]

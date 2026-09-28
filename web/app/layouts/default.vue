@@ -23,6 +23,16 @@ const {
   error: operatorError,
   loginOperator,
 } = useOperatorSession()
+const { startLiveData, stopLiveData } = useLiveData()
+
+watch(
+  operatorAuthenticated,
+  (authenticated) => {
+    if (authenticated) startLiveData()
+    else stopLiveData()
+  },
+  { immediate: true },
+)
 
 async function submitOperatorLogin() {
   const secret = operatorSecret.value

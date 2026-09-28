@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import type { CharacterView as Character } from '~~/shared/types/live'
+const props = withDefaults(
+  defineProps<{ presentation?: 'table' | 'cards' }>(),
+  { presentation: 'table' },
+)
 const {
   characters: lastCharacters,
   groups: lastGroups,
@@ -9,6 +13,7 @@ const {
   setCharacterListFilter,
   clearCharacterListFilter,
 } = useLiveData()
+const { matchesServer } = useServerScope()
 const characterSearch = ref('')
 const debouncedCharacterSearch = ref('')
 let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
@@ -20,6 +25,8 @@ watch(characterSearch, (value) => {
 })
 
 const selectedGroup = ref('')
+const characterPage = ref(0)
+const characterPageSize = 24
 const manageGroupMembers = ref(false)
 const groupName = ref('')
 const groupActionError = ref('')
@@ -33,7 +40,9 @@ onMounted(() => {
     ([query, groupID, managing]) => {
       setCharacterListFilter(
         query,
-        groupID && !managing ? String(groupID) : undefined,
+        groupID && groupID !== 'unassigned' && !managing
+          ? String(groupID)
+          : undefined,
       )
     },
     { immediate: true },
@@ -54,17 +63,45 @@ const charactersLoading = computed(
 )
 const visibleCharacters = computed(() =>
   lastCharacters.value.filter((character) => {
-    const groupMatches =
+    if (!matchesServer(character.server)) return false
+    const belongsToAny = lastGroups.value.some((group) =>
+      group.members.some(
+        (member) => member.character_id === character.character_id,
+      ),
+    )
+    if (selectedGroup.value === 'unassigned' && !manageGroupMembers.value)
+      return !belongsToAny
+    if (
       !selectedGroup.value ||
-      manageGroupMembers.value ||
-      lastGroups.value
-        .find((group) => group.group_id === selectedGroup.value)
-        ?.members.some(
-          (member) => member.character_id === character.character_id,
-        )
-    return groupMatches
+      selectedGroup.value === 'unassigned' ||
+      manageGroupMembers.value
+    )
+      return true
+    return lastGroups.value
+      .find((group) => group.group_id === selectedGroup.value)
+      ?.members.some((member) => member.character_id === character.character_id)
   }),
 )
+const selectedGroupName = computed(
+  () =>
+    lastGroups.value.find((group) => group.group_id === selectedGroup.value)
+      ?.name,
+)
+const characterPageCount = computed(() =>
+  Math.max(1, Math.ceil(visibleCharacters.value.length / characterPageSize)),
+)
+const pagedCharacters = computed(() =>
+  visibleCharacters.value.slice(
+    characterPage.value * characterPageSize,
+    (characterPage.value + 1) * characterPageSize,
+  ),
+)
+watch([selectedGroup, debouncedCharacterSearch, manageGroupMembers], () => {
+  characterPage.value = 0
+})
+watch(characterPageCount, (count) => {
+  characterPage.value = Math.min(characterPage.value, count - 1)
+})
 async function createCharacterGroup() {
   const name = groupName.value.trim()
   if (!name) return
@@ -138,6 +175,11 @@ function refreshCharacterData() {
   refreshLiveData(['character-list', 'fleet-characters', 'groups'])
 }
 
+function selectUnassignedGroup() {
+  selectedGroup.value = 'unassigned'
+  manageGroupMembers.value = false
+}
+
 onUnmounted(() => {
   if (characterSearchTimer) clearTimeout(characterSearchTimer)
 })
@@ -157,8 +199,13 @@ onUnmounted(() => {
           aria-label="Search characters, guild, server or zone"
           placeholder="Search characters, guild, server, zone"
         />
-        <select v-model="selectedGroup" aria-label="Filter by character group">
+        <select
+          v-if="props.presentation === 'table'"
+          v-model="selectedGroup"
+          aria-label="Filter by character group"
+        >
           <option value="">All groups</option>
+          <option value="unassigned">Unassigned</option>
           <option
             v-for="group in lastGroups"
             :key="group.group_id"
@@ -168,7 +215,7 @@ onUnmounted(() => {
           </option>
         </select>
         <button
-          v-if="selectedGroup"
+          v-if="selectedGroup && selectedGroup !== 'unassigned'"
           class="compact-button"
           type="button"
           @click="manageGroupMembers = !manageGroupMembers"
@@ -188,7 +235,7 @@ onUnmounted(() => {
           New group
         </button>
         <button
-          v-if="selectedGroup"
+          v-if="selectedGroup && selectedGroup !== 'unassigned'"
           class="compact-button"
           type="button"
           @click="renameCharacterGroup"
@@ -196,7 +243,7 @@ onUnmounted(() => {
           Rename
         </button>
         <button
-          v-if="selectedGroup"
+          v-if="selectedGroup && selectedGroup !== 'unassigned'"
           class="compact-button"
           type="button"
           @click="deleteCharacterGroup"
@@ -219,7 +266,126 @@ onUnmounted(() => {
       <UIcon name="i-lucide-triangle-alert" /> Character service unavailable.
       Showing the last received records as stale.
     </div>
-    <div v-if="visibleCharacters.length" class="agent-table-wrap">
+    <nav
+      v-if="props.presentation === 'cards'"
+      class="character-group-strip"
+      aria-label="Character groups"
+    >
+      <button
+        class="character-group-chip"
+        :class="{ active: selectedGroup === '' }"
+        type="button"
+        @click="selectedGroup = ''"
+      >
+        All characters
+      </button>
+      <button
+        v-for="group in lastGroups"
+        :key="group.group_id"
+        class="character-group-chip"
+        :class="{ active: selectedGroup === group.group_id }"
+        type="button"
+        @click="selectedGroup = group.group_id"
+      >
+        {{ group.name }} <span>{{ group.members.length }}</span>
+      </button>
+      <button
+        class="character-group-chip"
+        :class="{ active: selectedGroup === 'unassigned' }"
+        type="button"
+        @click="selectUnassignedGroup"
+      >
+        Unassigned
+      </button>
+    </nav>
+    <p
+      v-if="props.presentation === 'cards' && selectedGroupName"
+      class="character-group-caption"
+    >
+      {{ selectedGroupName }} · {{ visibleCharacters.length }} characters
+    </p>
+    <div
+      v-if="
+        props.presentation === 'cards' &&
+        visibleCharacters.length > characterPageSize
+      "
+      class="character-card-pagination"
+      role="group"
+      aria-label="Character card pages"
+    >
+      <button
+        class="compact-button"
+        type="button"
+        :disabled="characterPage === 0"
+        @click="characterPage--"
+      >
+        Previous
+      </button>
+      <span>Page {{ characterPage + 1 }} of {{ characterPageCount }}</span>
+      <button
+        class="compact-button"
+        type="button"
+        :disabled="characterPage + 1 >= characterPageCount"
+        @click="characterPage++"
+      >
+        Next
+      </button>
+    </div>
+    <div
+      v-if="props.presentation === 'cards' && visibleCharacters.length"
+      class="character-cards-grid"
+    >
+      <div v-for="character in pagedCharacters" :key="character.character_id">
+        <CharacterCard :character="character" :stale="characterError" />
+        <button
+          v-if="selectedGroupName && manageGroupMembers"
+          class="compact-button group-member-action"
+          type="button"
+          @click="toggleGroupMember(character)"
+        >
+          {{
+            lastGroups
+              .find((group) => group.group_id === selectedGroup)
+              ?.members.some(
+                (member) => member.character_id === character.character_id,
+              )
+              ? 'Remove from group'
+              : 'Add to group'
+          }}
+        </button>
+      </div>
+    </div>
+    <div
+      v-else-if="props.presentation === 'cards'"
+      class="empty-state character-empty"
+    >
+      <UIcon
+        :name="
+          characterError
+            ? 'i-lucide-cloud-off'
+            : charactersLoading
+              ? 'i-lucide-loader-circle'
+              : 'i-lucide-user-round-search'
+        "
+      />
+      <strong>{{
+        characterError
+          ? 'Character data stale'
+          : charactersLoading
+            ? 'Loading live characters'
+            : 'No characters observed yet'
+      }}</strong>
+      <p>
+        {{
+          characterError
+            ? 'The last received records remain visible and will be replaced after WebSocket recovery.'
+            : charactersLoading
+              ? 'Waiting for the initial WebSocket snapshot.'
+              : 'Join a character in phBot. PhMon will register its server-scoped identity automatically.'
+        }}
+      </p>
+    </div>
+    <div v-else-if="visibleCharacters.length" class="agent-table-wrap">
       <table class="agent-table character-table">
         <thead>
           <tr>

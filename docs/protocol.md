@@ -1,8 +1,10 @@
-# Agent protocol v2
+# Agent protocol versions 2–4
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
-leave messages. Commands and game events remain outside the implemented message set.
+leave messages. Slice 3 adds v3 command delivery. Slice 4 adds v4 resource snapshots
+and deltas. Sections below retain the v2 baseline contract; later sections define
+version-specific extensions and limits.
 
 ## Transport and authentication
 
@@ -22,7 +24,8 @@ leave messages. Commands and game events remain outside the implemented message 
 - The server rejects a missing/invalid token before WebSocket upgrade.
 - The first application message must be hello within 5 seconds. The agent_id in
   hello must match the identity authenticated by the bearer token.
-- Application messages are JSON text frames and are limited to 8 KiB.
+- Application messages are JSON text frames. Protocol v2/v3 frames are limited to
+  8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
 Protocol version: 2. Version 1 agents are rejected with an explicit unsupported
 protocol close reason because the character identity/state contract is required.
@@ -437,7 +440,6 @@ authenticated operator session and a trusted deployment network.
 - Nuxt GET /api/health proxies readiness server-side with a bounded timeout.
 - Health errors are sanitized and no credentials are returned.
 
-
 ## Slice 3 command/auth contract (frozen 2026-09-27)
 
 Slice 3 introduces agent protocol v3 for command delivery while preserving v2
@@ -498,18 +500,18 @@ the current durable character session; neither is accepted from the browser.
 
 Canonical Slice 3 commands and application bounds:
 
-| name | arguments | application policy |
-| --- | --- | --- |
-| `bot.start` | `{}` | documented bool API result |
-| `bot.stop` | `{}` | documented bool API result |
-| `trace.start` | `{name:string}` | trimmed 1..64 chars |
-| `trace.stop` | `{}` | documented bool API result |
-| `training.area.set` | discriminated `current_position`, `position`, or `named` | region must be explicit/observed and positive; coordinates finite and abs <= 10,000,000; named area trimmed 1..100 chars |
-| `training.radius.set` | `{radius:number}` | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum |
-| `character.walk` | `{region:int,x:number,y:number,z:number}` | same observed region only; finite coordinates abs <= 10,000,000 |
-| `character.return` | `{}` | bool means scroll invocation accepted, not teleport completion |
-| `character.disconnect` | `{}` | void return; does not alter relog settings |
-| `client.clientless` | `{}` | unsupported until a safe documented/versioned per-instance primitive is verified |
+| name                   | arguments                                                | application policy                                                                                                       |
+| ---------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `bot.start`            | `{}`                                                     | documented bool API result                                                                                               |
+| `bot.stop`             | `{}`                                                     | documented bool API result                                                                                               |
+| `trace.start`          | `{name:string}`                                          | trimmed 1..64 chars                                                                                                      |
+| `trace.stop`           | `{}`                                                     | documented bool API result                                                                                               |
+| `training.area.set`    | discriminated `current_position`, `position`, or `named` | region must be explicit/observed and positive; coordinates finite and abs <= 10,000,000; named area trimmed 1..100 chars |
+| `training.radius.set`  | `{radius:number}`                                        | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum                                              |
+| `character.walk`       | `{region:int,x:number,y:number,z:number}`                | same observed region only; finite coordinates abs <= 10,000,000                                                          |
+| `character.return`     | `{}`                                                     | bool means scroll invocation accepted, not teleport completion                                                           |
+| `character.disconnect` | `{}`                                                     | void return; does not alter relog settings                                                                               |
+| `client.clientless`    | `{}`                                                     | unsupported until a safe documented/versioned per-instance primitive is verified                                         |
 
 The documented phBot `start_script(str)` accepts script text, while the public API
 does not provide a trusted script catalog/list operation. Slice 3 intentionally does
@@ -575,3 +577,102 @@ nuker1 capability report still rejects Clientless with
 `unsupported_runtime_primitive`; no command was submitted. Walk path traversal was
 excluded from this test pass by operator instruction. Keep real Walk, safe per-session
 Clientless and broad real-runtime command validation open.
+
+## Slice 4 protocol v4: resource observations (2026-09-27)
+
+Protocol v4 retains the v3 hello, character/session fencing, command lifecycle and
+heartbeat behavior. The backend continues to accept v2 and v3. Those older agents
+retain their prior behavior and do not send Slice 4 resources.
+
+After character registration, the plugin sends `resource.snapshot` with `full: true`,
+`revision`, `base_revision: 0`, `character_id`, `session_id`, `sent_at` and a
+`resources` object. Later `resource.delta` frames carry the next revision and the
+previous revision as `base_revision`, with only changed resource keys. A baseline or
+delta may be split across indexed `chunk_index` / `chunk_count` frames; the receiver
+assembles and validates every chunk before applying a complete revision in one
+PostgreSQL transaction. Each frame is capped at 256 KiB, a complete observation at
+2 MiB, at most 12 resource keys/chunks are accepted, and no more than four incomplete
+assemblies are retained per agent connection.
+
+The backend verifies the exact authenticated agent generation and active character
+session. A first observation or a new session requires a full baseline. A delta must
+advance by exactly one from the stored base revision; gaps and stale sessions receive
+`resource.resync` and require a new full snapshot. The backend replies `resource.ack`
+only after durable commit. Acknowledgement is not a claim that optional packet
+enrichment or unsupported source APIs supplied fields.
+
+Each resource value has `availability` (`observed`, `not_observed` or `unavailable`)
+and a typed source payload. Observed empty lists remain distinct from missing APIs or
+containers that have not been opened. Repeated identical content advances the checked
+revision/time without advancing `observed_at`; when a getter stops observing a
+container, the last confirmed payload and its observation time remain available with
+the current availability marked stale/unavailable.
+
+The authenticated browser `/api/live` connection adds a `resources` subscription
+stream. Its filter requires a character ID and may specify up to the supported
+resource keys, allowing visible character cards and their active tabs to subscribe
+independently. Server authorization and current server scope still apply. Resource
+baselines never emit acquisition events; before/after reasoning belongs to later
+backend slices.
+
+### Slice 4 item-instance details (2026-09-27)
+
+Protocol v4 resource item objects may now carry the optional `instance` object. Its
+source is `vsro_1188_packet`; values are observed packet fields, not interpreted
+`api_fields`. The object is tied to the active session, tracker epoch, source slot,
+RefObjID and ordered packet sequence. The 64-bit variance and packet option ID/value
+pairs are decimal strings so browsers cannot round them. Missing option data remains
+`not_observed`; a packet that explicitly carries zero options is an observed empty
+list.
+
+The plugin passively queues only 0x3040, 0x3052 and 0xB034. Decoding runs in the
+network worker, not `handle_joymax`. It bounds the queue to 128 packets / 2 MiB and
+each decoded packet to 256 KiB. 0xB034 operations are not subtype-decoded; every
+operation invalidates cached enrichment. Queue loss, unknown flags, malformed data,
+session/profile changes and mismatched API item state invalidate as well. The current
+decoder follows a pinned vSRO 1.188 packet index plus a pinned RSBot implementation
+for the field details; the exact update layouts still require captured Greatest
+runtime fixtures. Storage snapshot and movement decoders remain unavailable.
+
+On read, the backend attaches optional `instance_details` only after the server's
+explicit dataset/model/code match. It emits family-specific 5-bit roll quality using
+`floor(roll × 100 / 31)`, plus ordered blues only for validated dataset definitions.
+Absolute combat values, max durability and blue labels/scales without source evidence
+remain unavailable. Static metadata and the original source observation stay separate.
+Evidence and the real-runtime gate are tracked in
+[item-instance-evidence.md](item-instance-evidence.md).
+
+Plugin 1.2.5 adds optional `api_evidence_version: 2` and `api_field_types` to
+resource items. `api_fields` remains bounded raw evidence, not trusted presentation.
+Integer-keyed dictionaries use `{"mapping_entries":[{"key_type":"integer",
+"key":"9","value":3}]}` to preserve order, zero values, integer keys and
+collisions with textual keys. String-only dictionaries retain their prior format;
+large integers remain decimal strings. `api_field_types` contains only field names,
+types, collection sizes and sampled key types, not unknown field values. Existing
+v4 JSON persistence accepts these additive fields without a service change. Typed
+API-backed `instance` conversion is still gated on actual runtime field semantics.
+
+
+### API-backed item presentation (phBot 20.1.1)
+
+Schema-2 `api_fields.whites` and `api_fields.blues` may produce read-time
+`instance_details` with source `phbot_api`, definition version
+`phbot-20.1.1-api-v1`, partial status, ordered percentage/blue entries and explicit
+availability. This does not manufacture a packet `instance`. Exact dataset/code
+matching and source dict count/type validation are required. Raw persisted evidence
+is immutable. Unknown families/definitions are omitted with diagnostic status/counts.
+Plugin 1.2.6 adds observed named scalar fields as evidence only; absolute stats remain
+unavailable until their real values and semantics are checked.
+
+Plugin 1.2.6 was checked against live phBot 20.1.1 resource rows on 2026-09-28.
+After exact dataset/model/code matching and typed-field validation, read-time
+`instance_details.stats` now carries ordered absolute API values and any matching
+observed white percentage. Current/max durability uses the reported current value
+and typed `max_durability`; attack, reinforcement and absorption ranges use named
+API scalars. Armor decimal defense uses the matching dataset reference range plus
+observed white roll, while the API integer defense remains the floor check.
+Every observed blue ID/raw value is retained in order; verified dataset codes
+receive in-game labels and unfamiliar codes remain literal. A missing white map
+does not hide an independently observed scalar or imply a zero roll. Blue quality
+percentages, magic-option capacity and Advanced elixir eligibility are not present
+in current API evidence and remain unavailable.
