@@ -228,7 +228,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Guild Storage               | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 13, 15       |
 | phBot tools                 | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15        |
 | Analytics                   | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 12, 13          |
-| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; cave-specific floor bar, floor imagery and Back to world map; right-click plus touch/keyboard point actions for verified same-region walking and active training-area positioning; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                               | 2.5, 7–9        |
+| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; cave-specific floor bar, floor imagery and Back to world map; right-click plus touch/keyboard point actions for verified generated-script navigation and active training-area positioning; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                               | 2.5, 7–9        |
 | Item Search                 | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Reuse shared SRO artwork and static item definitions by stable game item code across server scopes; use the active profile to map numeric model IDs and apply version-specific overrides. Preserve live/historical instance facts and exact container provenance from their observed source.                                                                                                                                                           | 2.5, 4, 13      |
 | Skill Builder               | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution.                                                                                                                                                                                                                                                                                                                | 2.5, 15         |
 | Automations                 | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits.                                                                                                                                                                                                                                                                                                    | 10, 11          |
@@ -2353,15 +2353,26 @@ not present historical drop events as currently lying on the ground
 
 Nuxt map component with pan/zoom and layer controls
 
-Right-click on a validated map point opens actions to walk the selected character
+Right-click on a validated map point opens actions to navigate the selected character
 there or set that point as its active training-area center. Provide an equivalent
 selected-point menu for touch and keyboard users; show the resolved server, region
 and coordinates before confirmation. Draw a preview marker and the observed training
-radius when available. Submit only the existing typed, authenticated, capability-
-aware, session-scoped and audited `character.walk` / `training.area.set` commands.
-Walking remains limited to supported same-region paths; training-position changes
-require an active area and explicit region. Never derive Z from a two-dimensional
-click without validated area data, and never call phBot directly from the browser.
+radius when available. Map navigation uses a distinct typed `character.navigate`
+destination command with authentication, capability checks, session scope and audit.
+The documented phBot `generate_script(region,x,y,z)` returns script lines that may include
+walking, waits and teleports; `start_script(str)` accepts multiline script text.
+For map navigation, investigate and validate this generated-script route rather than
+replaying `generate_path(x,y)` waypoints as the general navigation mechanism. The
+plugin must generate the script locally for the explicit target, bound and validate
+its returned lines before execution, and never accept arbitrary browser-provided
+script text. Verify supported-runtime behavior, interactions with an existing script,
+cancellation and arrival evidence before enabling the action. Starting a background
+script is not proof of arrival; report unknown when completion cannot be verified.
+Keep the existing same-region `character.walk` command distinct during migration;
+it currently uses `generate_path` and has different limits. Training-position changes
+use the existing `training.area.set` command and require an active area and explicit
+region. Never derive Z from a two-dimensional click without validated area data, and
+never call phBot directly from the browser.
 
 map/region reference data and locally served assets from the active Slice 2.5
 game-data profile where the exported bundle contains them, with explicit fallback
@@ -2394,8 +2405,10 @@ recent-death/drop time filtering and Academy-member visibility work independentl
 map architecture supports future heatmap layers
 
 right-click, touch and keyboard point actions offer only commands supported by the
-selected character/session; confirmation, result and training-area readback are
-visible, while unvalidated coordinates cannot be submitted
+selected character/session; generated-script navigation is enabled only after real
+runtime validation and bounded script execution, with confirmation and honest
+arrival/result state; training-area readback is visible, and unvalidated coordinates
+cannot be submitted
 
 ### Slice 8 — Mob observation and heatmap foundation
 

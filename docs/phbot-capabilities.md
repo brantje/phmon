@@ -332,7 +332,10 @@ Official docs rechecked on 2026-09-27:
   to one call per five seconds and does not support teleporting. Cave waypoint tuples
   include a region at index 0. PhMon consumes only same-region waypoints from
   `generate_path`, rejects a route that changes region, and does not execute the
-  teleport/wait strings returned by `generate_script`.
+  teleport/wait strings returned by `generate_script(region,x,y,z)`. The latter
+  returns `None`, `False`, or a list of script-command strings that may contain
+  walking, waits and teleports; the Paths page limits these functions to one call
+  per five seconds.
 - [Inventory](https://plugins.phbot.org/phbot-api/inventory) documents
   `use_return_scroll()` as boolean. [Misc](https://plugins.phbot.org/phbot-api/misc)
   documents `disconnect()` as void and explicitly says it does not change relog
@@ -343,11 +346,25 @@ Official docs rechecked on 2026-09-27:
   permitted.
 - [Script](https://plugins.phbot.org/phbot-api/script) documents
   `start_script(str)` and `stop_script()`. The former runs script text in the
-  background. Slice 3 does not accept raw script text, a filesystem path, Python or
-  shell content as a remote command. The public API page documents no safe
+  background; its example passes newline-separated command text. Joining
+  `generate_script`'s returned lines with newlines for `start_script` is a plausible
+  integration inferred from the two pages, not an explicitly documented combined
+  call or a verified result on the installed runtime. The pages do not document
+  script ownership, concurrent-script behavior or an arrival/status getter. Slice 3
+  does not accept raw script text, a filesystem path, Python or shell content as a
+  remote command. The public API page documents no safe
   list/discovery/manifest operation that could bind a named catalog entry to
   reviewed game actions, so Execute Script remains unavailable pending that bounded
   contract. This is separate from supported typed commands such as `character.walk`.
+
+**Map navigation follow-up (2026-09-28):** The documented functions support a
+candidate generated-script navigation flow, but the deployed `character.walk` still
+uses `generate_path` plus observed same-region waypoints. `generate_script` and
+`start_script` are not yet probed or invoked by PhMon. Before replacing map-facing
+navigation, verify both symbols on the supported phBot runtime, the returned command
+grammar and limits, whether starting/stopping affects an existing script, and how
+completion or cancellation can be observed. Keep the destination typed and
+server/session/floor-scoped; never relay raw script text from the browser.
 
 The implementation probes these optional symbols independently at plugin startup
 and reports capabilities for its v3 socket. The callback adapter uses only the
