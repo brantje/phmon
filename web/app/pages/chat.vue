@@ -99,15 +99,13 @@ const chatCapability = computed(() => {
 })
 const canSend = computed(() => {
   const character = selectedCharacter.value
-  if (
-    !character?.online ||
-    !character.session_id ||
-    liveStale.value ||
-    !chatCapability.value?.supported
-  )
+  const capability = chatCapability.value
+  if (!character?.online || !character.session_id || liveStale.value)
     return false
   if (
-    !(chatCapability.value.modes || []).includes(activeChannel.value) ||
+    (capability &&
+      (!capability.supported ||
+        !(capability.modes || []).includes(activeChannel.value))) ||
     activeChannel.value === 'unknown'
   )
     return false
@@ -127,11 +125,10 @@ const sendDisabledReason = computed(() => {
   if (!selectedCharacter.value.online || !selectedCharacter.value.session_id)
     return 'This character is offline.'
   if (liveStale.value) return 'Live session data is stale. Sending is paused.'
-  if (!chatCapability.value)
-    return 'Waiting for this session to report chat capabilities.'
   if (
-    !chatCapability.value.supported ||
-    !(chatCapability.value.modes || []).includes(activeChannel.value)
+    chatCapability.value &&
+    (!chatCapability.value.supported ||
+      !(chatCapability.value.modes || []).includes(activeChannel.value))
   )
     return (
       chatCapability.value.reason ||

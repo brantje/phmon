@@ -726,7 +726,12 @@ Servar inventory remains open.
   flow, history paging, unread/read cursors, jump-to-latest, composer states, emoji
   insertion, global confirmation, settings-backed browser/sound notifications, and a
   narrow-screen contacts/conversation switch. Unsupported outbound channels are
-  read-only using the selected session's reported `chat.send` modes.
+  read-only when the selected session explicitly reports that a mode is unsupported.
+  If the live capability snapshot is absent, the composer can still submit; the Go
+  command service validates current-session and channel support before queueing. The
+  operator reports phBot plugin 1.4.2 installed and chat sending verified. The web
+  page no longer shows a capability-waiting message or blocks on a missing display
+  snapshot.
 - Dashboard now shows the three latest canonical `chat.message_received` events with
   sender, channel and message preview, linking each row to the corresponding chat
   context. Empty state remains in the same stacked recent-chat card.

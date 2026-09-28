@@ -3445,3 +3445,30 @@ and `/chat` returns HTTP 200. Postgres was not restarted; container ID remains
 `phmon_postgres_data`. Exact next action: check PR #14 CI and have the operator
 verify General/Global duplicates and unread badges on the live chat page. The
 in-app browser has no tabs, so live authenticated verification is unavailable here.
+
+### Resume — 2026-09-29 Slice 6 send capability gate
+
+The operator reports phBot plugin 1.4.2 is installed and chat sending works. The
+chat composer no longer shows “Waiting for this session to report chat
+capabilities.” A missing frontend controls snapshot no longer disables Send; explicit
+unsupported-mode reports still disable it, and the Go command service remains the
+authoritative check for current-session and channel support. This keeps a delayed or
+missing display snapshot from blocking a valid chat send. Updated Slice 6 evidence in
+`docs/reference-parity.md`.
+
+Files changed: `web/app/pages/chat.vue`, `docs/reference-parity.md` and this resume
+entry. Preserve the unrelated untracked `plugin/phMonitorAdapter.py`.
+
+Deployed the web-only change to `node@192.168.10.25:/var/www/phmon` after backing up
+the source page to `/var/www/.phmon-chat-send-enable-20260929/chat.vue`. Local Nuxt
+typecheck, 11 frontend unit tests, targeted ESLint, Prettier and production build
+passed. The remote web image built and container became healthy; `/chat` returns
+HTTP 200 and the old hint text is absent from the live client bundle. Go `/readyz`
+returns `{"status":"ok","database":"ok"}`. The PostgreSQL container stayed at
+`96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d` with volume
+`phmon_postgres_data`.
+
+Exact next action: commit only `web/app/pages/chat.vue`, `docs/reference-parity.md`
+and `AGENTS.md`, push to PR #14, then check current CI and CodeRabbit feedback. Live
+authenticated send verification remains for the operator because the available
+browser session is unauthenticated.
