@@ -1568,12 +1568,12 @@ only when that value is actually observed; never derive item quality from icon c
 alone. Missing icons use one deliberate placeholder while retaining the item's name
 and identity.
 
-Selecting an item opens one shared **Silkroad-style item detail card** used by bag
-inventory, equipped/character-set items, personal storage, guild storage and pet
-inventory. Desktop may expose the same card on hover/focus for quick inspection, but
-click/tap must pin/open it so touch users can inspect items. Keyboard users must be
-able to focus slots and open/close the detail surface. Long item details scroll inside
-the popover/drawer/dialog instead of overflowing the page.
+Each occupied item slot exposes one shared **Silkroad-style item detail card** used by
+bag inventory, equipped/character-set items, personal storage, guild storage and pet
+inventory. Show it on hover or keyboard focus; do not add click-to-pin or click-to-open
+behavior. Keyboard users must be able to focus slots and inspect the detail surface.
+Long item details scroll inside the popover/drawer/dialog instead of overflowing the
+page.
 
 The detail card must look like an in-game/phMonitor item description, **not** a generic
 two-column key/value table:
@@ -3029,7 +3029,7 @@ postgres and volumes preserved. Both production images built successfully.
 Validation: 53 Python tests, Go tests/vet, frontend unit tests/typecheck pass;
 lint has 14 existing void-element warnings and no errors. Browser live verification
 shows Python Casque rolls 12/22/19/3/32/9 with Int3/MP5 and Tiger Bone Coronet rolls
-61/45/32/0/9/0 with Steady2/Parry5%, simultaneously pinned on independent cards.
+61/45/32/0/9/0 with Steady2/Parry5%, simultaneously visible on independent cards.
 All four characters recovered online after deployment. PostgreSQL integration/race
 and full viewport visual acceptance were not rerun for this increment. Existing
 format-notes.md has CRCRLF whitespace problems outside this change.
@@ -3068,3 +3068,15 @@ to generate fixtures. Next: verify reference semantics for remaining families an
 modifiers with naturally observed items, then complete packet and Party Setup
 gates before marking Slice 4 complete. Do not proceed to Slice 5 under the
 current explicit user scope.
+
+### Resume — 2026-09-28 inventory tooltip interaction and rarity colors
+
+Following browser feedback, item enhancement overlays are now white for normal
+items and gold only when item metadata confirms rarity. The shared `ItemSlot.vue`
+preview opens on hover/focus only; click-to-pin/open and Escape pin-dismissal were
+removed. Updated the Slice 4 canonical interaction contract and reference-parity
+ledger. Validation: frontend unit tests (3), Nuxt typecheck, production build,
+focused ESLint (one existing void-element warning), and ItemSlot Prettier pass.
+Browser verification and deployment remain pending. Next: commit and push to the
+existing PR, update only the web service in the existing deployment (leave server,
+PostgreSQL and volumes intact), then verify hover and overlay behavior in the browser.

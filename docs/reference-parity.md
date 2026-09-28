@@ -27,7 +27,7 @@ defaults to personal storage. `/characters/{id}` reuses the same card component,
 while the existing Slice 3 Actions lifecycle remains the command source.
 
 Inventory pages use four columns by eight rows and preserve empty positions. The
-shared item preview supports hover/focus and click/tap pinning, Escape dismissal and
+shared item preview opens on hover/focus without click-to-pin behavior and uses
 bounded internal scrolling. Plugin API observations also retain typed whites, blues
 and scalar fields; the backend presents verified available values after
 dataset/model/code matching. Greatest has an explicit dataset mapping and validated
@@ -450,3 +450,11 @@ and one-decimal display precision. The tooltip remains independently pinnable
 per card, with no maximum height or internal scrollbar. Advanced elixir and magic
 option-capacity lines remain absent because the live API does not provide them;
 blue roll-quality percentages and full viewport comparison remain open.
+
+## 2026-09-28 item-slot interaction correction
+
+Current item previews open on hover or keyboard focus only. Clicking an item slot no
+longer pins or toggles the tooltip. Enhancement overlays are white for normal items
+and gold only for metadata-confirmed rare items; the rare item border and title remain
+gold. This corrects the live Stats page comments. Browser verification is pending the
+next web build/deployment.

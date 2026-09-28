@@ -38,16 +38,15 @@ const icon = computed(() => {
   const path = stringField(metadata.value, 'icon_url')
   return path.startsWith('/game-assets/') && !path.includes('..') ? path : ''
 })
+const visible = ref(false)
 watch(
   () =>
     `${props.item?.model ?? ''}:${props.item?.servername ?? ''}:${icon.value}`,
   () => {
     iconFailed.value = false
-    dismiss()
+    visible.value = false
   },
 )
-const pinned = ref(false)
-const visible = ref(false)
 const name = computed(
   () =>
     stringField(detail.value, 'name') ||
@@ -191,30 +190,16 @@ function stringField(item: Record<string, unknown> | null, key: string) {
 function formatNumber(value: number) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 1 })
 }
-function onEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape') dismiss()
-}
-onMounted(() => document.addEventListener('keydown', onEscape))
-onBeforeUnmount(() => document.removeEventListener('keydown', onEscape))
-function togglePinned() {
-  if (!props.item) return
-  pinned.value = !pinned.value
-  visible.value = pinned.value
-}
-function dismiss() {
-  pinned.value = false
-  visible.value = false
-}
 </script>
 
 <template>
   <div
     class="item-slot-wrap"
-    :class="{ 'has-item': !!item, 'is-pinned': pinned, 'is-rare': rare }"
+    :class="{ 'has-item': !!item, 'is-rare': rare }"
     @mouseenter="visible = !!item"
-    @mouseleave="visible = pinned"
+    @mouseleave="visible = false"
     @focusin="visible = !!item"
-    @focusout="visible = pinned"
+    @focusout="visible = false"
   >
     <button
       class="item-slot"
@@ -225,9 +210,6 @@ function dismiss() {
           ? `${name}, slot ${slotNumber + 1}${quantity ? `, quantity ${quantity}` : ''}`
           : `Empty slot ${slotNumber + 1}`
       "
-      :aria-expanded="item ? visible : undefined"
-      @click="togglePinned"
-      @keydown.esc="dismiss"
     >
       <img
         v-if="item && icon && !iconFailed"

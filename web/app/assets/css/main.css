@@ -1876,7 +1876,7 @@ select:focus-visible {
 }
 .item-slot:not(:disabled) {
   border-color: #e0e5ec;
-  cursor: pointer;
+  cursor: default;
 }
 .item-slot:focus-visible {
   z-index: 2;
@@ -1912,7 +1912,7 @@ select:focus-visible {
   right: auto;
   bottom: auto;
   left: 1px;
-  color: #ffe88a;
+  color: #fff;
 }
 .item-tooltip {
   position: absolute;
@@ -2349,8 +2349,8 @@ select:focus-visible {
 .is-rare .item-tooltip-name {
   color: #ffcf46;
 }
-.is-pinned .item-tooltip {
-  pointer-events: auto;
+.is-rare .item-plus {
+  color: #ffe88a;
 }
 .item-tooltip-classification {
   color: #ddc382;
