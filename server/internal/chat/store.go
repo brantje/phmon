@@ -347,7 +347,7 @@ func (s *Store) UnreadByChannel(ctx context.Context, server, characterID string)
 		return nil, ErrInvalid
 	}
 	rows, err := s.pool.Query(ctx, `
-SELECT m.channel,count(*)::int
+SELECT m.channel,m.server_name,m.character_id::text,m.raw_type,m.sender,m.message,m.occurred_at
 FROM chat_messages m
 LEFT JOIN chat_read_cursors r ON r.operator_identity='operator' AND lower(r.server_name)=lower(m.server_name)
 	AND r.character_id IS NOT DISTINCT FROM CASE
@@ -360,21 +360,79 @@ WHERE m.direction='inbound' AND m.echo_of_command_id IS NULL AND ($1='' OR lower
 	AND m.channel<>'global'
 	AND ($2='' OR m.character_id=$2::uuid OR m.channel NOT IN ('private','guild','union'))
 	AND (r.last_read_at IS NULL OR (m.occurred_at,m.message_id)>(r.last_read_at,r.last_read_message_id))
-GROUP BY m.channel`, server, characterID)
+ORDER BY m.channel,m.occurred_at DESC,m.message_id DESC`, server, characterID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	counts := map[string]int{}
+	observations := make([]unreadObservation, 0)
 	for rows.Next() {
-		var channel string
-		var count int
-		if err := rows.Scan(&channel, &count); err != nil {
+		var item unreadObservation
+		if err := rows.Scan(&item.channel, &item.server, &item.characterID, &item.rawType, &item.sender, &item.message, &item.occurredAt); err != nil {
 			return nil, err
 		}
-		counts[channel] = count
+		observations = append(observations, item)
 	}
-	return counts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return countUnreadObservations(observations), nil
+}
+
+const chatObservationWindow = 2 * time.Second
+
+type unreadObservation struct {
+	channel, server, characterID, rawType, sender, message string
+	occurredAt                                             time.Time
+}
+
+type chatObservationKey struct {
+	channel, server, rawType, sender, message string
+}
+
+type unreadObservationGroup struct {
+	occurredAt time.Time
+	observers  map[string]struct{}
+}
+
+func countUnreadObservations(observations []unreadObservation) map[string]int {
+	counts := map[string]int{}
+	groupsByKey := map[chatObservationKey][]*unreadObservationGroup{}
+	for _, item := range observations {
+		if !serverScopedChannel(item.channel) || item.characterID == "" || item.sender == "" {
+			counts[item.channel]++
+			continue
+		}
+		key := chatObservationKey{
+			channel: item.channel,
+			server:  strings.ToLower(item.server),
+			rawType: item.rawType,
+			sender:  item.sender,
+			message: item.message,
+		}
+		groups := groupsByKey[key]
+		duplicate := false
+		for _, group := range groups {
+			if group.occurredAt.Sub(item.occurredAt) > chatObservationWindow {
+				break
+			}
+			if _, seen := group.observers[item.characterID]; seen {
+				continue
+			}
+			group.observers[item.characterID] = struct{}{}
+			duplicate = true
+			break
+		}
+		if duplicate {
+			continue
+		}
+		groupsByKey[key] = append(groups, &unreadObservationGroup{
+			occurredAt: item.occurredAt,
+			observers:  map[string]struct{}{item.characterID: {}},
+		})
+		counts[item.channel]++
+	}
+	return counts
 }
 
 func (s *Store) MarkRead(ctx context.Context, server, characterID, channel, peer, messageID string) error {

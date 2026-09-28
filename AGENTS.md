@@ -3428,15 +3428,15 @@ Files changed: `server/internal/chat/store.go`,
 `docs/reference-parity.md` and this resume entry. Preserve the unrelated untracked
 `plugin/phMonitorAdapter.py`.
 
-Validation: Nuxt typecheck, 8 frontend unit tests, ESLint (22 existing HTML
-void-element warnings, no errors), Prettier, production build and `go test ./...`
-passed. The new store regression remains gated by `TEST_DATABASE_URL`; the in-app
-browser currently has no tabs, so authenticated visual verification is unavailable.
-The read-response change from commit `d82c69c` is deployed to
-`node@192.168.10.25:/var/www/phmon`. Only server/web were rebuilt and recreated;
-`phmon-postgres-1` kept container ID `96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d`
-and volume `phmon_postgres_data`; `/readyz` and `/api/health` report database healthy.
-Current uncommitted scope correction adds server-wide read cursors for shared chat
-channels and character-scoped Guild/Union cursors. Exact next action: format and run
-Go/UI checks, push to PR #14, deploy the updated Go server and web page to the same
-host without recreating PostgreSQL, verify health/volume identity and latest CI.
+Commit `bbd0217` is pushed to PR #14 and deployed to
+`node@192.168.10.25:/var/www/phmon`. A new operator report found that widening
+General history to all characters shows duplicate observer copies; Global can have
+the same issue. The current follow-up deduplicates General/Global inbound copies by
+server, channel, raw type, sender, text and a two-second window, preserves repeated
+messages from one character, and applies the same grouping to server-wide unread
+counts. Added frontend and backend tests; the database integration test also now
+uses matching cross-character General/Global copies. Exact next action: fix any test
+failures, rerun Go/UI checks and build, then push/deploy this follow-up to the same
+host. Continue protecting the existing Postgres container and `phmon_postgres_data`
+volume. The in-app browser has no tabs; authenticate to validate live counters only
+if the operator makes that session available.

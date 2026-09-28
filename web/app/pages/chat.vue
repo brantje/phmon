@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChatMessage, ChatSnapshot } from '~~/shared/types/live'
 import { setActiveChatConversation } from '~/composables/useChatPreferences'
+import { dedupeChatObservations } from '~/utils/dedupeChatObservations'
 
 type ChatChannel =
   'general' | 'private' | 'party' | 'guild' | 'union' | 'global' | 'unknown'
@@ -79,9 +80,12 @@ const privatePeerKey = computed(() => privatePeer.value.trim().toLowerCase())
 const messages = computed(() => {
   const combined = [...olderMessages.value, ...(page.value?.messages || [])]
   const seen = new Set<string>()
-  return combined.filter(
+  const unique = combined.filter(
     (item) => !seen.has(item.message_id) && seen.add(item.message_id),
   )
+  return activeChannel.value === 'general' || activeChannel.value === 'global'
+    ? dedupeChatObservations(unique)
+    : unique
 })
 const chatCapability = computed(() => {
   const controls = characterControls.value

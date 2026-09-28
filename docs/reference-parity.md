@@ -744,7 +744,10 @@ Servar inventory remains open.
   Party and Unknown read cursors and unread counts are server scoped; Private, Guild
   and Union remain scoped to the selected character (and Private to the peer) so a
   read in one character's guild/union does not clear another character's unread
-  messages. Global is omitted from the unread counter and its badge is hidden.
+  messages. General/Global copies observed by multiple characters are combined
+  within the existing two-second cross-observer window; repeated messages from one
+  character remain distinct. Server-wide unread counts use the same grouping, while
+  Global is omitted from the unread counter and its badge is hidden.
 - A successful mark-read response now includes fresh contact and channel unread state
   computed after the cursor is saved. The chat page applies those counts immediately,
   then the shared live snapshot reconciles them. Changing private contacts keeps the

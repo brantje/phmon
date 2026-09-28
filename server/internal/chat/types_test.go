@@ -46,3 +46,24 @@ func TestCursorRoundTripPreservesTimestampAndMessageID(t *testing.T) {
 		t.Fatal("invalid cursor accepted")
 	}
 }
+
+func TestCountUnreadObservationsDeduplicatesOnlyServerwideObserverCopies(t *testing.T) {
+	base := time.Date(2026, 9, 28, 16, 25, 49, 0, time.UTC)
+	observations := []unreadObservation{
+		{channel: "general", server: "Greatest", characterID: "beta", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(600 * time.Millisecond)},
+		{channel: "general", server: "greatest", characterID: "alpha", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(500 * time.Millisecond)},
+		{channel: "general", server: "Greatest", characterID: "beta", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(100 * time.Millisecond)},
+		{channel: "general", server: "Greatest", characterID: "alpha", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base},
+		{channel: "party", server: "Greatest", characterID: "beta", rawType: "3", sender: "Veyra", message: "party", occurredAt: base.Add(time.Second)},
+		{channel: "party", server: "Greatest", characterID: "alpha", rawType: "3", sender: "Veyra", message: "party", occurredAt: base.Add(900 * time.Millisecond)},
+		{channel: "guild", server: "Greatest", characterID: "beta", rawType: "4", sender: "Veyra", message: "guild", occurredAt: base.Add(time.Second)},
+		{channel: "guild", server: "Greatest", characterID: "alpha", rawType: "4", sender: "Veyra", message: "guild", occurredAt: base.Add(900 * time.Millisecond)},
+		{channel: "private", server: "Greatest", characterID: "beta", rawType: "2", sender: "Veyra", message: "private", occurredAt: base.Add(time.Second)},
+		{channel: "private", server: "Greatest", characterID: "alpha", rawType: "2", sender: "Veyra", message: "private", occurredAt: base.Add(900 * time.Millisecond)},
+	}
+
+	counts := countUnreadObservations(observations)
+	if counts["general"] != 2 || counts["party"] != 1 || counts["guild"] != 2 || counts["private"] != 2 {
+		t.Fatalf("deduplicated unread counts = %#v", counts)
+	}
+}
