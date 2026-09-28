@@ -59,6 +59,7 @@ const search = ref('')
 const deleteDialogOpen = ref(false)
 const deleteDialogElement = ref<HTMLDialogElement | null>(null)
 const deleteConfirmation = ref('')
+const deleteTarget = shallowRef<Scope | null>(null)
 const deleting = ref(false)
 const deleteError = ref('')
 const deleteResult = ref('')
@@ -123,6 +124,8 @@ async function loadGuildStorage() {
 }
 
 function openDeleteDialog() {
+  if (!selectedScope.value) return
+  deleteTarget.value = { ...selectedScope.value }
   deleteConfirmation.value = ''
   deleteError.value = ''
   deleteDialogOpen.value = true
@@ -131,6 +134,8 @@ function openDeleteDialog() {
 function closeDeleteDialog() {
   if (deleting.value) return
   deleteDialogOpen.value = false
+  deleteTarget.value = null
+  deleteConfirmation.value = ''
 }
 
 watch(deleteDialogOpen, async (open) => {
@@ -142,7 +147,7 @@ watch(deleteDialogOpen, async (open) => {
 })
 
 async function deleteGuildStorage() {
-  const scope = selectedScope.value
+  const scope = deleteTarget.value
   if (!scope || deleteConfirmation.value !== scope.guild || deleting.value)
     return
   requestRevision += 1
@@ -162,6 +167,8 @@ async function deleteGuildStorage() {
       },
     })
     deleteDialogOpen.value = false
+    deleteTarget.value = null
+    deleteConfirmation.value = ''
     snapshot.value = null
     requestFailed.value = false
     deleteResult.value = `Removed ${result.deleted_observations} saved observation(s) and ${result.deleted_items} item row(s) for ${scope.server} · ${scope.guild}. A later phBot observation may create a new saved snapshot; in-game contents were not changed.`
@@ -369,6 +376,7 @@ onBeforeUnmount(() => {
       class="record-delete-dialog"
       aria-labelledby="guild-storage-delete-title"
       @cancel.prevent="closeDeleteDialog"
+      @close="closeDeleteDialog"
     >
       <form method="dialog" @submit.prevent="deleteGuildStorage">
         <h2 id="guild-storage-delete-title">
@@ -377,7 +385,7 @@ onBeforeUnmount(() => {
         <p>
           This removes all persisted guild-storage snapshots and item rows for
           <strong
-            >{{ selectedScope?.server }} · {{ selectedScope?.guild }}</strong
+            >{{ deleteTarget?.server }} · {{ deleteTarget?.guild }}</strong
           >
           from PhMon. It does not remove or change items in the game. Later
           phBot observations may create new saved records.
@@ -391,7 +399,7 @@ onBeforeUnmount(() => {
           :disabled="deleting"
           autocomplete="off"
           maxlength="100"
-          :placeholder="selectedScope?.guild || ''"
+          :placeholder="deleteTarget?.guild || ''"
         />
         <p v-if="deleteError" class="dialog-error" role="alert">
           {{ deleteError }}
@@ -408,7 +416,7 @@ onBeforeUnmount(() => {
           <button
             class="compact-button danger-button"
             type="submit"
-            :disabled="deleting || deleteConfirmation !== selectedScope?.guild"
+            :disabled="deleting || deleteConfirmation !== deleteTarget?.guild"
           >
             {{ deleting ? 'Removing…' : 'Remove saved records' }}
           </button>
