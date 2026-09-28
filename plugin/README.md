@@ -1,14 +1,14 @@
 # PhMon phBot plugin
 
-The current Slice 6 development release is **1.4.1** (`vsro_1188_passive_r2`, API
+The current Slice 6 development release is **1.4.2** (`vsro_1188_passive_r2`, API
 evidence schema 2). It sends canonical callbacks, inbound chat, alchemy attempts and
 reliable membership/container deltas in protocol-v6 batches over the existing
 authenticated connection. The backend keeps accepting v2–v5; v5 plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime
-values 1 (General/All), 4 (Party), 5 (Guild) and 6 (Global); other numeric values
-remain `unknown`. The plugin optionally
+values 1 (General/All), 2 (Private), 4 (Party), 5 (Guild) and 6 (Global); other numeric
+values remain `unknown`. The plugin optionally
 imports `phBotChat`, reports callable General/Private/Party/Guild/Union/Global modes,
 and accepts bounded `chat.send` commands through the existing callback-thread
 dispatcher. A boolean API result records phBot acceptance only, not delivery. No real

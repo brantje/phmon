@@ -618,9 +618,10 @@ The Events API documents `handle_chat(t, player, msg)`, identifies `t` as the ty
 sent by the server, and says `player` may be `None` for non-private messages. It does
 not publish a type-to-channel table. During operator testing on phBot 20.1.2, inbound
 records were observed on active agents and the operator confirmed numeric types 1
-(General/All), 4 (Party), 5 (Guild) and 6 (Global). PhMon preserves bounded original
-text/raw type and available sender data, canonicalizes these observed values and
-explicit channel names, and leaves other numbers unknown. This runtime observation
+(General/All), 2 (Private), 4 (Party), 5 (Guild) and 6 (Global). PhMon preserves
+bounded original text/raw type and available sender data, canonicalizes these
+observed values and explicit channel names, and leaves other numbers unknown. This
+runtime observation
 does not verify outbound `phBotChat` methods, their supported channels or delivery;
 those gates remain open.
 

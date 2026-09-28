@@ -731,12 +731,18 @@ Servar inventory remains open.
   sender, channel and message preview, linking each row to the corresponding chat
   context. Empty state remains in the same stacked recent-chat card.
 - The operator confirmed numeric callback mappings from phBot 20.1.2: `1` is
-  General/All, `4` is Party, `5` is Guild and `6` is Global. The active server had
-  144 inbound records across those raw values; the source event payloads and chat
-  projection were corrected, and migration 10 makes that correction repeatable.
+  General/All, `2` is Private, `4` is Party, `5` is Guild and `6` is Global. The
+  source event payloads and chat projection for types 1, 4, 5 and 6 were corrected
+  across 144 records by migration 10. A deployed read-only check later found one
+  unclassified message while a private conversation showed only the outgoing row;
+  type 2 now maps
+  to Private and migration 12 backfills the existing event and projection.
   Migration 11 linked two unique same-session echoes to their outgoing commands and
   fixed the outbound echo-link constraint, preventing duplicate rows in chat history.
   Unknown numeric values remain in the Advanced-mode Unknown lane.
+- General and Global history now spans all characters on the selected server.
+  General's durable read cursor and unread count are server scoped; Global is omitted
+  from the unread counter and its badge is hidden in the UI.
 - At the operator's direction, every channel uses flat chronological log rows with
   sender/time labels. General and other channels do not use private-message bubble
   alignment. The local chat page passes Nuxt typecheck, unit tests, formatting and

@@ -138,6 +138,10 @@ const lastChatCommand = computed(() =>
   commandHistory.value.find((item) => item.name === 'chat.send'),
 )
 const visibleChannelCount = (channel: ChatChannel) => unread.value[channel] || 0
+const isServerWideChannel = (channel: ChatChannel) =>
+  channel === 'general' || channel === 'global'
+const chatServerFilter = (server: string) =>
+  server === 'all' ? selectedCharacter.value?.server : server
 
 watch(
   [selectableCharacters, () => route.query.character_id],
@@ -178,8 +182,8 @@ watch(
       return
     }
     setChatFeed(feedID, {
-      server: server === 'all' ? undefined : server,
-      character_id: characterID,
+      server: chatServerFilter(server),
+      character_id: isServerWideChannel(channel) ? undefined : characterID,
       channel,
       peer: channel === 'private' ? peer || undefined : undefined,
       limit: 50,
@@ -264,8 +268,10 @@ async function loadOlder() {
   try {
     const result = await $fetch<ChatSnapshot['page']>('/api/chat/messages', {
       query: {
-        server: serverScope.value === 'all' ? undefined : serverScope.value,
-        character_id: selectedCharacter.value.character_id,
+        server: chatServerFilter(serverScope.value),
+        character_id: isServerWideChannel(activeChannel.value)
+          ? undefined
+          : selectedCharacter.value.character_id,
         channel: activeChannel.value,
         peer: activeChannel.value === 'private' ? privatePeer.value : undefined,
         before: olderCursor.value,
@@ -303,7 +309,9 @@ async function markCurrentRead() {
       method: 'POST',
       body: {
         server: character.server,
-        character_id: character.character_id,
+        character_id: isServerWideChannel(activeChannel.value)
+          ? ''
+          : character.character_id,
         channel: activeChannel.value,
         peer: activeChannel.value === 'private' ? privatePeer.value : '',
         message_id: latestInbound.message_id,
@@ -437,9 +445,11 @@ onBeforeUnmount(() => {
           @click="activeChannel = channel.key"
         >
           {{ channel.label }}
-          <span v-if="visibleChannelCount(channel.key)" class="unread-badge">{{
-            visibleChannelCount(channel.key)
-          }}</span>
+          <span
+            v-if="channel.key !== 'global' && visibleChannelCount(channel.key)"
+            class="unread-badge"
+            >{{ visibleChannelCount(channel.key) }}</span
+          >
         </button>
       </nav>
       <button
@@ -571,7 +581,13 @@ onBeforeUnmount(() => {
               v-else-if="!messages.length && snapshot"
               class="conversation-empty"
             >
-              No {{ activeChannel }} messages recorded for this sender yet.
+              No {{ activeChannel }} messages recorded
+              {{
+                isServerWideChannel(activeChannel)
+                  ? 'on this server'
+                  : 'for this sender'
+              }}
+              yet.
             </div>
             <article
               v-for="item in messages"

@@ -2195,7 +2195,9 @@ Build the chat read model from canonical events rather than mutating event histo
 Implement:
 
 - persistent history with cursor pagination in both directions
-- per-server/per-character scope
+- server-scoped General/Global history for the selected server; General read state
+  applies to every character on that server, and Global has no unread counter
+- per-character scope for Private, Party, Guild and Union conversations
 - channel tabs matching the reference: General, Private, Party, Guild, Union and Global
   where supported
 - stable private-conversation identity/contact list
@@ -3312,11 +3314,14 @@ APIs, a revision-fenced live stream, `chat.send` validation and session capabili
 modes, optional phBot chat adapter, responsive `/chat` UI and `/settings` notification
 controls. Global sends require confirmation; phBot API acceptance does not establish
 delivery. Operator testing on phBot 20.1.2 confirmed numeric callback types 1=General/All,
-4=Party, 5=Guild and 6=Global. The plugin maps these values and preserves raw types;
+2=Private, 4=Party, 5=Guild and 6=Global. The plugin maps these values and preserves raw types;
 migrations `000010_chat_numeric_channels.sql` and
 `000011_chat_echo_reconciliation.sql` normalize existing canonical events/chat
 projections, link unique historical outgoing echoes and fix the outbound echo-link
-constraint. Chat messages render as a flat chronological log in every channel.
+constraint. Migration `000012_chat_private_numeric_type.sql` backfills type-2 inbound
+messages as Private. General and Global history/read state are server scoped across
+characters; Global unread counts are disabled. Chat messages render as a flat
+chronological log in every channel.
 `plugin/phManager.py` was absent; the untracked
 `plugin/phMonitorAdapter.py` remains untouched and unversioned.
 
@@ -3333,6 +3338,13 @@ present before the plugin update were reclassified; migration 10 carries the
 correction to other databases. Migration 11 fixes the outbound echo-link constraint
 and links two unique historical same-session echoes to audited outgoing commands.
 Chat renders flat history rows in every channel.
+Follow-up chat fix in progress: version the plugin as 1.4.2, map numeric type 2 to
+Private and add migration 12 for historical unknown rows. Make General/Global history
+server scoped, General read cursors/unread counts apply across characters, and suppress
+Global unread counts and badges. Add a multi-character PostgreSQL integration test.
+The deployed page currently shows one unclassified message, consistent with type 2
+missing from the 1.4.1 callback map. Update this entry after validation/deployment.
+
 `phBotChat` outbound methods remain unverified. PostgreSQL integration tests with
 `TEST_DATABASE_URL`, authenticated browser comparison at 1440×1000, 1280×800 and
 390×844, and outbound phBot API verification remain open. Keep Slice 6 in progress

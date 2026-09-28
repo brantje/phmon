@@ -116,10 +116,13 @@ function activeContains(
 ) {
   const current = activeChat.value
   if (!current) return false
-  return (
+  const sameServerAndChannel =
     current.server.toLowerCase() === message.server.toLowerCase() &&
+    current.channel === message.channel
+  if (!sameServerAndChannel) return false
+  if (message.channel === 'general' || message.channel === 'global') return true
+  return (
     current.characterID === message.character_id &&
-    current.channel === message.channel &&
     (message.channel !== 'private' ||
       current.peer.toLowerCase() === (message.peer_key || '').toLowerCase())
   )

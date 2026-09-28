@@ -1003,7 +1003,7 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(alchemy['sequence'], 2)
 
     def test_chat_callback_maps_verified_numeric_types_and_preserves_other_types(self):
-        for raw_type, channel in ((1, 'general'), (4, 'party'), (5, 'guild'), (6, 'global')):
+        for raw_type, channel in ((1, 'general'), (2, 'private'), (4, 'party'), (5, 'guild'), (6, 'global')):
             with self.subTest(raw_type=raw_type):
                 numeric = self.callback(plugin.handle_chat, raw_type, 'Beta', 'chat text')
                 self.assertEqual(numeric['payload']['channel'], channel)

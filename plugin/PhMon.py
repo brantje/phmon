@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.4.1'
+pVersion = '1.4.2'
 pUrl = ''
 
 PROTOCOL_VERSION = 6
@@ -3174,7 +3174,7 @@ def handle_chat(chat_type, player, message):
     known_channels = {
         'all': 'general', 'general': 'general', 'private': 'private',
         'party': 'party', 'guild': 'guild', 'union': 'union', 'global': 'global',
-        '1': 'general', '4': 'party', '5': 'guild', '6': 'global',
+        '1': 'general', '2': 'private', '4': 'party', '5': 'guild', '6': 'global',
     }
     channel = known_channels.get(raw_type.strip().lower()) if isinstance(raw_type, str) else None
     payload = {

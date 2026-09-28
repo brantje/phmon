@@ -847,9 +847,10 @@ callbacks supply an equippable item model ID only; the pipeline does not turn th
 an item-instance snapshot. Inbound chat preserves bounded message text and raw chat
 type. Explicit channel names are normalized (`all`/`general`, `private`, `party`,
 `guild`, `union`, `global`). On 2026-09-28 the operator confirmed these numeric
-`handle_chat` mappings from the active phBot 20.1.2 runtime: `1` is General/All, `4`
-is Party, `5` is Guild, and `6` is Global. The plugin normalizes those values while
-retaining the raw type; other numeric and unrecognized values remain `unknown`.
+`handle_chat` mappings from the active phBot 20.1.2 runtime: `1` is General/All, `2`
+is Private, `4` is Party, `5` is Guild, and `6` is Global. The plugin normalizes
+those values while retaining the raw type; other numeric and unrecognized values
+remain `unknown`.
 `alchemy_update`
 creates one attempt event and `EVENT_ALCHEMY_FINISHED` one
 completion event. Reliable party, academy, pet and owned-container transitions come
@@ -880,15 +881,17 @@ persist browser-notification and local-sound choices for the configured operator
 Migration and store integration tests are gated on `TEST_DATABASE_URL`.
 
 The operator-confirmed numeric callback types are stored with canonical channels by
-the plugin and backfilled for existing `unknown` records by migration 10. All chat
-channels render as a flat chronological log with sender labels; messages do not use
-private-message bubble alignment.
+the plugin and backfilled for existing `unknown` records by migrations 10 and 12.
+General and Global history is server scoped across characters; General read cursors
+and unread counts are server scoped, while Global is excluded from unread counters.
+All chat channels render as a flat chronological log with sender labels; messages do
+not use private-message bubble alignment.
 
 Outbound `chat.send` takes exactly `{channel,text,recipient?}` and uses the existing
 authenticated, idempotent, session-fenced, audited command lifecycle. The plugin calls
 only the matching documented `phBotChat` method from `event_loop()`, reports callable
 modes, and preserves the API boolean as acceptance/failure evidence. `True` does not
 mean a remote recipient received the message. Global sends require explicit
-confirmation. Numeric inbound channel mappings and phBot's actual accepted text limit
-remain runtime gates; the app currently caps one message at 2,048 UTF-8 bytes and does
-not split messages.
+confirmation. Numeric inbound channel mappings were confirmed by the operator on
+phBot 20.1.2. phBot's actual accepted text limit remains a runtime gate; the app
+currently caps one message at 2,048 UTF-8 bytes and does not split messages.
