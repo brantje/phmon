@@ -20,6 +20,28 @@ watch(
 const statsGroupID = computed(() =>
   typeof route.query.group_id === 'string' ? route.query.group_id : '',
 )
+const currentEventView = computed(() => {
+  if (typeof route.query.kind === 'string') return route.query.kind
+  if (route.query.category === 'custom') return 'custom'
+  return 'all'
+})
+const eventNavigation = [
+  { label: 'All', key: 'all', query: {} },
+  {
+    label: 'Level Ups',
+    key: 'character.level_up',
+    query: { kind: 'character.level_up' },
+  },
+  { label: 'Custom', key: 'custom', query: { category: 'custom' } },
+  { label: 'Deaths', key: 'character.died', query: { kind: 'character.died' } },
+  { label: 'Rare Drops', key: 'drop.rare', query: { kind: 'drop.rare' } },
+  { label: 'Normal Drops', key: 'drop.item', query: { kind: 'drop.item' } },
+  {
+    label: 'Uniques',
+    key: 'world.unique_spawned',
+    query: { kind: 'world.unique_spawned' },
+  },
+]
 const groupHasDeadCharacter = (
   members: readonly CharacterGroup['members'][number][],
 ) =>
@@ -44,7 +66,7 @@ const primaryNavigation = [
   { label: 'Events', icon: 'i-lucide-activity', href: '/events' },
   { label: 'Chat', icon: 'i-lucide-messages-square' },
   { label: 'Economy', icon: 'i-lucide-coins' },
-  { label: 'Alchemy', icon: 'i-lucide-flask-conical' },
+  { label: 'Alchemy', icon: 'i-lucide-flask-conical', href: '/alchemy' },
   { label: 'Academy', icon: 'i-lucide-graduation-cap' },
   {
     label: 'Guild Storage',
@@ -64,7 +86,11 @@ const advancedNavigation = [
 </script>
 
 <template>
-  <aside class="app-sidebar" :class="{ 'is-mobile-open': mobileOpen }">
+  <aside
+    id="phmon-sidebar"
+    class="app-sidebar"
+    :class="{ 'is-mobile-open': mobileOpen }"
+  >
     <div class="brand-block">
       <div class="brand-mark" aria-hidden="true">P</div>
       <div class="brand-copy">
@@ -163,20 +189,22 @@ const advancedNavigation = [
           class="sidebar-groups sidebar-event-links"
           aria-label="Event categories"
         >
-          <span class="sidebar-group-link is-disabled">All</span>
-          <span class="sidebar-group-link is-disabled">Level Ups</span>
-          <span class="sidebar-group-link is-disabled">Custom</span>
           <NuxtLink
+            v-for="view in eventNavigation"
+            :key="view.key"
             class="sidebar-group-link"
-            to="/events?kind=character.died"
-            :class="{ active: route.path === '/events' }"
-            :aria-current="route.path === '/events' ? 'page' : undefined"
+            :to="{ path: '/events', query: view.query }"
+            :class="{
+              active: route.path === '/events' && currentEventView === view.key,
+            }"
+            :aria-current="
+              route.path === '/events' && currentEventView === view.key
+                ? 'page'
+                : undefined
+            "
           >
-            <span>Deaths</span>
+            <span>{{ view.label }}</span>
           </NuxtLink>
-          <span class="sidebar-group-link is-disabled">Rare Drops</span>
-          <span class="sidebar-group-link is-disabled">Normal Drops</span>
-          <span class="sidebar-group-link is-disabled">Uniques</span>
         </nav>
       </template>
 

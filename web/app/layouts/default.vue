@@ -82,7 +82,12 @@ await useBackendHealthMonitor()
       </button>
     </form>
   </div>
-  <div v-else class="phmon-shell" :class="{ 'is-collapsed': sidebarCollapsed }">
+  <div
+    v-else
+    class="phmon-shell"
+    :class="{ 'is-collapsed': sidebarCollapsed }"
+    @keydown.esc="mobileNavigationOpen = false"
+  >
     <button
       v-if="mobileNavigationOpen"
       class="mobile-backdrop"

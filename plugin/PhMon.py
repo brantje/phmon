@@ -27,15 +27,30 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.3.0'
+pVersion = '1.4.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 6
 EVENT_DIED = 7
-MAX_DEATH_SPOOL_ITEMS = 512
-MAX_DEATH_SPOOL_BYTES = 2 * 1024 * 1024
-MAX_DEATH_EVENT_BYTES = 8192
-MAX_DEATH_PAYLOAD_BYTES = 4096
+EVENT_UNIQUE_SPAWN = 0
+EVENT_HUNTER_SPAWN = 1
+EVENT_THIEF_SPAWN = 2
+EVENT_TRANSPORT_DIED = 3
+EVENT_PLAYER_ATTACKING = 4
+EVENT_RARE_DROP = 5
+EVENT_ITEM_DROP = 6
+EVENT_ALCHEMY_FINISHED = 8
+EVENT_GM_SPAWNED = 9
+EVENT_LEVEL_UP = 10
+MAX_EVENT_CRITICAL_ITEMS = 512
+MAX_EVENT_CRITICAL_BYTES = 8 * 1024 * 1024
+MAX_EVENT_ORDINARY_ITEMS = 2048
+MAX_EVENT_ORDINARY_BYTES = 16 * 1024 * 1024
+MAX_EVENT_SPOOL_ITEMS = MAX_EVENT_CRITICAL_ITEMS + MAX_EVENT_ORDINARY_ITEMS
+MAX_EVENT_SPOOL_BYTES = MAX_EVENT_CRITICAL_BYTES + MAX_EVENT_ORDINARY_BYTES
+MAX_EVENT_BYTES = 40 * 1024
+MAX_EVENT_PAYLOAD_BYTES = 32768
+MAX_EVENT_BATCH_SIZE = 16
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
@@ -472,6 +487,100 @@ def _normalize_academy(value, api_available):
     if isinstance(academy_id, int) and not isinstance(academy_id, bool) and academy_id >= 0:
         payload['id'] = academy_id
     return {'availability': 'observed', 'value': payload}
+
+
+def _event_resource_snapshot(resources):
+    if not isinstance(resources, dict):
+        return None
+    equipment = resources.get('equipment')
+    inventory = resources.get('inventory')
+    pets_resource = resources.get('pets')
+    if (not isinstance(equipment, dict) or equipment.get('availability') != 'observed' or
+            not isinstance(inventory, dict) or inventory.get('availability') != 'observed' or
+            not isinstance(pets_resource, dict) or pets_resource.get('availability') != 'observed'):
+        return None
+
+    def membership(resource, collection_path):
+        if not isinstance(resource, dict) or resource.get('availability') != 'observed':
+            return None
+        value = resource
+        for part in collection_path:
+            value = value.get(part) if isinstance(value, dict) else None
+        if not isinstance(value, list):
+            return None
+        result = {}
+        for entry in value[:256]:
+            if not isinstance(entry, dict):
+                continue
+            member_id = entry.get('party_id') or entry.get('member_id') or entry.get('name')
+            if member_id is not None and str(member_id).strip():
+                result[str(member_id)[:100]] = dict(entry)
+        return result
+
+    party = membership(resources.get('party'), ('members',))
+    academy = membership(resources.get('academy'), ('value', 'members'))
+    pets = {}
+    for pet in pets_resource.get('pets', [])[:32]:
+        if not isinstance(pet, dict) or not pet.get('pet_id'):
+            continue
+        pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
+
+    containers = {}
+    for key in ('equipment', 'inventory', 'storage', 'job_pouch'):
+        container = resources.get(key)
+        if not isinstance(container, dict) or container.get('availability') != 'observed':
+            continue
+        containers[key] = _event_item_quantities(container.get('slots', []))
+    for pet in pets_resource.get('pets', [])[:32]:
+        if not isinstance(pet, dict) or not pet.get('pet_id') or not pet.get('inventory_available'):
+            continue
+        pet_key = 'pets:' + str(pet['pet_id'])[:64]
+        containers[pet_key] = _event_item_quantities(pet.get('slots', []))
+    return {'party': party, 'academy': academy, 'pets': pets, 'containers': containers}
+
+
+def _event_item_quantities(slots):
+    result = {}
+    if not isinstance(slots, list):
+        return result
+    for row in slots[:MAX_RESOURCE_SLOTS]:
+        if not isinstance(row, dict) or not isinstance(row.get('item'), dict):
+            continue
+        item = dict(row['item'])
+        code = item.get('servername')
+        model = item.get('model')
+        if isinstance(code, str) and code:
+            signature = 'code:' + code[:128]
+        elif isinstance(model, int) and not isinstance(model, bool) and model >= 0:
+            signature = 'model:' + str(model)
+        else:
+            continue
+        quantity = item.get('quantity', 1)
+        if not _number(quantity) or quantity < 0:
+            quantity = 1
+        slot = row.get('source_slot')
+        record = result.setdefault(signature, {'quantity': 0, 'item': item, 'slots': []})
+        record['quantity'] += quantity
+        if isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0:
+            record['slots'].append(slot)
+    return result
+
+
+def _item_has_identity(item):
+    return isinstance(item, dict) and (
+        isinstance(item.get('servername'), str) and bool(item.get('servername')) or
+        isinstance(item.get('model'), int) and not isinstance(item.get('model'), bool) and item.get('model') >= 0
+    )
+
+
+def _container_reference(key, record):
+    reference = {'type': key.split(':', 1)[0]}
+    if ':' in key:
+        reference['id'] = key.split(':', 1)[1]
+    slots = record.get('slots') if isinstance(record, dict) else None
+    if isinstance(slots, list) and len(slots) == 1:
+        reference['slot'] = slots[0]
+    return reference
 
 
 def detect_item_protocol(config_dir, server, locale):
@@ -1317,9 +1426,9 @@ class ReconnectBackoff(object):
         return delay
 
 
-class DeathEventSpool(object):
-    """Small atomic JSON spool for important discrete death occurrences."""
-    def __init__(self, path, max_items=MAX_DEATH_SPOOL_ITEMS, max_bytes=MAX_DEATH_SPOOL_BYTES):
+class EventSpool(object):
+    """Atomic bounded spool for canonical discrete activity events."""
+    def __init__(self, path, max_items=MAX_EVENT_SPOOL_ITEMS, max_bytes=MAX_EVENT_SPOOL_BYTES):
         self.path = path
         self.max_items = max_items
         self.max_bytes = max_bytes
@@ -1337,11 +1446,15 @@ class DeathEventSpool(object):
             value = json.loads(raw.decode('utf-8'))
             if not isinstance(value, list) or len(value) > self.max_items:
                 raise ValueError('invalid spool')
-            self._items = [item for item in value if _valid_death_spool_item(item)]
+            normalized = [_upgrade_legacy_death_event(item) for item in value]
+            self._items = [item for item in normalized if _valid_event_spool_item(item)]
+            if normalized != value:
+                with self._lock:
+                    self._save_locked()
         except IOError:
             self._items = []
         except Exception as error:
-            _log('death event spool could not be loaded (' + error.__class__.__name__ + ')')
+            _log('activity event spool could not be loaded (' + error.__class__.__name__ + ')')
             self._items = []
 
     def _save_locked(self):
@@ -1373,19 +1486,19 @@ class DeathEventSpool(object):
     def add(self, item):
         if not self.path:
             return False
-        if not _valid_death_spool_item(item):
+        if not _valid_event_spool_item(item):
             return False
         with self._lock:
             if any(existing.get('event_id') == item.get('event_id') for existing in self._items):
                 return True
-            if len(self._items) >= self.max_items:
+            if not self._has_capacity(item):
                 return False
             self._items.append(dict(item))
             try:
                 if self._save_locked():
                     return True
             except Exception as error:
-                _log('death event spool write failed (' + error.__class__.__name__ + ')')
+                _log('activity event spool write failed (' + error.__class__.__name__ + ')')
             self._items.pop()
             return False
 
@@ -1399,29 +1512,40 @@ class DeathEventSpool(object):
                 if self._save_locked():
                     return True
             except Exception as error:
-                _log('death event spool acknowledgement failed (' + error.__class__.__name__ + ')')
+                _log('activity event spool acknowledgement failed (' + error.__class__.__name__ + ')')
             self._items = previous
             return False
 
-    def bind_session(self, event_id, character_id, session_id):
+    def bind_session(self, event_id, character_id, session_id, sequence=None):
         if not _validate_agent_id(character_id) or not _validate_agent_id(session_id):
             return False
         with self._lock:
             for index, item in enumerate(self._items):
                 if item.get('event_id') != event_id:
                     continue
-                if item.get('character_id') and item.get('session_id'):
-                    return item['character_id'] == character_id and item['session_id'] == session_id
+                if item.get('character_id') and item.get('session_id') and (
+                        item['character_id'] != character_id or item['session_id'] != session_id):
+                    return False
                 previous = self._items
                 updated = [dict(value) for value in previous]
                 updated[index]['character_id'] = character_id
                 updated[index]['session_id'] = session_id
+                if sequence is not None and updated[index].get('sequence') is None:
+                    updated[index]['sequence'] = sequence
+                updated[index]['deferred_session_binding'] = False
+                payload = updated[index].get('payload')
+                if isinstance(payload, dict) and payload.get('session_binding') == 'deferred':
+                    payload = dict(payload)
+                    payload.pop('session_binding', None)
+                    updated[index]['payload'] = payload
+                if updated[index] == item:
+                    return True
                 self._items = updated
                 try:
                     if self._save_locked():
                         return True
                 except Exception as error:
-                    _log('death event session binding failed (' + error.__class__.__name__ + ')')
+                    _log('activity event session binding failed (' + error.__class__.__name__ + ')')
                 self._items = previous
                 return False
         return False
@@ -1430,15 +1554,41 @@ class DeathEventSpool(object):
         with self._lock:
             return [dict(item) for item in self._items]
 
+    def _has_capacity(self, item):
+        raw = json.dumps(item, separators=(',', ':'), sort_keys=True).encode('utf-8')
+        total_raw = json.dumps(self._items, separators=(',', ':'), sort_keys=True).encode('utf-8')
+        if len(self._items) >= self.max_items or len(total_raw) + len(raw) > self.max_bytes:
+            return False
+        critical = item.get('kind') in ('character.died', 'drop.rare', 'alchemy.attempt', 'alchemy.finished')
+        current = [entry for entry in self._items if (entry.get('kind') in ('character.died', 'drop.rare', 'alchemy.attempt', 'alchemy.finished')) == critical]
+        current_bytes = sum(len(json.dumps(entry, separators=(',', ':'), sort_keys=True).encode('utf-8')) for entry in current)
+        if critical:
+            return len(current) < MAX_EVENT_CRITICAL_ITEMS and current_bytes + len(raw) <= MAX_EVENT_CRITICAL_BYTES
+        return len(current) < MAX_EVENT_ORDINARY_ITEMS and current_bytes + len(raw) <= MAX_EVENT_ORDINARY_BYTES
 
-def _valid_death_spool_item(item):
+
+def _upgrade_legacy_death_event(item):
+    if not isinstance(item, dict):
+        return item
+    if item.get('source_ref') == 'EVENT_DIED' and 'kind' not in item:
+        item = dict(item)
+        item['schema_version'] = 1
+        item['kind'] = 'character.died'
+        item['category'] = 'character'
+    return item
+
+
+def _valid_event_spool_item(item):
     if not isinstance(item, dict):
         return False
     character_id = item.get('character_id')
     session_id = item.get('session_id')
     if (not _validate_agent_id(item.get('event_id')) or
-            item.get('source') != 'phbot.callback' or
-            item.get('source_ref') != 'EVENT_DIED' or
+            not isinstance(item.get('schema_version'), int) or isinstance(item.get('schema_version'), bool) or item.get('schema_version') != 1 or
+            not isinstance(item.get('kind'), str) or len(item.get('kind')) > 80 or
+            not isinstance(item.get('category'), str) or len(item.get('category')) > 40 or
+            not isinstance(item.get('source'), str) or len(item.get('source')) > 80 or
+            not isinstance(item.get('source_ref'), str) or len(item.get('source_ref')) > 120 or
             not isinstance(item.get('payload'), dict) or
             type(item.get('deferred_session_binding', False)) is not bool):
         return False
@@ -1451,12 +1601,16 @@ def _valid_death_spool_item(item):
     character_name = item.get('character_name')
     if (server is None) != (character_name is None):
         return False
-    if server is not None and (
-            not isinstance(server, str) or not server.strip() or len(server) > 100 or
-            not isinstance(character_name, str) or not character_name.strip() or len(character_name) > 64):
+    if (server is not None and (not isinstance(server, str) or len(server) > 100) or
+            character_name is not None and (not isinstance(character_name, str) or len(character_name) > 64)):
         return False
-    # Existing v1 spools have only registered session IDs; keep them replayable.
-    if server is None and character_id is None:
+    if item.get('sequence') is not None and (not isinstance(item.get('sequence'), int) or isinstance(item.get('sequence'), bool) or item.get('sequence') <= 0):
+        return False
+    if item.get('item_model') is not None and (not isinstance(item.get('item_model'), int) or isinstance(item.get('item_model'), bool) or item.get('item_model') < 0):
+        return False
+    if item.get('item_code') is not None and (not isinstance(item.get('item_code'), str) or len(item.get('item_code')) > 128):
+        return False
+    if item.get('dedupe_key') is not None and (not isinstance(item.get('dedupe_key'), str) or len(item.get('dedupe_key')) > 160):
         return False
     try:
         _utc_epoch(item.get('occurred_at'))
@@ -1464,7 +1618,11 @@ def _valid_death_spool_item(item):
         payload = json.dumps(item.get('payload'), separators=(',', ':'), sort_keys=True).encode('utf-8')
     except Exception:
         return False
-    return len(encoded) <= MAX_DEATH_EVENT_BYTES and len(payload) <= MAX_DEATH_PAYLOAD_BYTES
+    return len(encoded) <= MAX_EVENT_BYTES and len(payload) <= MAX_EVENT_PAYLOAD_BYTES
+
+
+# Compatibility alias: existing installations and tests may still use this name.
+DeathEventSpool = EventSpool
 
 
 class AgentWorker(object):
@@ -1480,9 +1638,23 @@ class AgentWorker(object):
         self._socket_lock = threading.Lock()
         self.status = 'Connecting to PhMon backend...'
         self._samples = _queue.Queue(maxsize=1)
-        self._resource_samples = _queue.Queue(maxsize=1)
-        self._death_samples = _queue.Queue(maxsize=128)
+        self._resource_samples = _queue.Queue(maxsize=8)
+        self._resource_sample_gap = False
+        self._event_baseline_required = True
+        self._event_diff_session = None
+        self._event_diff_identity = None
+        self._event_diff = None
+        self._event_samples = _queue.Queue(maxsize=256)
+        self._death_samples = self._event_samples
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
+        self._event_sequence_lock = threading.Lock()
+        self._event_sequences = {}
+        self._alchemy_items_lock = threading.Lock()
+        self._latest_alchemy_items = {}
+        for pending_event in self._death_spool.pending():
+            if pending_event.get('session_id') and isinstance(pending_event.get('sequence'), int):
+                key = pending_event['session_id']
+                self._event_sequences[key] = max(self._event_sequences.get(key, 0), pending_event['sequence'])
         self._death_retry_at = {}
         self._death_context_lock = threading.Lock()
         self._last_death_context = None
@@ -1510,43 +1682,214 @@ class AgentWorker(object):
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
 
-    def update_resources(self, identity, resources):
-        self._queue_resource_sample({'identity': dict(identity), 'resources': resources})
+    def update_resources(self, identity, resources, position=None):
+        self._queue_resource_sample({'identity': dict(identity), 'resources': resources,
+                                     'position': dict(position) if isinstance(position, dict) else None,
+                                     'observed_at': _worker_utc_now(self)})
 
-    def update_resource_inputs(self, identity, inputs, config_dir, locale):
+    def update_resource_inputs(self, identity, inputs, config_dir, locale, position=None):
         self._queue_resource_sample({
             'identity': dict(identity),
             'inputs': inputs,
             'config_dir': config_dir,
             'locale': locale,
+            'position': dict(position) if isinstance(position, dict) else None,
+            'observed_at': _worker_utc_now(self),
         })
+
+    def latest_resource_item_at_slot(self, slot):
+        with self._alchemy_items_lock:
+            item = self._latest_alchemy_items.get(slot)
+            return dict(item) if isinstance(item, dict) else None
+
+    def _update_alchemy_items(self, resources):
+        indexed = {}
+        for key in ('equipment', 'inventory'):
+            container = resources.get(key) if isinstance(resources, dict) else None
+            if not isinstance(container, dict) or container.get('availability') != 'observed':
+                continue
+            for row in container.get('slots', []):
+                if (isinstance(row, dict) and isinstance(row.get('source_slot'), int) and
+                        isinstance(row.get('item'), dict)):
+                    indexed[row['source_slot']] = dict(row['item'])
+        with self._alchemy_items_lock:
+            self._latest_alchemy_items = indexed
+
+    def _derive_resource_events(self, identity, resources, sample):
+        identity_key = self._identity_key(identity)
+        if identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
+            self._event_baseline_required = True
+            self._event_diff_identity = identity_key
+            self._event_diff_session = self.session_id
+        if self._resource_sample_gap:
+            self._resource_sample_gap = False
+            self._event_baseline_required = True
+        current = _event_resource_snapshot(resources)
+        if current is None:
+            self._event_baseline_required = True
+            self._event_diff = None
+            return
+        previous = self._event_diff
+        if self._event_baseline_required or previous is None:
+            self._event_diff = current
+            self._event_baseline_required = False
+            return
+        observed_at = sample.get('observed_at') if isinstance(sample, dict) else None
+        position = sample.get('position') if isinstance(sample, dict) else None
+
+        for group, join_kind, leave_kind, ref in (
+                ('party', 'party.member_joined', 'party.member_left', 'party'),
+                ('academy', 'academy.member_joined', 'academy.member_left', 'academy'),
+                ('pets', 'pet.summoned', 'pet.dismissed', 'pet')):
+            before = previous.get(group)
+            after = current.get(group)
+            if before is None or after is None:
+                continue
+            for key in sorted(set(after) - set(before)):
+                self._emit_state_change(identity, join_kind, ref, key, after[key], observed_at, position)
+            for key in sorted(set(before) - set(after)):
+                self._emit_state_change(identity, leave_kind, ref, key, before[key], observed_at, position)
+
+        old_containers = previous.get('containers', {})
+        new_containers = current.get('containers', {})
+        if set(old_containers) == set(new_containers):
+            self._emit_item_deltas(identity, old_containers, new_containers, observed_at, position)
+        else:
+            # A newly opened or dismissed container establishes a new baseline.
+            pass
+        self._event_diff = current
+
+    def _emit_state_change(self, identity, kind, source_ref, key, value, occurred_at, position):
+        payload = {'member_id': key, 'member': value}
+        if source_ref == 'pet':
+            payload = {'pet_id': key, 'pet': value}
+        self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
+
+    def _emit_item_deltas(self, identity, before, after, occurred_at, position):
+        signatures = set()
+        for container in before.values(): signatures.update(container)
+        for container in after.values(): signatures.update(container)
+        for signature in sorted(signatures):
+            old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
+            new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
+            if old_total == new_total:
+                gains, losses = [], []
+                for container_key in before:
+                    old = before[container_key].get(signature, {}).get('quantity', 0)
+                    new = after[container_key].get(signature, {}).get('quantity', 0)
+                    if new > old: gains.append((container_key, new - old, after[container_key][signature]))
+                    elif old > new: losses.append((container_key, old - new, before[container_key][signature]))
+                if len(gains) == 1 and len(losses) == 1 and gains[0][1] == losses[0][1]:
+                    source_key, quantity, source_item = losses[0]
+                    dest_key, _, dest_item = gains[0]
+                    item = dest_item.get('item') or source_item.get('item') or {}
+                    if _item_has_identity(item):
+                        payload = {'item': item, 'quantity_delta': quantity,
+                                   'source_container': _container_reference(source_key, source_item),
+                                   'destination_container': _container_reference(dest_key, dest_item),
+                                   'method': 'observed_container_delta'}
+                        self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
+                                                  occurred_at, position, item)
+                elif gains or losses:
+                    for container_key, quantity, record in gains:
+                        item = record.get('item') or {}
+                        if _item_has_identity(item):
+                            payload = {'item': item, 'quantity_delta': quantity,
+                                       'destination_container': _container_reference(container_key, record),
+                                       'acquisition_method': 'unknown'}
+                            self._queue_derived_event(identity, 'item.quantity_increased', 'item_container', payload,
+                                                      occurred_at, position, item)
+                    for container_key, quantity, record in losses:
+                        item = record.get('item') or {}
+                        if _item_has_identity(item):
+                            payload = {'item': item, 'quantity_delta': quantity,
+                                       'source_container': _container_reference(container_key, record)}
+                            self._queue_derived_event(identity, 'item.quantity_decreased', 'item_container', payload,
+                                                      occurred_at, position, item)
+                continue
+
+            positive, negative = (new_total - old_total, 0) if new_total > old_total else (0, old_total - new_total)
+            deltas = []
+            for container_key in before:
+                old = before[container_key].get(signature, {}).get('quantity', 0)
+                new = after[container_key].get(signature, {}).get('quantity', 0)
+                if new > old: deltas.append(('gain', container_key, new - old, after[container_key][signature]))
+                elif old > new: deltas.append(('loss', container_key, old - new, before[container_key][signature]))
+            changes = [entry for entry in deltas if entry[0] == ('gain' if positive else 'loss')]
+            remaining = positive or negative
+            for direction, container_key, quantity, record in changes:
+                amount = min(quantity, remaining)
+                remaining -= amount
+                item = record.get('item') or {}
+                if not amount or not _item_has_identity(item):
+                    continue
+                if direction == 'gain':
+                    kind = 'item.acquired' if old_total == 0 else 'item.quantity_increased'
+                    payload = {'item': item, 'quantity_delta': amount,
+                               'destination_container': _container_reference(container_key, record)}
+                    payload['acquisition_method'] = 'unknown'
+                else:
+                    kind = 'item.quantity_decreased'
+                    payload = {'item': item, 'quantity_delta': amount,
+                               'source_container': _container_reference(container_key, record)}
+                self._queue_derived_event(identity, kind, 'item_container', payload, occurred_at, position, item)
+
+    def _queue_derived_event(self, identity, kind, source_ref, payload, occurred_at, position, item=None):
+        event = {
+            'event_id': str(uuid.uuid4()), 'schema_version': 1, 'kind': kind,
+            'category': kind.split('.', 1)[0], 'occurred_at': occurred_at or _worker_utc_now(self),
+            'source': 'phbot.state_diff', 'source_ref': source_ref, 'payload': payload,
+        }
+        if isinstance(position, dict):
+            region = position.get('region')
+            if isinstance(region, int) and not isinstance(region, bool) and 0 <= region <= 65535:
+                event['region'] = region
+            for axis in ('x', 'y', 'z'):
+                value = position.get(axis)
+                if _number(value) and abs(value) <= 1000000:
+                    event[axis] = float(value)
+        if isinstance(item, dict):
+            model = item.get('model')
+            code = item.get('servername')
+            if isinstance(model, int) and not isinstance(model, bool) and model >= 0: event['item_model'] = model
+            if isinstance(code, str) and code: event['item_code'] = code[:128]
+        self.queue_event(identity, event)
 
     def capture_joymax_packet(self, opcode, data):
         """Copy only allowlisted packets; decoding is performed by the network worker."""
         return self._item_tracker.enqueue(opcode, data)
 
     def queue_death_event(self, identity, event):
-        if (not isinstance(identity, dict) or not isinstance(event, dict) or
-                not isinstance(identity.get('server'), str) or not isinstance(identity.get('name'), str)):
-            _log('death callback has no usable character identity')
+        if isinstance(event, dict):
+            event = dict(event)
+            event.setdefault('schema_version', 1)
+            event.setdefault('kind', 'character.died')
+            event.setdefault('category', 'character')
+        return self.queue_event(identity, event)
+
+    def queue_event(self, identity, event):
+        if not isinstance(event, dict) or not event.get('kind') or not event.get('category'):
+            _log('activity event is missing its canonical type')
+            return False
+        if (isinstance(identity, dict) and self._current_identity is not None and
+                self._identity_key(identity) != self._identity_key(self._current_identity)):
+            _log('activity event was rejected because its character identity is no longer active')
             return False
         record = dict(event)
-        record['server'] = identity['server'].strip()[:100]
-        record['character_name'] = identity['name'].strip()[:64]
-        if not record['server'] or not record['character_name']:
-            _log('death callback has incomplete character identity')
-            return False
-        if (self._current_identity is not None and
-                self._identity_key(identity) != self._identity_key(self._current_identity)):
-            _log('death callback identity does not match the registered character session')
-            return False
-
+        if isinstance(identity, dict):
+            server = identity.get('server')
+            character_name = identity.get('name')
+            record['server'] = str(server or '').strip()[:100] or None
+            record['character_name'] = str(character_name or '').strip()[:64] or None
+        elif record.get('server') is not None or record.get('character_name') is not None:
+            record['server'] = str(record.get('server') or '').strip()[:100] or None
+            record['character_name'] = str(record.get('character_name') or '').strip()[:64] or None
         context = None
-        if (self._current_identity is not None and
+        if (isinstance(identity, dict) and self._current_identity is not None and
                 self._identity_key(identity) == self._identity_key(self._current_identity) and
                 _validate_agent_id(self.character_id) and _validate_agent_id(self.session_id)):
             context = {'character_id': self.character_id, 'session_id': self.session_id}
-        if context is None:
+        if context is None and isinstance(identity, dict):
             with self._death_context_lock:
                 previous = self._last_death_context
                 if previous and self._identity_key(identity) == self._identity_key(previous['identity']):
@@ -1557,22 +1900,31 @@ class AgentWorker(object):
         if context:
             record.update(context)
             record['deferred_session_binding'] = False
+            if record.get('sequence') is None:
+                record['sequence'] = self._next_event_sequence(context['session_id'])
         else:
             record['character_id'] = None
             record['session_id'] = None
-            record['deferred_session_binding'] = True
-            payload = record.get('payload')
-            if isinstance(payload, dict):
-                payload = dict(payload)
-                payload['session_binding'] = 'deferred'
-                record['payload'] = payload
+            record['deferred_session_binding'] = bool(record.get('character_name') and record.get('server'))
+            if record['deferred_session_binding']:
+                payload = record.get('payload')
+                if isinstance(payload, dict):
+                    payload = dict(payload)
+                    payload['session_binding'] = 'deferred'
+                    record['payload'] = payload
         try:
-            self._death_samples.put_nowait(record)
+            self._event_samples.put_nowait(record)
             return True
         except _queue.Full:
-            self.status = 'Death event queue is full; an occurrence needs operator attention.'
-            _log('death event queue is full; occurrence was not spooled')
+            self.status = 'Activity event queue is full; an occurrence needs operator attention.'
+            _log('activity event was not queued because the event queue is full')
             return False
+
+    def _next_event_sequence(self, session_id):
+        with self._event_sequence_lock:
+            sequence = self._event_sequences.get(session_id, 0) + 1
+            self._event_sequences[session_id] = sequence
+            return sequence
 
     def _queue_resource_sample(self, sample):
         try:
@@ -1586,6 +1938,8 @@ class AgentWorker(object):
                 self._resource_samples.put_nowait(sample)
             except _queue.Full:
                 pass
+            self._resource_sample_gap = True
+            self.status = 'Resource sampling fell behind; event baseline will be reset.'
 
     def leave_character(self):
         if self._active_walk is not None:
@@ -1632,6 +1986,7 @@ class AgentWorker(object):
     def _run(self):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
+            self._spool_queued_events()
             client = None
             try:
                 self.status = 'Connecting to PhMon backend...'
@@ -1711,6 +2066,8 @@ class AgentWorker(object):
                             else:
                                 resources = resource_sample['resources']
                             resources = self._item_tracker.decorate(resources, self.session_id)
+                            self._derive_resource_events(resource_sample['identity'], resources, resource_sample)
+                            self._update_alchemy_items(resources)
                             self._latest_resources = resources
                             self._latest_resources_identity = self._identity_key(resource_sample['identity'])
                             self._send_resource_snapshot(client, self._latest_resources)
@@ -1764,7 +2121,13 @@ class AgentWorker(object):
                 self._item_tracker.reset('backend_reconnect')
 
             if not self.stop_event.is_set():
-                self.stop_event.wait(backoff.next_delay())
+                delay = backoff.next_delay()
+                deadline = _monotonic() + delay
+                while not self.stop_event.is_set():
+                    self._spool_queued_events()
+                    remaining = deadline - _monotonic()
+                    if remaining <= 0 or self.stop_event.wait(min(0.25, remaining)):
+                        break
 
     def _publish_sample(self, client, sample, snapshot):
         identity, state = sample['identity'], sample['state']
@@ -1956,6 +2319,23 @@ class AgentWorker(object):
     def _handle_server_message(self, message):
         if not isinstance(message,dict): raise WebSocketClosed('invalid server application frame')
         if message.get('type') == 'character.rejected': self._handle_character_rejected(message)
+        elif message.get('type') == 'event.batch.ack':
+            if message.get('protocol_version') != PROTOCOL_VERSION or not isinstance(message.get('results'), list) or len(message['results']) > MAX_EVENT_BATCH_SIZE:
+                raise WebSocketClosed('invalid event batch acknowledgement')
+            seen = set()
+            for result in message['results']:
+                if (not isinstance(result, dict) or not _validate_agent_id(result.get('event_id')) or
+                        result.get('status') not in ('persisted', 'rejected', 'retry') or result['event_id'] in seen):
+                    raise WebSocketClosed('invalid event batch acknowledgement')
+                seen.add(result['event_id'])
+                event_id = result['event_id']
+                if result['status'] in ('persisted', 'rejected'):
+                    self._death_spool.acknowledge(event_id)
+                    self._death_retry_at.pop(event_id, None)
+                    if result['status'] == 'rejected':
+                        _log('activity event rejected by backend (' + str(result.get('reason', 'unknown'))[:80] + ')')
+                else:
+                    self._death_retry_at[event_id] = _monotonic() + 3.0
         elif message.get('type') == 'event.ack':
             if (message.get('protocol_version') != PROTOCOL_VERSION or
                     not _validate_agent_id(message.get('event_id')) or
@@ -2063,44 +2443,99 @@ class AgentWorker(object):
             except _queue.Empty: return
             client.send_json(frame)
 
-    def _flush_death_events(self, client):
+    def _spool_queued_events(self):
         while True:
             try:
-                event = self._death_samples.get_nowait()
+                event = self._event_samples.get_nowait()
             except _queue.Empty:
                 break
             if not self._death_spool.add(event):
-                self.status = 'Death event spool is unavailable or full; an occurrence needs operator attention.'
-                _log('death event was not sent because durable local spooling failed')
+                self.status = 'Activity event spool is unavailable or full; an occurrence needs operator attention.'
+                _log('activity event was not sent because durable local spooling failed')
+
+    def _flush_events(self, client):
+        self._spool_queued_events()
         now = _monotonic()
+        batch = []
+        batch_ids = []
+        batch_size = 128
         for event in self._death_spool.pending():
             event_id = event.get('event_id')
             if self._death_retry_at.get(event_id, 0.0) > now:
                 continue
-            if not _validate_agent_id(event.get('character_id')) or not _validate_agent_id(event.get('session_id')):
+            already_bound = (
+                _validate_agent_id(event.get('character_id')) and
+                _validate_agent_id(event.get('session_id'))
+            )
+            needs_binding = not already_bound and (
+                event.get('deferred_session_binding') or
+                (event.get('character_name') and not _validate_agent_id(event.get('session_id')))
+            )
+            if needs_binding:
                 identity = {'server': event.get('server'), 'name': event.get('character_name')}
                 if (self._current_identity is None or
                         self._identity_key(identity) != self._identity_key(self._current_identity) or
                         not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id)):
+                        continue
+                character_id = self.character_id
+                session_id = self.session_id
+            elif already_bound:
+                character_id = event['character_id']
+                session_id = event['session_id']
+            else:
+                character_id = None
+                session_id = None
+            if character_id and session_id:
+                sequence = event.get('sequence')
+                if sequence is None:
+                    sequence = self._next_event_sequence(session_id)
+                if not self._death_spool.bind_session(event_id, character_id, session_id, sequence):
+                    self.status = 'Activity event could not be bound to a registered character session.'
                     continue
-                if not self._death_spool.bind_session(event_id, self.character_id, self.session_id):
-                    self.status = 'Death event could not be bound to a registered character session.'
-                    continue
-                event['character_id'] = self.character_id
-                event['session_id'] = self.session_id
-            frame = {
-                'type': 'character.died',
-                'protocol_version': PROTOCOL_VERSION,
-                'character_id': event.get('character_id'),
-                'session_id': event.get('session_id'),
-                'event': {
-                    key: value for key, value in event.items()
-                    if key not in ('character_id', 'session_id', 'server', 'character_name', 'deferred_session_binding')
-                },
-                'sent_at': _utc_now(),
+                event['character_id'] = character_id
+                event['session_id'] = session_id
+                event['sequence'] = sequence
+                event['deferred_session_binding'] = False
+                payload = event.get('payload')
+                if isinstance(payload, dict) and payload.get('session_binding') == 'deferred':
+                    payload = dict(payload)
+                    payload.pop('session_binding', None)
+                    event['payload'] = payload
+            wire = {
+                key: event.get(key) for key in (
+                    'event_id', 'schema_version', 'kind', 'category', 'character_id', 'session_id',
+                    'occurred_at', 'sequence', 'source', 'source_ref', 'dedupe_key', 'region',
+                    'x', 'y', 'z', 'item_model', 'item_code', 'payload')
+                if event.get(key) is not None
             }
-            client.send_json(frame)
-            self._death_retry_at[event_id] = now + 3.0
+            if event.get('server'):
+                wire['server'] = event['server']
+            if event.get('character_name'):
+                wire['character'] = event['character_name']
+            encoded_size = len(json.dumps(wire, separators=(',', ':'), sort_keys=True).encode('utf-8'))
+            if batch and (len(batch) >= MAX_EVENT_BATCH_SIZE or batch_size + encoded_size > MAX_MESSAGE_BYTES - 1024):
+                break
+            if encoded_size + batch_size > MAX_MESSAGE_BYTES - 1024:
+                self.status = 'Activity event exceeds the transport frame limit.'
+                _log('activity event could not be sent because it exceeds the transport frame limit')
+                self._death_retry_at[event_id] = now + 30.0
+                continue
+            batch.append(wire)
+            batch_ids.append(event_id)
+            batch_size += encoded_size
+        if batch:
+            client.send_json({
+                'type': 'event.batch',
+                'protocol_version': PROTOCOL_VERSION,
+                'sent_at': _utc_now(),
+                'events': batch,
+            })
+            for event_id in batch_ids:
+                self._death_retry_at[event_id] = now + 3.0
+
+    def _flush_death_events(self, client):
+        # Compatibility name retained for callers during the event-pipeline rollout.
+        return self._flush_events(client)
 
     def _base_result(self, message, status, code, verification):
         return {'type':'command.result','protocol_version':PROTOCOL_VERSION,'command_id':message.get('command_id'),
@@ -2348,6 +2783,9 @@ _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
 _death_callback_active = False
+_phbot_connected_state = None
+_pending_callback_events = _queue.Queue(maxsize=64)
+_pending_callback_overflow = False
 # None means the plugin loaded after phBot may already have joined. In that case
 # event_loop can establish presence once get_character_data() returns a character.
 _character_joined = None
@@ -2478,16 +2916,23 @@ def save_config():
 
 def connected():
     # phBot calls this when its client connects to the game server.
-    global _character_joined
+    global _character_joined, _phbot_connected_state
+    already_connected = _phbot_connected_state is True
+    _phbot_connected_state = True
     _character_joined = False
-    _load_active_profile()
+    if not already_connected:
+        _lifecycle_event('session.connected', 'connected')
 
 
 def disconnected():
-    global _last_character_signature, _character_joined, _death_callback_active
+    global _last_character_signature, _character_joined, _death_callback_active, _phbot_connected_state
+    already_disconnected = _phbot_connected_state is False
+    _phbot_connected_state = False
     _last_character_signature = None
     _character_joined = False
     _death_callback_active = False
+    if not already_disconnected:
+        _lifecycle_event('session.disconnected', 'disconnected', include_identity=_worker is not None)
     if _worker is not None:
         _worker.leave_character()
     _set_gui_status('SRO client disconnected. Waiting for login...')
@@ -2496,10 +2941,17 @@ def disconnected():
 def joined_game():
     # This callback runs after the player selects a character.
     global _last_character_signature, _character_joined, _death_callback_active
+    already_joined = _character_joined is True
     _last_character_signature = None
     _character_joined = True
     _death_callback_active = False
-    _load_active_profile()
+    # joined_game runs before phBot has loaded character data; keep this agent-scoped.
+    if not already_joined:
+        _lifecycle_event('session.joined_game', 'joined_game')
+
+
+def teleported():
+    _lifecycle_event('session.teleported', 'teleported', include_identity=True)
 
 
 def handle_joymax(opcode, data):
@@ -2514,54 +2966,203 @@ def handle_joymax(opcode, data):
 
 
 def handle_event(event_type, data):
-    """Queue the documented death callback without disk or network work here."""
+    """Normalize documented event callbacks and enqueue without disk/network work."""
     global _death_callback_active
     try:
         event_type = int(event_type)
     except Exception:
         return
-    if event_type != EVENT_DIED or _death_callback_active:
-        return
-    if _worker is None:
-        _log('death callback observed while PhMon is disconnected')
+    mapping = {
+        EVENT_UNIQUE_SPAWN: ('world.unique_spawned', 'world', 'EVENT_UNIQUE_SPAWN'),
+        EVENT_HUNTER_SPAWN: ('job.hunter_trader_seen', 'job', 'EVENT_HUNTER_SPAWN'),
+        EVENT_THIEF_SPAWN: ('job.thief_seen', 'job', 'EVENT_THIEF_SPAWN'),
+        EVENT_TRANSPORT_DIED: ('pet.transport_died', 'pet', 'EVENT_TRANSPORT_DIED'),
+        EVENT_PLAYER_ATTACKING: ('character.attacked', 'character', 'EVENT_PLAYER_ATTACKING'),
+        EVENT_RARE_DROP: ('drop.rare', 'drop', 'EVENT_RARE_DROP'),
+        EVENT_ITEM_DROP: ('drop.item', 'drop', 'EVENT_ITEM_DROP'),
+        EVENT_DIED: ('character.died', 'character', 'EVENT_DIED'),
+        EVENT_ALCHEMY_FINISHED: ('alchemy.finished', 'alchemy', 'EVENT_ALCHEMY_FINISHED'),
+        EVENT_GM_SPAWNED: ('world.gm_spawned', 'world', 'EVENT_GM_SPAWNED'),
+        EVENT_LEVEL_UP: ('character.level_up', 'character', 'EVENT_LEVEL_UP'),
+    }
+    mapped = mapping.get(event_type)
+    if mapped is None or event_type == EVENT_DIED and _death_callback_active:
         return
     try:
         character = _get_character_data()
     except Exception:
         character = None
-    if not isinstance(character, dict):
-        _log('death callback had no character identity')
+    identity = None
+    if isinstance(character, dict):
+        server = str(character.get('server', '') or '').strip()[:100]
+        name = str(character.get('name', '') or '').strip()[:64]
+        if server and name:
+            identity = {'server': server, 'name': name}
+    kind, category, source_ref = mapped
+    if identity is None:
+        _log('phBot event callback had no character identity')
         return
-    identity = {
-        'server': str(character.get('server', '') or '').strip()[:100],
-        'name': str(character.get('name', '') or '').strip()[:64],
-    }
-    if not identity['server'] or not identity['name']:
-        _log('death callback had incomplete character identity')
-        return
+    payload = {}
+    item_model = None
+    if event_type in (EVENT_ITEM_DROP, EVENT_RARE_DROP):
+        try:
+            item_model = int(str(data).strip())
+        except Exception:
+            _log('drop callback supplied an invalid item model')
+            return
+        if item_model < 0 or item_model > 2147483647:
+            return
+        payload = {'model': item_model}
+    elif event_type == EVENT_LEVEL_UP:
+        try:
+            level = int(str(data).strip())
+        except Exception:
+            _log('level-up callback supplied an invalid level')
+            return
+        if level < 1 or level > 255:
+            return
+        payload = {'level': level}
+    elif event_type == EVENT_DIED:
+        payload = {'cause': 'unknown'}
+    elif event_type == EVENT_ALCHEMY_FINISHED:
+        payload = {}
+    else:
+        payload = {'value': _bounded_text(data, 512) or ''}
+    if _queue_canonical_event(kind, category, 'phbot.callback', source_ref, payload, identity,
+                              item_model=item_model):
+        if event_type == EVENT_DIED:
+            _death_callback_active = True
+
+
+def _safe_callback_text(value, maximum=2048):
+    try:
+        raw = str(value if value is not None else '').encode('utf-8')
+    except Exception:
+        return ''
+    if len(raw) > maximum:
+        raw = raw[:maximum]
+    return raw.decode('utf-8', 'ignore')
+
+
+def _queue_canonical_event(kind, category, source, source_ref, payload, identity=None,
+                           item_model=None, item_code=None, position=True, dedupe_key=None):
     event = {
         'event_id': str(uuid.uuid4()),
-        'occurred_at': _worker_utc_now(_worker),
-        'source': 'phbot.callback',
-        'source_ref': 'EVENT_DIED',
-        'payload': {'cause': 'unknown', 'callback_data': str(data or '')[:128]},
+        'schema_version': 1,
+        'kind': kind,
+        'category': category,
+        'occurred_at': _worker_utc_now(_worker) if _worker is not None else _utc_now(),
+        'source': source,
+        'source_ref': source_ref,
+        'payload': payload if isinstance(payload, dict) else {},
     }
+    if item_model is not None:
+        event['item_model'] = item_model
+    if item_code:
+        event['item_code'] = str(item_code)[:128]
+    if dedupe_key:
+        event['dedupe_key'] = str(dedupe_key)[:160]
+    if position:
+        try:
+            observed_position = _get_position()
+        except Exception:
+            observed_position = None
+        if isinstance(observed_position, dict):
+            region = observed_position.get('region')
+            if isinstance(region, int) and not isinstance(region, bool) and 0 <= region <= 65535:
+                event['region'] = region
+            for axis in ('x', 'y', 'z'):
+                value = observed_position.get(axis)
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and -1000000 <= value <= 1000000:
+                    event[axis] = float(value)
+    if _worker is not None:
+        return _worker.queue_event(identity, event)
+    global _pending_callback_overflow
     try:
-        position = _get_position()
+        _pending_callback_events.put_nowait((dict(identity) if isinstance(identity, dict) else None, event))
+        return True
+    except _queue.Full:
+        _pending_callback_overflow = True
+        _log('activity callback queue is full; an occurrence needs operator attention')
+        return False
+
+
+def _lifecycle_event(kind, source_ref, include_identity=False):
+    identity = None
+    if include_identity:
+        try:
+            character = _get_character_data()
+        except Exception:
+            character = None
+        if isinstance(character, dict) and character.get('server') and character.get('name'):
+            identity = {'server': character['server'], 'name': character['name']}
+    session = _worker.session_id if _worker is not None else None
+    dedupe = ('lifecycle:' + str(session) + ':' + source_ref) if session and kind != 'session.teleported' else None
+    return _queue_canonical_event(kind, 'session', 'phbot.lifecycle_callback', source_ref, {}, identity,
+                                  position=include_identity, dedupe_key=dedupe)
+
+
+def handle_chat(chat_type, player, message):
+    """Keep the original bounded message and raw server type until verified."""
+    try:
+        character = _get_character_data()
     except Exception:
-        position = None
-    if isinstance(position, dict):
-        region = position.get('region')
-        if isinstance(region, int) and not isinstance(region, bool) and 0 <= region <= 65535:
-            event['region'] = region
-        for axis in ('x', 'y', 'z'):
-            value = position.get(axis)
-            if isinstance(value, (int, float)) and not isinstance(value, bool) and -1000000 <= value <= 1000000:
-                event[axis] = float(value)
-    if _worker.queue_death_event(identity, event):
-        _death_callback_active = True
+        character = None
+    identity = None
+    if isinstance(character, dict) and character.get('server') and character.get('name'):
+        identity = {'server': character['server'], 'name': character['name']}
+    if identity is None:
+        _log('phBot chat callback had no character identity')
+        return
+    sender = _bounded_text(player, 64)
+    payload = {
+        'channel': 'unknown',
+        'raw_type': _bounded_text(chat_type, 64),
+        'sender': sender,
+        'recipient': identity.get('name') if sender and identity else None,
+        'direction': 'inbound',
+        'message': _safe_callback_text(message, 2048),
+    }
+    _queue_canonical_event('chat.message_received', 'chat', 'phbot.chat_callback', 'handle_chat', payload, identity)
 
 
+def alchemy_update(slot, success, plus):
+    """Capture the documented callback values and a cached item snapshot if known."""
+    if not isinstance(slot, int) or isinstance(slot, bool) or slot < 0 or slot > 4096:
+        return
+    success_value = success if isinstance(success, bool) else None
+    plus_value = plus if isinstance(plus, int) and not isinstance(plus, bool) and 0 <= plus <= 255 else None
+    payload = {'slot': slot, 'success': success_value, 'plus': plus_value}
+    identity = None
+    try:
+        character = _get_character_data()
+    except Exception:
+        character = None
+    if isinstance(character, dict) and character.get('server') and character.get('name'):
+        identity = {'server': character['server'], 'name': character['name']}
+    if identity is None:
+        _log('phBot alchemy callback had no character identity')
+        return
+    item = _worker.latest_resource_item_at_slot(slot) if hasattr(_worker, 'latest_resource_item_at_slot') else None
+    item_model = item.get('model') if item else None
+    item_code = item.get('servername') if item else None
+    if item:
+        payload['item'] = item
+    _queue_canonical_event('alchemy.attempt', 'alchemy', 'phbot.alchemy_callback', 'alchemy_update', payload,
+                           identity, item_model=item_model, item_code=item_code)
+
+
+def _item_snapshot_at_inventory_slot(resources, slot):
+    if not isinstance(resources, dict):
+        return None
+    for key in ('equipment', 'inventory'):
+        container = resources.get(key)
+        if not isinstance(container, dict) or container.get('availability') != 'observed':
+            continue
+        for row in container.get('slots', []):
+            if isinstance(row, dict) and row.get('source_slot') == slot and isinstance(row.get('item'), dict):
+                return dict(row['item'])
+    return None
 def event_loop():
     # phBot calls this every 500 ms. Keep UI updates and profile detection here;
     # the worker owns backend I/O and only publishes its latest status string.
@@ -2570,8 +3171,24 @@ def event_loop():
     except Exception as error:
         _log('profile sync failed (' + error.__class__.__name__ + ')')
     if _worker is not None:
+        _drain_pending_callback_events()
         _set_gui_status(_worker.status)
         _sample_character()
+
+
+def _drain_pending_callback_events():
+    global _pending_callback_overflow
+    if _worker is None:
+        return
+    while True:
+        try:
+            identity, event = _pending_callback_events.get_nowait()
+        except _queue.Empty:
+            break
+        _worker.queue_event(identity, event)
+    if _pending_callback_overflow:
+        _worker.status = 'Activity callback queue overflowed before the event worker was available.'
+        _pending_callback_overflow = False
 
 
 def _sample_character():
@@ -2643,7 +3260,7 @@ def _sample_character():
         except Exception:
             locale = None
         try:
-            _worker.update_resource_inputs(identity, collect_resource_inputs(), config_dir, locale)
+            _worker.update_resource_inputs(identity, collect_resource_inputs(), config_dir, locale, position)
             _last_resources_sample_at = now
         except Exception as error:
             _log('resource collection failed (' + error.__class__.__name__ + ')')

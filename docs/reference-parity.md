@@ -42,8 +42,103 @@ Visual comparison is structurally checked against the three supplied captures. T
 increment still needs local captures at 1440×1000, 1280×800 and 390×844 and the
 keyboard/focus/whole-page-width review before screenshot parity is accepted. No real
 character was operated; actual phBot death callback validation remains open. This
-implements the death portion and reusable storage/query foundation of Slice 5, not
-the remaining Slice 5 event families.
+was the original death-only implementation; the current canonical pipeline is
+recorded in the Slice 5 entry below.
+
+## Slice 5 — Canonical event pipeline (2026-09-28)
+
+### Reference inspection
+
+The public demo was opened at `https://phmonitor.com/demo` in the in-app browser. The
+History page exposed All, Level Ups, Custom, Deaths, Rare Drops, Normal Drops and
+Uniques tabs, a result count, empty-state text, page-size selector and previous/next
+controls. The Rare Drops screen used Item, Time, Character, Location and Map columns.
+The Alchemy screen exposed Live log and Sessions, an attempt summary and an empty
+session table with Item, Highest Plus, Failures and Total attempts. The server status
+was Disconnected and its recurring `remoteToken is required` overlay was hidden only
+for the History inspection; it returned after navigation and was not investigated.
+Easy/advanced mode was toggled once, but saving failed on that same demo connection.
+The browser default viewport was not measured, so this inspection is structural
+evidence only and is not a matching screenshot comparison.
+
+Reference captures supplied with the repository remain the visual baseline:
+`phmonitor_screenshots/05-history-01.png`, `05-rare-drops.png`,
+`05-normal-drops.png`, `05-uniques.png` and `05-alchemy.png`. The public page used
+“History”; the independent PhMon implementation uses Events navigation and History
+headings inside its own shell.
+
+### Implemented behavior and evidence
+
+- Protocol v6 batches generalized the v5 death event frame. Migration
+  `000007_event_pipeline.sql` adds nullable agent-level context, sequence, dedupe key
+  and indexed item identity. The Go backend authenticates agent ownership, fences
+  character/session scope, validates bounded kind-specific payloads, commits a batch
+  transaction and returns per-event results after commit. v2–v5 compatibility remains.
+- The profile-scoped spool upgrades pending death rows, retains event IDs through
+  retry and reserves 512 / 8 MiB for critical events plus 2,048 / 16 MiB for ordinary
+  events. Callback and worker queues stay bounded; overflow/disk failures set status
+  and log. Process termination before worker spooling remains a documented loss window.
+- All documented `handle_event` IDs 0–10 are normalized. Rare and normal drops stay
+  separate and include only the documented model ID. `alchemy_update` emits attempts;
+  `EVENT_ALCHEMY_FINISHED` emits completion. Chat preserves raw type and bounded text
+  under `channel:"unknown"`. Official source and runtime limitations are in
+  [`phbot-capabilities.md`](phbot-capabilities.md).
+- Continuous identity-aware party, academy, pet and owned-container snapshots produce
+  join/leave, summon/dismiss and quantity/transfer events. Initial state, container
+  set changes and sample gaps reset baselines. Tests cover bag split/merge, positive
+  bag and job-pouch deltas, opening storage, pet summon and pet-to-bag transfer.
+  Causes remain unknown where source evidence does not prove them.
+- `/api/events` and the live `events` stream share server, character, kind, category,
+  item, date and cursor filters. The Events page has seven tabs, compact filters,
+  counts, item and character context, cursor pagination and disabled map actions
+  pending validated transforms. Dashboard recent events and rare drops use this
+  stream. `/alchemy` presents attempts, known outcomes, highest observed plus,
+  item/character/date filters and cursor paging. Academy membership transitions are
+  available in this history. Slice 6 can consume `chat.message_received`.
+- Dashboard Recent Events groups identical chat messages from the same sender, raw
+  type and server when distinct characters observe them within two seconds. One row
+  lists all observers; the canonical event history retains each observation.
+
+Verification passed: `go test ./...`, `go vet ./...`, `go build ./...`,
+`python -m py_compile plugin/PhMon.py`, `python -m unittest plugin.test_phmon`
+(71 tests, including spool capacity and disk failure), `npm run test:unit` (8 tests,
+including cross-character chat grouping),
+`npm run typecheck`, `npm run lint`,
+`npm run format:check` and `npm run build`. ESLint reports 22 non-fatal
+`vue/html-self-closing` warnings. Database integration tests compile but skip because
+this workspace has no `TEST_DATABASE_URL`, Docker CLI or disposable PostgreSQL;
+migration execution, database batch atomicity/replay/filter queries and the complete
+plugin→Go→PostgreSQL→UI simulator flow therefore remain unverified.
+
+Local authenticated UI smoke checks used an empty, temporary loopback fixture backend;
+they verify page structure and navigation only, not persistence or live data. The
+Events and Alchemy captures are saved under `docs/reference/local/` at exact 1440×1000
+and 1280×800 content viewports. The Firefox tooling clamps its minimum window width
+to 500 CSS pixels, so the narrow captures are 500×844 and do not satisfy the required
+390×844 comparison. At the rendered desktop sizes and the 500-pixel narrow size,
+`document.documentElement.scrollWidth` matched the viewport width; the event table
+scrolls within its own region on narrow screens. The local screenshots show fixture
+empty states and are not presented as a populated backend flow. A narrow navigation
+keyboard smoke check confirmed Tab reaches the visible menu button, Enter opens the
+navigation and focuses its first link, and Escape closes it and restores focus. A full
+app-wide focus review and exact 390-pixel comparison remain open.
+
+The current phBot process was not inspectable through the available UI surface, so no
+callback was observed on the installed runtime. Slice 4 Party Setup, inventory-slot,
+packet, item-family and visual gates also remain open; Slice 5 must not be marked
+complete until those dependencies and its database, exact mobile viewport and runtime
+acceptance checks are resolved.
+
+Local evidence:
+
+- Events, desktop: [1440×1000](reference/local/slice5-events-1440x1000.png),
+  [1280×800](reference/local/slice5-events-1280x800.png)
+- Events, narrow tool viewport (500×844):
+  [capture](reference/local/slice5-events-browser-500x844.png)
+- Alchemy, desktop: [1440×1000](reference/local/slice5-alchemy-1440x1000.png),
+  [1280×800](reference/local/slice5-alchemy-1280x800.png)
+- Alchemy, narrow tool viewport (500×844):
+  [capture](reference/local/slice5-alchemy-browser-500x844.png)
 
 ## Slice 4 — Stats, containers, pets, party and academy
 

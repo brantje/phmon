@@ -45,6 +45,10 @@ export interface ActivityEvent {
   received_at: string
   source: string
   source_ref: string
+  sequence?: number
+  dedupe_key?: string
+  item_model?: number
+  item_code?: string
   region?: number
   x?: number
   y?: number
@@ -56,6 +60,14 @@ export interface EventPage {
   events: ActivityEvent[]
   total: number
   next_cursor?: string
+  alchemy_summary?: AlchemySummary
+}
+
+export interface AlchemySummary {
+  attempts: number
+  successes: number
+  failures: number
+  highest_plus?: number
 }
 
 export interface CharacterGroup {
@@ -84,6 +96,8 @@ export interface LiveFilter {
   resource_keys?: string[]
   server?: string
   kind?: string
+  category?: string
+  item?: string
   from?: string
   to?: string
   cursor?: string

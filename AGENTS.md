@@ -3240,3 +3240,60 @@ without restart. Authenticated visual confirmation remains unavailable in the
 current browser. Exact next action: operator reloads Dashboard/Stats to observe the
 cached status through navigation and reconnect. Keep
 `plugin/phMonitorAdapter.py` untouched.
+
+### Resume — 2026-09-28 Slice 5 canonical event pipeline
+
+The user explicitly authorized Slice 5 implementation despite the earlier Slice 4-only
+resume boundary. Slice 5 is **in progress**, not complete. Protocol v6 batches now
+extend the retained v5 death path; migration `000007_event_pipeline.sql` adds
+agent-level nullable context, per-session sequence, dedupe and item indexes. The Go
+store validates typed event envelopes, applies authenticated session fencing and
+returns per-event batch results after transaction commit. The plugin now queues
+lifecycle, documented event IDs 0–10, raw-type chat, alchemy attempts/completion and
+identity-aware party/academy/pet/container deltas through its bounded spool. The
+Events page, dashboard recent-event/drop feeds and Alchemy Sessions page consume the
+canonical query/live stream. Raw chat channel mapping remains `unknown`; drop model
+IDs do not become instance details; no packet decoder was activated.
+
+Files changed for this increment: `plugin/PhMon.py`, `plugin/test_phmon.py`,
+`plugin/README.md`, `server/internal/database/migrations/000007_event_pipeline.sql`,
+`server/internal/events/store.go`, `server/internal/events/validation_test.go`,
+`server/internal/events/store_integration_test.go`, `server/internal/httpapi/agent.go`,
+`server/internal/httpapi/event.go`, `server/internal/httpapi/live.go`,
+`web/shared/types/live.ts`, `web/app/composables/useLiveData.ts`,
+`web/app/components/AppSidebar.vue`, `web/app/components/AppTopBar.vue`,
+`web/app/components/DashboardOverview.vue`, `web/app/layouts/default.vue`,
+`web/app/pages/events.vue`, `web/app/pages/alchemy.vue`,
+`web/app/assets/css/main.css`, `docs/phbot-capabilities.md`, `docs/protocol.md`, and
+`docs/reference-parity.md` plus six local screenshot artifacts under
+`docs/reference/local/`. The untracked `plugin/phMonitorAdapter.py` remains untouched.
+
+Validation passed: `go test ./...`, `go vet ./...`, `go build ./...`,
+`python -m py_compile plugin/PhMon.py`, `python -m unittest plugin.test_phmon`
+(71 tests, including spool capacity and disk failure), `npm run test:unit` (4 tests),
+`npm run typecheck`, `npm run lint`,
+`npm run format:check` and `npm run build`. ESLint reports 22 non-fatal
+`vue/html-self-closing` warnings. The PostgreSQL integration tests compile but skip:
+there is no `TEST_DATABASE_URL`, Docker CLI or disposable PostgreSQL, so migration,
+database batch/replay/filter checks and the complete protocol simulator path remain
+unverified. Local authenticated Events/Alchemy smoke checks used an empty loopback
+fixture backend and verify presentation only. Exact 1440×1000 and 1280×800 content
+viewport screenshots are in `docs/reference/local/`. Firefox clamps its minimum
+window width to 500 CSS pixels; narrow captures are 500×844, not the required
+390×844. Document width matched the viewport at the captured sizes, with the dense
+table scrolling inside its panel. Keyboard smoke check passed for the narrow menu:
+Tab reaches the open-navigation control, Enter opens and focuses the first link, and
+Escape closes the panel and restores focus. Full app-wide keyboard review remains
+open. A phBot process was present but its native UI/callback values were inaccessible;
+fixture evidence is not runtime validation.
+
+Slice 4 remains incomplete: Party Setup mutation/readback, equipment-slot mapping,
+packet fixtures and item family/blue/runtime evidence remain open. The user's plan
+makes these dependency gates prerequisites to marking Slice 5 complete. Do not claim
+Slice 4 or Slice 5 complete. The local PostgreSQL binaries/service and Docker CLI were
+already checked and are unavailable. Exact next action when a disposable local
+PostgreSQL is available: set `TEST_DATABASE_URL`, apply migration `000007`, and run
+the gated store tests and protocol simulator end to end. Complete the 390×844 browser
+comparison when a viewport below 500 CSS pixels is available. Keep the installed
+phBot runtime gate open until callback values can be observed. Keep
+`plugin/phMonitorAdapter.py` untouched.

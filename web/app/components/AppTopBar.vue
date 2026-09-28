@@ -2,6 +2,7 @@
 const collapsed = defineModel<boolean>('collapsed', { required: true })
 const mobileOpen = defineModel<boolean>('mobileOpen', { required: true })
 const advancedMode = defineModel<boolean>('advancedMode', { required: true })
+const mobileMenuButton = ref<HTMLButtonElement | null>(null)
 const backendReady = useBackendHealth()
 const {
   onlineCharacterCount,
@@ -10,16 +11,27 @@ const {
   combinedVitals,
   observedGold,
 } = useFleetSummary()
+
+watch(mobileOpen, async (open) => {
+  if (!import.meta.client) return
+  await nextTick()
+  if (open)
+    document.querySelector<HTMLElement>('#phmon-sidebar .nav-item')?.focus()
+  else mobileMenuButton.value?.focus()
+})
 </script>
 
 <template>
   <div class="top-strip">
     <div class="top-left">
       <button
+        ref="mobileMenuButton"
         class="icon-button mobile-menu"
         type="button"
-        aria-label="Open navigation"
-        @click="mobileOpen = true"
+        :aria-label="mobileOpen ? 'Close navigation' : 'Open navigation'"
+        aria-controls="phmon-sidebar"
+        :aria-expanded="mobileOpen"
+        @click="mobileOpen = !mobileOpen"
       >
         <UIcon name="i-lucide-menu" />
       </button>

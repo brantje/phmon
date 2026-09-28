@@ -78,6 +78,8 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
       (right.resource_keys || []).join('\u0000') &&
     (left.server || '') === (right.server || '') &&
     (left.kind || '') === (right.kind || '') &&
+    (left.category || '') === (right.category || '') &&
+    (left.item || '') === (right.item || '') &&
     (left.from || '') === (right.from || '') &&
     (left.to || '') === (right.to || '') &&
     (left.cursor || '') === (right.cursor || '')

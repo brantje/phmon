@@ -154,6 +154,61 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || page.Total != 0 {
 		t.Fatalf("server filter leaked events: page=%+v err=%v", page, err)
 	}
+
+	model := int64(777)
+	sequence := int64(1)
+	rareDrop := AgentEvent{
+		ID: newTestEventID(t), Schema: 1, Kind: "drop.rare", Category: "drop",
+		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
+		OccurredAt: databaseNow.UTC(), Sequence: &sequence, Source: "phbot.callback", SourceRef: "EVENT_RARE_DROP",
+		ItemModel: &model, Payload: json.RawMessage(`{"model":777}`),
+	}
+	unauthorized := rareDrop
+	unauthorized.ID = newTestEventID(t)
+	unauthorized.Sequence = int64Pointer64(2)
+	unauthorized.SessionID = "00000000-0000-4000-8000-000000000199"
+	results, changed, err := store.AppendBatch(ctx, credential.AgentID, []AgentEvent{rareDrop, unauthorized})
+	if err != nil || !changed || len(results) != 2 || results[0].Status != "persisted" || results[1].Status != "rejected" {
+		t.Fatalf("batch result = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{rareDrop})
+	if err != nil || changed || results[0].Status != "persisted" {
+		t.Fatalf("idempotent batch replay = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	conflict := rareDrop
+	conflictRegion := 25273
+	conflict.Region = &conflictRegion
+	results, _, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{conflict})
+	if err != nil || results[0].Status != "rejected" || results[0].Reason != "session_or_event_rejected" {
+		t.Fatalf("event ID conflict = %+v, err=%v", results, err)
+	}
+	sequenceConflict := rareDrop
+	sequenceConflict.ID = newTestEventID(t)
+	results, _, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{sequenceConflict})
+	if err != nil || results[0].Status != "rejected" {
+		t.Fatalf("sequence conflict = %+v, err=%v", results, err)
+	}
+	page, err = store.List(ctx, Filter{Server: server, Kind: "drop.rare", Category: "drop", ItemQuery: "777", Limit: 10})
+	if err != nil || page.Total != 1 || len(page.Events) != 1 || page.Events[0].ID != rareDrop.ID {
+		t.Fatalf("generic item-filtered events = %+v, err=%v", page, err)
+	}
+
+	alchemySequence := int64(2)
+	alchemy := AgentEvent{
+		ID: newTestEventID(t), Schema: 1, Kind: "alchemy.attempt", Category: "alchemy",
+		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
+		OccurredAt: databaseNow.UTC().Add(time.Second), Sequence: &alchemySequence,
+		Source: "phbot.alchemy_callback", SourceRef: "alchemy_update",
+		Payload: json.RawMessage(`{"slot":13,"success":true,"plus":5}`),
+	}
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{alchemy})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("alchemy attempt batch = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	page, err = store.List(ctx, Filter{Server: server, Kind: "alchemy.attempt", Limit: 10})
+	if err != nil || page.Total != 1 || page.Alchemy == nil || page.Alchemy.Attempts != 1 || page.Alchemy.Successes != 1 || page.Alchemy.HighestPlus == nil || *page.Alchemy.HighestPlus != 5 {
+		t.Fatalf("alchemy summary = %+v, err=%v", page, err)
+	}
 }
 
 func TestInvalidDeathEventReturnsClassifiableError(t *testing.T) {
@@ -166,6 +221,7 @@ func TestInvalidDeathEventReturnsClassifiableError(t *testing.T) {
 
 func intPointer(value int) *int           { return &value }
 func floatPointer(value float64) *float64 { return &value }
+func int64Pointer64(value int64) *int64   { return &value }
 
 func newTestEventID(t *testing.T) string {
 	t.Helper()

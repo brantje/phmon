@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { ActivityEvent } from '~~/shared/types/live'
+import { groupRecentEvents } from '~/utils/groupRecentEvents'
+
 const {
   onlineCharacterCount,
   offlineCharacterCount,
@@ -15,20 +18,81 @@ const { serverScope } = useServerScope()
 const lastDeaths = computed(
   () => eventFeeds.value['dashboard-deaths']?.events || [],
 )
-const recentEvents = computed(
-  () => eventFeeds.value['dashboard-events']?.events || [],
+const recentEvents = computed(() =>
+  groupRecentEvents(eventFeeds.value['dashboard-events']?.events || [], 5),
+)
+const recentRareDrops = computed(
+  () => eventFeeds.value['dashboard-rare-drops']?.events || [],
 )
 
+function textField(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function eventHeadline(event: ActivityEvent) {
+  const payload = event.payload || {}
+  switch (event.kind) {
+    case 'character.died':
+      return `${event.character || 'Character'} died`
+    case 'character.level_up':
+      return `${event.character || 'Character'} reached level ${String(payload.level ?? '?')}`
+    case 'drop.rare':
+    case 'drop.item': {
+      const details = payload.item as Record<string, unknown> | undefined
+      const name = textField(details?.name) || textField(payload.item_name)
+      const model = payload.model ?? event.item_model
+      return `${event.kind === 'drop.rare' ? 'Rare drop' : 'Item drop'}${name ? ` · ${name}` : model != null ? ` · model ${String(model)}` : ''}`
+    }
+    case 'world.unique_spawned':
+      return `${textField(payload.value) || 'Unique'} spawned`
+    case 'chat.message_received':
+      return `${textField(payload.sender) || event.character || 'Chat'}: ${textField(payload.message)}`
+    default:
+      return event.kind.replaceAll('.', ' ')
+  }
+}
+
+function eventObservers(item: (typeof recentEvents.value)[number]) {
+  if (item.observers.length > 1) {
+    return `Observed by ${item.observers.map((observer) => observer.character).join(', ')} · ${item.event.server}`
+  }
+  if (item.event.character) {
+    return item.event.server
+      ? `${item.event.character} · ${item.event.server}`
+      : item.event.character
+  }
+  return item.event.server || 'Agent event'
+}
+
+function rareItemFilter(item: (typeof recentRareDrops.value)[number]) {
+  const snapshot = item.payload.item as Record<string, unknown> | undefined
+  return (
+    textField(item.item_code) ||
+    textField(snapshot?.servername) ||
+    String(item.item_model ?? item.payload.model ?? '')
+  )
+}
+
 function watchDashboardEvents(server: string) {
-  const filter = { server: server === 'all' ? undefined : server, limit: 5 }
-  setEventFeed('dashboard-deaths', { ...filter, kind: 'character.died' })
-  setEventFeed('dashboard-events', filter)
+  const scope = { server: server === 'all' ? undefined : server }
+  setEventFeed('dashboard-deaths', {
+    ...scope,
+    limit: 5,
+    kind: 'character.died',
+  })
+  setEventFeed('dashboard-events', { ...scope, limit: 50 })
+  setEventFeed('dashboard-rare-drops', {
+    ...scope,
+    limit: 5,
+    kind: 'drop.rare',
+  })
 }
 
 watch(serverScope, watchDashboardEvents, { immediate: true })
 onBeforeUnmount(() => {
   clearEventFeed('dashboard-deaths')
   clearEventFeed('dashboard-events')
+  clearEventFeed('dashboard-rare-drops')
 })
 </script>
 
@@ -134,14 +198,21 @@ onBeforeUnmount(() => {
         </NuxtLink>
       </div>
       <ul v-if="recentEvents.length" class="dashboard-recent-list">
-        <li v-for="item in recentEvents" :key="item.event_id">
-          <UIcon name="i-lucide-skull" />
-          <NuxtLink :to="`/characters/${item.character_id}`">
-            <strong>{{ item.character }} died</strong>
-            <span>Cause unknown · {{ item.server }}</span>
+        <li v-for="item in recentEvents" :key="item.event.event_id">
+          <UIcon name="i-lucide-activity" />
+          <NuxtLink
+            v-if="item.event.character_id"
+            :to="`/characters/${item.event.character_id}`"
+          >
+            <strong>{{ eventHeadline(item.event) }}</strong>
+            <span>{{ eventObservers(item) }}</span>
           </NuxtLink>
-          <time :datetime="item.occurred_at">{{
-            formatTimestamp(item.occurred_at)
+          <div v-else>
+            <strong>{{ eventHeadline(item.event) }}</strong>
+            <span>{{ eventObservers(item) }}</span>
+          </div>
+          <time :datetime="item.event.occurred_at">{{
+            formatTimestamp(item.event.occurred_at)
           }}</time>
         </li>
       </ul>
@@ -158,11 +229,31 @@ onBeforeUnmount(() => {
     <div class="dashboard-stack">
       <article class="panel dashboard-later">
         <div class="panel-header compact">
-          <div><h2>Last Rare Drop</h2></div>
-          <span class="later-badge">LATER</span>
+          <div><h2>Rare Drops</h2></div>
+          <NuxtLink class="panel-link" to="/events?kind=drop.rare"
+            >View all</NuxtLink
+          >
         </div>
-        <div class="later-content compact-later">
-          <UIcon name="i-lucide-gem" /><strong>LATER</strong>
+        <NuxtLink
+          v-if="recentRareDrops[0]"
+          class="later-content compact-later dashboard-rare-link"
+          :to="{
+            path: '/events',
+            query: {
+              kind: 'drop.rare',
+              item: rareItemFilter(recentRareDrops[0]) || undefined,
+            },
+          }"
+        >
+          <UIcon name="i-lucide-gem" /><strong>{{
+            eventHeadline(recentRareDrops[0])
+          }}</strong>
+          <span>{{
+            recentRareDrops[0].character || recentRareDrops[0].server
+          }}</span>
+        </NuxtLink>
+        <div v-else class="later-content compact-later">
+          <UIcon name="i-lucide-gem" /><strong>No rare drops recorded</strong>
         </div>
       </article>
       <article class="panel dashboard-later">

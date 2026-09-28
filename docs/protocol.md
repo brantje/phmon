@@ -1,11 +1,12 @@
-# Agent protocol versions 2–5
+# Agent protocol versions 2–6
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
 leave messages. Slice 3 adds v3 command delivery. Slice 4 adds v4 resource snapshots
-and deltas. Protocol v5 adds nullable live death state and durable death occurrences.
-The backend continues accepting protocol v2–v4; those agents report unknown death
-state unless their current state contract supplies a value, and cannot submit events.
+and deltas. Protocol v5 adds nullable live death state and the original death event
+frame. Protocol v6 adds canonical event batches. The backend continues accepting
+v2–v5 agents; v2–v4 cannot submit events, and v5 retains its death frame and
+individual acknowledgement.
 Sections below retain the v2 baseline contract; later sections define version-specific
 extensions and limits.
 
@@ -783,6 +784,72 @@ by `occurred_at DESC,event_id DESC`; the cursor continues from that pair and inc
 the total matching count. The Events → Deaths screen uses this stream. Map links stay
 disabled until Slice 7 verifies region transforms for the observed coordinates.
 
-This is the death-event foundation only. Other event kinds, acquisition/drop
-distinctions, general history subtabs, notifications and map event overlays remain
-Slice 5 and later work.
+This section records the original v5 death transport. The canonical v6 event contract
+below supersedes its storage and query descriptions while preserving v5 compatibility.
+
+## Slice 5 protocol v6: canonical event batches (2026-09-28)
+
+The v6 plugin sends canonical events over the existing authenticated agent WebSocket.
+No second event connection or chat transport is introduced. A v5 plugin continues to
+send `character.died` and receives `event.ack`; only a v6 hello may send `event.batch`.
+
+    {"type":"event.batch","protocol_version":6,"sent_at":"<UTC RFC3339>",
+     "events":[
+       {"event_id":"<uuid>","schema_version":1,"kind":"drop.rare",
+        "category":"drop","character_id":"<uuid>","session_id":"<uuid>",
+        "server":"Silkroad","character":"Alpha","occurred_at":"<UTC RFC3339>",
+        "sequence":12,"source":"phbot.callback","source_ref":"EVENT_RARE_DROP",
+        "item_model":1234,"payload":{"model":1234}}
+     ]}
+
+Each batch has 1–16 events and stays within the WebSocket 256 KiB frame limit. Event
+payloads are JSON objects no larger than 32 KiB, at most eight levels deep and 512
+nodes, with 8 KiB maximum per string. Common event identity, kind/category, source,
+timestamp, sequence, location and item identity remain columns. Agent ID is taken from
+the authenticated connection, never from the event body.
+
+Character-scoped events carry registered character and session IDs, matching
+server/character identity when supplied, and a positive per-session sequence assigned
+before the plugin's worker queue. The server checks that the authenticated agent owns
+that exact character session and applies the bounded replay window described above.
+Agent-level lifecycle events may omit character/session IDs and sequence. A sequence
+collision with different content is a terminal rejection. Event UUID retries retain
+the original envelope; identical retries are acknowledged as already persisted.
+
+The backend stores a batch in one PostgreSQL transaction. It returns one result for
+each event in `event.batch.ack` only after transaction commit. Result status is
+`persisted`, `rejected` or `retry`; temporary database/commit failures retry every
+otherwise-valid event in the rolled-back batch. Independently invalid events receive a
+terminal rejection while valid siblings can commit in the same transaction. Stable
+event ID, optional source-scoped dedupe key and per-session sequence enforce
+idempotence.
+
+Migration `000007_event_pipeline.sql` generalizes `activity_events` for nullable
+agent-level context and adds sequence, dedupe key and indexed item model/code. Event
+queries retain deterministic `(occurred_at DESC,event_id DESC)` order and an opaque
+cursor. `GET /api/events` and the `/api/live` `events` stream support server,
+character ID/name, kind, category, item, date, cursor and page-size filters. Item
+search checks canonical item code/model and observed item name/code in payloads. The
+alchemy-attempt result also includes attempts, recorded success/failure outcomes, and
+highest observed plus; it makes no probability estimate.
+
+The plugin upgrades the profile-scoped death spool in place and keeps stable UUIDs
+while retrying. The durable spool reserves 512 critical events / 8 MiB and allows
+2,048 ordinary events / 16 MiB, for 2,560 entries / 24 MiB total. Deaths, rare drops
+and alchemy callbacks use the critical reserve. Spool writes use a temporary file,
+flush and atomic replace on the network worker. Callback queues remain in memory and
+bounded; overflow and disk failures set plugin status and write a concise log entry.
+There is a short process-crash window after callback queueing but before the worker
+commits the event to disk.
+
+Normal drops (`drop.item`) and rare drops (`drop.rare`) remain distinct. The published
+callbacks supply an equippable item model ID only; the pipeline does not turn that into
+an item-instance snapshot. Inbound chat preserves bounded message text and raw chat
+type with `channel:"unknown"` until the type mapping is confirmed on a supported
+runtime. `alchemy_update` creates one attempt event and `EVENT_ALCHEMY_FINISHED` one
+completion event. Reliable party, academy, pet and owned-container transitions come
+from identity-aware snapshots; startup, reconnect, missing containers and sampling
+gaps reset their baselines. Unknown owned-item acquisition causes remain unknown.
+
+No Slice 5 packet decoder was activated. Any Joymax event decoder still requires a
+documented opcode/version allowlist and a captured fixture before activation.

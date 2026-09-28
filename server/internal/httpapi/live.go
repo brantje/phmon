@@ -44,6 +44,8 @@ type liveFilter struct {
 	ResourceKeys []string `json:"resource_keys,omitempty"`
 	Server       string   `json:"server,omitempty"`
 	Kind         string   `json:"kind,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	Item         string   `json:"item,omitempty"`
 	From         string   `json:"from,omitempty"`
 	To           string   `json:"to,omitempty"`
 	Cursor       string   `json:"cursor,omitempty"`
@@ -566,7 +568,8 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, errors.New("event history unavailable")
 		}
 		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
-			Kind: subscription.Filter.Kind, Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit}
+			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item,
+			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit}
 		var err error
 		if subscription.Filter.From != "" {
 			value, parseErr := parseEventBound(subscription.Filter.From, false)
@@ -602,7 +605,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			CommandState: message.Filter.CommandState,
 			Limit:        message.Filter.Limit,
 			ResourceKeys: append([]string(nil), message.Filter.ResourceKeys...),
-			Server:       strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind,
+			Server:       strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
 			From: message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 		},
 	}
@@ -673,7 +676,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 	case "events":
 		if len(subscription.Filter.Query) > 64 || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || len(subscription.Filter.ResourceKeys) != 0 ||
 			!validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
-			subscription.Filter.Kind != "" && subscription.Filter.Kind != events.DeathKind || len(subscription.Filter.Cursor) > 256 ||
+			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 ||
 			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) {
 			return liveSubscription{}, false
 		}
@@ -710,7 +713,7 @@ func hasEventFilters(filter liveFilter) bool {
 }
 
 func hasEventSpecificFilters(filter liveFilter) bool {
-	return filter.Kind != "" || filter.From != "" || filter.To != "" || filter.Cursor != ""
+	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.From != "" || filter.To != "" || filter.Cursor != ""
 }
 
 func validServerFilter(server string) bool {

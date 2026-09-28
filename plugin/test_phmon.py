@@ -22,10 +22,23 @@ class ConfigTests(unittest.TestCase):
         with patch.object(plugin, '_get_profile', return_value=None):
             self.assertIsNone(plugin._current_settings_path())
 
-    def test_connected_callback_loads_saved_profile(self):
-        with patch.object(plugin, '_load_active_profile') as load_profile:
-            plugin.connected()
-        load_profile.assert_called_once_with()
+    def test_connected_callback_only_queues_lifecycle_without_profile_io(self):
+        previous = (plugin._worker, plugin._phbot_connected_state, plugin._character_joined)
+        plugin._worker = None
+        try:
+            with patch.object(plugin, '_load_active_profile') as load_profile:
+                plugin.connected()
+            load_profile.assert_not_called()
+            identity, event = plugin._pending_callback_events.get_nowait()
+            self.assertIsNone(identity)
+            self.assertEqual(event['kind'], 'session.connected')
+        finally:
+            plugin._worker, plugin._phbot_connected_state, plugin._character_joined = previous
+            while True:
+                try:
+                    plugin._pending_callback_events.get_nowait()
+                except plugin._queue.Empty:
+                    break
 
     def test_valid_config_normalizes_agent_path(self):
         config = plugin.validate_config({
@@ -592,7 +605,12 @@ class DeathEventTransportTests(unittest.TestCase):
         self.client = type('Client', (), {'send_json': lambda _, frame: self.frames.append(frame)})()
 
     def tearDown(self):
-        for path in (self.spool_path, self.spool_path + '.tmp'):
+        for path in (
+            self.spool_path,
+            self.spool_path + '.tmp',
+            self.spool_path + '.capacity',
+            self.spool_path + '.capacity.tmp',
+        ):
             if os.path.exists(path):
                 os.unlink(path)
         os.rmdir(self.root)
@@ -603,18 +621,96 @@ class DeathEventTransportTests(unittest.TestCase):
             'occurred_at': plugin._utc_now(),
             'source': 'phbot.callback',
             'source_ref': 'EVENT_DIED',
+            'schema_version': 1,
+            'kind': 'character.died',
+            'category': 'character',
             'payload': {'cause': 'unknown'},
         }
+
+    def test_event_spool_enforces_independent_item_and_byte_reserves(self):
+        with patch.object(plugin, 'MAX_EVENT_CRITICAL_ITEMS', 1), \
+                patch.object(plugin, 'MAX_EVENT_ORDINARY_ITEMS', 2):
+            spool = plugin.EventSpool(self.spool_path)
+            critical = self.death()
+            self.assertTrue(spool.add(critical))
+            second_critical = dict(critical, event_id='00000000-0000-4000-8000-000000000002')
+            self.assertFalse(spool.add(second_critical))
+
+            ordinary = {
+                'event_id': '00000000-0000-4000-8000-000000000003',
+                'occurred_at': plugin._utc_now(),
+                'schema_version': 1,
+                'kind': 'session.connected',
+                'category': 'session',
+                'source': 'phbot.lifecycle_callback',
+                'source_ref': 'connected',
+                'payload': {},
+            }
+            self.assertTrue(spool.add(ordinary))
+            second_ordinary = dict(ordinary, event_id='00000000-0000-4000-8000-000000000004')
+            self.assertTrue(spool.add(second_ordinary))
+            third_ordinary = dict(ordinary, event_id='00000000-0000-4000-8000-000000000005')
+            self.assertFalse(spool.add(third_ordinary))
+
+        with patch.object(plugin, 'MAX_EVENT_CRITICAL_BYTES', 512), \
+                patch.object(plugin, 'MAX_EVENT_ORDINARY_BYTES', 512):
+            byte_spool = plugin.EventSpool(self.spool_path + '.capacity')
+            large_critical = self.death('00000000-0000-4000-8000-000000000006')
+            large_critical['payload'] = {'cause': 'x' * 700}
+            self.assertFalse(byte_spool.add(large_critical))
+
+            large_ordinary = dict(ordinary, event_id='00000000-0000-4000-8000-000000000007')
+            large_ordinary['payload'] = {'detail': 'x' * 700}
+            self.assertFalse(byte_spool.add(large_ordinary))
+
+    def test_spool_write_failure_is_reported_and_event_is_not_sent(self):
+        self.assertTrue(self.worker.queue_death_event(self.identity, self.death()))
+        with patch.object(plugin.EventSpool, '_save_locked', side_effect=OSError('disk full')), \
+                patch.object(plugin, '_log') as log:
+            self.worker._flush_events(self.client)
+
+        self.assertIn('spool is unavailable or full', self.worker.status)
+        self.assertEqual(self.worker._death_spool.pending(), [])
+        self.assertEqual(self.frames, [])
+        self.assertTrue(any('durable local spooling failed' in call.args[0] for call in log.call_args_list))
+
+    def test_worker_spools_queued_events_during_reconnect_backoff(self):
+        event = self.death('00000000-0000-4000-8000-000000000009')
+        worker = self.worker
+
+        class DisconnectedClient:
+            def connect(inner_self):
+                worker.queue_event(self.identity, event)
+                raise OSError('backend unavailable')
+
+            def close(inner_self):
+                return None
+
+        worker.websocket_factory = lambda *_args: DisconnectedClient()
+        worker.start()
+        deadline = time.monotonic() + 2.0
+        try:
+            while not worker._death_spool.pending() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            pending = worker._death_spool.pending()
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0]['event_id'], event['event_id'])
+        finally:
+            worker.stop()
+            worker.join(2.0)
 
     def test_spool_replays_same_stable_event_until_persisted_ack(self):
         event = self.death()
         self.assertTrue(self.worker.queue_death_event(self.identity, event))
         self.worker._flush_death_events(self.client)
         self.assertEqual(len(self.frames), 1)
-        self.assertEqual(self.frames[0]['type'], 'character.died')
-        self.assertEqual(self.frames[0]['event']['event_id'], event['event_id'])
-        self.assertEqual(self.frames[0]['character_id'], self.worker.character_id)
-        self.assertEqual(self.frames[0]['session_id'], self.worker.session_id)
+        self.assertEqual(self.frames[0]['type'], 'event.batch')
+        self.assertEqual(len(self.frames[0]['events']), 1)
+        wire_event = self.frames[0]['events'][0]
+        self.assertEqual(wire_event['event_id'], event['event_id'])
+        self.assertEqual(wire_event['character_id'], self.worker.character_id)
+        self.assertEqual(wire_event['session_id'], self.worker.session_id)
+        self.assertEqual(wire_event['sequence'], 1)
 
         recovered = plugin.DeathEventSpool(self.spool_path)
         self.assertEqual(recovered.pending()[0]['event_id'], event['event_id'])
@@ -626,15 +722,15 @@ class DeathEventTransportTests(unittest.TestCase):
         }, 'fixture')
         replay = []
         retry_worker._flush_death_events(type('Client', (), {'send_json': lambda _, frame: replay.append(frame)})())
-        self.assertEqual(replay[0]['event']['event_id'], event['event_id'])
+        self.assertEqual(replay[0]['events'][0]['event_id'], event['event_id'])
         retry_worker._handle_server_message({
-            'type': 'event.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
-            'event_id': event['event_id'], 'status': 'retry',
+            'type': 'event.batch.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'results': [{'event_id': event['event_id'], 'status': 'retry'}],
         })
         self.assertEqual(len(retry_worker._death_spool.pending()), 1)
         retry_worker._handle_server_message({
-            'type': 'event.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
-            'event_id': event['event_id'], 'status': 'persisted',
+            'type': 'event.batch.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'results': [{'event_id': event['event_id'], 'status': 'persisted'}],
         })
         self.assertEqual(retry_worker._death_spool.pending(), [])
 
@@ -653,8 +749,9 @@ class DeathEventTransportTests(unittest.TestCase):
         self.assertTrue(self.worker.queue_death_event(other_identity, self.death(
             '00000000-0000-4000-8000-000000000002')))
         self.worker._flush_death_events(self.client)
-        self.assertEqual(self.frames[-1]['character_id'], self.worker.character_id)
-        self.assertEqual(self.frames[-1]['session_id'], self.worker.session_id)
+        sent = self.frames[-1]['events'][0]
+        self.assertEqual(sent['character_id'], self.worker.character_id)
+        self.assertEqual(sent['session_id'], self.worker.session_id)
 
     def test_disconnect_uses_last_registered_context_for_callback(self):
         self.worker._last_death_context = {
@@ -668,7 +765,7 @@ class DeathEventTransportTests(unittest.TestCase):
         self.assertTrue(self.worker.queue_death_event(self.identity, self.death()))
         self.worker._flush_death_events(self.client)
         self.assertEqual(len(self.frames), 1)
-        self.assertEqual(self.frames[0]['character_id'], 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+        self.assertEqual(self.frames[0]['events'][0]['character_id'], 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
 
     def test_deferred_callback_waits_for_matching_session_and_binds_before_send(self):
         other_identity = {'server': 'Silkroad', 'name': 'OfflineAlpha'}
@@ -688,21 +785,34 @@ class DeathEventTransportTests(unittest.TestCase):
         self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
         self.worker._flush_death_events(self.client)
         self.assertEqual(len(self.frames), 1)
-        frame = self.frames[0]
+        frame = self.frames[0]['events'][0]
         self.assertEqual(frame['character_id'], self.worker.character_id)
         self.assertEqual(frame['session_id'], self.worker.session_id)
-        self.assertNotIn('server', frame['event'])
-        self.assertNotIn('character_name', frame['event'])
-        self.assertEqual(frame['event']['payload']['session_binding'], 'deferred')
+        self.assertEqual(frame['payload'], {'cause': 'unknown'})
         persisted = self.worker._death_spool.pending()[0]
         self.assertEqual(persisted['character_id'], self.worker.character_id)
         self.assertEqual(persisted['session_id'], self.worker.session_id)
+        self.assertFalse(persisted['deferred_session_binding'])
+        self.assertNotIn('session_binding', persisted['payload'])
+
+        original_session = frame['session_id']
+        original_sequence = frame['sequence']
+        self.worker.session_id = '11111111-2222-4333-8444-555555555555'
+        self.worker._death_retry_at[frame['event_id']] = 0
+        self.worker._flush_death_events(self.client)
+        replay = self.frames[-1]['events'][0]
+        self.assertEqual(replay['event_id'], frame['event_id'])
+        self.assertEqual(replay['session_id'], original_session)
+        self.assertEqual(replay['sequence'], original_sequence)
 
     def test_death_callback_is_deduplicated_until_alive_or_character_switch(self):
         previous_worker = plugin._worker
         previous_active = plugin._death_callback_active
         received = []
-        fake_worker = type('Worker', (), {'queue_death_event': lambda _, identity, event: received.append((identity, event)) or True})()
+        fake_worker = type('Worker', (), {
+            'session_id': None,
+            'queue_event': lambda _, identity, event: received.append((identity, event)) or True,
+        })()
         try:
             plugin._worker = fake_worker
             plugin._death_callback_active = False
@@ -711,16 +821,275 @@ class DeathEventTransportTests(unittest.TestCase):
                     patch.object(plugin, '_load_active_profile'):
                 plugin.handle_event(plugin.EVENT_DIED, '')
                 plugin.handle_event(plugin.EVENT_DIED, '')
-                self.assertEqual(len(received), 1)
-                self.assertEqual(received[0][1]['source_ref'], 'EVENT_DIED')
-                self.assertEqual(received[0][1]['payload']['cause'], 'unknown')
+                deaths = [entry for entry in received if entry[1]['kind'] == 'character.died']
+                self.assertEqual(len(deaths), 1)
+                self.assertEqual(deaths[0][1]['source_ref'], 'EVENT_DIED')
+                self.assertEqual(deaths[0][1]['payload']['cause'], 'unknown')
                 plugin.joined_game()
                 plugin.handle_event(plugin.EVENT_DIED, '')
-                self.assertEqual(len(received), 2)
-                self.assertNotEqual(received[0][1]['event_id'], received[1][1]['event_id'])
+                deaths = [entry for entry in received if entry[1]['kind'] == 'character.died']
+                self.assertEqual(len(deaths), 2)
+                self.assertNotEqual(deaths[0][1]['event_id'], deaths[1][1]['event_id'])
         finally:
             plugin._worker = previous_worker
             plugin._death_callback_active = previous_active
+
+
+class ResourceEventDerivationTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test_token',
+        }, 'fixture')
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        self.worker._current_identity = self.identity
+        self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+
+    def item(self, quantity=1):
+        return {'model': 77, 'servername': 'ITEM_ETC_TEST', 'name': 'Test Item', 'quantity': quantity}
+
+    def resources(self, bag=None, pet=None, job=None, storage=None):
+        def container(items):
+            return {
+                'availability': 'observed',
+                'slots': [
+                    {'source_slot': slot, 'item': dict(item)}
+                    for slot, item in (items or [])
+                ],
+            }
+        pets = []
+        if pet is not None:
+            pets.append({
+                'pet_id': '1234', 'name': 'Pick Pet', 'type': 'pick',
+                'inventory_available': True,
+                'slots': [{'source_slot': 0, 'item': dict(pet)}],
+            })
+        return {
+            'equipment': container([]),
+            'inventory': container(bag),
+            'pets': {'availability': 'observed', 'pets': pets},
+            'party': {'availability': 'observed', 'members': []},
+            'academy': {'availability': 'observed', 'value': {'members': []}},
+            **({'job_pouch': container(job)} if job is not None else {}),
+            **({'storage': container(storage)} if storage is not None else {}),
+        }
+
+    def observe(self, resources, now=None):
+        self.worker._derive_resource_events(self.identity, resources, {
+            'observed_at': now or plugin._utc_now(),
+            'position': {'region': 25273, 'x': 10.0, 'y': 20.0, 'z': 0.0},
+        })
+
+    def drain(self):
+        output = []
+        while True:
+            try:
+                output.append(self.worker._event_samples.get_nowait())
+            except plugin._queue.Empty:
+                return output
+
+    def test_baseline_and_bag_split_merge_do_not_create_item_occurrences(self):
+        self.observe(self.resources(bag=[(13, self.item(4))]))
+        self.observe(self.resources(bag=[(14, self.item(1)), (15, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_bag_and_job_pouch_positive_quantity_deltas_keep_unknown_cause(self):
+        self.observe(self.resources(bag=[] , job=[]))
+        self.observe(self.resources(bag=[(13, self.item(5))], job=[(0, self.item(2))]))
+        events = self.drain()
+        self.assertEqual(len(events), 2)
+        by_container = {event['payload']['destination_container']['type']: event for event in events}
+        self.assertEqual(by_container['inventory']['kind'], 'item.acquired')
+        self.assertEqual(by_container['inventory']['payload']['quantity_delta'], 5)
+        self.assertEqual(by_container['inventory']['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(by_container['job_pouch']['payload']['quantity_delta'], 2)
+        self.assertEqual(by_container['inventory']['region'], 25273)
+
+    def test_opening_storage_establishes_baseline_and_later_gain_is_recorded(self):
+        self.observe(self.resources(bag=[]))
+        self.observe(self.resources(bag=[], storage=[(0, self.item(9))]))
+        self.assertEqual(self.drain(), [])
+        self.observe(self.resources(bag=[], storage=[(0, self.item(11))]))
+        event = self.drain()[0]
+        self.assertEqual(event['payload']['quantity_delta'], 2)
+        self.assertEqual(event['payload']['destination_container']['type'], 'storage')
+        self.assertEqual(event['payload']['acquisition_method'], 'unknown')
+
+    def test_pet_summon_sets_inventory_baseline_then_pet_to_bag_is_transfer(self):
+        self.observe(self.resources(bag=[]))
+        self.observe(self.resources(bag=[], pet=self.item(3)))
+        events = self.drain()
+        self.assertEqual([event['kind'] for event in events], ['pet.summoned'])
+        self.observe(self.resources(bag=[(13, self.item(3))], pet=None))
+        # Dismissal changes the owned-container set; that sample is a new baseline.
+        dismissed = self.drain()
+        self.assertEqual([event['kind'] for event in dismissed], ['pet.dismissed'])
+        self.assertNotIn('item.acquired', [event['kind'] for event in dismissed])
+
+        self.observe(self.resources(bag=[], pet=self.item(3)))
+        self.drain()
+        self.observe(self.resources(bag=[(13, self.item(3))], pet=self.item(0)))
+        transfer = self.drain()[0]
+        self.assertEqual(transfer['kind'], 'item.transferred')
+        self.assertEqual(transfer['payload']['source_container']['type'], 'pets')
+        self.assertEqual(transfer['payload']['destination_container']['type'], 'inventory')
+        self.assertEqual(transfer['payload']['quantity_delta'], 3)
+
+    def test_sampling_gap_resets_baseline_after_quantity_change(self):
+        self.observe(self.resources(bag=[(13, self.item(1))]))
+        self.worker._resource_sample_gap = True
+        self.observe(self.resources(bag=[(13, self.item(20))]))
+        self.assertEqual(self.drain(), [])
+
+
+class CanonicalCallbackTests(unittest.TestCase):
+    def setUp(self):
+        self.previous_worker = plugin._worker
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        self.root = tempfile.mkdtemp()
+        self.spool_path = os.path.join(self.root, 'events.json')
+        self.worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test_token',
+            'death_spool_path': self.spool_path,
+        }, 'fixture')
+        self.worker._current_identity = self.identity
+        self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        self.worker._latest_alchemy_items = {
+            13: {'model': 77, 'servername': 'ITEM_TEST', 'name': 'Observed item', 'quantity': 1},
+        }
+        plugin._worker = self.worker
+
+    def tearDown(self):
+        plugin._worker = self.previous_worker
+        for path in (self.spool_path, self.spool_path + '.tmp', self.spool_path + '.capacity', self.spool_path + '.capacity.tmp'):
+            if os.path.exists(path):
+                os.unlink(path)
+        os.rmdir(self.root)
+
+    def callback(self, fn, *args):
+        with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            fn(*args)
+        return self.worker._event_samples.get_nowait()
+
+    def test_handle_event_keeps_drop_kinds_separate_and_does_not_invent_instance_data(self):
+        rare = self.callback(plugin.handle_event, plugin.EVENT_RARE_DROP, '77')
+        normal = self.callback(plugin.handle_event, plugin.EVENT_ITEM_DROP, '78')
+        self.assertEqual(rare['kind'], 'drop.rare')
+        self.assertEqual(normal['kind'], 'drop.item')
+        self.assertEqual(rare['item_model'], 77)
+        self.assertNotIn('item', rare['payload'])
+        self.assertEqual(normal['payload'], {'model': 78})
+
+    def test_chat_and_alchemy_callbacks_use_canonical_queue_and_keep_raw_fields(self):
+        chat = self.callback(plugin.handle_chat, 'party', None, 'hello' * 500)
+        self.assertEqual(chat['kind'], 'chat.message_received')
+        self.assertEqual(chat['payload']['channel'], 'unknown')
+        self.assertEqual(chat['payload']['raw_type'], 'party')
+        self.assertEqual(len(chat['payload']['message']), 2048)
+        self.assertEqual(chat['sequence'], 1)
+
+        alchemy = self.callback(plugin.alchemy_update, 13, True, 7)
+        self.assertEqual(alchemy['kind'], 'alchemy.attempt')
+        self.assertEqual(alchemy['payload']['success'], True)
+        self.assertEqual(alchemy['payload']['plus'], 7)
+        self.assertEqual(alchemy['payload']['item']['servername'], 'ITEM_TEST')
+        self.assertEqual(alchemy['item_code'], 'ITEM_TEST')
+        self.assertEqual(alchemy['sequence'], 2)
+
+    def test_alchemy_finished_is_a_distinct_completion_occurrence(self):
+        event = self.callback(plugin.handle_event, plugin.EVENT_ALCHEMY_FINISHED, '')
+        self.assertEqual(event['kind'], 'alchemy.finished')
+        self.assertEqual(event['payload'], {})
+
+    def test_handle_event_buffers_when_worker_is_not_ready(self):
+        previous_worker = plugin._worker
+        previous_pending = plugin._pending_callback_events
+        plugin._worker = None
+        plugin._pending_callback_events = plugin._queue.Queue()
+        try:
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.handle_event(plugin.EVENT_LEVEL_UP, '42')
+            identity, event = plugin._pending_callback_events.get_nowait()
+            self.assertEqual(identity, self.identity)
+            self.assertEqual(event['kind'], 'character.level_up')
+            self.assertEqual(event['payload'], {'level': 42})
+        finally:
+            plugin._worker = previous_worker
+            plugin._pending_callback_events = previous_pending
+
+    def test_chat_and_alchemy_callbacks_buffer_when_worker_is_not_ready(self):
+        previous_worker = plugin._worker
+        previous_pending = plugin._pending_callback_events
+        plugin._worker = None
+        plugin._pending_callback_events = plugin._queue.Queue()
+        try:
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.handle_chat('party', 'Beta', 'hello')
+                plugin.alchemy_update(13, True, 7)
+            buffered = [plugin._pending_callback_events.get_nowait() for _ in range(2)]
+            self.assertEqual([event['kind'] for _, event in buffered], [
+                'chat.message_received', 'alchemy.attempt',
+            ])
+            self.assertTrue(all(identity == self.identity for identity, _ in buffered))
+        finally:
+            plugin._worker = previous_worker
+            plugin._pending_callback_events = previous_pending
+
+    def test_each_teleport_has_its_own_occurrence_identity(self):
+        captured = []
+        fake_worker = type('Worker', (), {
+            'session_id': self.worker.session_id,
+            'queue_event': lambda _, identity, event: captured.append((identity, event)) or True,
+        })()
+        previous_worker = plugin._worker
+        try:
+            plugin._worker = fake_worker
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.teleported()
+                plugin.teleported()
+            self.assertEqual(len(captured), 2)
+            self.assertEqual([entry[1]['kind'] for entry in captured], ['session.teleported'] * 2)
+            self.assertNotEqual(captured[0][1]['event_id'], captured[1][1]['event_id'])
+            self.assertNotIn('dedupe_key', captured[0][1])
+            self.assertNotIn('dedupe_key', captured[1][1])
+        finally:
+            plugin._worker = previous_worker
+
+    def test_deferred_empty_payload_callbacks_drop_internal_binding_marker(self):
+        callbacks = (
+            (plugin.teleported, ()),
+            (plugin.handle_event, (plugin.EVENT_ALCHEMY_FINISHED, '')),
+        )
+        for callback, args in callbacks:
+            self.worker._current_identity = None
+            self.worker.character_id = None
+            self.worker.session_id = None
+            event = self.callback(callback, *args)
+            self.assertEqual(event['payload']['session_binding'], 'deferred')
+            self.worker._event_samples.put_nowait(event)
+
+            self.worker._flush_events(type('Client', (), {'send_json': lambda *_args: None})())
+            self.assertEqual(self.worker._death_spool.pending()[-1]['payload']['session_binding'], 'deferred')
+
+            self.worker._current_identity = self.identity
+            self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+            frames = []
+            client = type('Client', (), {'send_json': lambda _, frame: frames.append(frame)})()
+            self.worker._flush_events(client)
+            wire = next(entry for entry in frames[-1]['events'] if entry['event_id'] == event['event_id'])
+            self.assertEqual(wire['payload'], {})
+            self.worker._death_spool.acknowledge(event['event_id'])
+            self.worker._death_retry_at.pop(event['event_id'], None)
 
 
 class CharacterCollectorTests(unittest.TestCase):

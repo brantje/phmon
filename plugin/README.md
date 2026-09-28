@@ -1,13 +1,26 @@
 # PhMon phBot plugin
 
-The current Slice 4 development release is **1.3.0** (`vsro_1188_passive_r2`, API evidence schema 2). It adds nullable live
-alive/dead status and durable phBot death callbacks over agent protocol v5 while
-retaining backend compatibility with v2/v3/v4 agents. The plugin collects documented inventory, storage, pets, party and academy
-state on phBot callbacks and sends bounded snapshots/deltas from its worker. Protocol
-v4 passively decodes only the bounded 0x3040 item-stat and 0x3052 durability updates
-when the active server is unambiguously selected as vSRO 1.188. Their layouts still
-need a naturally captured Greatest runtime fixture. Earlier v2/v3 plugins retain their existing monitoring/command
-capabilities but do not provide Slice 4 resources.
+The current Slice 5 development release is **1.4.0** (`vsro_1188_passive_r2`, API
+evidence schema 2). It sends canonical callbacks, inbound chat, alchemy attempts and
+reliable membership/container deltas in protocol-v6 batches over the existing
+authenticated connection. The backend keeps accepting v2–v5; v5 plugins continue
+sending death events through their original frame. Rare and normal drops remain
+separate and retain only the model ID documented by phBot. Chat keeps its raw server
+type and uses channel `unknown` until that mapping is verified on a supported runtime.
+
+The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
+512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback
+queues do not write files or use the network; the worker atomically spools before
+sending. The short process-crash window between callback queueing and durable worker
+spooling remains. Queue overflow and spool failures appear in plugin status and logs.
+
+The plugin continues to collect documented inventory, storage, pets, party and
+academy state and send bounded snapshots/deltas from its worker. Protocol v4 passively
+decodes only the bounded 0x3040 item-stat and 0x3052 durability updates when the active
+server is unambiguously selected as vSRO 1.188. Those layouts still need a naturally
+captured Greatest runtime fixture. Older protocol-v2/v3 plugins retain their existing
+monitoring/command capabilities but do not provide Slice 4 resources or Slice 5 event
+families.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket

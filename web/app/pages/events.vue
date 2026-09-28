@@ -3,18 +3,73 @@ import type { ActivityEvent } from '~~/shared/types/live'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
 const { serverScope } = useServerScope()
+const route = useRoute()
+const tabs = [
+  { label: 'All', key: 'all', query: {} },
+  {
+    label: 'Level Ups',
+    key: 'character.level_up',
+    query: { kind: 'character.level_up' },
+  },
+  { label: 'Custom', key: 'custom', query: { category: 'custom' } },
+  { label: 'Deaths', key: 'character.died', query: { kind: 'character.died' } },
+  { label: 'Rare Drops', key: 'drop.rare', query: { kind: 'drop.rare' } },
+  { label: 'Normal Drops', key: 'drop.item', query: { kind: 'drop.item' } },
+  {
+    label: 'Uniques',
+    key: 'world.unique_spawned',
+    query: { kind: 'world.unique_spawned' },
+  },
+]
+const selectedTab = computed(() => {
+  if (typeof route.query.kind === 'string') return route.query.kind
+  if (route.query.category === 'custom') return 'custom'
+  return 'all'
+})
+const activeTab = computed(
+  () => tabs.find((tab) => tab.key === selectedTab.value) || tabs[0],
+)
+const filterKind = computed(() =>
+  typeof route.query.kind === 'string' ? route.query.kind : undefined,
+)
+const filterCategory = computed(() =>
+  route.query.category === 'custom' ? 'custom' : undefined,
+)
+const activeTabLabel = computed(() => activeTab.value?.label ?? 'All')
+const pageTitle = computed(() =>
+  activeTabLabel.value === 'All'
+    ? 'History · All'
+    : `History · ${activeTabLabel.value}`,
+)
+const description =
+  'Recorded activity from phBot callbacks and reliable state observations.'
 const fromDate = ref(dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)))
 const toDate = ref(dateInput(new Date()))
 const characterInput = ref('')
 const characterQuery = ref('')
+const itemInput = ref(
+  typeof route.query.item === 'string' ? route.query.item : '',
+)
+const itemQuery = ref(itemInput.value.trim())
 const pageSize = ref(10)
 const cursor = ref('')
 const previousCursors = ref<string[]>([])
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-const feedID = 'death-history'
+let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
+let itemSearchTimer: ReturnType<typeof setTimeout> | undefined
+const feedID = 'activity-history'
 const page = computed(() => eventFeeds.value[feedID])
 const invalidDateRange = computed(
   () => !!fromDate.value && !!toDate.value && fromDate.value > toDate.value,
+)
+const itemTab = computed(
+  () =>
+    [
+      'drop.item',
+      'drop.rare',
+      'alchemy.attempt',
+      'item.acquired',
+      'item.transferred',
+    ].includes(filterKind.value || '') || activeTabLabel.value === 'All',
 )
 const locationText = (event: {
   region?: number
@@ -29,15 +84,41 @@ const locationText = (event: {
 const hasReliableMapLocation = (_event: ActivityEvent) => false
 
 watch(characterInput, (value) => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
+  if (characterSearchTimer) clearTimeout(characterSearchTimer)
+  characterSearchTimer = setTimeout(() => {
     characterQuery.value = value.trim()
   }, 250)
 })
+watch(itemInput, (value) => {
+  if (itemSearchTimer) clearTimeout(itemSearchTimer)
+  itemSearchTimer = setTimeout(() => {
+    itemQuery.value = value.trim()
+  }, 250)
+})
+watch(
+  () => route.query.item,
+  (value) => {
+    const next = typeof value === 'string' ? value : ''
+    if (itemSearchTimer) clearTimeout(itemSearchTimer)
+    itemSearchTimer = undefined
+    itemInput.value = next
+    itemQuery.value = next.trim()
+  },
+)
 
 watch(
-  [serverScope, fromDate, toDate, characterQuery, cursor, pageSize],
-  ([server, from, to, character, pageCursor, size]) => {
+  [
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    itemQuery,
+    filterKind,
+    filterCategory,
+    cursor,
+    pageSize,
+  ],
+  ([server, from, to, character, item, kind, category, pageCursor, size]) => {
     if (from && to && from > to) {
       clearEventFeed(feedID)
       return
@@ -47,19 +128,34 @@ watch(
       from: from ? localDateBoundary(from, 0) : undefined,
       to: to ? localDateBoundary(to, 1) : undefined,
       q: character || undefined,
-      kind: 'character.died',
+      item: itemTab.value ? item || undefined : undefined,
+      kind: kind || undefined,
+      category: category || undefined,
       cursor: pageCursor || undefined,
       limit: size,
     })
   },
   { immediate: true },
 )
-watch([serverScope, fromDate, toDate, characterQuery, pageSize], () => {
-  cursor.value = ''
-  previousCursors.value = []
-})
+watch(
+  [
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    itemQuery,
+    filterKind,
+    filterCategory,
+    pageSize,
+  ],
+  () => {
+    cursor.value = ''
+    previousCursors.value = []
+  },
+)
 onBeforeUnmount(() => {
-  if (searchTimer) clearTimeout(searchTimer)
+  if (characterSearchTimer) clearTimeout(characterSearchTimer)
+  if (itemSearchTimer) clearTimeout(itemSearchTimer)
   clearEventFeed(feedID)
 })
 
@@ -75,10 +171,91 @@ function previousPage() {
 function resetFilters() {
   characterInput.value = ''
   characterQuery.value = ''
+  itemInput.value = ''
+  itemQuery.value = ''
   fromDate.value = dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000))
   toDate.value = dateInput(new Date())
   cursor.value = ''
   previousCursors.value = []
+}
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : {}
+}
+function eventSummary(item: ActivityEvent) {
+  const payload = item.payload || {}
+  switch (item.kind) {
+    case 'character.died':
+      return 'Character died'
+    case 'character.level_up':
+      return `Reached level ${String(payload.level ?? 'unknown')}`
+    case 'drop.rare':
+      return `Rare drop${eventItemName(item) ? ` · ${eventItemName(item)}` : ''}`
+    case 'drop.item':
+      return `Normal drop${eventItemName(item) ? ` · ${eventItemName(item)}` : ''}`
+    case 'world.unique_spawned':
+      return `${String(payload.value || 'Unique')} spawned`
+    case 'world.gm_spawned':
+      return `GM spawned · ${String(payload.value || 'name unknown')}`
+    case 'job.hunter_trader_seen':
+      return `Hunter/trader seen · ${String(payload.value || 'name unknown')}`
+    case 'job.thief_seen':
+      return `Thief seen · ${String(payload.value || 'name unknown')}`
+    case 'pet.transport_died':
+      return `Transport died · ${String(payload.value || 'identity unknown')}`
+    case 'character.attacked':
+      return `Attacked · ${String(payload.value || 'attacker unknown')}`
+    case 'alchemy.finished':
+      return 'Alchemy run finished'
+    case 'alchemy.attempt':
+      return `Alchemy attempt${payload.plus != null ? ` · +${String(payload.plus)}` : ''}`
+    case 'chat.message_received':
+      return `${String(payload.sender || 'Message')}: ${String(payload.message || '')}`
+    case 'item.acquired':
+      return `Item acquired · ${eventItemName(item)}`
+    case 'item.transferred':
+      return `Item transferred · ${eventItemName(item)}`
+    case 'item.quantity_increased':
+      return `Item quantity increased · ${eventItemName(item)}`
+    case 'item.quantity_decreased':
+      return `Item quantity decreased · ${eventItemName(item)}`
+    default:
+      return item.kind.replaceAll('.', ' ')
+  }
+}
+function eventItemName(item: ActivityEvent) {
+  const payload = record(item.payload)
+  const snapshot = record(payload.item)
+  if (typeof snapshot.name === 'string' && snapshot.name) return snapshot.name
+  if (typeof payload.item_name === 'string' && payload.item_name)
+    return payload.item_name
+  const model = item.item_model ?? payload.model
+  return model == null ? '' : `Model ${String(model)}`
+}
+function itemFilterKey(item: ActivityEvent) {
+  const snapshot = record(record(item.payload).item)
+  return (
+    item.item_code ||
+    (typeof snapshot.servername === 'string' ? snapshot.servername : '') ||
+    String(item.item_model ?? record(item.payload).model ?? '')
+  )
+}
+function itemDetail(item: ActivityEvent) {
+  const payload = record(item.payload)
+  const snapshot = record(payload.item)
+  return [
+    snapshot.plus != null ? `+${String(snapshot.plus)}` : '',
+    snapshot.quantity != null ? `Qty ${String(snapshot.quantity)}` : '',
+    typeof snapshot.servername === 'string'
+      ? snapshot.servername
+      : item.item_code || '',
+    typeof payload.acquisition_method === 'string'
+      ? `Method ${payload.acquisition_method}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 function dateInput(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
@@ -94,30 +271,22 @@ function localDateBoundary(value: string, addDays: number) {
 <template>
   <div class="events-page">
     <PageHeader
-      title="Deaths"
-      icon="i-lucide-circle-user-round"
-      description="Recorded character death events. Cause is shown only when phBot supplies verified evidence."
+      :title="pageTitle"
+      icon="i-lucide-activity"
+      :description="description"
     />
-    <section class="panel events-panel" aria-label="Death event history">
+    <section class="panel events-panel" aria-label="Activity event history">
       <div class="events-tabs" role="tablist" aria-label="Event types">
-        <button class="compact-button" type="button" disabled>All</button>
-        <button class="compact-button" type="button" disabled>Level Ups</button>
-        <button class="compact-button" type="button" disabled>Custom</button>
-        <button
-          class="compact-button selected"
-          type="button"
+        <NuxtLink
+          v-for="tab in tabs"
+          :key="tab.key"
+          class="compact-button"
+          :class="{ selected: selectedTab === tab.key }"
           role="tab"
-          aria-selected="true"
+          :aria-selected="selectedTab === tab.key"
+          :to="{ path: '/events', query: tab.query }"
+          >{{ tab.label }}</NuxtLink
         >
-          Deaths
-        </button>
-        <button class="compact-button" type="button" disabled>
-          Rare Drops
-        </button>
-        <button class="compact-button" type="button" disabled>
-          Normal Drops
-        </button>
-        <button class="compact-button" type="button" disabled>Uniques</button>
         <span class="event-count">{{ page?.total ?? '—' }}</span>
       </div>
 
@@ -128,7 +297,16 @@ function localDateBoundary(value: string, addDays: number) {
             v-model="characterInput"
             maxlength="64"
             placeholder="Filter by character"
-            aria-label="Filter deaths by character"
+            aria-label="Filter events by character"
+          />
+        </label>
+        <label v-if="itemTab">
+          <span>Item</span>
+          <input
+            v-model="itemInput"
+            maxlength="128"
+            placeholder="Filter by item"
+            aria-label="Filter events by item"
           />
         </label>
         <label>
@@ -156,8 +334,9 @@ function localDateBoundary(value: string, addDays: number) {
           <thead>
             <tr>
               <th>Timestamp</th>
+              <th>Event</th>
               <th>Character</th>
-              <th>Reason</th>
+              <th>Item</th>
               <th>Location</th>
               <th>Map</th>
             </tr>
@@ -169,23 +348,42 @@ function localDateBoundary(value: string, addDays: number) {
                   formatTimestamp(item.occurred_at)
                 }}</time>
               </td>
+              <td>{{ eventSummary(item) }}</td>
               <td>
                 <NuxtLink
+                  v-if="item.character_id"
                   class="event-character-link"
                   :to="`/characters/${item.character_id}`"
                 >
                   <span class="event-avatar">{{
-                    item.character.slice(0, 1).toUpperCase()
+                    (item.character || '?').slice(0, 1).toUpperCase()
                   }}</span>
                   {{ item.character }}
                 </NuxtLink>
+                <span v-else>{{ item.character || '—' }}</span>
               </td>
               <td>
-                {{
-                  typeof item.payload.cause === 'string'
-                    ? item.payload.cause
-                    : 'Cause unknown'
-                }}
+                <NuxtLink
+                  v-if="
+                    item.item_model != null ||
+                    item.item_code ||
+                    record(item.payload).item
+                  "
+                  class="event-item-link"
+                  :to="{
+                    path: '/events',
+                    query: {
+                      kind: item.kind,
+                      item: itemFilterKey(item) || undefined,
+                    },
+                  }"
+                  :title="itemDetail(item) || 'Show events for this item'"
+                  >{{ eventItemName(item) || 'Item details' }}</NuxtLink
+                >
+                <span v-else>—</span>
+                <small v-if="itemDetail(item)" class="event-item-detail">{{
+                  itemDetail(item)
+                }}</small>
               </td>
               <td>{{ locationText(item) }}</td>
               <td>
@@ -193,7 +391,7 @@ function localDateBoundary(value: string, addDays: number) {
                   v-if="hasReliableMapLocation(item)"
                   class="compact-button map-event-link"
                   :to="`/map?region=${item.region}&x=${item.x}&y=${item.y}`"
-                  aria-label="Open death location on map"
+                  aria-label="Open event location on map"
                 >
                   <UIcon name="i-lucide-map-pin" />
                 </NuxtLink>
@@ -213,12 +411,12 @@ function localDateBoundary(value: string, addDays: number) {
         <div v-if="!page?.events.length" class="event-empty-state">
           <strong>{{
             connectionState === 'current'
-              ? 'No deaths found'
-              : 'Loading death history'
+              ? 'No events found'
+              : 'Loading event history'
           }}</strong>
           <span>{{
             connectionState === 'current'
-              ? 'No death events match this server, character and date range.'
+              ? 'No events match this server, character, item and date range.'
               : 'Waiting for a current event snapshot.'
           }}</span>
         </div>

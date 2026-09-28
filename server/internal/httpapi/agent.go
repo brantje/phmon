@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 5
+	agentProtocolVersion    = 6
 	agentMinProtocolVersion = 2
 )
 
@@ -91,6 +91,8 @@ type agentMessage struct {
 	Full             bool                       `json:"full,omitempty"`
 	ResourceData     map[string]json.RawMessage `json:"resources,omitempty"`
 	DeathEvent       *events.AgentDeath         `json:"event,omitempty"`
+	Events           []events.AgentEvent        `json:"events,omitempty"`
+	EventResults     []events.AppendResult      `json:"results,omitempty"`
 }
 
 type helloAck struct {
@@ -145,7 +147,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	conn.SetReadLimit(resources.MaxFrameBytes)
+	frameLimit := resources.MaxFrameBytes
+	if events.MaxBatchBytes < frameLimit {
+		frameLimit = events.MaxBatchBytes
+	}
+	conn.SetReadLimit(int64(frameLimit))
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	helloCtx, helloCancel := context.WithTimeout(r.Context(), h.options.HelloTimeout)
@@ -269,6 +275,33 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		switch message.Type {
+		case "event.batch":
+			if hello.ProtocolVersion < 6 || message.ProtocolVersion != hello.ProtocolVersion || h.events == nil || len(message.Events) < 1 || len(message.Events) > events.MaxBatchSize || !validMessageTime(message.SentAt) {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid event batch", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			for _, event := range message.Events {
+				if !agentdomain.ValidAgentID(event.ID) {
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid event identifier", hello.AgentID, hello.ProtocolVersion)
+					return
+				}
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 3*time.Second)
+			results, changed, eventErr := h.events.AppendBatch(ctx, hello.AgentID, message.Events)
+			cancel()
+			if eventErr != nil {
+				slog.Warn("event batch persistence failed", "agent_id", hello.AgentID, "reason", eventErr.Error())
+			}
+			if changed {
+				h.live.Invalidate()
+			}
+			ack := map[string]any{"type": "event.batch.ack", "protocol_version": hello.ProtocolVersion, "results": results}
+			writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			writeErr := writer.Send(writeCtx, ack)
+			writeCancel()
+			if writeErr != nil {
+				return
+			}
 		case "heartbeat":
 			if _, err := time.Parse(time.RFC3339, message.SentAt); err != nil {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
