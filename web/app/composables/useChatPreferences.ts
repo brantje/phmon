@@ -1,4 +1,5 @@
 import type { ChatMessage } from '~~/shared/types/live'
+import { pruneSeenChatMessageIDs } from '~/utils/pruneSeenChatMessageIDs'
 
 export interface ChatPreferences {
   browser_notifications: boolean
@@ -55,12 +56,19 @@ export function useChatPreferences() {
       error.value = 'This browser does not support desktop notifications.'
       return false
     }
-    const permission = await Notification.requestPermission()
+    let permission: NotificationPermission
+    try {
+      permission = await Notification.requestPermission()
+    } catch {
+      error.value = 'Browser notification permission could not be requested.'
+      return false
+    }
     const enabled = permission === 'granted'
-    await save({
+    const saved = await save({
       ...preferences.value,
       browser_notifications: enabled,
     })
+    if (!saved) return false
     if (!enabled)
       error.value = 'Browser notification permission was not granted.'
     return enabled
@@ -101,10 +109,6 @@ const initializedFeeds = new Set<string>()
 function remember(id: string) {
   if (!id || seenIDs.has(id)) return false
   seenIDs.add(id)
-  if (seenIDs.size > 1000) {
-    const first = seenIDs.values().next().value
-    if (first) seenIDs.delete(first)
-  }
   return true
 }
 
@@ -174,6 +178,14 @@ export function useChatNotifications() {
   let active = false
 
   function observe() {
+    const currentSnapshotIDs = new Set<string>()
+    for (const snapshot of Object.values(chatFeeds.value)) {
+      for (const item of snapshot.page.messages)
+        currentSnapshotIDs.add(item.event_id || item.message_id)
+      for (const contact of snapshot.contacts)
+        currentSnapshotIDs.add(contact.last_message_id)
+    }
+
     for (const channel of channelNames) {
       const id = `chat-notify-${channel}`
       const snapshot = chatFeeds.value[id]
@@ -215,6 +227,7 @@ export function useChatNotifications() {
         }
       }
     }
+    pruneSeenChatMessageIDs(seenIDs, currentSnapshotIDs)
   }
 
   function start() {

@@ -11,7 +11,7 @@ in this environment. Keep the canonical requirements in `AGENTS.md`.
 
 | Existing contract | Slice 6 use or required change |
 | --- | --- |
-| `plugin/PhMon.py` `handle_chat` | Protocol v6 spools `chat.message_received` through the Slice 5 event batch. It preserves bounded text/raw type, normalizes named strings and operator-confirmed numeric values 1 (General/All), 4 (Party), 5 (Guild) and 6 (Global), and leaves other values unknown. Preserve that single inbound transport. |
+| `plugin/PhMon.py` `handle_chat` | Protocol v6 spools `chat.message_received` through the Slice 5 event batch. It preserves bounded text/raw type, normalizes named strings and operator-confirmed numeric values 1 (General/All), 2 (Private), 4 (Party), 5 (Guild) and 6 (Global), and leaves other values unknown. Preserve that single inbound transport. |
 | `activity_events`, `server/internal/events` | Durable, idempotent event IDs, session sequence, scope and ordered query exist. Extend chat validation only after verifying channel meanings. Chat history must be derived from these rows. |
 | `server/internal/commands` and `/api/commands` | Authenticated, idempotent, session-fenced, audited command lifecycle exists. Add a typed chat command and per-channel capability modes here. |
 | `web/app/composables/useLiveData.ts` and Go `LiveHub` | One browser WebSocket already manages subscriptions, revisions and stale state. Add chat invalidation/snapshots to it. |
@@ -41,10 +41,12 @@ open Party Setup/item gates; do not mislabel them as Slice 6 completion.
   echo is linked only within the same session, exact channel/text/peer and ten-second
   window; ambiguous echoes remain distinct.
 - Added optional `phBotChat` capability reporting and callback-thread dispatch for
-  General, Private, Party, Guild, Union and Global. Numeric callback types remain
-  Unknown. Outbound messages use a 2,048-byte application cap, are not split, and
-  global sends require an explicit confirmation. API `True` reports phBot acceptance,
-  not recipient delivery.
+  General, Private, Party, Guild, Union and Global. The initial note that numeric
+  callback types remained Unknown is superseded by the operator-confirmed mappings
+  1 (General/All), 2 (Private), 4 (Party), 5 (Guild) and 6 (Global); other numeric or
+  unrecognized values remain Unknown. Outbound messages use a 2,048-byte application
+  cap, are not split, and global sends require explicit confirmation. API `True`
+  reports phBot acceptance, not recipient delivery.
 - Added the responsive `/chat` screen and `/settings` chat-preference controls. The
   UI uses session-reported channel capabilities and does not change server scope when
   selecting a sender. Unknown types are available in Advanced mode.

@@ -310,10 +310,10 @@ func (s *Store) Contacts(ctx context.Context, server, characterID string, limit 
 		return nil, ErrInvalid
 	}
 	rows, err := s.pool.Query(ctx, `
-	SELECT m.server_name,
+	SELECT (array_agg(m.server_name ORDER BY m.occurred_at DESC,m.message_id DESC))[1],
 	 (array_agg(m.character_id::text ORDER BY m.occurred_at DESC,m.message_id DESC))[1],
 	 (array_agg(m.character_name ORDER BY m.occurred_at DESC,m.message_id DESC))[1],
-	 m.peer_name,m.peer_key,
+	 (array_agg(m.peer_name ORDER BY m.occurred_at DESC,m.message_id DESC))[1],m.peer_key,
  (array_agg(m.message_id::text ORDER BY m.occurred_at DESC,m.message_id DESC))[1],
  (array_agg(m.message ORDER BY m.occurred_at DESC,m.message_id DESC))[1],
  max(m.occurred_at),
@@ -325,7 +325,7 @@ LEFT JOIN chat_read_cursors r ON r.operator_identity='operator' AND lower(r.serv
  AND r.character_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid AND r.channel='private' AND r.peer_key=m.peer_key
 WHERE m.channel='private' AND m.peer_key<>'' AND ($1='' OR lower(m.server_name)=lower($1))
  AND ($2='' OR m.character_id=$2::uuid) AND m.echo_of_command_id IS NULL
-GROUP BY m.server_name,m.peer_name,m.peer_key,r.last_read_at,r.last_read_message_id
+GROUP BY lower(m.server_name),m.character_id,m.peer_key,r.last_read_at,r.last_read_message_id
 ORDER BY max(m.occurred_at) DESC,m.peer_key LIMIT $3`, server, characterID, limit)
 	if err != nil {
 		return nil, err

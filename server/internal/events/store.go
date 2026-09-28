@@ -308,7 +308,7 @@ func validateAgentEvent(event AgentEvent) error {
 			Sender    string `json:"sender"`
 			Recipient string `json:"recipient"`
 		}
-		if json.Unmarshal(payload, &fields) != nil || !chat.ValidChannel(fields.Channel) || len(fields.RawType) > 64 || len(fields.Message) > chat.MaxTextBytes || len(fields.Sender) > 64 || len(fields.Recipient) > 64 {
+		if json.Unmarshal(payload, &fields) != nil || !chat.ValidChannel(fields.Channel) || len(fields.RawType) > 64 || len(fields.Message) == 0 || len(fields.Message) > chat.MaxTextBytes || len(fields.Sender) > 64 || len(fields.Recipient) > 64 {
 			return fmt.Errorf("%w: chat message missing or too large", ErrInvalidEvent)
 		}
 		var direction struct {
@@ -577,17 +577,36 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 			return false, false, ErrEventConflict
 		}
 	}
+	isChatMessage := event.Kind == "chat.message_received"
+	if isChatMessage {
+		if _, err := tx.Exec(ctx, `SAVEPOINT chat_projection`); err != nil {
+			return false, false, fmt.Errorf("create chat projection savepoint: %w", err)
+		}
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload,sequence,dedupe_key,item_model,item_code)
 VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19)`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode))
 	if err != nil {
 		return false, false, err
 	}
-	if event.Kind == "chat.message_received" {
-		if err := chat.ProjectInbound(ctx, tx, chat.EventInput{
+	if isChatMessage {
+		projectionErr := chat.ProjectInbound(ctx, tx, chat.EventInput{
 			EventID: event.ID, CharacterID: event.CharacterID, SessionID: event.SessionID,
 			Server: event.Server, Character: event.Character, OccurredAt: event.OccurredAt, Payload: event.Payload,
-		}); err != nil {
-			return false, false, fmt.Errorf("%w: chat projection failed", ErrInvalidEvent)
+		})
+		if projectionErr != nil {
+			if _, rollbackErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT chat_projection`); rollbackErr != nil {
+				return false, false, fmt.Errorf("chat projection failed (%v); rollback failed: %w", projectionErr, rollbackErr)
+			}
+			if _, releaseErr := tx.Exec(ctx, `RELEASE SAVEPOINT chat_projection`); releaseErr != nil {
+				return false, false, fmt.Errorf("release chat projection savepoint after rollback: %w", releaseErr)
+			}
+			if errors.Is(projectionErr, chat.ErrInvalid) {
+				return false, false, fmt.Errorf("%w: invalid chat projection", ErrInvalidEvent)
+			}
+			return false, false, fmt.Errorf("chat projection failed: %w", projectionErr)
+		}
+		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT chat_projection`); err != nil {
+			return false, false, fmt.Errorf("release chat projection savepoint: %w", err)
 		}
 	}
 	return true, false, nil

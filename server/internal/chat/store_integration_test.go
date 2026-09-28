@@ -197,6 +197,17 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 	if err != nil || gotPrefs != prefs {
 		t.Fatalf("chat preferences = %+v err=%v", gotPrefs, err)
 	}
+	caseVariant := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 14,
+		databaseNow.Add(13*time.Second), "private", "2", "bEtA", "case variant")
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []events.AgentEvent{caseVariant})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("case-variant private insert = %+v changed=%v err=%v", results, changed, err)
+	}
+	contacts, err = chatStore.Contacts(ctx, server, characterID, 20)
+	if err != nil || len(contacts) != 1 || contacts[0].PeerKey != "beta" ||
+		contacts[0].PeerName != "bEtA" || contacts[0].LastMessage != "case variant" {
+		t.Fatalf("case-variant peer should remain one contact with latest display name: %+v err=%v", contacts, err)
+	}
 }
 
 func makeChatEvent(agentID, characterID, sessionID, server string, sequence int64, at time.Time, message string) events.AgentEvent {

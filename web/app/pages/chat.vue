@@ -382,6 +382,7 @@ async function submitMessage(globalConfirmed = false) {
       'Message could not be queued.'
     sendState.value = ''
   } finally {
+    showGlobalConfirmation.value = false
     sending.value = false
   }
 }

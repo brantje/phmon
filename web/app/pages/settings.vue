@@ -28,13 +28,16 @@ async function toggleSound() {
 
 async function enableNotifications() {
   savingNotice.value = true
-  if (preferences.value.browser_notifications) {
-    await save({ ...preferences.value, browser_notifications: false })
-  } else {
-    await requestBrowserPermission()
+  try {
+    if (preferences.value.browser_notifications) {
+      await save({ ...preferences.value, browser_notifications: false })
+    } else {
+      await requestBrowserPermission()
+    }
+  } finally {
+    savingNotice.value = false
+    permission.value = notificationStatus.value
   }
-  savingNotice.value = false
-  permission.value = notificationStatus.value
 }
 </script>
 
