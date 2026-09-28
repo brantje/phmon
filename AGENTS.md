@@ -3405,3 +3405,25 @@ uploaded. Exact next action: operator uploads
 `plugin/PhMon.py` from this rollout worktree (plugin version 1.4.0), then verify a
 fresh character state carries `model_id` and the live UI renders the associated
 portrait. Keep real phBot runtime validation open until that observation succeeds.
+
+### Resume — 2026-09-28 Slice 6 chat follow-up
+
+Continued the Slice 6 fix on `codex/slice-6-chat-plan`. Private contact changes now
+keep the existing contact and unread snapshot while the matching conversation page
+loads, and chat-only subscription refreshes no longer change the global live-data
+status. The `/api/chat/read` response now returns contacts and channel unread counts
+queried after the durable cursor update; the page applies these values immediately,
+then accepts the normal shared WebSocket snapshot. Updated `docs/reference-parity.md`.
+
+Files changed: `server/internal/chat/store.go`,
+`server/internal/chat/store_integration_test.go`, `server/internal/httpapi/chat.go`,
+`web/app/composables/useLiveData.ts`, `web/app/pages/chat.vue`,
+`docs/reference-parity.md` and this resume entry. Preserve the unrelated untracked
+`plugin/phMonitorAdapter.py`.
+
+Validation so far: Nuxt typecheck, 8 frontend unit tests, ESLint (22 existing HTML
+void-element warnings, no errors), Prettier and `go test ./internal/chat
+./internal/httpapi` passed. The store's PostgreSQL integration test remains gated by
+`TEST_DATABASE_URL`; the in-app browser currently has no tabs, so authenticated visual
+verification is unavailable. Exact next action: run the production build and full Go
+suite, inspect the final diff, then push the update to PR #14 and check its CI.

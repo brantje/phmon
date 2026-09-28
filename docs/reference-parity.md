@@ -743,6 +743,10 @@ Servar inventory remains open.
 - General and Global history now spans all characters on the selected server.
   General's durable read cursor and unread count are server scoped; Global is omitted
   from the unread counter and its badge is hidden in the UI.
+- A successful mark-read response now includes fresh contact and channel unread state
+  computed after the cursor is saved. The chat page applies those counts immediately,
+  then the shared live snapshot reconciles them. Changing private contacts keeps the
+  contact roster visible while only the conversation pane loads.
 - At the operator's direction, every channel uses flat chronological log rows with
   sender/time labels. General and other channels do not use private-message bubble
   alignment. The local chat page passes Nuxt typecheck, unit tests, formatting and

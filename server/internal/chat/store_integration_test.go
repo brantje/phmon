@@ -138,6 +138,11 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 	if err != nil || len(contacts) != 1 || contacts[0].PeerKey != "beta" || contacts[0].LastMessageID == "" || contacts[0].Unread != 1 {
 		t.Fatalf("private contacts = %+v err=%v", contacts, err)
 	}
+	readState, err := chatStore.ReadState(ctx, server, characterID)
+	if err != nil || readState.UnreadByChannel["general"] != 1 || readState.UnreadByChannel["private"] != 1 ||
+		len(readState.Contacts) != 1 || readState.Contacts[0].Unread != 1 {
+		t.Fatalf("read state = %+v err=%v", readState, err)
+	}
 	prefs := chat.Preferences{BrowserNotifications: true, MessageSound: true}
 	if err := chatStore.SavePreferences(ctx, prefs); err != nil {
 		t.Fatal(err)

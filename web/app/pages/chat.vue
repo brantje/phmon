@@ -19,11 +19,13 @@ const {
   characterControls,
   commandHistory,
   chatFeeds,
+  chatFeedCurrent,
   setCharacterControls,
   setCharacterCommands,
   clearCharacterCommandSubscriptions,
   setChatFeed,
   clearChatFeed,
+  applyChatReadState,
   connectionState,
   liveStale,
   liveLoading,
@@ -67,6 +69,9 @@ const selectedCharacter = computed(
     ) || null,
 )
 const snapshot = computed(() => chatFeeds.value[feedID])
+const chatSnapshotCurrent = computed(
+  () => chatFeedCurrent.value[feedID] === true,
+)
 const contacts = computed(() => snapshot.value?.contacts || [])
 const unread = computed(() => snapshot.value?.unread_by_channel || {})
 const page = computed(() => snapshot.value?.page)
@@ -305,7 +310,9 @@ async function markCurrentRead() {
     return
   lastReadMessageID.value = latestInbound.message_id
   try {
-    await $fetch('/api/chat/read', {
+    const readState = await $fetch<
+      Pick<ChatSnapshot, 'contacts' | 'unread_by_channel'> & { saved: boolean }
+    >('/api/chat/read', {
       method: 'POST',
       body: {
         server: character.server,
@@ -317,6 +324,7 @@ async function markCurrentRead() {
         message_id: latestInbound.message_id,
       },
     })
+    if (readState.saved) applyChatReadState(feedID, readState)
   } catch {
     lastReadMessageID.value = ''
   }
@@ -576,6 +584,13 @@ onBeforeUnmount(() => {
             </div>
             <div v-else-if="!selectedCharacterID" class="conversation-empty">
               Select a sender to view that character’s chat history.
+            </div>
+            <div
+              v-else-if="!chatSnapshotCurrent"
+              class="conversation-empty"
+              role="status"
+            >
+              Loading conversation…
             </div>
             <div
               v-else-if="!messages.length && snapshot"

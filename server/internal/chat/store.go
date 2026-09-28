@@ -97,6 +97,11 @@ type Snapshot struct {
 	UnreadByChannel map[string]int `json:"unread_by_channel"`
 }
 
+type ReadState struct {
+	Contacts        []Contact      `json:"contacts"`
+	UnreadByChannel map[string]int `json:"unread_by_channel"`
+}
+
 type Cursor struct {
 	At time.Time
 	ID string
@@ -417,15 +422,23 @@ func (s *Store) Snapshot(ctx context.Context, filter Filter) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	contacts, err := s.Contacts(ctx, filter.Server, filter.CharacterID, 50)
+	readState, err := s.ReadState(ctx, filter.Server, filter.CharacterID)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	counts, err := s.UnreadByChannel(ctx, filter.Server, filter.CharacterID)
+	return Snapshot{Channel: filter.Channel, Contacts: readState.Contacts, Page: page, UnreadByChannel: readState.UnreadByChannel}, nil
+}
+
+func (s *Store) ReadState(ctx context.Context, server, characterID string) (ReadState, error) {
+	contacts, err := s.Contacts(ctx, server, characterID, 50)
 	if err != nil {
-		return Snapshot{}, err
+		return ReadState{}, err
 	}
-	return Snapshot{Channel: filter.Channel, Contacts: contacts, Page: page, UnreadByChannel: counts}, nil
+	counts, err := s.UnreadByChannel(ctx, server, characterID)
+	if err != nil {
+		return ReadState{}, err
+	}
+	return ReadState{Contacts: contacts, UnreadByChannel: counts}, nil
 }
 
 func EncodeCursor(at time.Time, id string) string {

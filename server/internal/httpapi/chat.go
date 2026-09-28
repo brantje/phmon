@@ -93,7 +93,16 @@ func (h *chatHandler) markRead(w http.ResponseWriter, r *http.Request) {
 		respondChatStoreError(w, err)
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]bool{"saved": true})
+	readState, err := h.store.ReadState(ctx, body.Server, body.CharacterID)
+	if err != nil {
+		respondChatStoreError(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"saved":             true,
+		"contacts":          readState.Contacts,
+		"unread_by_channel": readState.UnreadByChannel,
+	})
 	if h.live != nil {
 		h.live.Invalidate()
 	}
