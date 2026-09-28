@@ -76,6 +76,14 @@ func (s *Store) Apply(ctx context.Context, agentID, characterID string, generati
 	if err = tx.QueryRow(ctx, `SELECT server_key,coalesce(guild_name,'') FROM characters WHERE character_id=$1`, characterID).Scan(&observerServer, &observerGuild); err != nil {
 		return err
 	}
+	if normalizedGuild := normalizeGuild(observerGuild); normalizedGuild != "" {
+		// Serialize all observers in a guild scope with administrative record
+		// removal so a concurrent snapshot cannot race the confirmed purge.
+		guildScope := strings.ToLower(strings.TrimSpace(observerServer)) + ":" + normalizedGuild
+		if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "guild-storage:"+guildScope); err != nil {
+			return err
+		}
+	}
 	now := time.Now().UTC()
 	for key, observation := range observations {
 		var serverKey, guildKey string
@@ -203,6 +211,42 @@ ORDER BY o.resource_key,o.observed_at DESC NULLS LAST,o.updated_at DESC,o.observ
 		return nil, err
 	}
 	return result, nil
+}
+
+// DeleteGuildStorage removes the saved current snapshots for one normalized
+// server/guild scope. It does not alter anything in phBot or the game. A later
+// agent observation can create a new saved snapshot.
+func (s *Store) DeleteGuildStorage(ctx context.Context, server, guild string) (observations, items int64, err error) {
+	if s == nil || s.pool == nil {
+		return 0, 0, ErrInvalid
+	}
+	serverKey := strings.ToLower(strings.TrimSpace(server))
+	guildKey := normalizeGuild(guild)
+	if serverKey == "" || guildKey == "" {
+		return 0, 0, ErrInvalid
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "guild-storage:"+serverKey+":"+guildKey); err != nil {
+		return 0, 0, err
+	}
+	result, err := tx.Exec(ctx, `DELETE FROM character_resource_items WHERE container_key='guild_storage' AND server_key=$1 AND guild_key=$2`, serverKey, guildKey)
+	if err != nil {
+		return 0, 0, err
+	}
+	items = result.RowsAffected()
+	result, err = tx.Exec(ctx, `DELETE FROM character_resource_observations WHERE resource_key='guild_storage' AND server_key=$1 AND guild_key=$2`, serverKey, guildKey)
+	if err != nil {
+		return 0, 0, err
+	}
+	observations = result.RowsAffected()
+	if err = tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return observations, items, nil
 }
 
 func normalizeGuild(value string) string { return strings.ToLower(strings.TrimSpace(value)) }

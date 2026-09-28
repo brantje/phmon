@@ -55,6 +55,7 @@ const partyMembers = computed(() => {
   const list = payload('party').members
   return Array.isArray(list) ? (list as Record<string, unknown>[]) : []
 })
+const partySetup = computed(() => payload('party_setup'))
 const academy = computed(() => {
   const value = payload('academy').value
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -336,8 +337,15 @@ onBeforeUnmount(() => {
           >
         </div>
         <p class="mapping-note">
-          Equipment slot labels follow phBot's reported slot order. The mapping
-          awaits live runtime confirmation.
+          phBot documents a flat item list and its capacity, but not which
+          entries are equipment. The current first-13 split comes from an
+          unverified adapter lead; equipment labels and remaining bag capacity
+          may be wrong. Mapping evidence:
+          {{
+            String(
+              equipment.mapping_evidence || 'adapter_lead_runtime_unverified',
+            )
+          }}.
         </p>
       </section>
     </div>
@@ -507,32 +515,65 @@ onBeforeUnmount(() => {
             : 'Party membership and Party Setup are separate observations.'
         }}</span>
       </div>
-      <div v-else-if="partyMembers.length === 0" class="inventory-empty">
-        No party members reported.
-      </div>
-      <div
-        v-for="member in partyMembers"
-        :key="String(member.party_id)"
-        class="party-member"
+      <section
+        class="party-membership"
+        aria-labelledby="party-membership-title"
       >
-        <div>
-          <strong>{{ String(member.name || 'Unknown member') }}</strong
-          ><small
-            >{{ String(member.guild || 'No guild') }} · Lv.
-            {{ String(member.level ?? '—') }}</small
-          >
-        </div>
-        <span>HP {{ memberNumber(member, 'hp_percent') ?? '—' }}%</span
-        ><span>MP {{ memberNumber(member, 'mp_percent') ?? '—' }}%</span>
-      </div>
-      <div class="party-setup-note">
-        <strong>Party Setup</strong
-        ><span
-          >Read-only observation. Configuration write, reload and
-          effective-state readback have not been verified on a live phBot
-          runtime.</span
+        <h3 id="party-membership-title">Current party membership</h3>
+        <div
+          v-if="available('party') === 'observed' && partyMembers.length === 0"
+          class="inventory-empty"
         >
-      </div>
+          No party members reported.
+        </div>
+        <div
+          v-for="member in partyMembers"
+          :key="String(member.party_id)"
+          class="party-member"
+        >
+          <div>
+            <strong>{{ String(member.name || 'Unknown member') }}</strong
+            ><small
+              >{{ String(member.guild || 'No guild') }} · Lv.
+              {{ String(member.level ?? '—') }}</small
+            >
+          </div>
+          <span>HP {{ memberNumber(member, 'hp_percent') ?? '—' }}%</span
+          ><span>MP {{ memberNumber(member, 'mp_percent') ?? '—' }}%</span>
+        </div>
+      </section>
+      <section class="party-setup-panel" aria-labelledby="party-setup-title">
+        <div class="party-setup-heading">
+          <div>
+            <h3 id="party-setup-title">Party Setup</h3>
+            <span class="status-chip stale">Configuration unavailable</span>
+          </div>
+          <button
+            class="compact-button"
+            type="button"
+            disabled
+            aria-describedby="party-setup-blocker"
+          >
+            Edit settings
+          </button>
+        </div>
+        <p id="party-setup-blocker">
+          No supported Party Setup fields or phBot write API are documented.
+          Direct edits to the active JSON file are explicitly documented as
+          overwrite-prone; profile reload and effective-state readback are
+          unverified. Editing stays disabled until those behaviors are verified
+          on the installed phBot version.
+        </p>
+        <small
+          >Observed mode:
+          {{ String(partySetup.mode || 'read_only_unverified') }} ·
+          {{
+            String(
+              partySetup.reason || 'configuration_reload_contract_not_verified',
+            )
+          }}</small
+        >
+      </section>
     </div>
 
     <div

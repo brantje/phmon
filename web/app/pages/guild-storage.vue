@@ -56,6 +56,12 @@ const snapshot = shallowRef<GuildStorageSnapshot | null>(null)
 const loading = ref(false)
 const requestFailed = ref(false)
 const search = ref('')
+const deleteDialogOpen = ref(false)
+const deleteDialogElement = ref<HTMLDialogElement | null>(null)
+const deleteConfirmation = ref('')
+const deleting = ref(false)
+const deleteError = ref('')
+const deleteResult = ref('')
 const resource = computed(() =>
   snapshot.value?.items.find((item) => item.resource_key === 'guild_storage'),
 )
@@ -113,6 +119,58 @@ async function loadGuildStorage() {
     if (revision === requestRevision) requestFailed.value = true
   } finally {
     if (revision === requestRevision) loading.value = false
+  }
+}
+
+function openDeleteDialog() {
+  deleteConfirmation.value = ''
+  deleteError.value = ''
+  deleteDialogOpen.value = true
+}
+
+function closeDeleteDialog() {
+  if (deleting.value) return
+  deleteDialogOpen.value = false
+}
+
+watch(deleteDialogOpen, async (open) => {
+  await nextTick()
+  const dialog = deleteDialogElement.value
+  if (!dialog) return
+  if (open && !dialog.open) dialog.showModal()
+  if (!open && dialog.open) dialog.close()
+})
+
+async function deleteGuildStorage() {
+  const scope = selectedScope.value
+  if (!scope || deleteConfirmation.value !== scope.guild || deleting.value)
+    return
+  requestRevision += 1
+  loading.value = false
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    const result = await $fetch<{
+      deleted_observations: number
+      deleted_items: number
+    }>('/api/guild-storage', {
+      method: 'DELETE',
+      body: {
+        server: scope.server,
+        guild: scope.guild,
+        confirmation: deleteConfirmation.value,
+      },
+    })
+    deleteDialogOpen.value = false
+    snapshot.value = null
+    requestFailed.value = false
+    deleteResult.value = `Removed ${result.deleted_observations} saved observation(s) and ${result.deleted_items} item row(s) for ${scope.server} · ${scope.guild}. A later phBot observation may create a new saved snapshot; in-game contents were not changed.`
+    await loadGuildStorage()
+  } catch {
+    deleteError.value =
+      'Could not remove the saved guild storage records. No in-game contents were changed.'
+  } finally {
+    deleting.value = false
   }
 }
 
@@ -185,6 +243,15 @@ onBeforeUnmount(() => {
         >
           Refresh
         </button>
+        <button
+          v-if="resource"
+          class="compact-button danger-button"
+          type="button"
+          :disabled="loading || deleting"
+          @click="openDeleteDialog"
+        >
+          Remove saved records
+        </button>
       </div>
 
       <div
@@ -201,6 +268,12 @@ onBeforeUnmount(() => {
       >
         Guild storage refresh failed. Showing the last retrieved contents for
         this server and guild.
+      </div>
+      <div v-if="deleteResult" class="inventory-empty" role="status">
+        <span>{{ deleteResult }}</span>
+        <button class="compact-button" type="button" @click="deleteResult = ''">
+          Dismiss
+        </button>
       </div>
       <div
         v-if="scopes.length === 0"
@@ -291,5 +364,56 @@ onBeforeUnmount(() => {
         </p>
       </template>
     </section>
+    <dialog
+      ref="deleteDialogElement"
+      class="record-delete-dialog"
+      aria-labelledby="guild-storage-delete-title"
+      @cancel.prevent="closeDeleteDialog"
+    >
+      <form method="dialog" @submit.prevent="deleteGuildStorage">
+        <h2 id="guild-storage-delete-title">
+          Remove saved guild storage records?
+        </h2>
+        <p>
+          This removes all persisted guild-storage snapshots and item rows for
+          <strong
+            >{{ selectedScope?.server }} · {{ selectedScope?.guild }}</strong
+          >
+          from PhMon. It does not remove or change items in the game. Later
+          phBot observations may create new saved records.
+        </p>
+        <label for="guild-storage-confirmation">
+          Type the exact guild name to confirm
+        </label>
+        <input
+          id="guild-storage-confirmation"
+          v-model="deleteConfirmation"
+          :disabled="deleting"
+          autocomplete="off"
+          maxlength="100"
+          :placeholder="selectedScope?.guild || ''"
+        />
+        <p v-if="deleteError" class="dialog-error" role="alert">
+          {{ deleteError }}
+        </p>
+        <div class="record-delete-actions">
+          <button
+            class="compact-button"
+            type="button"
+            :disabled="deleting"
+            @click="closeDeleteDialog"
+          >
+            Cancel
+          </button>
+          <button
+            class="compact-button danger-button"
+            type="submit"
+            :disabled="deleting || deleteConfirmation !== selectedScope?.guild"
+          >
+            {{ deleting ? 'Removing…' : 'Remove saved records' }}
+          </button>
+        </div>
+      </form>
+    </dialog>
   </div>
 </template>

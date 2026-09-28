@@ -421,6 +421,31 @@ next action: receive the updated plugin from the user and validate its live API/
 observations; then review authenticated local screenshots and obtain version-specific
 item packet fixtures before closing the remaining data gates.
 
+**Slice 4 audit update (2026-09-28):** verified the repository's Party Setup gap
+against official Party, Config and Misc API documentation. Membership remains a
+separate live observation; Party Setup is now a distinct read-only panel with editing
+disabled because no supported field/writer/reload/readback contract exists. The
+0–12 equipment split remains `adapter_lead_runtime_unverified`; the flat inventory
+API does not establish indices or capacity semantics, and the interface warns that
+equipment labeling/capacity may be wrong. Do not promote this mapping without
+independent runtime/API evidence. Implemented authenticated Guild Storage record
+removal with exact guild-name confirmation, exact server/guild scoping, atomic
+database deletion, per-scope serialization against concurrent agent snapshots,
+deleted counts and explicit future-observation retention behavior. It only removes
+saved PhMon observations and does not mutate the game. Added focused handler/auth
+tests and a PostgreSQL integration assertion, but the integration test skipped here
+because `TEST_DATABASE_URL` is unset. Item API fields and live screenshots were
+re-audited; packet movement retention, Greatest packet fixtures, full family/blue
+semantics, live invalidation, and matching fresh-data screenshots remain open. Go
+tests/vet, 54 plugin tests, frontend unit tests, typecheck, lint, formatting and
+production build pass; lint has 14 existing void-element warnings. No deployment,
+merge, push, or character operation was performed. Slice 4 remains incomplete.
+Exact next action: obtain an authorized installed-phBot Party Setup write/reload/
+readback contract and a documented or independent equipment-slot mapping; meanwhile
+verify guild purge in a PostgreSQL-backed environment and capture authenticated
+1440×1000, 1280×800 and 390×844 UI evidence when the local session is fresh. Then
+continue Slice 4 evidence gates only; do not start Slice 5.
+
 **Slice 3 acceptance follow-up (2026-09-27, active):** PR #9 base sync commit
 `481df89` is mergeable and both duplicate CI runs passed: PostgreSQL integration and
 Go race coverage, production-worker command smoke with fake adapters, authenticated
@@ -3083,3 +3108,26 @@ remained unchanged and health stayed green. Browser loaded four live characters 
 their inventories; manual pointer-hover/color inspection remains unrecorded. The PR's
 validate/stack checks pass; CodeRabbit is rate-limited after the prior review. Next:
 record the manual hover/color check when available and keep Slice 4 open.
+
+### Resume — 2026-09-28 Slice 4 audit continuation
+
+Active scope remains Slice 4 on `feat/inventories`. Read and compared the current
+branch against `docs/reference-parity.md`, `docs/phbot-capabilities.md`,
+`docs/item-instance-evidence.md`, the official phBot Inventory/Party/Config/Misc
+APIs, and read-only browser evidence. Implemented Party Setup as a distinct but
+read-only view with precise blocker details; did not invent a writer or claim it
+works. Added an authenticated typed-confirmation purge for saved guild-storage
+records scoped by server and guild, with a serialized DB transaction and explicit
+retention semantics. Updated equipment mapping warnings and the evidence docs. The
+working tree retains untracked `plugin/phMonitorAdapter.py` untouched; it is not
+branch implementation. Validation: `go test ./...`, `go vet ./...`, plugin
+`python -m unittest` (54), frontend `npm run test:unit` (3), typecheck, lint (14
+pre-existing void-element warnings), Prettier check and production build passed.
+`TEST_DATABASE_URL` is unset, so PostgreSQL integration/race validation is not
+confirmed. `git diff --check` passed. Visual comparison is documented but not a
+same-viewport acceptance: local app was stale and could not take the reference tab's
+1440×1000 viewport. No deployment, game traffic, merge or publish. Exact next action:
+repeat the purge integration test with PostgreSQL, and close only Slice 4 runtime
+gates when supported Party Setup and equipment mapping evidence, packet fixtures /
+movement semantics, and fresh matched-size screenshots are available; then revise
+the docs. Stop before Slice 5.

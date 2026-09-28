@@ -514,3 +514,36 @@ The live getters have not reported Advanced elixir eligibility or maximum number
 of magic options. `MATTR_REPAIR`, when present, has a verified label, but it must
 not be assumed on equipment without that option. The passive packet paths, full
 family formula coverage and change/invalidation runtime gate remain open.
+
+### 2026-09-28 Party Setup and inventory-slot contract re-check
+
+Rechecked the official [Party API](https://plugins.phbot.org/phbot-api/party),
+[Config API](https://plugins.phbot.org/phbot-api/config), and
+[Misc API](https://plugins.phbot.org/phbot-api/misc). They document `get_party()`
+for current membership; `get_config_path()` for the active player JSON, with an
+explicit warning that direct changes may be overwritten; and `set_profile()` for
+profile selection. They do not document Party Setup field names, a supported writer,
+profile-reload behavior, or effective-state readback. The adapter's file write and
+delayed `reload_profile()` remain an unverified lead. The UI exposes Party Setup as a
+separate read-only section, with edits disabled; there is no `party.setup.apply`
+command capability.
+
+To enable writes, record evidence from the installed phBot version for: (1) exact
+supported party invitation/acceptance, leader-list and party-type fields; (2) an
+officially supported mutation path; (3) whether/how it reloads the active profile;
+and (4) a readback that proves effective application after reload. The test must run
+through the normal session-fenced authenticated command lifecycle and confirm
+success only from the effective readback. Until then, keep mutations disabled.
+
+The official [Inventory API](https://plugins.phbot.org/phbot-api/inventory) describes
+`get_inventory()` as a flat item list with size, but does not define equipment slot
+indices or whether capacity includes them. Current 0–12 separation stays marked
+`adapter_lead_runtime_unverified`; `version=296` and the supplied adapter do not
+prove it. A phBot-documented slot contract or same-session raw-slot-to-equipment
+mapping from independent runtime evidence is required before changing that status.
+
+Party Setup remains read-only/unverified. The first-13 equipment split remains
+unverified. For item instance evidence and the Slice 4 visual audit, see
+[`item-instance-evidence.md`](item-instance-evidence.md) and
+[`reference-parity.md`](reference-parity.md). No character or game traffic was
+generated for these checks.

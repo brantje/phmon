@@ -7,9 +7,9 @@ inspection evidence only and are never shipped as PhMon application assets.
 ## Slice 4 — Stats, containers, pets, party and academy
 
 Status: Slice 4 has a live API-backed collection and presentation implementation.
-The open gates are full family/blue metadata coverage, packet-based movement retention,
-several UI acceptance comparisons and verified Party Setup application. Current
-runtime evidence is recorded in the dated entries and
+The open gates are incomplete/unverified family and blue semantics, packet-based
+movement retention, several UI acceptance comparisons and verified Party Setup
+application. Current runtime evidence is recorded in the dated entries and
 [`item-instance-evidence.md`](item-instance-evidence.md).
 
 The user's supplied Stats captures show two grouped character cards, compact
@@ -52,21 +52,54 @@ The shell's persisted server selector now scopes fleet summaries and the Stats
 character cards. Guild Storage has a dedicated sidebar route and authenticated API
 query keyed by explicit server and guild; it shows the newest confirmed observation,
 observer identity, item freshness, and searchable source-slot results through the same
-item preview. Personal storage remains on the character card. Explicit removal of
-stored guild records is not implemented yet.
+item preview. Personal storage remains on the character card. A typed-confirmation
+purge now removes all saved guild-storage snapshots and normalized item rows for the
+selected server/guild only; the operator must authenticate and pass the exact guild
+name through the server API. It does not alter in-game storage. A later agent
+observation can create new saved data. The operation is logged with scope and row
+counts; it does not keep a durable audit-history record.
 
-Local evidence to date: 39 plugin tests, Go tests/vet, Nuxt typecheck, lint, format
-check and production build pass; lint retains 13 existing void-element style
-warnings. The resource migration integration test compiles but skips without
-`TEST_DATABASE_URL`; local PostgreSQL, Docker and race coverage are unavailable.
-The supplied reference URL loads its live Stats view and the Info, Progress, Pet and
-Storage tabs were inspected. The local app still reaches the operator sign-in gate,
-so matching authenticated screenshots have not been reviewed. Do not treat this
-reference inspection as proof of API semantics or runtime correctness. At 1440 ×
-1000, 1280 × 800, 390 × 844 and the reference-native viewport, review overview, bag,
-equipment, personal/guild storage, pet inventory and both supplied tooltip families
-when a local authenticated browser/runtime fixture is available. Reference backdrop
-and legally usable local item icons remain gaps.
+Local evidence to date: see the 2026-09-28 audit below. The authenticated deployed
+PhMon tab was stale after backend restart; current equipment was unavailable. A
+matching 1440 × 1000 capture could not be obtained from the local tab, and the Stats
+group/data differed from the two-card reference. At 1440 × 1000, 1280 × 800 and
+390 × 844, recheck the authenticated local app with fresh data for overview, bag,
+equipment, personal/guild storage, pet inventory and both supplied tooltip families.
+Reference backdrop and legally usable local item icons remain gaps.
+
+### 2026-09-28 Slice 4 evidence and implementation audit
+
+- Official [party API](https://plugins.phbot.org/phbot-api/party) documents only
+  current membership through `get_party()`. Official
+  [config API](https://plugins.phbot.org/phbot-api/config) warns that direct JSON edits may be
+  overwritten; [misc API](https://plugins.phbot.org/phbot-api/misc) documents
+  `set_profile()` as changing the active profile, not Party Setup. No supported
+  Party Setup setter, reload contract or effective-state readback was found. The
+  party card now separates membership from an unavailable, read-only Party Setup
+  section and keeps its edit control disabled. Required evidence to enable edits:
+  installed-version documentation/runtime proof for exact configuration fields,
+  supported writer, reload operation, and post-reload readback, exercised through
+  the authenticated command lifecycle.
+- The flat inventory getter still does not document an equipment boundary. The
+  first-13 mapping remains `adapter_lead_runtime_unverified`; the equipment view now
+  explains that equipment labels and remaining bag capacity may be wrong. No
+  independent runtime/API evidence establishes its indices.
+- Plugin 1.2.6 live API captures support exact observed white fields and blues for
+  the captured families; family mappings, scalar fields, unknown-blue passthrough
+  and evidence limits are detailed in `item-instance-evidence.md`. The passive item
+  parser still relies on corroborating layouts without a live Greatest packet
+  fixture. Safe fail-closed invalidation is implemented and fixture-tested;
+  movement/transfer retention is unsupported pending verified subtype layouts and
+  identity semantics.
+- Guild-record purge is scoped to saved PhMon observations and normalized slot rows
+  for exactly one server/guild. Authorization is enforced on the Go DELETE route,
+  the client requires the literal guild name, and the response reports deleted
+  counts and future-observation behavior. It never issues phBot or in-game item
+  operations.
+- Visual review used the reference Stats view and deployed PhMon at the available
+  browser sizes. PhMon was stale, showed four “Nukers” characters instead of the
+  reference's two and had no equipment observation. The 1440×1000 viewport override
+  was not applied to the deployed tab, so this is not a matching viewport capture.
 
 ## Slice 1 — shell and instance access
 

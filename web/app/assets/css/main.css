@@ -2244,7 +2244,7 @@ select:focus-visible {
 }
 .guild-storage-toolbar {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.3fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.3fr) auto auto;
   align-items: end;
   gap: 0.55rem;
 }
@@ -2271,6 +2271,98 @@ select:focus-visible {
   gap: 0.4rem 1rem;
   color: var(--ph-muted);
   font-size: 0.7rem;
+}
+.party-membership,
+.party-setup-panel {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border: 1px solid #29374a;
+  border-radius: 4px;
+  background: rgba(5, 10, 17, 0.38);
+}
+.party-membership h3,
+.party-setup-panel h3 {
+  margin: 0;
+  color: var(--ph-primary);
+  font-size: 0.8rem;
+}
+.party-setup-panel {
+  border-color: #725b39;
+  background: rgba(82, 57, 26, 0.16);
+}
+.party-setup-panel p {
+  margin: 0;
+  color: #d8c49f;
+  font-size: 0.69rem;
+  line-height: 1.5;
+}
+.party-setup-panel > small {
+  overflow-wrap: anywhere;
+  color: var(--ph-muted);
+  font-size: 0.62rem;
+}
+.party-setup-heading,
+.party-setup-heading > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.danger-button {
+  border-color: rgba(255, 113, 113, 0.65);
+  color: #ffb5b5;
+}
+.danger-button:hover:not(:disabled) {
+  background: rgba(130, 35, 42, 0.3);
+}
+.record-delete-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 1rem;
+  border: 1px solid var(--ph-border);
+  border-radius: 6px;
+  background: #101823;
+  color: var(--ph-text);
+  box-shadow: 0 18px 60px #0009;
+}
+.record-delete-dialog::backdrop {
+  background: #02060dcc;
+}
+.record-delete-dialog h2 {
+  margin: 0 0 0.65rem;
+  color: var(--ph-gold);
+  font-size: 1.05rem;
+}
+.record-delete-dialog p {
+  color: var(--ph-muted);
+  line-height: 1.5;
+}
+.record-delete-dialog form > label {
+  display: block;
+  margin: 0.8rem 0 0.3rem;
+  color: var(--ph-text);
+  font-size: 0.8rem;
+}
+.record-delete-dialog input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--ph-border);
+  border-radius: 4px;
+  background: #080d14;
+  color: var(--ph-text);
+}
+.record-delete-dialog .dialog-error {
+  color: #ff9696;
+}
+.record-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 .guild-search-summary {
   color: #b7c3d4;

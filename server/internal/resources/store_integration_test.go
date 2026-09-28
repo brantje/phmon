@@ -180,6 +180,23 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	if len(guildRows) != 1 || len(newestGuild.Slots) != 1 || newestGuild.Slots[0].Item.Model.String() != "99" || guildRows[0].ObserverName != "observer" || guildRows[0].ObserverCharacterID != observerID {
 		t.Fatalf("stale observer replaced newer guild evidence: %+v", guildRows)
 	}
+	deletedObservations, deletedItems, err := store.DeleteGuildStorage(ctx, server, guild)
+	if err != nil || deletedObservations != 2 || deletedItems != 2 {
+		t.Fatalf("guild storage purge observations=%d items=%d err=%v", deletedObservations, deletedItems, err)
+	}
+	guildRows, err = store.GuildStorage(ctx, server, guild)
+	if err != nil || len(guildRows) != 0 {
+		t.Fatalf("guild storage rows remain after purge: rows=%+v err=%v", guildRows, err)
+	}
+	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 6, ownerSession, Snapshot{Revision: 6, BaseRevision: 5, Resources: map[string]json.RawMessage{
+		"guild_storage": ownerFull.Resources["guild_storage"],
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	guildRows, err = store.GuildStorage(ctx, server, guild)
+	if err != nil || len(guildRows) != 1 {
+		t.Fatalf("fresh phBot observation did not repopulate a cleared scope: rows=%+v err=%v", guildRows, err)
+	}
 
 	var quantity string
 	if err := pool.QueryRow(ctx, `SELECT quantity::text FROM character_resource_items WHERE observer_character_id=$1 AND container_key='inventory' AND source_slot=13`, characterID).Scan(&quantity); err != nil {
