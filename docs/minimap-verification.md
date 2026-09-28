@@ -172,6 +172,21 @@ GreatestSRO/phBot transform specification and does not establish this screenshot
 pixel scale, local-axis direction, panning origin or portrait-marker anchor. It is
 not used by the exporter to infer or emit pixel coordinates.
 
+The [2017 elitepvpers simple-map-tool discussion](https://www.elitepvpers.com/forum/sro-coding-corner/4269693-simple-map-tool.html)
+offers another independently published candidate: for displayed coordinates, sector
+X is `floor(X / 192) + 135` and sector Y is `floor(Y / 192) + 92`, with relative
+positions multiplied by ten. Its reverse formula divides those relative positions
+by ten. Applied to the screenshot's `X=99.4, Y=1556.6`, this gives sector
+`(135,100)`, matching the exported region/tile association. The factor of ten also
+reconciles the post's 192 displayed-coordinate units per sector with the 1,920
+internal world units per region described by the Ikarus notes. This is useful
+corroboration for outdoor tile selection, not new evidence for exact marker pixels:
+the discussion does not establish which edge of a 256-pixel raster is the local
+Y origin, the browser map's pan/zoom origin or the portrait anchor. A later reply's
+`0.75` multiplier and image offsets refer to its own map image and cannot be applied
+to the GreatestSRO tiles without calibration. The post gives no validated
+special-area transform. Keep `worldTransformStatus` unvalidated.
+
 ## Current live-row and screenshot cross-check — 2026-09-27
 
 A read-only API GET during the 2026-09-27 04:26 UTC audit returned four online
