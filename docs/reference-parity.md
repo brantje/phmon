@@ -95,10 +95,14 @@ headings inside its own shell.
   stream. `/alchemy` presents attempts, known outcomes, highest observed plus,
   item/character/date filters and cursor paging. Academy membership transitions are
   available in this history. Slice 6 can consume `chat.message_received`.
+- Dashboard Recent Events groups identical chat messages from the same sender, raw
+  type and server when distinct characters observe them within two seconds. One row
+  lists all observers; the canonical event history retains each observation.
 
 Verification passed: `go test ./...`, `go vet ./...`, `go build ./...`,
 `python -m py_compile plugin/PhMon.py`, `python -m unittest plugin.test_phmon`
-(71 tests, including spool capacity and disk failure), `npm run test:unit` (4 tests),
+(71 tests, including spool capacity and disk failure), `npm run test:unit` (8 tests,
+including cross-character chat grouping),
 `npm run typecheck`, `npm run lint`,
 `npm run format:check` and `npm run build`. ESLint reports 22 non-fatal
 `vue/html-self-closing` warnings. Database integration tests compile but skip because

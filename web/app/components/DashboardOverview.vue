@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { ActivityEvent } from '~~/shared/types/live'
+import { groupRecentEvents } from '~/utils/groupRecentEvents'
+
 const {
   onlineCharacterCount,
   offlineCharacterCount,
@@ -15,8 +18,8 @@ const { serverScope } = useServerScope()
 const lastDeaths = computed(
   () => eventFeeds.value['dashboard-deaths']?.events || [],
 )
-const recentEvents = computed(
-  () => eventFeeds.value['dashboard-events']?.events || [],
+const recentEvents = computed(() =>
+  groupRecentEvents(eventFeeds.value['dashboard-events']?.events || [], 5),
 )
 const recentRareDrops = computed(
   () => eventFeeds.value['dashboard-rare-drops']?.events || [],
@@ -26,27 +29,39 @@ function textField(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
-function eventHeadline(item: (typeof recentEvents.value)[number]) {
-  const payload = item.payload || {}
-  switch (item.kind) {
+function eventHeadline(event: ActivityEvent) {
+  const payload = event.payload || {}
+  switch (event.kind) {
     case 'character.died':
-      return `${item.character || 'Character'} died`
+      return `${event.character || 'Character'} died`
     case 'character.level_up':
-      return `${item.character || 'Character'} reached level ${String(payload.level ?? '?')}`
+      return `${event.character || 'Character'} reached level ${String(payload.level ?? '?')}`
     case 'drop.rare':
     case 'drop.item': {
       const details = payload.item as Record<string, unknown> | undefined
       const name = textField(details?.name) || textField(payload.item_name)
-      const model = payload.model ?? item.item_model
-      return `${item.kind === 'drop.rare' ? 'Rare drop' : 'Item drop'}${name ? ` · ${name}` : model != null ? ` · model ${String(model)}` : ''}`
+      const model = payload.model ?? event.item_model
+      return `${event.kind === 'drop.rare' ? 'Rare drop' : 'Item drop'}${name ? ` · ${name}` : model != null ? ` · model ${String(model)}` : ''}`
     }
     case 'world.unique_spawned':
       return `${textField(payload.value) || 'Unique'} spawned`
     case 'chat.message_received':
-      return `${textField(payload.sender) || item.character || 'Chat'}: ${textField(payload.message)}`
+      return `${textField(payload.sender) || event.character || 'Chat'}: ${textField(payload.message)}`
     default:
-      return item.kind.replaceAll('.', ' ')
+      return event.kind.replaceAll('.', ' ')
   }
+}
+
+function eventObservers(item: (typeof recentEvents.value)[number]) {
+  if (item.observers.length > 1) {
+    return `Observed by ${item.observers.map((observer) => observer.character).join(', ')} · ${item.event.server}`
+  }
+  if (item.event.character) {
+    return item.event.server
+      ? `${item.event.character} · ${item.event.server}`
+      : item.event.character
+  }
+  return item.event.server || 'Agent event'
 }
 
 function rareItemFilter(item: (typeof recentRareDrops.value)[number]) {
@@ -59,10 +74,18 @@ function rareItemFilter(item: (typeof recentRareDrops.value)[number]) {
 }
 
 function watchDashboardEvents(server: string) {
-  const filter = { server: server === 'all' ? undefined : server, limit: 5 }
-  setEventFeed('dashboard-deaths', { ...filter, kind: 'character.died' })
-  setEventFeed('dashboard-events', filter)
-  setEventFeed('dashboard-rare-drops', { ...filter, kind: 'drop.rare' })
+  const scope = { server: server === 'all' ? undefined : server }
+  setEventFeed('dashboard-deaths', {
+    ...scope,
+    limit: 5,
+    kind: 'character.died',
+  })
+  setEventFeed('dashboard-events', { ...scope, limit: 50 })
+  setEventFeed('dashboard-rare-drops', {
+    ...scope,
+    limit: 5,
+    kind: 'drop.rare',
+  })
 }
 
 watch(serverScope, watchDashboardEvents, { immediate: true })
@@ -175,21 +198,21 @@ onBeforeUnmount(() => {
         </NuxtLink>
       </div>
       <ul v-if="recentEvents.length" class="dashboard-recent-list">
-        <li v-for="item in recentEvents" :key="item.event_id">
+        <li v-for="item in recentEvents" :key="item.event.event_id">
           <UIcon name="i-lucide-activity" />
           <NuxtLink
-            v-if="item.character_id"
-            :to="`/characters/${item.character_id}`"
+            v-if="item.event.character_id"
+            :to="`/characters/${item.event.character_id}`"
           >
-            <strong>{{ eventHeadline(item) }}</strong>
-            <span>{{ item.character }} · {{ item.server }}</span>
+            <strong>{{ eventHeadline(item.event) }}</strong>
+            <span>{{ eventObservers(item) }}</span>
           </NuxtLink>
           <div v-else>
-            <strong>{{ eventHeadline(item) }}</strong>
-            <span>{{ item.server || 'Agent event' }}</span>
+            <strong>{{ eventHeadline(item.event) }}</strong>
+            <span>{{ eventObservers(item) }}</span>
           </div>
-          <time :datetime="item.occurred_at">{{
-            formatTimestamp(item.occurred_at)
+          <time :datetime="item.event.occurred_at">{{
+            formatTimestamp(item.event.occurred_at)
           }}</time>
         </li>
       </ul>
