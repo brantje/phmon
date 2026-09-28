@@ -4,6 +4,30 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Cave-floor map reference inspection — 2026-09-28
+
+In the operator-supplied phMonitor v0.5.0 map at `192.168.10.105`, Quick navigation
+to Donwhang Stone Cave opened a cave image and a compact bar inside the bottom of
+the map viewport. The bar contained Back to world map, the cave name, and 1F–4F;
+1F was highlighted initially. Clicking 2F and 4F visibly replaced the map image
+and moved the active highlight. The same structure appeared for Tomb of Qin-Shi
+with B1–B6 and Job Temple with 1F, 2F and Annex 1–5. Back to world map removed
+the floor bar and returned to outdoor imagery. The existing layer controls stayed
+beside the map. This is visible interaction evidence, not access to the reference's
+coordinate implementation or asset catalog.
+
+The cave readout displayed X -24,288.0, Y -96.0 and 135% on entry to Donwhang
+Stone Cave; selecting 2F and 3F retained that displayed X/Y and zoom while the
+floor image changed. Tomb of Qin-Shi displayed X -23,232.0, Y 194.0 and 135%; Job
+Temple displayed X -21,407.0, Y -1.0 and 135%. After Back to world map, the
+readout displayed X 113.0, Y 54.0 and 125%. A scroll over the Donwhang cave map
+changed the readout to X -24,286.4, Y -305.7, tile
+`dh_a01_floor01_128x126.webp`, and 116%. These values show that the reference has
+an active-view coordinate/tile/zoom readout and separate cave view presets. They do
+not establish a conversion to phBot region/X/Y/Z, marker placement, or safe map
+command targets. PhMon must validate those independently per floor before enabling
+coordinate-based actions.
+
 ## Death status and occurrence history — death increment during Slice 4
 
 The supplied `phmonitor_screenshots/02-stats-death.png` shows a death marker on the

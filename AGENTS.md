@@ -228,7 +228,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Guild Storage               | Guild-scoped item listing/detail, search integration, freshness/observer attribution and explicit confirmed removal of stored records.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 4, 13, 15       |
 | phBot tools                 | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15        |
 | Analytics                   | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 12, 13          |
-| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; right-click plus touch/keyboard point actions for verified same-region walking and active training-area positioning; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                               | 2.5, 7–9        |
+| Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; cave-specific floor bar, floor imagery and Back to world map; right-click plus touch/keyboard point actions for verified same-region walking and active training-area positioning; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                               | 2.5, 7–9        |
 | Item Search                 | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Reuse shared SRO artwork and static item definitions by stable game item code across server scopes; use the active profile to map numeric model IDs and apply version-specific overrides. Preserve live/historical instance facts and exact container provenance from their observed source.                                                                                                                                                           | 2.5, 4, 13      |
 | Skill Builder               | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution.                                                                                                                                                                                                                                                                                                                | 2.5, 15         |
 | Automations                 | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits.                                                                                                                                                                                                                                                                                                    | 10, 11          |
@@ -2298,6 +2298,25 @@ direction, tile origin/scale, region boundaries and the Z value needed by comman
 Where conversion or Z is unverified, show the map for inspection but disable
 coordinate-based actions instead of sending guessed destinations.
 
+**Cave-floor interaction contract (reference rechecked 2026-09-28):** Quick
+navigation to a cave opens a dedicated map view with a compact floor bar anchored
+inside the bottom of the map viewport: Back to world map, the cave name, and
+floor-specific buttons with the active floor highlighted. Donwhang Stone Cave has
+1F–4F; Tomb of Qin-Shi has B1–B6; Job Temple has 1F, 2F and Annex 1–5. Choosing
+another floor replaces that floor's map imagery and resets to its floor-specific
+view; Back to world map removes the bar and restores the outdoor view. Model caves,
+floors, labels, tiles and view presets in the versioned map profile instead of
+hardcoding one shared floor list or using the outdoor tile transform for interiors.
+Use the same floor-navigation component for other caves when their profile supplies
+validated floor metadata. Keep markers, event overlays and density layers scoped to
+the selected floor.
+The reference displays X/Y, tile and zoom while viewing a cave; update these with
+the active view and floor, preserving signed X/Y values rather than clamping cave
+coordinates to the outdoor range. Its observed cave selection X/Y values are
+recorded in `docs/reference-parity.md`; they are viewport readouts, not proof of a phBot
+region/X/Y/Z conversion. Confirm the selected floor and validated region/coordinates
+before enabling a map-issued walk or training-area command.
+
 **Implement:**
 
 canonical coordinate model
@@ -2315,6 +2334,8 @@ map/region normalization, including explicit transform/asset validation for:
 character picker plus jump-to-character
 
 quick destination/region navigation
+
+floor-aware cave navigation, active-floor selection and Back to world map
 
 current cursor/viewport coordinates, tile identifier and zoom percentage
 
@@ -2363,6 +2384,10 @@ region transitions are handled
 
 the three verified special-area map families use validated assets/transforms and do
 not silently fall back to incorrect outdoor coordinates
+
+Donwhang Stone Cave 1F–4F, Tomb of Qin-Shi B1–B6 and Job Temple 1F/2F/Annex 1–5
+render distinct floor imagery with an active floor indicator and correct cave-scoped
+coordinates/layers; switching floors and returning outdoors update the view cleanly
 
 recent-death/drop time filtering and Academy-member visibility work independently
 
