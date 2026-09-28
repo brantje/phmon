@@ -733,6 +733,17 @@ callback thread and writes it to an atomic JSON spool before transmission. The s
 is capped at 512 occurrences / 2 MiB; queue overflow or disk failure is surfaced in
 plugin status and logs.
 
+Each profile's spool filename is derived from the agent ID and normalized profile
+settings path, so two phBot profiles using the same agent credential cannot overwrite
+each other's pending occurrences. If the callback arrives after a backend socket
+ends, the plugin uses the last registered identity/session for that profile. If no
+session is registered yet, it spools the event with the observed server and character
+name and waits for that same identity to register before sending; it stores the bound
+character/session IDs in the spool before transmission. Local binding fields are not
+sent in the wire event. Such an event carries `payload.session_binding = "deferred"`
+so the server can apply the explicit pre-session rule. A callback observed while a
+different character is registered is discarded as stale rather than rebound to it.
+
 The server replies `event.ack` with the event ID and one of `persisted`, `rejected` or
 `retry`. It sends `persisted` only after PostgreSQL commit. The plugin removes a
 `persisted` or terminally `rejected` event from its spool and retries a temporary
@@ -741,14 +752,20 @@ failure after a delay. Reconnect or plugin restart replays the same occurrence I
 
 Ingestion requires protocol v5, authenticated agent ownership, and a durable session
 row tied to both the stated agent and character. A known historical session is
-accepted for replay after reconnect, preserving the event's occurrence-time identity;
-an unknown session or a session belonging to a different agent/character is rejected.
-The occurrence timestamp must fall within that session's server-owned start/end
-interval with five minutes of clock-skew allowance; this admits delayed spool replay
-for an occurrence from the prior session but rejects a stale session reporting a new
-occurrence after it ended. The plugin aligns occurrence time to the server clock
-offset received during hello. Timestamps are also bounded to the last 365 days and
-five minutes into the future.
+accepted for replay within its server-owned start/end interval with five minutes of
+clock-skew allowance. For a callback observed after that session's end, the server
+also permits a later occurrence while no newer session for the same agent and
+character has started by that occurrence time. A deferred event bound after
+registration may predate the new session by more than five minutes only when no
+other session for that agent and character covers the occurrence time with skew.
+These rules let socket-disconnect callbacks and callbacks queued before registration
+retain their observed time while rejecting a prior session that reports a death
+after a newer session has taken ownership. Unknown sessions, sessions belonging to
+a different agent/character, and events outside those rules are rejected. The plugin
+aligns occurrence time to the server clock offset received during hello. Timestamps
+are also bounded to the last 365 days and five minutes into the future. Malformed or
+permanently invalid events receive `status: "rejected"`; temporary storage failures
+receive `status: "retry"`.
 Cause and location are never inferred. No death is backfilled from HP or snapshots.
 
 ### Storage and reads

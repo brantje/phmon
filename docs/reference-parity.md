@@ -552,6 +552,23 @@ against the deployed Dashboard, Stats/sidebar and Events → Deaths pages once a
 signed-in browser is available. The Map action stays disabled without verified region
 coordinate mapping. Other event kinds remain assigned to Slice 5.
 
+### 2026-09-28 PR #11 review corrections
+
+CodeRabbit review identified event durability and UI-boundary issues. The plugin now
+preserves the last registered session across backend disconnect cleanup, defers
+binding only when no character session is registered, fences callbacks observed
+against a different registered character, and stores each profile's spool in a
+profile-keyed file. Deferred binding is persisted locally before transmission and
+accepted server-side only when no competing same-agent session covers the event
+time. Invalid permanent event payloads now receive a terminal rejection ack.
+
+Death date filters now send local-midnight RFC3339 bounds to HTTP and live event
+queries, while the server preserves date-only UTC compatibility. The sidebar only
+marks Deaths as the current page when Events is active. Focused plugin and Go tests
+cover reconnect context, deferred binding, per-profile spool identity, timezone
+bounds, error classification and session fencing. PR CI/CodeRabbit recheck remains
+pending until these changes are pushed.
+
 ## 2026-09-28 selected-server API scope audit
 
 The server selector persists in the browser. Audited the API and live streams that

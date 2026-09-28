@@ -462,6 +462,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				if persisted {
 					h.live.Invalidate()
 				}
+			} else if errors.Is(eventErr, events.ErrInvalidEvent) {
+				ack["status"] = "rejected"
+				ack["reason"] = "invalid_event"
+				slog.Warn("death event rejected", "agent_id", hello.AgentID, "reason", eventErr.Error())
 			} else if errors.Is(eventErr, events.ErrUnauthorizedSession) || errors.Is(eventErr, events.ErrEventConflict) {
 				ack["status"] = "rejected"
 				ack["reason"] = "session_or_event_rejected"

@@ -44,8 +44,8 @@ watch(
     }
     setEventFeed(feedID, {
       server: server === 'all' ? undefined : server,
-      from: from || undefined,
-      to: to || undefined,
+      from: from ? localDateBoundary(from, 0) : undefined,
+      to: to ? localDateBoundary(to, 1) : undefined,
       q: character || undefined,
       kind: 'character.died',
       cursor: pageCursor || undefined,
@@ -83,6 +83,11 @@ function resetFilters() {
 function dateInput(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
   return local.toISOString().slice(0, 10)
+}
+function localDateBoundary(value: string, addDays: number) {
+  const boundary = new Date(`${value}T00:00:00`)
+  boundary.setDate(boundary.getDate() + addDays)
+  return boundary.toISOString()
 }
 </script>
 

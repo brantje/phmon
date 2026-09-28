@@ -11,6 +11,20 @@ import (
 	"phmon/server/internal/events"
 )
 
+func parseEventBound(value string, endOfDate bool) (time.Time, error) {
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed.UTC(), nil
+	}
+	parsed, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if endOfDate {
+		parsed = parsed.AddDate(0, 0, 1)
+	}
+	return parsed.UTC(), nil
+}
+
 type eventHandler struct{ store *events.Store }
 
 func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +52,7 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	var err error
 	if raw := query.Get("from"); raw != "" {
-		parsed, parseErr := time.Parse("2006-01-02", raw)
+		parsed, parseErr := parseEventBound(raw, false)
 		if parseErr != nil {
 			respondJSON(w, 400, map[string]string{"error": "invalid from date"})
 			return
@@ -46,13 +60,12 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		filter.From = &parsed
 	}
 	if raw := query.Get("to"); raw != "" {
-		parsed, parseErr := time.Parse("2006-01-02", raw)
+		parsed, parseErr := parseEventBound(raw, true)
 		if parseErr != nil {
 			respondJSON(w, 400, map[string]string{"error": "invalid to date"})
 			return
 		}
-		endExclusive := parsed.AddDate(0, 0, 1)
-		filter.To = &endExclusive
+		filter.To = &parsed
 	}
 	if filter.From != nil && filter.To != nil && !filter.To.After(*filter.From) {
 		respondJSON(w, 400, map[string]string{"error": "to date precedes from date"})

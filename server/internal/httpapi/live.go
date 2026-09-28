@@ -569,18 +569,17 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			Kind: subscription.Filter.Kind, Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit}
 		var err error
 		if subscription.Filter.From != "" {
-			value, parseErr := time.Parse("2006-01-02", subscription.Filter.From)
+			value, parseErr := parseEventBound(subscription.Filter.From, false)
 			if parseErr != nil {
 				return nil, errors.New("invalid event date")
 			}
 			filter.From = &value
 		}
 		if subscription.Filter.To != "" {
-			value, parseErr := time.Parse("2006-01-02", subscription.Filter.To)
+			value, parseErr := parseEventBound(subscription.Filter.To, true)
 			if parseErr != nil {
 				return nil, errors.New("invalid event date")
 			}
-			value = value.AddDate(0, 0, 1)
 			filter.To = &value
 		}
 		page, err := h.events.List(ctx, filter)
@@ -681,14 +680,13 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		var from, to *time.Time
 		for index, raw := range []string{subscription.Filter.From, subscription.Filter.To} {
 			if raw != "" {
-				parsed, err := time.Parse("2006-01-02", raw)
+				parsed, err := parseEventBound(raw, index == 1)
 				if err != nil {
 					return liveSubscription{}, false
 				}
 				if index == 0 {
 					from = &parsed
 				} else {
-					parsed = parsed.AddDate(0, 0, 1)
 					to = &parsed
 				}
 			}

@@ -79,6 +79,10 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var newSessionStarted time.Time
+	if err := pool.QueryRow(ctx, `SELECT started_at FROM character_sessions WHERE session_id=$1`, newSessionID).Scan(&newSessionStarted); err != nil {
+		t.Fatal(err)
+	}
 	if inserted, err = store.AppendDeath(ctx, credential.AgentID, characterID, sessionID, first); err != nil || inserted {
 		t.Fatalf("delayed replay from prior owned session = %v, %v", inserted, err)
 	}
@@ -95,9 +99,16 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	}
 	stale := first
 	stale.ID = newTestEventID(t)
-	stale.OccurredAt = databaseNow.UTC().Add(-4 * time.Minute)
+	stale.OccurredAt = newSessionStarted.UTC().Add(time.Second)
 	if _, err := store.AppendDeath(ctx, credential.AgentID, characterID, sessionID, stale); !errors.Is(err, ErrUnauthorizedSession) {
 		t.Fatalf("old session reported a post-session occurrence: %v", err)
+	}
+	deferred := first
+	deferred.ID = newTestEventID(t)
+	deferred.OccurredAt = baseTime.Add(-30 * time.Minute)
+	deferred.Payload = json.RawMessage(`{"cause":"unknown","session_binding":"deferred"}`)
+	if inserted, err := store.AppendDeath(ctx, credential.AgentID, characterID, newSessionID, deferred); err != nil || !inserted {
+		t.Fatalf("deferred callback outside the new session window = %v, %v", inserted, err)
 	}
 	otherCharacterID, err := characters.NewStore(pool).Resolve(ctx, characters.Identity{Server: server, Name: "Beta"})
 	if err != nil {
@@ -116,25 +127,40 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if inserted, err = store.AppendDeath(ctx, credential.AgentID, characterID, newSessionID, second); err != nil || !inserted {
 		t.Fatalf("second event insert = %v, %v", inserted, err)
 	}
-	from := baseTime.Add(-time.Second)
+	from := baseTime.Add(-31 * time.Minute)
 	to := second.OccurredAt.Add(time.Minute)
 	page, err := store.List(ctx, Filter{Server: server, CharacterID: characterID, From: &from, To: &to, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 2 || len(page.Events) != 1 || page.Events[0].ID != second.ID || page.NextCursor == "" {
+	if page.Total != 3 || len(page.Events) != 1 || page.Events[0].ID != second.ID || page.NextCursor == "" {
 		t.Fatalf("first filtered page: %+v", page)
 	}
 	page, err = store.List(ctx, Filter{Server: server, CharacterID: characterID, From: &from, To: &to, Cursor: page.NextCursor, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 2 || len(page.Events) != 1 || page.Events[0].ID != first.ID || page.NextCursor != "" {
+	if page.Total != 3 || len(page.Events) != 1 || page.Events[0].ID != first.ID || page.NextCursor == "" {
 		t.Fatalf("second filtered page: %+v", page)
+	}
+	page, err = store.List(ctx, Filter{Server: server, CharacterID: characterID, From: &from, To: &to, Cursor: page.NextCursor, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 3 || len(page.Events) != 1 || page.Events[0].ID != deferred.ID || page.NextCursor != "" {
+		t.Fatalf("third filtered page: %+v", page)
 	}
 	page, err = store.List(ctx, Filter{Server: "different-server", Limit: 10})
 	if err != nil || page.Total != 0 {
 		t.Fatalf("server filter leaked events: page=%+v err=%v", page, err)
+	}
+}
+
+func TestInvalidDeathEventReturnsClassifiableError(t *testing.T) {
+	store := NewStore(nil)
+	_, err := store.AppendDeath(context.Background(), "bad-agent", "bad-character", "bad-session", AgentDeath{})
+	if !errors.Is(err, ErrInvalidEvent) {
+		t.Fatalf("invalid event error = %v, want ErrInvalidEvent", err)
 	}
 }
 

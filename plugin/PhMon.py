@@ -1015,6 +1015,17 @@ def _profile_settings_path(config_dir, bot_config_path, bot_profile):
     )
 
 
+def _death_spool_path(config_dir, agent_id, settings_path):
+    if (not isinstance(config_dir, str) or not config_dir.strip() or
+            not _validate_agent_id(agent_id) or
+            not isinstance(settings_path, str) or not settings_path.strip()):
+        return None
+    profile_identity = os.path.normcase(os.path.abspath(settings_path)).encode('utf-8')
+    profile_key = hashlib.sha256(profile_identity).hexdigest()[:16]
+    filename = 'death-events-' + agent_id + '-' + profile_key + '.json'
+    return os.path.join(config_dir, pName, filename)
+
+
 def load_saved_config(path):
     values = {}
     with open(path, 'r') as handle:
@@ -1392,6 +1403,29 @@ class DeathEventSpool(object):
             self._items = previous
             return False
 
+    def bind_session(self, event_id, character_id, session_id):
+        if not _validate_agent_id(character_id) or not _validate_agent_id(session_id):
+            return False
+        with self._lock:
+            for index, item in enumerate(self._items):
+                if item.get('event_id') != event_id:
+                    continue
+                if item.get('character_id') and item.get('session_id'):
+                    return item['character_id'] == character_id and item['session_id'] == session_id
+                previous = self._items
+                updated = [dict(value) for value in previous]
+                updated[index]['character_id'] = character_id
+                updated[index]['session_id'] = session_id
+                self._items = updated
+                try:
+                    if self._save_locked():
+                        return True
+                except Exception as error:
+                    _log('death event session binding failed (' + error.__class__.__name__ + ')')
+                self._items = previous
+                return False
+        return False
+
     def pending(self):
         with self._lock:
             return [dict(item) for item in self._items]
@@ -1400,12 +1434,29 @@ class DeathEventSpool(object):
 def _valid_death_spool_item(item):
     if not isinstance(item, dict):
         return False
+    character_id = item.get('character_id')
+    session_id = item.get('session_id')
     if (not _validate_agent_id(item.get('event_id')) or
-            not _validate_agent_id(item.get('character_id')) or
-            not _validate_agent_id(item.get('session_id')) or
             item.get('source') != 'phbot.callback' or
             item.get('source_ref') != 'EVENT_DIED' or
-            not isinstance(item.get('payload'), dict)):
+            not isinstance(item.get('payload'), dict) or
+            type(item.get('deferred_session_binding', False)) is not bool):
+        return False
+    if (character_id is None) != (session_id is None):
+        return False
+    if character_id is not None and (
+            not _validate_agent_id(character_id) or not _validate_agent_id(session_id)):
+        return False
+    server = item.get('server')
+    character_name = item.get('character_name')
+    if (server is None) != (character_name is None):
+        return False
+    if server is not None and (
+            not isinstance(server, str) or not server.strip() or len(server) > 100 or
+            not isinstance(character_name, str) or not character_name.strip() or len(character_name) > 64):
+        return False
+    # Existing v1 spools have only registered session IDs; keep them replayable.
+    if server is None and character_id is None:
         return False
     try:
         _utc_epoch(item.get('occurred_at'))
@@ -1433,6 +1484,8 @@ class AgentWorker(object):
         self._death_samples = _queue.Queue(maxsize=128)
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
         self._death_retry_at = {}
+        self._death_context_lock = threading.Lock()
+        self._last_death_context = None
         self._latest_sample = None
         self.character_id = None
         self._current_identity = None
@@ -1473,14 +1526,46 @@ class AgentWorker(object):
         return self._item_tracker.enqueue(opcode, data)
 
     def queue_death_event(self, identity, event):
-        if (not isinstance(identity, dict) or self._current_identity is None or
-                self._identity_key(identity) != self._identity_key(self._current_identity) or
-                not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id)):
-            _log('death callback observed before the character session was registered')
+        if (not isinstance(identity, dict) or not isinstance(event, dict) or
+                not isinstance(identity.get('server'), str) or not isinstance(identity.get('name'), str)):
+            _log('death callback has no usable character identity')
             return False
         record = dict(event)
-        record['character_id'] = self.character_id
-        record['session_id'] = self.session_id
+        record['server'] = identity['server'].strip()[:100]
+        record['character_name'] = identity['name'].strip()[:64]
+        if not record['server'] or not record['character_name']:
+            _log('death callback has incomplete character identity')
+            return False
+        if (self._current_identity is not None and
+                self._identity_key(identity) != self._identity_key(self._current_identity)):
+            _log('death callback identity does not match the registered character session')
+            return False
+
+        context = None
+        if (self._current_identity is not None and
+                self._identity_key(identity) == self._identity_key(self._current_identity) and
+                _validate_agent_id(self.character_id) and _validate_agent_id(self.session_id)):
+            context = {'character_id': self.character_id, 'session_id': self.session_id}
+        if context is None:
+            with self._death_context_lock:
+                previous = self._last_death_context
+                if previous and self._identity_key(identity) == self._identity_key(previous['identity']):
+                    context = {
+                        'character_id': previous['character_id'],
+                        'session_id': previous['session_id'],
+                    }
+        if context:
+            record.update(context)
+            record['deferred_session_binding'] = False
+        else:
+            record['character_id'] = None
+            record['session_id'] = None
+            record['deferred_session_binding'] = True
+            payload = record.get('payload')
+            if isinstance(payload, dict):
+                payload = dict(payload)
+                payload['session_binding'] = 'deferred'
+                record['payload'] = payload
         try:
             self._death_samples.put_nowait(record)
             return True
@@ -1706,6 +1791,12 @@ class AgentWorker(object):
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
             self._current_identity = identity
+            with self._death_context_lock:
+                self._last_death_context = {
+                    'identity': dict(identity),
+                    'character_id': self.character_id,
+                    'session_id': self.session_id,
+                }
             self._resource_revision = 0
             self._resource_baseline_required = True
             self._confirmed_resources = None
@@ -1986,6 +2077,17 @@ class AgentWorker(object):
             event_id = event.get('event_id')
             if self._death_retry_at.get(event_id, 0.0) > now:
                 continue
+            if not _validate_agent_id(event.get('character_id')) or not _validate_agent_id(event.get('session_id')):
+                identity = {'server': event.get('server'), 'name': event.get('character_name')}
+                if (self._current_identity is None or
+                        self._identity_key(identity) != self._identity_key(self._current_identity) or
+                        not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id)):
+                    continue
+                if not self._death_spool.bind_session(event_id, self.character_id, self.session_id):
+                    self.status = 'Death event could not be bound to a registered character session.'
+                    continue
+                event['character_id'] = self.character_id
+                event['session_id'] = self.session_id
             frame = {
                 'type': 'character.died',
                 'protocol_version': PROTOCOL_VERSION,
@@ -1993,7 +2095,7 @@ class AgentWorker(object):
                 'session_id': event.get('session_id'),
                 'event': {
                     key: value for key, value in event.items()
-                    if key not in ('character_id', 'session_id')
+                    if key not in ('character_id', 'session_id', 'server', 'character_name', 'deferred_session_binding')
                 },
                 'sent_at': _utc_now(),
             }
@@ -2280,8 +2382,11 @@ def _start_worker(config):
     try:
         config_dir = _get_config_dir() if callable(_get_config_dir) else None
         if isinstance(config_dir, str) and config_dir.strip():
-            config['death_spool_path'] = os.path.join(
-                config_dir, 'PhMon', 'death-events-' + config['agent_id'] + '.json')
+            settings_path = _active_settings_path
+            if not settings_path:
+                settings_path = _current_settings_path()
+            config['death_spool_path'] = _death_spool_path(
+                config_dir, config['agent_id'], settings_path)
         else:
             config['death_spool_path'] = None
     except Exception:

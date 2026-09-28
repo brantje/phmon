@@ -17,6 +17,7 @@ import (
 
 var ErrUnauthorizedSession = errors.New("event session is not owned by this agent and character")
 var ErrEventConflict = errors.New("event id was already used for a different occurrence")
+var ErrInvalidEvent = errors.New("invalid death event")
 
 const (
 	DeathKind     = "character.died"
@@ -94,31 +95,47 @@ func (s *Store) AppendDeath(ctx context.Context, agentID, characterID, sessionID
 		incoming.OccurredAt.IsZero() || incoming.OccurredAt.After(time.Now().UTC().Add(5*time.Minute)) ||
 		incoming.OccurredAt.Before(time.Now().UTC().Add(-365*24*time.Hour)) ||
 		!validPosition(incoming.Region, incoming.X, incoming.Y, incoming.Z) {
-		return false, errors.New("invalid death event")
+		return false, fmt.Errorf("%w: invalid fields", ErrInvalidEvent)
 	}
 	payload := incoming.Payload
 	if len(payload) == 0 {
 		payload = json.RawMessage(`{"cause":"unknown"}`)
 	}
 	if len(payload) > MaxPayload || !json.Valid(payload) {
-		return false, errors.New("invalid death event payload")
+		return false, fmt.Errorf("%w: invalid payload", ErrInvalidEvent)
 	}
 	var object map[string]json.RawMessage
 	if json.Unmarshal(payload, &object) != nil || object == nil {
-		return false, errors.New("death event payload must be an object")
+		return false, fmt.Errorf("%w: payload must be an object", ErrInvalidEvent)
 	}
+	var payloadFields map[string]any
+	if err := json.Unmarshal(payload, &payloadFields); err != nil {
+		return false, fmt.Errorf("%w: invalid payload", ErrInvalidEvent)
+	}
+	deferredSessionBinding, _ := payloadFields["session_binding"].(string)
 	var rows int64
 	err := s.pool.QueryRow(ctx, `
 INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload)
 SELECT $1::uuid,1,$2,$3,$4::uuid,$5::uuid,$6::uuid,c.server_name,$7,$8,$9,$10,$11,$12,$13,$14::jsonb
 FROM character_sessions cs JOIN characters c ON c.character_id=cs.character_id
 WHERE cs.session_id=$6::uuid AND cs.agent_id=$4::uuid AND cs.character_id=$5::uuid
-AND $7 >= cs.started_at - interval '5 minutes'
-AND (cs.ended_at IS NULL OR $7 <= cs.ended_at + interval '5 minutes')
+AND (
+    ($7 >= cs.started_at - interval '5 minutes' AND (cs.ended_at IS NULL OR $7 <= cs.ended_at + interval '5 minutes'))
+ OR (cs.ended_at IS NOT NULL AND $7 > cs.ended_at + interval '5 minutes'
+     AND NOT EXISTS (SELECT 1 FROM character_sessions later
+       WHERE later.agent_id=cs.agent_id AND later.character_id=cs.character_id
+       AND later.started_at > cs.started_at AND later.started_at <= $7))
+ OR ($15='deferred' AND $7 < cs.started_at - interval '5 minutes'
+     AND NOT EXISTS (SELECT 1 FROM character_sessions other
+       WHERE other.agent_id=cs.agent_id AND other.character_id=cs.character_id
+       AND other.session_id <> cs.session_id
+       AND $7 >= other.started_at - interval '5 minutes'
+       AND (other.ended_at IS NULL OR $7 <= other.ended_at + interval '5 minutes')))
+)
 ON CONFLICT(event_id) DO NOTHING
 RETURNING 1`, incoming.ID, DeathKind, DeathCategory, agentID, characterID, sessionID,
 		incoming.OccurredAt.UTC(), incoming.Source, incoming.SourceRef, incoming.Region, incoming.X,
-		incoming.Y, incoming.Z, string(payload)).Scan(&rows)
+		incoming.Y, incoming.Z, string(payload), deferredSessionBinding).Scan(&rows)
 	if err == nil {
 		return true, nil
 	}

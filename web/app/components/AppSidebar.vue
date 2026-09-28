@@ -170,7 +170,7 @@ const advancedNavigation = [
             class="sidebar-group-link"
             to="/events?kind=character.died"
             :class="{ active: route.path === '/events' }"
-            aria-current="page"
+            :aria-current="route.path === '/events' ? 'page' : undefined"
           >
             <span>Deaths</span>
           </NuxtLink>

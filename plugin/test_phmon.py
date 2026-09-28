@@ -76,6 +76,15 @@ class ConfigTests(unittest.TestCase):
         self.assertNotEqual(first, alternate)
         self.assertNotEqual(first, default)
 
+    def test_death_spool_path_is_scoped_to_profile_settings(self):
+        config_dir = os.path.join('C:', 'phBot', 'Config')
+        first_profile = os.path.join(config_dir, 'PhMon', 'Alice.Farm.cfg')
+        second_profile = os.path.join(config_dir, 'PhMon', 'Bob.Farm.cfg')
+        first = plugin._death_spool_path(config_dir, AGENT_ID, first_profile)
+        self.assertEqual(first, plugin._death_spool_path(config_dir, AGENT_ID, first_profile))
+        self.assertNotEqual(first, plugin._death_spool_path(config_dir, AGENT_ID, second_profile))
+        self.assertIn('death-events-' + AGENT_ID + '-', first)
+
     def test_saved_profile_config_round_trip(self):
         root = tempfile.mkdtemp()
         path = os.path.join(root, 'PhMon', 'Venus_Alice.Farm.cfg')
@@ -646,6 +655,48 @@ class DeathEventTransportTests(unittest.TestCase):
         self.worker._flush_death_events(self.client)
         self.assertEqual(self.frames[-1]['character_id'], self.worker.character_id)
         self.assertEqual(self.frames[-1]['session_id'], self.worker.session_id)
+
+    def test_disconnect_uses_last_registered_context_for_callback(self):
+        self.worker._last_death_context = {
+            'identity': dict(self.identity),
+            'character_id': self.worker.character_id,
+            'session_id': self.worker.session_id,
+        }
+        self.worker._current_identity = None
+        self.worker.character_id = None
+        self.worker.session_id = None
+        self.assertTrue(self.worker.queue_death_event(self.identity, self.death()))
+        self.worker._flush_death_events(self.client)
+        self.assertEqual(len(self.frames), 1)
+        self.assertEqual(self.frames[0]['character_id'], 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
+
+    def test_deferred_callback_waits_for_matching_session_and_binds_before_send(self):
+        other_identity = {'server': 'Silkroad', 'name': 'OfflineAlpha'}
+        self.worker._current_identity = None
+        self.worker.character_id = None
+        self.worker.session_id = None
+        event = self.death()
+        self.assertTrue(self.worker.queue_death_event(other_identity, event))
+        self.worker._flush_death_events(self.client)
+        self.assertEqual(self.frames, [])
+        pending = self.worker._death_spool.pending()[0]
+        self.assertTrue(pending['deferred_session_binding'])
+        self.assertIsNone(pending['character_id'])
+
+        self.worker._current_identity = other_identity
+        self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        self.worker._flush_death_events(self.client)
+        self.assertEqual(len(self.frames), 1)
+        frame = self.frames[0]
+        self.assertEqual(frame['character_id'], self.worker.character_id)
+        self.assertEqual(frame['session_id'], self.worker.session_id)
+        self.assertNotIn('server', frame['event'])
+        self.assertNotIn('character_name', frame['event'])
+        self.assertEqual(frame['event']['payload']['session_binding'], 'deferred')
+        persisted = self.worker._death_spool.pending()[0]
+        self.assertEqual(persisted['character_id'], self.worker.character_id)
+        self.assertEqual(persisted['session_id'], self.worker.session_id)
 
     def test_death_callback_is_deduplicated_until_alive_or_character_switch(self):
         previous_worker = plugin._worker
