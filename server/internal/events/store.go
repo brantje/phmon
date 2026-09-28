@@ -571,7 +571,7 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 		}
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload,sequence,dedupe_key,item_model,item_code)
-VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19)`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode))
+VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19)`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode))
 	if err != nil {
 		return false, false, err
 	}
