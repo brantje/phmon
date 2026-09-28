@@ -344,24 +344,22 @@ async function main() {
       )
       if (!fits) throw new Error(`responsive layout overflows at ${width}x${height}`)
       if (width === 390) {
-        const characterTable = await evaluate(
+        const characterCards = await evaluate(
           cdp,
           `(() => {
-            const table = document.querySelector('.character-table')
-            if (!table) return { present: false }
+            const grid = document.querySelector('.character-cards-grid')
+            if (!grid) return { present: false }
+            const card = grid.querySelector('.character-card')
+            if (!card) return { present: true, visible: false, count: 0 }
             return {
               present: true,
-              visible: getComputedStyle(table).display !== 'none',
-              rows: table.querySelectorAll('tbody tr').length,
-              scrollsInsidePanel: table.closest('.agent-table-wrap')?.scrollWidth >= table.closest('.agent-table-wrap')?.clientWidth,
+              visible: getComputedStyle(card).display !== 'none' && card.getBoundingClientRect().height > 0,
+              count: grid.querySelectorAll('.character-card').length,
             }
           })()`,
         )
-        if (!characterTable.present || !characterTable.visible || characterTable.rows === 0) {
-          throw new Error(`character list is missing at ${width}x${height}: ${JSON.stringify(characterTable)}`)
-        }
-        if (!characterTable.scrollsInsidePanel) {
-          throw new Error(`character table has no bounded scroll region at ${width}x${height}`)
+        if (!characterCards.present || !characterCards.visible || characterCards.count === 0) {
+          throw new Error(`character cards are missing at ${width}x${height}: ${JSON.stringify(characterCards)}`)
         }
       }
     }
@@ -369,7 +367,7 @@ async function main() {
     // Navigate to a streamed stable character detail when fixture/history data exists.
     const detailURL = await evaluate(
       cdp,
-      `document.querySelector('a.character-link')?.href || ''`,
+      `document.querySelector('a.character-card-name')?.href || ''`,
     )
     if (detailURL) {
       await cdp.send('Page.navigate', { url: detailURL })
