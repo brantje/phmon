@@ -414,7 +414,7 @@ func countUnreadObservations(observations []unreadObservation) map[string]int {
 		duplicate := false
 		for _, group := range groups {
 			if group.occurredAt.Sub(item.occurredAt) > chatObservationWindow {
-				break
+				continue
 			}
 			if _, seen := group.observers[item.characterID]; seen {
 				continue

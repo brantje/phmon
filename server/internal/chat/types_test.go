@@ -67,3 +67,20 @@ func TestCountUnreadObservationsDeduplicatesOnlyServerwideObserverCopies(t *test
 		t.Fatalf("deduplicated unread counts = %#v", counts)
 	}
 }
+
+func TestCountUnreadObservationsChecksGroupsAfterStaleGroup(t *testing.T) {
+	base := time.Date(2026, 9, 28, 16, 25, 49, 0, time.UTC)
+	observations := []unreadObservation{
+		{channel: "general", server: "Greatest", characterID: "alpha", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(3 * time.Second)},
+		{channel: "general", server: "Greatest", characterID: "beta", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(3 * time.Second)},
+		{channel: "general", server: "Greatest", characterID: "alpha", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(time.Second)},
+		{channel: "general", server: "Greatest", characterID: "beta", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base.Add(time.Second)},
+		{channel: "general", server: "Greatest", characterID: "alpha", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base},
+		{channel: "general", server: "Greatest", characterID: "beta", rawType: "1", sender: "Veyra", message: "repeat", occurredAt: base},
+	}
+
+	counts := countUnreadObservations(observations)
+	if counts["general"] != 3 {
+		t.Fatalf("unread count with an intervening stale group = %#v, want 3", counts)
+	}
+}
