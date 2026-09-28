@@ -123,7 +123,7 @@ function rememberDeathStates(characters: CharacterView[]) {
     const key = deathStateKey(character)
     let cached = nextCache[key]
     if (cached && cached.session_id !== sessionID) {
-      delete mutableCache()[key]
+      Reflect.deleteProperty(mutableCache(), key)
       cached = undefined
     }
 

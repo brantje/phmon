@@ -224,9 +224,20 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `document.body && document.body.innerText.includes('phBot agents') && document.body.innerText.includes('Characters')`,
+          `document.body && document.body.innerText.includes('Dashboard') && document.body.innerText.includes('Last Deaths') && document.body.innerText.includes('Recent Events')`,
         ),
       'dashboard rendering',
+      20000,
+    )
+
+    await cdp.send('Page.navigate', { url: WEB_URL + '/stats' })
+    await waitFor(
+      () =>
+        evaluate(
+          cdp,
+          `document.querySelector('input[aria-label="Search characters, guild, server or zone"]') && document.querySelector('select[aria-label="Filter by character group"]')`,
+        ),
+      'stats character and group controls',
       20000,
     )
 
@@ -253,7 +264,7 @@ async function main() {
         return buttons.length
       })()`,
     )
-    if (refreshCount < 2) throw new Error(`expected dashboard refresh controls, found ${refreshCount}`)
+    if (refreshCount < 1) throw new Error(`expected the stats refresh control, found ${refreshCount}`)
     await sleep(500)
 
     // Exercise an HTTP mutation and wait for its state to arrive over WebSocket.
