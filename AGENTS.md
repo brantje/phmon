@@ -3456,8 +3456,9 @@ authoritative check for current-session and channel support. This keeps a delaye
 missing display snapshot from blocking a valid chat send. Updated Slice 6 evidence in
 `docs/reference-parity.md`.
 
-Files changed: `web/app/pages/chat.vue`, `docs/reference-parity.md` and this resume
-entry. Preserve the unrelated untracked `plugin/phMonitorAdapter.py`.
+Files changed: `web/app/pages/chat.vue`, `docs/reference-parity.md`,
+`.github/workflows/ci.yml` and this resume entry. Preserve the unrelated untracked
+`plugin/phMonitorAdapter.py`.
 
 Deployed the web-only change to `node@192.168.10.25:/var/www/phmon` after backing up
 the source page to `/var/www/.phmon-chat-send-enable-20260929/chat.vue`. Local Nuxt
@@ -3468,7 +3469,10 @@ returns `{"status":"ok","database":"ok"}`. The PostgreSQL container stayed at
 `96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d` with volume
 `phmon_postgres_data`.
 
-Exact next action: commit only `web/app/pages/chat.vue`, `docs/reference-parity.md`
-and `AGENTS.md`, push to PR #14, then check current CI and CodeRabbit feedback. Live
-authenticated send verification remains for the operator because the available
-browser session is unauthenticated.
+Commit `4bd4f88` is pushed to PR #14. Both validation jobs pass; of the duplicate
+stack checks, one passed and one failed after the lifecycle simulator had already
+exited and an unguarded cleanup `kill` failed under `set -e`. The workflow cleanup now
+accepts that expected already-exited state. CodeRabbit is still processing the new
+PR changes. Exact next action: commit and push the workflow fix, then check fresh CI
+and CodeRabbit feedback. Live authenticated send verification remains for the
+operator because the available browser session is unauthenticated.
