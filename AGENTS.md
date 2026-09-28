@@ -3428,15 +3428,20 @@ Files changed: `server/internal/chat/store.go`,
 `docs/reference-parity.md` and this resume entry. Preserve the unrelated untracked
 `plugin/phMonitorAdapter.py`.
 
-Commit `bbd0217` is pushed to PR #14 and deployed to
-`node@192.168.10.25:/var/www/phmon`. A new operator report found that widening
-General history to all characters shows duplicate observer copies; Global can have
-the same issue. The current follow-up deduplicates General/Global inbound copies by
-server, channel, raw type, sender, text and a two-second window, preserves repeated
-messages from one character, and applies the same grouping to server-wide unread
-counts. Added frontend and backend tests; the database integration test also now
-uses matching cross-character General/Global copies. Exact next action: fix any test
-failures, rerun Go/UI checks and build, then push/deploy this follow-up to the same
-host. Continue protecting the existing Postgres container and `phmon_postgres_data`
-volume. The in-app browser has no tabs; authenticate to validate live counters only
-if the operator makes that session available.
+Commit `47a815e` is pushed to PR #14 and deployed to
+`node@192.168.10.25:/var/www/phmon`. General/Global inbound copies observed by
+multiple characters are combined using server, channel, raw type, sender, text and a
+two-second window. Repeated messages from one character remain distinct. Server-wide
+unread totals use the same grouping. Added frontend/backend tests and expanded the
+PostgreSQL integration scenario with duplicate General/Global observer rows.
+
+Validation: `go test ./...`, Nuxt typecheck, 11 frontend unit tests, ESLint (22
+existing HTML void-element warnings, no errors), Prettier and the Nuxt production
+build passed. The database integration test remains gated by `TEST_DATABASE_URL`,
+which is not configured locally. Latest CI and CodeRabbit review for `47a815e` are
+still running. Server/web containers are healthy, `/readyz` reports database healthy
+and `/chat` returns HTTP 200. Postgres was not restarted; container ID remains
+`96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d` and volume is
+`phmon_postgres_data`. Exact next action: check PR #14 CI and have the operator
+verify General/Global duplicates and unread badges on the live chat page. The
+in-app browser has no tabs, so live authenticated verification is unavailable here.
