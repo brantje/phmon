@@ -2374,6 +2374,26 @@ use the existing `training.area.set` command and require an active area and expl
 region. Never derive Z from a two-dimensional click without validated area data, and
 never call phBot directly from the browser.
 
+**Active-route display (operator visual target, 2026-09-28):** While a map-issued
+navigation command is active, draw its remaining walk path in the frontend map as a
+cyan line with visible waypoint dots, the current character marker and destination.
+The operator-supplied image is a visual target for this overlay, not evidence of a
+phMonitor API or routing algorithm. Keep route geometry transient and scoped to the
+command, character, session, server, region and cave floor. The plugin may send a
+bounded, validated sequence of walk coordinates through the existing Go live channel
+to make this possible; do not expose raw generated script text to the browser or
+persist the route as character-position history.
+
+On each fresh observed position, trim passed waypoints and segments and redraw from
+the character's current position toward the next remaining waypoint. Never leave a
+trail of past positions on the active-route layer. Replace the overlay on reroute and
+clear it on confirmed completion, cancellation, failure or session supersession.
+During a temporary stale connection, freeze the last route with a stale indication
+rather than implying movement. Draw only the segment for the selected region and
+floor; break the line at teleports and waits, and never invent a straight segment
+across missing or unparseable route instructions. If a generated script cannot yield
+safe walk geometry, show navigation status without a speculative path.
+
 map/region reference data and locally served assets from the active Slice 2.5
 game-data profile where the exported bundle contains them, with explicit fallback
 provenance for any additional operator-supplied/licensed assets
@@ -2409,6 +2429,11 @@ selected character/session; generated-script navigation is enabled only after re
 runtime validation and bounded script execution, with confirmation and honest
 arrival/result state; training-area readback is visible, and unvalidated coordinates
 cannot be submitted
+
+the active navigation overlay shows only remaining validated walk segments, shrinks
+with fresh observed movement, respects character/session/region/floor changes and
+clears on completion or interruption; no past-position trail or raw script appears
+in the browser
 
 ### Slice 8 — Mob observation and heatmap foundation
 
