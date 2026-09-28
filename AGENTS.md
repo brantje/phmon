@@ -3077,6 +3077,9 @@ preview opens on hover/focus only; click-to-pin/open and Escape pin-dismissal we
 removed. Updated the Slice 4 canonical interaction contract and reference-parity
 ledger. Validation: frontend unit tests (3), Nuxt typecheck, production build,
 focused ESLint (one existing void-element warning), and ItemSlot Prettier pass.
-Browser verification and deployment remain pending. Next: commit and push to the
-existing PR, update only the web service in the existing deployment (leave server,
-PostgreSQL and volumes intact), then verify hover and overlay behavior in the browser.
+Pushed in `1522000`; deployed by copying only the changed frontend component/style,
+building `web` and recreating only that service. Server/PostgreSQL container IDs
+remained unchanged and health stayed green. Browser loaded four live characters and
+their inventories; manual pointer-hover/color inspection remains unrecorded. The PR's
+validate/stack checks pass; CodeRabbit is rate-limited after the prior review. Next:
+record the manual hover/color check when available and keep Slice 4 open.

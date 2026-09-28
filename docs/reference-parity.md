@@ -456,5 +456,6 @@ blue roll-quality percentages and full viewport comparison remain open.
 Current item previews open on hover or keyboard focus only. Clicking an item slot no
 longer pins or toggles the tooltip. Enhancement overlays are white for normal items
 and gold only for metadata-confirmed rare items; the rare item border and title remain
-gold. This corrects the live Stats page comments. Browser verification is pending the
-next web build/deployment.
+gold. This corrects the live Stats page comments. The web-only rebuild/restart is
+healthy and the deployed Stats route loads four live characters and their
+inventories; a manual pointer-hover comparison remains to be recorded.
