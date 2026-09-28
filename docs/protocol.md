@@ -861,10 +861,10 @@ documented opcode/version allowlist and a captured fixture before activation.
 
 ## Slice 6: chat history and commands (2026-09-28)
 
-Migrations `000009_chat.sql` and `000010_chat_numeric_channels.sql` build and normalize
-`chat_messages` as a rebuildable projection of
-canonical inbound `activity_events` and audited outbound `commands`. The inbound event
-remains authoritative; `event_id` is the projection identity, replay is idempotent,
+Migrations `000009_chat.sql`–`000011_chat_echo_reconciliation.sql` build and normalize
+`chat_messages` as a rebuildable projection of canonical inbound `activity_events`
+and audited outbound `commands`, then reconcile uniquely matching historical echoes.
+The inbound event remains authoritative; `event_id` is the projection identity, replay is idempotent,
 and legacy chat events are backfilled as `unknown` unless they already carry a
 canonical supported channel. Private conversations use a lowercase peer key while
 retaining the original peer name, server and character scope. A unique echo is linked

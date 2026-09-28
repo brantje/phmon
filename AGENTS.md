@@ -3313,8 +3313,10 @@ modes, optional phBot chat adapter, responsive `/chat` UI and `/settings` notifi
 controls. Global sends require confirmation; phBot API acceptance does not establish
 delivery. Operator testing on phBot 20.1.2 confirmed numeric callback types 1=General/All,
 4=Party, 5=Guild and 6=Global. The plugin maps these values and preserves raw types;
-migration `000010_chat_numeric_channels.sql` corrects existing canonical events and
-chat projections. Chat messages render as a flat chronological log in every channel.
+migrations `000010_chat_numeric_channels.sql` and
+`000011_chat_echo_reconciliation.sql` normalize existing canonical events/chat
+projections and link unique historical outgoing echoes. Chat messages render as a
+flat chronological log in every channel.
 `plugin/phManager.py` was absent; the untracked
 `plugin/phMonitorAdapter.py` remains untouched and unversioned.
 
@@ -3324,18 +3326,18 @@ it shows six channel tabs, an offline sender selector, and empty General history
 
 Local validation after this correction: Python plugin tests (79 passed), Nuxt unit
 tests (8 passed), `npm run typecheck`,
-`npm run lint` (0 errors; 22 existing HTML void-element warnings),
-`npm run format:check` and `npm run build` pass. The deployed server observed two
-protocol-v6 agents reporting plugin 1.4.0 and phBot 20.1.2 with current sessions.
-All 144 live inbound records then present were reclassified using the confirmed raw
-types; migration 10 carries the same idempotent correction. The replacement plugin
-is version 1.4.1 and must be uploaded by the operator for future numeric callbacks
-to arrive preclassified. `phBotChat` outbound methods remain unverified. PostgreSQL
-integration tests with `TEST_DATABASE_URL`, authenticated browser comparison at
-1440×1000, 1280×800 and 390×844, and outbound phBot API verification remain open.
-Keep Slice 6 in progress until these gates are closed. Exact next action: operator
-uploads plugin version 1.4.1; then verify its reported version and observe new typed
-chat callbacks without sending test messages from real characters.
+`npm run format:check` and `npm run build` pass. The deployed server observes two
+protocol-v6 agents reporting plugin 1.4.1 and phBot 20.1.2 with current sessions.
+New messages arrive under their confirmed channel types. All 144 inbound records
+present before the plugin update were reclassified; migration 10 carries the
+correction to other databases. Migration 11 links two unique historical same-session
+echoes to audited outgoing commands. Chat renders flat history rows in every channel.
+`phBotChat` outbound methods remain unverified. PostgreSQL integration tests with
+`TEST_DATABASE_URL`, authenticated browser comparison at 1440×1000, 1280×800 and
+390×844, and outbound phBot API verification remain open. Keep Slice 6 in progress
+until these gates are closed. Exact next action: capture the authenticated chat view
+at the required viewports and verify `phBotChat` method availability on the recorded
+runtime without sending unapproved test messages.
 
 ### Resume — 2026-09-28 character portraits
 
