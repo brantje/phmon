@@ -145,6 +145,8 @@ const lastChatCommand = computed(() =>
 const visibleChannelCount = (channel: ChatChannel) => unread.value[channel] || 0
 const isServerWideChannel = (channel: ChatChannel) =>
   channel === 'general' || channel === 'global'
+const isServerWideReadChannel = (channel: ChatChannel) =>
+  channel !== 'private' && channel !== 'guild' && channel !== 'union'
 const chatServerFilter = (server: string) =>
   server === 'all' ? selectedCharacter.value?.server : server
 
@@ -188,7 +190,9 @@ watch(
     }
     setChatFeed(feedID, {
       server: chatServerFilter(server),
-      character_id: isServerWideChannel(channel) ? undefined : characterID,
+      // General/Global history stays server-wide; this ID scopes Private,
+      // Guild, and Union unread state to the selected sender.
+      character_id: characterID,
       channel,
       peer: channel === 'private' ? peer || undefined : undefined,
       limit: 50,
@@ -274,9 +278,7 @@ async function loadOlder() {
     const result = await $fetch<ChatSnapshot['page']>('/api/chat/messages', {
       query: {
         server: chatServerFilter(serverScope.value),
-        character_id: isServerWideChannel(activeChannel.value)
-          ? undefined
-          : selectedCharacter.value.character_id,
+        character_id: selectedCharacter.value.character_id,
         channel: activeChannel.value,
         peer: activeChannel.value === 'private' ? privatePeer.value : undefined,
         before: olderCursor.value,
@@ -306,9 +308,16 @@ async function markCurrentRead() {
   const latestInbound = [...messages.value]
     .reverse()
     .find((item) => item.direction === 'inbound')
-  if (!latestInbound || latestInbound.message_id === lastReadMessageID.value)
-    return
-  lastReadMessageID.value = latestInbound.message_id
+  const messageID = latestInbound?.message_id || ''
+  const canClearServerWideUnread =
+    isServerWideReadChannel(activeChannel.value) &&
+    visibleChannelCount(activeChannel.value) > 0
+  if (!messageID && !canClearServerWideUnread) return
+  const requestKey =
+    messageID ||
+    `server:${character.server}:${activeChannel.value}:${visibleChannelCount(activeChannel.value)}`
+  if (requestKey === lastReadMessageID.value) return
+  lastReadMessageID.value = requestKey
   try {
     const readState = await $fetch<
       Pick<ChatSnapshot, 'contacts' | 'unread_by_channel'> & { saved: boolean }
@@ -316,12 +325,12 @@ async function markCurrentRead() {
       method: 'POST',
       body: {
         server: character.server,
-        character_id: isServerWideChannel(activeChannel.value)
-          ? ''
-          : character.character_id,
+        // The store shares read cursors for server channels and keeps
+        // Private/Guild/Union cursors scoped to this character.
+        character_id: character.character_id,
         channel: activeChannel.value,
         peer: activeChannel.value === 'private' ? privatePeer.value : '',
-        message_id: latestInbound.message_id,
+        message_id: messageID,
       },
     })
     if (readState.saved) applyChatReadState(feedID, readState)

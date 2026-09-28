@@ -740,9 +740,11 @@ Servar inventory remains open.
   Migration 11 linked two unique same-session echoes to their outgoing commands and
   fixed the outbound echo-link constraint, preventing duplicate rows in chat history.
   Unknown numeric values remain in the Advanced-mode Unknown lane.
-- General and Global history now spans all characters on the selected server.
-  General's durable read cursor and unread count are server scoped; Global is omitted
-  from the unread counter and its badge is hidden in the UI.
+- General and Global history spans all characters on the selected server. General,
+  Party and Unknown read cursors and unread counts are server scoped; Private, Guild
+  and Union remain scoped to the selected character (and Private to the peer) so a
+  read in one character's guild/union does not clear another character's unread
+  messages. Global is omitted from the unread counter and its badge is hidden.
 - A successful mark-read response now includes fresh contact and channel unread state
   computed after the cursor is saved. The chat page applies those counts immediately,
   then the shared live snapshot reconciles them. Changing private contacts keeps the

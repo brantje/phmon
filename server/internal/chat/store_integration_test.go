@@ -40,7 +40,8 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 	}
 	server := "chat-" + credential.AgentID[:8]
 	characterStore := characters.NewStore(pool)
-	characterID, err := characterStore.Resolve(ctx, characters.Identity{Server: server, Name: "Alpha"})
+	alphaGuild := "Guild Alpha"
+	characterID, err := characterStore.Resolve(ctx, characters.Identity{Server: server, Name: "Alpha", Guild: &alphaGuild})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,8 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondCharacterID, err := characterStore.Resolve(ctx, characters.Identity{Server: server, Name: "Beta"})
+	betaGuild := "Guild Beta"
+	secondCharacterID, err := characterStore.Resolve(ctx, characters.Identity{Server: server, Name: "Beta", Guild: &betaGuild})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +144,48 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 	if err != nil || readState.UnreadByChannel["general"] != 1 || readState.UnreadByChannel["private"] != 1 ||
 		len(readState.Contacts) != 1 || readState.Contacts[0].Unread != 1 {
 		t.Fatalf("read state = %+v err=%v", readState, err)
+	}
+	privateBeta := makeChannelChatEvent(credential.AgentID, secondCharacterID, secondSessionID, server, "Beta", 7, databaseNow.Add(7*time.Second), "private", "2", "Gamma", "private for Beta")
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []events.AgentEvent{privateBeta})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("second character private insert = %+v changed=%v err=%v", results, changed, err)
+	}
+	globalSnapshot, err := chatStore.Snapshot(ctx, chat.Filter{Server: server, CharacterID: characterID, Channel: "global", Limit: 20})
+	if err != nil || len(globalSnapshot.Page.Messages) != 1 || globalSnapshot.Page.Messages[0].CharacterID != secondCharacterID ||
+		globalSnapshot.UnreadByChannel["general"] != 1 || globalSnapshot.UnreadByChannel["private"] != 1 ||
+		len(globalSnapshot.Contacts) != 1 || globalSnapshot.Contacts[0].Unread != 1 {
+		t.Fatalf("server-wide Global history with sender-scoped counts = %+v err=%v", globalSnapshot, err)
+	}
+	guildAlpha := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 8, databaseNow.Add(8*time.Second), "guild", "4", "Veyra", "Guild Alpha message")
+	guildBeta := makeChannelChatEvent(credential.AgentID, secondCharacterID, secondSessionID, server, "Beta", 9, databaseNow.Add(9*time.Second), "guild", "4", "Veyra", "Guild Beta message")
+	unionAlpha := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 10, databaseNow.Add(10*time.Second), "union", "5", "Veyra", "Union Alpha message")
+	unionBeta := makeChannelChatEvent(credential.AgentID, secondCharacterID, secondSessionID, server, "Beta", 11, databaseNow.Add(11*time.Second), "union", "5", "Veyra", "Union Beta message")
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []events.AgentEvent{guildAlpha, guildBeta, unionAlpha, unionBeta})
+	if err != nil || !changed || len(results) != 4 {
+		t.Fatalf("guild/union inserts = %+v changed=%v err=%v", results, changed, err)
+	}
+	if err := chatStore.MarkRead(ctx, server, characterID, "guild", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	alphaCounts, err := chatStore.UnreadByChannel(ctx, server, characterID)
+	if err != nil || alphaCounts["guild"] != 0 || alphaCounts["union"] != 1 {
+		t.Fatalf("Alpha guild read should leave its union unread: %#v err=%v", alphaCounts, err)
+	}
+	betaCounts, err := chatStore.UnreadByChannel(ctx, server, secondCharacterID)
+	if err != nil || betaCounts["guild"] != 1 || betaCounts["union"] != 1 {
+		t.Fatalf("Alpha read should preserve Beta's other guild/union unread: %#v err=%v", betaCounts, err)
+	}
+	partyBeta := makeChannelChatEvent(credential.AgentID, secondCharacterID, secondSessionID, server, "Beta", 12, databaseNow.Add(12*time.Second), "party", "3", "Veyra", "Party message")
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []events.AgentEvent{partyBeta})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("party insert = %+v changed=%v err=%v", results, changed, err)
+	}
+	if err := chatStore.MarkRead(ctx, server, characterID, "party", "", ""); err != nil {
+		t.Fatalf("server-wide party mark-read without a local copy: %v", err)
+	}
+	betaCounts, err = chatStore.UnreadByChannel(ctx, server, secondCharacterID)
+	if err != nil || betaCounts["party"] != 0 || betaCounts["guild"] != 1 || betaCounts["union"] != 1 {
+		t.Fatalf("server-wide Party read should preserve guild/union unread: %#v err=%v", betaCounts, err)
 	}
 	prefs := chat.Preferences{BrowserNotifications: true, MessageSound: true}
 	if err := chatStore.SavePreferences(ctx, prefs); err != nil {

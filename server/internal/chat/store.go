@@ -27,7 +27,7 @@ var Channels = map[string]bool{
 }
 
 func serverScopedChannel(channel string) bool {
-	return channel == "general" || channel == "global"
+	return channel != "private" && channel != "guild" && channel != "union"
 }
 
 type Store struct{ pool *pgxpool.Pool }
@@ -350,13 +350,16 @@ func (s *Store) UnreadByChannel(ctx context.Context, server, characterID string)
 SELECT m.channel,count(*)::int
 FROM chat_messages m
 LEFT JOIN chat_read_cursors r ON r.operator_identity='operator' AND lower(r.server_name)=lower(m.server_name)
- AND r.character_id IS NOT DISTINCT FROM CASE WHEN m.channel='general' THEN NULL::uuid ELSE NULLIF($2,'')::uuid END
- AND r.channel=m.channel
- AND r.peer_key=CASE WHEN m.channel='private' THEN m.peer_key ELSE '' END
+	AND r.character_id IS NOT DISTINCT FROM CASE
+		WHEN m.channel IN ('private','guild','union') THEN COALESCE(NULLIF($2,'')::uuid,m.character_id)
+		ELSE NULL::uuid
+	END
+	AND r.channel=m.channel
+	AND r.peer_key=CASE WHEN m.channel='private' THEN m.peer_key ELSE '' END
 WHERE m.direction='inbound' AND m.echo_of_command_id IS NULL AND ($1='' OR lower(m.server_name)=lower($1))
- AND m.channel<>'global'
- AND ($2='' OR m.character_id=$2::uuid OR m.channel='general')
- AND (r.last_read_at IS NULL OR (m.occurred_at,m.message_id)>(r.last_read_at,r.last_read_message_id))
+	AND m.channel<>'global'
+	AND ($2='' OR m.character_id=$2::uuid OR m.channel NOT IN ('private','guild','union'))
+	AND (r.last_read_at IS NULL OR (m.occurred_at,m.message_id)>(r.last_read_at,r.last_read_message_id))
 GROUP BY m.channel`, server, characterID)
 	if err != nil {
 		return nil, err
@@ -375,7 +378,9 @@ GROUP BY m.channel`, server, characterID)
 }
 
 func (s *Store) MarkRead(ctx context.Context, server, characterID, channel, peer, messageID string) error {
-	if len(server) == 0 || len(server) > 100 || !ValidChannel(channel) || characterID != "" && !validUUID(characterID) || !validUUID(messageID) ||
+	if len(server) == 0 || len(server) > 100 || !ValidChannel(channel) || characterID != "" && !validUUID(characterID) ||
+		messageID != "" && !validUUID(messageID) || channel == "private" && messageID == "" ||
+		(channel == "private" || channel == "guild" || channel == "union") && characterID == "" ||
 		(channel == "private") != (strings.TrimSpace(peer) != "") || len(peer) > 64 {
 		return ErrInvalid
 	}
@@ -385,17 +390,54 @@ func (s *Store) MarkRead(ctx context.Context, server, characterID, channel, peer
 		characterScope = ""
 	}
 	var at time.Time
-	err := s.pool.QueryRow(ctx, `SELECT occurred_at FROM chat_messages WHERE message_id=$1::uuid AND lower(server_name)=lower($2)
-	 AND ($3='' OR character_id=$3::uuid) AND channel=$4 AND ($4<>'private' OR peer_key=$5)`, messageID, server, characterScope, channel, peerKey).Scan(&at)
-	if err != nil {
-		return err
+	cursorMessageID := messageID
+	if channel == "private" {
+		err := s.pool.QueryRow(ctx, `SELECT occurred_at FROM chat_messages WHERE message_id=$1::uuid AND lower(server_name)=lower($2)
+		 AND character_id=$3::uuid AND channel=$4 AND peer_key=$5 AND direction='inbound' AND echo_of_command_id IS NULL`, messageID, server, characterScope, channel, peerKey).Scan(&at)
+		if err != nil {
+			return err
+		}
+	} else if serverScopedChannel(channel) {
+		if messageID != "" {
+			err := s.pool.QueryRow(ctx, `SELECT occurred_at FROM chat_messages WHERE message_id=$1::uuid AND lower(server_name)=lower($2)
+			 AND channel=$3 AND direction='inbound' AND echo_of_command_id IS NULL`, messageID, server, channel).Scan(&at)
+			if err != nil {
+				return err
+			}
+		}
+		err := s.pool.QueryRow(ctx, `SELECT occurred_at,message_id::text FROM chat_messages WHERE lower(server_name)=lower($1)
+		 AND channel=$2 AND direction='inbound' AND echo_of_command_id IS NULL
+		 ORDER BY occurred_at DESC,message_id DESC LIMIT 1`, server, channel).Scan(&at, &cursorMessageID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	} else {
+		if messageID != "" {
+			err := s.pool.QueryRow(ctx, `SELECT occurred_at FROM chat_messages WHERE message_id=$1::uuid AND lower(server_name)=lower($2)
+			 AND character_id=$3::uuid AND channel=$4 AND direction='inbound' AND echo_of_command_id IS NULL`, messageID, server, characterScope, channel).Scan(&at)
+			if err != nil {
+				return err
+			}
+		}
+		err := s.pool.QueryRow(ctx, `SELECT occurred_at,message_id::text FROM chat_messages WHERE lower(server_name)=lower($1)
+		 AND character_id=$2::uuid AND channel=$3 AND direction='inbound' AND echo_of_command_id IS NULL
+		 ORDER BY occurred_at DESC,message_id DESC LIMIT 1`, server, characterScope, channel).Scan(&at, &cursorMessageID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
-	_, err = s.pool.Exec(ctx, `INSERT INTO chat_read_cursors(operator_identity,server_name,character_id,channel,peer_key,last_read_at,last_read_message_id)
+	_, err := s.pool.Exec(ctx, `INSERT INTO chat_read_cursors(operator_identity,server_name,character_id,channel,peer_key,last_read_at,last_read_message_id)
 VALUES('operator',$1,NULLIF($2,'')::uuid,$3,$4,$5,$6::uuid)
 ON CONFLICT(operator_identity,server_key,character_scope,channel,peer_key)
 DO UPDATE SET last_read_at=CASE WHEN (EXCLUDED.last_read_at,EXCLUDED.last_read_message_id)>(chat_read_cursors.last_read_at,chat_read_cursors.last_read_message_id) THEN EXCLUDED.last_read_at ELSE chat_read_cursors.last_read_at END,
  last_read_message_id=CASE WHEN (EXCLUDED.last_read_at,EXCLUDED.last_read_message_id)>(chat_read_cursors.last_read_at,chat_read_cursors.last_read_message_id) THEN EXCLUDED.last_read_message_id ELSE chat_read_cursors.last_read_message_id END,
-			updated_at=now()`, server, characterScope, channel, peerKey, at, messageID)
+			updated_at=now()`, server, characterScope, channel, peerKey, at, cursorMessageID)
 	return err
 }
 

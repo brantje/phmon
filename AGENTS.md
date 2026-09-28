@@ -3411,9 +3411,16 @@ portrait. Keep real phBot runtime validation open until that observation succeed
 Continued the Slice 6 fix on `codex/slice-6-chat-plan`. Private contact changes now
 keep the existing contact and unread snapshot while the matching conversation page
 loads, and chat-only subscription refreshes no longer change the global live-data
-status. The `/api/chat/read` response now returns contacts and channel unread counts
+status. A badge regression showed the chat filter must retain the selected sender ID
+while viewing General/Global so private contacts remain sender scoped. General,
+Party, Unknown and Global cursors/counts are server scoped; Private, Guild and Union
+stay character scoped, with Private also scoped to its peer. This preserves unread
+Guild/Union messages for characters in different groups. Shared server-wide channels
+can mark read from another character's view, including when that character has no
+local copy. The `/api/chat/read` response returns contacts and channel unread counts
 queried after the durable cursor update; the page applies these values immediately,
-then accepts the normal shared WebSocket snapshot. Updated `docs/reference-parity.md`.
+then accepts the normal shared WebSocket snapshot. Updated
+`docs/reference-parity.md` and added integration coverage for sender and group scopes.
 
 Files changed: `server/internal/chat/store.go`,
 `server/internal/chat/store_integration_test.go`, `server/internal/httpapi/chat.go`,
@@ -3421,9 +3428,15 @@ Files changed: `server/internal/chat/store.go`,
 `docs/reference-parity.md` and this resume entry. Preserve the unrelated untracked
 `plugin/phMonitorAdapter.py`.
 
-Validation so far: Nuxt typecheck, 8 frontend unit tests, ESLint (22 existing HTML
-void-element warnings, no errors), Prettier and `go test ./internal/chat
-./internal/httpapi` passed. The store's PostgreSQL integration test remains gated by
-`TEST_DATABASE_URL`; the in-app browser currently has no tabs, so authenticated visual
-verification is unavailable. Exact next action: run the production build and full Go
-suite, inspect the final diff, then push the update to PR #14 and check its CI.
+Validation: Nuxt typecheck, 8 frontend unit tests, ESLint (22 existing HTML
+void-element warnings, no errors), Prettier, production build and `go test ./...`
+passed. The new store regression remains gated by `TEST_DATABASE_URL`; the in-app
+browser currently has no tabs, so authenticated visual verification is unavailable.
+The read-response change from commit `d82c69c` is deployed to
+`node@192.168.10.25:/var/www/phmon`. Only server/web were rebuilt and recreated;
+`phmon-postgres-1` kept container ID `96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d`
+and volume `phmon_postgres_data`; `/readyz` and `/api/health` report database healthy.
+Current uncommitted scope correction adds server-wide read cursors for shared chat
+channels and character-scoped Guild/Union cursors. Exact next action: format and run
+Go/UI checks, push to PR #14, deploy the updated Go server and web page to the same
+host without recreating PostgreSQL, verify health/volume identity and latest CI.
