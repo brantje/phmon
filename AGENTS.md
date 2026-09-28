@@ -1838,9 +1838,10 @@ Party Setup loads the plugin's current supported values, applies verified edits 
 an audited command, reports pending/success/failure, then refreshes to prove the
 effective runtime configuration
 
-desktop hover/focus and click behavior plus mobile tap behavior can inspect the same
-item information, with keyboard/focus handling and no page-level overflow at the
-project's target viewports
+desktop hover and keyboard focus can inspect the same item information. Keep the
+mobile item layout responsive and the items accessible without adding click-to-pin or
+click-to-open behavior; do not claim an unverified tap-preview interaction. Verify
+keyboard/focus handling and no page-level overflow at the project's target viewports
 
 updates do not require blindly resending excessive full state when unnecessary
 
