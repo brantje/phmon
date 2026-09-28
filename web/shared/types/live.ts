@@ -29,6 +29,8 @@ export interface CharacterView {
   z?: number
   botting?: boolean | null
   dead?: boolean | null
+  model_id?: number
+  portrait_url?: string
 }
 
 export interface ActivityEvent {
@@ -53,6 +55,8 @@ export interface ActivityEvent {
   x?: number
   y?: number
   z?: number
+  model_id?: number
+  portrait_url?: string
   payload: Record<string, unknown>
 }
 

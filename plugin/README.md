@@ -102,6 +102,12 @@ or terminal rejection. Reconnect and process restart replay the same ID. A death
 snapshot alone never creates history, and the callback's empty data string does not
 establish a cause.
 
+The same documented `get_character_data()` response supplies the optional integer
+`model` used for local character portraits. Values outside the positive unsigned
+32-bit range, booleans and non-integers are omitted. Existing agents can continue
+without `model`; the server stores a portrait only after observing it in the active
+character session.
+
 Supported documented adapters include bot/trace start-stop, training area/radius,
 same-region walk, return scroll and disconnect. Walk requires `generate_path`,
 `move_to_region` and `get_position`; the plugin requests phBot's waypoint route and

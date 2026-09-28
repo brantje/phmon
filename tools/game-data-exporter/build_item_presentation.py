@@ -21,6 +21,9 @@ def build(bundle, asset_index, output, media_path=None):
     if dataset != assets['datasetId']:
         raise ValueError('asset and catalog datasets differ')
     icons = {key: '/' + entry['url'] for entry in assets['files'] for key in entry['assetKeys']}
+    entity_catalog = json.loads((Path(bundle) / 'catalogs' / 'entities.json').read_text('utf-8'))
+    if entity_catalog.get('datasetId') != dataset or entity_catalog.get('family') != 'entities':
+        raise ValueError('entity catalog belongs to another dataset')
     extra = {}
     if media_path:
         with PK2Archive(media_path) as media:
@@ -66,11 +69,25 @@ def build(bundle, asset_index, output, media_path=None):
                 definition['level'] = row['level']
             magic_options[str(option_id)] = definition
     payload = {'dataset_id': dataset, 'items': records}
+    character_portraits = {}
+    for row in entity_catalog.get('records', []):
+        if row.get('portraitMappingStatus') != 'verified-phmonitor-model-v050':
+            continue
+        model = row.get('referenceId')
+        code = row.get('code')
+        portrait_url = icons.get(row.get('portraitAssetKey'))
+        if not isinstance(model, int) or model <= 0 or not isinstance(code, str) or not portrait_url:
+            raise ValueError('verified character portrait join is incomplete')
+        if model in character_portraits:
+            raise ValueError('duplicate character model portrait mapping')
+        character_portraits[str(model)] = {'code': code, 'portrait_url': portrait_url}
+    if character_portraits:
+        payload['character_portraits'] = character_portraits
     if magic_options:
         payload['magic_options'] = magic_options
     Path(output).parent.mkdir(parents=True, exist_ok=True)
     Path(output).write_text(json.dumps(payload, separators=(',', ':')), 'utf-8')
-    print(f'Wrote {len(records)} item records and {len(magic_options)} raw magic option definitions for {dataset}')
+    print(f'Wrote {len(records)} item records, {len(character_portraits)} character portraits and {len(magic_options)} raw magic option definitions for {dataset}')
 
 
 if __name__ == '__main__':

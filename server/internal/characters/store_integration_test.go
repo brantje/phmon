@@ -89,14 +89,24 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 		sharedID = id
 	}
 	level, hp, hpmax, mp, exp, sp, gold, region, x, y := 110, int64(500), int64(1000), int64(250), int64(900), int64(42), int64(99), 25000, 12.5, 33.25
+	model := int64(1907)
 	zone := "Jangan"
 	dead := true
-	fullState := State{Level: &level, HP: &hp, HPMax: &hpmax, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, Zone: &zone, X: &x, Y: &y, Dead: &dead}
+	fullState := State{Model: &model, Level: &level, HP: &hp, HPMax: &hpmax, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, Zone: &zone, X: &x, Y: &y, Dead: &dead}
 	if err := store.ClaimSession(ctx, credential.AgentID, a, 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Snapshot(ctx, credential.AgentID, a, 1, fullState); err != nil {
 		t.Fatal(err)
+	}
+	secondPool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondPool.Close()
+	restartedAlpha, err := NewStore(secondPool).Get(ctx, a)
+	if err != nil || restartedAlpha.ModelID == nil || *restartedAlpha.ModelID != model {
+		t.Fatalf("fresh database pool did not read persisted character model: %+v err=%v", restartedAlpha, err)
 	}
 	b, err := store.Resolve(ctx, Identity{Server: "Slice2-Server", Name: "Beta"})
 	if err != nil {
@@ -115,7 +125,7 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !alpha.Online || alpha.Level == nil || *alpha.Level != 110 || alpha.Dead == nil || !*alpha.Dead {
+	if !alpha.Online || alpha.Level == nil || *alpha.Level != 110 || alpha.Dead == nil || !*alpha.Dead || alpha.ModelID == nil || *alpha.ModelID != model {
 		t.Fatalf("alpha presence/state incorrect: %+v", alpha)
 	}
 	beta, err := store.Get(ctx, b)
@@ -157,8 +167,16 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err := store.End(ctx, credential.AgentID, a, 2, "left"); err != nil {
 		t.Fatal(err)
 	}
+	alpha, err = store.Get(ctx, a)
+	if err != nil || alpha.ModelID == nil || *alpha.ModelID != model {
+		t.Fatalf("offline character did not retain last observed model: %+v err=%v", alpha, err)
+	}
 	if err := store.ClaimSession(ctx, credential.AgentID, a, 3); err != nil {
 		t.Fatal(err)
+	}
+	alpha, err = store.Get(ctx, a)
+	if err != nil || alpha.ModelID != nil {
+		t.Fatalf("new session did not clear the old model before fresh observation: %+v err=%v", alpha, err)
 	}
 	if err := store.Snapshot(ctx, credential.AgentID, a, 3, State{HP: &hp}); err != nil {
 		t.Fatal(err)

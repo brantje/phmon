@@ -24,9 +24,15 @@ type ItemMetadata struct {
 	SharedMagicOptions  map[string]MagicOptionDefinition
 }
 type ItemCatalog struct {
-	DatasetID    string                           `json:"dataset_id"`
-	Items        map[string]ItemDefinition        `json:"items"`
-	MagicOptions map[string]MagicOptionDefinition `json:"magic_options,omitempty"`
+	DatasetID          string                           `json:"dataset_id"`
+	Items              map[string]ItemDefinition        `json:"items"`
+	MagicOptions       map[string]MagicOptionDefinition `json:"magic_options,omitempty"`
+	CharacterPortraits map[string]CharacterPortrait     `json:"character_portraits,omitempty"`
+}
+
+type CharacterPortrait struct {
+	Code        string `json:"code"`
+	PortraitURL string `json:"portrait_url"`
 }
 type ItemDefinition struct {
 	Code         string         `json:"code"`
@@ -117,6 +123,12 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 				return nil, fmt.Errorf("invalid item reference stats")
 			}
 		}
+		for model, portrait := range catalog.CharacterPortraits {
+			id, err := strconv.ParseUint(model, 10, 32)
+			if err != nil || id == 0 || strconv.FormatUint(id, 10) != model || portrait.Code == "" || len(portrait.Code) > 128 || strings.TrimSpace(portrait.Code) != portrait.Code || !strings.HasPrefix(portrait.Code, "CHAR_") || !validPortraitURL(portrait.PortraitURL) {
+				return nil, fmt.Errorf("invalid character portrait definition")
+			}
+		}
 		for id, option := range catalog.MagicOptions {
 			parsed, err := strconv.ParseUint(id, 10, 32)
 			if err != nil || parsed == 0 || len(option.Code) > 128 || strings.TrimSpace(option.Code) != option.Code || strings.TrimSpace(option.Label) != option.Label || len(option.Label) > 96 || len(option.Unit) > 24 || option.Precision > 6 || option.Scale > 1000000 || len(option.RawRanges) > 3 {
@@ -141,6 +153,24 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 		m.Catalogs[dataset] = catalog
 	}
 	return m, nil
+}
+
+var localCharacterPortrait = regexp.MustCompile(`^/game-assets/interface/character/char_(?:ch|eu)_(?:man|woman)(?:[1-9]|1[0-3])\.png$`)
+
+func validPortraitURL(value string) bool {
+	return len(value) <= 160 && localCharacterPortrait.MatchString(value)
+}
+
+func (m *ItemMetadata) PortraitURL(server string, model *int64) string {
+	if m == nil || model == nil || *model < 1 || *model > 4294967295 {
+		return ""
+	}
+	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	portrait, ok := m.Catalogs[dataset].CharacterPortraits[strconv.FormatInt(*model, 10)]
+	if !ok || !validPortraitURL(portrait.PortraitURL) {
+		return ""
+	}
+	return portrait.PortraitURL
 }
 
 func addSharedPresentation(index map[string]map[string]any, ambiguous map[string]map[string]bool, code string, presentation map[string]any) {
@@ -427,3 +457,10 @@ func parseUnsigned64(value string) (uint64, error) {
 }
 
 func (s *Store) SetItemMetadata(metadata *ItemMetadata) { s.metadata = metadata }
+
+func (s *Store) PortraitURL(server string, model *int64) string {
+	if s == nil || s.metadata == nil {
+		return ""
+	}
+	return s.metadata.PortraitURL(server, model)
+}

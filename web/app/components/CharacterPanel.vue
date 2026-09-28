@@ -440,11 +440,21 @@ onUnmounted(() => {
             :key="character.character_id"
           >
             <td>
-              <NuxtLink
-                class="character-link"
-                :to="'/characters/' + character.character_id"
-                >{{ character.name }}</NuxtLink
-              ><small v-if="character.guild">{{ character.guild }}</small>
+              <div class="character-table-identity">
+                <CharacterPortrait
+                  :name="character.name"
+                  :portrait-url="character.portrait_url"
+                  size="small"
+                  :to="'/characters/' + character.character_id"
+                />
+                <div>
+                  <NuxtLink
+                    class="character-link"
+                    :to="'/characters/' + character.character_id"
+                    >{{ character.name }}</NuxtLink
+                  ><small v-if="character.guild">{{ character.guild }}</small>
+                </div>
+              </div>
             </td>
             <td>
               <span

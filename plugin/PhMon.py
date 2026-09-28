@@ -3211,6 +3211,9 @@ def _sample_character():
         value = data.get(source)
         if isinstance(value, (int,float)) and not isinstance(value,bool) and value >= 0:
             state[source] = int(value)
+    model = data.get('model')
+    if isinstance(model, int) and not isinstance(model, bool) and 1 <= model <= 0xffffffff:
+        state['model'] = model
     if isinstance(data.get('dead'), bool):
         state['dead'] = data['dead']
         if data['dead'] is False:
