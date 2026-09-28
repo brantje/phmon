@@ -4,6 +4,7 @@ import {
   type AgentsSnapshot,
   type CharacterGroup,
   type CharacterSnapshot,
+  type CharacterResourcesView,
   type CharactersSnapshot,
   type CharacterView,
   type CommandsSnapshot,
@@ -31,6 +32,7 @@ const characters = ref<CharacterView[]>([])
 const fleetCharacters = ref<CharacterView[]>([])
 const groups = ref<CharacterGroup[]>([])
 const characterDetail = ref<CharacterView | null>(null)
+const characterResources = ref<Record<string, CharacterResourcesView>>({})
 const commandHistory = ref<RemoteCommand[]>([])
 const characterControls = ref<ControlsSnapshot | null>(null)
 const connectionState = ref<LiveConnectionState>('idle')
@@ -44,7 +46,7 @@ let reconnectTimer: number | undefined
 let watchdogTimer: number | undefined
 let reconnectAttempt = 0
 let lastMessageAt = 0
-let users = 0
+let liveDataStarted = false
 
 const liveStale = computed(() => hasSnapshot.value && staleCycle.value)
 const liveLoading = computed(
@@ -61,7 +63,9 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.character_id || '') === (right.character_id || '') &&
     (left.command_name || '') === (right.command_name || '') &&
     (left.command_state || '') === (right.command_state || '') &&
-    (left.limit || 0) === (right.limit || 0)
+    (left.limit || 0) === (right.limit || 0) &&
+    (left.resource_keys || []).join('\u0000') ===
+      (right.resource_keys || []).join('\u0000')
   )
 }
 
@@ -194,6 +198,23 @@ function setCharacterDetail(characterID: string) {
   )
 }
 
+function setCharacterResources(
+  characterID: string,
+  resourceKeys: string[],
+  subscriptionID: string,
+) {
+  if (!characterID) return
+  ensureSubscription(subscriptionID, 'resources', {
+    character_id: characterID,
+    resource_keys: resourceKeys,
+  })
+}
+
+function clearCharacterResources(characterID: string, subscriptionID: string) {
+  if (!characterID) return
+  removeSubscription(subscriptionID)
+}
+
 function setCharacterCommands(
   characterID: string,
   commandName = '',
@@ -265,13 +286,8 @@ function browserLiveURL() {
 }
 
 function ensureConnection() {
-  if (!import.meta.client || users < 1) return
-  if (
-    socket &&
-    (socket.readyState === WebSocket.OPEN ||
-      socket.readyState === WebSocket.CONNECTING)
-  )
-    return
+  if (!import.meta.client || !liveDataStarted) return
+  if (socket && socket.readyState !== WebSocket.CLOSED) return
 
   clearTimeout(reconnectTimer)
   reconnectTimer = undefined
@@ -429,8 +445,30 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       characterControls.value = snapshot
       return true
     }
-    default:
+    default: {
+      if (subscription.stream === 'resources') {
+        const snapshot = data as CharacterResourcesView
+        if (
+          typeof snapshot.character_id !== 'string' ||
+          snapshot.character_id !== subscription.filter.character_id ||
+          !snapshot.resources ||
+          typeof snapshot.resources !== 'object' ||
+          Array.isArray(snapshot.resources)
+        )
+          return false
+        const current = characterResources.value[snapshot.character_id]
+        characterResources.value = {
+          ...characterResources.value,
+          [snapshot.character_id]: {
+            ...snapshot,
+            revision: Math.max(current?.revision || 0, snapshot.revision),
+            resources: { ...current?.resources, ...snapshot.resources },
+          },
+        }
+        return true
+      }
       return false
+    }
   }
 }
 
@@ -466,7 +504,7 @@ function markSubscriptionsStale() {
 }
 
 function scheduleReconnect() {
-  if (!import.meta.client || users < 1 || reconnectTimer) return
+  if (!import.meta.client || !liveDataStarted || reconnectTimer) return
   const base = Math.min(30_000, 1000 * 2 ** Math.min(reconnectAttempt, 5))
   const delay = Math.min(30_000, base * (0.75 + Math.random() * 0.25))
   reconnectAttempt += 1
@@ -493,17 +531,18 @@ function stopWatchdog() {
   watchdogTimer = undefined
 }
 
-function attach() {
+function startLiveData() {
   if (!import.meta.client) return
-  users += 1
-  ensureBaseSubscriptions()
+  if (!liveDataStarted) {
+    liveDataStarted = true
+    ensureBaseSubscriptions()
+  }
   ensureConnection()
 }
 
-function detach() {
-  if (!import.meta.client) return
-  users = Math.max(0, users - 1)
-  if (users > 0) return
+function stopLiveData() {
+  if (!import.meta.client || !liveDataStarted) return
+  liveDataStarted = false
   clearTimeout(reconnectTimer)
   reconnectTimer = undefined
   stopWatchdog()
@@ -514,23 +553,25 @@ function detach() {
 }
 
 export function useLiveData() {
-  onMounted(attach)
-  onUnmounted(detach)
-
   return {
     agents: readonly(agents),
     characters: readonly(characters),
     fleetCharacters: readonly(fleetCharacters),
     groups: readonly(groups),
     characterDetail: readonly(characterDetail),
+    characterResources: readonly(characterResources),
     commandHistory: readonly(commandHistory),
     characterControls: readonly(characterControls),
     connectionState: readonly(connectionState),
     liveStale,
     liveLoading,
+    startLiveData,
+    stopLiveData,
     setCharacterListFilter,
     clearCharacterListFilter,
     setCharacterDetail,
+    setCharacterResources,
+    clearCharacterResources,
     setCharacterCommands,
     setCharacterControls,
     clearCharacterCommandSubscriptions,

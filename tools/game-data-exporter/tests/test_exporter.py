@@ -10,6 +10,7 @@ from PIL import Image
 
 from phmon_game_exporter import exporter
 from phmon_game_exporter.cli import validate_bundle
+from phmon_game_exporter.item_metadata import item_metadata, magic_option_definitions
 from phmon_game_exporter.pk2 import ArchiveInfo, Entry
 from phmon_game_exporter.preview import _map_sheet, _safe_bundle_file
 from phmon_game_exporter.public_assets import ensure_public_asset_destination, validate_public_assets
@@ -18,6 +19,59 @@ from .helpers import ddj_rgba
 
 def _text(value: str) -> bytes:
     return value.encode("utf-16")
+
+
+def test_magic_option_export_keeps_exact_codes_and_unresolved_scaling() -> None:
+    packed = (5 << 16) | 1
+    rows = [
+        "\t".join(["1", "9", "MATTR_INT", "x", "2", "x", "x", "x", str(packed), "0", "0"]),
+        "\t".join(["1", "10", "MATTR_UNKNOWN", "x", "1", "x", "x", "x", "0", "0", "0"]),
+    ]
+    records, audit = magic_option_definitions(rows, {"MATTR_INT": ["Int Increase"]})
+    assert records == [
+        {
+            "id": "magic-option:9",
+            "referenceId": 9,
+            "code": "MATTR_INT",
+            "level": 2,
+            "raw_ranges": [{"minimum": "1", "maximum": "5"}],
+            "label_status": "exact_localization_join",
+            "label": "Int Increase",
+        },
+        {
+            "id": "magic-option:10",
+            "referenceId": 10,
+            "code": "MATTR_UNKNOWN",
+            "level": 1,
+            "raw_ranges": [],
+            "label_status": "unresolved",
+        },
+    ]
+    assert audit["valueScaleStatus"] == "unresolved"
+    assert audit["labelsResolved"] == 1
+
+
+def test_magic_option_export_drops_duplicate_ids_and_conflicting_labels() -> None:
+    row = "\t".join(["1", "9", "MATTR_INT", "x", "2", "x", "x", "x", "0", "0", "0"])
+    records, audit = magic_option_definitions(
+        [row, row], {"MATTR_INT": ["First label", "Different label"]}
+    )
+    assert records == []
+    assert audit["duplicateIds"] == [9]
+
+
+def test_item_reference_ranges_export_without_calculating_instance_stats() -> None:
+    fields = ["0"] * 126
+    fields[9:13] = ["3", "1", "1", "1"]
+    fields[14], fields[15] = "0", "0"
+    fields[58:62] = ["0", "0", "0", "1"]
+    fields[63:68] = ["14.200", "20.600", "50.0", "60.0", "1.25"]
+    presentation = item_metadata(fields)
+    assert presentation["reference_stats"]["durability"] == {"min": "14.2", "max": "20.6"}
+    assert presentation["reference_stats"]["phy_def_pwr"] == {
+        "min": "50", "max": "60", "increment": "1.25"
+    }
+    assert "phy_def_pwr" not in presentation
 
 
 class _FakeArchive:

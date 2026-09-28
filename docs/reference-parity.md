@@ -4,6 +4,103 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Slice 4 — Stats, containers, pets, party and academy
+
+Status: Slice 4 has a live API-backed collection and presentation implementation.
+The open gates are incomplete/unverified family and blue semantics, packet-based
+movement retention, several UI acceptance comparisons and verified Party Setup
+application. Current runtime evidence is recorded in the dated entries and
+[`item-instance-evidence.md`](item-instance-evidence.md).
+
+The user's supplied Stats captures show two grouped character cards, compact
+character identity/status, independent tabs, page controls above a slot-preserving
+item grid, occupancy below it, gold footer, and in-game item previews for both a
+stackable and an armor item. They are visual requirements, not source API or packet
+fixtures. The operator-supplied LAN Stats page was also inspected on 2026-09-27. Its
+card tabs are Overview, Info, Progress, Inventory, Storage, Pet and Actions. Info is
+the character-set equipment arrangement around the avatar; Progress contains
+historical rates and training behavior. The implementation now mirrors those tabs:
+equipment is under Info, Progress shows current XP/SP/gold and labels historical
+rates unavailable until Slice 12, and Inventory opens directly to the bag. It also
+adds separate Party and Academy views for the verified Slice 4 observations. Storage
+defaults to personal storage. `/characters/{id}` reuses the same card component,
+while the existing Slice 3 Actions lifecycle remains the command source.
+
+Inventory pages use four columns by eight rows and preserve empty positions. The
+shared item preview opens on hover/focus without click-to-pin behavior and uses
+bounded internal scrolling. Plugin API observations also retain typed whites, blues
+and scalar fields; the backend presents verified available values after
+dataset/model/code matching. Greatest has an explicit dataset mapping and validated
+static catalog. Item packet layouts and unreported values remain unavailable;
+first-13 equipment separation retains its explicit runtime-unverified status. See
+the live verification ledger below.
+Container freshness comes from committed observation timestamps. Storage and guild
+storage preserve their last confirmed contents while marking current availability
+not observed/unavailable; the UI labels these as last known. Pet type, provided pet
+inventory, current party membership and current academy membership are API snapshot
+views. Party Setup is visibly read-only until a write/reload/readback contract is
+verified.
+
+The plugin and Go backend support protocol-v4 full baselines and revision-checked
+deltas, bounded multi-frame assembly, exact agent-generation/session fencing,
+transactional resource persistence, idempotent content timestamps, guild/server
+scope and filtered resource subscriptions on the existing `/api/live` connection.
+Protocol v2/v3 agents remain accepted without Slice 4 resources. Collector fixtures
+and Go unit tests cover shape validation, chunk assembly, revision gaps and fencing.
+
+The shell's persisted server selector now scopes fleet summaries and the Stats
+character cards. Guild Storage has a dedicated sidebar route and authenticated API
+query keyed by explicit server and guild; it shows the newest confirmed observation,
+observer identity, item freshness, and searchable source-slot results through the same
+item preview. Personal storage remains on the character card. A typed-confirmation
+purge now removes all saved guild-storage snapshots and normalized item rows for the
+selected server/guild only; the operator must authenticate and pass the exact guild
+name through the server API. It does not alter in-game storage. A later agent
+observation can create new saved data. The operation is logged with scope and row
+counts; it does not keep a durable audit-history record.
+
+Local evidence to date: see the 2026-09-28 audit below. The authenticated deployed
+PhMon tab was stale after backend restart; current equipment was unavailable. A
+matching 1440 × 1000 capture could not be obtained from the local tab, and the Stats
+group/data differed from the two-card reference. At 1440 × 1000, 1280 × 800 and
+390 × 844, recheck the authenticated local app with fresh data for overview, bag,
+equipment, personal/guild storage, pet inventory and both supplied tooltip families.
+Reference backdrop and legally usable local item icons remain gaps.
+
+### 2026-09-28 Slice 4 evidence and implementation audit
+
+- Official [party API](https://plugins.phbot.org/phbot-api/party) documents only
+  current membership through `get_party()`. Official
+  [config API](https://plugins.phbot.org/phbot-api/config) warns that direct JSON edits may be
+  overwritten; [misc API](https://plugins.phbot.org/phbot-api/misc) documents
+  `set_profile()` as changing the active profile, not Party Setup. No supported
+  Party Setup setter, reload contract or effective-state readback was found. The
+  party card now separates membership from an unavailable, read-only Party Setup
+  section and keeps its edit control disabled. Required evidence to enable edits:
+  installed-version documentation/runtime proof for exact configuration fields,
+  supported writer, reload operation, and post-reload readback, exercised through
+  the authenticated command lifecycle.
+- The flat inventory getter still does not document an equipment boundary. The
+  first-13 mapping remains `adapter_lead_runtime_unverified`; the equipment view now
+  explains that equipment labels and remaining bag capacity may be wrong. No
+  independent runtime/API evidence establishes its indices.
+- Plugin 1.2.6 live API captures support exact observed white fields and blues for
+  the captured families; family mappings, scalar fields, unknown-blue passthrough
+  and evidence limits are detailed in `item-instance-evidence.md`. The passive item
+  parser still relies on corroborating layouts without a live Greatest packet
+  fixture. Safe fail-closed invalidation is implemented and fixture-tested;
+  movement/transfer retention is unsupported pending verified subtype layouts and
+  identity semantics.
+- Guild-record purge is scoped to saved PhMon observations and normalized slot rows
+  for exactly one server/guild. Authorization is enforced on the Go DELETE route,
+  the client requires the literal guild name, and the response reports deleted
+  counts and future-observation behavior. It never issues phBot or in-game item
+  operations.
+- Visual review used the reference Stats view and deployed PhMon at the available
+  browser sizes. PhMon was stale, showed four “Nukers” characters instead of the
+  reference's two and had no equipment observation. The 1440×1000 viewport override
+  was not applied to the deployed tab, so this is not a matching viewport capture.
+
 ## Slice 1 — shell and instance access
 
 Status: Slice 1 shell implementation and automated CI validation complete; required
@@ -155,8 +252,8 @@ Visual parity and remaining real phBot lifecycle/data checks remain open.
   but no read-only getter. Real phBot 20.1.1/plugin 1.1.0 evidence separately shows
   server, character name, zone, level, HP/MP, XP/SP, gold, region and position in live
   records; it does not validate every lifecycle edge or botting state. The PR review
-fixes were exercised through the deterministic simulator over the production
-transport, not manually revalidated on phBot.
+  fixes were exercised through the deterministic simulator over the production
+  transport, not manually revalidated on phBot.
 
 The review follow-up also verifies stale character-scoped state/snapshot/leave
 rejections over real WebSockets: the old socket remains usable for its unrelated
@@ -165,7 +262,6 @@ two-socket outage scenario: one same-agent character disconnects during a real
 PostgreSQL stop, the second socket remains live, and recovery reconciliation closes
 only the dead generation. Both are automated simulator/backend evidence, not new
 real-runtime validation.
-
 
 ## Slice 3 — remote commands planning evidence
 
@@ -254,3 +350,145 @@ On the selected nuker1 session, `/api/live` delivered capability reason
 `unsupported_runtime_primitive` for Clientless; the Clientless button stayed disabled
 and no command was submitted. This is real-runtime capability reporting evidence,
 not a Clientless action test.
+
+
+### Evidence — 2026-09-27 Slice 4 item correction
+
+Scope remains Slice 4 only; Dashboard table preserved. Added explicit Greatest
+item dataset mapping, read-time backend resolver, independent exporter static
+metadata and compact-catalog builder. ItemSlot renders local images and white
+normal/gold rare borders/titles, ordered static fields and deliberate numbers.
+14,238 model definitions reference 3,411 verified local PNGs. Plugin 1.2.1 shows
+loaded version in QtBind and retains bounded lossless API evidence in api_fields.
+User transfers the plugin into phBot; no real-character commands were issued.
+
+Checks: plugin 40 tests; exporter 26 tests with PYTHONPATH=exporter/src; Go all
+package tests/vet; Nuxt typecheck/build passed, lint warnings only. Server/web
+initial update deployed preserving PostgreSQL. Browser confirmed 93 images,
+zero broken, white normal/gold rare borders, Casque and necklace static fields.
+Follow-up web build hit ENOSPC; inspect and remove only unused build cache before
+retrying. Operator signed in again after backend restart; keep backend running.
+
+Open: live rolled stats, percentages, max durability and blues still unverified;
+passive packet decoder not implemented. Slice 4 is NOT complete. Next after user
+transfers 1.2.1: inspect actual api_fields; if getter lacks instance data, finish
+generic vSRO 1.188 decoder against captured item-only fixtures. No guessed stats.
+
+Follow-up deployment recovered after pruning 3.528 GB of unused Docker build cache. Final web image built and restarted; backend and PostgreSQL remained running. Browser checked 1440x1000, 1280x800 and 390x844; mobile pinned tooltip fits, Escape dismisses, no page-wide horizontal overflow at 1280.
+
+
+### Evidence — 2026-09-27 rolled item detail implementation
+
+Plugin release is now 1.2.2 and shows its loaded version in phBot. It adds bounded,
+off-callback decoding for the corroborated 0x3040/0x3052 item updates, with session,
+slot and model reconciliation. Any unclassified 0xB034 operation or ambiguous state
+invalidates the cache. No inventory action or packet injection is used.
+
+Backend read-time metadata now computes family-specific roll-quality percentages from
+the 5-bit variance fields, preserving 64-bit variance exactly. The shared tooltip
+shows those percentages as quality and distinguishes unobserved instance data. Blue
+values remain raw in storage and are displayed only when a validated dataset supplies
+their label/unit/scale definition. The rebuilt Greatest dataset contains 615 raw
+magic-option records (298 with source ranges), but no exact localization labels or
+verified scales/units; named blues and absolute rolled stats remain unavailable.
+Maximum durability and inventory-move retention are also open. See
+[`item-instance-evidence.md`](item-instance-evidence.md) for source-by-source support.
+
+Validation: 48 plugin tests, Go package tests, Nuxt typecheck and production build
+pass; lint has the existing self-closing HTML warnings. Captured packet layouts,
+formula vectors and real browser tooltip values remain runtime acceptance gates after
+the user transfers plugin 1.2.2. No synthetic fixture is presented as live evidence.
+
+Runtime follow-up after operator transfer: the signed-in Stats page recovered and
+showed four live characters with current inventory quantities. The backend confirmed
+two agents reporting plugin 1.2.2, phBot 20.1.1 and agent protocol v4. At 20:49 UTC,
+239 item rows were persisted, but none had an `instance` object; all four latest
+`item_enrichment` observations reported `not_observed`, `protocol=unknown`, and
+`reason=passive_item_packet_decoder_not_enabled`. This does not match the parser-enabled
+workspace payload shape, so plugin version reporting alone cannot establish that the
+correct file contents are loaded. The runtime validates ordinary inventory ingestion,
+not item packet parsing or rolled tooltip details. See
+[`item-instance-evidence.md`](item-instance-evidence.md) for counts and the next gate.
+
+### Evidence — 2026-09-27 persistent live WebSocket
+
+Dashboard/Stats navigation previously tied the shared live socket lifetime to mounted
+page consumers. Moved start/stop ownership to the authenticated default layout, which
+persists across those routes. Route components continue to add and remove their own
+subscriptions while sharing the one app-level socket; reconnect now waits until a
+closing socket has completed its close event. After deploying only the web service,
+the signed-in browser navigated Stats → Dashboard → Stats. Playwright observed no new
+WebSocket event on either transition, and Dashboard fleet data plus Stats characters
+and inventory remained visible. Go server and PostgreSQL stayed healthy and were not
+restarted.
+
+### Evidence — 2026-09-27 item parser reupload follow-up
+
+At 21:03 UTC, two live agents reported plugin 1.2.2 / phBot 20.1.1 / agent protocol
+v4. Four characters and 242 API-backed item rows remained current, with zero instance
+objects. The old `passive_item_packet_decoder_not_enabled` payload was stale: resource
+persistence intentionally retained prior payload JSON whenever availability was
+`not_observed`, so it could not identify the loaded parser build. The workspace parser
+file had `PassiveItemTracker`, while the plugin file in the deployed checkout was the
+pre-parser copy. Added a unique parser build marker to plugin 1.2.3 and made the
+backend refresh only `item_enrichment` diagnostic payloads on `not_observed`; item
+contents and observed timestamps retain their prior rules. The exact phBot file/runtime
+still needs confirmation. Item details remain unavailable until matching item packets
+arrive naturally.
+
+At 21:24 UTC, all four active characters reported plugin 1.2.3 / phBot 20.1.1 / agent
+protocol v4, with 251 persisted API-backed item rows but no instance rows. The latest
+diagnostics now proved the parser build was loaded, and isolated protocol selection as
+the failure: every character reported `protocol=unknown`. Inspection of the active
+phBot installation showed `vSRO.json` beside (not inside) `Config`, with the current
+server nested in a root profile map. The detector now handles that official runtime
+configuration shape, ignores `version=296`, and recognizes the selected 1.188 variant
+flags. Plugin 1.2.4 emits a unique `r2` marker and protocol reason; transfer and live
+confirmation remain pending. No phMonitor executable or private protocol was
+inspected.
+
+### Evidence — 2026-09-27 authorized local item-tooltip inspection
+
+The operator subsequently authorized inspecting the local phMonitor executable for
+item tooltip semantics. Its embedded inventory path reads API item attributes and
+blues and combines them with static reference data. PhMon's collector was dropping
+integer dictionary keys and omitted some attribute aliases. Version 1.2.5 preserves
+those values as uninterpreted evidence and exposes bounded field-type diagnostics;
+52 plugin tests pass. The release file is staged locally and at `/var/www/phmon/plugin/PhMon.py`
+with matching SHA-256. The live plugin still requires operator transfer. No UI or
+backend calculator changed in this increment. Reference formula discrepancies and
+the precise next gate are documented in
+[item-tooltip-investigation.md](reference/item-tooltip-investigation.md).
+
+
+## 2026-09-27 live API tooltip verification
+
+Deployed API-backed percentages/blues verified in the logged-in Stats browser:
+Python Casque (12/22/19/3/32/9, Int3/MP5) and Tiger Bone Coronet
+(61/45/32/0/9/0, Steady2/Parry5%) display together in separately pinned tooltips.
+Absolute values and maximum durability explicitly remain unavailable. Other item
+families/blue definitions still need verification. This was live data, not simulator
+content. Full viewport comparison and rolled-stat parity are not complete.
+
+## 2026-09-28 plugin 1.2.6 item value comparison
+
+The logged-in deployed Stats page now shows Python Casque physical/magical
+defense 54.8 (+3%) / 73.3 (+32%), durability 77/77 (+9%), parry 23 (+22%),
+reinforcement 13.9% (+12%) / 18.2% (+19%), and Int3/MP5 blues. Phoenix Horn
+Spear shows observed attack ranges 375–435 (+16%) / 640–757 (+0%), durability
+64/64 (+19%), attack rate 124 (+12%), critical 4 (+3%), and reinforcement
+88.5%–105.4% (+6%) / 152.7%–186.7% (+22%). These values were checked against
+the supplied in-game screenshots, allowing for the plugin's measured raw value
+and one-decimal display precision. The tooltip remains independently pinnable
+per card, with no maximum height or internal scrollbar. Advanced elixir and magic
+option-capacity lines remain absent because the live API does not provide them;
+blue roll-quality percentages and full viewport comparison remain open.
+
+## 2026-09-28 item-slot interaction correction
+
+Current item previews open on hover or keyboard focus only. Clicking an item slot no
+longer pins or toggles the tooltip. Enhancement overlays are white for normal items
+and gold only for metadata-confirmed rare items; the rare item border and title remain
+gold. This corrects the live Stats page comments. The web-only rebuild/restart is
+healthy and the deployed Stats route loads four live characters and their
+inventories; a manual pointer-hover comparison remains to be recorded.

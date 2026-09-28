@@ -1,0 +1,1402 @@
+{
+  "provenance": {
+    "kind": "live_api_observation",
+    "phbot_version": "20.1.1",
+    "plugin_version": "1.2.5",
+    "captured_date": "2026-09-27",
+    "dataset_id": "gamedata-47c969ded0613d4c2a22",
+    "scope": "item fields only; character/session identifiers omitted"
+  },
+  "items": [
+    {
+      "name": "Robust Guard Sword",
+      "plus": 5,
+      "model": 89,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "8",
+              "value": 32,
+              "key_type": "integer"
+            },
+            {
+              "key": "0",
+              "value": 54,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 41,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 12,
+              "key_type": "integer"
+            },
+            {
+              "key": "3",
+              "value": 64,
+              "key_type": "integer"
+            },
+            {
+              "key": "6",
+              "value": 16,
+              "key_type": "integer"
+            },
+            {
+              "key": "7",
+              "value": 0,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 60,
+      "servername": "ITEM_CH_SWORD_07_A",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 18
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 7,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "critical": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 18
+        },
+        "attack_rate": {
+          "type": "integer"
+        },
+        "mag_atk_max": {
+          "type": "integer"
+        },
+        "mag_atk_min": {
+          "type": "integer"
+        },
+        "phys_atk_max": {
+          "type": "integer"
+        },
+        "phys_atk_min": {
+          "type": "integer"
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Jecheonseong's Shield",
+      "plus": 5,
+      "model": 269,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 29,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 25,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 3,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 67,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 45,
+              "key_type": "integer"
+            },
+            {
+              "key": "5",
+              "value": 41,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 73,
+      "servername": "ITEM_CH_SHIELD_07_A",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 21
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "block": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 19
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Spinel Jewel Shoulder",
+      "plus": 0,
+      "model": 379,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 29,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 16,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 9,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 25,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 6,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 77,
+      "servername": "ITEM_CH_M_HEAVY_07_SA_C",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 21
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 23
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Cruel Taesarin Hat",
+      "plus": 0,
+      "model": 811,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 45,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 45,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 12,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 74,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 58,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 6,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 60,
+      "servername": "ITEM_CH_M_CLOTHES_07_HA_C",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 18
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 25
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Evil Tiger Bone Glove",
+      "plus": 0,
+      "model": 1495,
+      "quantity": 1,
+      "api_fields": {
+        "blues": {
+          "mapping_entries": [
+            {
+              "key": "80",
+              "value": 20,
+              "key_type": "integer"
+            }
+          ]
+        },
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 54,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 9,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 9,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 35,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 77,
+      "servername": "ITEM_CH_W_LIGHT_07_AA_C",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 21
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "blues": {
+          "type": "dict",
+          "count": 1,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 23
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Coast Pearl Ring",
+      "plus": 5,
+      "model": 1817,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "11",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "12",
+              "value": 0,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 0,
+      "servername": "ITEM_CH_RING_07_A",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 16
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 2,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 17
+        },
+        "mag_absorb_max": {
+          "type": "number"
+        },
+        "mag_absorb_min": {
+          "type": "number"
+        },
+        "phys_absorb_max": {
+          "type": "number"
+        },
+        "phys_absorb_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Flame Platinum Necklace",
+      "plus": 5,
+      "model": 1888,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "11",
+              "value": 6,
+              "key_type": "integer"
+            },
+            {
+              "key": "12",
+              "value": 12,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 60,
+      "servername": "ITEM_CH_NECKLACE_06_C",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 23
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 2,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 21
+        },
+        "mag_absorb_max": {
+          "type": "number"
+        },
+        "mag_absorb_min": {
+          "type": "number"
+        },
+        "phys_absorb_max": {
+          "type": "number"
+        },
+        "phys_absorb_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Python Casque",
+      "plus": 0,
+      "model": 4247,
+      "quantity": 1,
+      "api_fields": {
+        "blues": {
+          "mapping_entries": [
+            {
+              "key": "5",
+              "value": 3,
+              "key_type": "integer"
+            },
+            {
+              "key": "152",
+              "value": 5,
+              "key_type": "integer"
+            }
+          ]
+        },
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 9,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 32,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 3,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 12,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 19,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 22,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 60,
+      "servername": "ITEM_CH_M_HEAVY_06_HA_C_RARE",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 13
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "blues": {
+          "type": "dict",
+          "count": 2,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 28
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Tiger Bone Coronet",
+      "plus": 0,
+      "model": 5293,
+      "quantity": 1,
+      "api_fields": {
+        "blues": {
+          "mapping_entries": [
+            {
+              "key": "55",
+              "value": 2,
+              "key_type": "integer"
+            },
+            {
+              "key": "128",
+              "value": 5,
+              "key_type": "integer"
+            }
+          ]
+        },
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 9,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 61,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 32,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 45,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 71,
+      "servername": "ITEM_CH_W_LIGHT_07_CA_B_RARE",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 18
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "blues": {
+          "type": "dict",
+          "count": 2,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 28
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Copper Ring",
+      "plus": 5,
+      "model": 5744,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "11",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "12",
+              "value": 0,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 60,
+      "servername": "ITEM_CH_RING_01_C_RARE",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 11
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 2,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 22
+        },
+        "mag_absorb_max": {
+          "type": "number"
+        },
+        "mag_absorb_min": {
+          "type": "number"
+        },
+        "phys_absorb_max": {
+          "type": "number"
+        },
+        "phys_absorb_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Vulpecula Gold Polldron",
+      "plus": 0,
+      "model": 11727,
+      "quantity": 1,
+      "api_fields": {
+        "blues": {
+          "mapping_entries": [
+            {
+              "key": "55",
+              "value": 6,
+              "key_type": "integer"
+            }
+          ]
+        },
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 41,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 6,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 74,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 16,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 6,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 61,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 87,
+      "servername": "ITEM_EU_M_HEAVY_07_SA_C",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 23
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "blues": {
+          "type": "dict",
+          "count": 1,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 23
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Crater Blessing Under Robe",
+      "plus": 0,
+      "model": 12302,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 3,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 9,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 35,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 35,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 25,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 3,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 51,
+      "servername": "ITEM_EU_M_CLOTHES_07_LA_B",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 26
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 25
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Crimson Alette",
+      "plus": 0,
+      "model": 12732,
+      "quantity": 1,
+      "api_fields": {
+        "blues": {
+          "mapping_entries": [
+            {
+              "key": "80",
+              "value": 20,
+              "key_type": "integer"
+            }
+          ]
+        },
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "0",
+              "value": 6,
+              "key_type": "integer"
+            },
+            {
+              "key": "10",
+              "value": 32,
+              "key_type": "integer"
+            },
+            {
+              "key": "9",
+              "value": 38,
+              "key_type": "integer"
+            },
+            {
+              "key": "1",
+              "value": 0,
+              "key_type": "integer"
+            },
+            {
+              "key": "2",
+              "value": 41,
+              "key_type": "integer"
+            },
+            {
+              "key": "4",
+              "value": 19,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 62,
+      "servername": "ITEM_EU_M_LIGHT_06_SA_C_RARE",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 14
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "blues": {
+          "type": "dict",
+          "count": 1,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "model": {
+          "type": "integer"
+        },
+        "parry": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 6,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "mag_def": {
+          "type": "integer"
+        },
+        "phys_def": {
+          "type": "integer"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 28
+        },
+        "mag_reinf_max": {
+          "type": "number"
+        },
+        "mag_reinf_min": {
+          "type": "number"
+        },
+        "max_durability": {
+          "type": "integer"
+        },
+        "phys_reinf_max": {
+          "type": "number"
+        },
+        "phys_reinf_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    },
+    {
+      "name": "Vulpecula Pearl Ring",
+      "plus": 0,
+      "model": 14679,
+      "quantity": 1,
+      "api_fields": {
+        "whites": {
+          "mapping_entries": [
+            {
+              "key": "11",
+              "value": 25,
+              "key_type": "integer"
+            },
+            {
+              "key": "12",
+              "value": 35,
+              "key_type": "integer"
+            }
+          ]
+        }
+      },
+      "durability": 0,
+      "servername": "ITEM_EU_RING_07_C",
+      "api_field_types": {
+        "name": {
+          "type": "string",
+          "count": 20
+        },
+        "plus": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "integer"
+        },
+        "whites": {
+          "type": "dict",
+          "count": 2,
+          "key_types": [
+            "integer"
+          ]
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "durability": {
+          "type": "integer"
+        },
+        "expiration": {
+          "type": "integer"
+        },
+        "servername": {
+          "type": "string",
+          "count": 17
+        },
+        "mag_absorb_max": {
+          "type": "number"
+        },
+        "mag_absorb_min": {
+          "type": "number"
+        },
+        "phys_absorb_max": {
+          "type": "number"
+        },
+        "phys_absorb_min": {
+          "type": "number"
+        }
+      },
+      "api_evidence_version": 2
+    }
+  ]
+}

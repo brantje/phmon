@@ -16,6 +16,9 @@ const (
 type CommandSender interface {
 	Send(context.Context, string, uint64, any) error
 }
+type CommandProtocolVersion interface {
+	ProtocolVersion(string, uint64) int
+}
 type CommandInvalidator interface{ Invalidate() }
 
 type Dispatcher struct {
@@ -89,7 +92,8 @@ func (d *Dispatcher) dispatch(ctx context.Context, id string) {
 		}
 		return
 	}
-	payload := map[string]any{"type": "command.execute", "protocol_version": 3, "command_id": command.ID, "character_id": command.CharacterID, "session_id": command.SessionID, "name": command.Name, "args": command.Args, "expires_at": commandExpiryTimestamp(command.ExpiresAt), "ttl_ms": remaining.Milliseconds()}
+	protocolVersion := commandProtocolVersion(d.sender, command.AgentID, command.ConnectionGeneration)
+	payload := map[string]any{"type": "command.execute", "protocol_version": protocolVersion, "command_id": command.ID, "character_id": command.CharacterID, "session_id": command.SessionID, "name": command.Name, "args": command.Args, "expires_at": commandExpiryTimestamp(command.ExpiresAt), "ttl_ms": remaining.Milliseconds()}
 	sendCtx, sendCancel := context.WithDeadline(ctx, command.ExpiresAt)
 	err = d.sender.Send(sendCtx, command.AgentID, command.ConnectionGeneration, payload)
 	sendCancel()
@@ -112,6 +116,15 @@ func (d *Dispatcher) dispatch(ctx context.Context, id string) {
 	if d.live != nil {
 		d.live.Invalidate()
 	}
+}
+
+func commandProtocolVersion(sender CommandSender, agentID string, generation uint64) int {
+	if versioned, ok := sender.(CommandProtocolVersion); ok {
+		if negotiated := versioned.ProtocolVersion(agentID, generation); negotiated >= 3 {
+			return negotiated
+		}
+	}
+	return 3
 }
 
 // commandExpiryTimestamp stays compatible with the whole-second UTC parser in

@@ -1,6 +1,8 @@
 import importlib.util
+import json
 import os
 import socket
+import struct
 import tempfile
 import threading
 import time
@@ -96,7 +98,448 @@ class ConfigTests(unittest.TestCase):
             directory = os.path.dirname(path)
             if os.path.isdir(directory):
                 os.rmdir(directory)
+                os.rmdir(root)
+
+
+class ResourceCollectorTests(unittest.TestCase):
+    def test_item_evidence_is_bounded_lossless_and_not_guessed(self):
+        result = plugin._normalize_item({'model': 1, 'variance': 2**64-1,
+            'magic_options': [{'id': 3, 'value': 5}], 'stats': {'unknown': 12},
+            'credential': 'must not leave process'})
+        self.assertEqual(result['api_fields']['variance'], '18446744073709551615')
+        self.assertNotIn('credential', result['api_fields'])
+        self.assertNotIn('phy_def_pwr', result)
+        self.assertEqual(len(plugin._bounded_item_evidence(list(range(100)))), 32)
+
+    def test_integer_option_and_attribute_keys_survive_json_without_collisions(self):
+        raw = {'model': 71, 'blues': {9: 3, '9': 5, 0: 0, 2**64-1: 2**64-1},
+               'white_stats': {0: 9, 9: 12}, 'unknown_item_field': 'not exported',
+               'credential': 'must not leave process'}
+        item = json.loads(json.dumps(plugin._normalize_item(raw)))
+        self.assertEqual(item['api_fields']['blues']['mapping_entries'], [
+            {'key_type': 'integer', 'key': '9', 'value': 3},
+            {'key_type': 'string', 'key': '9', 'value': 5},
+            {'key_type': 'integer', 'key': '0', 'value': 0},
+            {'key_type': 'integer', 'key': '18446744073709551615',
+             'value': '18446744073709551615'},
+        ])
+        self.assertEqual(item['api_fields']['white_stats']['mapping_entries'][0],
+                         {'key_type': 'integer', 'key': '0', 'value': 9})
+        self.assertEqual(item['api_field_types']['blues'],
+                         {'type': 'dict', 'count': 4, 'key_types': ['integer', 'string']})
+        self.assertEqual(item['api_field_types']['unknown_item_field']['type'], 'string')
+        self.assertNotIn('unknown_item_field', item['api_fields'])
+        self.assertNotIn('credential', item['api_field_types'])
+        self.assertNotIn('not exported', json.dumps(item))
+        self.assertEqual(raw['blues'][9], 3, 'source observations stay unchanged')
+        tracker = plugin.PassiveItemTracker()
+        tracker.decorate({'inventory': {'availability': 'observed', 'slots': [
+            {'source_slot': 13, 'item': item}]}}, 'session')
+        self.assertNotIn('instance', item, 'unverified API evidence is not trusted instance data')
+
+    def test_api_evidence_distinguishes_missing_empty_zero_and_bounds_maps(self):
+        missing = plugin._normalize_item({'model': 71})
+        empty = plugin._normalize_item({'model': 71, 'blues': {}, 'attributes': None})
+        zero = plugin._normalize_item({'model': 71, 'blues': {9: 0}})
+        self.assertNotIn('api_fields', missing)
+        self.assertEqual(empty['api_fields']['blues'], {})
+        self.assertEqual(empty['api_field_types']['attributes']['type'], 'null')
+        self.assertEqual(zero['api_fields']['blues']['mapping_entries'][0]['value'], 0)
+        bounded = plugin._bounded_item_evidence({key: key for key in range(100)})
+        self.assertEqual(len(bounded['mapping_entries']), 32)
+        fields = plugin._item_api_field_types({'field_'+str(i): i for i in range(100)})
+        self.assertLessEqual(len(fields), 64)
+        self.assertLessEqual(len(json.dumps(fields, separators=(',', ':')).encode('utf-8')), 2048)
+
+    def test_observed_runtime_scalar_fields_are_retained_without_interpretation(self):
+        raw = {'model': 4247, 'max_durability': 77, 'phys_def': 55,
+               'mag_def': 72, 'parry': 23, 'phys_reinf_min': 13.872,
+               'phys_reinf_max': 13.872, 'mag_absorb_min': 16.322,
+               'expiration': 12345}
+        result = plugin._normalize_item(raw)
+        for key in ('max_durability', 'phys_def', 'mag_def', 'parry',
+                    'phys_reinf_min', 'phys_reinf_max', 'mag_absorb_min'):
+            self.assertEqual(result['api_fields'][key], raw[key])
+        self.assertNotIn('expiration', result['api_fields'])
+        self.assertNotIn('phys_def', result)
+
+    def test_collect_resources_preserves_slots_and_separates_equipment(self):
+        api = {
+            'get_inventory': lambda: {
+                'size': 16,
+                'gold': 9876543210123,
+                'items': [{'model': 7, 'name': 'Sword', 'servername': 'ITEM_SWORD', 'quantity': 1, 'plus': 5, 'durability': 12}] + [None] * 12 + [None, {'model': 2, 'quantity': 200}, None],
+            },
+            'get_storage': lambda: {'size': 4, 'items': [None] * 4},
+            'get_guild_storage': lambda: None,
+            'get_job_pouch': lambda: {'size': 1, 'items': [None]},
+            'get_pets': lambda: {123: {'name': 'Wolf', 'type': 'wolf', 'items': [None, {'model': 10, 'quantity': 2}]}},
+            'get_party': lambda: {55: {'name': 'Ally', 'hp_percent': 8, 'mp_percent': 10, 'player_id': 0}},
+            'get_academy': lambda: {
+                'id': 237,
+                6699: {'online': 1, 'type': 0, 'x': 1.5, 'y': 2.5, 'level': 110, 'name': 'AcademyMember'},
+            },
+        }
+        result = plugin.collect_resources(api=api)
+        self.assertEqual(result['equipment']['slots'][0]['item']['model'], 7)
+        self.assertEqual(result['inventory']['capacity'], 3)
+        self.assertIsNone(result['inventory']['slots'][0])
+        self.assertEqual(result['inventory']['slots'][1]['source_slot'], 14)
+        self.assertEqual(result['inventory']['slots'][1]['displayed_slot'], 1)
+        self.assertEqual(result['inventory']['gold'], 9876543210123)
+        self.assertEqual(result['storage']['availability'], 'observed')
+        self.assertEqual(result['storage']['used_slots'], 0)
+        self.assertEqual(result['guild_storage']['availability'], 'not_observed')
+        self.assertEqual(result['pets']['pets'][0]['pet_id'], '123')
+        self.assertEqual(result['pets']['pets'][0]['slots'][1]['item']['quantity'], 2)
+        self.assertEqual(result['party']['members'][0]['hp_percent'], 80)
+        self.assertEqual(result['party']['members'][0]['mp_percent'], 100)
+        self.assertEqual(result['academy'], {
+            'availability': 'observed',
+            'value': {
+                'id': 237,
+                'members': [{
+                    'member_id': '6699', 'name': 'AcademyMember', 'online': 1,
+                    'type': 0, 'level': 110, 'x': 1.5, 'y': 2.5,
+                }],
+            },
+        })
+        self.assertEqual(result['party_setup']['mode'], 'read_only_unverified')
+
+    def test_callback_collection_keeps_raw_values_for_worker_normalization(self):
+        inventory = {'size': 0, 'gold': 17, 'items': []}
+        inputs = plugin.collect_resource_inputs({'get_inventory': lambda: inventory})
+        self.assertIs(inputs['get_inventory']['value'], inventory)
+        self.assertTrue(inputs['get_inventory']['available'])
+        result = plugin.normalize_resource_inputs(inputs)
+        self.assertEqual(result['inventory']['availability'], 'observed')
+        self.assertEqual(result['inventory']['capacity'], 0)
+
+    def test_missing_apis_and_unopened_storage_are_not_empty_observations(self):
+        result = plugin.collect_resources(api={})
+        self.assertEqual(result['inventory']['availability'], 'unavailable')
+        self.assertEqual(result['storage']['availability'], 'unavailable')
+        self.assertEqual(result['party']['availability'], 'unavailable')
+
+    def test_protocol_detection_ignores_numeric_server_version(self):
+        root = tempfile.mkdtemp()
+        try:
+            path = os.path.join(root, 'vSRO.json')
+            with open(path, 'w') as stream:
+                import json
+                json.dump({'servers': [{'name': 'Greatest', 'version': 296, 'v1.065': False, 'v1.274': False, 'vsro_193': False}]}, stream)
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 22), 'vsro-1.188')
+            self.assertEqual(plugin.detect_item_protocol(root, 'Unknown', 22), 'unknown')
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 18), 'unknown')
+        finally:
+            os.unlink(path)
             os.rmdir(root)
+
+    def test_protocol_detection_rejects_malformed_conflicting_and_ambiguous_config(self):
+        root = tempfile.mkdtemp()
+        path = os.path.join(root, 'vSRO.json')
+        try:
+            entry = {'name': 'Greatest', 'v1.065': False, 'v1.274': False, 'vsro_193': False}
+            with open(path, 'w') as stream:
+                json.dump({'servers': [entry]}, stream)
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 22), 'vsro-1.188')
+            entry['v1.274'] = 'false'
+            with open(path, 'w') as stream:
+                json.dump({'servers': [entry]}, stream)
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 22), 'unknown')
+            entry['v1.274'] = True
+            entry['protocol_variant'] = '1.188'
+            with open(path, 'w') as stream:
+                json.dump({'servers': [entry]}, stream)
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 22), 'unknown')
+            with open(path, 'w') as stream:
+                json.dump({'servers': [{'name': 'Greatest', 'protocol': 'vsro-1.188'}]}, stream)
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 22), 'vsro-1.188')
+            with open(path, 'w') as stream:
+                json.dump({'servers': [{'name': 'Greatest', 'protocol': '1.188'},
+                                      {'name': 'Greatest', 'protocol': '1.188'}]}, stream)
+            self.assertEqual(plugin.detect_item_protocol(root, 'Greatest', 22), 'unknown')
+        finally:
+            os.unlink(path)
+            os.rmdir(root)
+
+    def test_protocol_detection_reads_phbot_profile_next_to_config_directory(self):
+        root = tempfile.mkdtemp()
+        config_dir = os.path.join(root, 'Config')
+        os.mkdir(config_dir)
+        path = os.path.join(root, 'vSRO.json')
+        try:
+            with open(path, 'w') as stream:
+                json.dump({
+                    'GreatestSRO': {
+                        'servers': ['Greatest'],
+                        'version': 296,
+                        'v1.065': False,
+                        'v1.274': False,
+                        'vsro_193': False,
+                    },
+                }, stream)
+
+            self.assertEqual(
+                plugin.detect_item_protocol_detail(config_dir, 'Greatest', 22),
+                ('vsro-1.188', 'v1.188_selected_by_phbot_flags'),
+            )
+            self.assertEqual(
+                plugin.detect_item_protocol_detail(config_dir, 'Other', 22),
+                ('unknown', 'server_not_in_vsro_config'),
+            )
+        finally:
+            os.unlink(path)
+            os.rmdir(config_dir)
+            os.rmdir(root)
+
+
+class PassiveItemPacketTests(unittest.TestCase):
+    @staticmethod
+    def stats_packet(slot=13, flags=0x35, model=71, plus=5,
+                     variance=2**64 - 1, durability=57, options=None):
+        options = options if options is not None else [(9, 3), (9, 3)]
+        payload = bytearray([slot, flags])
+        if flags & 0x01:
+            payload.extend(struct.pack('<I', model))
+        if flags & 0x02:
+            payload.extend(struct.pack('<B', plus))
+        if flags & 0x04:
+            payload.extend(struct.pack('<Q', variance))
+        if flags & 0x08:
+            payload.extend(struct.pack('<H', 200))
+        if flags & 0x10:
+            payload.extend(struct.pack('<I', durability))
+        if flags & 0x40:
+            payload.extend(struct.pack('<B', 0))
+        if flags & 0x20:
+            payload.append(len(options))
+            for option_id, value in options:
+                payload.extend(struct.pack('<II', option_id, value))
+        return bytes(payload)
+
+    def test_item_stats_reader_preserves_uint64_and_duplicate_options(self):
+        packet = self.stats_packet(flags=0x3F)
+        parsed = plugin.parse_item_stats_update(packet)
+        self.assertEqual(parsed['source_slot'], 13)
+        self.assertEqual(parsed['fields']['model'], 71)
+        self.assertEqual(parsed['fields']['plus'], 5)
+        self.assertEqual(parsed['fields']['variance'], '18446744073709551615')
+        self.assertEqual(parsed['fields']['durability'], 57)
+        self.assertEqual(parsed['fields']['magic_options'], [
+            {'id': '9', 'value': '3'}, {'id': '9', 'value': '3'}])
+
+    def test_zero_magic_options_are_observed_empty_and_durability_packet_is_exact(self):
+        parsed = plugin.parse_item_stats_update(self.stats_packet(flags=0x21, options=[]))
+        self.assertEqual(parsed['fields']['magic_options'], [])
+        self.assertTrue(parsed['fields']['magic_options_available'])
+        self.assertEqual(plugin.parse_item_durability_update(struct.pack('<BI', 2, 0)), {
+            'source_slot': 2, 'fields': {'durability': 0}})
+        with self.assertRaises(plugin.ItemPacketError):
+            plugin.parse_item_durability_update(struct.pack('<BI', 2, 0) + b'\x00')
+
+    def test_truncated_unknown_and_trailing_item_packets_fail_closed(self):
+        for packet in (b'\x01', b'\x01\x80', b'\x01\x02',
+                       self.stats_packet(flags=0x02) + b'\x00'):
+            with self.subTest(packet=packet):
+                with self.assertRaises(plugin.ItemPacketError):
+                    plugin.parse_item_stats_update(packet)
+        with self.assertRaises(plugin.ItemPacketError):
+            plugin.parse_item_stats_update(bytes([0, 0x20, 33]))
+
+    def test_instance_is_session_and_model_bound_and_inventory_operation_invalidates(self):
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188', 'v1.188_selected_by_phbot_flags')
+        tracker.enqueue(0x3040, self.stats_packet())
+        resources = {'equipment': {'availability': 'observed', 'slots': []},
+                     'inventory': {'availability': 'observed', 'slots': [
+                         {'source_slot': 13, 'item': {'model': 71, 'plus': 5}}]}}
+        tracker.decorate(resources, 'session-one')
+        observed = resources['inventory']['slots'][0]['item']['instance']
+        self.assertEqual(observed['source'], 'vsro_1188_packet')
+        self.assertEqual(observed['magic_options_availability'], 'observed')
+        self.assertTrue(observed['observation_id'].startswith('session-one:'))
+
+        # RefObjID begins a new lifetime, including a replacement with the
+        # same model and enhancement. Old variance/blues must not survive it.
+        tracker.enqueue(0x3040, self.stats_packet(flags=0x01, model=71))
+        same_model_replacement = {'equipment': {'availability': 'observed', 'slots': []},
+                                  'inventory': {'availability': 'observed', 'slots': [
+                                      {'source_slot': 13, 'item': {'model': 71, 'plus': 5}}]}}
+        tracker.decorate(same_model_replacement, 'session-one')
+        self.assertNotIn('instance', same_model_replacement['inventory']['slots'][0]['item'])
+
+        # Any inventory operation is unclassified in this decoder, so cached
+        # instance fields cannot migrate to a same-model replacement in the slot.
+        tracker.enqueue(0xB034, b'\x00')
+        tracker.enqueue(0x3040, self.stats_packet(flags=0x04, variance=5))
+        replacement = {'equipment': {'availability': 'observed', 'slots': []},
+                       'inventory': {'availability': 'observed', 'slots': [
+                           {'source_slot': 13, 'item': {'model': 71, 'plus': 5}}]}}
+        tracker.decorate(replacement, 'session-one')
+        self.assertNotIn('instance', replacement['inventory']['slots'][0]['item'])
+
+        tracker.enqueue(0x3040, self.stats_packet(flags=0x05, variance=5))
+        tracker.decorate(replacement, 'session-one')
+        self.assertEqual(replacement['inventory']['slots'][0]['item']['instance']['variance'], '5')
+
+        changed_model = {'equipment': {'availability': 'observed', 'slots': []},
+                         'inventory': {'availability': 'observed', 'slots': [
+                             {'source_slot': 13, 'item': {'model': 72, 'plus': 5}}]}}
+        tracker.decorate(changed_model, 'session-one')
+        self.assertNotIn('instance', changed_model['inventory']['slots'][0]['item'])
+
+    def test_parser_build_is_reported_before_any_item_packet_is_observed(self):
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188', 'v1.188_selected_by_phbot_flags')
+        resources = {
+            'equipment': {'availability': 'observed', 'slots': []},
+            'inventory': {'availability': 'observed', 'slots': []},
+        }
+
+        tracker.decorate(resources, 'session-one')
+
+        self.assertEqual(resources['item_enrichment']['availability'], 'not_observed')
+        self.assertEqual(resources['item_enrichment']['protocol'], 'vsro-1.188')
+        self.assertEqual(resources['item_enrichment']['protocol_reason'], 'v1.188_selected_by_phbot_flags')
+        self.assertEqual(resources['item_enrichment']['source'], 'vsro_1188_packet')
+        self.assertEqual(resources['item_enrichment']['decoder_build'], 'vsro_1188_passive_r2')
+        self.assertEqual(resources['item_enrichment']['observed_items'], 0)
+
+    def test_queue_overflow_invalidates_all_item_instances(self):
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0x3040, self.stats_packet())
+        resources = {'equipment': {'availability': 'observed', 'slots': []},
+                     'inventory': {'availability': 'observed', 'slots': [
+                         {'source_slot': 13, 'item': {'model': 71, 'plus': 5}}]}}
+        tracker.decorate(resources, 'session-one')
+        self.assertIn('instance', resources['inventory']['slots'][0]['item'])
+        for _ in range(plugin.MAX_ITEM_PACKET_COUNT + 1):
+            tracker.enqueue(0xB034, b'\x00')
+        tracker.decorate(resources, 'session-one')
+        self.assertNotIn('instance', resources['inventory']['slots'][0]['item'])
+        self.assertEqual(resources['item_enrichment']['reason'], 'packet_queue_overflow')
+
+    def test_protocol_change_and_api_empty_slot_remove_enrichment(self):
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0x3040, self.stats_packet())
+        resources = {'equipment': {'availability': 'observed', 'slots': []},
+                     'inventory': {'availability': 'observed', 'slots': [
+                         {'source_slot': 13, 'item': {'model': 71, 'plus': 5}}]}}
+        tracker.decorate(resources, 'session-one')
+        empty = {'equipment': {'availability': 'observed', 'slots': []},
+                 'inventory': {'availability': 'observed', 'slots': [
+                     {'source_slot': 13, 'item': None}]}}
+        tracker.decorate(empty, 'session-one')
+        resources['inventory']['slots'][0]['item'] = None
+        tracker.decorate(resources, 'session-one')
+        self.assertIsNone(resources['inventory']['slots'][0]['item'])
+        tracker.set_protocol('unknown')
+        self.assertEqual(tracker._states, {})
+
+    def test_diagnostic_capture_persists_only_bounded_sanitized_item_fields(self):
+        tracker = plugin.PassiveItemTracker(capture_enabled=True)
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0x3040, self.stats_packet())
+        tracker.decorate({'equipment': {'availability': 'observed', 'slots': []},
+                          'inventory': {'availability': 'observed', 'slots': []}}, 'session-one')
+        root = tempfile.mkdtemp()
+        path = os.path.join(root, 'item-capture.json')
+        try:
+            self.assertTrue(tracker.persist_sanitized_capture(path))
+            with open(path, 'r') as stream:
+                saved = json.load(stream)
+            with open(path, 'r') as stream:
+                contents = stream.read()
+            self.assertEqual(len(saved['records']), 1)
+            self.assertEqual(saved['records'][0]['fields']['variance'], '18446744073709551615')
+            self.assertNotIn('session-one', contents)
+            self.assertLessEqual(os.path.getsize(path), plugin.MAX_ITEM_CAPTURE_BYTES)
+        finally:
+            os.unlink(path)
+            os.rmdir(root)
+
+
+class ResourceTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test_token',
+        }, 'fixture')
+        self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        self.frames = []
+        self.client = type('Client', (), {'send_json': lambda _, frame: self.frames.append(frame)})()
+
+    def test_resource_baseline_then_revision_checked_delta(self):
+        original = {
+            'inventory': {'availability': 'observed', 'slots': []},
+            'pets': {'availability': 'observed', 'pets': []},
+        }
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, original))
+        self.assertTrue(self.frames[0]['full'])
+        self.assertEqual(self.frames[0]['revision'], 1)
+        self.assertEqual(self.frames[0]['chunk_count'], 1)
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, original))
+        self.assertEqual(len(self.frames), 1, 'unchanged observations should not create a revision')
+
+        updated = dict(original)
+        updated['inventory'] = {'availability': 'observed', 'slots': [None]}
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, updated))
+        delta = self.frames[1]
+        self.assertFalse(delta['full'])
+        self.assertEqual(delta['type'], 'resource.delta')
+        self.assertEqual(delta['revision'], 2)
+        self.assertEqual(delta['base_revision'], 1)
+        self.assertEqual(list(delta['resources']), ['inventory'])
+
+    def test_nested_in_place_item_mutation_emits_resource_delta(self):
+        current = {
+            'inventory': {
+                'availability': 'observed',
+                'slots': [{'item': {'model': 100, 'api_fields': {'blues': {'7': 1}}}}],
+            },
+        }
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, current))
+        current['inventory']['slots'][0]['item']['api_fields']['blues']['7'] = 2
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, current))
+        self.assertEqual(len(self.frames), 2)
+        self.assertEqual(self.frames[1]['type'], 'resource.delta')
+        self.assertEqual(list(self.frames[1]['resources']), ['inventory'])
+        self.assertEqual(
+            self.frames[1]['resources']['inventory']['slots'][0]['item']['api_fields']['blues']['7'],
+            2,
+        )
+
+    def test_large_baseline_is_split_into_bounded_atomic_chunks(self):
+        value = {
+            'inventory': {'availability': 'observed', 'sample': 'a' * 142000},
+            'storage': {'availability': 'observed', 'sample': 'b' * 142000},
+        }
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, value))
+        self.assertEqual(len(self.frames), 2)
+        self.assertEqual({frame['chunk_count'] for frame in self.frames}, {2})
+        self.assertEqual({frame['chunk_index'] for frame in self.frames}, {0, 1})
+        self.assertTrue(all(len(plugin.json.dumps(frame, separators=(',', ':')).encode('utf-8')) <= plugin.MAX_MESSAGE_BYTES for frame in self.frames))
+
+    def test_resync_forces_a_new_full_baseline(self):
+        current = {'inventory': {'availability': 'observed', 'slots': []}}
+        self.worker._send_resource_snapshot(self.client, current)
+        self.worker._latest_resources = current
+        self.worker._latest_resources_identity = self.worker._identity_key({'server': 'S', 'name': 'C'})
+        self.worker._current_identity = {'server': 'S', 'name': 'C'}
+        self.worker._handle_server_message({
+            'type': 'resource.resync',
+            'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': self.worker.character_id,
+            'session_id': self.worker.session_id,
+        })
+        self.worker._send_resource_snapshot(self.client, current)
+        self.assertTrue(self.frames[-1]['full'])
+        self.assertEqual(self.frames[-1]['revision'], 2)
 
     def test_gui_config_reuses_hidden_token_only_for_same_identity(self):
         saved = plugin.validate_config({
@@ -266,8 +709,8 @@ class WebSocketFrameTests(unittest.TestCase):
             ws = plugin.WebSocketClient('ws://localhost/agent', 'token')
             ws._socket = client_sock
             server_sock.sendall(
-                bytes(bytearray([0x81, 126])) +
-                plugin.struct.pack('!H', plugin.MAX_MESSAGE_BYTES + 1)
+                bytes(bytearray([0x81, 127])) +
+                plugin.struct.pack('!Q', plugin.MAX_MESSAGE_BYTES + 1)
             )
             with self.assertRaisesRegex(plugin.WebSocketClosed, 'WebSocket message exceeds limit'):
                 ws.receive_json(timeout=1)
@@ -343,7 +786,7 @@ class BackoffTests(unittest.TestCase):
         }, 'fixture')
         interval = worker._validate_ack({
             'type': 'hello.ack',
-            'protocol_version': 3,
+            'protocol_version': plugin.PROTOCOL_VERSION,
             'server_time': plugin._utc_now(),
             'heartbeat_interval_seconds': 10,
             'heartbeat_timeout_seconds': 30,
@@ -353,7 +796,7 @@ class BackoffTests(unittest.TestCase):
             worker._validate_ack({'type': 'hello.ack', 'protocol_version': 1})
         fractional_ack = dict({
             'type': 'hello.ack',
-            'protocol_version': 3,
+            'protocol_version': plugin.PROTOCOL_VERSION,
             'server_time': plugin._utc_now()[:-1] + '.123456789Z',
             'heartbeat_interval_seconds': 10,
             'heartbeat_timeout_seconds': 30,
@@ -373,7 +816,7 @@ class BackoffTests(unittest.TestCase):
             def __init__(self): self.sent = []
             def send_json(self, value): self.sent.append(value)
             def receive_json(self, timeout=None):
-                return {'type':'character.registered','protocol_version':3,'character_id':AGENT_ID,'session_id':'22222222-3333-4444-8555-666666666666'}
+                return {'type':'character.registered','protocol_version':plugin.PROTOCOL_VERSION,'character_id':AGENT_ID,'session_id':'22222222-3333-4444-8555-666666666666'}
 
         transport = Transport()
         sample = {'identity':{'server':'Silkroad','name':'Alpha','guild':''},'state':{'level':110,'hp':500,'botting':None}}
@@ -409,7 +852,7 @@ class BackoffTests(unittest.TestCase):
         worker.character_id = AGENT_ID
         worker.session_id = '22222222-3333-4444-8555-666666666666'
         worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
-        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000001',
+        frame = {'type':'command.execute','protocol_version':plugin.PROTOCOL_VERSION,'command_id':'cmd_00000000-0000-4000-8000-000000000001',
                  'character_id':AGENT_ID,'session_id':worker.session_id,'name':'bot.stop','args':{},'ttl_ms':10000,'expires_at':plugin._utc_now()}
         frame['expires_at'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))
         worker._accept_command(frame)
@@ -440,7 +883,7 @@ class BackoffTests(unittest.TestCase):
         worker.character_id = AGENT_ID
         worker.session_id = '22222222-3333-4444-8555-666666666666'
         worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
-        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000002',
+        frame = {'type':'command.execute','protocol_version':plugin.PROTOCOL_VERSION,'command_id':'cmd_00000000-0000-4000-8000-000000000002',
                  'character_id':AGENT_ID,'session_id':worker.session_id,'name':'character.walk',
                  'args':{'region':25000,'x':1,'y':2,'z':3},'ttl_ms':10000,'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
         worker._accept_command(frame)
@@ -482,7 +925,7 @@ class BackoffTests(unittest.TestCase):
         worker.character_id = AGENT_ID
         worker.session_id = '22222222-3333-4444-8555-666666666666'
         worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
-        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000004',
+        frame = {'type':'command.execute','protocol_version':plugin.PROTOCOL_VERSION,'command_id':'cmd_00000000-0000-4000-8000-000000000004',
                  'character_id':AGENT_ID,'session_id':worker.session_id,'name':'character.walk',
                  'args':{'region':25000,'x':1,'y':2,'z':3},'ttl_ms':10000,
                  'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
@@ -508,7 +951,7 @@ class BackoffTests(unittest.TestCase):
         worker.character_id = AGENT_ID
         worker.session_id = '22222222-3333-4444-8555-666666666666'
         worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
-        frame = {'type':'command.execute','protocol_version':3,'command_id':'cmd_00000000-0000-4000-8000-000000000005',
+        frame = {'type':'command.execute','protocol_version':plugin.PROTOCOL_VERSION,'command_id':'cmd_00000000-0000-4000-8000-000000000005',
                  'character_id':AGENT_ID,'session_id':worker.session_id,'name':'character.walk',
                  'args':{'region':25000,'x':40,'y':40,'z':0},'ttl_ms':10000,
                  'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}

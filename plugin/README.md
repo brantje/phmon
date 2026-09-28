@@ -1,10 +1,13 @@
 # PhMon phBot plugin
 
-The recommended Slice 3 release is **1.1.2**. It adds capability-gated pathfinding
-Walk via phBot's documented Paths and Movement APIs. The server sends command expiry
-in whole-second UTC RFC3339 for compatibility with deployed v3 plugins; 1.1.1 and
-later also accept fractional timestamps for forward compatibility. Earlier v3 builds
-can reconnect and monitor but must be reloaded to get pathfinding Walk.
+The current Slice 4 development release is **1.2.6** (`vsro_1188_passive_r2`, API evidence schema 2). It adds passive resource
+snapshots over agent protocol v4 while retaining backend compatibility with v2/v3
+agents. The plugin collects documented inventory, storage, pets, party and academy
+state on phBot callbacks and sends bounded snapshots/deltas from its worker. Protocol
+v4 passively decodes only the bounded 0x3040 item-stat and 0x3052 durability updates
+when the active server is unambiguously selected as vSRO 1.188. Their layouts still
+need a naturally captured Greatest runtime fixture. Earlier v2/v3 plugins retain their existing monitoring/command
+capabilities but do not provide Slice 4 resources.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket
@@ -69,10 +72,11 @@ and urllib.parse; simulator CPython is not evidence for that gate.
 A dedicated worker thread owns WebSocket connect/read/write work. It polls readiness
 before starting a frame, then completes the frame under a bounded socket deadline; a
 mid-frame stall fails the connection rather than resuming from a partially consumed
-stream. The worker negotiates agent protocol v3 while the backend continues to accept
-v2 monitoring agents. It sends independently probed capabilities and current
-character/session state. A separate bounded command queue is never coalesced with
-state samples. Network callbacks only validate and enqueue; `event_loop()` checks
+stream. The worker negotiates agent protocol v4 while the backend continues to accept
+v2/v3 agents. It sends independently probed capabilities and current character/session
+state, then bounded resource baselines and revision-checked deltas. A separate bounded
+command queue is never coalesced with state samples. Network callbacks only validate
+and enqueue; `event_loop()` checks
 the live target, expiry, input schema and optional API availability again, then calls
 at most one fixed adapter. No phBot mutation runs on the network worker and no API
 is selected through arbitrary callable names.
@@ -109,3 +113,19 @@ plugin and reports simulator-fixture as its phBot version. The `commands` scenar
 uses a fake `stop_bot` adapter and exercises callback dispatch without real phBot.
 It is fixture coverage only and is never evidence that real phBot integration has
 been validated.
+
+Version 1.2.5 fixes API evidence collection: integer-keyed option/attribute maps are
+preserved as ordered typed `mapping_entries`, additional attribute aliases are
+retained, and `api_field_types` records bounded structural information without
+unknown field values or credentials. `api_evidence_version=2` identifies this format
+on items and in enrichment telemetry. The evidence remains uninterpreted until the
+actual phBot field semantics are verified; this release does not yet enable new
+tooltip calculations. See [the inspection findings](../docs/reference/item-tooltip-investigation.md).
+
+The protocol detector from 1.2.4 reads the selected vSRO profile beside `Config`,
+matches the current server, and checks variant flags while ignoring numeric
+`version`. This detector is confirmed live on the current four characters. The
+bounded passive item decoder remains available for naturally observed supported
+updates. API-derived details should be used where verified; packet data is needed
+only for missing inputs. Absolute formulas, max durability and blue presentation
+still require validated definitions and matching live observations.

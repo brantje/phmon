@@ -7,6 +7,7 @@ defineProps<{
 const route = useRoute()
 const { connectedAgents, fleetStatus } = useFleetSummary()
 const { liveStale, connectionState } = useLiveData()
+const { serverScope, serverOptions } = useServerScope()
 const agentsUnavailable = computed(
   () => liveStale.value || connectionState.value === 'stale',
 )
@@ -18,7 +19,11 @@ const primaryNavigation = [
   { label: 'Economy', icon: 'i-lucide-coins' },
   { label: 'Alchemy', icon: 'i-lucide-flask-conical' },
   { label: 'Academy', icon: 'i-lucide-graduation-cap' },
-  { label: 'Guild Storage', icon: 'i-lucide-warehouse' },
+  {
+    label: 'Guild Storage',
+    icon: 'i-lucide-warehouse',
+    href: '/guild-storage',
+  },
   { label: 'phBot', icon: 'i-lucide-bot', href: '/phbot/client' },
 ]
 
@@ -37,7 +42,7 @@ const advancedNavigation = [
       <div class="brand-mark" aria-hidden="true">P</div>
       <div class="brand-copy">
         <strong>PhMon</strong>
-        <span>self-hosted · slice 2</span>
+        <span>self-hosted · v1.2.0</span>
         <span
           class="brand-connect"
           :class="
@@ -60,13 +65,18 @@ const advancedNavigation = [
     </div>
 
     <div class="scope-block">
-      <span>Server scope · LATER</span>
-      <button type="button" disabled>
-        <UIcon name="i-lucide-layers-3" />
-        <span>All</span>
-        <span class="nav-soon">LATER</span>
-        <UIcon name="i-lucide-chevron-down" />
-      </button>
+      <label for="server-scope-select">Server scope</label>
+      <select
+        id="server-scope-select"
+        v-model="serverScope"
+        aria-label="Server scope"
+        :disabled="serverOptions.length === 0"
+      >
+        <option value="all">All servers</option>
+        <option v-for="server in serverOptions" :key="server" :value="server">
+          {{ server }}
+        </option>
+      </select>
     </div>
 
     <nav class="navigation" aria-label="Primary navigation">

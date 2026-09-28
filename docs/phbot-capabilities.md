@@ -39,6 +39,76 @@ ID/token identifies one logical PhMon agent; operators may reuse it across multi
 concurrent phBot processes/profiles that should belong to the same logical agent, or
 create separate credentials for separate logical agents.
 
+## Slice 4 resource/API evidence (2026-09-27)
+
+The plugin's resource collector uses the documented getters below. Official API
+examples provide deterministic shape fixtures; they are not captures from the current
+phBot runtime. The v1.2.0 plugin has not yet been installed/validated on a live phBot
+process. The previously verified phBot 20.1.1 / plugin 1.1.0 session proves the older
+Slice 3 agent path only.
+
+- [Inventory](https://plugins.phbot.org/phbot-api/inventory): `get_inventory()` is
+  `None` or an object with `size`, `gold`, and `items`; empty slots are `None`. The
+  documented item fields are `model`, `servername`, `name`, `quantity`, `plus`, and
+  `durability`. `get_storage()`, `get_guild_storage()` and `get_job_pouch()` return
+  `None` or an object with `size` and `items`; storage APIs report no items before the
+  character enters the storage. The docs do not define whether inventory `size`
+  includes equipped positions or establish the equipment-slot mapping. The supplied
+  `plugin/phMonitorAdapter.py` independently suggests the first 13 entries are
+  equipment, but this is a lead only; the collector labels that mapping
+  `adapter_lead_runtime_unverified` and exposes the limitation in the UI.
+- [Pets](https://plugins.phbot.org/phbot-api/pets): `get_pets()` is `None` or a
+  dictionary keyed by pet ID; an empty dictionary is a valid no-summoned-pets state.
+  The example pet has `name`, `servername`, `model`, `type`, `hp`, `mounted`, and
+  `items`, with `None` empty item positions. Documented types are `none`, `fellow`,
+  `horse`, `pick`, `transport`, and `wolf`. The collector preserves unknown/horse
+  types and only renders an inventory when an item list is supplied. These integer
+  dictionary IDs are only stable for the API observation; cross-session pet identity
+  has not been established.
+- [Party](https://plugins.phbot.org/phbot-api/party): `get_party()` is `None` or a
+  dictionary keyed by party ID; empty is a valid empty party. Example member fields
+  are `name`, `guild`, `player_id`, `level`, `x`, `y`, `hp_percent`, and `mp_percent`.
+  `player_id` may be zero until a member spawns nearby. The source percentages are
+  0–10; the collector multiplies them by ten for display.
+- [Academy](https://plugins.phbot.org/phbot-api/academy): `get_academy()` is `None` or
+  an object keyed by member ID with an `id` field and members containing `online`,
+  `type`, `x`, `y`, `level`, and `name`. The slice stores the latest current
+  observation only; event history and unread actions belong to Slice 5.
+- [Configuration](https://plugins.phbot.org/phbot-api/config):
+  `get_config_dir()` provides the Config directory, and `get_config_path()` is the
+  active player's JSON path. Current character server identity selects the matching
+  entry in the configured `vSRO.json`; the plugin reads only the version-variant
+  flags. The locally observed numeric `version=296` is not protocol 1.188 and is
+  ignored. Only a matching entry with known variant flags and no enabled 1.065,
+  1.193 or 1.274 variant is treated as generic vSRO 1.188. Missing/ambiguous config
+  disables enrichment without affecting API snapshots. No selector is exposed.
+
+The existing adapter file is reference evidence only. Its network/streaming behavior,
+guessed item properties, and configuration-success reporting are not copied. Resource
+fixtures in `plugin/test_phmon.py` cover documented empty, unavailable and populated
+shapes with credentials and unrelated traffic excluded. There are no captured live
+API payloads or item packets yet.
+
+`get_party()` and `get_pets()` establish current membership/state only; they do not
+establish a Party Setup write contract. The adapter's JSON write plus delayed
+`reload_profile()` is an unverified lead. Party Setup remains read-only until the
+supported configuration fields, write API, reload behavior and effective-state
+readback are confirmed on phBot. No Party Setup mutation is enabled.
+
+Historical status at the initial Slice 4 collector implementation (superseded by
+the 2026-09-27 and 2026-09-28 evidence below): generic passive item enrichment
+targets vSRO 1.188 only. The archived
+[SilkroadDoc packet index](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/Packets)
+identifies packet families, and its repository states that its analysis targets vSRO
+1.188. At that point, item layouts had not yet been implemented or corroborated.
+Current parser and API-backed item presentation behavior, along with unresolved
+runtime gates, is recorded in the dated evidence below and in
+[`item-instance-evidence.md`](item-instance-evidence.md).
+
+At the time of the initial Slice 4 collector, static item enrichment also remained
+open. It was subsequently implemented through an explicit server-to-dataset mapping;
+see the 2026-09-27/28 evidence below for current catalog coverage and limits.
+
 ## Login and connection status behavior
 
 Saved credentials are loaded only after get_profile() reports a logged-in player;
@@ -164,27 +234,26 @@ Also exercise a profile switch to prove one profile cannot silently reuse anothe
 profile's credentials. Record the observed module/import behavior and results here;
 do not infer them from desktop CPython or the simulator.
 
-
 ## Slice 3 remote-command capability matrix (2026-09-27)
 
 The official API was rechecked during implementation. These rows describe public
 documented behavior and the PhMon adapter policy; they do not claim availability
 on every installed phBot build.
 
-| PhMon command | Public primitive | Result semantics | Slice 3 status |
-| --- | --- | --- | --- |
-| `bot.start` | `start_bot()` | bool | required |
-| `bot.stop` | `stop_bot()` | bool | required |
-| `trace.start` | `start_trace(name)` | bool | required |
-| `trace.stop` | `stop_trace()` | bool | required |
-| `training.area.set` named | `set_training_area(name)` | bool | required when runtime symbol exists |
-| `training.area.set` position/current | `set_training_position(region,x,y,z)` | bool | required when an active area exists |
-| `training.radius.set` | `set_training_radius(radius)` + `get_training_area()` | bool plus readback | required |
-| `character.walk` | `generate_path(x,y)` + `move_to_region(region,x,y,z)` + `get_position()` | async waypoint route; completion waits for live position readback | required when all three symbols exist; single region, no teleport |
-| `character.return` | `use_return_scroll()` | bool | required |
-| `character.disconnect` | `disconnect()` | void; relog unchanged | required |
-| `client.clientless` | no safe public mutation found in Client/Misc/index | n/a | blocked: `unsupported_runtime_primitive` |
-| Execute Script | `start_script(str)` / `stop_script()` | starts/stops a script string | not exposed in Slice 3: the public API supplies no trusted script catalog/listing contract; raw script bodies are an arbitrary game-action surface and are excluded by the Slice 3 safety boundary |
+| PhMon command                        | Public primitive                                                         | Result semantics                                                  | Slice 3 status                                                                                                                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bot.start`                          | `start_bot()`                                                            | bool                                                              | required                                                                                                                                                                                           |
+| `bot.stop`                           | `stop_bot()`                                                             | bool                                                              | required                                                                                                                                                                                           |
+| `trace.start`                        | `start_trace(name)`                                                      | bool                                                              | required                                                                                                                                                                                           |
+| `trace.stop`                         | `stop_trace()`                                                           | bool                                                              | required                                                                                                                                                                                           |
+| `training.area.set` named            | `set_training_area(name)`                                                | bool                                                              | required when runtime symbol exists                                                                                                                                                                |
+| `training.area.set` position/current | `set_training_position(region,x,y,z)`                                    | bool                                                              | required when an active area exists                                                                                                                                                                |
+| `training.radius.set`                | `set_training_radius(radius)` + `get_training_area()`                    | bool plus readback                                                | required                                                                                                                                                                                           |
+| `character.walk`                     | `generate_path(x,y)` + `move_to_region(region,x,y,z)` + `get_position()` | async waypoint route; completion waits for live position readback | required when all three symbols exist; single region, no teleport                                                                                                                                  |
+| `character.return`                   | `use_return_scroll()`                                                    | bool                                                              | required                                                                                                                                                                                           |
+| `character.disconnect`               | `disconnect()`                                                           | void; relog unchanged                                             | required                                                                                                                                                                                           |
+| `client.clientless`                  | no safe public mutation found in Client/Misc/index                       | n/a                                                               | blocked: `unsupported_runtime_primitive`                                                                                                                                                           |
+| Execute Script                       | `start_script(str)` / `stop_script()`                                    | starts/stops a script string                                      | not exposed in Slice 3: the public API supplies no trusted script catalog/listing contract; raw script bodies are an arbitrary game-action surface and are excluded by the Slice 3 safety boundary |
 
 Optional imports are probed independently. One missing mutation symbol cannot disable
 monitoring or unrelated controls. Capability reports are attached to the exact v3
@@ -325,3 +394,156 @@ plugin remains below the required 1.1.2 pathfinding capability. Execute Script s
 outside Slice 3's bounded command catalog because no trusted script catalog contract
 is available. Do not infer or implement a Clientless primitive without official API
 and runtime evidence for a session-targeted safe action.
+
+
+### 2026-09-27 item presentation correction (Slice 4 remains open)
+
+- Inventory's documented fields are model/code/name/quantity/plus/durability:
+  https://plugins.phbot.org/phbot-api/inventory . These do not establish rolls/blues.
+- PhMon 1.2.1 shows its loaded version and transport version in QtBind. It retains
+  a bounded allowlist of additional item API evidence, including decimal-string
+  64-bit variance, under `api_fields`. Evidence is not interpreted by heuristics.
+- Backend read-time metadata now uses explicit server mapping in
+  `server/game-data/servers.json`, with `ITEM_METADATA_DIR` directory override.
+  Matching model and nonconflicting code are required. Observed instance JSON
+  remains unchanged in storage. Guild and pet slots use the same resolver.
+- Greatest maps to operator dataset `gamedata-47c969ded0613d4c2a22`; 14,238 items,
+  3,411 distinct local icon files, all present. Verified table-derived rarity,
+  degree (legacy degrees 1–10), seal, equipment classification/position and
+  requirements are separate from instance data. Unknown semantics stay omitted.
+- Open: passive vSRO 1.188 item decoding and representative captured packet
+  fixtures are not implemented/available. Therefore rolled defense/absorption,
+  percentages, max durability and individual blues are NOT confirmed live.
+  The new evidence must be inspected after the operator transfers 1.2.1; if the
+  getter does not expose them, a validated passive decoder is still necessary.
+
+
+### 2026-09-27 item-instance parser implementation (plugin 1.2.2)
+
+Plugin 1.2.2 adds a bounded passive queue and parsers for the corroborated 0x3040
+item-stat and 0x3052 durability updates. Any 0xB034 inventory operation invalidates
+all cached instance details because operation subtypes are not yet decoded. Malformed
+or unsupported packets, queue overflow, session/profile changes, and API model/plus/
+empty-slot conflicts also invalidate. The plugin continues publishing API-backed
+resources when protocol selection is unknown.
+
+The vSRO 1.188 protocol flags are read from the current server entry in `vSRO.json`;
+numeric `version` remains ignored. Malformed flags, conflicting selectors and
+duplicate server matches now return `unknown`. Packet opcodes are listed in the
+SilkroadDoc index, but the checked-out pages do not establish the complete field
+layouts. RSBot is pinned as corroborating implementation evidence only. No live
+Greatest packet fixture has been captured, so live decoding is not confirmed.
+
+Evidence matrix: [item-instance-evidence.md](item-instance-evidence.md). Absolute
+stat formulas, max durability, verified blue definitions/scales, full inventory
+snapshots, storage/pet layouts and decoded moves remain open. No real character was
+operated to generate traffic.
+
+### 2026-09-27 active configuration and plugin 1.2.3 check
+
+The current phBot 20.1.1 installation places `vSRO.json` beside the `Config`
+directory and represents profiles as a root mapping (for example,
+`GreatestSRO: {servers: [Greatest], ...}`). Numeric `version=296` is unrelated to
+the game protocol. The previous plugin detector searched only inside `Config` and
+expected a different JSON shape, so it reported `unknown` while all four agents
+correctly sent plugin 1.2.3 / agent protocol v4 resource telemetry. The corrected
+plugin 1.2.4 searches the adjacent file, matches the active server, validates the
+explicit variant flags, and reports `protocol_reason` for diagnosis. A local
+read-only check resolved the current config to vSRO 1.188. Live confirmation of the
+corrected build and actual item packet decoding is pending operator transfer and
+naturally arriving updates; see [item-instance-evidence.md](item-instance-evidence.md).
+
+### 2026-09-27 API evidence correction (plugin 1.2.5)
+
+Operator-authorized static reference inspection found that its inventory tooltip
+path consumes phBot API attributes and blues. The official inventory example is
+not evidence that richer fields are unavailable on this runtime. PhMon's sanitizer
+discarded integer dictionary keys, making potentially populated option maps appear
+empty. Plugin 1.2.5 preserves typed map entries, additional attribute aliases and
+bounded source field types. No such fields are automatically trusted as display
+values. Inspect the new API evidence before assuming every missing tooltip input
+requires passive packets. See [the investigation](reference/item-tooltip-investigation.md)
+for evidence, known formula discrepancies and the next live validation gate.
+
+
+## 2026-09-27: plugin 1.2.5 API evidence confirmed
+
+Read-only live verification at 21:44:58 UTC confirmed all four characters on
+plugin 1.2.5, phBot 20.1.1 and vSRO 1.188. All 244 current items retained evidence
+schema 2. Rich data is arriving: `whites` contains integer attribute IDs and integer
+percentages, and `blues` contains integer option IDs and values. The prior loss of
+integer dictionary keys was the primary blocker for these fields.
+
+Sanitized actual observations are checked in as
+`server/internal/resources/testdata/phbot-20.1.1-api-items.json` (14 items; no
+credentials, character/session identifiers or unrelated traffic). Python Casque
+reports defense rolls 12/19, parry 22, reinforcement 3/32, durability 9, Int 3 and
+MP 5; Tiger Bone Coronet reports 61/32, 45, 0/9, 0, Steady 2 and Parry 5%.
+Flame Platinum Necklace reports absorption rolls 6/12; Copper Ring reports 0/0.
+These match the supplied screenshots. Source observations remain unchanged.
+
+Backend presentation now recognizes these observed API maps only with evidence
+schema/type/count validation and an exact dataset/model/code match. Verified white
+mappings currently cover Chinese armor/protector and accessories. Four dataset
+option codes have verified labels/scales: MATTR_INT, MATTR_MP, MATTR_SOLID and
+MATTR_ER. Other families/options remain explicit gaps; unknown raw values are
+preserved without invented presentation. Missing and confirmed-empty options remain
+distinct. Presentation is recomputed per observation, never retained by slot.
+
+The API field schema also exposes `phys_def`, `mag_def`, `parry`, `block`,
+`critical`, `attack_rate`, `max_durability`, attack/reinforcement/absorption min/max
+fields. Plugin 1.2.6 adds those exact field names to bounded raw evidence collection.
+Their real values, scaling and enhancement/blue effects still require verification;
+this release does not promote them to trusted absolute stats. The collector test
+values are synthetic and are not runtime evidence. No game action was performed.
+
+### 2026-09-28 plugin 1.2.6 runtime evidence
+
+Connected phBot 20.1.1 agents report plugin 1.2.6. Their persisted API items
+expose 21 field names, including typed physical/magical defense, attack,
+reinforcement and absorption values, parry, block, attack rate, critical,
+max durability, whites and blues. Live Python Casque and Phoenix Horn Spear
+observations corroborate the values listed in
+[item-instance-evidence.md](item-instance-evidence.md). The backend now presents
+the exact typed scalars, family-matched white percentages and every observed blue
+entry after dataset/model/code matching. Missing `whites` does not suppress a
+separate scalar. Unfamiliar blue codes retain their literal code, option ID and
+raw value; no unobserved blue roll-quality percentage is invented.
+
+The live getters have not reported Advanced elixir eligibility or maximum number
+of magic options. `MATTR_REPAIR`, when present, has a verified label, but it must
+not be assumed on equipment without that option. The passive packet paths, full
+family formula coverage and change/invalidation runtime gate remain open.
+
+### 2026-09-28 Party Setup and inventory-slot contract re-check
+
+Rechecked the official [Party API](https://plugins.phbot.org/phbot-api/party),
+[Config API](https://plugins.phbot.org/phbot-api/config), and
+[Misc API](https://plugins.phbot.org/phbot-api/misc). They document `get_party()`
+for current membership; `get_config_path()` for the active player JSON, with an
+explicit warning that direct changes may be overwritten; and `set_profile()` for
+profile selection. They do not document Party Setup field names, a supported writer,
+profile-reload behavior, or effective-state readback. The adapter's file write and
+delayed `reload_profile()` remain an unverified lead. The UI exposes Party Setup as a
+separate read-only section, with edits disabled; there is no `party.setup.apply`
+command capability.
+
+To enable writes, record evidence from the installed phBot version for: (1) exact
+supported party invitation/acceptance, leader-list and party-type fields; (2) an
+officially supported mutation path; (3) whether/how it reloads the active profile;
+and (4) a readback that proves effective application after reload. The test must run
+through the normal session-fenced authenticated command lifecycle and confirm
+success only from the effective readback. Until then, keep mutations disabled.
+
+The official [Inventory API](https://plugins.phbot.org/phbot-api/inventory) describes
+`get_inventory()` as a flat item list with size, but does not define equipment slot
+indices or whether capacity includes them. Current 0–12 separation stays marked
+`adapter_lead_runtime_unverified`; `version=296` and the supplied adapter do not
+prove it. A phBot-documented slot contract or same-session raw-slot-to-equipment
+mapping from independent runtime evidence is required before changing that status.
+
+Party Setup remains read-only/unverified. The first-13 equipment split remains
+unverified. For item instance evidence and the Slice 4 visual audit, see
+[`item-instance-evidence.md`](item-instance-evidence.md) and
+[`reference-parity.md`](reference-parity.md). No character or game traffic was
+generated for these checks.

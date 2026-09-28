@@ -10,6 +10,7 @@ import (
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
+	"phmon/server/internal/resources"
 )
 
 type AgentStore interface {
@@ -31,6 +32,7 @@ type Dependencies struct {
 	Commands     *commands.Service
 	Dispatcher   *commands.Dispatcher
 	Live         *LiveHub
+	Resources    *resources.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -62,6 +64,7 @@ func New(deps Dependencies) http.Handler {
 		if live == nil {
 			live = NewLiveHub(deps.Agents, deps.Registry, deps.Characters)
 		}
+		live.SetResources(deps.Resources)
 		handler := &agentHandler{
 			store:      deps.Agents,
 			registry:   deps.Registry,
@@ -69,6 +72,7 @@ func New(deps Dependencies) http.Handler {
 			characters: deps.Characters,
 			live:       live,
 			commands:   deps.Commands,
+			resources:  deps.Resources,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)
@@ -85,7 +89,16 @@ func New(deps Dependencies) http.Handler {
 			register("PUT /api/groups/{id}/members/{characterID}", true, ch.addMember)
 			register("DELETE /api/groups/{id}/members/{characterID}", true, ch.removeMember)
 			handler.characters = deps.Characters
+			if deps.Resources != nil {
+				resourceAPI := &characterResourceHandler{store: deps.Resources}
+				register("GET /api/characters/{id}/resources", false, resourceAPI.get)
+			}
 		}
+	}
+	if deps.Resources != nil {
+		guildStorageAPI := &guildStorageHandler{store: deps.Resources}
+		register("GET /api/guild-storage", false, guildStorageAPI.get)
+		register("DELETE /api/guild-storage", true, guildStorageAPI.delete)
 	}
 	return mux
 }

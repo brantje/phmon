@@ -18,6 +18,7 @@ from PIL import Image
 from . import __version__
 from .cli import ARCHIVES, _json_write
 from .mapgrid import infer_tile_grid_orientation
+from .item_metadata import item_metadata, magic_option_definitions
 from .pk2 import Entry, PK2Archive, PK2Error, sha256_file
 from .textures import TextureError, ddj_to_png
 
@@ -154,6 +155,18 @@ def _item_shards(media, index: dict[str, Entry]) -> list[tuple[str, Entry]]:
             raise ExportError(f"item data shard referenced by the source is missing: {name}")
         shards.append((relative, shard))
     return shards
+
+
+def _magic_option_table(index: dict[str, Entry]) -> tuple[str | None, Entry | None]:
+    candidates = [
+        (path, entry)
+        for path, entry in index.items()
+        if path.startswith("server_dep/silkroad/")
+        and path.rsplit("/", 1)[-1] == "magicoption.txt"
+    ]
+    if len(candidates) != 1:
+        return None, None
+    return candidates[0]
 
 
 def _skill_shards(media, index: dict[str, Entry]) -> list[tuple[str, Entry]]:
@@ -487,6 +500,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                         "name": {"en": display_name} if display_name is not None else {},
                         "description": {"en": display_description} if display_description else {},
                         "assetKey": asset_key,
+                        "presentation": item_metadata(fields),
                     })
                     shard_audit["normalized"] += 1
                 shard_audit["sourceRows"] = len(lines)
@@ -496,6 +510,34 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
 
             item_records.sort(key=lambda row: row["referenceId"])
             _json_write(bundle / "catalogs" / "items.json", _catalog(dataset_id, "items", "partial", item_records, recordCount=len(item_records), locales=["en"]))
+            magic_path, magic_entry = _magic_option_table(media_index)
+            if magic_entry is None:
+                magic_records = []
+                magic_audit = {
+                    "status": "missing_or_ambiguous_source",
+                    "rowCount": 0,
+                    "recordCount": 0,
+                    "labelsResolved": 0,
+                    "valueScaleStatus": "unresolved",
+                }
+                magic_encoding = None
+            else:
+                magic_lines, magic_encoding = _lines(media.read_payload(magic_entry), magic_path or "magicoption.txt")
+                magic_records, magic_audit = magic_option_definitions(magic_lines, object_text)
+            _json_write(
+                bundle / "catalogs" / "magicOptions.json",
+                _catalog(
+                    dataset_id,
+                    "magicOptions",
+                    "partial" if magic_records else "unresolved",
+                    magic_records,
+                    recordCount=len(magic_records),
+                    locales=["en"],
+                    valueScaleStatus="unresolved",
+                ),
+            )
+            magic_audit["encoding"] = magic_encoding
+            _json_write(audit / "tables" / "magic-options.json", magic_audit)
             _json_write(bundle / "catalogs" / "localization.json", _catalog(dataset_id, "localization", "partial", [], locales=["en"], storage="resolved display strings are embedded in family catalogs"))
             _json_write(bundle / "catalogs" / "taxonomy.json", _catalog(dataset_id, "taxonomy", "unresolved", [], reason="client category and subcategory semantics are not verified"))
             unresolved.append({"family": "taxonomy", "reason": "item type/category and subcategory mappings have not been independently verified"})

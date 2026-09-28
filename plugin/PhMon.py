@@ -3,7 +3,9 @@ from __future__ import print_function
 
 import base64
 import calendar
+import collections
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -24,13 +26,39 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.1.2'
+pVersion = '1.2.6'
 pUrl = ''
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
-MAX_MESSAGE_BYTES = 8192
+MAX_MESSAGE_BYTES = 256 * 1024
+MAX_RESOURCE_SLOTS = 2048
+RESOURCE_SAMPLE_INTERVAL_SECONDS = 15.0
+MAX_ITEM_PACKET_COUNT = 128
+MAX_ITEM_PACKET_BYTES = 2 * 1024 * 1024
+MAX_ITEM_PACKET_SIZE = 256 * 1024
+MAX_ITEM_MAGIC_OPTIONS = 32
+MAX_ITEM_CAPTURE_RECORDS = 100
+MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
+# Enable only for a bounded, local diagnostic capture. Captured records contain
+# decoded item fields only; the live callback never writes to disk.
+ITEM_PACKET_CAPTURE_ENABLED = False
+ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
+ITEM_API_EVIDENCE_VERSION = 2
+ITEM_API_EVIDENCE_FIELDS = (
+    'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
+    'option', 'magic', 'advanced_elixir', 'attributes', 'attribute', 'attrs',
+    'attr', 'white_stats', 'white_stat', 'whites', 'white', 'stats',
+    'durability_max', 'phy_def_pwr', 'mag_def_pwr', 'parry_ratio',
+    'phy_absorption', 'mag_absorption', 'phy_reinforce', 'mag_reinforce',
+    # Named scalar fields observed in the live phBot 20.1.1 API schema. Preserve
+    # their values as evidence before enabling backend units/range interpretation.
+    'phys_def', 'mag_def', 'parry', 'block', 'critical', 'attack_rate',
+    'max_durability', 'phys_atk_min', 'phys_atk_max', 'mag_atk_min', 'mag_atk_max',
+    'phys_reinf_min', 'phys_reinf_max', 'mag_reinf_min', 'mag_reinf_max',
+    'phys_absorb_min', 'phys_absorb_max', 'mag_absorb_min', 'mag_absorb_max',
+)
 _WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 MAX_WALK_WAYPOINTS = 256
 WALK_ARRIVAL_TOLERANCE = 12.0
@@ -95,6 +123,772 @@ def _result_json(value):
 
 def _number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and abs(value) != float('inf')
+
+
+def _call_api(name):
+    function = _optional_phbot_api(name)
+    if not callable(function):
+        return False, None
+    try:
+        return True, function()
+    except Exception:
+        return True, None
+
+
+def _bounded_text(value, limit=256):
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        return None
+    result = str(value).strip()
+    return result[:limit] if result else None
+
+
+def _normalize_item(value):
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return None
+    item = {}
+    for key in ('model', 'quantity', 'plus', 'durability'):
+        field = value.get(key)
+        if isinstance(field, int) and not isinstance(field, bool) and field >= 0:
+            item[key] = field
+        elif isinstance(field, float) and _number(field) and field >= 0:
+            item[key] = field
+    for key in ('name', 'servername'):
+        field = _bounded_text(value.get(key))
+        if field is not None:
+            item[key] = field
+    # Retain bounded source evidence without treating undocumented API fields as
+    # interpreted stats. In particular, never send 64-bit rolls as JSON numbers
+    # that a browser would round. Unknown semantics stay in api_fields.
+    evidence = {}
+    for key in ITEM_API_EVIDENCE_FIELDS:
+        if key in value:
+            field = _bounded_item_evidence(value[key])
+            if field is not None:
+                evidence[key] = field
+    if evidence and len(json.dumps(evidence, separators=(',', ':')).encode('utf-8')) <= 8192:
+        item['api_fields'] = evidence
+    # Structural diagnostics expose missing field aliases without sending unknown
+    # values. The backend must verify semantics before producing presentation.
+    if item:
+        item['api_evidence_version'] = ITEM_API_EVIDENCE_VERSION
+        item['api_field_types'] = _item_api_field_types(value)
+    return item or None
+
+
+def _item_api_field_types(item):
+    result = {}
+    for key, value in itertools.islice(item.items(), 64):
+        if not isinstance(key, str) or len(key) > 64 or not key.isidentifier():
+            continue
+        if any(word in key.lower() for word in ('secret', 'token', 'password', 'credential', 'auth', 'account')):
+            continue
+        kind = _item_evidence_type(value)
+        shape = {'type': kind}
+        if kind in ('dict', 'list', 'string'):
+            shape['count'] = len(value)
+        if kind == 'dict':
+            shape['key_types'] = sorted(set(
+                _item_evidence_type(k) for k in itertools.islice(value, 32)))
+        result[key] = shape
+        if len(json.dumps(result, separators=(',', ':')).encode('utf-8')) > 2048:
+            del result[key]
+            break
+    return result
+
+
+def _item_evidence_type(value):
+    if value is None:
+        return 'null'
+    for kind, label in ((bool, 'boolean'), (int, 'integer'), (float, 'number'),
+                        (str, 'string'), ((list, tuple), 'list'), (dict, 'dict')):
+        if isinstance(value, kind):
+            return label
+    return 'unsupported'
+
+
+def _bounded_item_evidence(value, depth=0):
+    if depth > 3:
+        return None
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int):
+        return str(value) if abs(value) > 9007199254740991 else value
+    if isinstance(value, float):
+        return value if _number(value) else None
+    if isinstance(value, str):
+        return value[:256]
+    if isinstance(value, (list, tuple)):
+        return [_bounded_item_evidence(entry, depth + 1) for entry in value[:32]]
+    if isinstance(value, dict):
+        entries = list(itertools.islice(value.items(), 32))
+        if any(isinstance(key, int) and not isinstance(key, bool) for key, _ in entries):
+            # Integer option/attribute IDs are valid API evidence. Tagged entries
+            # also preserve order and distinguish 9 from '9' without JSON key loss.
+            pairs = []
+            for key, entry in entries:
+                kind = _item_evidence_type(key)
+                if kind == 'integer' and -(2**63) <= key <= 2**64 - 1:
+                    text = str(key)
+                elif kind == 'string' and len(key) <= 64:
+                    text = key
+                else:
+                    continue
+                pairs.append({'key_type': kind, 'key': text,
+                              'value': _bounded_item_evidence(entry, depth + 1)})
+            return {'mapping_entries': pairs}
+        return {key: _bounded_item_evidence(entry, depth + 1)
+                for key, entry in entries
+                if isinstance(key, str) and len(key) <= 64}
+    return None
+
+
+def _normalize_slots(items, capacity, source_offset=0, display_offset=0, maximum=MAX_RESOURCE_SLOTS):
+    if not isinstance(items, (list, tuple)) or not isinstance(capacity, int) or isinstance(capacity, bool) or capacity < 0:
+        return None
+    capacity = min(capacity, maximum)
+    slots = []
+    for display_slot in range(capacity):
+        source_slot = display_slot + source_offset
+        item = _normalize_item(items[source_slot] if source_slot < len(items) else None)
+        if item is None:
+            slots.append(None)
+        else:
+            slots.append({
+                'source_slot': source_slot,
+                'displayed_slot': display_slot + display_offset,
+                'item': item,
+            })
+    return slots
+
+
+def _normalize_container(raw, resource_key):
+    if not isinstance(raw, dict):
+        availability = 'not_observed' if resource_key in ('storage', 'guild_storage', 'job_pouch') else 'unavailable'
+        return {'availability': availability, 'reason': 'getter_unavailable_or_not_open'}
+    items = raw.get('items')
+    if not isinstance(items, (list, tuple)):
+        return {'availability': 'unavailable', 'reason': 'invalid_api_shape'}
+    raw_size = raw.get('size')
+    if not isinstance(raw_size, int) or isinstance(raw_size, bool) or raw_size < 0:
+        return {'availability': 'unavailable', 'reason': 'capacity_unavailable'}
+    if raw_size > MAX_RESOURCE_SLOTS + 13:
+        return {'availability': 'unavailable', 'reason': 'capacity_exceeds_limit'}
+    if len(items) > raw_size:
+        return {'availability': 'unavailable', 'reason': 'item_list_exceeds_reported_capacity'}
+    slots = _normalize_slots(items, raw_size)
+    if slots is None:
+        return {'availability': 'unavailable', 'reason': 'invalid_api_shape'}
+    used = sum(1 for entry in slots if entry is not None)
+    return {
+        'availability': 'observed',
+        'capacity': raw_size,
+        'used_slots': used,
+        'slots': slots,
+    }
+
+
+def collect_resource_inputs(api=None):
+    """Call phBot getters on its callback thread; return raw values for worker normalization."""
+    inputs = {}
+    for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy'):
+        function = (api or {}).get(name) if isinstance(api, dict) else None
+        if not callable(function):
+            function = _optional_phbot_api(name)
+        if not callable(function):
+            inputs[name] = {'available': False, 'value': None}
+            continue
+        try:
+            inputs[name] = {'available': True, 'value': function()}
+        except Exception:
+            inputs[name] = {'available': True, 'value': None}
+    return inputs
+
+
+def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None):
+    """Normalize bounded API data off the callback thread; never mutate game state."""
+    def call(name):
+        result = inputs.get(name) if isinstance(inputs, dict) else None
+        if not isinstance(result, dict) or not isinstance(result.get('available'), bool):
+            return False, None
+        return result['available'], result.get('value')
+
+    resources = {}
+    available, raw = call('get_inventory')
+    inventory = _normalize_container(raw, 'inventory') if available else {'availability': 'unavailable', 'reason': 'api_missing'}
+    if inventory.get('availability') == 'observed':
+        raw_items = raw.get('items', [])
+        equipment_count = min(13, len(raw_items))
+        # The 13 equipment-slot boundary is based on the supplied adapter and
+        # remains marked as runtime-unverified in docs/phbot-capabilities.md.
+        equipment_capacity = min(13, raw.get('size', 0))
+        bag_capacity = max(0, raw.get('size', 0) - equipment_capacity)
+        resources['equipment'] = {
+            'availability': 'observed',
+            'capacity': equipment_capacity,
+            'used_slots': sum(1 for value in raw_items[:equipment_capacity] if _normalize_item(value) is not None),
+            'slots': _normalize_slots(raw_items, equipment_capacity),
+            'mapping_evidence': 'adapter_lead_runtime_unverified',
+        }
+        resources['inventory'] = {
+            'availability': 'observed',
+            'capacity': bag_capacity,
+            'used_slots': sum(1 for value in raw_items[equipment_capacity:equipment_capacity + bag_capacity] if _normalize_item(value) is not None),
+            'slots': _normalize_slots(raw_items, bag_capacity, source_offset=equipment_capacity),
+            'gold': raw.get('gold') if isinstance(raw.get('gold'), int) and not isinstance(raw.get('gold'), bool) and raw.get('gold') >= 0 else None,
+            'mapping_evidence': 'adapter_lead_runtime_unverified',
+        }
+    else:
+        resources['inventory'] = inventory
+        resources['equipment'] = dict(inventory)
+
+    for resource_key, api_name in (('storage', 'get_storage'), ('guild_storage', 'get_guild_storage'), ('job_pouch', 'get_job_pouch')):
+        available, raw = call(api_name)
+        resources[resource_key] = _normalize_container(raw, resource_key) if available else {'availability': 'unavailable', 'reason': 'api_missing'}
+
+    available, raw_pets = call('get_pets')
+    if not available:
+        resources['pets'] = {'availability': 'unavailable', 'reason': 'api_missing', 'pets': []}
+    elif raw_pets is None:
+        resources['pets'] = {'availability': 'unavailable', 'reason': 'getter_returned_none', 'pets': []}
+    elif isinstance(raw_pets, dict):
+        pets = []
+        for pet_index, (pet_id, raw_pet) in enumerate(raw_pets.items()):
+            if pet_index >= 32:
+                break
+            if not isinstance(raw_pet, dict):
+                continue
+            inventory_available = isinstance(raw_pet.get('items'), (list, tuple))
+            raw_items = raw_pet.get('items') if inventory_available else []
+            pet = {'pet_id': _bounded_text(pet_id, 64), 'inventory_available': inventory_available}
+            if inventory_available:
+                pet['slots'] = _normalize_slots(raw_items, min(len(raw_items), MAX_RESOURCE_SLOTS))
+            for key in ('name', 'servername', 'type'):
+                value = _bounded_text(raw_pet.get(key), 100)
+                if value is not None:
+                    pet[key] = value
+            for key in ('model', 'hp'):
+                value = raw_pet.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    pet[key] = value
+            if isinstance(raw_pet.get('mounted'), bool):
+                pet['mounted'] = raw_pet['mounted']
+            pets.append(pet)
+        resources['pets'] = {'availability': 'observed', 'pets': pets}
+    else:
+        resources['pets'] = {'availability': 'unavailable', 'reason': 'invalid_api_shape', 'pets': []}
+
+    available, raw_party = call('get_party')
+    if not available or raw_party is None:
+        resources['party'] = {'availability': 'unavailable' if not available else 'not_observed', 'members': []}
+    elif isinstance(raw_party, dict):
+        members = []
+        for member_index, (party_id, entry) in enumerate(raw_party.items()):
+            if member_index >= 32:
+                break
+            if not isinstance(entry, dict):
+                continue
+            member = {'party_id': _bounded_text(party_id, 64)}
+            for key in ('name', 'guild'):
+                value = _bounded_text(entry.get(key), 100)
+                if value is not None:
+                    member[key] = value
+            for key in ('player_id', 'level'):
+                value = entry.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    member[key] = value
+            for axis in ('x', 'y'):
+                value = entry.get(axis)
+                if _number(value):
+                    member[axis] = value
+            for key in ('hp_percent', 'mp_percent'):
+                value = entry.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10:
+                    member[key] = value * 10
+            members.append(member)
+        resources['party'] = {'availability': 'observed', 'members': members}
+    else:
+        resources['party'] = {'availability': 'unavailable', 'members': []}
+
+    available, academy = call('get_academy')
+    resources['academy'] = _normalize_academy(academy, available)
+    resources['party_setup'] = {
+        'availability': 'unavailable',
+        'mode': 'read_only_unverified',
+        'reason': 'configuration_reload_contract_not_verified',
+    }
+    protocol = detect_item_protocol(config_dir, server, locale)
+    resources['item_enrichment'] = {
+        'availability': 'unavailable',
+        'protocol': protocol,
+        'reason': 'passive_item_packet_decoder_not_enabled',
+    }
+    return resources
+
+
+def collect_resources(api=None, config_dir=None, server=None, locale=None):
+    """Synchronous fixture helper; production normalizes getter values on the worker."""
+    return normalize_resource_inputs(collect_resource_inputs(api), config_dir, server, locale)
+
+
+def _normalize_academy(value, api_available):
+    if not api_available:
+        return {'availability': 'unavailable', 'reason': 'api_missing'}
+    if value is None:
+        return {'availability': 'unavailable', 'reason': 'getter_returned_none'}
+    if not isinstance(value, dict):
+        return {'availability': 'unavailable', 'reason': 'invalid_api_shape'}
+    members = []
+    for member_id, raw_member in value.items():
+        if member_id == 'id':
+            continue
+        if len(members) >= 32:
+            break
+        if not isinstance(raw_member, dict):
+            continue
+        member = {'member_id': _bounded_text(member_id, 64)}
+        for key in ('name',):
+            text = _bounded_text(raw_member.get(key), 100)
+            if text is not None:
+                member[key] = text
+        for key in ('online', 'type', 'level'):
+            field = raw_member.get(key)
+            if isinstance(field, int) and not isinstance(field, bool) and field >= 0:
+                member[key] = field
+        for axis in ('x', 'y'):
+            field = raw_member.get(axis)
+            if _number(field):
+                member[axis] = field
+        members.append(member)
+    academy_id = value.get('id')
+    payload = {'members': members}
+    if isinstance(academy_id, int) and not isinstance(academy_id, bool) and academy_id >= 0:
+        payload['id'] = academy_id
+    return {'availability': 'observed', 'value': payload}
+
+
+def detect_item_protocol(config_dir, server, locale):
+    return detect_item_protocol_detail(config_dir, server, locale)[0]
+
+
+def detect_item_protocol_detail(config_dir, server, locale):
+    """Resolve vSRO variant from phBot's active installation config, never numeric version."""
+    if locale != 22:
+        return 'unknown', 'not_vsro_locale'
+    if not isinstance(config_dir, str) or not config_dir.strip():
+        return 'unknown', 'config_directory_unavailable'
+    if not isinstance(server, str) or not server.strip():
+        return 'unknown', 'server_unavailable'
+
+    normalized_dir = os.path.normpath(config_dir)
+    candidates = [os.path.join(normalized_dir, 'vSRO.json')]
+    parent_config = os.path.dirname(normalized_dir)
+    if parent_config and parent_config != normalized_dir:
+        candidates.insert(0, os.path.join(parent_config, 'vSRO.json'))
+    config_path = next((candidate for candidate in candidates if os.path.isfile(candidate)), None)
+    if config_path is None:
+        return 'unknown', 'vsro_config_not_found'
+    try:
+        with open(config_path, 'r') as stream:
+            config = json.load(stream)
+    except Exception:
+        return 'unknown', 'vsro_config_unreadable'
+    if isinstance(config, list):
+        entries = config
+    elif isinstance(config, dict):
+        configured_servers = config.get('servers', config.get('Servers'))
+        if isinstance(configured_servers, list):
+            entries = configured_servers
+        else:
+            # phBot stores private-server profiles as a root mapping (for example,
+            # {"GreatestSRO": {"servers": ["Greatest"], ...}}).
+            entries = [value for value in config.values() if isinstance(value, dict)]
+    else:
+        return 'unknown', 'vsro_config_invalid_shape'
+
+    server_key = server.strip().casefold()
+    matches = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        named_server = entry.get('server', entry.get('name', entry.get('Server', entry.get('Name'))))
+        matches_by_name = (
+            isinstance(named_server, str) and named_server.strip().casefold() == server_key
+        )
+        server_names = entry.get('servers', entry.get('Servers'))
+        matches_by_list = (
+            isinstance(server_names, list) and any(
+                isinstance(name, str) and name.strip().casefold() == server_key
+                for name in server_names
+            )
+        )
+        if matches_by_name or matches_by_list:
+            matches.append(entry)
+    if not matches:
+        return 'unknown', 'server_not_in_vsro_config'
+    if len(matches) != 1:
+        return 'unknown', 'ambiguous_server_config'
+
+    matched = matches[0]
+    selectors = []
+    for key in ('protocol_variant', 'protocol'):
+        if key in matched:
+            value = matched.get(key)
+            if not isinstance(value, str) or not value.strip():
+                return 'unknown', 'malformed_protocol_selector'
+            selectors.append(value.strip().casefold())
+    if selectors and len(set(selectors)) != 1:
+        return 'unknown', 'conflicting_protocol_selectors'
+    selected_protocol = None
+    if selectors:
+        selected_protocol = 'vsro-1.188' if selectors[0] in ('1.188', 'vsro-1.188') else 'unknown'
+        if selected_protocol == 'unknown':
+            return 'unknown', 'unsupported_protocol_selector'
+
+    # These phBot private-server type switches represent other client families or
+    # vSRO variants. Do not silently interpret any enabled one as vSRO 1.188.
+    other_types = (
+        'black_rogue', 'black rogue', 'thsro', 'ecsro', 'csro silkroadr',
+        'isro_private', 'jsro', 'rigid', 'mhtc',
+    )
+    for key in other_types:
+        if key in matched:
+            value = matched[key]
+            if not isinstance(value, bool):
+                return 'unknown', 'malformed_protocol_flags'
+            if value:
+                return 'unknown', 'unsupported_protocol_variant'
+
+    flags = {
+        '1.193': ('vsro_193', 'v1.193', 'v1.193_enabled'),
+        '1.274': ('v1.274', 'vsro_274', 'v1.274_enabled'),
+        '1.065': ('v1.065', 'vsro_065', 'v1.065_enabled'),
+    }
+    has_any_flag = any(key in matched for keys in flags.values() for key in keys)
+    if not has_any_flag:
+        if selected_protocol is not None:
+            return selected_protocol, 'explicit_protocol_selector'
+        return 'unknown', 'protocol_flags_unavailable'
+    flag_selections = []
+    for protocol, keys in flags.items():
+        values = [matched[key] for key in keys if key in matched]
+        if not values:
+            return 'unknown', 'incomplete_protocol_flags'
+        if any(not isinstance(value, bool) for value in values) or len(set(values)) != 1:
+            return 'unknown', 'malformed_protocol_flags'
+        flag_selections.append((protocol, values[0]))
+    flagged = [protocol for protocol, enabled in flag_selections if enabled]
+    if len(flagged) > 1:
+        return 'unknown', 'conflicting_protocol_flags'
+    flags_protocol = 'unknown' if flagged else 'vsro-1.188'
+    if selected_protocol is not None and selected_protocol != flags_protocol:
+        return 'unknown', 'conflicting_protocol_selector_and_flags'
+    if flags_protocol == 'unknown':
+        return 'unknown', 'unsupported_protocol_variant'
+    return selected_protocol or flags_protocol, 'v1.188_selected_by_phbot_flags'
+
+
+class ItemPacketError(ValueError):
+    pass
+
+
+class LittleEndianReader(object):
+    """Bounds-checked reader for the small, allowlisted vSRO item updates."""
+    def __init__(self, data):
+        if not isinstance(data, (bytes, bytearray)) or len(data) > MAX_ITEM_PACKET_SIZE:
+            raise ItemPacketError('invalid_or_oversized_packet')
+        self.data = data
+        self.offset = 0
+
+    def _read(self, fmt):
+        size = struct.calcsize(fmt)
+        if self.offset + size > len(self.data):
+            raise ItemPacketError('truncated_packet')
+        value = struct.unpack_from(fmt, self.data, self.offset)[0]
+        self.offset += size
+        return value
+
+    def u8(self): return self._read('<B')
+    def u16(self): return self._read('<H')
+    def u32(self): return self._read('<I')
+    def u64(self): return self._read('<Q')
+
+    def finish(self):
+        if self.offset != len(self.data):
+            raise ItemPacketError('unexpected_trailing_bytes')
+
+
+def parse_item_stats_update(data):
+    """Decode the corroborated 0x3040 update field order; reject unknown flags."""
+    reader = LittleEndianReader(data)
+    slot, flags = reader.u8(), reader.u8()
+    if not flags or flags & 0x80:
+        raise ItemPacketError('unsupported_update_flags')
+    update = {'source_slot': slot, 'fields': {}}
+    fields = update['fields']
+    if flags & 0x01:
+        fields['model'] = reader.u32()
+        if fields['model'] == 0:
+            raise ItemPacketError('invalid_model')
+    if flags & 0x02:
+        fields['plus'] = reader.u8()
+    if flags & 0x04:
+        fields['variance'] = str(reader.u64())
+    if flags & 0x08:
+        fields['quantity'] = reader.u16()
+    if flags & 0x10:
+        fields['durability'] = reader.u32()
+    if flags & 0x40:
+        fields['state'] = reader.u8()
+    if flags & 0x20:
+        count = reader.u8()
+        if count > MAX_ITEM_MAGIC_OPTIONS:
+            raise ItemPacketError('magic_option_count_exceeds_limit')
+        fields['magic_options'] = [
+            {'id': str(reader.u32()), 'value': str(reader.u32())}
+            for _ in range(count)
+        ]
+        fields['magic_options_available'] = True
+    reader.finish()
+    return update
+
+
+def parse_item_durability_update(data):
+    reader = LittleEndianReader(data)
+    slot, durability = reader.u8(), reader.u32()
+    reader.finish()
+    return {'source_slot': slot, 'fields': {'durability': durability}}
+
+
+class PassiveItemTracker(object):
+    """Bounded packet queue plus session-local, fail-closed item observations."""
+    ALLOWED_OPCODES = (0x3040, 0x3052, 0xB034)
+
+    def __init__(self, capture_enabled=None):
+        self.capture_enabled = ITEM_PACKET_CAPTURE_ENABLED if capture_enabled is None else bool(capture_enabled)
+        self._lock = threading.Lock()
+        self._queue = collections.deque()
+        self._queued_bytes = 0
+        self._overflow = False
+        self._states = {}
+        self._protocol = 'unknown'
+        self._protocol_reason = 'not_resolved'
+        self._epoch = 0
+        self._sequence = 0
+        self._last_invalidation = 'session_start'
+        self._capture_records = []
+        self._capture_bytes = 0
+        self.capture_overflow = False
+
+    def enqueue(self, opcode, data):
+        if opcode not in self.ALLOWED_OPCODES:
+            return False
+        try:
+            size = len(data)
+            if size > MAX_ITEM_PACKET_SIZE:
+                raise ValueError('oversized')
+            payload = bytes(data)
+        except Exception:
+            with self._lock:
+                self._overflow = True
+                self._queue.clear()
+                self._queued_bytes = 0
+            return False
+        with self._lock:
+            if (len(self._queue) >= MAX_ITEM_PACKET_COUNT or
+                    self._queued_bytes + len(payload) > MAX_ITEM_PACKET_BYTES):
+                self._overflow = True
+                self._queue.clear()
+                self._queued_bytes = 0
+                return False
+            self._queue.append((opcode, payload))
+            self._queued_bytes += len(payload)
+        return True
+
+    def _take_queue(self):
+        with self._lock:
+            events = list(self._queue)
+            overflow = self._overflow
+            self._queue.clear()
+            self._queued_bytes = 0
+            self._overflow = False
+        return overflow, events
+
+    def reset(self, reason='session_changed', protocol=None):
+        self._states.clear()
+        self._epoch += 1
+        self._sequence = 0
+        self._last_invalidation = reason
+        if protocol is not None:
+            self._protocol = protocol
+        with self._lock:
+            self._queue.clear()
+            self._queued_bytes = 0
+            self._overflow = False
+
+    def set_protocol(self, protocol, reason=None):
+        protocol = protocol if isinstance(protocol, str) else 'unknown'
+        if not isinstance(reason, str) or not reason:
+            reason = 'protocol_resolution_unavailable'
+        self._protocol_reason = reason[:80]
+        if protocol != self._protocol:
+            self.reset('protocol_changed', protocol)
+
+    def _invalidate(self, reason, slot=None):
+        if slot is None:
+            self._states.clear()
+            self._epoch += 1
+        else:
+            self._states.pop(slot, None)
+        self._last_invalidation = reason
+
+    def _capture(self, record):
+        if not self.capture_enabled:
+            return
+        encoded = json.dumps(record, separators=(',', ':'), sort_keys=True).encode('utf-8')
+        if len(encoded) > MAX_ITEM_CAPTURE_BYTES:
+            self.capture_overflow = True
+            return
+        while self._capture_records and (
+                len(self._capture_records) >= MAX_ITEM_CAPTURE_RECORDS or
+                self._capture_bytes + len(encoded) > MAX_ITEM_CAPTURE_BYTES):
+            removed = self._capture_records.pop(0)
+            self._capture_bytes -= len(json.dumps(removed, separators=(',', ':'), sort_keys=True).encode('utf-8'))
+            self.capture_overflow = True
+        self._capture_records.append(record)
+        self._capture_bytes += len(encoded)
+
+    def sanitized_capture(self):
+        """Return item-only decoded evidence suitable for a local fixture file."""
+        return {'schema_version': 1, 'overflow': self.capture_overflow,
+                'records': list(self._capture_records)}
+
+    def _process(self, opcode, payload):
+        self._sequence += 1
+        if opcode == 0xB034:
+            self._invalidate('inventory_operation_unclassified')
+            self._capture({'opcode': '0xB034', 'sequence': str(self._sequence), 'result': 'invalidated'})
+            return
+        try:
+            parsed = parse_item_stats_update(payload) if opcode == 0x3040 else parse_item_durability_update(payload)
+        except ItemPacketError as error:
+            slot = payload[0] if payload else None
+            self._invalidate(str(error), slot)
+            self._capture({'opcode': '0x%04X' % opcode, 'sequence': str(self._sequence), 'result': str(error)})
+            return
+        slot = parsed['source_slot']
+        fields = parsed['fields']
+        if self._protocol != 'vsro-1.188':
+            self._invalidate('unsupported_protocol', slot)
+            return
+        state = self._states.get(slot)
+        model = fields.get('model')
+        if model is not None:
+            # A RefObjID-bearing update starts a new item lifetime even when
+            # the replacement has the same model in the same slot.
+            state = {'model': model, 'fields': {}, 'sequence': self._sequence}
+            self._states[slot] = state
+        elif state is None:
+            return
+        state['fields'].update(fields)
+        state['sequence'] = self._sequence
+        self._capture({
+            'opcode': '0x%04X' % opcode,
+            'sequence': str(self._sequence),
+            'source_slot': slot,
+            'model': str(state['model']),
+            'fields': dict(state['fields']),
+        })
+
+    def decorate(self, resources, session_id=None):
+        overflow, events = self._take_queue()
+        if overflow:
+            self._invalidate('packet_queue_overflow')
+        for opcode, payload in events:
+            self._process(opcode, payload)
+
+        attached = 0
+        for container_key in ('equipment', 'inventory'):
+            container = resources.get(container_key)
+            if not isinstance(container, dict) or container.get('availability') != 'observed':
+                continue
+            slots = container.get('slots')
+            if not isinstance(slots, list):
+                continue
+            for slot_entry in slots:
+                if not isinstance(slot_entry, dict):
+                    continue
+                source_slot = slot_entry.get('source_slot')
+                item = slot_entry.get('item')
+                if isinstance(item, dict):
+                    item.pop('instance', None)
+                state = self._states.get(source_slot) if isinstance(source_slot, int) else None
+                if not isinstance(item, dict):
+                    if state is not None:
+                        self._invalidate('api_slot_empty', source_slot)
+                    continue
+                if state is None:
+                    continue
+                if item.get('model') != state.get('model'):
+                    self._invalidate('api_model_mismatch', source_slot)
+                    continue
+                api_plus = item.get('plus')
+                packet_plus = state['fields'].get('plus')
+                if api_plus is not None and packet_plus is not None and api_plus != packet_plus:
+                    self._invalidate('api_enhancement_mismatch', source_slot)
+                    continue
+                observed_fields = state['fields']
+                if not any(key in observed_fields for key in ('variance', 'durability', 'magic_options', 'plus')):
+                    continue
+                instance = {
+                    'availability': 'observed',
+                    'source': 'vsro_1188_packet',
+                    'observation_id': '%s:%d:%d:%d' % (
+                        session_id or 'unregistered', self._epoch,
+                        state['sequence'], source_slot),
+                    'capture_epoch': str(self._epoch),
+                    'observation_sequence': str(state['sequence']),
+                    'model': str(state['model']),
+                    'magic_options_availability': (
+                        'observed' if observed_fields.get('magic_options_available') else 'not_observed'),
+                }
+                for key in ('plus', 'variance', 'durability', 'quantity', 'state'):
+                    if key in observed_fields:
+                        value = observed_fields[key]
+                        instance[key] = str(value) if key == 'variance' else value
+                if observed_fields.get('magic_options_available'):
+                    instance['magic_options'] = list(observed_fields.get('magic_options', []))
+                item['instance'] = instance
+                attached += 1
+        resources['item_enrichment'] = {
+            'availability': 'observed' if attached else 'not_observed',
+            'protocol': self._protocol,
+            'protocol_reason': self._protocol_reason,
+            'source': 'vsro_1188_packet',
+            'decoder_build': ITEM_DECODER_BUILD,
+            'api_evidence_version': ITEM_API_EVIDENCE_VERSION,
+            'observed_items': attached,
+            'reason': None if attached else self._last_invalidation,
+            'capture_overflow': self.capture_overflow,
+        }
+        return resources
+
+    def persist_sanitized_capture(self, path):
+        """Write only parsed item records; callers must run off the phBot callback."""
+        if not self.capture_enabled or not isinstance(path, str) or not path:
+            return False
+        payload = json.dumps(self.sanitized_capture(), separators=(',', ':'), sort_keys=True)
+        if len(payload.encode('utf-8')) > MAX_ITEM_CAPTURE_BYTES:
+            raise ValueError('sanitized item capture exceeds size limit')
+        directory = os.path.dirname(path)
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory)
+        temporary = path + '.tmp'
+        with open(temporary, 'w') as stream:
+            stream.write(payload)
+        os.replace(temporary, path)
+        return True
 
 def _utc_epoch(value):
     if (not isinstance(value, str) or len(value) < 20 or value[-1] != 'Z'
@@ -507,6 +1301,7 @@ class AgentWorker(object):
         self._socket_lock = threading.Lock()
         self.status = 'Connecting to PhMon backend...'
         self._samples = _queue.Queue(maxsize=1)
+        self._resource_samples = _queue.Queue(maxsize=1)
         self._latest_sample = None
         self.character_id = None
         self._current_identity = None
@@ -521,9 +1316,43 @@ class AgentWorker(object):
         self._server_clock_offset = 0.0
         self._last_control_sample_session = None
         self._last_control_sample_at = 0.0
+        self._resource_revision = 0
+        self._resource_baseline_required = True
+        self._confirmed_resources = None
+        self._latest_resources = None
+        self._latest_resources_identity = None
+        self._item_tracker = PassiveItemTracker()
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
+
+    def update_resources(self, identity, resources):
+        self._queue_resource_sample({'identity': dict(identity), 'resources': resources})
+
+    def update_resource_inputs(self, identity, inputs, config_dir, locale):
+        self._queue_resource_sample({
+            'identity': dict(identity),
+            'inputs': inputs,
+            'config_dir': config_dir,
+            'locale': locale,
+        })
+
+    def capture_joymax_packet(self, opcode, data):
+        """Copy only allowlisted packets; decoding is performed by the network worker."""
+        return self._item_tracker.enqueue(opcode, data)
+
+    def _queue_resource_sample(self, sample):
+        try:
+            self._resource_samples.put_nowait(sample)
+        except _queue.Full:
+            try:
+                self._resource_samples.get_nowait()
+            except _queue.Empty:
+                pass
+            try:
+                self._resource_samples.put_nowait(sample)
+            except _queue.Full:
+                pass
 
     def leave_character(self):
         if self._active_walk is not None:
@@ -595,6 +1424,12 @@ class AgentWorker(object):
                 self.character_id = None
                 self._current_identity = None
                 self._rejected_identity = None
+                self._resource_revision = 0
+                self._resource_baseline_required = True
+                self._confirmed_resources = None
+                self._latest_resources = None
+                self._latest_resources_identity = None
+                self._item_tracker.reset('backend_reconnect')
                 # Callbacks may have queued a leave while the backend was
                 # unavailable. Apply the newest queued fact before replaying
                 # the last sample so a departed character is never resurrected.
@@ -610,6 +1445,11 @@ class AgentWorker(object):
                             self.session_id = None
                             self._current_identity = None
                             self._latest_sample = None
+                            self._latest_resources = None
+                            self._latest_resources_identity = None
+                            self._resource_baseline_required = True
+                            self._confirmed_resources = None
+                            self._item_tracker.reset('character_left')
 
                         else:
                             self._latest_sample = sample
@@ -617,6 +1457,36 @@ class AgentWorker(object):
                         continue
                     except _queue.Empty:
                         pass
+                    try:
+                        resource_sample = self._resource_samples.get_nowait()
+                        if self.character_id is not None and resource_sample.get('identity') == self._current_identity:
+                            if 'inputs' in resource_sample:
+                                identity = resource_sample['identity']
+                                protocol, protocol_reason = detect_item_protocol_detail(
+                                    resource_sample.get('config_dir'),
+                                    identity.get('server'),
+                                    resource_sample.get('locale'),
+                                )
+                                self._item_tracker.set_protocol(protocol, protocol_reason)
+                                resources = normalize_resource_inputs(
+                                    resource_sample['inputs'],
+                                    resource_sample.get('config_dir'),
+                                    identity.get('server'),
+                                    resource_sample.get('locale'),
+                                )
+                            else:
+                                resources = resource_sample['resources']
+                            resources = self._item_tracker.decorate(resources, self.session_id)
+                            self._latest_resources = resources
+                            self._latest_resources_identity = self._identity_key(resource_sample['identity'])
+                            self._send_resource_snapshot(client, self._latest_resources)
+                    except _queue.Empty:
+                        pass
+                    if (self._latest_resources is not None and
+                            self._latest_resources_identity == self._identity_key(self._current_identity)
+                            if self._current_identity is not None else False):
+                        self._item_tracker.decorate(self._latest_resources, self.session_id)
+                        self._send_resource_snapshot(client, self._latest_resources)
                     now = _monotonic()
                     if now >= next_heartbeat:
                         client.send_json({
@@ -642,12 +1512,21 @@ class AgentWorker(object):
                 while True:
                     try: self._outgoing.get_nowait()
                     except _queue.Empty: break
+                while True:
+                    try: self._resource_samples.get_nowait()
+                    except _queue.Empty: break
                 if client is not None:
                     client.close()
                 self._set_socket(None)
                 self.character_id = None
                 self._current_identity = None
                 self.session_id = None
+                self._resource_revision = 0
+                self._resource_baseline_required = True
+                self._confirmed_resources = None
+                self._latest_resources = None
+                self._latest_resources_identity = None
+                self._item_tracker.reset('backend_reconnect')
 
             if not self.stop_event.is_set():
                 self.stop_event.wait(backoff.next_delay())
@@ -669,6 +1548,7 @@ class AgentWorker(object):
                     client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
                     self.character_id = None
             self._profile_epoch += 1
+            self._item_tracker.reset('character_or_profile_changed')
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_utc_now()})
             reply = self._wait_for_registration(client)
             if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):
@@ -676,8 +1556,95 @@ class AgentWorker(object):
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
             self._current_identity = identity
+            self._resource_revision = 0
+            self._resource_baseline_required = True
+            self._confirmed_resources = None
             snapshot = True
         client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'state':state,'sent_at':_utc_now()})
+
+    def _send_resource_snapshot(self, client, value):
+        if not isinstance(value, dict) or self.character_id is None or self.session_id is None:
+            return False
+        full = self._resource_baseline_required or self._confirmed_resources is None
+        resource_values = dict(value)
+        # Serialize a complete immutable comparison view before emitting any
+        # chunks. The resource objects may be mutated in place by the collector
+        # between polls, so retaining references would hide nested changes.
+        try:
+            serialized_resources = {
+                key: json.dumps(resource, sort_keys=True, separators=(',', ':'), allow_nan=False)
+                for key, resource in resource_values.items()
+            }
+        except Exception:
+            return False
+        changed = resource_values if full else {}
+        if not full:
+            previous = self._confirmed_resources or {}
+            for key, resource_json in serialized_resources.items():
+                if resource_json != previous.get(key):
+                    changed[key] = resource_values[key]
+            if not changed:
+                return True
+
+        base_fields = {
+            'type': 'resource.snapshot' if full else 'resource.delta',
+            'protocol_version': PROTOCOL_VERSION,
+            'character_id': self.character_id,
+            'session_id': self.session_id,
+            'revision': self._resource_revision + 1,
+            'base_revision': 0 if full else self._resource_revision,
+            'full': full,
+            'sent_at': _utc_now(),
+        }
+        chunks = []
+        current_chunk = {}
+        for key in sorted(changed):
+            candidate = dict(current_chunk)
+            candidate[key] = changed[key]
+            probe = dict(base_fields)
+            probe.update({'chunk_index': 0, 'chunk_count': 1, 'resources': candidate})
+            try:
+                encoded_size = len(json.dumps(probe, separators=(',', ':'), allow_nan=False).encode('utf-8'))
+            except Exception:
+                return False
+            if encoded_size > MAX_MESSAGE_BYTES - 512:
+                if not current_chunk:
+                    _log('a resource observation exceeds the per-frame limit; waiting for a smaller observation')
+                    return False
+                chunks.append(current_chunk)
+                current_chunk = {key: changed[key]}
+                probe['resources'] = current_chunk
+                try:
+                    encoded_size = len(json.dumps(probe, separators=(',', ':'), allow_nan=False).encode('utf-8'))
+                except Exception:
+                    return False
+                if encoded_size > MAX_MESSAGE_BYTES - 512:
+                    _log('a resource observation exceeds the per-frame limit; waiting for a smaller observation')
+                    return False
+            else:
+                current_chunk = candidate
+        if current_chunk:
+            chunks.append(current_chunk)
+        if not chunks or len(chunks) > 12:
+            _log('resource snapshot exceeds the bounded chunk limit')
+            return False
+        frames = []
+        for index, resources in enumerate(chunks):
+            frame = dict(base_fields)
+            frame.update({'chunk_index': index, 'chunk_count': len(chunks), 'resources': resources})
+            try:
+                encoded = json.dumps(frame, separators=(',', ':'), allow_nan=False).encode('utf-8')
+            except Exception:
+                return False
+            if len(encoded) > MAX_MESSAGE_BYTES:
+                return False
+            frames.append(frame)
+        for frame in frames:
+            client.send_json(frame)
+        self._resource_revision += 1
+        self._resource_baseline_required = False
+        self._confirmed_resources = serialized_resources
+        return True
 
     def _handle_character_rejected(self, message):
         if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
@@ -750,6 +1717,17 @@ class AgentWorker(object):
         if message.get('type') == 'character.rejected': self._handle_character_rejected(message)
         elif message.get('type') == 'command.execute': self._accept_command(message)
         elif message.get('type') == 'command.revoke': self._revoke_session(message)
+        elif message.get('type') == 'resource.ack':
+            if (message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or
+                    message.get('session_id') != self.session_id or not isinstance(message.get('revision'), int) or
+                    message.get('revision') > self._resource_revision):
+                raise WebSocketClosed('invalid resource acknowledgement')
+        elif message.get('type') == 'resource.resync':
+            if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
+                raise WebSocketClosed('invalid resource resynchronization request')
+            if self._latest_resources is not None and self._latest_resources_identity == self._identity_key(self._current_identity):
+                self._resource_baseline_required = True
+                self.update_resources(self._current_identity, self._latest_resources)
         elif message.get('type') != 'character.registered': raise WebSocketClosed('unexpected server application message')
 
     def _capability_frame(self):
@@ -781,11 +1759,11 @@ class AgentWorker(object):
                 supported = all(self.api.has(symbol) for symbol in ('generate_path', 'move_to_region', 'get_position'))
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
-        return {'type': 'agent.capabilities', 'protocol_version': 3, 'schema_version': 1, 'commands': commands}
+        return {'type': 'agent.capabilities', 'protocol_version': PROTOCOL_VERSION, 'schema_version': 1, 'commands': commands}
 
     def _accept_command(self, message):
         command_id = message.get('command_id')
-        if (message.get('protocol_version') != 3 or not isinstance(command_id, str) or
+        if (message.get('protocol_version') != PROTOCOL_VERSION or not isinstance(command_id, str) or
                 len(command_id) != 40 or not command_id.startswith('cmd_') or
                 not _validate_agent_id(message.get('character_id')) or not _validate_agent_id(message.get('session_id')) or
                 not isinstance(message.get('name'), str) or not isinstance(message.get('args'), dict)):
@@ -815,7 +1793,7 @@ class AgentWorker(object):
             self._queue_result(self._base_result(message, 'failed', 'command_queue_full', 'unverified'))
             return
         self._remember_command(command_id)
-        self._queue_result({'type':'command.ack','protocol_version':3,'command_id':command_id,'character_id':self.character_id,'session_id':self.session_id})
+        self._queue_result({'type':'command.ack','protocol_version':PROTOCOL_VERSION,'command_id':command_id,'character_id':self.character_id,'session_id':self.session_id})
 
     def _remember_command(self, command_id):
         self._dedup.add(command_id); self._dedup_order.append(command_id)
@@ -833,12 +1811,12 @@ class AgentWorker(object):
             client.send_json(frame)
 
     def _base_result(self, message, status, code, verification):
-        return {'type':'command.result','protocol_version':3,'command_id':message.get('command_id'),
+        return {'type':'command.result','protocol_version':PROTOCOL_VERSION,'command_id':message.get('command_id'),
                 'character_id':message.get('character_id'),'session_id':message.get('session_id'),
                 'status':status,'reason':code,'verification':verification}
 
     def _revoke_session(self, message):
-        if message.get('protocol_version') != 3 or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
+        if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             return
         self._discard_pending_commands('session_superseded')
 
@@ -1046,7 +2024,7 @@ class AgentWorker(object):
         safe=self._safe_area(area) or {}
         state={'training_available':bool(isinstance(area,dict)),'observed_at':_utc_now()}
         state.update(safe)
-        self._queue_result({'type':'character.control_state','protocol_version':3,'character_id':message.get('character_id'),
+        self._queue_result({'type':'character.control_state','protocol_version':PROTOCOL_VERSION,'character_id':message.get('character_id'),
                             'session_id':message.get('session_id'),'control_state':state})
 
     def report_control_state(self, force=False):
@@ -1076,6 +2054,7 @@ _gui_agent_token = None
 _gui_status = None
 _last_character_signature = None
 _last_character_sample_at = 0.0
+_last_resources_sample_at = 0.0
 # None means the plugin loaded after phBot may already have joined. In that case
 # event_loop can establish presence once get_character_data() returns a character.
 _character_joined = None
@@ -1215,6 +2194,17 @@ def joined_game():
     _load_active_profile()
 
 
+def handle_joymax(opcode, data):
+    """Observe bounded item packets passively and always forward them to phBot."""
+    if _worker is not None:
+        try:
+            _worker.capture_joymax_packet(opcode, data)
+        except Exception:
+            # A monitoring failure must never interfere with the game packet.
+            pass
+    return True
+
+
 def event_loop():
     # phBot calls this every 500 ms. Keep UI updates and profile detection here;
     # the worker owns backend I/O and only publishes its latest status string.
@@ -1228,7 +2218,7 @@ def event_loop():
 
 
 def _sample_character():
-    global _last_character_signature, _last_character_sample_at, _character_joined
+    global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined
     if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False:
         return
     try:
@@ -1281,6 +2271,21 @@ def _sample_character():
         return
     signature = json.dumps([identity,state],sort_keys=True,separators=(',',':'))
     now = _monotonic()
+    if now - _last_resources_sample_at >= RESOURCE_SAMPLE_INTERVAL_SECONDS:
+        try:
+            config_dir = _get_config_dir() if callable(_get_config_dir) else None
+        except Exception:
+            config_dir = None
+        try:
+            locale_getter = _optional_phbot_api('get_locale')
+            locale = locale_getter() if callable(locale_getter) else None
+        except Exception:
+            locale = None
+        try:
+            _worker.update_resource_inputs(identity, collect_resource_inputs(), config_dir, locale)
+            _last_resources_sample_at = now
+        except Exception as error:
+            _log('resource collection failed (' + error.__class__.__name__ + ')')
     if signature != _last_character_signature or now-_last_character_sample_at >= 5.0:
         _worker.update_character(identity,state)
         _last_character_signature = signature
@@ -1304,6 +2309,7 @@ def finished():
 
 if _PHBOT_AVAILABLE and _QtBind is not None:
     _gui = _QtBind.init(__name__, pName)
+    _QtBind.createLabel(_gui, 'Loaded: ' + pName + ' v' + pVersion + ' (item decoder r2)', 390, 10)
     _QtBind.createLabel(_gui, 'Backend WebSocket URL', 10, 10)
     _gui_backend_url = _QtBind.createLineEdit(_gui, '', 10, 30, 360, 20)
     _QtBind.createLabel(_gui, 'Agent ID', 10, 60)

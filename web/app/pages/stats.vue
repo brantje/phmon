@@ -6,8 +6,6 @@
       description="Live character state and saved character groups."
     />
 
-    <CharacterPanel />
-    <AgentPanel />
-    <OperationsPanels />
+    <CharacterPanel presentation="cards" />
   </div>
 </template>
