@@ -234,6 +234,30 @@ Also exercise a profile switch to prove one profile cannot silently reuse anothe
 profile's credentials. Record the observed module/import behavior and results here;
 do not infer them from desktop CPython or the simulator.
 
+### Death status and event source (verified 2026-09-28)
+
+- [Character API — `get_character_data()`](https://plugins.phbot.org/phbot-api/character)
+  includes a `dead: False` boolean in its documented example. PhMon samples this
+  field only when its runtime value is a Python boolean. Missing or non-boolean data
+  stays unknown; HP values do not imply alive/dead status.
+- [Events API — `handle_event(t, data)`](https://plugins.phbot.org/phbot-api/events)
+  documents `EVENT_DIED = 7` and specifies that its data is an empty string. The
+  callback records the occurrence; it supplies no cause, so PhMon stores and shows
+  `cause: unknown`. A dead-state snapshot alone never creates an event.
+- [Character API — `get_position()`](https://plugins.phbot.org/phbot-api/character)
+  documents optional region and x/y/z position. The event stores only numeric values
+  observed at callback time. This does not validate an outdoor-to-map transform;
+  the Deaths view keeps Map navigation disabled until Slice 7 validates a transform.
+- Collection is copied into the worker queue from `handle_event`; filesystem and
+  network operations stay out of phBot's callback. Repeat notifications are
+  coalesced until a live boolean alive observation or a new game-character join.
+
+This source mapping is implemented during Slice 4 as a bounded death increment of
+the Slice 5 event pipeline. It does not complete Slice 5's other event kinds,
+derived acquisition events, notification rules or general history screens. Actual
+phBot death-callback validation remains open because no character was operated for
+this increment.
+
 ## Slice 3 remote-command capability matrix (2026-09-27)
 
 The official API was rechecked during implementation. These rows describe public

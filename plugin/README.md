@@ -1,8 +1,8 @@
 # PhMon phBot plugin
 
-The current Slice 4 development release is **1.2.6** (`vsro_1188_passive_r2`, API evidence schema 2). It adds passive resource
-snapshots over agent protocol v4 while retaining backend compatibility with v2/v3
-agents. The plugin collects documented inventory, storage, pets, party and academy
+The current Slice 4 development release is **1.3.0** (`vsro_1188_passive_r2`, API evidence schema 2). It adds nullable live
+alive/dead status and durable phBot death callbacks over agent protocol v5 while
+retaining backend compatibility with v2/v3/v4 agents. The plugin collects documented inventory, storage, pets, party and academy
 state on phBot callbacks and sends bounded snapshots/deltas from its worker. Protocol
 v4 passively decodes only the bounded 0x3040 item-stat and 0x3052 durability updates
 when the active server is unambiguously selected as vSRO 1.188. Their layouts still
@@ -72,14 +72,22 @@ and urllib.parse; simulator CPython is not evidence for that gate.
 A dedicated worker thread owns WebSocket connect/read/write work. It polls readiness
 before starting a frame, then completes the frame under a bounded socket deadline; a
 mid-frame stall fails the connection rather than resuming from a partially consumed
-stream. The worker negotiates agent protocol v4 while the backend continues to accept
-v2/v3 agents. It sends independently probed capabilities and current character/session
+stream. The worker negotiates agent protocol v5 while the backend continues to accept
+v2/v3/v4 agents. It sends independently probed capabilities and current character/session
 state, then bounded resource baselines and revision-checked deltas. A separate bounded
 command queue is never coalesced with state samples. Network callbacks only validate
 and enqueue; `event_loop()` checks
 the live target, expiry, input schema and optional API availability again, then calls
 at most one fixed adapter. No phBot mutation runs on the network worker and no API
 is selected through arbitrary callable names.
+
+The documented Character API's boolean `dead` field is sampled only when it is a
+real boolean; missing or invalid values remain unknown. `EVENT_DIED` (7) is queued
+as an occurrence with a stable ID and explicit character/session identity, then
+removed from the bounded disk spool only after PostgreSQL acknowledges persistence
+or terminal rejection. Reconnect and process restart replay the same ID. A death
+snapshot alone never creates history, and the callback's empty data string does not
+establish a cause.
 
 Supported documented adapters include bot/trace start-stop, training area/radius,
 same-region walk, return scroll and disconnect. Walk requires `generate_path`,

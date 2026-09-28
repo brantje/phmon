@@ -6,8 +6,5 @@
       description="Live overview of your characters, recent activity and server."
     />
     <DashboardOverview />
-    <CharacterPanel />
-    <AgentPanel />
-    <OperationsPanels />
   </div>
 </template>

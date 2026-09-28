@@ -29,7 +29,7 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := database.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,13 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	serverName := "PhMonTest-" + credential.AgentID
+	otherServerName := "PhMonOtherTest-" + credential.AgentID
 	groupName := "phmontest-" + credential.AgentID
 	t.Cleanup(func() {
 		clean := context.Background()
 		_, _ = pool.Exec(clean, `DELETE FROM character_sessions WHERE agent_id=$1`, credential.AgentID)
 		_, _ = pool.Exec(clean, `DELETE FROM characters WHERE server_key=$1`, strings.ToLower(serverName))
+		_, _ = pool.Exec(clean, `DELETE FROM characters WHERE server_key=$1`, strings.ToLower(otherServerName))
 		_, _ = pool.Exec(clean, `DELETE FROM character_groups WHERE name=$1`, groupName)
 		_, _ = pool.Exec(clean, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
 	})
@@ -126,6 +128,41 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 	if responseCode != 200 || len(listed.Characters) != 1 || listed.Characters[0].ID != registration.CharacterID || !listed.Characters[0].Online || listed.Characters[0].Level == nil || *listed.Characters[0].Level != 110 {
 		t.Fatalf("unexpected character API result: code=%d data=%+v", responseCode, listed)
 	}
+	otherCharacterID, err := characterStore.Resolve(ctx, characters.Identity{Server: otherServerName, Name: "OtherAlpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []struct {
+		server string
+		want   string
+	}{
+		{server: serverName, want: registration.CharacterID},
+		{server: otherServerName, want: otherCharacterID},
+	} {
+		response, requestErr := http.Get(web.URL + "/api/characters?server=" + scope.server)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		var scoped struct {
+			Characters []characters.Character `json:"characters"`
+		}
+		decodeErr := json.NewDecoder(response.Body).Decode(&scoped)
+		response.Body.Close()
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		if response.StatusCode != http.StatusOK || len(scoped.Characters) != 1 || scoped.Characters[0].ID != scope.want {
+			t.Fatalf("character API crossed server scope %q: status=%d data=%+v", scope.server, response.StatusCode, scoped)
+		}
+	}
+	detailResponse, err := http.Get(web.URL + "/api/characters/" + registration.CharacterID + "?server=" + otherServerName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	detailResponse.Body.Close()
+	if detailResponse.StatusCode != http.StatusNotFound {
+		t.Fatalf("character detail should be hidden outside selected server, got %d", detailResponse.StatusCode)
+	}
 	groupRequest, err := http.NewRequest(http.MethodPost, web.URL+"/api/groups", strings.NewReader(`{"name":"`+groupName+`"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -155,6 +192,9 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 	if memberResponse.StatusCode != 204 {
 		t.Fatalf("member add failed: %d", memberResponse.StatusCode)
 	}
+	if err := characterStore.SetMember(ctx, group.ID, otherCharacterID, true); err != nil {
+		t.Fatal(err)
+	}
 	filtered, err := http.Get(web.URL + "/api/characters?group_id=" + group.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -166,8 +206,42 @@ func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
 	if err := json.NewDecoder(filtered.Body).Decode(&grouped); err != nil {
 		t.Fatal(err)
 	}
-	if len(grouped.Characters) != 1 || grouped.Characters[0].ID != registration.CharacterID {
+	var ownMember, otherMember bool
+	for _, item := range grouped.Characters {
+		ownMember = ownMember || item.ID == registration.CharacterID
+		otherMember = otherMember || item.ID == otherCharacterID
+	}
+	if len(grouped.Characters) != 2 || !ownMember || !otherMember {
 		t.Fatalf("group filter failed: %+v", grouped)
+	}
+	for _, scope := range []struct {
+		server string
+		want   string
+	}{
+		{server: serverName, want: registration.CharacterID},
+		{server: otherServerName, want: otherCharacterID},
+	} {
+		response, requestErr := http.Get(web.URL + "/api/groups?server=" + scope.server)
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		var scoped struct {
+			Groups []characters.Group `json:"groups"`
+		}
+		decodeErr := json.NewDecoder(response.Body).Decode(&scoped)
+		response.Body.Close()
+		if decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		var matched *characters.Group
+		for index := range scoped.Groups {
+			if scoped.Groups[index].ID == group.ID {
+				matched = &scoped.Groups[index]
+			}
+		}
+		if response.StatusCode != http.StatusOK || matched == nil || len(matched.Members) != 1 || matched.Members[0].ID != scope.want {
+			t.Fatalf("group API crossed server scope %q: status=%d group=%+v", scope.server, response.StatusCode, matched)
+		}
 	}
 	_ = conn.Close(websocket.StatusNormalClosure, "test complete")
 	deadline = time.Now().Add(2 * time.Second)

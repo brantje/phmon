@@ -6,8 +6,11 @@ same plugin has been validated inside a real phBot process.
 """
 import os
 import signal
+import shutil
 import sys
+import tempfile
 import time
+import uuid
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'plugin'))
@@ -22,27 +25,225 @@ def required(name):
     return value
 
 
+def wait_until(predicate, timeout, description):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return
+        time.sleep(0.05)
+    raise SystemExit("simulator timed out waiting for " + description)
+
+
+def run_death_events(worker, config, workers, stopping, spool_directory):
+    timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+    wait_until(lambda: "Connected" in worker.status, timeout, "backend connection")
+    ack_statuses = []
+    original_handler = worker._handle_server_message
+
+    def record_ack(message):
+        result = original_handler(message)
+        if isinstance(message, dict) and message.get("type") == "event.ack":
+            ack_statuses.append(message.get("status"))
+        return result
+
+    worker._handle_server_message = record_ack
+
+    old_values = {
+        "worker": PhMon._worker,
+        "available": PhMon._PHBOT_AVAILABLE,
+        "joined": PhMon._character_joined,
+        "signature": PhMon._last_character_signature,
+        "sample_at": PhMon._last_character_sample_at,
+        "resources_at": PhMon._last_resources_sample_at,
+        "death_active": PhMon._death_callback_active,
+        "character_getter": PhMon._get_character_data,
+        "position_getter": PhMon._get_position,
+        "zone_getter": PhMon._get_zone_name,
+    }
+    api = {"server": "Fixture Silkroad", "name": "DeathFixtureAlpha", "guild": ""}
+    position = {"region": 25000, "x": 10.0, "y": 20.0, "z": 0.0}
+    PhMon._worker = worker
+    PhMon._PHBOT_AVAILABLE = True
+    PhMon._character_joined = True
+    PhMon._death_callback_active = False
+    PhMon._get_character_data = lambda: dict(api)
+    PhMon._get_position = lambda: dict(position)
+    PhMon._get_zone_name = lambda _region: "Fixture Jangan"
+
+    def sample(dead_marker):
+        if dead_marker is None:
+            api.pop("dead", None)
+        else:
+            api["dead"] = dead_marker
+        PhMon._last_character_signature = None
+        PhMon._last_resources_sample_at = PhMon._monotonic()
+        PhMon._sample_character()
+        wait_until(
+            lambda: worker._latest_sample is not None
+            and (
+                "dead" not in worker._latest_sample.get("state", {})
+                if dead_marker is None
+                else worker._latest_sample.get("state", {}).get("dead") is dead_marker
+            ),
+            timeout,
+            "character state sample",
+        )
+
+    try:
+        sample(False)
+        wait_until(lambda: worker.character_id and worker.session_id, timeout, "character session registration")
+        first_character_id, first_session_id = worker.character_id, worker.session_id
+
+        sample(True)
+        time.sleep(0.25)
+        if ack_statuses:
+            raise SystemExit("a dead-state snapshot created a death event")
+
+        PhMon.handle_event(PhMon.EVENT_DIED, "")
+        PhMon.handle_event(PhMon.EVENT_DIED, "")
+        wait_until(lambda: len(ack_statuses) >= 1, timeout, "durable death acknowledgement")
+        if ack_statuses[0] != "persisted":
+            raise SystemExit("death event was not durably persisted: " + str(ack_statuses[0]))
+        if len(worker._death_spool.pending()) != 0:
+            raise SystemExit("persisted death event remained in the spool")
+        PhMon.handle_event(PhMon.EVENT_DIED, "")
+        time.sleep(0.25)
+        if len(ack_statuses) != 1:
+            raise SystemExit("repeated callback was not coalesced")
+
+        sample(False)
+        PhMon.handle_event(PhMon.EVENT_DIED, "")
+        wait_until(lambda: len(ack_statuses) >= 2, timeout, "second death after alive transition")
+        if ack_statuses[1] != "persisted":
+            raise SystemExit("second death event was not persisted")
+
+        sample(None)
+        if "dead" in worker._latest_sample.get("state", {}):
+            raise SystemExit("missing phBot death field did not remain unknown")
+
+        api["name"] = "DeathFixtureBeta"
+        api["dead"] = False
+        PhMon._last_character_signature = None
+        PhMon._sample_character()
+        wait_until(
+            lambda: worker._current_identity is not None
+            and worker._current_identity.get("name") == "DeathFixtureBeta"
+            and worker.character_id != first_character_id
+            and worker.session_id != first_session_id,
+            timeout,
+            "character session switch",
+        )
+        stale_event = {
+            "event_id": str(uuid.uuid4()),
+            "occurred_at": PhMon._worker_utc_now(worker),
+            "source": "phbot.callback",
+            "source_ref": "EVENT_DIED",
+            "payload": {"cause": "unknown"},
+            # Pair the old session with the newly switched character. This is
+            # rejected immediately by the ownership fence without waiting for
+            # the server's five-minute clock-skew window to expire.
+            "character_id": worker.character_id,
+            "session_id": first_session_id,
+        }
+        if not worker._death_spool.add(stale_event):
+            raise SystemExit("could not stage stale-session fixture")
+        wait_until(lambda: len(ack_statuses) >= 3, timeout, "stale-session rejection")
+        if ack_statuses[2] != "rejected":
+            raise SystemExit("stale-session death event was not rejected")
+
+        second_config = dict(config)
+        second_config["death_spool_path"] = os.path.join(spool_directory, "socket-two.json")
+        second_worker = PhMon.AgentWorker(second_config, "simulator-fixture")
+        workers.append(second_worker)
+        second_worker.start()
+        wait_until(lambda: "Connected" in second_worker.status, timeout, "second authenticated socket")
+        second_worker.update_character(
+            {"server": "Fixture Silkroad", "name": "DeathFixtureGamma", "guild": ""},
+            {"level": 50, "dead": False},
+        )
+        wait_until(lambda: second_worker.character_id and second_worker.session_id, timeout, "second socket character")
+        if worker.character_id == second_worker.character_id:
+            raise SystemExit("concurrent simulator sockets shared character identity")
+
+        replay = {
+            "event_id": str(uuid.uuid4()),
+            "occurred_at": PhMon._worker_utc_now(worker),
+            "source": "phbot.callback",
+            "source_ref": "EVENT_DIED",
+            "payload": {"cause": "unknown"},
+            "character_id": worker.character_id,
+            "session_id": worker.session_id,
+        }
+        if not worker._death_spool.add(replay):
+            raise SystemExit("could not stage reconnect replay fixture")
+        worker._death_retry_at[replay["event_id"]] = PhMon._monotonic() + 60.0
+        current_socket = worker._socket
+        if current_socket is None:
+            raise SystemExit("worker had no socket for reconnect fixture")
+        current_socket.close()
+        wait_until(
+            lambda: "Connected" in worker.status and worker.session_id != replay["session_id"],
+            timeout,
+            "reconnected character session",
+        )
+        worker._death_retry_at.pop(replay["event_id"], None)
+        wait_until(lambda: len(ack_statuses) >= 4, timeout, "spool replay acknowledgement")
+        if ack_statuses[3] != "persisted":
+            raise SystemExit("spooled death did not replay after reconnect")
+
+        print("PASS fixture alive/dead/unknown transitions, callback deduplication, character/session fencing, two sockets, reconnect, and spool replay")
+        return 0
+    finally:
+        stopping[0] = True
+        for current in workers:
+            current.stop()
+        for current in workers:
+            current.join(3.0)
+        PhMon._worker = old_values["worker"]
+        PhMon._PHBOT_AVAILABLE = old_values["available"]
+        PhMon._character_joined = old_values["joined"]
+        PhMon._last_character_signature = old_values["signature"]
+        PhMon._last_character_sample_at = old_values["sample_at"]
+        PhMon._last_resources_sample_at = old_values["resources_at"]
+        PhMon._death_callback_active = old_values["death_active"]
+        PhMon._get_character_data = old_values["character_getter"]
+        PhMon._get_position = old_values["position_getter"]
+        PhMon._get_zone_name = old_values["zone_getter"]
+
+
 def main():
+    scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
+    spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario == "death-events" else None
     config = {
         'backend_url': required('PHMON_AGENT_URL'),
         'agent_id': required('PHMON_AGENT_ID'),
         'agent_token': required('PHMON_AGENT_TOKEN'),
     }
+    if spool_directory:
+        config['death_spool_path'] = os.path.join(spool_directory, "socket-one.json")
     fake_calls = []
-    scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
     api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or True}) if scenario == 'commands' else None
     worker = PhMon.AgentWorker(config, 'simulator-fixture', api_adapter=api)
+    workers = [worker]
     stopping = [False]
 
     def stop(_signum=None, _frame=None):
         if stopping[0]:
             return
         stopping[0] = True
-        worker.stop()
+        for current in workers:
+            current.stop()
 
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     worker.start()
+
+    if scenario == "death-events":
+        try:
+            return run_death_events(worker, config, workers, stopping, spool_directory)
+        finally:
+            if spool_directory and os.path.isdir(spool_directory):
+                shutil.rmtree(spool_directory, ignore_errors=True)
 
     if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "character-lifecycle":
         deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))

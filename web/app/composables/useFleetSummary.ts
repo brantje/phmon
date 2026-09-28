@@ -1,4 +1,5 @@
 import type { CharacterView as Character } from '~~/shared/types/live'
+import { characterDeathState } from '../utils/characterDeath'
 
 export function useFleetSummary() {
   const {
@@ -6,6 +7,7 @@ export function useFleetSummary() {
     fleetCharacters: lastFleetCharacters,
     connectionState: liveConnectionState,
     liveStale,
+    freshnessNow,
   } = useLiveData()
   const { matchesServer } = useServerScope()
   const scopedCharacters = computed(() =>
@@ -20,6 +22,22 @@ export function useFleetSummary() {
     () =>
       scopedCharacters.value.filter((character) => !character.online).length,
   )
+  const deathCounts = computed(() => {
+    const result = { alive: 0, dead: 0, unknown: 0 }
+    for (const character of scopedCharacters.value) {
+      if (!character.online) continue
+      const state = characterDeathState(character, false, freshnessNow.value)
+      if (state === 'alive') result.alive += 1
+      else if (state === 'dead') result.dead += 1
+      else result.unknown += 1
+    }
+    return result
+  })
+  const displayDeathCount = (value: number) =>
+    liveConnectionState.value !== 'current' &&
+    scopedCharacters.value.length === 0
+      ? '—'
+      : String(value)
   const characterCountsUnknown = computed(
     () =>
       liveConnectionState.value !== 'current' &&
@@ -93,6 +111,10 @@ export function useFleetSummary() {
   return {
     onlineCharacterCount,
     offlineCharacterCount,
+    aliveCharacterCount: computed(() => deathCounts.value.alive),
+    deadCharacterCount: computed(() => deathCounts.value.dead),
+    unknownDeathCharacterCount: computed(() => deathCounts.value.unknown),
+    displayDeathCount,
     displayCharacterCount,
     combinedVitals,
     observedGold,

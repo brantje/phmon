@@ -10,6 +10,7 @@ import (
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
+	"phmon/server/internal/events"
 	"phmon/server/internal/resources"
 )
 
@@ -33,6 +34,7 @@ type Dependencies struct {
 	Dispatcher   *commands.Dispatcher
 	Live         *LiveHub
 	Resources    *resources.Store
+	Events       *events.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -65,6 +67,7 @@ func New(deps Dependencies) http.Handler {
 			live = NewLiveHub(deps.Agents, deps.Registry, deps.Characters)
 		}
 		live.SetResources(deps.Resources)
+		live.SetEvents(deps.Events)
 		handler := &agentHandler{
 			store:      deps.Agents,
 			registry:   deps.Registry,
@@ -73,9 +76,14 @@ func New(deps Dependencies) http.Handler {
 			live:       live,
 			commands:   deps.Commands,
 			resources:  deps.Resources,
+			events:     deps.Events,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)
+		if deps.Events != nil {
+			eventAPI := &eventHandler{store: deps.Events}
+			register("GET /api/events", false, eventAPI.list)
+		}
 		register("GET /api/agents", false, handler.list)
 		register("POST /api/agents/credentials", true, handler.createCredential)
 		if deps.Characters != nil {

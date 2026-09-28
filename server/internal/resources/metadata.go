@@ -7,16 +7,21 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-// Metadata belongs to a configured server dataset, never to a globally unique
-// model number. Presentation is attached on read, leaving observations intact.
+// Static SRO item definitions are shared by stable item code across servers.
+// Server profiles still resolve numeric model IDs; live item observations stay
+// attached to the item that phBot reported.
 type ItemMetadata struct {
-	Servers  map[string]string
-	Catalogs map[string]ItemCatalog
+	Servers             map[string]string
+	Catalogs            map[string]ItemCatalog
+	SharedIcons         map[string]string
+	SharedPresentations map[string]map[string]any
+	SharedMagicOptions  map[string]MagicOptionDefinition
 }
 type ItemCatalog struct {
 	DatasetID    string                           `json:"dataset_id"`
@@ -46,7 +51,16 @@ var referenceDecimal = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,12})?$
 var unsignedDecimal = regexp.MustCompile(`^(?:0|[1-9][0-9]{0,19})$`)
 
 func LoadItemMetadata(directory string) (*ItemMetadata, error) {
-	m := &ItemMetadata{Servers: map[string]string{}, Catalogs: map[string]ItemCatalog{}}
+	m := &ItemMetadata{
+		Servers:             map[string]string{},
+		Catalogs:            map[string]ItemCatalog{},
+		SharedIcons:         map[string]string{},
+		SharedPresentations: map[string]map[string]any{},
+		SharedMagicOptions:  map[string]MagicOptionDefinition{},
+	}
+	ambiguousIcons := map[string]bool{}
+	ambiguousPresentations := map[string]map[string]bool{}
+	ambiguousOptions := map[string]bool{}
 	read := func(path string, target any) error {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -84,10 +98,19 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 			if len(item.Code) == 0 || len(item.Code) > 256 {
 				return nil, fmt.Errorf("invalid item code")
 			}
+			addSharedPresentation(m.SharedPresentations, ambiguousPresentations, item.Code, item.Presentation)
 			if icon, ok := item.Presentation["icon_url"]; ok {
 				url, valid := icon.(string)
 				if !valid || !strings.HasPrefix(url, "/game-assets/") || strings.ContainsAny(url, "\\?#") || strings.Contains(url, "..") {
 					return nil, fmt.Errorf("invalid local item icon")
+				}
+				if !ambiguousIcons[item.Code] {
+					if existing, exists := m.SharedIcons[item.Code]; exists && existing != url {
+						delete(m.SharedIcons, item.Code)
+						ambiguousIcons[item.Code] = true
+					} else {
+						m.SharedIcons[item.Code] = url
+					}
 				}
 			}
 			if referenceStats, ok := item.Presentation["reference_stats"]; ok && !validReferenceStats(referenceStats) {
@@ -106,10 +129,45 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 					return nil, fmt.Errorf("invalid magic option raw range")
 				}
 			}
+			if !ambiguousOptions[id] {
+				if existing, exists := m.SharedMagicOptions[id]; exists && !reflect.DeepEqual(existing, option) {
+					delete(m.SharedMagicOptions, id)
+					ambiguousOptions[id] = true
+				} else {
+					m.SharedMagicOptions[id] = option
+				}
+			}
 		}
 		m.Catalogs[dataset] = catalog
 	}
 	return m, nil
+}
+
+func addSharedPresentation(index map[string]map[string]any, ambiguous map[string]map[string]bool, code string, presentation map[string]any) {
+	if code == "" || len(presentation) == 0 {
+		return
+	}
+	shared := index[code]
+	if shared == nil {
+		shared = map[string]any{}
+		index[code] = shared
+	}
+	conflicts := ambiguous[code]
+	for key, value := range presentation {
+		if conflicts != nil && conflicts[key] {
+			continue
+		}
+		if existing, exists := shared[key]; exists && !reflect.DeepEqual(existing, value) {
+			delete(shared, key)
+			if conflicts == nil {
+				conflicts = map[string]bool{}
+				ambiguous[code] = conflicts
+			}
+			conflicts[key] = true
+			continue
+		}
+		shared[key] = value
+	}
 }
 
 func validReferenceStats(raw any) bool {
@@ -159,13 +217,10 @@ func validReferenceDecimal(value string) bool {
 }
 
 func (m *ItemMetadata) enrich(server string, payload json.RawMessage) json.RawMessage {
-	if m == nil {
+	if m == nil || len(m.Catalogs) == 0 && len(m.SharedIcons) == 0 {
 		return payload
 	}
-	dataset, ok := m.Servers[strings.ToLower(strings.TrimSpace(server))]
-	if !ok {
-		return payload
-	}
+	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
 	catalog := m.Catalogs[dataset]
 	var root map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(payload))
@@ -181,28 +236,49 @@ func (m *ItemMetadata) enrich(server string, payload json.RawMessage) json.RawMe
 			if item == nil {
 				continue
 			}
-			model, ok := item["model"].(json.Number)
-			if !ok {
+			code, _ := item["servername"].(string)
+			var metadata map[string]any
+			var definition ItemDefinition
+			matchedServerDefinition := false
+			if dataset != "" {
+				if model, ok := item["model"].(json.Number); ok {
+					definition, matchedServerDefinition = catalog.Items[model.String()]
+					// A conflicting code is evidence that this is the wrong dataset/model.
+					if code != "" && code != definition.Code {
+						matchedServerDefinition = false
+					}
+				}
+			}
+			if matchedServerDefinition {
+				metadata = make(map[string]any, len(definition.Presentation)+2)
+				for key, value := range definition.Presentation {
+					metadata[key] = value
+				}
+			} else if code != "" {
+				if presentation, ok := m.SharedPresentations[code]; ok {
+					metadata = make(map[string]any, len(presentation))
+					for key, value := range presentation {
+						metadata[key] = value
+					}
+				}
+			}
+			if metadata == nil {
 				continue
 			}
-			definition, ok := catalog.Items[model.String()]
-			if !ok {
-				continue
+			if matchedServerDefinition {
+				metadata["dataset_id"] = dataset
 			}
-			// A conflicting code is evidence that this is the wrong dataset/model.
-			if code, ok := item["servername"].(string); ok && code != "" && code != definition.Code {
-				continue
-			}
-			metadata := make(map[string]any, len(definition.Presentation)+1)
-			for key, value := range definition.Presentation {
-				metadata[key] = value
-			}
-			metadata["dataset_id"] = dataset
 			item["metadata"] = metadata
-			if details := resolveAPIItemDetails(item, metadata, catalog.MagicOptions); details != nil {
-				item["instance_details"] = details
-			} else if instance, ok := item["instance"].(map[string]any); ok {
-				item["instance_details"] = resolveInstanceDetails(instance, metadata, catalog.MagicOptions)
+			if matchedServerDefinition || code != "" {
+				options := m.SharedMagicOptions
+				if matchedServerDefinition {
+					options = catalog.MagicOptions
+				}
+				if details := resolveAPIItemDetails(item, metadata, options); details != nil {
+					item["instance_details"] = details
+				} else if instance, ok := item["instance"].(map[string]any); ok {
+					item["instance_details"] = resolveInstanceDetails(instance, metadata, options)
+				}
 			}
 		}
 	}

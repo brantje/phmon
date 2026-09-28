@@ -4,7 +4,7 @@ export function useServerScope() {
     sameSite: 'lax',
     path: '/',
   })
-  const { fleetCharacters } = useLiveData()
+  const { fleetCharacters, groups } = useLiveData()
   const serverOptions = computed(() => {
     const servers = new Map<string, string>()
     for (const character of fleetCharacters.value) {
@@ -30,5 +30,20 @@ export function useServerScope() {
     serverScope.value === 'all' ||
     server.toLocaleLowerCase() === serverScope.value.toLocaleLowerCase()
 
-  return { serverScope, serverOptions, matchesServer }
+  const scopedGroups = computed(() =>
+    groups.value.flatMap((group) => {
+      if (serverScope.value === 'all') return [group]
+      const members = group.members.filter((member) =>
+        matchesServer(member.server),
+      )
+      // Empty groups have no server identity yet, so keep them available for
+      // management in the selected scope. Hide groups owned only by another
+      // server and show only matching members in cross-server groups.
+      return members.length > 0 || group.members.length === 0
+        ? [{ ...group, members }]
+        : []
+    }),
+  )
+
+  return { serverScope, serverOptions, matchesServer, scopedGroups }
 }

@@ -2,9 +2,34 @@
 const {
   onlineCharacterCount,
   offlineCharacterCount,
+  aliveCharacterCount,
+  deadCharacterCount,
+  unknownDeathCharacterCount,
   displayCharacterCount,
+  displayDeathCount,
   observedGold,
 } = useFleetSummary()
+const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
+  useLiveData()
+const { serverScope } = useServerScope()
+const lastDeaths = computed(
+  () => eventFeeds.value['dashboard-deaths']?.events || [],
+)
+const recentEvents = computed(
+  () => eventFeeds.value['dashboard-events']?.events || [],
+)
+
+function watchDashboardEvents(server: string) {
+  const filter = { server: server === 'all' ? undefined : server, limit: 5 }
+  setEventFeed('dashboard-deaths', { ...filter, kind: 'character.died' })
+  setEventFeed('dashboard-events', filter)
+}
+
+watch(serverScope, watchDashboardEvents, { immediate: true })
+onBeforeUnmount(() => {
+  clearEventFeed('dashboard-deaths')
+  clearEventFeed('dashboard-events')
+})
 </script>
 
 <template>
@@ -28,30 +53,59 @@ const {
           <span>Offline</span
           ><strong>{{ displayCharacterCount(offlineCharacterCount) }}</strong>
         </div>
-        <div class="dashboard-count later-count">
-          <span>Alive</span><strong>LATER</strong>
+        <div class="dashboard-count alive-count">
+          <span>Alive</span
+          ><strong>{{ displayDeathCount(aliveCharacterCount) }}</strong>
         </div>
-        <div class="dashboard-count later-count">
-          <span>Dead</span><strong>LATER</strong>
+        <div class="dashboard-count dead-count">
+          <span>Dead</span
+          ><strong>{{ displayDeathCount(deadCharacterCount) }}</strong>
         </div>
       </div>
+      <p v-if="unknownDeathCharacterCount" class="dashboard-unknown-count">
+        {{ unknownDeathCharacterCount }} online character status{{
+          unknownDeathCharacterCount === 1 ? '' : 'es'
+        }}
+        unknown
+      </p>
       <div class="dashboard-gold">
         <UIcon name="i-lucide-coins" /><span>Total Gold</span
         ><strong>{{ observedGold }}</strong>
       </div>
     </article>
 
-    <article class="panel dashboard-later dashboard-deaths">
+    <article class="panel dashboard-deaths">
       <div class="panel-header compact">
         <div>
           <h2>Last Deaths</h2>
           <p>Recent character deaths</p>
         </div>
-        <span class="later-badge">LATER</span>
+        <NuxtLink class="panel-link" to="/events?kind=character.died">
+          Show all deaths <UIcon name="i-lucide-arrow-up-right" />
+        </NuxtLink>
       </div>
-      <div class="later-content">
-        <UIcon name="i-lucide-skull" /><strong>LATER</strong
-        ><span>Event history arrives in a later slice.</span>
+      <div v-if="liveStale" class="event-stale-note" role="status">
+        Showing the last received events as stale.
+      </div>
+      <ul v-if="lastDeaths.length" class="dashboard-event-list">
+        <li v-for="item in lastDeaths" :key="item.event_id">
+          <UIcon name="i-lucide-skull" />
+          <NuxtLink :to="`/characters/${item.character_id}`">
+            <strong>{{ item.character }}</strong>
+            <span>Cause unknown · {{ item.server }}</span>
+          </NuxtLink>
+          <time :datetime="item.occurred_at">{{
+            formatTimestamp(item.occurred_at)
+          }}</time>
+        </li>
+      </ul>
+      <div v-else class="dashboard-event-empty">
+        <UIcon name="i-lucide-skull" />
+        <span>{{
+          connectionState === 'current'
+            ? 'No deaths recorded in this server scope.'
+            : 'Waiting for event history…'
+        }}</span>
       </div>
     </article>
 
@@ -69,17 +123,35 @@ const {
       </div>
     </article>
 
-    <article class="panel dashboard-later dashboard-events">
+    <article class="panel dashboard-events">
       <div class="panel-header compact">
         <div>
           <h2>Recent Events</h2>
-          <p>Latest activity across your characters</p>
+          <p>Latest recorded activity across your characters</p>
         </div>
-        <span class="later-badge">LATER</span>
+        <NuxtLink class="panel-link" to="/events">
+          Show recent events <UIcon name="i-lucide-arrow-up-right" />
+        </NuxtLink>
       </div>
-      <div class="later-content">
-        <UIcon name="i-lucide-clock-3" /><strong>LATER</strong
-        ><span>Timeline data arrives in a later slice.</span>
+      <ul v-if="recentEvents.length" class="dashboard-recent-list">
+        <li v-for="item in recentEvents" :key="item.event_id">
+          <UIcon name="i-lucide-skull" />
+          <NuxtLink :to="`/characters/${item.character_id}`">
+            <strong>{{ item.character }} died</strong>
+            <span>Cause unknown · {{ item.server }}</span>
+          </NuxtLink>
+          <time :datetime="item.occurred_at">{{
+            formatTimestamp(item.occurred_at)
+          }}</time>
+        </li>
+      </ul>
+      <div v-else class="dashboard-event-empty">
+        <UIcon name="i-lucide-clock-3" />
+        <span>{{
+          connectionState === 'current'
+            ? 'No recent events.'
+            : 'Waiting for event history…'
+        }}</span>
       </div>
     </article>
 

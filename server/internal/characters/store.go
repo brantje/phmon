@@ -35,6 +35,7 @@ type State struct {
 	Y          *float64 `json:"y"`
 	Z          *float64 `json:"z"`
 	Botting    *bool    `json:"botting"`
+	Dead       *bool    `json:"dead"`
 }
 type Character struct {
 	ID               string     `json:"character_id"`
@@ -62,6 +63,7 @@ type Character struct {
 	Y                *float64   `json:"y,omitempty"`
 	Z                *float64   `json:"z,omitempty"`
 	Botting          *bool      `json:"botting,omitempty"`
+	Dead             *bool      `json:"dead"`
 }
 type Group struct {
 	ID      string      `json:"group_id"`
@@ -143,7 +145,7 @@ func (s *Store) ClaimSessionID(ctx context.Context, agentID, characterID string,
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET ended_at=now(),last_activity_at=now(),end_reason='switched' WHERE character_id=$1 AND ended_at IS NULL`, characterID); err != nil {
 		return "", err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE characters SET level=NULL,hp=NULL,hp_max=NULL,mp=NULL,mp_max=NULL,current_exp=NULL,max_exp=NULL,sp=NULL,gold=NULL,region=NULL,zone_name=NULL,x=NULL,y=NULL,z=NULL,botting=NULL,state_updated_at=NULL,updated_at=now() WHERE character_id=$1`, characterID); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE characters SET level=NULL,hp=NULL,hp_max=NULL,mp=NULL,mp_max=NULL,current_exp=NULL,max_exp=NULL,sp=NULL,gold=NULL,region=NULL,zone_name=NULL,x=NULL,y=NULL,z=NULL,botting=NULL,dead=NULL,state_updated_at=NULL,updated_at=now() WHERE character_id=$1`, pgx.QueryExecModeExec, characterID); err != nil {
 		return "", err
 	}
 	var sessionID string
@@ -177,8 +179,14 @@ func (s *Store) SnapshotSession(ctx context.Context, agentID, characterID string
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE characters SET level=$2,hp=$3,hp_max=$4,mp=$5,mp_max=$6,current_exp=$7,max_exp=$8,sp=$9,gold=$10,region=$11,zone_name=$12,x=$13,y=$14,z=$15,botting=$16,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
-		return err
+	if _, err = tx.Exec(ctx, `UPDATE characters SET level=$2,hp=$3,hp_max=$4,mp=$5,mp_max=$6,current_exp=$7,max_exp=$8,sp=$9,gold=$10,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold); err != nil {
+		return fmt.Errorf("update character snapshot state: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE characters SET region=$2,zone_name=$3,x=$4,y=$5,z=$6,botting=$7,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
+		return fmt.Errorf("update character snapshot location: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE characters SET dead=$2,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Dead); err != nil {
+		return fmt.Errorf("update character death state: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
 		return err
@@ -206,12 +214,14 @@ func (s *Store) UpdateSession(ctx context.Context, agentID, characterID string, 
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE characters c SET
-level=$2,hp=$3,hp_max=$4,mp=$5,mp_max=$6,current_exp=$7,max_exp=$8,sp=$9,gold=$10,region=$11,zone_name=$12,
-x=$13,y=$14,z=$15,botting=$16,state_updated_at=now(),updated_at=now()
-WHERE c.character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting)
-	if err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE characters SET level=$2,hp=$3,hp_max=$4,mp=$5,mp_max=$6,current_exp=$7,max_exp=$8,sp=$9,gold=$10,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold); err != nil {
 		return fmt.Errorf("update character state: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE characters SET region=$2,zone_name=$3,x=$4,y=$5,z=$6,botting=$7,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
+		return fmt.Errorf("update character location: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE characters SET dead=$2,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Dead); err != nil {
+		return fmt.Errorf("update character death state: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
 		return err
@@ -307,17 +317,21 @@ func (s *Store) ReconcileInactiveSessionsChanged(ctx context.Context, generation
 }
 
 const selectCharacters = `SELECT c.character_id::text,c.server_name,c.character_name,c.guild_name,c.zone_name,
-(cs.session_id IS NOT NULL),cs.session_id::text,cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting
+(cs.session_id IS NOT NULL),cs.session_id::text,cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting,c.dead
 FROM characters c LEFT JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL`
 
 func scanCharacter(row pgx.Row) (Character, error) {
 	var c Character
-	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.SessionID, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting)
+	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.SessionID, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting, &c.Dead)
 	return c, err
 }
 func (s *Store) List(ctx context.Context, query string, groupID string) ([]Character, error) {
-	q := selectCharacters + ` WHERE ($1='' OR c.character_name ILIKE '%'||$1||'%' OR COALESCE(c.guild_name,'') ILIKE '%'||$1||'%' OR c.server_name ILIKE '%'||$1||'%' OR COALESCE(c.zone_name,'') ILIKE '%'||$1||'%') AND ($2='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=c.character_id AND m.group_id=$2::uuid)) ORDER BY c.server_name,c.character_name LIMIT 500`
-	rows, err := s.pool.Query(ctx, q, strings.TrimSpace(query), groupID)
+	return s.ListScoped(ctx, query, groupID, "")
+}
+
+func (s *Store) ListScoped(ctx context.Context, query string, groupID, server string) ([]Character, error) {
+	q := selectCharacters + ` WHERE ($1='' OR c.character_name ILIKE '%'||$1||'%' OR COALESCE(c.guild_name,'') ILIKE '%'||$1||'%' OR c.server_name ILIKE '%'||$1||'%' OR COALESCE(c.zone_name,'') ILIKE '%'||$1||'%') AND ($2='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=c.character_id AND m.group_id=$2::uuid)) AND ($3='' OR lower(c.server_name)=lower($3)) ORDER BY c.server_name,c.character_name LIMIT 500`
+	rows, err := s.pool.Query(ctx, q, strings.TrimSpace(query), groupID, strings.TrimSpace(server))
 	if err != nil {
 		return nil, err
 	}
@@ -333,14 +347,26 @@ func (s *Store) List(ctx context.Context, query string, groupID string) ([]Chara
 	return out, rows.Err()
 }
 func (s *Store) Get(ctx context.Context, id string) (Character, error) {
-	c, err := scanCharacter(s.pool.QueryRow(ctx, selectCharacters+` WHERE c.character_id=$1`, id))
+	return s.GetScoped(ctx, id, "")
+}
+
+func (s *Store) GetScoped(ctx context.Context, id, server string) (Character, error) {
+	c, err := scanCharacter(s.pool.QueryRow(ctx, selectCharacters+` WHERE c.character_id=$1 AND ($2='' OR lower(c.server_name)=lower($2))`, id, strings.TrimSpace(server)))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
 	return c, err
 }
 func (s *Store) Groups(ctx context.Context) ([]Group, error) {
-	rows, err := s.pool.Query(ctx, `SELECT group_id::text,name FROM character_groups ORDER BY name`)
+	return s.GroupsScoped(ctx, "")
+}
+
+func (s *Store) GroupsScoped(ctx context.Context, server string) ([]Group, error) {
+	server = strings.TrimSpace(server)
+	rows, err := s.pool.Query(ctx, `SELECT g.group_id::text,g.name FROM character_groups g
+WHERE $1='' OR NOT EXISTS(SELECT 1 FROM character_group_members m WHERE m.group_id=g.group_id)
+OR EXISTS(SELECT 1 FROM character_group_members m JOIN characters c ON c.character_id=m.character_id WHERE m.group_id=g.group_id AND lower(c.server_name)=lower($1))
+ORDER BY g.name`, server)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +378,7 @@ func (s *Store) Groups(ctx context.Context) ([]Group, error) {
 			return nil, err
 		}
 		g.Members = []Character{}
-		members, e := s.List(ctx, "", g.ID)
+		members, e := s.ListScoped(ctx, "", g.ID, server)
 		if e != nil {
 			return nil, e
 		}

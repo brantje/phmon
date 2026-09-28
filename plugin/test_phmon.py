@@ -474,6 +474,7 @@ class ResourceTransportTests(unittest.TestCase):
         self.frames = []
         self.client = type('Client', (), {'send_json': lambda _, frame: self.frames.append(frame)})()
 
+
     def test_resource_baseline_then_revision_checked_delta(self):
         original = {
             'inventory': {'availability': 'observed', 'slots': []},
@@ -564,7 +565,153 @@ class ResourceTransportTests(unittest.TestCase):
                 )
 
 
+class DeathEventTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        self.spool_path = os.path.join(self.root, 'deaths.json')
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        self.worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test_token',
+            'death_spool_path': self.spool_path,
+        }, 'fixture')
+        self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        self.worker._current_identity = self.identity
+        self.frames = []
+        self.client = type('Client', (), {'send_json': lambda _, frame: self.frames.append(frame)})()
+
+    def tearDown(self):
+        for path in (self.spool_path, self.spool_path + '.tmp'):
+            if os.path.exists(path):
+                os.unlink(path)
+        os.rmdir(self.root)
+
+    def death(self, event_id='00000000-0000-4000-8000-000000000001'):
+        return {
+            'event_id': event_id,
+            'occurred_at': plugin._utc_now(),
+            'source': 'phbot.callback',
+            'source_ref': 'EVENT_DIED',
+            'payload': {'cause': 'unknown'},
+        }
+
+    def test_spool_replays_same_stable_event_until_persisted_ack(self):
+        event = self.death()
+        self.assertTrue(self.worker.queue_death_event(self.identity, event))
+        self.worker._flush_death_events(self.client)
+        self.assertEqual(len(self.frames), 1)
+        self.assertEqual(self.frames[0]['type'], 'character.died')
+        self.assertEqual(self.frames[0]['event']['event_id'], event['event_id'])
+        self.assertEqual(self.frames[0]['character_id'], self.worker.character_id)
+        self.assertEqual(self.frames[0]['session_id'], self.worker.session_id)
+
+        recovered = plugin.DeathEventSpool(self.spool_path)
+        self.assertEqual(recovered.pending()[0]['event_id'], event['event_id'])
+        retry_worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test_token',
+            'death_spool_path': self.spool_path,
+        }, 'fixture')
+        replay = []
+        retry_worker._flush_death_events(type('Client', (), {'send_json': lambda _, frame: replay.append(frame)})())
+        self.assertEqual(replay[0]['event']['event_id'], event['event_id'])
+        retry_worker._handle_server_message({
+            'type': 'event.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'event_id': event['event_id'], 'status': 'retry',
+        })
+        self.assertEqual(len(retry_worker._death_spool.pending()), 1)
+        retry_worker._handle_server_message({
+            'type': 'event.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'event_id': event['event_id'], 'status': 'persisted',
+        })
+        self.assertEqual(retry_worker._death_spool.pending(), [])
+
+    def test_dead_snapshot_does_not_create_an_occurrence_and_switch_is_fenced(self):
+        self.worker.update_character(self.identity, {'dead': True})
+        self.worker._flush_death_events(self.client)
+        self.assertEqual(self.frames, [])
+
+        other_identity = {'server': 'Silkroad', 'name': 'Beta'}
+        self.assertFalse(self.worker.queue_death_event(other_identity, self.death()))
+        self.assertEqual(self.worker._death_samples.qsize(), 0)
+
+        self.worker._current_identity = other_identity
+        self.worker.character_id = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff'
+        self.worker.session_id = 'eeeeeeee-ffff-4111-8222-333333333333'
+        self.assertTrue(self.worker.queue_death_event(other_identity, self.death(
+            '00000000-0000-4000-8000-000000000002')))
+        self.worker._flush_death_events(self.client)
+        self.assertEqual(self.frames[-1]['character_id'], self.worker.character_id)
+        self.assertEqual(self.frames[-1]['session_id'], self.worker.session_id)
+
+    def test_death_callback_is_deduplicated_until_alive_or_character_switch(self):
+        previous_worker = plugin._worker
+        previous_active = plugin._death_callback_active
+        received = []
+        fake_worker = type('Worker', (), {'queue_death_event': lambda _, identity, event: received.append((identity, event)) or True})()
+        try:
+            plugin._worker = fake_worker
+            plugin._death_callback_active = False
+            with patch.object(plugin, '_get_character_data', return_value={'server': 'Silkroad', 'name': 'Alpha'}), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 1, 'y': 2, 'z': 3}), \
+                    patch.object(plugin, '_load_active_profile'):
+                plugin.handle_event(plugin.EVENT_DIED, '')
+                plugin.handle_event(plugin.EVENT_DIED, '')
+                self.assertEqual(len(received), 1)
+                self.assertEqual(received[0][1]['source_ref'], 'EVENT_DIED')
+                self.assertEqual(received[0][1]['payload']['cause'], 'unknown')
+                plugin.joined_game()
+                plugin.handle_event(plugin.EVENT_DIED, '')
+                self.assertEqual(len(received), 2)
+                self.assertNotEqual(received[0][1]['event_id'], received[1][1]['event_id'])
+        finally:
+            plugin._worker = previous_worker
+            plugin._death_callback_active = previous_active
+
+
 class CharacterCollectorTests(unittest.TestCase):
+    def test_dead_state_is_sent_only_when_phbot_returns_a_boolean(self):
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+            plugin._death_callback_active,
+        )
+        worker = Mock()
+        try:
+            plugin._worker = worker
+            plugin._character_joined = True
+            plugin._last_character_signature = None
+            plugin._last_character_sample_at = 0
+            plugin._last_resources_sample_at = time.monotonic()
+            plugin._death_callback_active = True
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_position', return_value=None), \
+                    patch.object(plugin, '_get_zone_name', return_value=None):
+                for raw_value, expected in ((True, True), (False, False), ('unknown', None)):
+                    data = {'server': 'Silkroad', 'name': 'Alpha'}
+                    if raw_value != 'unknown':
+                        data['dead'] = raw_value
+                    plugin._last_character_signature = None
+                    with patch.object(plugin, '_get_character_data', return_value=data):
+                        plugin._sample_character()
+                    state = worker.update_character.call_args.args[1]
+                    if expected is None:
+                        self.assertNotIn('dead', state)
+                    else:
+                        self.assertIs(state.get('dead'), expected)
+                    if expected is False:
+                        self.assertFalse(plugin._death_callback_active)
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at,
+             plugin._last_resources_sample_at, plugin._death_callback_active) = previous
+
     def test_character_rejection_stops_repeated_stale_updates(self):
         worker = plugin.AgentWorker({
             'backend_url': 'ws://127.0.0.1/agent',

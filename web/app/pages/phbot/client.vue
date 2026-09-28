@@ -8,6 +8,7 @@ const {
   clearCharacterCommandSubscriptions,
   liveStale,
 } = useLiveData()
+const { matchesServer, serverScope } = useServerScope()
 const targetID = ref('')
 const resultMessage = ref('No command has been submitted from this panel.')
 const errorMessage = ref('')
@@ -15,9 +16,23 @@ const sending = ref(false)
 const selectedCharacter = computed(
   () =>
     fleetCharacters.value.find(
-      (item) => item.character_id === targetID.value,
+      (item) =>
+        item.character_id === targetID.value && matchesServer(item.server),
     ) || null,
 )
+const selectableCharacters = computed(() =>
+  fleetCharacters.value.filter((item) => matchesServer(item.server)),
+)
+watch(serverScope, () => {
+  if (
+    targetID.value &&
+    !selectableCharacters.value.some(
+      (item) => item.character_id === targetID.value,
+    )
+  ) {
+    targetID.value = ''
+  }
+})
 let stopTargetWatch: (() => void) | undefined
 onMounted(() => {
   stopTargetWatch = watch(
@@ -114,7 +129,7 @@ async function goClientless() {
         >
           <option value="">Select a character</option>
           <option
-            v-for="character in fleetCharacters"
+            v-for="character in selectableCharacters"
             :key="character.character_id"
             :value="character.character_id"
           >

@@ -5,6 +5,31 @@ matrix separates API facts, published protocol references, implementation behavi
 and open real-runtime checks. Synthetic fixtures prove parser and state logic only;
 they are not phBot runtime evidence.
 
+## Shared SRO inventory assets and definitions — 2026-09-28
+
+SRO inventory presentation is shared across game servers. Items expose the stable
+`servername` code, so the backend indexes the local catalog by that code and reuses
+the complete static item presentation on servers without a mapped profile. This
+includes artwork, names, classification/type IDs, rarity/seal, requirements and
+reference-stat ranges. It also uses shared option definitions to interpret verified
+live item observations. Where multiple configured catalogs disagree on a field or
+option ID, that conflicting field is omitted from the shared index. Numeric model
+IDs remain profile-specific and are never used to guess cross-server metadata.
+
+Live values still come only from the current character's phBot item observation;
+shared definitions provide their labels and reference ranges. Static definitions do
+not create inventory, ownership or historical item events. The current local SRO
+catalog has 14,227 icon entries, all resolving to files under
+`web/public/game-assets`. The assets are local and are not server-owned character
+or inventory data.
+
+The shared-definition fallback is deployed to `10.25`. The backend `/readyz`
+endpoint and web `/api/health` both returned `status=ok,database=ok`; a bundled
+item icon returned HTTP 200. PostgreSQL stayed healthy and was not restarted.
+`go test ./internal/resources` verifies that a different server/model ID still gets
+the shared rarity and reference-based API stat calculation by item code. Authenticated
+visual confirmation against a live Servar inventory remains open.
+
 | Area | Evidence and implementation | Status / limit |
 | --- | --- | --- |
 | Basic and extended item fields | phBot documents model, server name, name, quantity, plus, durability, capacity and `None` empty slots: <https://plugins.phbot.org/phbot-api/inventory>. Live 20.1.1/plugin 1.2.6 observations add typed white/blue maps, current/max durability, attack/defense, parry/block/critical/rate and reinforcement/absorption fields. | 14 sanitized real items are checked in. 21 API field names were observed in the live agent data. Exact per-model presence varies; absent stays unavailable. |

@@ -28,6 +28,34 @@ export interface CharacterView {
   y?: number
   z?: number
   botting?: boolean | null
+  dead?: boolean | null
+}
+
+export interface ActivityEvent {
+  event_id: string
+  schema_version: number
+  kind: string
+  category: string
+  agent_id: string
+  character_id: string
+  session_id: string
+  server: string
+  character: string
+  occurred_at: string
+  received_at: string
+  source: string
+  source_ref: string
+  region?: number
+  x?: number
+  y?: number
+  z?: number
+  payload: Record<string, unknown>
+}
+
+export interface EventPage {
+  events: ActivityEvent[]
+  total: number
+  next_cursor?: string
 }
 
 export interface CharacterGroup {
@@ -44,6 +72,7 @@ export type LiveStream =
   | 'commands'
   | 'controls'
   | 'resources'
+  | 'events'
 
 export interface LiveFilter {
   q?: string
@@ -53,6 +82,11 @@ export interface LiveFilter {
   command_state?: string
   limit?: number
   resource_keys?: string[]
+  server?: string
+  kind?: string
+  from?: string
+  to?: string
+  cursor?: string
 }
 
 export interface LiveClientFrame {

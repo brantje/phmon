@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useId } from 'vue'
 import type { CharacterView } from '~~/shared/types/live'
+import { characterDeathState } from '../utils/characterDeath'
 
 const props = defineProps<{
   character: CharacterView
@@ -12,7 +13,11 @@ const {
   setCharacterResources,
   clearCharacterResources,
   connectionState,
+  freshnessNow,
 } = useLiveData()
+const deathState = computed(() =>
+  characterDeathState(props.character, false, freshnessNow.value),
+)
 const selectedTab = ref('Inventory')
 const selectedContainer = ref('storage')
 const cardElement = ref<HTMLElement | null>(null)
@@ -164,6 +169,15 @@ onBeforeUnmount(() => {
         <span>{{ character.guild || 'Guild unknown' }}</span>
       </div>
       <div class="character-presence">
+        <span class="death-chip" :class="`death-${deathState}`">
+          {{
+            deathState === 'unknown'
+              ? 'Unknown'
+              : deathState === 'dead'
+                ? 'Dead'
+                : 'Alive'
+          }}
+        </span>
         <span
           class="status-chip"
           :class="stale ? 'stale' : character.online ? 'online' : 'offline'"

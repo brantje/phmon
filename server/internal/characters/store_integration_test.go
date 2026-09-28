@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := database.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
@@ -36,11 +37,14 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	groupName := "slice2-test-" + credential.AgentID
+	otherServer := "Other-Slice2-Server"
 	t.Cleanup(func() {
 		cleanCtx := context.Background()
 		_, _ = pool.Exec(cleanCtx, `DELETE FROM character_sessions WHERE agent_id=$1`, credential.AgentID)
 		_, _ = pool.Exec(cleanCtx, `DELETE FROM characters WHERE server_key=$1`, "slice2-server")
+		_, _ = pool.Exec(cleanCtx, `DELETE FROM characters WHERE server_key=$1`, strings.ToLower(otherServer))
 		_, _ = pool.Exec(cleanCtx, `DELETE FROM character_groups WHERE name=$1`, groupName)
+		_, _ = pool.Exec(cleanCtx, `DELETE FROM character_groups WHERE name=$1`, groupName+"-other")
 		_, _ = pool.Exec(cleanCtx, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
 	})
 	store := NewStore(pool)
@@ -86,7 +90,8 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	}
 	level, hp, hpmax, mp, exp, sp, gold, region, x, y := 110, int64(500), int64(1000), int64(250), int64(900), int64(42), int64(99), 25000, 12.5, 33.25
 	zone := "Jangan"
-	fullState := State{Level: &level, HP: &hp, HPMax: &hpmax, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, Zone: &zone, X: &x, Y: &y}
+	dead := true
+	fullState := State{Level: &level, HP: &hp, HPMax: &hpmax, MP: &mp, CurrentEXP: &exp, SP: &sp, Gold: &gold, Region: &region, Zone: &zone, X: &x, Y: &y, Dead: &dead}
 	if err := store.ClaimSession(ctx, credential.AgentID, a, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +115,7 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !alpha.Online || alpha.Level == nil || *alpha.Level != 110 {
+	if !alpha.Online || alpha.Level == nil || *alpha.Level != 110 || alpha.Dead == nil || !*alpha.Dead {
 		t.Fatalf("alpha presence/state incorrect: %+v", alpha)
 	}
 	beta, err := store.Get(ctx, b)
@@ -162,7 +167,7 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alpha.Gold != nil || alpha.Zone != nil || alpha.HP == nil || *alpha.HP != hp {
+	if alpha.Gold != nil || alpha.Zone != nil || alpha.HP == nil || *alpha.HP != hp || alpha.Dead != nil {
 		t.Fatalf("new full snapshot retained stale state: %+v", alpha)
 	}
 	// A later explicit reconnect of the same durable identity reuses its ID.
@@ -264,5 +269,57 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("group did not persist membership")
+	}
+	otherCharacter, err := store.Resolve(ctx, Identity{Server: otherServer, Name: "OtherAlpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, group.ID, otherCharacter, true); err != nil {
+		t.Fatal(err)
+	}
+	otherGroup, err := store.CreateGroup(ctx, groupName+"-other")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMember(ctx, otherGroup.ID, otherCharacter, true); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, scope := range []struct {
+		server string
+		want   string
+	}{
+		{server: "sLiCe2-SeRvEr", want: a},
+		{server: "other-slice2-server", want: otherCharacter},
+	} {
+		results, err := store.ListScoped(ctx, "", group.ID, scope.server)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != 1 || results[0].ID != scope.want {
+			t.Fatalf("character list crossed server scope %q: %+v", scope.server, results)
+		}
+		scopedGroups, err := store.GroupsScoped(ctx, scope.server)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var shared, foreignOnly *Group
+		for index := range scopedGroups {
+			if scopedGroups[index].ID == group.ID {
+				shared = &scopedGroups[index]
+			}
+			if scopedGroups[index].ID == otherGroup.ID {
+				foreignOnly = &scopedGroups[index]
+			}
+		}
+		if shared == nil || len(shared.Members) != 1 || shared.Members[0].ID != scope.want {
+			t.Fatalf("group membership crossed server scope %q: shared=%+v", scope.server, shared)
+		}
+		if (scope.want == a) == (foreignOnly != nil) {
+			t.Fatalf("foreign-only group visibility incorrect in scope %q: %+v", scope.server, foreignOnly)
+		}
+	}
+	if _, err := store.GetScoped(ctx, a, otherServer); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("character detail crossed server scope: %v", err)
 	}
 }

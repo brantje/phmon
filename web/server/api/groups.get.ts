@@ -1,4 +1,4 @@
-import { defineEventHandler, setHeader } from 'h3'
+import { defineEventHandler, getQuery, setHeader } from 'h3'
 import { forwardProxyError } from '../utils/proxy'
 
 export default defineEventHandler(
@@ -8,6 +8,7 @@ export default defineEventHandler(
       return await $fetch<Record<string, unknown>>('/api/groups', {
         baseURL: useRuntimeConfig(event).backendUrl,
         headers: backendAuthHeaders(event),
+        query: getQuery(event),
         timeout: 3000,
         retry: 0,
       })
