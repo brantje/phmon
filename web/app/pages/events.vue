@@ -355,9 +355,11 @@ function localDateBoundary(value: string, addDays: number) {
                   class="event-character-link"
                   :to="`/characters/${item.character_id}`"
                 >
-                  <span class="event-avatar">{{
-                    (item.character || '?').slice(0, 1).toUpperCase()
-                  }}</span>
+                  <CharacterPortrait
+                    :name="item.character"
+                    :portrait-url="item.portrait_url"
+                    size="small"
+                  />
                   {{ item.character }}
                 </NuxtLink>
                 <span v-else>{{ item.character || '—' }}</span>

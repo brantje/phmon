@@ -12,11 +12,17 @@ func TestCharacterWireStateValidation(t *testing.T) {
 	negative := int64(-1)
 	region := 70000
 	coordinate := 1000001.0
+	validModel := int64(1907)
+	tooLargeModel := int64(4294967296)
+	zeroModel := int64(0)
 	valid := characters.State{Level: &level}
 	if !validWireState(valid) {
 		t.Fatal("valid level was rejected")
 	}
-	for _, state := range []characters.State{{}, {HP: &negative}, {Region: &region}, {X: &coordinate}} {
+	if !validWireState(characters.State{Model: &validModel}) {
+		t.Fatal("valid model-only state was rejected")
+	}
+	for _, state := range []characters.State{{}, {HP: &negative}, {Region: &region}, {X: &coordinate}, {Model: &zeroModel}, {Model: &negative}, {Model: &tooLargeModel}} {
 		if validWireState(state) {
 			t.Fatalf("invalid state accepted: %+v", state)
 		}

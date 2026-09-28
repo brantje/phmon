@@ -11,11 +11,13 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/resources"
 )
 
 type characterHandler struct {
-	store *characters.Store
-	live  *LiveHub
+	store     *characters.Store
+	live      *LiveHub
+	resources *resources.Store
 }
 
 func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -36,6 +38,9 @@ func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
+	}
+	for i := range items {
+		items[i] = characterWithPortrait(items[i], h.resources)
 	}
 	respondJSON(w, 200, map[string]any{"characters": items})
 }
@@ -60,6 +65,7 @@ func (h *characterHandler) get(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
+	item = characterWithPortrait(item, h.resources)
 	respondJSON(w, 200, item)
 }
 func (h *characterHandler) groups(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +81,7 @@ func (h *characterHandler) groups(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
+	items = groupsWithPortraits(items, h.resources)
 	respondJSON(w, 200, map[string]any{"groups": items})
 }
 func decodeGroupName(r *http.Request) (string, error) {
@@ -178,7 +185,10 @@ func (h *characterHandler) removeMember(w http.ResponseWriter, r *http.Request) 
 	h.member(w, r, false)
 }
 func validWireState(s characters.State) bool {
-	if s.Level == nil && s.HP == nil && s.HPMax == nil && s.MP == nil && s.MPMax == nil && s.CurrentEXP == nil && s.MaxEXP == nil && s.SP == nil && s.Gold == nil && s.Region == nil && s.Zone == nil && s.X == nil && s.Y == nil && s.Z == nil && s.Botting == nil && s.Dead == nil {
+	if s.Model == nil && s.Level == nil && s.HP == nil && s.HPMax == nil && s.MP == nil && s.MPMax == nil && s.CurrentEXP == nil && s.MaxEXP == nil && s.SP == nil && s.Gold == nil && s.Region == nil && s.Zone == nil && s.X == nil && s.Y == nil && s.Z == nil && s.Botting == nil && s.Dead == nil {
+		return false
+	}
+	if s.Model != nil && (*s.Model < 1 || *s.Model > 4294967295) {
 		return false
 	}
 	if s.Level != nil && (*s.Level < 0 || *s.Level > 255) {

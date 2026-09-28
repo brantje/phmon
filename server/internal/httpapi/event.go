@@ -9,6 +9,7 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/events"
+	"phmon/server/internal/resources"
 )
 
 func parseEventBound(value string, endOfDate bool) (time.Time, error) {
@@ -25,7 +26,10 @@ func parseEventBound(value string, endOfDate bool) (time.Time, error) {
 	return parsed.UTC(), nil
 }
 
-type eventHandler struct{ store *events.Store }
+type eventHandler struct {
+	store     *events.Store
+	resources *resources.Store
+}
 
 func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -84,5 +88,5 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
-	respondJSON(w, 200, page)
+	respondJSON(w, 200, eventsWithPortraits(page, h.resources))
 }

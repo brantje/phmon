@@ -81,13 +81,13 @@ func New(deps Dependencies) http.Handler {
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)
 		if deps.Events != nil {
-			eventAPI := &eventHandler{store: deps.Events}
+			eventAPI := &eventHandler{store: deps.Events, resources: deps.Resources}
 			register("GET /api/events", false, eventAPI.list)
 		}
 		register("GET /api/agents", false, handler.list)
 		register("POST /api/agents/credentials", true, handler.createCredential)
 		if deps.Characters != nil {
-			ch := &characterHandler{store: deps.Characters, live: live}
+			ch := &characterHandler{store: deps.Characters, live: live, resources: deps.Resources}
 			register("GET /api/characters", false, ch.list)
 			register("GET /api/characters/{id}", false, ch.get)
 			register("GET /api/groups", false, ch.groups)

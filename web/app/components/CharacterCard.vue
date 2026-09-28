@@ -152,13 +152,12 @@ onBeforeUnmount(() => {
     :class="{ 'is-stale': stale }"
   >
     <header class="character-card-header">
-      <NuxtLink
-        class="character-avatar-fallback"
+      <CharacterPortrait
+        :name="character.name"
+        :portrait-url="character.portrait_url"
+        size="card"
         :to="`/characters/${character.character_id}`"
-        :aria-label="`Open ${character.name} details`"
-      >
-        {{ character.name.slice(0, 1).toUpperCase() }}
-      </NuxtLink>
+      />
       <div class="character-card-identity">
         <NuxtLink
           class="character-card-name"
@@ -310,9 +309,11 @@ onBeforeUnmount(() => {
             }}.
           </div>
           <div class="equipment-center">
-            <div class="character-avatar-large">
-              {{ character.name.slice(0, 1).toUpperCase() }}
-            </div>
+            <CharacterPortrait
+              :name="character.name"
+              :portrait-url="character.portrait_url"
+              size="large"
+            />
             <strong>{{ character.name }}</strong
             ><span>{{
               character.level == null
