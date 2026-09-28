@@ -1164,13 +1164,14 @@ class CharacterCollectorTests(unittest.TestCase):
                     patch.object(plugin, '_get_position', return_value=None), \
                     patch.object(plugin, '_get_zone_name', return_value=None):
                 for raw_value, expected in ((True, True), (False, False), ('unknown', None)):
-                    data = {'server': 'Silkroad', 'name': 'Alpha'}
+                    data = {'server': 'Silkroad', 'name': 'Alpha', 'model': 1907}
                     if raw_value != 'unknown':
                         data['dead'] = raw_value
                     plugin._last_character_signature = None
                     with patch.object(plugin, '_get_character_data', return_value=data):
                         plugin._sample_character()
                     state = worker.update_character.call_args.args[1]
+                    self.assertEqual(state['model'], 1907)
                     if expected is None:
                         self.assertNotIn('dead', state)
                     else:
@@ -1181,6 +1182,37 @@ class CharacterCollectorTests(unittest.TestCase):
             (plugin._worker, plugin._character_joined,
              plugin._last_character_signature, plugin._last_character_sample_at,
              plugin._last_resources_sample_at, plugin._death_callback_active) = previous
+
+    def test_invalid_character_models_are_omitted_from_state(self):
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        )
+        worker = Mock()
+        try:
+            plugin._worker = worker
+            plugin._character_joined = True
+            plugin._last_character_sample_at = 0
+            plugin._last_resources_sample_at = time.monotonic()
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_position', return_value=None), \
+                    patch.object(plugin, '_get_zone_name', return_value=None):
+                for model in (0, -1, 4294967296, True, 1907.0, '1907'):
+                    plugin._last_character_signature = None
+                    with patch.object(
+                        plugin, '_get_character_data',
+                        return_value={'server': 'Silkroad', 'name': 'Alpha', 'model': model},
+                    ):
+                        plugin._sample_character()
+                    state = worker.update_character.call_args.args[1]
+                    self.assertNotIn('model', state, repr(model))
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at,
+             plugin._last_resources_sample_at) = previous
 
     def test_character_rejection_stops_repeated_stale_updates(self):
         worker = plugin.AgentWorker({

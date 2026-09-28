@@ -711,6 +711,7 @@ game icon returned HTTP 200. PostgreSQL stayed healthy and was not restarted. Th
 available browser is unauthenticated, so visual confirmation on a live character's
 Servar inventory remains open.
 
+
 ## Slice 6 — Chat implementation evidence (2026-09-28)
 
 - The user's open v0.5.0 screen was inspected read-only. It showed the sender selector,
@@ -736,3 +737,58 @@ Servar inventory remains open.
   migration/store integration and simulator end-to-end verification are also open
   because this shell has no `TEST_DATABASE_URL`. Plugin adapter unit tests use fake
   methods and do not establish real phBot integration.
+
+## Character portraits — 2026-09-28
+
+Character snapshots now optionally carry phBot's documented integer `model` from
+`get_character_data()`. Migration `000008` persists it as nullable `model_id`;
+claiming a new session clears the old value until a fresh state arrives, while
+ending a session retains the last observation for an offline character. Character,
+group, detail, live and death-event responses expose the model and a profile-scoped
+local `portrait_url`. Existing plug-ins remain compatible when they omit `model`.
+
+The mapping evidence and exact Chinese/European model ranges are recorded in
+[`character-portrait-investigation.md`](reference/character-portrait-investigation.md).
+The exporter joins entity model IDs to existing local character DDJ files only when
+the race/gender code agrees with the verified phMonitor v0.5.0 mapping. Rebuilding
+the active Greatest profile found 52 mapped models; `server/game-data` resolves all
+52 to distinct local PNGs, with no missing asset paths. Other profiles and unknown
+models retain the initials fallback. Pet-body, monster and other entity roles remain
+unmapped.
+
+The reusable portrait component is present in Stats cards and the character table,
+character detail, Dashboard death/event cards and the death-event list. Unknown
+models and absent or failed local images display initials. A temporary deterministic
+protocol fixture supplied model `1907`, an unknown model and one death event for
+visual review; fixture data was never written to the database or shipped. At
+1440×1000, 1280×800 and 390×844, Stats, detail and Deaths rendered the local portrait
+and initials fallback. The image loaded at 128×128, requests stayed on the local
+origin, and each page had zero horizontal document overflow. The 390 px check used a
+same-origin fixed-size iframe because the headless browser clamps its outer window
+to 500 px. Ignored screenshots are in
+`exports/portrait-fixture-screenshots/`; the 1440 px Stats capture was compared with
+[`phmonitor-stats.png`](reference/phmonitor-stats.png), and the Deaths capture with
+`phmonitor_screenshots/05-deaths.png`. The screenshots use clearly synthetic
+fixture names and demonstrate image presentation, not real phBot data.
+
+Plug-in, exporter and frontend tests passed; Go unit tests load the bundled profile
+and verify its 52 mappings. The database integration test for persistence/session
+fencing is present but was skipped because this worktree has no `TEST_DATABASE_URL`;
+no local PostgreSQL or phBot runtime is available. Those runtime checks remain open.
+
+### Live rollout — portraits, 2026-09-28
+
+Rebuilt and deployed the server and web services at `192.168.10.25` from the current
+Slice 5 implementation with portraits. The release snapshot is
+`/var/www/phmon/.deploy-character-portraits-20260928`; the existing PostgreSQL
+container was left running and retained the same container ID. Its migration ledger
+now includes `000008_character_portraits.sql` after Slice 5's `000007_event_pipeline.sql`.
+The web `/api/health` and Go `/readyz` endpoints both return HTTP 200 with
+`status=ok,database=ok`. The deployed web origin serves all 52 profile-mapped local
+portrait URLs as `image/png`; no external asset requests were introduced.
+
+The operator will upload the updated plugin separately. Until it sends a fresh
+character state with phBot's `model` field, character portraits use the initials
+fallback. Next verification is a live agent observation of a mapped `model_id` and
+the resulting portrait in Stats/detail/event views. PostgreSQL restart persistence
+and real phBot callback/runtime validation remain open.

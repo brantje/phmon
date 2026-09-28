@@ -1,0 +1,2 @@
+ALTER TABLE characters
+    ADD COLUMN model_id BIGINT CHECK (model_id IS NULL OR model_id BETWEEN 1 AND 4294967295);

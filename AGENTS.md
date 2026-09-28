@@ -3298,13 +3298,15 @@ comparison when a viewport below 500 CSS pixels is available. Keep the installed
 phBot runtime gate open until callback values can be observed. Keep
 `plugin/phMonitorAdapter.py` untouched.
 
+
 ### Resume — 2026-09-28 Slice 6 implementation
 
 The user authorized implementation of the planned Slice 6 increment on
 `codex/slice-6-chat-plan`, which branches from `main` at `dd9219f`. Work and evidence
 are recorded in `docs/slice-6-implementation-plan.md`, `docs/protocol.md`,
 `docs/phbot-capabilities.md` and `docs/reference-parity.md`. Added migration
-`000008_chat.sql`, transactionally projected chat history, read/contact/preferences
+`000009_chat.sql` after main's `000008_character_portraits.sql`, transactionally
+projected chat history, read/contact/preferences
 APIs, a revision-fenced live stream, `chat.send` validation and session capability
 modes, optional phBot chat adapter, responsive `/chat` UI and `/settings` notification
 controls. Global sends require confirmation; phBot API acceptance does not establish
@@ -3333,3 +3335,57 @@ are closed and preserve the separate real-runtime gate if phBot access remains
 unavailable. Next actions: capture authenticated local browser comparisons when
 backend authentication/data are available, and run the chat integration test with
 `TEST_DATABASE_URL` when PostgreSQL is available.
+
+### Resume — 2026-09-28 character portraits
+
+Implemented the requested portrait restoration in the isolated
+`codex/character-portraits` worktree at
+`C:\Users\sander\Documents\phmon-character-portraits`, created from `main`.
+The original Slice 5 checkout and its preexisting working-tree changes were left
+untouched. The plugin now samples the documented optional `get_character_data()`
+`model` value; the backend validates, persists and returns `model_id`, and clears it
+when a new character session is claimed while retaining it after disconnect. The
+active Greatest profile has 52 verified exporter joins and 52 profile-scoped local
+portrait URLs. Stats, character detail, Dashboard history and death/event views use
+the shared responsive component with initials fallback. Mapping evidence is in
+`docs/reference/character-portrait-investigation.md`; parity and asset ledgers were
+updated.
+
+Validation: 62 plugin tests, 50 exporter tests and full bundle validation passed;
+Go tests and `go vet ./...` passed; the new Go integration test also reads the
+persisted model through a fresh pool. That database integration test was skipped
+because `TEST_DATABASE_URL` and a local PostgreSQL service are unavailable. Frontend
+unit tests (4), typecheck, Prettier and production build passed; ESLint had 19
+HTML void-element warnings and no errors. A local deterministic protocol fixture
+rendered Stats, detail and Deaths at 1440×1000, 1280×800 and 390×844. The verified
+model image loaded locally, unknown and failed images showed initials, all requests
+stayed same-origin, and the pages had no horizontal overflow. Fixture screenshots
+are ignored under `exports/portrait-fixture-screenshots/`.
+
+The remaining portrait gates are the PostgreSQL-backed session/persistence test and
+real phBot runtime confirmation. Exact next action when a disposable database is
+available: set `$env:TEST_DATABASE_URL` and run `go test ./internal/characters
+./internal/httpapi` from `server/`, then record a supported phBot version check when
+that runtime is available. Keep overall Slice 2.5/4/5 status open for their other
+requirements.
+
+### Rollout follow-up — 2026-09-28
+
+Prepared a deployment worktree at `C:\Users\sander\Documents\phmon-portrait-rollout`
+on current `main` (`dd9219f`, Slice 5 PR #12), carrying the portrait implementation
+from the isolated `codex/character-portraits` worktree. Reconciled the canonical
+event query/UI with Slice 5 and kept migration `000008_character_portraits.sql`
+after `000007_event_pipeline.sql`. The original checkout and portrait implementation
+worktree remain unchanged.
+
+The integrated worktree passes Go tests and vet, 77 plugin tests, 50 exporter tests,
+Nuxt typecheck, 8 frontend unit tests, ESLint, Prettier and production build. Deployed
+the server and web from snapshot `/var/www/phmon/.deploy-character-portraits-20260928`.
+Migration `000008_character_portraits.sql` is recorded in the live PostgreSQL ledger;
+both `/readyz` and `/api/health` return `status=ok,database=ok`. The PostgreSQL
+container ID stayed unchanged. All 52 mapped local portrait URLs return HTTP 200 with
+`image/png`; no character has reported the new model field until the updated plugin is
+uploaded. Exact next action: operator uploads
+`plugin/PhMon.py` from this rollout worktree (plugin version 1.4.0), then verify a
+fresh character state carries `model_id` and the live UI renders the associated
+portrait. Keep real phBot runtime validation open until that observation succeeds.

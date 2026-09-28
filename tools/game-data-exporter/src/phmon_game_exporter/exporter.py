@@ -19,6 +19,7 @@ from . import __version__
 from .cli import ARCHIVES, _json_write
 from .mapgrid import infer_tile_grid_orientation
 from .item_metadata import item_metadata, magic_option_definitions
+from .portrait_mapping import PORTRAIT_MODEL_RANGES, portrait_for_model, portrait_source_path
 from .pk2 import Entry, PK2Archive, PK2Error, sha256_file
 from .textures import TextureError, ddj_to_png
 
@@ -436,6 +437,11 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             media_info = media.inventory()
             map_info = map_archive.inventory()
             media_index = _archive_index(media_info.entries)
+            portrait_entries = {
+                entry.path.casefold(): entry
+                for entry in media_info.entries
+                if entry.kind == 2 and _portrait_details(entry.path)
+            }
             asset_refs: list[dict[str, Any]] = []
             assets_by_hash: dict[str, dict[str, Any]] = {}
             converted_by_source: dict[str, tuple[bytes, int, int, str, str, str]] = {}
@@ -547,6 +553,8 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             entity_records: list[dict[str, Any]] = []
             entity_audit: list[dict[str, Any]] = []
             missing_entity_names = missing_entity_icons = 0
+            verified_portrait_joins = 0
+            portrait_models_by_path: dict[str, list[int]] = defaultdict(list)
             entity_list_entry = media_index.get(f"{TEXT_ROOT}characterdata.txt".casefold())
             entity_shards: list[tuple[str, Entry]] = []
             if entity_list_entry is None:
@@ -583,6 +591,23 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                             missing_entity_names += 1
                         record_id = f"entity:{dataset_id}:{ref_id}"
                         associated = _source_path(fields[54])
+                        portrait_asset_key = None
+                        portrait_mapping_status = "unmapped"
+                        portrait = portrait_for_model(ref_id)
+                        if portrait is not None:
+                            race, gender = portrait[:2]
+                            race_code = "CH" if race == "ch" else "EU"
+                            gender_code = "MAN" if gender == "man" else "WOMAN"
+                            expected_code_prefix = f"CHAR_{race_code}_{gender_code}_"
+                            portrait_path = portrait_source_path(ref_id)
+                            assert portrait_path is not None
+                            portrait_path = portrait_path.casefold()
+                            portrait_entry = portrait_entries.get(portrait_path)
+                            if fields[2].startswith(expected_code_prefix) and portrait_entry is not None:
+                                _, portrait_asset_key = _candidate_identity(dataset_id, "portrait", portrait_entry)
+                                portrait_mapping_status = "verified-phmonitor-model-v050"
+                                portrait_models_by_path[portrait_path].append(ref_id)
+                                verified_portrait_joins += 1
                         asset_key = None
                         if associated:
                             source_entry = media_index.get(associated)
@@ -598,10 +623,10 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                                     converted_by_source=converted_by_source,
                                     source_audit=asset_refs,
                                 )
-                                entity_audit.append({"recordId": record_id, "table": table_path, "row": line_number, "assetStatus": "converted", "assetSourcePath": associated})
+                                entity_audit.append({"recordId": record_id, "table": table_path, "row": line_number, "assetStatus": "converted", "assetSourcePath": associated, "portraitMappingStatus": portrait_mapping_status, "portraitAssetKey": portrait_asset_key})
                             else:
                                 missing_entity_icons += 1
-                                entity_audit.append({"recordId": record_id, "table": table_path, "row": line_number, "assetStatus": "missing", "assetSourcePath": associated})
+                                entity_audit.append({"recordId": record_id, "table": table_path, "row": line_number, "assetStatus": "missing", "assetSourcePath": associated, "portraitMappingStatus": portrait_mapping_status, "portraitAssetKey": portrait_asset_key})
                         entity_records.append({
                             "id": record_id,
                             "referenceId": ref_id,
@@ -609,12 +634,13 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                             "name": {"en": display_name} if display_name else {},
                             "description": None,
                             "associatedIconAssetKey": asset_key,
-                            "portraitAssetKey": None,
+                            "portraitAssetKey": portrait_asset_key,
+                            "portraitMappingStatus": portrait_mapping_status,
                             "classification": "unmapped",
                         })
                         table_audit["normalized"] += 1
                     _json_write(audit / "tables" / f"entities-{shard_ordinal:06d}.json", table_audit)
-            unresolved.append({"family": "entities", "reason": "character portrait, pet class and full-body artwork roles cannot be joined from the available verified references"})
+            unresolved.append({"family": "entities", "reason": "pet class and full-body artwork roles remain unresolved; character portraits use only the explicit phMonitor v0.5.0 model mapping"})
             entity_records.sort(key=lambda row: row["referenceId"])
             _json_write(bundle / "catalogs" / "entities.json", _catalog(dataset_id, "entities", "partial", entity_records, recordCount=len(entity_records), locales=["en"]))
 
@@ -870,17 +896,29 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 if group_names_missing or group_icon_missing or group_mastery_unmatched:
                     unresolved.append({"family": "skillGroups", "reason": f"{group_names_missing} labels, {group_icon_missing} icons and {group_mastery_unmatched} mastery joins remain unresolved"})
 
-            # Candidate-only portrait files are intentionally separate from entity
-            # records; filenames distinguish race/gender/ordinal but do not prove
-            # which client entity uses a portrait or which pet role it represents.
+            # Portrait model ranges are verified against phMonitor v0.5.0's
+            # charPortraitAssetByModel implementation; unrelated entities and pet
+            # roles remain unmapped.
             portrait_records = []
-            for entry in sorted((entry for entry in media_info.entries if entry.kind == 2 and _portrait_details(entry.path)), key=lambda entry: (entry.path.casefold(), entry.path)):
+            for entry in sorted(portrait_entries.values(), key=lambda entry: (entry.path.casefold(), entry.path)):
                 race, gender, ordinal = _portrait_details(entry.path) or ("", "", 0)
                 candidate_id, asset_key = _candidate_identity(dataset_id, "portrait", entry)
                 _, width, height = _write_asset(staging_bundle=bundle, category="images", entry=entry, archive=media, semantic_key=asset_key, assets_by_hash=assets_by_hash, converted_by_source=converted_by_source, source_audit=asset_refs)
-                portrait_records.append({"id": candidate_id, "displayName": f"{race} {gender} portrait candidate {ordinal}", "raceLabel": race, "genderLabel": gender, "candidateNumber": ordinal, "assetKey": asset_key, "width": width, "height": height, "mappingStatus": "unmapped-candidate"})
-            _json_write(bundle / "catalogs" / "portraits.json", _catalog(dataset_id, "portraits", "partial" if portrait_records else "unresolved", portrait_records, recordCount=len(portrait_records), entityRoleMappingStatus="unresolved"))
-            unresolved.append({"family": "portraits", "reason": "candidate portrait art is exported, but no verified join assigns it to an entity or character identity"})
+                model_ids = sorted(portrait_models_by_path.get(entry.path.casefold(), []))
+                portrait_records.append({"id": candidate_id, "displayName": f"{race} {gender} portrait candidate {ordinal}", "raceLabel": race, "genderLabel": gender, "candidateNumber": ordinal, "assetKey": asset_key, "width": width, "height": height, "mappingStatus": "verified-character-model" if model_ids else "unmapped-candidate", "mappedModelIds": model_ids})
+            _json_write(bundle / "catalogs" / "portraits.json", _catalog(dataset_id, "portraits", "partial" if portrait_records else "unresolved", portrait_records, recordCount=len(portrait_records), entityRoleMappingStatus="verified-character-models" if verified_portrait_joins else "unresolved", mappedModelCount=verified_portrait_joins))
+            if not verified_portrait_joins:
+                unresolved.append({"family": "portraits", "reason": "no character entity rows matched the explicit phMonitor v0.5.0 model mapping"})
+            _json_write(audit / "tables" / "portrait-model-joins.json", {
+                "mappingSource": "phMonitor v0.5.0 charPortraitAssetByModel static analysis",
+                "mappingStatus": "verified-character-models" if verified_portrait_joins else "unresolved",
+                "modelRanges": [
+                    {"race": race, "gender": gender, "minimum": minimum, "maximum": maximum}
+                    for race, gender, minimum, maximum in PORTRAIT_MODEL_RANGES
+                ],
+                "joinedModels": sorted({model for models in portrait_models_by_path.values() for model in models}),
+                "joinCount": verified_portrait_joins,
+            })
 
             # Small, curated non-control symbol families. Pressed/focused/button
             # states and complete control atlases are excluded by filename allowlists.
@@ -1192,11 +1230,11 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 "assets": asset_rows,
                 "coverage": {
                     "items": {"records": len(item_records), "namesResolved": len(item_records) - missing_item_names, "descriptionsMissing": missing_item_descriptions, "iconsMissing": missing_item_icons},
-                    "entities": {"records": len(entity_records), "namesResolved": len(entity_records) - missing_entity_names, "iconsMissing": missing_entity_icons, "portraitJoins": 0},
+                    "entities": {"records": len(entity_records), "namesResolved": len(entity_records) - missing_entity_names, "iconsMissing": missing_entity_icons, "portraitJoins": verified_portrait_joins},
                     "skills": {"records": len(skill_records), "namesResolved": len(skill_records) - missing_skill_names, "descriptionsResolved": len(skill_records) - missing_skill_descriptions, "recordsWithIcons": sum(row["iconAssetKey"] is not None for row in skill_records), "uniqueReferencedIconAssets": len(skill_icon_asset_keys), "missingReferencedIcons": missing_skill_icons, "unmappedArtCandidates": len(skill_art_candidates) if skill_index_entry else 0},
                     "masteries": {"records": len(mastery_records), "namesResolved": len(mastery_records) - missing_mastery_names, "descriptionsResolved": len(mastery_records) - missing_mastery_descriptions, "recordsWithIcons": sum(row["iconAssetKey"] is not None for row in mastery_records), "missingReferencedIcons": missing_mastery_icons, "unmappedArtCandidates": len(mastery_art_candidates)},
                     "skillGroups": {"records": len(group_records), "namesResolved": len(group_records) - group_names_missing, "missingIcons": group_icon_missing, "unmatchedMasteryReferences": group_mastery_unmatched},
-                    "portraits": {"candidateImages": len(portrait_records), "entityMappings": 0},
+                    "portraits": {"candidateImages": len(portrait_records), "entityMappings": verified_portrait_joins},
                     "pets": {"verifiedRoleMappings": 0, "status": "unresolved"},
                     "interfaceSymbols": {"candidateImages": len(interface_records), "buttonStatesIncluded": False},
                     "maps": {"tiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "gridOrientations": {row["tileSetId"]: row["status"] for row in tile_set_orientations}, "worldTransformsValidated": False},
@@ -1218,11 +1256,11 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 "completionStatus": completion_status,
                 "families": {
                     "items": {"discovered": len(item_records), "parsed": len(item_records), "named": len(item_records) - missing_item_names, "convertedIconReferences": sum(r["assetStatus"] == "converted" for r in item_audit), "missingIcons": missing_item_icons, "missingDescriptions": missing_item_descriptions, "nameTextAudit": item_text_audit},
-                    "entities": {"discovered": len(entity_records), "parsed": len(entity_records), "named": len(entity_records) - missing_entity_names, "convertedAssociatedIcons": sum(r["assetStatus"] == "converted" for r in entity_audit), "missingIcons": missing_entity_icons, "nameTextAudit": object_text_audit},
+                    "entities": {"discovered": len(entity_records), "parsed": len(entity_records), "named": len(entity_records) - missing_entity_names, "convertedAssociatedIcons": sum(r["assetStatus"] == "converted" for r in entity_audit), "missingIcons": missing_entity_icons, "portraitJoins": verified_portrait_joins, "nameTextAudit": object_text_audit},
                     "skills": {"discovered": len(skill_records), "parsedRecords": len(skill_records), "named": len(skill_records) - missing_skill_names, "descriptionsResolved": len(skill_records) - missing_skill_descriptions, "recordsWithIcons": sum(row["iconAssetKey"] is not None for row in skill_records), "uniqueReferencedIconAssets": len(skill_icon_asset_keys), "missingIconReferences": missing_skill_icons, "unmappedImageCandidates": len(skill_art_candidates) if skill_index_entry else 0, "localizationAudit": skill_text_audit},
                     "masteries": {"discovered": len(mastery_records), "parsedRecords": len(mastery_records), "named": len(mastery_records) - missing_mastery_names, "descriptionsResolved": len(mastery_records) - missing_mastery_descriptions, "recordsWithIcons": sum(row["iconAssetKey"] is not None for row in mastery_records), "missingIconReferences": missing_mastery_icons, "unmappedImageCandidates": len(mastery_art_candidates)},
                     "skillGroups": {"discovered": len(group_records), "parsedRecords": len(group_records), "named": len(group_records) - group_names_missing, "missingIcons": group_icon_missing, "unmatchedMasteryReferences": group_mastery_unmatched},
-                    "portraits": {"candidateImagesConverted": len(portrait_records), "entityMappings": 0},
+                    "portraits": {"candidateImagesConverted": len(portrait_records), "entityMappings": verified_portrait_joins},
                     "pets": {"verifiedRoleMappings": 0, "status": "unresolved"},
                     "interfaceSymbols": {"candidateImagesConverted": len(interface_records), "groups": dict(sorted(Counter(row["symbolGroup"] for row in interface_records).items()))},
                     "maps": {"minimapTiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "tileSetOrientations": tile_set_orientations, "MapPk2Tile2dMetadataEntries": map_metadata_count, "rootTileSetId": root_tile_set_id, "regionGridMatchedRecords": matched_region_tile_count, "regionRecordsWithoutExactRootTile": len(missing_region_tile_rows), "worldCoordinateTransforms": "unvalidated"},
@@ -1232,7 +1270,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "sounds": {"status": "not-in-scope by operator instruction"},
                     "interfaceControls": {"status": "not-in-scope by operator instruction"},
                 },
-                "unresolved": unresolved + ([{"family": "items", "reason": f"{missing_item_names} item names and {missing_item_descriptions} descriptions could not be joined from available localization rows"}] if missing_item_names or missing_item_descriptions else []) + ([{"family": "items", "reason": f"{missing_item_icons} associated item icons are missing"}] if missing_item_icons else []) + ([{"family": "entities", "reason": f"{missing_entity_names} names and {missing_entity_icons} associated icons unresolved; portrait/full-body role mapping is not available"}] if missing_entity_names or missing_entity_icons else []),
+                "unresolved": unresolved + ([{"family": "items", "reason": f"{missing_item_names} item names and {missing_item_descriptions} descriptions could not be joined from available localization rows"}] if missing_item_names or missing_item_descriptions else []) + ([{"family": "items", "reason": f"{missing_item_icons} associated item icons are missing"}] if missing_item_icons else []) + ([{"family": "entities", "reason": f"{missing_entity_names} names and {missing_entity_icons} associated icons unresolved; pet/full-body artwork roles remain unmapped"}] if missing_entity_names or missing_entity_icons else []),
                 "excluded": [{"family": family, "reason": reason} for family, reason in EXCLUDED_BY_OPERATOR.items()],
                 "mapSourceDecision": "Map.pk2 selected; Map - copia.pk2 is backup and excluded",
             })
@@ -1279,6 +1317,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             "teleportLinkCount": len(teleport_links),
             "backgroundCount": len(background_records),
             "portraitCandidateCount": len(portrait_records),
+            "portraitModelJoinCount": verified_portrait_joins,
             "interfaceSymbolCount": len(interface_records),
             "unresolvedFamilyCount": len(unresolved),
             "sourceKnowledgeRequired": False,

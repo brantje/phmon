@@ -523,6 +523,9 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
+		for i := range items {
+			items[i] = characterWithPortrait(items[i], h.resources)
+		}
 		return map[string]any{"characters": items}, nil
 	case "character":
 		if h.characters == nil {
@@ -535,7 +538,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"character": item}, nil
+		return map[string]any{"character": characterWithPortrait(item, h.resources)}, nil
 	case "groups":
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")
@@ -544,7 +547,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"groups": groups}, nil
+		return map[string]any{"groups": groupsWithPortraits(groups, h.resources)}, nil
 	case "commands":
 		if h.commands == nil {
 			return nil, errors.New("command history unavailable")
@@ -591,7 +594,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			filter.To = &value
 		}
 		page, err := h.events.List(ctx, filter)
-		return page, err
+		return eventsWithPortraits(page, h.resources), err
 	case "chat":
 		if h.chat == nil {
 			return nil, errors.New("chat history unavailable")

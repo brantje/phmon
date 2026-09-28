@@ -162,10 +162,16 @@ onBeforeUnmount(() => {
       </div>
       <ul v-if="lastDeaths.length" class="dashboard-event-list">
         <li v-for="item in lastDeaths" :key="item.event_id">
-          <UIcon name="i-lucide-skull" />
           <NuxtLink :to="`/characters/${item.character_id}`">
-            <strong>{{ item.character }}</strong>
-            <span>Cause unknown · {{ item.server }}</span>
+            <CharacterPortrait
+              :name="item.character"
+              :portrait-url="item.portrait_url"
+              size="small"
+            />
+            <span class="dashboard-event-identity">
+              <strong>{{ item.character }}</strong>
+              <span>Cause unknown · {{ item.server }}</span>
+            </span>
           </NuxtLink>
           <time :datetime="item.occurred_at">{{
             formatTimestamp(item.occurred_at)
@@ -213,8 +219,15 @@ onBeforeUnmount(() => {
             v-if="item.event.character_id"
             :to="`/characters/${item.event.character_id}`"
           >
-            <strong>{{ eventHeadline(item.event) }}</strong>
-            <span>{{ eventObservers(item) }}</span>
+            <CharacterPortrait
+              :name="item.event.character"
+              :portrait-url="item.event.portrait_url"
+              size="small"
+            />
+            <span class="dashboard-event-identity">
+              <strong>{{ eventHeadline(item.event) }}</strong>
+              <span>{{ eventObservers(item) }}</span>
+            </span>
           </NuxtLink>
           <div v-else>
             <strong>{{ eventHeadline(item.event) }}</strong>

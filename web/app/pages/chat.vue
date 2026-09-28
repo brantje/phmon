@@ -378,6 +378,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="chat-page">
+    <!-- eslint-disable vue/html-self-closing -->
     <PageHeader
       title="Chat"
       icon="i-lucide-messages-square"

@@ -9,6 +9,10 @@ entry/hash provenance stays in exporter-only audit files, never in app-facing bu
 data. Screenshots remain reference material; never crop their assets into the application. The
 `phmonitor_screenshots/` directory was already untracked and remains untouched.
 
+Current portrait mapping status was updated on 2026-09-28 in the final addendum;
+earlier zero-join statements below record the preceding export and are superseded
+for the active Greatest profile only.
+
 ## Confirmed exporter boundary (2026-09-27)
 
 Use GreatestSRO archives for all client assets, including maps. Export finished
@@ -426,3 +430,27 @@ bytes). This supersedes the earlier ignored-output notes above, which describe t
 state at the time those checks ran. The source PK2 archives and exporter-only audit
 remain outside Git. Coverage and semantic gaps are unchanged by tracking these
 files.
+
+### Character portrait model joins (2026-09-28)
+
+Static inspection of the operator-authorized
+`%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` confirmed the model-to-face mapping
+documented in [`character-portrait-investigation.md`](reference/character-portrait-investigation.md).
+The exporter uses that mapping against source `Media.pk2` DDJ paths and joins only
+when the exported entity code has the matching race/gender prefix. It emitted
+`audit/tables/portrait-model-joins.json` with the verified ranges and joined IDs.
+
+The fresh export of the active `gamedata-47c969ded0613d4c2a22` profile contains 52
+portrait candidates and 52 verified entity-model joins. The profile's
+`character_portraits` metadata resolves those IDs to 52 distinct local PNG paths;
+all paths exist in `web/public/game-assets/interface/character/`. `pets` and
+unmapped entity roles remain unresolved, so this closes only the player-face mapping
+gap for this profile. The stable-model mapping is documented in the exporter and
+its generated bundle, not inferred from asset filename order.
+
+Validation: `python -m pytest tools/game-data-exporter/tests -q` passed 50 tests;
+standalone bundle validation passed with zero dangling asset references. The
+temporary browser fixture rendered Stats, detail and Deaths at 1440×1000,
+1280×800 and 390×844; screenshots are kept locally under the ignored
+`exports/portrait-fixture-screenshots/` directory. No client archive or audit tree
+was added to Git.

@@ -1,6 +1,7 @@
 # Slice 6 — Chat plan and implementation record
 
-Prepared 2026-09-28 on `codex/slice-6-chat-plan` from `main` at `dd9219f`.
+Prepared 2026-09-28 on `codex/slice-6-chat-plan` from `main` at `dd9219f`; the
+branch now includes current `main` commit `8771ce3` for character portraits.
 The user subsequently authorized execution on this branch. The implementation
 increment is in place, but Slice 6 acceptance remains **in progress** because the
 PostgreSQL integration suite and real phBot callback/API observations are unavailable
@@ -33,7 +34,8 @@ open Party Setup/item gates; do not mislabel them as Slice 6 completion.
   history. Earlier read-only inspection showed separate General and Private views.
   Existing checked-in desktop/mobile screenshots remain the visual baseline; no
   message text or private conversation content was copied into evidence.
-- Added `000008_chat.sql`, transactionally projected inbound canonical events and
+- Added `000009_chat.sql` (after main's character portrait migration `000008`),
+  transactionally projected inbound canonical events and
   outbound audited commands, bounded cursor/contact/read APIs, a revision-fenced live
   chat stream, and operator-scoped sound/browser preferences. A uniquely matching
   echo is linked only within the same session, exact channel/text/peer and ten-second
@@ -106,7 +108,7 @@ open Party Setup/item gates; do not mislabel them as Slice 6 completion.
    original message unchanged. Version the payload/mapping so older `unknown`
    events remain interpretable; backfill only types whose meaning is proven for
    their recorded profile. Never parse arbitrary chat text into an item or offer.
-2. Add migration `000008_chat.sql` for a projection keyed by canonical `event_id`
+2. Add migration `000009_chat.sql` for a projection keyed by canonical `event_id`
    for inbound rows and `command_id` for outbound rows, with exactly one origin per
    row. Keep first-class server, character, channel, normalized private peer,
    occurred time and stable sort ID, plus appropriate indexes. The authoritative

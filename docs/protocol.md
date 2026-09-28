@@ -858,7 +858,7 @@ documented opcode/version allowlist and a captured fixture before activation.
 
 ## Slice 6: chat history and commands (2026-09-28)
 
-Migration `000008_chat.sql` builds `chat_messages` as a rebuildable projection of
+Migration `000009_chat.sql` builds `chat_messages` as a rebuildable projection of
 canonical inbound `activity_events` and audited outbound `commands`. The inbound event
 remains authoritative; `event_id` is the projection identity, replay is idempotent,
 and legacy chat events are backfilled as `unknown` unless they already carry a

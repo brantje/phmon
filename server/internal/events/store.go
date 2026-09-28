@@ -86,6 +86,8 @@ type Event struct {
 	X           *float64        `json:"x,omitempty"`
 	Y           *float64        `json:"y,omitempty"`
 	Z           *float64        `json:"z,omitempty"`
+	ModelID     *int64          `json:"model_id,omitempty"`
+	PortraitURL string          `json:"portrait_url,omitempty"`
 	Payload     json.RawMessage `json:"payload"`
 	Sequence    *int64          `json:"sequence,omitempty"`
 	DedupeKey   string          `json:"dedupe_key,omitempty"`
@@ -764,7 +766,7 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
-	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,'')
+	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id
 `+base+` AND ($9::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($9::timestamptz,$10::uuid))
 ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $11`, filter.Server, filter.CharacterID, filter.CharacterQuery,
 		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, cursorAt, cursorID, filter.Limit+1)
@@ -785,7 +787,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $11`, filter.Server, filter.Ch
 	}
 	for rows.Next() {
 		var item Event
-		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode); err != nil {
+		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID); err != nil {
 			return Page{}, err
 		}
 		page.Events = append(page.Events, item)

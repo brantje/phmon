@@ -11,10 +11,42 @@ from PIL import Image
 from phmon_game_exporter import exporter
 from phmon_game_exporter.cli import validate_bundle
 from phmon_game_exporter.item_metadata import item_metadata, magic_option_definitions
+from phmon_game_exporter.portrait_mapping import portrait_for_model, portrait_source_path
 from phmon_game_exporter.pk2 import ArchiveInfo, Entry
 from phmon_game_exporter.preview import _map_sheet, _safe_bundle_file
 from phmon_game_exporter.public_assets import ensure_public_asset_destination, validate_public_assets
 from .helpers import ddj_rgba
+
+
+@pytest.mark.parametrize(
+    ("model", "filename"),
+    [
+        (1907, "char_ch_man1.png"),
+        (1919, "char_ch_man13.png"),
+        (1920, "char_ch_woman1.png"),
+        (1932, "char_ch_woman13.png"),
+        (14717, "char_eu_man1.png"),
+        (14729, "char_eu_man13.png"),
+        (14875, "char_eu_man1.png"),
+        (14887, "char_eu_man13.png"),
+        (14730, "char_eu_woman1.png"),
+        (14742, "char_eu_woman13.png"),
+        (14888, "char_eu_woman1.png"),
+        (14900, "char_eu_woman13.png"),
+    ],
+)
+def test_verified_phmonitor_character_portrait_model_ranges(model, filename):
+    assert portrait_for_model(model)[3] == filename
+
+
+@pytest.mark.parametrize("model", [0, -1, 1906, 1920 + 13, 14716, 14901, True, "1907"])
+def test_unknown_or_invalid_models_have_no_portrait_mapping(model):
+    assert portrait_for_model(model) is None
+
+
+def test_verified_portrait_mapping_targets_source_ddj_before_png_conversion():
+    assert portrait_source_path(1907) == "interface/character/char_ch_man1.ddj"
+    assert portrait_source_path(14900) == "interface/character/char_eu_woman13.ddj"
 
 
 def _text(value: str) -> bytes:

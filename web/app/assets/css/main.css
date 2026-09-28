@@ -1064,6 +1064,11 @@ select:focus-visible {
 .character-table td {
   height: 49px;
 }
+.character-table-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .character-table td small {
   display: block;
   margin-top: 2px;
@@ -1841,20 +1846,39 @@ select:focus-visible {
   gap: 0.65rem;
   padding: 0.55rem 0.65rem;
 }
-.character-avatar-fallback,
-.character-avatar-large {
+.character-portrait {
   display: grid;
-  flex: 0 0 54px;
-  width: 54px;
-  height: 54px;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
   place-items: center;
   border: 1px solid #6b6148;
   border-radius: 8px;
   background: radial-gradient(circle at 35% 28%, #495b66, #192530 68%);
   color: var(--ph-primary);
-  font-size: 1.4rem;
+  font-size: 1rem;
   font-weight: 700;
   text-decoration: none;
+}
+.character-portrait img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.character-portrait.portrait-card {
+  flex-basis: 54px;
+  width: 54px;
+  height: 54px;
+  font-size: 1.4rem;
+}
+.character-portrait.portrait-large {
+  flex-basis: 70px;
+  width: 70px;
+  height: 92px;
+  font-size: 1.7rem;
+  border-radius: 7px;
 }
 .character-card-identity {
   display: grid;
@@ -1901,7 +1925,7 @@ select:focus-visible {
 .dashboard-recent-list li {
   display: grid;
   min-width: 0;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   border: 1px solid rgba(76, 91, 111, 0.38);
@@ -1910,19 +1934,18 @@ select:focus-visible {
   padding: 6px 8px;
 }
 
-.dashboard-event-list > li > svg,
-.dashboard-recent-list > li > svg {
-  width: 15px;
-  height: 15px;
-  color: #db8790;
-}
-
 .dashboard-event-list li > a,
 .dashboard-recent-list li > a {
-  display: grid;
+  display: flex;
   min-width: 0;
+  align-items: center;
+  gap: 7px;
   color: var(--ph-text);
   text-decoration: none;
+}
+.dashboard-event-identity {
+  display: grid;
+  min-width: 0;
 }
 
 .dashboard-event-list li > a:hover strong,
@@ -2149,17 +2172,6 @@ select:focus-visible {
   color: var(--ph-primary);
 }
 
-.event-avatar {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid #48596e;
-  border-radius: 6px;
-  background: #1d2b3a;
-  color: #dfd39f;
-}
-
 .map-event-link {
   display: inline-flex;
   min-width: 30px;
@@ -2241,12 +2253,13 @@ select:focus-visible {
 
   .dashboard-event-list li,
   .dashboard-recent-list li {
-    grid-template-columns: 17px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .dashboard-event-list time,
   .dashboard-recent-list time {
-    grid-column: 2;
+    grid-column: 1;
+    margin-left: 43px;
   }
 }
 .character-card-tabs {

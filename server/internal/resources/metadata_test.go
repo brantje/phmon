@@ -27,6 +27,75 @@ func TestMetadataIdentityAndPrecision(t *testing.T) {
 	}
 }
 
+func TestCharacterPortraitResolutionIsScopedToServerProfile(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "servers.json"), []byte(`{"greatest":"gamedata-a","other":"gamedata-b"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for name, catalog := range map[string]string{
+		"gamedata-a": `{"dataset_id":"gamedata-a","items":{},"character_portraits":{"1907":{"code":"CHAR_CH_MAN_ADVENTURER","portrait_url":"/game-assets/interface/character/char_ch_man1.png"}}}`,
+		"gamedata-b": `{"dataset_id":"gamedata-b","items":{},"character_portraits":{"1907":{"code":"CHAR_CH_MAN_ADVENTURER","portrait_url":"/game-assets/interface/character/char_ch_man2.png"}}}`,
+	} {
+		if err := os.WriteFile(filepath.Join(directory, name+".json"), []byte(catalog), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metadata, err := LoadItemMetadata(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := int64(1907)
+	if got := metadata.PortraitURL("Greatest", &model); got != "/game-assets/interface/character/char_ch_man1.png" {
+		t.Fatalf("Greatest portrait = %q", got)
+	}
+	if got := metadata.PortraitURL("other", &model); got != "/game-assets/interface/character/char_ch_man2.png" {
+		t.Fatalf("other profile portrait = %q", got)
+	}
+	if got := metadata.PortraitURL("unmapped", &model); got != "" {
+		t.Fatalf("unmapped server received a cross-profile portrait: %q", got)
+	}
+	if got := metadata.PortraitURL("greatest", nil); got != "" {
+		t.Fatalf("missing model received a portrait: %q", got)
+	}
+}
+
+func TestCharacterPortraitCatalogRejectsRemoteAndUnlistedFiles(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "servers.json"), []byte(`{"greatest":"gamedata-test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, url := range []string{"https://example.test/portrait.png", "/game-assets/other/portrait.png", "/game-assets/interface/character/char_ch_man14.png"} {
+		catalog := `{"dataset_id":"gamedata-test","items":{},"character_portraits":{"1907":{"code":"CHAR_CH_MAN_ADVENTURER","portrait_url":"` + url + `"}}}`
+		if err := os.WriteFile(filepath.Join(directory, "gamedata-test.json"), []byte(catalog), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadItemMetadata(directory); err == nil {
+			t.Fatalf("invalid portrait URL accepted: %s", url)
+		}
+	}
+}
+
+func TestBundledGreatestPortraitCatalogHasVerifiedLocalMappings(t *testing.T) {
+	metadata, err := LoadItemMetadata(filepath.Join("..", "..", "game-data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := metadata.Catalogs[metadata.Servers["greatest"]]
+	if len(catalog.CharacterPortraits) != 52 {
+		t.Fatalf("bundled character portrait mapping count = %d, want 52", len(catalog.CharacterPortraits))
+	}
+	for model, expectedURL := range map[int64]string{
+		1907:  "/game-assets/interface/character/char_ch_man1.png",
+		1932:  "/game-assets/interface/character/char_ch_woman13.png",
+		14875: "/game-assets/interface/character/char_eu_man1.png",
+		14900: "/game-assets/interface/character/char_eu_woman13.png",
+	} {
+		if got := metadata.PortraitURL("greatest", &model); got != expectedURL {
+			t.Errorf("model %d portrait = %q, want %q", model, got, expectedURL)
+		}
+	}
+}
+
 func TestSharedSROItemMetadataFallbackUsesItemCodeAcrossServers(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "servers.json"), []byte(`{"greatest":"gamedata-test"}`), 0600); err != nil {

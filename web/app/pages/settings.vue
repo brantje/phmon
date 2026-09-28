@@ -40,6 +40,7 @@ async function enableNotifications() {
 
 <template>
   <div class="settings-page">
+    <!-- eslint-disable vue/html-self-closing -->
     <PageHeader
       title="Settings"
       icon="i-lucide-settings"
@@ -63,14 +64,14 @@ async function enableNotifications() {
             in the background.
           </p>
         </div>
-        <label class="switch-label"
-          ><input
+        <label class="switch-label">
+          <input
             v-model="localSound"
             type="checkbox"
             :disabled="busy || !ready"
             @change="toggleSound"
-          /><span>Enabled</span></label
-        >
+          /><span>Enabled</span>
+        </label>
       </div>
       <div class="preference-row">
         <div>
