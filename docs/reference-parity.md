@@ -730,9 +730,15 @@ Servar inventory remains open.
 - Dashboard now shows the three latest canonical `chat.message_received` events with
   sender, channel and message preview, linking each row to the corresponding chat
   context. Empty state remains in the same stacked recent-chat card.
-- Explicitly named callback types are preserved and normalized by literal name;
-  numeric/unknown types remain in an Advanced-mode Unknown lane until verified on a
-  recorded runtime. The channel mapping therefore remains partially unverified.
+- The operator confirmed numeric callback mappings from phBot 20.1.2: `1` is
+  General/All, `4` is Party, `5` is Guild and `6` is Global. The active server had
+  144 inbound records across those raw values; the source event payloads and chat
+  projection were corrected, and migration 10 makes that correction repeatable.
+  Unknown numeric values remain in the Advanced-mode Unknown lane.
+- At the operator's direction, every channel uses flat chronological log rows with
+  sender/time labels. General and other channels do not use private-message bubble
+  alignment. The local chat page passes Nuxt typecheck, unit tests, formatting and
+  production build; authenticated browser comparison remains open.
 - Browser comparison at 1440×1000, 1280×800 and 390×844 is still open. PostgreSQL
   migration/store integration and simulator end-to-end verification are also open
   because this shell has no `TEST_DATABASE_URL`. Plugin adapter unit tests use fake

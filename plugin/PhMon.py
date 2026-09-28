@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.4.0'
+pVersion = '1.4.1'
 pUrl = ''
 
 PROTOCOL_VERSION = 6
@@ -3158,7 +3158,7 @@ def _lifecycle_event(kind, source_ref, include_identity=False):
 
 
 def handle_chat(chat_type, player, message):
-    """Preserve raw type; normalize only explicit self-describing channel names."""
+    """Preserve raw type and normalize the verified phBot channel values."""
     try:
         character = _get_character_data()
     except Exception:
@@ -3171,11 +3171,12 @@ def handle_chat(chat_type, player, message):
         return
     sender = _bounded_text(player, 64)
     raw_type = _bounded_text(chat_type, 64)
-    named_channels = {
+    known_channels = {
         'all': 'general', 'general': 'general', 'private': 'private',
         'party': 'party', 'guild': 'guild', 'union': 'union', 'global': 'global',
+        '1': 'general', '4': 'party', '5': 'guild', '6': 'global',
     }
-    channel = named_channels.get(raw_type.lower()) if isinstance(raw_type, str) else None
+    channel = known_channels.get(raw_type.strip().lower()) if isinstance(raw_type, str) else None
     payload = {
         'channel': channel or 'unknown',
         'raw_type': raw_type,

@@ -11,7 +11,7 @@ in this environment. Keep the canonical requirements in `AGENTS.md`.
 
 | Existing contract | Slice 6 use or required change |
 | --- | --- |
-| `plugin/PhMon.py` `handle_chat` | Protocol v6 spools `chat.message_received` through the Slice 5 event batch. It preserves bounded text/raw type, maps only explicit named strings and retains numeric/unknown values as `channel: "unknown"`. Preserve that single inbound transport. |
+| `plugin/PhMon.py` `handle_chat` | Protocol v6 spools `chat.message_received` through the Slice 5 event batch. It preserves bounded text/raw type, normalizes named strings and operator-confirmed numeric values 1 (General/All), 4 (Party), 5 (Guild) and 6 (Global), and leaves other values unknown. Preserve that single inbound transport. |
 | `activity_events`, `server/internal/events` | Durable, idempotent event IDs, session sequence, scope and ordered query exist. Extend chat validation only after verifying channel meanings. Chat history must be derived from these rows. |
 | `server/internal/commands` and `/api/commands` | Authenticated, idempotent, session-fenced, audited command lifecycle exists. Add a typed chat command and per-channel capability modes here. |
 | `web/app/composables/useLiveData.ts` and Go `LiveHub` | One browser WebSocket already manages subscriptions, revisions and stale state. Add chat invalidation/snapshots to it. |

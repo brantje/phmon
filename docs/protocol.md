@@ -845,9 +845,12 @@ commits the event to disk.
 Normal drops (`drop.item`) and rare drops (`drop.rare`) remain distinct. The published
 callbacks supply an equippable item model ID only; the pipeline does not turn that into
 an item-instance snapshot. Inbound chat preserves bounded message text and raw chat
-type. Explicit, named channel strings are normalized literally (`all`/`general`,
-`private`, `party`, `guild`, `union`, `global`); numeric and unrecognized types remain
-`unknown` until the type mapping is confirmed on a supported runtime. `alchemy_update`
+type. Explicit channel names are normalized (`all`/`general`, `private`, `party`,
+`guild`, `union`, `global`). On 2026-09-28 the operator confirmed these numeric
+`handle_chat` mappings from the active phBot 20.1.2 runtime: `1` is General/All, `4`
+is Party, `5` is Guild, and `6` is Global. The plugin normalizes those values while
+retaining the raw type; other numeric and unrecognized values remain `unknown`.
+`alchemy_update`
 creates one attempt event and `EVENT_ALCHEMY_FINISHED` one
 completion event. Reliable party, academy, pet and owned-container transitions come
 from identity-aware snapshots; startup, reconnect, missing containers and sampling
@@ -858,7 +861,8 @@ documented opcode/version allowlist and a captured fixture before activation.
 
 ## Slice 6: chat history and commands (2026-09-28)
 
-Migration `000009_chat.sql` builds `chat_messages` as a rebuildable projection of
+Migrations `000009_chat.sql` and `000010_chat_numeric_channels.sql` build and normalize
+`chat_messages` as a rebuildable projection of
 canonical inbound `activity_events` and audited outbound `commands`. The inbound event
 remains authoritative; `event_id` is the projection identity, replay is idempotent,
 and legacy chat events are backfilled as `unknown` unless they already carry a
@@ -873,6 +877,11 @@ contacts, unread counts and durable per-operator read cursors. The existing `/ap
 WebSocket has a revision-fenced `chat` stream. `GET`/`PUT /api/chat/preferences`
 persist browser-notification and local-sound choices for the configured operator.
 Migration and store integration tests are gated on `TEST_DATABASE_URL`.
+
+The operator-confirmed numeric callback types are stored with canonical channels by
+the plugin and backfilled for existing `unknown` records by migration 10. All chat
+channels render as a flat chronological log with sender labels; messages do not use
+private-message bubble alignment.
 
 Outbound `chat.send` takes exactly `{channel,text,recipient?}` and uses the existing
 authenticated, idempotent, session-fenced, audited command lifecycle. The plugin calls

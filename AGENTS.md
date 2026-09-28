@@ -3302,7 +3302,8 @@ phBot runtime gate open until callback values can be observed. Keep
 ### Resume — 2026-09-28 Slice 6 implementation
 
 The user authorized implementation of the planned Slice 6 increment on
-`codex/slice-6-chat-plan`, which branches from `main` at `dd9219f`. Work and evidence
+`codex/slice-6-chat-plan`, now rebased by merge commit `43181b2` onto `main` commit
+`8771ce3`. Work and evidence
 are recorded in `docs/slice-6-implementation-plan.md`, `docs/protocol.md`,
 `docs/phbot-capabilities.md` and `docs/reference-parity.md`. Added migration
 `000009_chat.sql` after main's `000008_character_portraits.sql`, transactionally
@@ -3310,31 +3311,31 @@ projected chat history, read/contact/preferences
 APIs, a revision-fenced live stream, `chat.send` validation and session capability
 modes, optional phBot chat adapter, responsive `/chat` UI and `/settings` notification
 controls. Global sends require confirmation; phBot API acceptance does not establish
-delivery. Only self-describing named callback types are canonicalized; numeric types
-remain unknown. `plugin/phManager.py` was absent; the untracked
+delivery. Operator testing on phBot 20.1.2 confirmed numeric callback types 1=General/All,
+4=Party, 5=Guild and 6=Global. The plugin maps these values and preserves raw types;
+migration `000010_chat_numeric_channels.sql` corrects existing canonical events and
+chat projections. Chat messages render as a flat chronological log in every channel.
+`plugin/phManager.py` was absent; the untracked
 `plugin/phMonitorAdapter.py` remains untouched and unversioned.
 
 Dashboard now renders the three latest canonical chat events in a recent-chat card
 with conversation links. The currently open reference browser was inspected read-only:
 it shows six channel tabs, an offline sender selector, and empty General history.
 
-Local validation: `go test ./...`, `go vet ./...`, `go build ./...`, Python plugin
-unit tests/compile, `npm run test:unit` (8 passed), `npm run typecheck`,
+Local validation after this correction: Python plugin tests (79 passed), Nuxt unit
+tests (8 passed), `npm run typecheck`,
 `npm run lint` (0 errors; 22 existing HTML void-element warnings),
-`npm run format:check` and `npm run build` pass. The chat/settings lint warnings added
-by this slice are fixed. PostgreSQL-backed migration/store integration, the production
-simulator end-to-end chat flow, and browser comparison at 1440×1000, 1280×800 and
-390×844 remain open. The local `/chat` route compiles and reloads to operator sign-in;
-the localhost backend refuses connections and the 192.168.10.105 backend readiness
-check timed out. `TEST_DATABASE_URL` is unset and the Docker CLI is unavailable, so
-the PostgreSQL-backed and container build gates remain open. The reference browser
-remains read-only. The installed phBot
-`phBotChat` methods and numeric callback values also remain unobserved; fake-adapter
-tests are not real integration. Keep Slice 6 status in progress until resolvable gates
-are closed and preserve the separate real-runtime gate if phBot access remains
-unavailable. Next actions: capture authenticated local browser comparisons when
-backend authentication/data are available, and run the chat integration test with
-`TEST_DATABASE_URL` when PostgreSQL is available.
+`npm run format:check` and `npm run build` pass. The deployed server observed two
+protocol-v6 agents reporting plugin 1.4.0 and phBot 20.1.2 with current sessions.
+All 144 live inbound records then present were reclassified using the confirmed raw
+types; migration 10 carries the same idempotent correction. The replacement plugin
+is version 1.4.1 and must be uploaded by the operator for future numeric callbacks
+to arrive preclassified. `phBotChat` outbound methods remain unverified. PostgreSQL
+integration tests with `TEST_DATABASE_URL`, authenticated browser comparison at
+1440×1000, 1280×800 and 390×844, and outbound phBot API verification remain open.
+Keep Slice 6 in progress until these gates are closed. Exact next action: operator
+uploads plugin version 1.4.1; then verify its reported version and observe new typed
+chat callbacks without sending test messages from real characters.
 
 ### Resume — 2026-09-28 character portraits
 

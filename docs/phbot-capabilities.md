@@ -616,14 +616,13 @@ message or encoding limit.
 
 The Events API documents `handle_chat(t, player, msg)`, identifies `t` as the type
 sent by the server, and says `player` may be `None` for non-private messages. It does
-not publish a type-to-channel table. PhMon preserves bounded original text and raw
-type, and retains sender/recipient fields when available. It canonicalizes only
-self-describing string values (`all`/`general`, `private`, `party`, `guild`, `union`,
-`global`). Numeric and other values remain in the Unknown history lane. This is a
-conservative literal-name mapping, not runtime verification of phBot callback values;
-the numeric mapping and current installed `phBotChat` callables still need natural
-observation on a recorded supported runtime. No chat callback or send was generated
-on a real character during this implementation.
+not publish a type-to-channel table. During operator testing on phBot 20.1.2, inbound
+records were observed on active agents and the operator confirmed numeric types 1
+(General/All), 4 (Party), 5 (Guild) and 6 (Global). PhMon preserves bounded original
+text/raw type and available sender data, canonicalizes these observed values and
+explicit channel names, and leaves other numbers unknown. This runtime observation
+does not verify outbound `phBotChat` methods, their supported channels or delivery;
+those gates remain open.
 
 Lifecycle source details from the same page: `connected()` fires when phBot connects
 to the game server; `disconnected()` may fire several times; `joined_game()` runs on

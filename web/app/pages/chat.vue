@@ -577,17 +577,14 @@ onBeforeUnmount(() => {
               v-for="item in messages"
               :key="item.message_id"
               class="message-row"
-              :class="[
-                { outgoing: item.direction === 'outbound' },
-                `message-${item.direction}`,
-              ]"
             >
-              <span class="message-avatar">{{
-                (item.sender || item.character).slice(0, 1).toUpperCase()
-              }}</span>
               <div class="message-content">
                 <div class="message-meta">
-                  <strong>{{ item.sender || item.character }}</strong
+                  <strong>{{
+                    item.direction === 'outbound'
+                      ? 'You'
+                      : item.sender || 'Unknown'
+                  }}</strong
                   ><span
                     v-if="advancedMode && item.raw_type"
                     class="message-raw-type"
@@ -902,8 +899,7 @@ onBeforeUnmount(() => {
   background: var(--ph-active);
   border-color: var(--ph-border);
 }
-.contact-avatar,
-.message-avatar {
+.contact-avatar {
   display: grid;
   flex: 0 0 30px;
   width: 30px;
@@ -974,23 +970,13 @@ onBeforeUnmount(() => {
   scroll-behavior: smooth;
 }
 .message-row {
-  display: flex;
-  align-items: start;
-  gap: 9px;
+  display: block;
+  border-bottom: 1px solid rgba(55, 70, 90, 0.28);
   padding: 8px 4px;
-}
-.message-row.outgoing {
-  flex-direction: row-reverse;
-}
-.message-row.outgoing .message-content {
-  text-align: right;
-}
-.message-row.outgoing .message-meta {
-  justify-content: end;
 }
 .message-content {
   min-width: 0;
-  max-width: min(78%, 760px);
+  max-width: 100%;
 }
 .message-meta {
   display: flex;
@@ -1208,9 +1194,6 @@ onBeforeUnmount(() => {
   }
   .private-view .back-to-contacts {
     display: block;
-  }
-  .message-content {
-    max-width: 84%;
   }
   .message-meta {
     flex-wrap: wrap;

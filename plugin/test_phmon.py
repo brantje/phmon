@@ -1002,11 +1002,17 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(alchemy['item_code'], 'ITEM_TEST')
         self.assertEqual(alchemy['sequence'], 2)
 
-    def test_chat_callback_keeps_numeric_types_unknown_and_maps_explicit_names(self):
-        numeric = self.callback(plugin.handle_chat, 4, 'Beta', 'private text')
+    def test_chat_callback_maps_verified_numeric_types_and_preserves_other_types(self):
+        for raw_type, channel in ((1, 'general'), (4, 'party'), (5, 'guild'), (6, 'global')):
+            with self.subTest(raw_type=raw_type):
+                numeric = self.callback(plugin.handle_chat, raw_type, 'Beta', 'chat text')
+                self.assertEqual(numeric['payload']['channel'], channel)
+                self.assertEqual(numeric['payload']['raw_type'], str(raw_type))
+
+        unknown = self.callback(plugin.handle_chat, 99, 'Beta', 'other text')
         explicit = self.callback(plugin.handle_chat, ' Private ', 'Beta', 'private text')
-        self.assertEqual(numeric['payload']['channel'], 'unknown')
-        self.assertEqual(numeric['payload']['raw_type'], '4')
+        self.assertEqual(unknown['payload']['channel'], 'unknown')
+        self.assertEqual(unknown['payload']['raw_type'], '99')
         self.assertEqual(explicit['payload']['channel'], 'private')
         self.assertEqual(explicit['payload']['sender'], 'Beta')
 
