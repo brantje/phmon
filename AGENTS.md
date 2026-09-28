@@ -3338,33 +3338,19 @@ present before the plugin update were reclassified; migration 10 carries the
 correction to other databases. Migration 11 fixes the outbound echo-link constraint
 and links two unique historical same-session echoes to audited outgoing commands.
 Chat renders flat history rows in every channel.
-The follow-up chat correction is implemented on `codex/slice-6-chat-plan`: plugin
-version 1.4.2 maps numeric type 2 to Private; migration 12 reclassifies historical
-unknown type-2 messages; General history/read state is server-scoped across
-characters; and Global unread counts/badges are suppressed. Multi-character
-PostgreSQL assertions were added, but the DB-backed integration test was not run
-because `TEST_DATABASE_URL` is unavailable. Unit/build checks pass. PR #14 checks
-pass; CodeRabbit was rate-limited.
-
-The server and web fix is deployed on `node@192.168.10.25`; migration 12 is applied,
-with zero raw-type-2 events left unknown and two projected Private raw-type-2
-messages. Read-only DB inspection for the Veyra report found two inbound Private
-messages from Veyra to nuker1 on Greatest at 20:05:48 and 20:17:12 UTC on
-2026-09-28. The latest outbound message preceded the latter inbound message. Two
-recent agents still report plugin 1.4.1 on phBot 20.1.2, so the 1.4.2 plugin file
-still needs operator upload before newly arriving type-2 messages are mapped by the
-plugin. PostgreSQL remained healthy and its container/volume were not restarted.
-The browser's fresh private-chat tab currently requires operator sign-in after the
-service restart; do not enter or request the secret.
+Follow-up chat fix in progress: version the plugin as 1.4.2, map numeric type 2 to
+Private and add migration 12 for historical unknown rows. Make General/Global history
+server scoped, General read cursors/unread counts apply across characters, and suppress
+Global unread counts and badges. Add a multi-character PostgreSQL integration test.
+The deployed page currently shows one unclassified message, consistent with type 2
+missing from the 1.4.1 callback map. Update this entry after validation/deployment.
 
 `phBotChat` outbound methods remain unverified. PostgreSQL integration tests with
 `TEST_DATABASE_URL`, authenticated browser comparison at 1440×1000, 1280×800 and
 390×844, and outbound phBot API verification remain open. Keep Slice 6 in progress
-until these gates are closed. Exact next action: operator uploads
-`plugin/PhMon.py` version 1.4.2, then re-authenticates and confirms the existing
-Veyra messages appear in Private and a naturally arriving type-2 message is
-categorized correctly. Verify the phBot API on the recorded runtime without sending
-unapproved test messages.
+until these gates are closed. Exact next action: capture the authenticated chat view
+at the required viewports and verify `phBotChat` method availability on the recorded
+runtime without sending unapproved test messages.
 
 ### Resume — 2026-09-28 character portraits
 
