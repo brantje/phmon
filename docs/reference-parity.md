@@ -734,8 +734,8 @@ Servar inventory remains open.
   General/All, `4` is Party, `5` is Guild and `6` is Global. The active server had
   144 inbound records across those raw values; the source event payloads and chat
   projection were corrected, and migration 10 makes that correction repeatable.
-  Migration 11 linked two unique same-session echoes to their outgoing commands,
-  preventing duplicate rows in chat history.
+  Migration 11 linked two unique same-session echoes to their outgoing commands and
+  fixed the outbound echo-link constraint, preventing duplicate rows in chat history.
   Unknown numeric values remain in the Advanced-mode Unknown lane.
 - At the operator's direction, every channel uses flat chronological log rows with
   sender/time labels. General and other channels do not use private-message bubble

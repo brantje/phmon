@@ -3315,8 +3315,8 @@ delivery. Operator testing on phBot 20.1.2 confirmed numeric callback types 1=Ge
 4=Party, 5=Guild and 6=Global. The plugin maps these values and preserves raw types;
 migrations `000010_chat_numeric_channels.sql` and
 `000011_chat_echo_reconciliation.sql` normalize existing canonical events/chat
-projections and link unique historical outgoing echoes. Chat messages render as a
-flat chronological log in every channel.
+projections, link unique historical outgoing echoes and fix the outbound echo-link
+constraint. Chat messages render as a flat chronological log in every channel.
 `plugin/phManager.py` was absent; the untracked
 `plugin/phMonitorAdapter.py` remains untouched and unversioned.
 
@@ -3330,8 +3330,9 @@ tests (8 passed), `npm run typecheck`,
 protocol-v6 agents reporting plugin 1.4.1 and phBot 20.1.2 with current sessions.
 New messages arrive under their confirmed channel types. All 144 inbound records
 present before the plugin update were reclassified; migration 10 carries the
-correction to other databases. Migration 11 links two unique historical same-session
-echoes to audited outgoing commands. Chat renders flat history rows in every channel.
+correction to other databases. Migration 11 fixes the outbound echo-link constraint
+and links two unique historical same-session echoes to audited outgoing commands.
+Chat renders flat history rows in every channel.
 `phBotChat` outbound methods remain unverified. PostgreSQL integration tests with
 `TEST_DATABASE_URL`, authenticated browser comparison at 1440×1000, 1280×800 and
 390×844, and outbound phBot API verification remain open. Keep Slice 6 in progress

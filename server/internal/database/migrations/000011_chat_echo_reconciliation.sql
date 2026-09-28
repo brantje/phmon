@@ -1,3 +1,11 @@
+-- Outbound rows own command_id, so they are the side that stores echo_event_id.
+ALTER TABLE chat_messages
+    DROP CONSTRAINT chat_messages_check2;
+
+ALTER TABLE chat_messages
+    ADD CONSTRAINT chat_messages_echo_event_id_check
+    CHECK (echo_event_id IS NULL OR command_id IS NOT NULL);
+
 CREATE TEMP TABLE chat_echo_reconciliation ON COMMIT DROP AS
 WITH candidates AS (
     SELECT inbound.message_id AS inbound_id,

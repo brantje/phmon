@@ -864,6 +864,7 @@ documented opcode/version allowlist and a captured fixture before activation.
 Migrations `000009_chat.sql`–`000011_chat_echo_reconciliation.sql` build and normalize
 `chat_messages` as a rebuildable projection of canonical inbound `activity_events`
 and audited outbound `commands`, then reconcile uniquely matching historical echoes.
+Migration 11 also permits outbound command rows to store their matched inbound event ID.
 The inbound event remains authoritative; `event_id` is the projection identity, replay is idempotent,
 and legacy chat events are backfilled as `unknown` unless they already carry a
 canonical supported channel. Private conversations use a lowercase peer key while
