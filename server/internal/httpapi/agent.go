@@ -147,7 +147,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	conn.SetReadLimit(resources.MaxFrameBytes)
+	frameLimit := resources.MaxFrameBytes
+	if events.MaxBatchBytes < frameLimit {
+		frameLimit = events.MaxBatchBytes
+	}
+	conn.SetReadLimit(int64(frameLimit))
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
 	helloCtx, helloCancel := context.WithTimeout(r.Context(), h.options.HelloTimeout)

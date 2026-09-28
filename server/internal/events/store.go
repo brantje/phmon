@@ -185,11 +185,9 @@ func ValidCategory(value string) bool {
 }
 
 func (s *Store) AppendBatch(ctx context.Context, agentID string, incoming []AgentEvent) ([]AppendResult, bool, error) {
+	// The agent WebSocket bounds raw frames before decoding; re-marshalling here can
+	// escape JSON differently and reject a valid batch based on a different byte count.
 	if !agentdomain.ValidAgentID(agentID) || len(incoming) == 0 || len(incoming) > MaxBatchSize {
-		return nil, false, ErrInvalidEvent
-	}
-	encodedBatch, err := json.Marshal(incoming)
-	if err != nil || len(encodedBatch) > MaxBatchBytes {
 		return nil, false, ErrInvalidEvent
 	}
 	results := make([]AppendResult, len(incoming))

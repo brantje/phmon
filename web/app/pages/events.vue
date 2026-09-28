@@ -98,10 +98,11 @@ watch(itemInput, (value) => {
 watch(
   () => route.query.item,
   (value) => {
-    if (typeof value === 'string' && value !== itemInput.value) {
-      itemInput.value = value
-      itemQuery.value = value
-    }
+    const next = typeof value === 'string' ? value : ''
+    if (itemSearchTimer) clearTimeout(itemSearchTimer)
+    itemSearchTimer = undefined
+    itemInput.value = next
+    itemQuery.value = next.trim()
   },
 )
 
@@ -127,7 +128,7 @@ watch(
       from: from ? localDateBoundary(from, 0) : undefined,
       to: to ? localDateBoundary(to, 1) : undefined,
       q: character || undefined,
-      item: item || undefined,
+      item: itemTab.value ? item || undefined : undefined,
       kind: kind || undefined,
       category: category || undefined,
       cursor: pageCursor || undefined,

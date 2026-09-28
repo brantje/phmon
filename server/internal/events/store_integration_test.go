@@ -176,9 +176,10 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("idempotent batch replay = %+v, changed=%v, err=%v", results, changed, err)
 	}
 	conflict := rareDrop
-	conflict.Payload = json.RawMessage(`{"model":778}`)
+	conflictRegion := 25273
+	conflict.Region = &conflictRegion
 	results, _, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{conflict})
-	if err != nil || results[0].Status != "rejected" {
+	if err != nil || results[0].Status != "rejected" || results[0].Reason != "session_or_event_rejected" {
 		t.Fatalf("event ID conflict = %+v, err=%v", results, err)
 	}
 	sequenceConflict := rareDrop

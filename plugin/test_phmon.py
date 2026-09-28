@@ -674,6 +674,31 @@ class DeathEventTransportTests(unittest.TestCase):
         self.assertEqual(self.frames, [])
         self.assertTrue(any('durable local spooling failed' in call.args[0] for call in log.call_args_list))
 
+    def test_worker_spools_queued_events_during_reconnect_backoff(self):
+        event = self.death('00000000-0000-4000-8000-000000000009')
+        worker = self.worker
+
+        class DisconnectedClient:
+            def connect(inner_self):
+                worker.queue_event(self.identity, event)
+                raise OSError('backend unavailable')
+
+            def close(inner_self):
+                return None
+
+        worker.websocket_factory = lambda *_args: DisconnectedClient()
+        worker.start()
+        deadline = time.monotonic() + 2.0
+        try:
+            while not worker._death_spool.pending() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            pending = worker._death_spool.pending()
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0]['event_id'], event['event_id'])
+        finally:
+            worker.stop()
+            worker.join(2.0)
+
     def test_spool_replays_same_stable_event_until_persisted_ack(self):
         event = self.death()
         self.assertTrue(self.worker.queue_death_event(self.identity, event))
@@ -763,10 +788,22 @@ class DeathEventTransportTests(unittest.TestCase):
         frame = self.frames[0]['events'][0]
         self.assertEqual(frame['character_id'], self.worker.character_id)
         self.assertEqual(frame['session_id'], self.worker.session_id)
-        self.assertEqual(frame['payload']['session_binding'], 'deferred')
+        self.assertEqual(frame['payload'], {'cause': 'unknown'})
         persisted = self.worker._death_spool.pending()[0]
         self.assertEqual(persisted['character_id'], self.worker.character_id)
         self.assertEqual(persisted['session_id'], self.worker.session_id)
+        self.assertFalse(persisted['deferred_session_binding'])
+        self.assertNotIn('session_binding', persisted['payload'])
+
+        original_session = frame['session_id']
+        original_sequence = frame['sequence']
+        self.worker.session_id = '11111111-2222-4333-8444-555555555555'
+        self.worker._death_retry_at[frame['event_id']] = 0
+        self.worker._flush_death_events(self.client)
+        replay = self.frames[-1]['events'][0]
+        self.assertEqual(replay['event_id'], frame['event_id'])
+        self.assertEqual(replay['session_id'], original_session)
+        self.assertEqual(replay['sequence'], original_sequence)
 
     def test_death_callback_is_deduplicated_until_alive_or_character_switch(self):
         previous_worker = plugin._worker
@@ -911,10 +948,13 @@ class CanonicalCallbackTests(unittest.TestCase):
     def setUp(self):
         self.previous_worker = plugin._worker
         self.identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        self.root = tempfile.mkdtemp()
+        self.spool_path = os.path.join(self.root, 'events.json')
         self.worker = plugin.AgentWorker({
             'backend_url': 'ws://127.0.0.1:8081/agent',
             'agent_id': AGENT_ID,
             'agent_token': 'phm_test_token',
+            'death_spool_path': self.spool_path,
         }, 'fixture')
         self.worker._current_identity = self.identity
         self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
@@ -926,6 +966,10 @@ class CanonicalCallbackTests(unittest.TestCase):
 
     def tearDown(self):
         plugin._worker = self.previous_worker
+        for path in (self.spool_path, self.spool_path + '.tmp', self.spool_path + '.capacity', self.spool_path + '.capacity.tmp'):
+            if os.path.exists(path):
+                os.unlink(path)
+        os.rmdir(self.root)
 
     def callback(self, fn, *args):
         with patch.object(plugin, '_get_character_data', return_value=self.identity), \
@@ -962,6 +1006,90 @@ class CanonicalCallbackTests(unittest.TestCase):
         event = self.callback(plugin.handle_event, plugin.EVENT_ALCHEMY_FINISHED, '')
         self.assertEqual(event['kind'], 'alchemy.finished')
         self.assertEqual(event['payload'], {})
+
+    def test_handle_event_buffers_when_worker_is_not_ready(self):
+        previous_worker = plugin._worker
+        previous_pending = plugin._pending_callback_events
+        plugin._worker = None
+        plugin._pending_callback_events = plugin._queue.Queue()
+        try:
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.handle_event(plugin.EVENT_LEVEL_UP, '42')
+            identity, event = plugin._pending_callback_events.get_nowait()
+            self.assertEqual(identity, self.identity)
+            self.assertEqual(event['kind'], 'character.level_up')
+            self.assertEqual(event['payload'], {'level': 42})
+        finally:
+            plugin._worker = previous_worker
+            plugin._pending_callback_events = previous_pending
+
+    def test_chat_and_alchemy_callbacks_buffer_when_worker_is_not_ready(self):
+        previous_worker = plugin._worker
+        previous_pending = plugin._pending_callback_events
+        plugin._worker = None
+        plugin._pending_callback_events = plugin._queue.Queue()
+        try:
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.handle_chat('party', 'Beta', 'hello')
+                plugin.alchemy_update(13, True, 7)
+            buffered = [plugin._pending_callback_events.get_nowait() for _ in range(2)]
+            self.assertEqual([event['kind'] for _, event in buffered], [
+                'chat.message_received', 'alchemy.attempt',
+            ])
+            self.assertTrue(all(identity == self.identity for identity, _ in buffered))
+        finally:
+            plugin._worker = previous_worker
+            plugin._pending_callback_events = previous_pending
+
+    def test_each_teleport_has_its_own_occurrence_identity(self):
+        captured = []
+        fake_worker = type('Worker', (), {
+            'session_id': self.worker.session_id,
+            'queue_event': lambda _, identity, event: captured.append((identity, event)) or True,
+        })()
+        previous_worker = plugin._worker
+        try:
+            plugin._worker = fake_worker
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.teleported()
+                plugin.teleported()
+            self.assertEqual(len(captured), 2)
+            self.assertEqual([entry[1]['kind'] for entry in captured], ['session.teleported'] * 2)
+            self.assertNotEqual(captured[0][1]['event_id'], captured[1][1]['event_id'])
+            self.assertNotIn('dedupe_key', captured[0][1])
+            self.assertNotIn('dedupe_key', captured[1][1])
+        finally:
+            plugin._worker = previous_worker
+
+    def test_deferred_empty_payload_callbacks_drop_internal_binding_marker(self):
+        callbacks = (
+            (plugin.teleported, ()),
+            (plugin.handle_event, (plugin.EVENT_ALCHEMY_FINISHED, '')),
+        )
+        for callback, args in callbacks:
+            self.worker._current_identity = None
+            self.worker.character_id = None
+            self.worker.session_id = None
+            event = self.callback(callback, *args)
+            self.assertEqual(event['payload']['session_binding'], 'deferred')
+            self.worker._event_samples.put_nowait(event)
+
+            self.worker._flush_events(type('Client', (), {'send_json': lambda *_args: None})())
+            self.assertEqual(self.worker._death_spool.pending()[-1]['payload']['session_binding'], 'deferred')
+
+            self.worker._current_identity = self.identity
+            self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+            frames = []
+            client = type('Client', (), {'send_json': lambda _, frame: frames.append(frame)})()
+            self.worker._flush_events(client)
+            wire = next(entry for entry in frames[-1]['events'] if entry['event_id'] == event['event_id'])
+            self.assertEqual(wire['payload'], {})
+            self.worker._death_spool.acknowledge(event['event_id'])
+            self.worker._death_retry_at.pop(event['event_id'], None)
 
 
 class CharacterCollectorTests(unittest.TestCase):

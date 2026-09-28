@@ -1523,17 +1523,23 @@ class EventSpool(object):
             for index, item in enumerate(self._items):
                 if item.get('event_id') != event_id:
                     continue
-                if item.get('character_id') and item.get('session_id'):
-                    if item['character_id'] != character_id or item['session_id'] != session_id:
-                        return False
-                    if sequence is None or item.get('sequence') is not None:
-                        return True
+                if item.get('character_id') and item.get('session_id') and (
+                        item['character_id'] != character_id or item['session_id'] != session_id):
+                    return False
                 previous = self._items
                 updated = [dict(value) for value in previous]
                 updated[index]['character_id'] = character_id
                 updated[index]['session_id'] = session_id
                 if sequence is not None and updated[index].get('sequence') is None:
                     updated[index]['sequence'] = sequence
+                updated[index]['deferred_session_binding'] = False
+                payload = updated[index].get('payload')
+                if isinstance(payload, dict) and payload.get('session_binding') == 'deferred':
+                    payload = dict(payload)
+                    payload.pop('session_binding', None)
+                    updated[index]['payload'] = payload
+                if updated[index] == item:
+                    return True
                 self._items = updated
                 try:
                     if self._save_locked():
@@ -1980,6 +1986,7 @@ class AgentWorker(object):
     def _run(self):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
+            self._spool_queued_events()
             client = None
             try:
                 self.status = 'Connecting to PhMon backend...'
@@ -2114,7 +2121,13 @@ class AgentWorker(object):
                 self._item_tracker.reset('backend_reconnect')
 
             if not self.stop_event.is_set():
-                self.stop_event.wait(backoff.next_delay())
+                delay = backoff.next_delay()
+                deadline = _monotonic() + delay
+                while not self.stop_event.is_set():
+                    self._spool_queued_events()
+                    remaining = deadline - _monotonic()
+                    if remaining <= 0 or self.stop_event.wait(min(0.25, remaining)):
+                        break
 
     def _publish_sample(self, client, sample, snapshot):
         identity, state = sample['identity'], sample['state']
@@ -2430,7 +2443,7 @@ class AgentWorker(object):
             except _queue.Empty: return
             client.send_json(frame)
 
-    def _flush_events(self, client):
+    def _spool_queued_events(self):
         while True:
             try:
                 event = self._event_samples.get_nowait()
@@ -2439,6 +2452,9 @@ class AgentWorker(object):
             if not self._death_spool.add(event):
                 self.status = 'Activity event spool is unavailable or full; an occurrence needs operator attention.'
                 _log('activity event was not sent because durable local spooling failed')
+
+    def _flush_events(self, client):
+        self._spool_queued_events()
         now = _monotonic()
         batch = []
         batch_ids = []
@@ -2447,27 +2463,44 @@ class AgentWorker(object):
             event_id = event.get('event_id')
             if self._death_retry_at.get(event_id, 0.0) > now:
                 continue
-            if event.get('deferred_session_binding') or (event.get('character_name') and not _validate_agent_id(event.get('session_id'))):
+            already_bound = (
+                _validate_agent_id(event.get('character_id')) and
+                _validate_agent_id(event.get('session_id'))
+            )
+            needs_binding = not already_bound and (
+                event.get('deferred_session_binding') or
+                (event.get('character_name') and not _validate_agent_id(event.get('session_id')))
+            )
+            if needs_binding:
                 identity = {'server': event.get('server'), 'name': event.get('character_name')}
                 if (self._current_identity is None or
                         self._identity_key(identity) != self._identity_key(self._current_identity) or
                         not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id)):
                         continue
+                character_id = self.character_id
+                session_id = self.session_id
+            elif already_bound:
+                character_id = event['character_id']
+                session_id = event['session_id']
+            else:
+                character_id = None
+                session_id = None
+            if character_id and session_id:
                 sequence = event.get('sequence')
                 if sequence is None:
-                    sequence = self._next_event_sequence(self.session_id)
-                if not self._death_spool.bind_session(event_id, self.character_id, self.session_id, sequence):
+                    sequence = self._next_event_sequence(session_id)
+                if not self._death_spool.bind_session(event_id, character_id, session_id, sequence):
                     self.status = 'Activity event could not be bound to a registered character session.'
                     continue
-                event['character_id'] = self.character_id
-                event['session_id'] = self.session_id
+                event['character_id'] = character_id
+                event['session_id'] = session_id
                 event['sequence'] = sequence
-            elif _validate_agent_id(event.get('character_id')) and _validate_agent_id(event.get('session_id')) and event.get('sequence') is None:
-                sequence = self._next_event_sequence(event['session_id'])
-                if self._death_spool.bind_session(event_id, event['character_id'], event['session_id'], sequence):
-                    event['sequence'] = sequence
-                else:
-                    continue
+                event['deferred_session_binding'] = False
+                payload = event.get('payload')
+                if isinstance(payload, dict) and payload.get('session_binding') == 'deferred':
+                    payload = dict(payload)
+                    payload.pop('session_binding', None)
+                    event['payload'] = payload
             wire = {
                 key: event.get(key) for key in (
                     'event_id', 'schema_version', 'kind', 'category', 'character_id', 'session_id',
@@ -2955,9 +2988,6 @@ def handle_event(event_type, data):
     mapped = mapping.get(event_type)
     if mapped is None or event_type == EVENT_DIED and _death_callback_active:
         return
-    if _worker is None:
-        _log('phBot event callback observed while PhMon is disconnected')
-        return
     try:
         character = _get_character_data()
     except Exception:
@@ -3067,15 +3097,13 @@ def _lifecycle_event(kind, source_ref, include_identity=False):
         if isinstance(character, dict) and character.get('server') and character.get('name'):
             identity = {'server': character['server'], 'name': character['name']}
     session = _worker.session_id if _worker is not None else None
-    dedupe = ('lifecycle:' + str(session) + ':' + source_ref) if session else None
+    dedupe = ('lifecycle:' + str(session) + ':' + source_ref) if session and kind != 'session.teleported' else None
     return _queue_canonical_event(kind, 'session', 'phbot.lifecycle_callback', source_ref, {}, identity,
                                   position=include_identity, dedupe_key=dedupe)
 
 
 def handle_chat(chat_type, player, message):
     """Keep the original bounded message and raw server type until verified."""
-    if _worker is None:
-        return
     try:
         character = _get_character_data()
     except Exception:
@@ -3100,7 +3128,7 @@ def handle_chat(chat_type, player, message):
 
 def alchemy_update(slot, success, plus):
     """Capture the documented callback values and a cached item snapshot if known."""
-    if _worker is None or not isinstance(slot, int) or isinstance(slot, bool) or slot < 0 or slot > 4096:
+    if not isinstance(slot, int) or isinstance(slot, bool) or slot < 0 or slot > 4096:
         return
     success_value = success if isinstance(success, bool) else None
     plus_value = plus if isinstance(plus, int) and not isinstance(plus, bool) and 0 <= plus <= 255 else None
