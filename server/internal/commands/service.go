@@ -11,6 +11,7 @@ import (
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/chat"
 )
 
 const (
@@ -86,7 +87,7 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 		return nil, err
 	}
 	capabilities := make(map[string]Capability)
-	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.return", "character.disconnect", "client.clientless"} {
+	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
 		ok, reason := false, "plugin_upgrade_required"
 		if s.capabilities != nil {
 			ok, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, name)
@@ -97,6 +98,18 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 				CommandModeSupport(string, uint64, string, string) (bool, string)
 			}); exists {
 				for _, mode := range []string{"current_position", "position", "named"} {
+					if supported, _ := checker.CommandModeSupport(target.AgentID, target.Generation, name, mode); supported {
+						capability.Modes = append(capability.Modes, mode)
+					}
+				}
+				capability.Supported = len(capability.Modes) > 0
+			}
+		}
+		if name == "chat.send" && ok {
+			if checker, exists := s.capabilities.(interface {
+				CommandModeSupport(string, uint64, string, string) (bool, string)
+			}); exists {
+				for _, mode := range []string{"general", "private", "party", "guild", "union", "global"} {
 					if supported, _ := checker.CommandModeSupport(target.AgentID, target.Generation, name, mode); supported {
 						capability.Modes = append(capability.Modes, mode)
 					}
@@ -196,6 +209,25 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 					reason = "unsupported_argument_mode"
 				}
 				return Command{}, false, reason, ErrUnsupported
+			}
+		}
+	}
+	if validated.Name == "chat.send" {
+		var args struct {
+			Channel string `json:"channel"`
+		}
+		if json.Unmarshal(validated.Args, &args) != nil || !chat.ValidChannel(args.Channel) {
+			return Command{}, false, "", ErrInvalid
+		}
+		if modeChecker, ok := s.capabilities.(interface {
+			CommandModeSupport(string, uint64, string, string) (bool, string)
+		}); ok {
+			supported, modeReason := modeChecker.CommandModeSupport(target.AgentID, target.Generation, validated.Name, args.Channel)
+			if !supported {
+				if modeReason == "" {
+					modeReason = "unsupported_channel"
+				}
+				return Command{}, false, modeReason, ErrUnsupported
 			}
 		}
 	}

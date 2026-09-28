@@ -2202,7 +2202,9 @@ Build the chat read model from canonical events rather than mutating event histo
 Implement:
 
 - persistent history with cursor pagination in both directions
-- per-server/per-character scope
+- server-scoped General/Global history for the selected server; General read state
+  applies to every character on that server, and Global has no unread counter
+- per-character scope for Private, Party, Guild and Union conversations
 - channel tabs matching the reference: General, Private, Party, Guild, Union and Global
   where supported
 - stable private-conversation identity/contact list
@@ -3397,6 +3399,58 @@ comparison when a viewport below 500 CSS pixels is available. Keep the installed
 phBot runtime gate open until callback values can be observed. Keep
 `plugin/phMonitorAdapter.py` untouched.
 
+
+### Resume — 2026-09-28 Slice 6 implementation
+
+The user authorized implementation of the planned Slice 6 increment on
+`codex/slice-6-chat-plan`, now rebased by merge commit `43181b2` onto `main` commit
+`8771ce3`. Work and evidence
+are recorded in `docs/slice-6-implementation-plan.md`, `docs/protocol.md`,
+`docs/phbot-capabilities.md` and `docs/reference-parity.md`. Added migration
+`000009_chat.sql` after main's `000008_character_portraits.sql`, transactionally
+projected chat history, read/contact/preferences
+APIs, a revision-fenced live stream, `chat.send` validation and session capability
+modes, optional phBot chat adapter, responsive `/chat` UI and `/settings` notification
+controls. Global sends require confirmation; phBot API acceptance does not establish
+delivery. Operator testing on phBot 20.1.2 confirmed numeric callback types 1=General/All,
+2=Private, 4=Party, 5=Guild and 6=Global. The plugin maps these values and preserves raw types;
+migrations `000010_chat_numeric_channels.sql` and
+`000011_chat_echo_reconciliation.sql` normalize existing canonical events/chat
+projections, link unique historical outgoing echoes and fix the outbound echo-link
+constraint. Migration `000012_chat_private_numeric_type.sql` backfills type-2 inbound
+messages as Private. General and Global history/read state are server scoped across
+characters; Global unread counts are disabled. Chat messages render as a flat
+chronological log in every channel.
+`plugin/phManager.py` was absent; the untracked
+`plugin/phMonitorAdapter.py` remains untouched and unversioned.
+
+Dashboard now renders the three latest canonical chat events in a recent-chat card
+with conversation links. The currently open reference browser was inspected read-only:
+it shows six channel tabs, an offline sender selector, and empty General history.
+
+Local validation after this correction: Python plugin tests (79 passed), Nuxt unit
+tests (8 passed), `npm run typecheck`,
+`npm run format:check` and `npm run build` pass. The deployed server observes two
+protocol-v6 agents reporting plugin 1.4.1 and phBot 20.1.2 with current sessions.
+New messages arrive under their confirmed channel types. All 144 inbound records
+present before the plugin update were reclassified; migration 10 carries the
+correction to other databases. Migration 11 fixes the outbound echo-link constraint
+and links two unique historical same-session echoes to audited outgoing commands.
+Chat renders flat history rows in every channel.
+Follow-up chat fix in progress: version the plugin as 1.4.2, map numeric type 2 to
+Private and add migration 12 for historical unknown rows. Make General/Global history
+server scoped, General read cursors/unread counts apply across characters, and suppress
+Global unread counts and badges. Add a multi-character PostgreSQL integration test.
+The deployed page currently shows one unclassified message, consistent with type 2
+missing from the 1.4.1 callback map. Update this entry after validation/deployment.
+
+`phBotChat` outbound methods remain unverified. PostgreSQL integration tests with
+`TEST_DATABASE_URL`, authenticated browser comparison at 1440×1000, 1280×800 and
+390×844, and outbound phBot API verification remain open. Keep Slice 6 in progress
+until these gates are closed. Exact next action: capture the authenticated chat view
+at the required viewports and verify `phBotChat` method availability on the recorded
+runtime without sending unapproved test messages.
+
 ### Resume — 2026-09-28 character portraits
 
 Implemented the requested portrait restoration in the isolated
@@ -3450,3 +3504,74 @@ uploaded. Exact next action: operator uploads
 `plugin/PhMon.py` from this rollout worktree (plugin version 1.4.0), then verify a
 fresh character state carries `model_id` and the live UI renders the associated
 portrait. Keep real phBot runtime validation open until that observation succeeds.
+
+### Resume — 2026-09-28 Slice 6 chat follow-up
+
+Continued the Slice 6 fix on `codex/slice-6-chat-plan`. Private contact changes now
+keep the existing contact and unread snapshot while the matching conversation page
+loads, and chat-only subscription refreshes no longer change the global live-data
+status. A badge regression showed the chat filter must retain the selected sender ID
+while viewing General/Global so private contacts remain sender scoped. General,
+Party, Unknown and Global cursors/counts are server scoped; Private, Guild and Union
+stay character scoped, with Private also scoped to its peer. This preserves unread
+Guild/Union messages for characters in different groups. Shared server-wide channels
+can mark read from another character's view, including when that character has no
+local copy. The `/api/chat/read` response returns contacts and channel unread counts
+queried after the durable cursor update; the page applies these values immediately,
+then accepts the normal shared WebSocket snapshot. Updated
+`docs/reference-parity.md` and added integration coverage for sender and group scopes.
+
+Files changed: `server/internal/chat/store.go`,
+`server/internal/chat/store_integration_test.go`, `server/internal/httpapi/chat.go`,
+`web/app/composables/useLiveData.ts`, `web/app/pages/chat.vue`,
+`docs/reference-parity.md` and this resume entry. Preserve the unrelated untracked
+`plugin/phMonitorAdapter.py`.
+
+Commit `47a815e` is pushed to PR #14 and deployed to
+`node@192.168.10.25:/var/www/phmon`. General/Global inbound copies observed by
+multiple characters are combined using server, channel, raw type, sender, text and a
+two-second window. Repeated messages from one character remain distinct. Server-wide
+unread totals use the same grouping. Added frontend/backend tests and expanded the
+PostgreSQL integration scenario with duplicate General/Global observer rows.
+
+Validation: `go test ./...`, Nuxt typecheck, 11 frontend unit tests, ESLint (22
+existing HTML void-element warnings, no errors), Prettier and the Nuxt production
+build passed. The database integration test remains gated by `TEST_DATABASE_URL`,
+which is not configured locally. Latest CI and CodeRabbit review for `47a815e` are
+still running. Server/web containers are healthy, `/readyz` reports database healthy
+and `/chat` returns HTTP 200. Postgres was not restarted; container ID remains
+`96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d` and volume is
+`phmon_postgres_data`. Exact next action: check PR #14 CI and have the operator
+verify General/Global duplicates and unread badges on the live chat page. The
+in-app browser has no tabs, so live authenticated verification is unavailable here.
+
+### Resume — 2026-09-29 Slice 6 send capability gate
+
+The operator reports phBot plugin 1.4.2 is installed and chat sending works. The
+chat composer no longer shows “Waiting for this session to report chat
+capabilities.” A missing frontend controls snapshot no longer disables Send; explicit
+unsupported-mode reports still disable it, and the Go command service remains the
+authoritative check for current-session and channel support. This keeps a delayed or
+missing display snapshot from blocking a valid chat send. Updated Slice 6 evidence in
+`docs/reference-parity.md`.
+
+Files changed: `web/app/pages/chat.vue`, `docs/reference-parity.md`,
+`.github/workflows/ci.yml` and this resume entry. Preserve the unrelated untracked
+`plugin/phMonitorAdapter.py`.
+
+Deployed the web-only change to `node@192.168.10.25:/var/www/phmon` after backing up
+the source page to `/var/www/.phmon-chat-send-enable-20260929/chat.vue`. Local Nuxt
+typecheck, 11 frontend unit tests, targeted ESLint, Prettier and production build
+passed. The remote web image built and container became healthy; `/chat` returns
+HTTP 200 and the old hint text is absent from the live client bundle. Go `/readyz`
+returns `{"status":"ok","database":"ok"}`. The PostgreSQL container stayed at
+`96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d` with volume
+`phmon_postgres_data`.
+
+Commit `4bd4f88` is pushed to PR #14. Both validation jobs pass; of the duplicate
+stack checks, one passed and one failed after the lifecycle simulator had already
+exited and an unguarded cleanup `kill` failed under `set -e`. The workflow cleanup now
+accepts that expected already-exited state. CodeRabbit is still processing the new
+PR changes. Exact next action: commit and push the workflow fix, then check fresh CI
+and CodeRabbit feedback. Live authenticated send verification remains for the
+operator because the available browser session is unauthenticated.

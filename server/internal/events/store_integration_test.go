@@ -83,6 +83,33 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT started_at FROM character_sessions WHERE session_id=$1`, newSessionID).Scan(&newSessionStarted); err != nil {
 		t.Fatal(err)
 	}
+	invalidProjection := AgentEvent{
+		ID: newTestEventID(t), Schema: 1, Kind: "chat.message_received", Category: "chat",
+		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
+		OccurredAt: databaseNow.UTC(), Source: "phbot.chat_callback", SourceRef: "handle_chat",
+		Sequence: int64Pointer(100), Payload: json.RawMessage(`{"channel":"private","raw_type":"2","message":"invalid direction","sender":"Veyra","recipient":"Alpha","direction":"outbound"}`),
+	}
+	projectionTx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, projectionErr := appendOne(ctx, projectionTx, credential.AgentID, invalidProjection)
+	if !errors.Is(projectionErr, ErrInvalidEvent) {
+		_ = projectionTx.Rollback(ctx)
+		t.Fatalf("invalid chat projection error = %v", projectionErr)
+	}
+	var invalidEventRows int
+	if err := projectionTx.QueryRow(ctx, `SELECT count(*) FROM activity_events WHERE event_id=$1::uuid`, invalidProjection.ID).Scan(&invalidEventRows); err != nil {
+		_ = projectionTx.Rollback(ctx)
+		t.Fatal(err)
+	}
+	if invalidEventRows != 0 {
+		_ = projectionTx.Rollback(ctx)
+		t.Fatalf("invalid chat event left %d canonical activity rows", invalidEventRows)
+	}
+	if err := projectionTx.Commit(ctx); err != nil {
+		t.Fatalf("transaction should remain usable after invalid projection: %v", err)
+	}
 	if inserted, err = store.AppendDeath(ctx, credential.AgentID, characterID, sessionID, first); err != nil || inserted {
 		t.Fatalf("delayed replay from prior owned session = %v, %v", inserted, err)
 	}

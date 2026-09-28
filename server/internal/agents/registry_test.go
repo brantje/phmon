@@ -91,6 +91,29 @@ func TestRegistryGatesTrainingAreaModesPerSocket(t *testing.T) {
 	}
 }
 
+func TestRegistryGatesChatModesPerSocket(t *testing.T) {
+	registry := NewRegistry()
+	generation, _ := registry.Register("agent")
+	if !registry.Configure("agent", generation, 6, "1.4.0", nil) {
+		t.Fatal("configure failed")
+	}
+	if !registry.SetCapabilities("agent", generation, []CommandCapability{{Name: "chat.send", Supported: true, Modes: []string{"general", "private"}}}) {
+		t.Fatal("capability update failed")
+	}
+	if supported, reason := registry.CommandModeSupport("agent", generation, "chat.send", "private"); !supported || reason != "" {
+		t.Fatalf("private chat supported=%v reason=%q", supported, reason)
+	}
+	if supported, reason := registry.CommandModeSupport("agent", generation, "chat.send", "global"); supported || reason != "unsupported_argument_mode" {
+		t.Fatalf("global chat supported=%v reason=%q", supported, reason)
+	}
+	if !registry.SetCapabilities("agent", generation, []CommandCapability{{Name: "chat.send", Supported: true}}) {
+		t.Fatal("capability replacement failed")
+	}
+	if supported, reason := registry.CommandModeSupport("agent", generation, "chat.send", "general"); supported || reason != "capability_modes_missing" {
+		t.Fatalf("mode-less chat capability supported=%v reason=%q", supported, reason)
+	}
+}
+
 func TestWalkRequiresPathfindingPluginVersion(t *testing.T) {
 	for _, tc := range []struct {
 		version string

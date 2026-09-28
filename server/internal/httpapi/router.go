@@ -9,6 +9,7 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
 	"phmon/server/internal/resources"
@@ -35,6 +36,7 @@ type Dependencies struct {
 	Live         *LiveHub
 	Resources    *resources.Store
 	Events       *events.Store
+	Chat         *chat.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -68,6 +70,7 @@ func New(deps Dependencies) http.Handler {
 		}
 		live.SetResources(deps.Resources)
 		live.SetEvents(deps.Events)
+		live.SetChat(deps.Chat)
 		handler := &agentHandler{
 			store:      deps.Agents,
 			registry:   deps.Registry,
@@ -80,6 +83,14 @@ func New(deps Dependencies) http.Handler {
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)
+		if deps.Chat != nil {
+			chatAPI := &chatHandler{store: deps.Chat, live: live}
+			register("GET /api/chat/contacts", false, chatAPI.contacts)
+			register("GET /api/chat/messages", false, chatAPI.messages)
+			register("POST /api/chat/read", true, chatAPI.markRead)
+			register("GET /api/chat/preferences", false, chatAPI.preferences)
+			register("PUT /api/chat/preferences", true, chatAPI.preferences)
+		}
 		if deps.Events != nil {
 			eventAPI := &eventHandler{store: deps.Events, resources: deps.Resources}
 			register("GET /api/events", false, eventAPI.list)

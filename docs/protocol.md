@@ -845,11 +845,53 @@ commits the event to disk.
 Normal drops (`drop.item`) and rare drops (`drop.rare`) remain distinct. The published
 callbacks supply an equippable item model ID only; the pipeline does not turn that into
 an item-instance snapshot. Inbound chat preserves bounded message text and raw chat
-type with `channel:"unknown"` until the type mapping is confirmed on a supported
-runtime. `alchemy_update` creates one attempt event and `EVENT_ALCHEMY_FINISHED` one
+type. Explicit channel names are normalized (`all`/`general`, `private`, `party`,
+`guild`, `union`, `global`). On 2026-09-28 the operator confirmed these numeric
+`handle_chat` mappings from the active phBot 20.1.2 runtime: `1` is General/All, `2`
+is Private, `4` is Party, `5` is Guild, and `6` is Global. The plugin normalizes
+those values while retaining the raw type; other numeric and unrecognized values
+remain `unknown`.
+`alchemy_update`
+creates one attempt event and `EVENT_ALCHEMY_FINISHED` one
 completion event. Reliable party, academy, pet and owned-container transitions come
 from identity-aware snapshots; startup, reconnect, missing containers and sampling
 gaps reset their baselines. Unknown owned-item acquisition causes remain unknown.
 
 No Slice 5 packet decoder was activated. Any Joymax event decoder still requires a
 documented opcode/version allowlist and a captured fixture before activation.
+
+## Slice 6: chat history and commands (2026-09-28)
+
+Migrations `000009_chat.sql`–`000011_chat_echo_reconciliation.sql` build and normalize
+`chat_messages` as a rebuildable projection of canonical inbound `activity_events`
+and audited outbound `commands`, then reconcile uniquely matching historical echoes.
+Migration 11 also permits outbound command rows to store their matched inbound event ID.
+The inbound event remains authoritative; `event_id` is the projection identity, replay is idempotent,
+and legacy chat events are backfilled as `unknown` unless they already carry a
+canonical supported channel. Private conversations use a lowercase peer key while
+retaining the original peer name, server and character scope. A unique echo is linked
+only for the same character session, channel, exact text, private peer where
+available, and a ten-second window; ambiguous matches remain separate.
+
+Authenticated `GET /api/chat/contacts`, `GET /api/chat/messages`, and
+`POST /api/chat/read` provide bounded conversation history, cursor-based older pages,
+contacts, unread counts and durable per-operator read cursors. The existing `/api/live`
+WebSocket has a revision-fenced `chat` stream. `GET`/`PUT /api/chat/preferences`
+persist browser-notification and local-sound choices for the configured operator.
+Migration and store integration tests are gated on `TEST_DATABASE_URL`.
+
+The operator-confirmed numeric callback types are stored with canonical channels by
+the plugin and backfilled for existing `unknown` records by migrations 10 and 12.
+General and Global history is server scoped across characters; General read cursors
+and unread counts are server scoped, while Global is excluded from unread counters.
+All chat channels render as a flat chronological log with sender labels; messages do
+not use private-message bubble alignment.
+
+Outbound `chat.send` takes exactly `{channel,text,recipient?}` and uses the existing
+authenticated, idempotent, session-fenced, audited command lifecycle. The plugin calls
+only the matching documented `phBotChat` method from `event_loop()`, reports callable
+modes, and preserves the API boolean as acceptance/failure evidence. `True` does not
+mean a remote recipient received the message. Global sends require explicit
+confirmation. Numeric inbound channel mappings were confirmed by the operator on
+phBot 20.1.2. phBot's actual accepted text limit remains a runtime gate; the app
+currently caps one message at 2,048 UTF-8 bytes and does not split messages.

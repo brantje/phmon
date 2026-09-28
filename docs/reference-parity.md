@@ -735,6 +735,61 @@ game icon returned HTTP 200. PostgreSQL stayed healthy and was not restarted. Th
 available browser is unauthenticated, so visual confirmation on a live character's
 Servar inventory remains open.
 
+
+## Slice 6 — Chat implementation evidence (2026-09-28)
+
+- The user's open v0.5.0 screen was inspected read-only. It showed the sender selector,
+  six channel tabs (General, Private, Party, Guild, Union and Global), an offline
+  sender choice and an empty chronological General history. Earlier inspection showed
+  separate General/Private views and Global history. No message was sent and private
+  message text was not copied. The checked-in
+  [desktop chat capture](reference/phmonitor-chat.png) and
+  [mobile chat capture](reference/phmonitor-chat-mobile.png) remain the design
+  baselines for the conversation pane, private contact column and composer.
+- PhMon adds the six named channel tabs, per-character sender, private contact/new-chat
+  flow, history paging, unread/read cursors, jump-to-latest, composer states, emoji
+  insertion, global confirmation, settings-backed browser/sound notifications, and a
+  narrow-screen contacts/conversation switch. Unsupported outbound channels are
+  read-only when the selected session explicitly reports that a mode is unsupported.
+  If the live capability snapshot is absent, the composer can still submit; the Go
+  command service validates current-session and channel support before queueing. The
+  operator reports phBot plugin 1.4.2 installed and chat sending verified. The web
+  page no longer shows a capability-waiting message or blocks on a missing display
+  snapshot.
+- Dashboard now shows the three latest canonical `chat.message_received` events with
+  sender, channel and message preview, linking each row to the corresponding chat
+  context. Empty state remains in the same stacked recent-chat card.
+- The operator confirmed numeric callback mappings from phBot 20.1.2: `1` is
+  General/All, `2` is Private, `4` is Party, `5` is Guild and `6` is Global. The
+  source event payloads and chat projection for types 1, 4, 5 and 6 were corrected
+  across 144 records by migration 10. A deployed read-only check later found one
+  unclassified message while a private conversation showed only the outgoing row;
+  type 2 now maps
+  to Private and migration 12 backfills the existing event and projection.
+  Migration 11 linked two unique same-session echoes to their outgoing commands and
+  fixed the outbound echo-link constraint, preventing duplicate rows in chat history.
+  Unknown numeric values remain in the Advanced-mode Unknown lane.
+- General and Global history spans all characters on the selected server. General,
+  Party and Unknown read cursors and unread counts are server scoped; Private, Guild
+  and Union remain scoped to the selected character (and Private to the peer) so a
+  read in one character's guild/union does not clear another character's unread
+  messages. General/Global copies observed by multiple characters are combined
+  within the existing two-second cross-observer window; repeated messages from one
+  character remain distinct. Server-wide unread counts use the same grouping, while
+  Global is omitted from the unread counter and its badge is hidden.
+- A successful mark-read response now includes fresh contact and channel unread state
+  computed after the cursor is saved. The chat page applies those counts immediately,
+  then the shared live snapshot reconciles them. Changing private contacts keeps the
+  contact roster visible while only the conversation pane loads.
+- At the operator's direction, every channel uses flat chronological log rows with
+  sender/time labels. General and other channels do not use private-message bubble
+  alignment. The local chat page passes Nuxt typecheck, unit tests, formatting and
+  production build; authenticated browser comparison remains open.
+- Browser comparison at 1440×1000, 1280×800 and 390×844 is still open. PostgreSQL
+  migration/store integration and simulator end-to-end verification are also open
+  because this shell has no `TEST_DATABASE_URL`. Plugin adapter unit tests use fake
+  methods and do not establish real phBot integration.
+
 ## Character portraits — 2026-09-28
 
 Character snapshots now optionally carry phBot's documented integer `model` from

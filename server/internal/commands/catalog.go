@@ -7,6 +7,8 @@ import (
 	"io"
 	"math"
 	"strings"
+
+	"phmon/server/internal/chat"
 )
 
 const (
@@ -107,6 +109,27 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 			}
 			args.Name = &value
 		default:
+			return Validated{}, ErrInvalid
+		}
+		normalized, _ := json.Marshal(args)
+		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
+	case "chat.send":
+		var args struct {
+			Channel   string  `json:"channel"`
+			Text      string  `json:"text"`
+			Recipient *string `json:"recipient,omitempty"`
+		}
+		if err := decodeExact(raw, &args); err != nil {
+			return Validated{}, ErrInvalid
+		}
+		args.Channel = strings.TrimSpace(args.Channel)
+		recipient := ""
+		if args.Recipient != nil {
+			recipient = strings.TrimSpace(*args.Recipient)
+			args.Recipient = &recipient
+		}
+		if chat.ValidateOutbound(args.Channel, args.Text, recipient) != nil ||
+			args.Channel == "global" && !confirmation {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)

@@ -56,6 +56,10 @@ func TestValidateAgentEventBoundsAndRequiresSessionSequence(t *testing.T) {
 	if err := validateAgentEvent(event); err != nil {
 		t.Fatalf("bounded chat message rejected: %v", err)
 	}
+	event.Payload = json.RawMessage(`{"channel":"unknown","raw_type":"3","message":"","sender":"A","recipient":"B","direction":"inbound"}`)
+	if err := validateAgentEvent(event); err == nil {
+		t.Fatal("empty chat message was accepted")
+	}
 	// Exercise the explicit character limit without relying on encoded JSON size.
 	message, _ := json.Marshal(map[string]string{"message": string(make([]byte, 2049))})
 	event.Payload = message

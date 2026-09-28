@@ -22,6 +22,9 @@ func TestValidateCatalog(t *testing.T) {
 		{"character.walk", `{"region":25000,"x":1,"y":2,"z":3}`, false},
 		{"character.return", "{}", true},
 		{"character.disconnect", "{}", true},
+		{"chat.send", `{"channel":"general","text":"hello"}`, false},
+		{"chat.send", `{"channel":"private","recipient":"Beta","text":"hello"}`, false},
+		{"chat.send", `{"channel":"global","text":"hello"}`, true},
 	}
 	for _, tc := range valid {
 		t.Run(tc.name+"/"+tc.args, func(t *testing.T) {
@@ -46,6 +49,10 @@ func TestValidateCatalogRejectsUnsafeInputs(t *testing.T) {
 		{"training.area.set", `{"mode":"named","name":" "}`, false},
 		{"character.return", "{}", false},
 		{"character.disconnect", "{}", false},
+		{"chat.send", `{"channel":"global","text":"hello"}`, false},
+		{"chat.send", `{"channel":"private","text":"hello"}`, false},
+		{"chat.send", `{"channel":"party","recipient":"Beta","text":"hello"}`, false},
+		{"chat.send", `{"channel":"general","text":"hello","extra":true}`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name+"/"+tc.args, func(t *testing.T) {

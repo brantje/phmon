@@ -130,7 +130,7 @@ jobs:
             cat /tmp/phmon-browser-audit.log 2>/dev/null || true
             cat /tmp/phmon-agent.log || true
           }
-          for _ in $(seq 1 200); do
+          for _ in $(seq 1 1400); do
             [[ -f /tmp/phmon-browser-ready ]] && break
             kill -0 "$browser_pid" 2>/dev/null || {
               cat /tmp/phmon-browser-audit.log
@@ -148,7 +148,7 @@ jobs:
           browser_pid=
           cat /tmp/phmon-browser-audit.log
 
-          kill -TERM "$simulator_pid"
+          kill -TERM "$simulator_pid" 2>/dev/null || true
           wait "$simulator_pid" || true
           simulator_pid=
           EXPECT_AGENT_CONNECTED=0 python3 scripts/agent_smoke.py

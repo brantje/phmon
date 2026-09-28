@@ -989,7 +989,7 @@ class CanonicalCallbackTests(unittest.TestCase):
     def test_chat_and_alchemy_callbacks_use_canonical_queue_and_keep_raw_fields(self):
         chat = self.callback(plugin.handle_chat, 'party', None, 'hello' * 500)
         self.assertEqual(chat['kind'], 'chat.message_received')
-        self.assertEqual(chat['payload']['channel'], 'unknown')
+        self.assertEqual(chat['payload']['channel'], 'party')
         self.assertEqual(chat['payload']['raw_type'], 'party')
         self.assertEqual(len(chat['payload']['message']), 2048)
         self.assertEqual(chat['sequence'], 1)
@@ -1001,6 +1001,62 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(alchemy['payload']['item']['servername'], 'ITEM_TEST')
         self.assertEqual(alchemy['item_code'], 'ITEM_TEST')
         self.assertEqual(alchemy['sequence'], 2)
+
+    def test_chat_callback_maps_verified_numeric_types_and_preserves_other_types(self):
+        for raw_type, channel in ((1, 'general'), (2, 'private'), (4, 'party'), (5, 'guild'), (6, 'global')):
+            with self.subTest(raw_type=raw_type):
+                numeric = self.callback(plugin.handle_chat, raw_type, 'Beta', 'chat text')
+                self.assertEqual(numeric['payload']['channel'], channel)
+                self.assertEqual(numeric['payload']['raw_type'], str(raw_type))
+
+        unknown = self.callback(plugin.handle_chat, 99, 'Beta', 'other text')
+        explicit = self.callback(plugin.handle_chat, ' Private ', 'Beta', 'private text')
+        self.assertEqual(unknown['payload']['channel'], 'unknown')
+        self.assertEqual(unknown['payload']['raw_type'], '99')
+        self.assertEqual(explicit['payload']['channel'], 'private')
+        self.assertEqual(explicit['payload']['sender'], 'Beta')
+
+    def test_chat_capability_and_dispatch_use_only_injected_documented_methods(self):
+        calls = []
+        adapter = plugin.PhBotAdapter({}, {
+            'general': lambda text: calls.append(('all', text)) or True,
+            'private': lambda name, text: calls.append(('private', name, text)) or False,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        capabilities = {item['name']: item for item in worker._capability_frame()['commands']}
+        self.assertEqual(capabilities['chat.send']['modes'], ['general', 'private'])
+        self.assertTrue(capabilities['chat.send']['supported'])
+        self.assertEqual(worker._invoke('chat.send', {'channel': 'general', 'text': 'hello'}, None)[:2],
+                         (True, {'channel': 'general', 'text': 'hello'}))
+        private = worker._invoke('chat.send', {'channel': 'private', 'text': 'hello', 'recipient': 'Beta'}, None)
+        self.assertFalse(private[0])
+        self.assertEqual(private[1]['recipient'], 'Beta')
+        self.assertEqual(calls, [('all', 'hello'), ('private', 'Beta', 'hello')])
+        with self.assertRaises(ValueError):
+            worker._invoke('chat.send', {'channel': 'guild', 'text': 'hello'}, None)
+        with self.assertRaises(ValueError):
+            worker._invoke('chat.send', {'channel': 'private', 'text': 'hello'}, None)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000005',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'chat.send', 'args': {'channel': 'general', 'text': 'callback dispatch'},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        worker._accept_command(frame)
+        worker._outgoing.get_nowait()  # queued acknowledgement
+        self.assertTrue(worker.process_one_command(worker._current_identity, None))
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['verification'], 'api_confirmed')
+        self.assertEqual(calls[-1], ('all', 'callback dispatch'))
 
     def test_alchemy_finished_is_a_distinct_completion_occurrence(self):
         event = self.callback(plugin.handle_event, plugin.EVENT_ALCHEMY_FINISHED, '')

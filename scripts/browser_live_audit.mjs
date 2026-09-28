@@ -325,6 +325,15 @@ async function main() {
       'group deletion replacement snapshot',
       10000,
     )
+    await waitFor(
+      () =>
+        evaluate(
+          cdp,
+          `document.querySelector('.character-cards-grid .character-card') !== null`,
+        ),
+      'character cards after clearing the deleted group filter',
+      10000,
+    )
 
     // Verify the current responsive shell still fits both mobile and desktop widths.
     for (const [width, height] of [

@@ -15,6 +15,7 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
+	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
 	"phmon/server/internal/resources"
@@ -49,6 +50,8 @@ type liveFilter struct {
 	From         string   `json:"from,omitempty"`
 	To           string   `json:"to,omitempty"`
 	Cursor       string   `json:"cursor,omitempty"`
+	Channel      string   `json:"channel,omitempty"`
+	Peer         string   `json:"peer,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -85,6 +88,7 @@ type LiveHub struct {
 	commands   *commands.Service
 	resources  *resources.Store
 	events     *events.Store
+	chat       *chat.Store
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -94,6 +98,7 @@ type LiveHub struct {
 func (h *LiveHub) SetCommands(service *commands.Service) { h.commands = service }
 func (h *LiveHub) SetResources(store *resources.Store)   { h.resources = store }
 func (h *LiveHub) SetEvents(store *events.Store)         { h.events = store }
+func (h *LiveHub) SetChat(store *chat.Store)             { h.chat = store }
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
@@ -590,6 +595,18 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		}
 		page, err := h.events.List(ctx, filter)
 		return eventsWithPortraits(page, h.resources), err
+	case "chat":
+		if h.chat == nil {
+			return nil, errors.New("chat history unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 50
+		}
+		return h.chat.Snapshot(ctx, chat.Filter{
+			Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID,
+			Channel: subscription.Filter.Channel, Peer: subscription.Filter.Peer, Limit: limit,
+		})
 	default:
 		return nil, errors.New("unsupported live stream")
 	}
@@ -610,6 +627,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			ResourceKeys: append([]string(nil), message.Filter.ResourceKeys...),
 			Server:       strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
 			From: message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
+			Channel: message.Filter.Channel, Peer: message.Filter.Peer,
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
@@ -704,6 +722,21 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			if _, err := events.DecodeCursor(subscription.Filter.Cursor); err != nil {
 				return liveSubscription{}, false
 			}
+		}
+	case "chat":
+		if !validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
+			!chat.ValidChannel(subscription.Filter.Channel) || len(subscription.Filter.Peer) > 64 ||
+			subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" ||
+			len(subscription.Filter.ResourceKeys) != 0 || hasEventSpecificFilters(subscription.Filter) ||
+			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > chat.MaxPageSize) {
+			return liveSubscription{}, false
+		}
+		if subscription.Filter.Channel == "private" {
+			if len(subscription.Filter.Peer) > 64 {
+				return liveSubscription{}, false
+			}
+		} else if subscription.Filter.Peer != "" {
+			return liveSubscription{}, false
 		}
 	default:
 		return liveSubscription{}, false
