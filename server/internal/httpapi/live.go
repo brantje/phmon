@@ -16,6 +16,7 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
+	"phmon/server/internal/events"
 	"phmon/server/internal/resources"
 )
 
@@ -41,6 +42,11 @@ type liveFilter struct {
 	CommandState string   `json:"command_state,omitempty"`
 	Limit        int      `json:"limit,omitempty"`
 	ResourceKeys []string `json:"resource_keys,omitempty"`
+	Server       string   `json:"server,omitempty"`
+	Kind         string   `json:"kind,omitempty"`
+	From         string   `json:"from,omitempty"`
+	To           string   `json:"to,omitempty"`
+	Cursor       string   `json:"cursor,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -76,6 +82,7 @@ type LiveHub struct {
 	characters *characters.Store
 	commands   *commands.Service
 	resources  *resources.Store
+	events     *events.Store
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -84,6 +91,7 @@ type LiveHub struct {
 
 func (h *LiveHub) SetCommands(service *commands.Service) { h.commands = service }
 func (h *LiveHub) SetResources(store *resources.Store)   { h.resources = store }
+func (h *LiveHub) SetEvents(store *events.Store)         { h.events = store }
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
@@ -504,7 +512,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")
 		}
-		items, err := h.characters.List(ctx, subscription.Filter.Query, subscription.Filter.GroupID)
+		items, err := h.characters.ListScoped(ctx, subscription.Filter.Query, subscription.Filter.GroupID, subscription.Filter.Server)
 		if err != nil {
 			return nil, err
 		}
@@ -513,7 +521,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")
 		}
-		item, err := h.characters.Get(ctx, subscription.Filter.CharacterID)
+		item, err := h.characters.GetScoped(ctx, subscription.Filter.CharacterID, subscription.Filter.Server)
 		if errors.Is(err, characters.ErrNotFound) {
 			return map[string]any{"character": nil}, nil
 		}
@@ -525,7 +533,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")
 		}
-		groups, err := h.characters.Groups(ctx)
+		groups, err := h.characters.GroupsScoped(ctx, subscription.Filter.Server)
 		if err != nil {
 			return nil, err
 		}
@@ -553,6 +561,29 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, errors.New("character resources unavailable")
 		}
 		return h.resources.Character(ctx, subscription.Filter.CharacterID, subscription.Filter.ResourceKeys...)
+	case "events":
+		if h.events == nil {
+			return nil, errors.New("event history unavailable")
+		}
+		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
+			Kind: subscription.Filter.Kind, Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit}
+		var err error
+		if subscription.Filter.From != "" {
+			value, parseErr := parseEventBound(subscription.Filter.From, false)
+			if parseErr != nil {
+				return nil, errors.New("invalid event date")
+			}
+			filter.From = &value
+		}
+		if subscription.Filter.To != "" {
+			value, parseErr := parseEventBound(subscription.Filter.To, true)
+			if parseErr != nil {
+				return nil, errors.New("invalid event date")
+			}
+			filter.To = &value
+		}
+		page, err := h.events.List(ctx, filter)
+		return page, err
 	default:
 		return nil, errors.New("unsupported live stream")
 	}
@@ -571,33 +602,39 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			CommandState: message.Filter.CommandState,
 			Limit:        message.Filter.Limit,
 			ResourceKeys: append([]string(nil), message.Filter.ResourceKeys...),
+			Server:       strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind,
+			From: message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
 		return liveSubscription{}, false
 	}
 	switch subscription.Stream {
-	case "agents", "groups":
-		if subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CharacterID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 {
+	case "agents":
+		if subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CharacterID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 || hasEventFilters(subscription.Filter) {
+			return liveSubscription{}, false
+		}
+	case "groups":
+		if !validServerFilter(subscription.Filter.Server) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CharacterID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 || hasEventSpecificFilters(subscription.Filter) {
 			return liveSubscription{}, false
 		}
 	case "characters":
-		if len(subscription.Filter.Query) > 100 {
+		if len(subscription.Filter.Query) > 100 || !validServerFilter(subscription.Filter.Server) || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 {
 			return liveSubscription{}, false
 		}
 		if subscription.Filter.GroupID != "" && !agentdomain.ValidAgentID(subscription.Filter.GroupID) {
 			return liveSubscription{}, false
 		}
-		if subscription.Filter.CharacterID != "" {
+		if subscription.Filter.CharacterID != "" || hasEventSpecificFilters(subscription.Filter) {
 			return liveSubscription{}, false
 		}
 	case "character":
 		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
-			subscription.Filter.Query != "" || subscription.Filter.GroupID != "" {
+			!validServerFilter(subscription.Filter.Server) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 || hasEventSpecificFilters(subscription.Filter) {
 			return liveSubscription{}, false
 		}
 	case "commands", "controls", "resources":
-		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" {
+		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || hasEventFilters(subscription.Filter) {
 			return liveSubscription{}, false
 		}
 		if subscription.Stream != "resources" && len(subscription.Filter.ResourceKeys) != 0 {
@@ -617,12 +654,14 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 				}
 				seen[key] = struct{}{}
 			}
+		} else if subscription.Stream == "controls" && subscription.Filter.Limit != 0 {
+			return liveSubscription{}, false
 		}
-		if (subscription.Stream == "controls" || subscription.Stream == "resources") && (subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0) {
+		if subscription.Stream != "commands" && (subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "") {
 			return liveSubscription{}, false
 		}
 		if subscription.Stream == "commands" {
-			if len(subscription.Filter.CommandName) > 64 || (subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > 100)) {
+			if len(subscription.Filter.CommandName) > 64 || (subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > 100)) || len(subscription.Filter.ResourceKeys) != 0 {
 				return liveSubscription{}, false
 			}
 			switch subscription.Filter.CommandState {
@@ -631,10 +670,51 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 				return liveSubscription{}, false
 			}
 		}
+	case "events":
+		if len(subscription.Filter.Query) > 64 || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || len(subscription.Filter.ResourceKeys) != 0 ||
+			!validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
+			subscription.Filter.Kind != "" && subscription.Filter.Kind != events.DeathKind || len(subscription.Filter.Cursor) > 256 ||
+			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) {
+			return liveSubscription{}, false
+		}
+		var from, to *time.Time
+		for index, raw := range []string{subscription.Filter.From, subscription.Filter.To} {
+			if raw != "" {
+				parsed, err := parseEventBound(raw, index == 1)
+				if err != nil {
+					return liveSubscription{}, false
+				}
+				if index == 0 {
+					from = &parsed
+				} else {
+					to = &parsed
+				}
+			}
+		}
+		if from != nil && to != nil && !to.After(*from) {
+			return liveSubscription{}, false
+		}
+		if subscription.Filter.Cursor != "" {
+			if _, err := events.DecodeCursor(subscription.Filter.Cursor); err != nil {
+				return liveSubscription{}, false
+			}
+		}
 	default:
 		return liveSubscription{}, false
 	}
 	return subscription, true
+}
+
+func hasEventFilters(filter liveFilter) bool {
+	return filter.Server != "" || hasEventSpecificFilters(filter)
+}
+
+func hasEventSpecificFilters(filter liveFilter) bool {
+	return filter.Kind != "" || filter.From != "" || filter.To != "" || filter.Cursor != ""
+}
+
+func validServerFilter(server string) bool {
+	return len(server) <= 100 && !strings.ContainsRune(server, 0)
 }
 
 func validSubscriptionID(value string) bool {

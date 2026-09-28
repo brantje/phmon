@@ -5,6 +5,7 @@ definePageMeta({
     /^[0-9a-f-]{36}$/i.test(route.params.id),
 })
 const route = useRoute()
+const { serverScope } = useServerScope()
 const {
   characterDetail: detailCharacter,
   connectionState: liveConnectionState,
@@ -14,8 +15,9 @@ const {
 let stopDetailWatch: (() => void) | undefined
 onMounted(() => {
   stopDetailWatch = watch(
-    () => String(route.params.id),
-    (id) => setCharacterDetail(id),
+    [() => String(route.params.id), serverScope],
+    ([id, server]) =>
+      setCharacterDetail(String(id), server === 'all' ? undefined : server),
     { immediate: true },
   )
 })
@@ -64,7 +66,7 @@ const detailLoading = computed(
             ? 'Waiting for the initial WebSocket detail snapshot.'
             : liveStale
               ? 'The WebSocket will retry and resynchronize without an HTTP fallback.'
-              : 'The character ID is not present in the current live snapshot.'
+              : 'The character ID is not present in the selected server scope.'
         }}
       </p>
     </div>

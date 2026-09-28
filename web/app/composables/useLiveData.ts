@@ -5,6 +5,7 @@ import {
   type CharacterGroup,
   type CharacterSnapshot,
   type CharacterResourcesView,
+  type EventPage,
   type CharactersSnapshot,
   type CharacterView,
   type CommandsSnapshot,
@@ -26,16 +27,24 @@ type Subscription = {
   current: boolean
   unavailable: boolean
 }
+type CachedDeathState = {
+  session_id: string
+  dead: boolean
+  state_updated_at: string
+}
 
 const agents = ref<AgentView[]>([])
 const characters = ref<CharacterView[]>([])
 const fleetCharacters = ref<CharacterView[]>([])
+const cachedDeathStates = ref<Record<string, CachedDeathState>>({})
 const groups = ref<CharacterGroup[]>([])
 const characterDetail = ref<CharacterView | null>(null)
 const characterResources = ref<Record<string, CharacterResourcesView>>({})
 const commandHistory = ref<RemoteCommand[]>([])
 const characterControls = ref<ControlsSnapshot | null>(null)
+const eventFeeds = ref<Record<string, EventPage>>({})
 const connectionState = ref<LiveConnectionState>('idle')
+const freshnessNow = ref(Date.now())
 const hasSnapshot = ref(false)
 const staleCycle = ref(false)
 
@@ -47,6 +56,7 @@ let watchdogTimer: number | undefined
 let reconnectAttempt = 0
 let lastMessageAt = 0
 let liveDataStarted = false
+let groupsServerScope: string | undefined
 
 const liveStale = computed(() => hasSnapshot.value && staleCycle.value)
 const liveLoading = computed(
@@ -65,7 +75,12 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.command_state || '') === (right.command_state || '') &&
     (left.limit || 0) === (right.limit || 0) &&
     (left.resource_keys || []).join('\u0000') ===
-      (right.resource_keys || []).join('\u0000')
+      (right.resource_keys || []).join('\u0000') &&
+    (left.server || '') === (right.server || '') &&
+    (left.kind || '') === (right.kind || '') &&
+    (left.from || '') === (right.from || '') &&
+    (left.to || '') === (right.to || '') &&
+    (left.cursor || '') === (right.cursor || '')
   )
 }
 
@@ -84,6 +99,73 @@ function send(frame: LiveClientFrame) {
     return false
   socket.send(JSON.stringify(frame))
   return true
+}
+
+function deathStateKey(character: CharacterView) {
+  return `${character.server.toLowerCase()}\u0000${character.character_id}`
+}
+
+function rememberDeathStates(characters: CharacterView[]) {
+  let nextCache = cachedDeathStates.value
+  let copiedCache = false
+  const mutableCache = () => {
+    if (!copiedCache) {
+      nextCache = { ...nextCache }
+      copiedCache = true
+    }
+    return nextCache
+  }
+
+  const result = characters.map((character) => {
+    const sessionID = character.session_id
+    if (!sessionID) return character
+
+    const key = deathStateKey(character)
+    let cached = nextCache[key]
+    if (cached && cached.session_id !== sessionID) {
+      Reflect.deleteProperty(mutableCache(), key)
+      cached = undefined
+    }
+
+    const observedAt = character.state_updated_at
+    const observedTime = observedAt ? Date.parse(observedAt) : Number.NaN
+    if (typeof character.dead === 'boolean' && Number.isFinite(observedTime)) {
+      const cachedTime = cached
+        ? Date.parse(cached.state_updated_at)
+        : Number.NEGATIVE_INFINITY
+      if (!cached || observedTime >= cachedTime) {
+        cached = {
+          session_id: sessionID,
+          dead: character.dead,
+          state_updated_at: observedAt!,
+        }
+        mutableCache()[key] = cached
+      }
+    }
+
+    if (!character.online || !cached) return character
+    const currentTime = Number.isFinite(observedTime)
+      ? observedTime
+      : Number.NEGATIVE_INFINITY
+    const cachedTime = Date.parse(cached.state_updated_at)
+    if (typeof character.dead === 'boolean' && currentTime >= cachedTime)
+      return character
+
+    // Keep the timestamp of the last boolean sample. A newer partial snapshot
+    // must not make an old Alive/Dead value look freshly observed.
+    return {
+      ...character,
+      dead: cached.dead,
+      state_updated_at: cached.state_updated_at,
+    }
+  })
+
+  if (copiedCache) cachedDeathStates.value = nextCache
+  return result
+}
+
+function rememberDeathState(character: CharacterView) {
+  return rememberDeathStates([character])[0]!
 }
 
 function subscribe(subscription: Subscription) {
@@ -158,7 +240,16 @@ function removeSubscription(id: string, clear?: () => void) {
 function ensureBaseSubscriptions() {
   ensureSubscription('agents', 'agents')
   ensureSubscription('fleet-characters', 'characters')
-  ensureSubscription('groups', 'groups')
+  ensureSubscription('groups', 'groups', {
+    server: groupsServerScope || undefined,
+  })
+}
+
+function setGroupsServerScope(server?: string) {
+  groupsServerScope = server?.trim() || undefined
+  ensureSubscription('groups', 'groups', { server: groupsServerScope }, () => {
+    groups.value = []
+  })
 }
 
 function clearCharacterListFilter() {
@@ -167,13 +258,18 @@ function clearCharacterListFilter() {
   })
 }
 
-function setCharacterListFilter(query: string, groupID?: string) {
+function setCharacterListFilter(
+  query: string,
+  groupID?: string,
+  server?: string,
+) {
   ensureSubscription(
     'character-list',
     'characters',
     {
       q: query.trim() || undefined,
       group_id: groupID || undefined,
+      server: server || undefined,
     },
     () => {
       characters.value = []
@@ -181,7 +277,7 @@ function setCharacterListFilter(query: string, groupID?: string) {
   )
 }
 
-function setCharacterDetail(characterID: string) {
+function setCharacterDetail(characterID: string, server?: string) {
   if (!characterID) {
     removeSubscription('character-detail', () => {
       characterDetail.value = null
@@ -191,7 +287,7 @@ function setCharacterDetail(characterID: string) {
   ensureSubscription(
     'character-detail',
     'character',
-    { character_id: characterID },
+    { character_id: characterID, server: server || undefined },
     () => {
       characterDetail.value = null
     },
@@ -246,6 +342,26 @@ function setCharacterControls(characterID: string) {
       characterControls.value = null
     },
   )
+}
+
+function setEventFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'events', filter, () => {
+    removeEventFeedSnapshot(subscriptionID)
+  })
+}
+
+function clearEventFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    removeEventFeedSnapshot(subscriptionID)
+  })
+}
+
+function removeEventFeedSnapshot(subscriptionID: string) {
+  const next: Record<string, EventPage> = {}
+  for (const [id, page] of Object.entries(eventFeeds.value)) {
+    if (id !== subscriptionID) next[id] = page
+  }
+  eventFeeds.value = next
 }
 
 function clearCharacterCommandSubscriptions() {
@@ -328,7 +444,6 @@ function ensureConnection() {
   next.addEventListener('close', () => {
     if (socket !== next) return
     socket = null
-    stopWatchdog()
     markSubscriptionsStale()
     scheduleReconnect()
   })
@@ -401,19 +516,22 @@ function applySnapshot(subscription: Subscription, data: unknown) {
     case 'fleet-characters': {
       const snapshot = data as CharactersSnapshot
       if (!Array.isArray(snapshot.characters)) return false
-      fleetCharacters.value = snapshot.characters
+      fleetCharacters.value = rememberDeathStates(snapshot.characters)
       return true
     }
     case 'character-list': {
       const snapshot = data as CharactersSnapshot
       if (!Array.isArray(snapshot.characters)) return false
-      characters.value = snapshot.characters
+      characters.value = rememberDeathStates(snapshot.characters)
       return true
     }
     case 'groups': {
       const snapshot = data as GroupsSnapshot
       if (!Array.isArray(snapshot.groups)) return false
-      groups.value = snapshot.groups
+      groups.value = snapshot.groups.map((group) => ({
+        ...group,
+        members: rememberDeathStates(group.members),
+      }))
       return true
     }
     case 'character-detail': {
@@ -425,6 +543,8 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       )
         return false
       characterDetail.value = snapshot.character
+        ? rememberDeathState(snapshot.character)
+        : null
       return true
     }
     case 'character-commands': {
@@ -446,6 +566,24 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       return true
     }
     default: {
+      if (subscription.stream === 'events') {
+        const page = data as EventPage
+        if (
+          !Array.isArray(page.events) ||
+          typeof page.total !== 'number' ||
+          page.events.some(
+            (item) =>
+              !item ||
+              typeof item !== 'object' ||
+              typeof item.event_id !== 'string' ||
+              typeof item.character_id !== 'string' ||
+              typeof item.occurred_at !== 'string',
+          )
+        )
+          return false
+        eventFeeds.value = { ...eventFeeds.value, [subscription.id]: page }
+        return true
+      }
       if (subscription.stream === 'resources') {
         const snapshot = data as CharacterResourcesView
         if (
@@ -517,6 +655,7 @@ function scheduleReconnect() {
 function startWatchdog() {
   stopWatchdog()
   watchdogTimer = window.setInterval(() => {
+    freshnessNow.value = Date.now()
     if (
       socket?.readyState === WebSocket.OPEN &&
       Date.now() - lastMessageAt > 35_000
@@ -550,6 +689,7 @@ function stopLiveData() {
   socket = null
   current?.close(1000, 'view closed')
   connectionState.value = 'idle'
+  cachedDeathStates.value = {}
 }
 
 export function useLiveData() {
@@ -562,18 +702,23 @@ export function useLiveData() {
     characterResources: readonly(characterResources),
     commandHistory: readonly(commandHistory),
     characterControls: readonly(characterControls),
+    eventFeeds: readonly(eventFeeds),
     connectionState: readonly(connectionState),
+    freshnessNow: readonly(freshnessNow),
     liveStale,
     liveLoading,
     startLiveData,
     stopLiveData,
     setCharacterListFilter,
+    setGroupsServerScope,
     clearCharacterListFilter,
     setCharacterDetail,
     setCharacterResources,
     clearCharacterResources,
     setCharacterCommands,
     setCharacterControls,
+    setEventFeed,
+    clearEventFeed,
     clearCharacterCommandSubscriptions,
     refreshLiveData,
   }

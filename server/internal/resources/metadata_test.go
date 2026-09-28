@@ -27,6 +27,67 @@ func TestMetadataIdentityAndPrecision(t *testing.T) {
 	}
 }
 
+func TestSharedSROItemMetadataFallbackUsesItemCodeAcrossServers(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "servers.json"), []byte(`{"greatest":"gamedata-test"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	catalog := `{"dataset_id":"gamedata-test","items":{"847":{"code":"ITEM_TEST","presentation":{"icon_url":"/game-assets/icon/item.png","name":"SRO Test Armor","rarity":2,"rare":true,"type_ids":[3,1,2,0],"reference_stats":{"phy_def_pwr":{"min":"50","max":"60"}}}}}}`
+	if err := os.WriteFile(filepath.Join(directory, "gamedata-test.json"), []byte(catalog), 0600); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := LoadItemMetadata(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The numeric model differs from the catalog. The stable SRO item code
+	// resolves the shared static item definition, including rarity and reference
+	// stats, and applies that definition to live API observations on another SRO.
+	raw := json.RawMessage(`{"slots":[{"item":{"model":99999,"servername":"ITEM_TEST","plus":0,"api_evidence_version":2,"api_fields":{"phys_def":55,"whites":{"mapping_entries":[{"key":"1","key_type":"integer","value":"50"}]}},"api_field_types":{"phys_def":{"type":"integer"},"whites":{"type":"dict","count":1}}}}]}`)
+	var payload struct {
+		Slots []struct {
+			Item struct {
+				Metadata map[string]any `json:"metadata"`
+				Details  any            `json:"instance_details"`
+			} `json:"item"`
+		} `json:"slots"`
+	}
+	if err := json.Unmarshal(metadata.enrich("Servar", raw), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Slots) != 1 || payload.Slots[0].Item.Metadata["icon_url"] != "/game-assets/icon/item.png" {
+		t.Fatalf("shared item presentation missing for another SRO server: %+v", payload)
+	}
+	sharedMetadata := payload.Slots[0].Item.Metadata
+	if sharedMetadata["rare"] != true || sharedMetadata["rarity"] != float64(2) || sharedMetadata["name"] != "SRO Test Armor" {
+		t.Fatalf("shared rarity/name metadata missing: %+v", sharedMetadata)
+	}
+	if _, ok := sharedMetadata["reference_stats"].(map[string]any); !ok {
+		t.Fatalf("shared reference stats missing: %+v", sharedMetadata)
+	}
+	if payload.Slots[0].Item.Details == nil {
+		t.Fatal("observed API stats were not interpreted with shared item reference metadata")
+	}
+	details, ok := payload.Slots[0].Item.Details.(map[string]any)
+	if !ok {
+		t.Fatalf("shared reference stats did not resolve observed item stats: %+v", payload.Slots[0].Item.Details)
+	}
+	stats, ok := details["stats"].([]any)
+	if !ok || len(stats) != 1 {
+		t.Fatalf("unexpected resolved shared item stats: %+v", details["stats"])
+	}
+	stat, ok := stats[0].(map[string]any)
+	if !ok || stat["key"] != "phy_def_pwr" || stat["value"] != "55.0" {
+		t.Fatalf("shared reference range was not used for observed stats: %+v", details["stats"])
+	}
+
+	withoutCode := json.RawMessage(`{"slots":[{"item":{"model":847}}]}`)
+	if got := string(metadata.enrich("Servar", withoutCode)); got != string(withoutCode) {
+		t.Fatalf("shared icon lookup guessed by model number without an item code: %s", got)
+	}
+}
+
 func TestReferenceStatCatalogValidation(t *testing.T) {
 	if !validReferenceStats(map[string]any{
 		"phy_def_pwr": map[string]any{"min": "50", "max": "60", "increment": "1.25"},
@@ -202,6 +263,9 @@ func TestPackagedMetadata(t *testing.T) {
 		case "ITEM_CH_NECKLACE_06_C":
 			if item.Presentation["rare"] != false || item.Presentation["sort_type"] != "Necklace" {
 				t.Fatal(item)
+			}
+			if m.SharedIcons[item.Code] != item.Presentation["icon_url"] {
+				t.Fatalf("item icon absent from shared SRO assets: %s", item.Code)
 			}
 			found++
 		case "ITEM_CH_M_HEAVY_06_HA_C_RARE":

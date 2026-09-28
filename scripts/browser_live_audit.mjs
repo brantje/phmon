@@ -224,9 +224,20 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `document.body && document.body.innerText.includes('phBot agents') && document.body.innerText.includes('Characters')`,
+          `document.body && document.body.innerText.includes('Dashboard') && document.body.innerText.includes('Last Deaths') && document.body.innerText.includes('Recent Events')`,
         ),
       'dashboard rendering',
+      20000,
+    )
+
+    await cdp.send('Page.navigate', { url: WEB_URL + '/stats' })
+    await waitFor(
+      () =>
+        evaluate(
+          cdp,
+          `document.querySelector('input[aria-label="Search characters, guild, server or zone"]') && document.querySelector('nav[aria-label="Character groups"]') && document.querySelector('input[aria-label="Character group name"]')`,
+        ),
+      'stats character and group controls',
       20000,
     )
 
@@ -253,7 +264,7 @@ async function main() {
         return buttons.length
       })()`,
     )
-    if (refreshCount < 2) throw new Error(`expected dashboard refresh controls, found ${refreshCount}`)
+    if (refreshCount < 1) throw new Error(`expected the stats refresh control, found ${refreshCount}`)
     await sleep(500)
 
     // Exercise an HTTP mutation and wait for its state to arrive over WebSocket.
@@ -276,22 +287,19 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `[...document.querySelectorAll('select[aria-label="Filter by character group"] option')].some((option) => option.textContent.trim() === ${JSON.stringify(groupName)})`,
+          `[...document.querySelectorAll('button.character-group-chip')].some((button) => button.textContent.trim().startsWith(${JSON.stringify(groupName)}))`,
         ),
       'group mutation replacement snapshot',
       10000,
     )
 
-    // Select the group to exercise filtered character subscription semantics.
+    // Select the group chip to exercise filtered character subscription semantics.
     await evaluate(
       cdp,
       `(() => {
-        const select = document.querySelector('select[aria-label="Filter by character group"]')
-        const option = [...select.options].find((item) => item.textContent.trim() === ${JSON.stringify(groupName)})
-        if (!option) throw new Error('new group option missing')
-        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
-        setter.call(select, option.value)
-        select.dispatchEvent(new Event('change', { bubbles: true }))
+        const chip = [...document.querySelectorAll('button.character-group-chip')].find((button) => button.textContent.trim().startsWith(${JSON.stringify(groupName)}))
+        if (!chip) throw new Error('new group chip missing')
+        chip.click()
         return true
       })()`,
     )
@@ -312,7 +320,7 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `![...document.querySelectorAll('select[aria-label="Filter by character group"] option')].some((option) => option.textContent.trim() === ${JSON.stringify(groupName)})`,
+          `![...document.querySelectorAll('button.character-group-chip')].some((button) => button.textContent.trim().startsWith(${JSON.stringify(groupName)}))`,
         ),
       'group deletion replacement snapshot',
       10000,
@@ -336,24 +344,22 @@ async function main() {
       )
       if (!fits) throw new Error(`responsive layout overflows at ${width}x${height}`)
       if (width === 390) {
-        const characterTable = await evaluate(
+        const characterCards = await evaluate(
           cdp,
           `(() => {
-            const table = document.querySelector('.character-table')
-            if (!table) return { present: false }
+            const grid = document.querySelector('.character-cards-grid')
+            if (!grid) return { present: false }
+            const card = grid.querySelector('.character-card')
+            if (!card) return { present: true, visible: false, count: 0 }
             return {
               present: true,
-              visible: getComputedStyle(table).display !== 'none',
-              rows: table.querySelectorAll('tbody tr').length,
-              scrollsInsidePanel: table.closest('.agent-table-wrap')?.scrollWidth >= table.closest('.agent-table-wrap')?.clientWidth,
+              visible: getComputedStyle(card).display !== 'none' && card.getBoundingClientRect().height > 0,
+              count: grid.querySelectorAll('.character-card').length,
             }
           })()`,
         )
-        if (!characterTable.present || !characterTable.visible || characterTable.rows === 0) {
-          throw new Error(`character list is missing at ${width}x${height}: ${JSON.stringify(characterTable)}`)
-        }
-        if (!characterTable.scrollsInsidePanel) {
-          throw new Error(`character table has no bounded scroll region at ${width}x${height}`)
+        if (!characterCards.present || !characterCards.visible || characterCards.count === 0) {
+          throw new Error(`character cards are missing at ${width}x${height}: ${JSON.stringify(characterCards)}`)
         }
       }
     }
@@ -361,7 +367,7 @@ async function main() {
     // Navigate to a streamed stable character detail when fixture/history data exists.
     const detailURL = await evaluate(
       cdp,
-      `document.querySelector('a.character-link')?.href || ''`,
+      `document.querySelector('a.character-card-name')?.href || ''`,
     )
     if (detailURL) {
       await cdp.send('Page.navigate', { url: detailURL })

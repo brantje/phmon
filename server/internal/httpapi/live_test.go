@@ -14,6 +14,7 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	authdomain "phmon/server/internal/auth"
+	"phmon/server/internal/events"
 )
 
 type liveEnvelope struct {
@@ -488,9 +489,29 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "characters", Revision: 3, Stream: "characters", Filter: liveFilter{Query: "alpha", GroupID: validCharacterID}},
 			valid:   true,
 		},
+		"server scoped characters": {
+			message: liveClientMessage{SubscriptionID: "characters", Revision: 1, Stream: "characters", Filter: liveFilter{Server: "Servar"}},
+			valid:   true,
+		},
+		"server scoped groups": {
+			message: liveClientMessage{SubscriptionID: "groups", Revision: 1, Stream: "groups", Filter: liveFilter{Server: "Servar"}},
+			valid:   true,
+		},
 		"detail": {
 			message: liveClientMessage{SubscriptionID: "detail", Revision: 1, Stream: "character", Filter: liveFilter{CharacterID: validCharacterID}},
 			valid:   true,
+		},
+		"server scoped detail": {
+			message: liveClientMessage{SubscriptionID: "detail", Revision: 2, Stream: "character", Filter: liveFilter{CharacterID: validCharacterID, Server: "Servar"}},
+			valid:   true,
+		},
+		"agents reject server filter": {
+			message: liveClientMessage{SubscriptionID: "agents", Revision: 1, Stream: "agents", Filter: liveFilter{Server: "Servar"}},
+			valid:   false,
+		},
+		"oversized character server filter": {
+			message: liveClientMessage{SubscriptionID: "characters", Revision: 1, Stream: "characters", Filter: liveFilter{Server: strings.Repeat("x", 101)}},
+			valid:   false,
 		},
 		"command history": {
 			message: liveClientMessage{SubscriptionID: "commands", Revision: 1, Stream: "commands", Filter: liveFilter{CharacterID: validCharacterID, CommandName: "bot.stop", CommandState: "completed", Limit: 25}}, valid: true,
@@ -506,7 +527,15 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			valid:   true,
 		},
 		"bad stream": {
-			message: liveClientMessage{SubscriptionID: "x", Revision: 1, Stream: "events"},
+			message: liveClientMessage{SubscriptionID: "x", Revision: 1, Stream: "nonsense"},
+			valid:   false,
+		},
+		"death events": {
+			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Server: "Example", Kind: events.DeathKind, From: "2026-09-01", To: "2026-09-28", Limit: 25}},
+			valid:   true,
+		},
+		"invalid event date": {
+			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{From: "yesterday"}},
 			valid:   false,
 		},
 		"bad group": {

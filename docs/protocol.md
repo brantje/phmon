@@ -1,10 +1,13 @@
-# Agent protocol versions 2–4
+# Agent protocol versions 2–5
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
 leave messages. Slice 3 adds v3 command delivery. Slice 4 adds v4 resource snapshots
-and deltas. Sections below retain the v2 baseline contract; later sections define
-version-specific extensions and limits.
+and deltas. Protocol v5 adds nullable live death state and durable death occurrences.
+The backend continues accepting protocol v2–v4; those agents report unknown death
+state unless their current state contract supplies a value, and cannot submit events.
+Sections below retain the v2 baseline contract; later sections define version-specific
+extensions and limits.
 
 ## Transport and authentication
 
@@ -27,8 +30,9 @@ version-specific extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: 2. Version 1 agents are rejected with an explicit unsupported
-protocol close reason because the character identity/state contract is required.
+Protocol version: latest 5. Version 1 agents are rejected with an explicit
+unsupported protocol close reason because the character identity/state contract is
+required. Versions 2–4 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -683,3 +687,102 @@ receive in-game labels and unfamiliar codes remain literal. A missing white map
 does not hide an independently observed scalar or imply a zero roll. Blue quality
 percentages, magic-option capacity and Advanced elixir eligibility are not present
 in current API evidence and remain unavailable.
+
+## Protocol v5: live death state and durable death events (2026-09-28)
+
+The Go agent endpoint accepts protocol versions 2–5. Deploy the v5-compatible server
+first, then the v5 plugin; older agents continue their existing registration,
+snapshot, state, command and resource behavior. They do not submit death events.
+
+### Live state
+
+`character.snapshot` and `character.state` may carry `state.dead` as a JSON boolean.
+Missing/non-boolean source data is sent as null/omitted and persists as SQL `NULL`.
+Claiming a new character session clears prior live fields, including death state.
+Online/offline derives from the current session independently. Browser Alive/Dead
+counts include only online characters whose boolean state sample is at most 30 seconds
+old; stale, offline, missing and invalid timestamps display as unknown.
+
+### `character.died` and acknowledgement
+
+Protocol v5 death occurrence frame, from an authenticated agent:
+
+    {
+      "type": "character.died",
+      "protocol_version": 5,
+      "character_id": "...",
+      "session_id": "...",
+      "sent_at": "2026-09-28T10:00:00Z",
+      "event": {
+        "event_id": "...",
+        "occurred_at": "2026-09-28T10:00:00Z",
+        "source": "phbot.callback",
+        "source_ref": "EVENT_DIED",
+        "region": 25000,
+        "x": 10.0,
+        "y": 20.0,
+        "z": 30.0,
+        "payload": {"cause": "unknown"}
+      }
+    }
+
+Location fields and payload are optional; the callback's documented data is the
+empty string and supplies no cause. The plugin coalesces duplicate callbacks until
+it observes `dead: false` or `joined_game()`. It queues the occurrence away from the
+callback thread and writes it to an atomic JSON spool before transmission. The spool
+is capped at 512 occurrences / 2 MiB; queue overflow or disk failure is surfaced in
+plugin status and logs.
+
+Each profile's spool filename is derived from the agent ID and normalized profile
+settings path, so two phBot profiles using the same agent credential cannot overwrite
+each other's pending occurrences. If the callback arrives after a backend socket
+ends, the plugin uses the last registered identity/session for that profile. If no
+session is registered yet, it spools the event with the observed server and character
+name and waits for that same identity to register before sending; it stores the bound
+character/session IDs in the spool before transmission. Local binding fields are not
+sent in the wire event. Such an event carries `payload.session_binding = "deferred"`
+so the server can apply the explicit pre-session rule. A callback observed while a
+different character is registered is discarded as stale rather than rebound to it.
+
+The server replies `event.ack` with the event ID and one of `persisted`, `rejected` or
+`retry`. It sends `persisted` only after PostgreSQL commit. The plugin removes a
+`persisted` or terminally `rejected` event from its spool and retries a temporary
+failure after a delay. Reconnect or plugin restart replays the same occurrence ID;
+`activity_events.event_id` is the unique idempotency key.
+
+Ingestion requires protocol v5, authenticated agent ownership, and a durable session
+row tied to both the stated agent and character. A known historical session is
+accepted for replay within its server-owned start/end interval with five minutes of
+clock-skew allowance. For a callback observed after that session's end, the server
+also permits a later occurrence while no newer session for the same agent and
+character has started by that occurrence time. A deferred event bound after
+registration may predate the new session by more than five minutes only when no
+other session for that agent and character covers the occurrence time with skew.
+These rules let socket-disconnect callbacks and callbacks queued before registration
+retain their observed time while rejecting a prior session that reports a death
+after a newer session has taken ownership. Unknown sessions, sessions belonging to
+a different agent/character, and events outside those rules are rejected. The plugin
+aligns occurrence time to the server clock offset received during hello. Timestamps
+are also bounded to the last 365 days and five minutes into the future. Malformed or
+permanently invalid events receive `status: "rejected"`; temporary storage failures
+receive `status: "retry"`.
+Cause and location are never inferred. No death is backfilled from HP or snapshots.
+
+### Storage and reads
+
+Migration `000006_deaths.sql` adds nullable `characters.dead` and `activity_events`.
+Each event stores schema version, canonical kind/category, explicit agent/character/
+session IDs, server, occurrence/receive times, source/reference, optional observed
+region/coordinates and bounded JSON payload. Indexes support server, character and
+kind time scans. The persisted kind is `character.died`.
+
+Authenticated `GET /api/events` supports server, character ID/name substring, kind,
+inclusive `from`/`to` dates, limit and opaque cursor. The authenticated `/api/live`
+connection adds an `events` snapshot stream using the same filters. Pages are ordered
+by `occurred_at DESC,event_id DESC`; the cursor continues from that pair and includes
+the total matching count. The Events → Deaths screen uses this stream. Map links stay
+disabled until Slice 7 verifies region transforms for the observed coordinates.
+
+This is the death-event foundation only. Other event kinds, acquisition/drop
+distinctions, general history subtabs, notifications and map event overlays remain
+Slice 5 and later work.

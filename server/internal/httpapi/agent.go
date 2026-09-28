@@ -15,11 +15,12 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
+	"phmon/server/internal/events"
 	"phmon/server/internal/resources"
 )
 
 const (
-	agentProtocolVersion    = 4
+	agentProtocolVersion    = 5
 	agentMinProtocolVersion = 2
 )
 
@@ -50,6 +51,7 @@ type agentHandler struct {
 	live       *LiveHub
 	commands   *commands.Service
 	resources  *resources.Store
+	events     *events.Store
 }
 
 type agentCapability struct {
@@ -88,6 +90,7 @@ type agentMessage struct {
 	ChunkCount       uint64                     `json:"chunk_count,omitempty"`
 	Full             bool                       `json:"full,omitempty"`
 	ResourceData     map[string]json.RawMessage `json:"resources,omitempty"`
+	DeathEvent       *events.AgentDeath         `json:"event,omitempty"`
 }
 
 type helloAck struct {
@@ -443,6 +446,41 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			h.live.Invalidate()
+		case "character.died":
+			if hello.ProtocolVersion < 5 || h.events == nil ||
+				!agentdomain.ValidAgentID(message.CharacterID) || !agentdomain.ValidAgentID(message.SessionID) ||
+				message.DeathEvent == nil || !validMessageTime(message.SentAt) {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid death event", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			persisted, eventErr := h.events.AppendDeath(ctx, hello.AgentID, message.CharacterID, message.SessionID, *message.DeathEvent)
+			cancel()
+			ack := map[string]any{"type": "event.ack", "protocol_version": hello.ProtocolVersion, "event_id": message.DeathEvent.ID}
+			if eventErr == nil {
+				ack["status"] = "persisted"
+				if persisted {
+					h.live.Invalidate()
+				}
+			} else if errors.Is(eventErr, events.ErrInvalidEvent) {
+				ack["status"] = "rejected"
+				ack["reason"] = "invalid_event"
+				slog.Warn("death event rejected", "agent_id", hello.AgentID, "reason", eventErr.Error())
+			} else if errors.Is(eventErr, events.ErrUnauthorizedSession) || errors.Is(eventErr, events.ErrEventConflict) {
+				ack["status"] = "rejected"
+				ack["reason"] = "session_or_event_rejected"
+				slog.Warn("death event rejected", "agent_id", hello.AgentID, "character_id", message.CharacterID, "reason", eventErr.Error())
+			} else {
+				ack["status"] = "retry"
+				ack["reason"] = "temporarily_unavailable"
+				slog.Warn("death event persistence failed", "agent_id", hello.AgentID, "reason", eventErr.Error())
+			}
+			writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			writeErr := writer.Send(writeCtx, ack)
+			writeCancel()
+			if writeErr != nil {
+				return
+			}
 		case "character.left":
 			if !agentdomain.ValidAgentID(message.CharacterID) || h.characters == nil ||
 				(hello.ProtocolVersion >= 3 && !agentdomain.ValidAgentID(message.SessionID)) {

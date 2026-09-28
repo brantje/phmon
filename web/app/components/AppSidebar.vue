@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { CharacterGroup } from '~~/shared/types/live'
+import { characterDeathState } from '../utils/characterDeath'
 defineProps<{
   collapsed: boolean
   mobileOpen: boolean
@@ -6,15 +8,40 @@ defineProps<{
 }>()
 const route = useRoute()
 const { connectedAgents, fleetStatus } = useFleetSummary()
-const { liveStale, connectionState } = useLiveData()
-const { serverScope, serverOptions } = useServerScope()
+const { liveStale, connectionState, setGroupsServerScope } = useLiveData()
+const { serverScope, serverOptions, matchesServer, scopedGroups } =
+  useServerScope()
+const { fleetCharacters, freshnessNow } = useLiveData()
+watch(
+  serverScope,
+  (server) => setGroupsServerScope(server === 'all' ? undefined : server),
+  { immediate: true },
+)
+const statsGroupID = computed(() =>
+  typeof route.query.group_id === 'string' ? route.query.group_id : '',
+)
+const groupHasDeadCharacter = (
+  members: readonly CharacterGroup['members'][number][],
+) =>
+  members.some(
+    (character) =>
+      matchesServer(character.server) &&
+      characterDeathState(character, false, freshnessNow.value) === 'dead',
+  )
+const anyDeadCharacter = computed(() =>
+  fleetCharacters.value.some(
+    (character) =>
+      matchesServer(character.server) &&
+      characterDeathState(character, false, freshnessNow.value) === 'dead',
+  ),
+)
 const agentsUnavailable = computed(
   () => liveStale.value || connectionState.value === 'stale',
 )
 const primaryNavigation = [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', href: '/' },
   { label: 'Stats', icon: 'i-lucide-chart-no-axes-combined', href: '/stats' },
-  { label: 'Events', icon: 'i-lucide-activity' },
+  { label: 'Events', icon: 'i-lucide-activity', href: '/events' },
   { label: 'Chat', icon: 'i-lucide-messages-square' },
   { label: 'Economy', icon: 'i-lucide-coins' },
   { label: 'Alchemy', icon: 'i-lucide-flask-conical' },
@@ -90,6 +117,12 @@ const advancedNavigation = [
         >
           <UIcon :name="item.icon" />
           <span>{{ item.label }}</span>
+          <span
+            v-if="item.href === '/stats' && anyDeadCharacter"
+            class="sidebar-death-indicator"
+            aria-label="A character is dead"
+            title="A character is dead"
+          />
         </NuxtLink>
         <button
           v-else
@@ -102,6 +135,49 @@ const advancedNavigation = [
           <span>{{ item.label }}</span>
           <span class="nav-soon">later</span>
         </button>
+        <nav
+          v-if="item.href === '/stats' && scopedGroups.length"
+          class="sidebar-groups"
+          aria-label="Saved character groups"
+        >
+          <NuxtLink
+            v-for="group in scopedGroups"
+            :key="group.group_id"
+            class="sidebar-group-link"
+            :to="{ path: '/stats', query: { group_id: group.group_id } }"
+            :class="{ active: statsGroupID === group.group_id }"
+            :aria-current="statsGroupID === group.group_id ? 'page' : undefined"
+            :title="collapsed ? group.name : undefined"
+          >
+            <span>{{ group.name }}</span>
+            <span
+              v-if="groupHasDeadCharacter(group.members)"
+              class="sidebar-group-dead-dot"
+              :aria-label="`Dead character in ${group.name}`"
+              title="A character in this group is dead"
+            />
+          </NuxtLink>
+        </nav>
+        <nav
+          v-if="item.href === '/events'"
+          class="sidebar-groups sidebar-event-links"
+          aria-label="Event categories"
+        >
+          <span class="sidebar-group-link is-disabled">All</span>
+          <span class="sidebar-group-link is-disabled">Level Ups</span>
+          <span class="sidebar-group-link is-disabled">Custom</span>
+          <NuxtLink
+            class="sidebar-group-link"
+            to="/events?kind=character.died"
+            :class="{ active: route.path === '/events' }"
+            :aria-current="route.path === '/events' ? 'page' : undefined"
+          >
+            <span>Deaths</span>
+          </NuxtLink>
+          <span class="sidebar-group-link is-disabled">Rare Drops</span>
+          <span class="sidebar-group-link is-disabled">Normal Drops</span>
+          <span class="sidebar-group-link is-disabled">Uniques</span>
+        </nav>
       </template>
 
       <template v-if="advancedMode">

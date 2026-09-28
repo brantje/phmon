@@ -21,8 +21,9 @@ type characterHandler struct {
 func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
 	groupID := r.URL.Query().Get("group_id")
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(query) > 100 {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "query is too long"})
+	server := strings.TrimSpace(r.URL.Query().Get("server"))
+	if len(query) > 100 || !validServerFilter(server) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid character filter"})
 		return
 	}
 	if groupID != "" && !agentdomain.ValidAgentID(groupID) {
@@ -31,7 +32,7 @@ func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	items, err := h.store.List(ctx, query, groupID)
+	items, err := h.store.ListScoped(ctx, query, groupID, server)
 	if err != nil {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
@@ -43,9 +44,14 @@ func (h *characterHandler) get(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 400, map[string]string{"error": "invalid character_id"})
 		return
 	}
+	server := strings.TrimSpace(r.URL.Query().Get("server"))
+	if !validServerFilter(server) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid server filter"})
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
-	item, err := h.store.Get(ctx, r.PathValue("id"))
+	item, err := h.store.GetScoped(ctx, r.PathValue("id"), server)
 	if errors.Is(err, characters.ErrNotFound) {
 		respondJSON(w, 404, map[string]string{"error": "not found"})
 		return
@@ -57,9 +63,14 @@ func (h *characterHandler) get(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, 200, item)
 }
 func (h *characterHandler) groups(w http.ResponseWriter, r *http.Request) {
+	server := strings.TrimSpace(r.URL.Query().Get("server"))
+	if !validServerFilter(server) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid server filter"})
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
-	items, err := h.store.Groups(ctx)
+	items, err := h.store.GroupsScoped(ctx, server)
 	if err != nil {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
@@ -167,7 +178,7 @@ func (h *characterHandler) removeMember(w http.ResponseWriter, r *http.Request) 
 	h.member(w, r, false)
 }
 func validWireState(s characters.State) bool {
-	if s.Level == nil && s.HP == nil && s.HPMax == nil && s.MP == nil && s.MPMax == nil && s.CurrentEXP == nil && s.MaxEXP == nil && s.SP == nil && s.Gold == nil && s.Region == nil && s.Zone == nil && s.X == nil && s.Y == nil && s.Z == nil && s.Botting == nil {
+	if s.Level == nil && s.HP == nil && s.HPMax == nil && s.MP == nil && s.MPMax == nil && s.CurrentEXP == nil && s.MaxEXP == nil && s.SP == nil && s.Gold == nil && s.Region == nil && s.Zone == nil && s.X == nil && s.Y == nil && s.Z == nil && s.Botting == nil && s.Dead == nil {
 		return false
 	}
 	if s.Level != nil && (*s.Level < 0 || *s.Level > 255) {

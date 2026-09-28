@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CharacterView as Character } from '~~/shared/types/live'
+import { characterDeathState } from '../utils/characterDeath'
 const props = withDefaults(
   defineProps<{ presentation?: 'table' | 'cards' }>(),
   { presentation: 'table' },
@@ -12,8 +13,9 @@ const {
   refreshLiveData,
   setCharacterListFilter,
   clearCharacterListFilter,
+  freshnessNow,
 } = useLiveData()
-const { matchesServer } = useServerScope()
+const { matchesServer, serverScope, scopedGroups } = useServerScope()
 const characterSearch = ref('')
 const debouncedCharacterSearch = ref('')
 let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
@@ -24,7 +26,17 @@ watch(characterSearch, (value) => {
   }, 250)
 })
 
-const selectedGroup = ref('')
+const route = useRoute()
+const router = useRouter()
+const selectedGroup = ref(
+  typeof route.query.group_id === 'string' ? route.query.group_id : '',
+)
+watch(
+  () => route.query.group_id,
+  (value) => {
+    selectedGroup.value = typeof value === 'string' ? value : ''
+  },
+)
 const characterPage = ref(0)
 const characterPageSize = 24
 const manageGroupMembers = ref(false)
@@ -36,13 +48,14 @@ const groupActionError = ref('')
 let stopFilterWatch: (() => void) | undefined
 onMounted(() => {
   stopFilterWatch = watch(
-    [debouncedCharacterSearch, selectedGroup, manageGroupMembers],
-    ([query, groupID, managing]) => {
+    [debouncedCharacterSearch, selectedGroup, manageGroupMembers, serverScope],
+    ([query, groupID, managing, server]) => {
       setCharacterListFilter(
         query,
         groupID && groupID !== 'unassigned' && !managing
           ? String(groupID)
           : undefined,
+        server === 'all' ? undefined : String(server),
       )
     },
     { immediate: true },
@@ -54,6 +67,26 @@ onBeforeUnmount(() => {
 })
 const characterError = computed(
   () => liveStale.value || liveConnectionState.value === 'stale',
+)
+watch(
+  [scopedGroups, liveConnectionState],
+  ([availableGroups, state]) => {
+    if (
+      state !== 'current' ||
+      !selectedGroup.value ||
+      selectedGroup.value === 'unassigned' ||
+      availableGroups.some((group) => group.group_id === selectedGroup.value)
+    ) {
+      return
+    }
+    selectedGroup.value = ''
+    if (typeof route.query.group_id === 'string') {
+      const query = { ...route.query }
+      delete query.group_id
+      void router.replace({ path: route.path, query, hash: route.hash })
+    }
+  },
+  { immediate: true },
 )
 const charactersLoading = computed(
   () =>
@@ -77,14 +110,14 @@ const visibleCharacters = computed(() =>
       manageGroupMembers.value
     )
       return true
-    return lastGroups.value
+    return scopedGroups.value
       .find((group) => group.group_id === selectedGroup.value)
       ?.members.some((member) => member.character_id === character.character_id)
   }),
 )
 const selectedGroupName = computed(
   () =>
-    lastGroups.value.find((group) => group.group_id === selectedGroup.value)
+    scopedGroups.value.find((group) => group.group_id === selectedGroup.value)
       ?.name,
 )
 const characterPageCount = computed(() =>
@@ -117,7 +150,7 @@ async function createCharacterGroup() {
   }
 }
 async function renameCharacterGroup() {
-  const group = lastGroups.value.find(
+  const group = scopedGroups.value.find(
     (item) => item.group_id === selectedGroup.value,
   )
   if (!group) return
@@ -135,7 +168,7 @@ async function renameCharacterGroup() {
   }
 }
 async function deleteCharacterGroup() {
-  const group = lastGroups.value.find(
+  const group = scopedGroups.value.find(
     (item) => item.group_id === selectedGroup.value,
   )
   if (
@@ -154,7 +187,7 @@ async function deleteCharacterGroup() {
   }
 }
 async function toggleGroupMember(character: Character) {
-  const group = lastGroups.value.find(
+  const group = scopedGroups.value.find(
     (item) => item.group_id === selectedGroup.value,
   )
   if (!group) return
@@ -207,7 +240,7 @@ onUnmounted(() => {
           <option value="">All groups</option>
           <option value="unassigned">Unassigned</option>
           <option
-            v-for="group in lastGroups"
+            v-for="group in scopedGroups"
             :key="group.group_id"
             :value="group.group_id"
           >
@@ -280,7 +313,7 @@ onUnmounted(() => {
         All characters
       </button>
       <button
-        v-for="group in lastGroups"
+        v-for="group in scopedGroups"
         :key="group.group_id"
         class="character-group-chip"
         :class="{ active: selectedGroup === group.group_id }"
@@ -344,7 +377,7 @@ onUnmounted(() => {
           @click="toggleGroupMember(character)"
         >
           {{
-            lastGroups
+            scopedGroups
               .find((group) => group.group_id === selectedGroup)
               ?.members.some(
                 (member) => member.character_id === character.character_id,
@@ -431,6 +464,12 @@ onUnmounted(() => {
                       : 'Offline'
                 }}</span
               >
+              <span
+                class="death-chip table-death-chip"
+                :class="`death-${characterDeathState(character, false, freshnessNow)}`"
+              >
+                {{ characterDeathState(character, false, freshnessNow) }}
+              </span>
             </td>
             <td>{{ character.level ?? '—' }}</td>
             <td>{{ formatHealthMana(character) }}</td>
@@ -468,7 +507,7 @@ onUnmounted(() => {
                 @click="toggleGroupMember(character)"
               >
                 {{
-                  lastGroups
+                  scopedGroups
                     .find((group) => group.group_id === selectedGroup)
                     ?.members.some(
                       (member) =>

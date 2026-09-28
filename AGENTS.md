@@ -220,7 +220,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Shell and instance access   | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 1, 2, 15        |
 | Dashboard                   | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 2, 5, 6, 13, 15 |
 | Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts.                                                                                                                                                                                                                                                                                                                                | 2–4, 12         |
-| Events                      | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes.                                                                                                    | 5, 7, 13        |
+| Events                      | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes.                                                                                                    | 4 (death increment only), 5, 7, 13 |
 | Chat                        | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 6, 13, 15       |
 | Economy                     | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 6, 13           |
 | Alchemy                     | Current attempt log, historical item sessions, highest plus and success/failure/attempt counts; character/item/type/degree filters; statistics over recorded attempts. Do not fabricate probabilities.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 5, 12           |
@@ -229,7 +229,7 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | phBot tools                 | Client/bot controls explicitly cover start/stop bot or training, set training area, set training radius, walk, disconnect, return scroll and go clientless where the verified phBot API supports each action. Party Setup must reproduce the verified reference control surface and round-trip current configuration/state. Scripts must be discoverable/listable, manageable where supported and executable for explicit character targets; Quest exposes verified information and supported actions. Investigate each tool's real controls and argument semantics before implementation. Route every mutation through authenticated, capability-aware, audited commands; never arbitrary remote Python/shell execution. | 3, 4, 15        |
 | Analytics                   | Character/session rates, deaths, rare/normal items, economy and academy analyses; time/server/character filters, charts and documented calculations backed by durable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 12, 13          |
 | Map                         | Pan/zoom, region/quick destination selection, character picker/jump-to-character, coordinates/tile/zoom display; characters and academy members, recent deaths/drops with time ranges, live nearby-monster markers, mob-density/types and other historical layers. Use the server's versioned exported dataset for region/map reference data and local assets where available. Validate dedicated map/coordinate handling for Jangan Cave / Tomb of Qin-Shi, Donwhang Cave / Donwhang Stone Cave and Job Temple / Temple instead of assuming PK2 presence proves the outdoor transform applies. Safe confirmation and explicit server/region/layer scope for heatmap reset.                                               | 2.5, 7–9        |
-| Item Search                 | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Resolve static taxonomy/names/icons through the server's game-data profile while preserving live/historical instance facts and exact container provenance from their observed source.                                                                                                                                                                                                                                                                                                           | 2.5, 4, 13      |
+| Item Search                 | Search inventory/equipment/character sets, storage, guild storage, applicable pet inventories and job pouch where verified; text/server/type/subcategory/degree filters, reset, item details and owner/source navigation. Reuse shared SRO artwork and static item definitions by stable game item code across server scopes; use the active profile to map numeric model IDs and apply version-specific overrides. Preserve live/historical instance facts and exact container provenance from their observed source.                                                                                                                                                           | 2.5, 4, 13      |
 | Skill Builder               | Chinese/European builds, game-version/cap selection (demo exposes 110/120/140), mastery/skill prerequisites and level adjustment, bulk increment/decrement shortcuts, reset, SP totals and comparison with a live character. Prefer versioned skill/reference data from the server's exported game-data profile where present; verify rules per supported version and distinguish planning from execution.                                                                                                                                                                                                                                                                                                                | 2.5, 15         |
 | Automations                 | Conditions and schedules tabs, add/edit/enable/disable/delete, target selection, backend evaluation/execution, expiry/missed-run handling and auditable results. Condition/action content supports the verified phMonitor-style placeholders/variables through a bounded server-side template context with deterministic missing-variable behavior; templates never execute arbitrary code. No paid rule-count limits.                                                                                                                                                                                                                                                                                                    | 10, 11          |
 | Settings                    | Language selection with working translations for offered locales; easy/advanced mode; primary/background/text colors; icon sizes (45/60/75 px) and text sizes (11/14/18 px); persisted chat/notification preferences; plugin install/config guidance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 1, 6, 15        |
@@ -1586,12 +1586,13 @@ information hierarchy: compact icon/slot collection -> item preview/detail -> so
 and freshness context.
 
 Every occupied item slot uses the best legally usable local item icon available,
-preferably resolved from the server's active Slice 2.5 game-data profile, and shows
-the source-provided stack/quantity value when applicable. Preserve actual empty
-slots. A plus value, rarity/seal or other status may affect the compact label/accent
-only when that value is actually observed; never derive item quality from icon color
-alone. Missing icons use one deliberate placeholder while retaining the item's name
-and identity.
+resolved by stable item code from the shared SRO catalog; the active Slice 2.5 profile
+maps numeric model IDs and can provide version-specific overrides. Show the source-
+provided stack/quantity value when applicable. Preserve actual empty slots. A plus
+value or mutable status may affect the compact label/accent only when observed;
+static rarity/seal may come from the verified item definition. Never derive item
+quality from icon color alone. Missing icons use one deliberate placeholder while
+retaining the item's name and identity.
 
 Each occupied item slot exposes one shared **Silkroad-style item detail card** used by
 bag inventory, equipped/character-set items, personal storage, guild storage and pet
@@ -1620,10 +1621,11 @@ two-column key/value table:
 - magical options/blues form the final group and use the reference cyan/blue accent,
   one modifier per line
 - static catalog fields such as canonical name, taxonomy, degree, race/requirements
-  and base/reference properties may be enriched from the server's active Slice 2.5
-  game-data profile when their semantics are static for that model/ref; item-instance
-  state such as plus, quantity, observed blues, current durability and other mutable
-  values remains sourced from the live/historical observation
+  and base/reference properties may be enriched from the shared SRO item definition
+  by stable item code; the active Slice 2.5 profile maps numeric model IDs and
+  supplies version-specific overrides when needed. Item-instance state such as plus,
+  quantity, observed blues, current durability and other mutable values remains
+  sourced from the live/historical observation
 - no invented blank rows such as `Critical: -`, no fabricated seals, blues,
   percentages, degree, gender, race or enhancement properties
 
@@ -3132,3 +3134,109 @@ repeat the purge integration test with PostgreSQL, and close only Slice 4 runtim
 gates when supported Party Setup and equipment mapping evidence, packet fixtures /
 movement semantics, and fresh matched-size screenshots are available; then revise
 the docs. Stop before Slice 5.
+
+### Resume — 2026-09-28 live death status and death event rollout
+
+Active work implements the user's requested death increment during Slice 4: protocol 5
+nullable `dead` state, durable `character.died` event ingestion/acknowledgement, and
+Dashboard, Stats, sidebar and Events → Deaths surfaces. This is the death-event
+foundation brought forward from Slice 5; other event kinds and the remaining Slice 4
+acceptance gates stay open. Updated plugin `1.3.0` was already transferred to phBot
+clients by the operator; this rollout deployed only server and web files to
+`node@192.168.10.25:/var/www/phmon`.
+
+Production server/web images built and restarted successfully. `/readyz` and
+`/api/health` returned `status=ok,database=ok`; migration `000006` is present.
+PostgreSQL reports three agents on plugin `1.3.0` / protocol 5 and five online
+characters with fresh Alive state; no online dead or unknown states were present.
+The death event table is empty because no natural `EVENT_DIED` callback occurred.
+No character was operated to create one. A PostgreSQL container restart was observed
+during the rollout; it came back healthy with the existing database and event table
+intact, but the restart cause is unconfirmed.
+
+A production snapshot parameter mismatch was found in the first server build. State
+writes were split into smaller updates inside the existing transaction, covered by
+`TestCharacterIdentitySessionsSearchAndGroups`, then redeployed. The full Go suite
+and `go vet ./...` pass against the isolated PostgreSQL fixture. Existing frontend
+unit/typecheck/lint/format/build and 58 plugin tests passed before this server-only
+correction. The production death callback remains an open runtime gate. Side-by-side
+screenshots at 1440×1000, 1280×800 and 390×844 remain unrecorded; retain the existing
+Slice 4 visual/runtime gates and complete the authorized screenshot comparison when
+a signed-in review browser is available.
+
+Exact next action: use the authenticated deployed UI to capture Dashboard, Stats,
+sidebar and Events → Deaths at the three required viewports, then wait for a natural
+phBot death callback to confirm one durable event and its dashboard/list appearance.
+Do not operate a character solely for this check. Keep Slice 4 open and continue its
+remaining Party Setup, inventory-slot, packet and visual gates.
+
+### Resume — 2026-09-28 selected-server scope correction
+
+The operator reported that selecting Servar still showed Greatest groups and
+possibly related data. Audited all server-filtered API and live paths. Implemented
+exact case-insensitive server scoping for character list, group list/member
+snapshots, and character detail. Fixed the live reconnect path to preserve the
+selected group scope. Character search/list and command target UI now send/filter by
+scope; detail refuses an ID outside the selected server. Events and guild-storage
+were already scoped; `/api/agents` remains intentionally global because one agent
+can observe several game servers, and character resources/commands are addressed by
+globally unique character/session IDs. Global groups can span servers; scoped group
+responses only include matching members.
+
+Validation passed: full Go tests against an isolated PostgreSQL 18.6 fixture, `go vet
+./...`, frontend unit tests, Nuxt typecheck, lint (17 non-fatal HTML void-element
+warnings), Prettier and production build. The fixture and SSH tunnel were temporary
+and have been stopped. Production files were uploaded to `10.25`; only server/web
+were rebuilt and restarted, and `/readyz` plus `/api/health` returned
+`status=ok,database=ok`. PostgreSQL was not restarted. Direct Servar-vs-Greatest UI
+confirmation remains open because the available production browser displayed
+operator sign-in and no authenticated browser session was available. The untracked
+`plugin/phMonitorAdapter.py` remains untouched.
+
+The operator clarified that character inventory uses shared SRO assets and static
+item definitions across servers. Metadata enrichment now resolves presentation by
+the stable `servername` code, including rarity/seal, requirements, type data and
+reference-stat ranges; conflicting fields across catalogs are omitted. Numeric
+model IDs still require the mapped server profile. The updated metadata fix was
+uploaded to `10.25` and the `server` service rebuilt/restarted; `/readyz`,
+`/api/health` and the static game icon returned successfully, and PostgreSQL was
+not restarted. `go test ./internal/resources` and `go build ./...` passed. The browser
+still needs an authenticated session for visual inventory confirmation. The untracked
+`plugin/phMonitorAdapter.py` remains untouched. Exact next action: report the
+cross-server item-definition reuse and deployed status; do not restart PostgreSQL
+or touch the untracked plugin file.
+
+### Resume — 2026-09-28 Stats health badge during page sync
+
+The operator reported a brief Unknown character-health/death badge when Stats loads
+and asked to retain the last information. `CharacterCard` had treated any shared
+WebSocket `syncing` period as stale, even when that character's own state sample was
+fresh. It now keeps Alive/Dead from that sample during subscription sync; the
+existing timestamp freshness threshold and actual stale state still produce Unknown.
+There is no separate health query for this badge: it comes from the character
+snapshot. The local `pnpm build` attempt moved the npm-installed modules and stopped
+at pnpm's ignored-build-script check; no project lockfiles were changed. Production
+Docker's `npm ci` and Nuxt build succeeded. Only web was rebuilt/restarted on 10.25;
+`/api/health` returned `status=ok,database=ok`, `/stats` returned HTTP 200, and
+PostgreSQL remained healthy without restart. Exact next action: let the operator
+reload Stats and confirm the badge no longer flashes Unknown; the available browser
+is not authenticated for a visual check. The untracked `plugin/phMonitorAdapter.py`
+remains untouched.
+
+### Resume — 2026-09-28 app-wide character death cache
+
+The operator requested a global in-app cache so Dashboard and Stats can display
+Alive/Dead directly from the last character state. `useLiveData.ts` now keeps a
+reactive cache keyed by normalized server, character ID and session ID, and hydrates
+fleet, filtered character, group-member and detail snapshots from the newest
+same-session boolean sample. A new session discards the prior state. Cache fallback
+retains the sample's original `state_updated_at`; the 30-second age threshold still
+turns old values Unknown. The freshness clock continues while the socket reconnects.
+Dashboard counts, Stats cards/table and sidebar group indicators use that cached,
+time-bounded state. `npm run typecheck` passed. The production Docker npm/Nuxt build
+succeeded; only web was rebuilt/restarted on `10.25`. `/api/health` reports
+`status=ok,database=ok`, `/stats` returns HTTP 200 and PostgreSQL remains healthy
+without restart. Authenticated visual confirmation remains unavailable in the
+current browser. Exact next action: operator reloads Dashboard/Stats to observe the
+cached status through navigation and reconnect. Keep
+`plugin/phMonitorAdapter.py` untouched.

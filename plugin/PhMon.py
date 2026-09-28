@@ -16,6 +16,7 @@ import ssl
 import struct
 import threading
 import time
+import uuid
 try:
     import queue as _queue
 except ImportError:  # pragma: no cover
@@ -26,10 +27,15 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.2.6'
+pVersion = '1.3.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
+EVENT_DIED = 7
+MAX_DEATH_SPOOL_ITEMS = 512
+MAX_DEATH_SPOOL_BYTES = 2 * 1024 * 1024
+MAX_DEATH_EVENT_BYTES = 8192
+MAX_DEATH_PAYLOAD_BYTES = 4096
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
@@ -917,6 +923,17 @@ def _utc_now():
     return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
 
 
+def _worker_utc_now(worker):
+    # Use the authenticated hello clock offset so occurrence timestamps can be
+    # checked against the server-owned character-session interval.
+    offset = getattr(worker, '_server_clock_offset', 0.0) if worker is not None else 0.0
+    try:
+        epoch = time.time() + float(offset)
+    except Exception:
+        epoch = time.time()
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(epoch))
+
+
 def _monotonic():
     if hasattr(time, 'monotonic'):
         return time.monotonic()
@@ -996,6 +1013,17 @@ def _profile_settings_path(config_dir, bot_config_path, bot_profile):
         pName,
         player_config + '.' + profile_key + '.cfg',
     )
+
+
+def _death_spool_path(config_dir, agent_id, settings_path):
+    if (not isinstance(config_dir, str) or not config_dir.strip() or
+            not _validate_agent_id(agent_id) or
+            not isinstance(settings_path, str) or not settings_path.strip()):
+        return None
+    profile_identity = os.path.normcase(os.path.abspath(settings_path)).encode('utf-8')
+    profile_key = hashlib.sha256(profile_identity).hexdigest()[:16]
+    filename = 'death-events-' + agent_id + '-' + profile_key + '.json'
+    return os.path.join(config_dir, pName, filename)
 
 
 def load_saved_config(path):
@@ -1289,9 +1317,160 @@ class ReconnectBackoff(object):
         return delay
 
 
+class DeathEventSpool(object):
+    """Small atomic JSON spool for important discrete death occurrences."""
+    def __init__(self, path, max_items=MAX_DEATH_SPOOL_ITEMS, max_bytes=MAX_DEATH_SPOOL_BYTES):
+        self.path = path
+        self.max_items = max_items
+        self.max_bytes = max_bytes
+        self._lock = threading.Lock()
+        self._items = []
+        if path:
+            self._load()
+
+    def _load(self):
+        try:
+            with open(self.path, 'rb') as handle:
+                raw = handle.read(self.max_bytes + 1)
+            if len(raw) > self.max_bytes:
+                raise ValueError('spool exceeds size limit')
+            value = json.loads(raw.decode('utf-8'))
+            if not isinstance(value, list) or len(value) > self.max_items:
+                raise ValueError('invalid spool')
+            self._items = [item for item in value if _valid_death_spool_item(item)]
+        except IOError:
+            self._items = []
+        except Exception as error:
+            _log('death event spool could not be loaded (' + error.__class__.__name__ + ')')
+            self._items = []
+
+    def _save_locked(self):
+        if not self.path:
+            return False
+        directory = os.path.dirname(self.path)
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory)
+        temporary = self.path + '.tmp'
+        raw = json.dumps(self._items, separators=(',', ':'), sort_keys=True).encode('utf-8')
+        if len(raw) > self.max_bytes:
+            return False
+        with open(temporary, 'wb') as handle:
+            handle.write(raw)
+            handle.flush()
+            try:
+                os.fsync(handle.fileno())
+            except Exception:
+                pass
+        replace = getattr(os, 'replace', None)
+        if replace:
+            replace(temporary, self.path)
+        else:  # pragma: no cover - Python 3.4 has os.replace; kept for embedded variants.
+            if os.path.exists(self.path):
+                os.remove(self.path)
+            os.rename(temporary, self.path)
+        return True
+
+    def add(self, item):
+        if not self.path:
+            return False
+        if not _valid_death_spool_item(item):
+            return False
+        with self._lock:
+            if any(existing.get('event_id') == item.get('event_id') for existing in self._items):
+                return True
+            if len(self._items) >= self.max_items:
+                return False
+            self._items.append(dict(item))
+            try:
+                if self._save_locked():
+                    return True
+            except Exception as error:
+                _log('death event spool write failed (' + error.__class__.__name__ + ')')
+            self._items.pop()
+            return False
+
+    def acknowledge(self, event_id):
+        with self._lock:
+            previous = self._items
+            self._items = [item for item in previous if item.get('event_id') != event_id]
+            if len(previous) == len(self._items):
+                return True
+            try:
+                if self._save_locked():
+                    return True
+            except Exception as error:
+                _log('death event spool acknowledgement failed (' + error.__class__.__name__ + ')')
+            self._items = previous
+            return False
+
+    def bind_session(self, event_id, character_id, session_id):
+        if not _validate_agent_id(character_id) or not _validate_agent_id(session_id):
+            return False
+        with self._lock:
+            for index, item in enumerate(self._items):
+                if item.get('event_id') != event_id:
+                    continue
+                if item.get('character_id') and item.get('session_id'):
+                    return item['character_id'] == character_id and item['session_id'] == session_id
+                previous = self._items
+                updated = [dict(value) for value in previous]
+                updated[index]['character_id'] = character_id
+                updated[index]['session_id'] = session_id
+                self._items = updated
+                try:
+                    if self._save_locked():
+                        return True
+                except Exception as error:
+                    _log('death event session binding failed (' + error.__class__.__name__ + ')')
+                self._items = previous
+                return False
+        return False
+
+    def pending(self):
+        with self._lock:
+            return [dict(item) for item in self._items]
+
+
+def _valid_death_spool_item(item):
+    if not isinstance(item, dict):
+        return False
+    character_id = item.get('character_id')
+    session_id = item.get('session_id')
+    if (not _validate_agent_id(item.get('event_id')) or
+            item.get('source') != 'phbot.callback' or
+            item.get('source_ref') != 'EVENT_DIED' or
+            not isinstance(item.get('payload'), dict) or
+            type(item.get('deferred_session_binding', False)) is not bool):
+        return False
+    if (character_id is None) != (session_id is None):
+        return False
+    if character_id is not None and (
+            not _validate_agent_id(character_id) or not _validate_agent_id(session_id)):
+        return False
+    server = item.get('server')
+    character_name = item.get('character_name')
+    if (server is None) != (character_name is None):
+        return False
+    if server is not None and (
+            not isinstance(server, str) or not server.strip() or len(server) > 100 or
+            not isinstance(character_name, str) or not character_name.strip() or len(character_name) > 64):
+        return False
+    # Existing v1 spools have only registered session IDs; keep them replayable.
+    if server is None and character_id is None:
+        return False
+    try:
+        _utc_epoch(item.get('occurred_at'))
+        encoded = json.dumps(item, separators=(',', ':'), sort_keys=True).encode('utf-8')
+        payload = json.dumps(item.get('payload'), separators=(',', ':'), sort_keys=True).encode('utf-8')
+    except Exception:
+        return False
+    return len(encoded) <= MAX_DEATH_EVENT_BYTES and len(payload) <= MAX_DEATH_PAYLOAD_BYTES
+
+
 class AgentWorker(object):
     def __init__(self, config, phbot_version, websocket_factory=None, api_adapter=None):
         self.config = validate_config(config)
+        self.config['death_spool_path'] = config.get('death_spool_path') if isinstance(config, dict) else None
         self.phbot_version = str(phbot_version)
         self.websocket_factory = websocket_factory or WebSocketClient
         self.api = api_adapter or PhBotAdapter()
@@ -1302,6 +1481,11 @@ class AgentWorker(object):
         self.status = 'Connecting to PhMon backend...'
         self._samples = _queue.Queue(maxsize=1)
         self._resource_samples = _queue.Queue(maxsize=1)
+        self._death_samples = _queue.Queue(maxsize=128)
+        self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
+        self._death_retry_at = {}
+        self._death_context_lock = threading.Lock()
+        self._last_death_context = None
         self._latest_sample = None
         self.character_id = None
         self._current_identity = None
@@ -1340,6 +1524,55 @@ class AgentWorker(object):
     def capture_joymax_packet(self, opcode, data):
         """Copy only allowlisted packets; decoding is performed by the network worker."""
         return self._item_tracker.enqueue(opcode, data)
+
+    def queue_death_event(self, identity, event):
+        if (not isinstance(identity, dict) or not isinstance(event, dict) or
+                not isinstance(identity.get('server'), str) or not isinstance(identity.get('name'), str)):
+            _log('death callback has no usable character identity')
+            return False
+        record = dict(event)
+        record['server'] = identity['server'].strip()[:100]
+        record['character_name'] = identity['name'].strip()[:64]
+        if not record['server'] or not record['character_name']:
+            _log('death callback has incomplete character identity')
+            return False
+        if (self._current_identity is not None and
+                self._identity_key(identity) != self._identity_key(self._current_identity)):
+            _log('death callback identity does not match the registered character session')
+            return False
+
+        context = None
+        if (self._current_identity is not None and
+                self._identity_key(identity) == self._identity_key(self._current_identity) and
+                _validate_agent_id(self.character_id) and _validate_agent_id(self.session_id)):
+            context = {'character_id': self.character_id, 'session_id': self.session_id}
+        if context is None:
+            with self._death_context_lock:
+                previous = self._last_death_context
+                if previous and self._identity_key(identity) == self._identity_key(previous['identity']):
+                    context = {
+                        'character_id': previous['character_id'],
+                        'session_id': previous['session_id'],
+                    }
+        if context:
+            record.update(context)
+            record['deferred_session_binding'] = False
+        else:
+            record['character_id'] = None
+            record['session_id'] = None
+            record['deferred_session_binding'] = True
+            payload = record.get('payload')
+            if isinstance(payload, dict):
+                payload = dict(payload)
+                payload['session_binding'] = 'deferred'
+                record['payload'] = payload
+        try:
+            self._death_samples.put_nowait(record)
+            return True
+        except _queue.Full:
+            self.status = 'Death event queue is full; an occurrence needs operator attention.'
+            _log('death event queue is full; occurrence was not spooled')
+            return False
 
     def _queue_resource_sample(self, sample):
         try:
@@ -1457,6 +1690,7 @@ class AgentWorker(object):
                         continue
                     except _queue.Empty:
                         pass
+                    self._flush_death_events(client)
                     try:
                         resource_sample = self._resource_samples.get_nowait()
                         if self.character_id is not None and resource_sample.get('identity') == self._current_identity:
@@ -1501,6 +1735,7 @@ class AgentWorker(object):
                     if message is not None:
                         self._handle_server_message(message)
                     self._flush_results(client)
+                    self._flush_death_events(client)
             except Exception as error:
                 if not self.stop_event.is_set():
                     self.status = 'Backend unavailable; retrying...'
@@ -1556,6 +1791,12 @@ class AgentWorker(object):
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
             self._current_identity = identity
+            with self._death_context_lock:
+                self._last_death_context = {
+                    'identity': dict(identity),
+                    'character_id': self.character_id,
+                    'session_id': self.session_id,
+                }
             self._resource_revision = 0
             self._resource_baseline_required = True
             self._confirmed_resources = None
@@ -1715,6 +1956,18 @@ class AgentWorker(object):
     def _handle_server_message(self, message):
         if not isinstance(message,dict): raise WebSocketClosed('invalid server application frame')
         if message.get('type') == 'character.rejected': self._handle_character_rejected(message)
+        elif message.get('type') == 'event.ack':
+            if (message.get('protocol_version') != PROTOCOL_VERSION or
+                    not _validate_agent_id(message.get('event_id')) or
+                    message.get('status') not in ('persisted', 'rejected', 'retry')):
+                raise WebSocketClosed('invalid event acknowledgement')
+            if message.get('status') in ('persisted', 'rejected'):
+                self._death_spool.acknowledge(message['event_id'])
+                self._death_retry_at.pop(message['event_id'], None)
+                if message.get('status') == 'rejected':
+                    _log('death event rejected by backend (' + str(message.get('reason', 'unknown'))[:80] + ')')
+            else:
+                self._death_retry_at[message['event_id']] = _monotonic() + 3.0
         elif message.get('type') == 'command.execute': self._accept_command(message)
         elif message.get('type') == 'command.revoke': self._revoke_session(message)
         elif message.get('type') == 'resource.ack':
@@ -1809,6 +2062,45 @@ class AgentWorker(object):
             try: frame = self._outgoing.get_nowait()
             except _queue.Empty: return
             client.send_json(frame)
+
+    def _flush_death_events(self, client):
+        while True:
+            try:
+                event = self._death_samples.get_nowait()
+            except _queue.Empty:
+                break
+            if not self._death_spool.add(event):
+                self.status = 'Death event spool is unavailable or full; an occurrence needs operator attention.'
+                _log('death event was not sent because durable local spooling failed')
+        now = _monotonic()
+        for event in self._death_spool.pending():
+            event_id = event.get('event_id')
+            if self._death_retry_at.get(event_id, 0.0) > now:
+                continue
+            if not _validate_agent_id(event.get('character_id')) or not _validate_agent_id(event.get('session_id')):
+                identity = {'server': event.get('server'), 'name': event.get('character_name')}
+                if (self._current_identity is None or
+                        self._identity_key(identity) != self._identity_key(self._current_identity) or
+                        not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id)):
+                    continue
+                if not self._death_spool.bind_session(event_id, self.character_id, self.session_id):
+                    self.status = 'Death event could not be bound to a registered character session.'
+                    continue
+                event['character_id'] = self.character_id
+                event['session_id'] = self.session_id
+            frame = {
+                'type': 'character.died',
+                'protocol_version': PROTOCOL_VERSION,
+                'character_id': event.get('character_id'),
+                'session_id': event.get('session_id'),
+                'event': {
+                    key: value for key, value in event.items()
+                    if key not in ('character_id', 'session_id', 'server', 'character_name', 'deferred_session_binding')
+                },
+                'sent_at': _utc_now(),
+            }
+            client.send_json(frame)
+            self._death_retry_at[event_id] = now + 3.0
 
     def _base_result(self, message, status, code, verification):
         return {'type':'command.result','protocol_version':PROTOCOL_VERSION,'command_id':message.get('command_id'),
@@ -2055,6 +2347,7 @@ _gui_status = None
 _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
+_death_callback_active = False
 # None means the plugin loaded after phBot may already have joined. In that case
 # event_loop can establish presence once get_character_data() returns a character.
 _character_joined = None
@@ -2085,6 +2378,19 @@ def _stop_worker():
 def _start_worker(config):
     global _worker
     _stop_worker()
+    config = dict(config)
+    try:
+        config_dir = _get_config_dir() if callable(_get_config_dir) else None
+        if isinstance(config_dir, str) and config_dir.strip():
+            settings_path = _active_settings_path
+            if not settings_path:
+                settings_path = _current_settings_path()
+            config['death_spool_path'] = _death_spool_path(
+                config_dir, config['agent_id'], settings_path)
+        else:
+            config['death_spool_path'] = None
+    except Exception:
+        config['death_spool_path'] = None
     try:
         version = _get_phbot_version()
     except Exception:
@@ -2178,9 +2484,10 @@ def connected():
 
 
 def disconnected():
-    global _last_character_signature, _character_joined
+    global _last_character_signature, _character_joined, _death_callback_active
     _last_character_signature = None
     _character_joined = False
+    _death_callback_active = False
     if _worker is not None:
         _worker.leave_character()
     _set_gui_status('SRO client disconnected. Waiting for login...')
@@ -2188,9 +2495,10 @@ def disconnected():
 
 def joined_game():
     # This callback runs after the player selects a character.
-    global _last_character_signature, _character_joined
+    global _last_character_signature, _character_joined, _death_callback_active
     _last_character_signature = None
     _character_joined = True
+    _death_callback_active = False
     _load_active_profile()
 
 
@@ -2203,6 +2511,55 @@ def handle_joymax(opcode, data):
             # A monitoring failure must never interfere with the game packet.
             pass
     return True
+
+
+def handle_event(event_type, data):
+    """Queue the documented death callback without disk or network work here."""
+    global _death_callback_active
+    try:
+        event_type = int(event_type)
+    except Exception:
+        return
+    if event_type != EVENT_DIED or _death_callback_active:
+        return
+    if _worker is None:
+        _log('death callback observed while PhMon is disconnected')
+        return
+    try:
+        character = _get_character_data()
+    except Exception:
+        character = None
+    if not isinstance(character, dict):
+        _log('death callback had no character identity')
+        return
+    identity = {
+        'server': str(character.get('server', '') or '').strip()[:100],
+        'name': str(character.get('name', '') or '').strip()[:64],
+    }
+    if not identity['server'] or not identity['name']:
+        _log('death callback had incomplete character identity')
+        return
+    event = {
+        'event_id': str(uuid.uuid4()),
+        'occurred_at': _worker_utc_now(_worker),
+        'source': 'phbot.callback',
+        'source_ref': 'EVENT_DIED',
+        'payload': {'cause': 'unknown', 'callback_data': str(data or '')[:128]},
+    }
+    try:
+        position = _get_position()
+    except Exception:
+        position = None
+    if isinstance(position, dict):
+        region = position.get('region')
+        if isinstance(region, int) and not isinstance(region, bool) and 0 <= region <= 65535:
+            event['region'] = region
+        for axis in ('x', 'y', 'z'):
+            value = position.get(axis)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and -1000000 <= value <= 1000000:
+                event[axis] = float(value)
+    if _worker.queue_death_event(identity, event):
+        _death_callback_active = True
 
 
 def event_loop():
@@ -2218,7 +2575,7 @@ def event_loop():
 
 
 def _sample_character():
-    global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined
+    global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined, _death_callback_active
     if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False:
         return
     try:
@@ -2237,6 +2594,10 @@ def _sample_character():
         value = data.get(source)
         if isinstance(value, (int,float)) and not isinstance(value,bool) and value >= 0:
             state[source] = int(value)
+    if isinstance(data.get('dead'), bool):
+        state['dead'] = data['dead']
+        if data['dead'] is False:
+            _death_callback_active = False
     try:
         position = _get_position()
     except Exception:

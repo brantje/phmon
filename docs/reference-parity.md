@@ -4,6 +4,47 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Death status and occurrence history — death increment during Slice 4
+
+The supplied `phmonitor_screenshots/02-stats-death.png` shows a death marker on the
+Stats navigation item and a saved group, with separate Dead/Alive and Online badges
+on the character cards. The implementation now derives badge state from fresh,
+boolean live state and keeps presence separate. During page subscription sync, cards
+reuse the app-wide last-known death sample, keyed by server, character and session.
+Fleet, filtered-list, group and detail snapshots hydrate from that cache; a session
+change invalidates the prior value, and the original sample timestamp controls
+freshness. The same cache feeds Dashboard, Stats and group indicators. Missing,
+expired and offline samples show Unknown. When the transport is stale but the
+character sample remains within its freshness window, its cached state remains
+visible alongside the stale connection indication. Grouped character links render
+under Stats and show a death dot when a fresh, online group member is dead.
+
+The supplied `phmonitor_screenshots/02-dashboard.png` shows online/offline/alive/dead
+counts, Last Deaths, Recent Events, server information, rare drops, chat and offers.
+Dashboard now fills the four presence/death counts and the two event panels from
+PostgreSQL-backed live subscriptions; unrelated Slice 5/6/13 panels keep their
+future-slice state. The supplied `phmonitor_screenshots/05-deaths.png` shows compact
+event-type tabs, character/date filters, count badge, timestamp/character/reason/
+location/map columns and pagination. Events → Deaths follows that hierarchy and
+supports server scope, character search, inclusive date range and cursor pagination.
+The source only supplies `EVENT_DIED` with empty callback data, so cause is unknown.
+Coordinates are recorded when observed, but the map action remains unavailable
+until a region transform is validated in Slice 7.
+
+Death observations live in the nullable `characters.dead` field. Only phBot's
+`get_character_data()['dead']` boolean updates current status; callback type 7 creates
+an occurrence. HP and snapshots do not backfill historical deaths. Protocol v5 adds
+the event frame/ACK and bounded local spool while accepting v2–v4 agents. The server
+accepts replay only when the referenced durable session belongs to the authenticated
+agent and stated character, then deduplicates by stable event UUID.
+
+Visual comparison is structurally checked against the three supplied captures. This
+increment still needs local captures at 1440×1000, 1280×800 and 390×844 and the
+keyboard/focus/whole-page-width review before screenshot parity is accepted. No real
+character was operated; actual phBot death callback validation remains open. This
+implements the death portion and reusable storage/query foundation of Slice 5, not
+the remaining Slice 5 event families.
+
 ## Slice 4 — Stats, containers, pets, party and academy
 
 Status: Slice 4 has a live API-backed collection and presentation implementation.
@@ -492,3 +533,85 @@ and gold only for metadata-confirmed rare items; the rare item border and title 
 gold. This corrects the live Stats page comments. The web-only rebuild/restart is
 healthy and the deployed Stats route loads four live characters and their
 inventories; a manual pointer-hover comparison remains to be recorded.
+
+## 2026-09-28 live death status and event deployment
+
+The server and web implementation for protocol v5 death state and the `character.died`
+event path is deployed at `10.25`. Both `/readyz` and `/api/health` returned
+`status=ok,database=ok`, and PostgreSQL contains `activity_events` from migration
+`000006`. Three connected agents report plugin `1.3.0` / protocol 5; five online
+characters currently have fresh Alive state. The callback event table is empty because
+no natural death callback occurred during verification. Death cause remains unknown,
+and no character was operated to generate a test death.
+
+This verifies deployed service health, migration and live plugin/state compatibility.
+It does not close screenshot parity: no authenticated review browser was available for
+same-size captures at 1440×1000, 1280×800 and 390×844. Compare
+`phmonitor_screenshots/02-dashboard.png`, `02-stats-death.png` and `05-deaths.png`
+against the deployed Dashboard, Stats/sidebar and Events → Deaths pages once a
+signed-in browser is available. The Map action stays disabled without verified region
+coordinate mapping. Other event kinds remain assigned to Slice 5.
+
+### 2026-09-28 PR #11 review corrections
+
+CodeRabbit review identified event durability and UI-boundary issues. The plugin now
+preserves the last registered session across backend disconnect cleanup, defers
+binding only when no character session is registered, fences callbacks observed
+against a different registered character, and stores each profile's spool in a
+profile-keyed file. Deferred binding is persisted locally before transmission and
+accepted server-side only when no competing same-agent session covers the event
+time. Invalid permanent event payloads now receive a terminal rejection ack.
+
+Death date filters now send local-midnight RFC3339 bounds to HTTP and live event
+queries, while the server preserves date-only UTC compatibility. The sidebar only
+marks Deaths as the current page when Events is active. Focused plugin and Go tests
+cover reconnect context, deferred binding, per-profile spool identity, timezone
+bounds, error classification and session fencing. PR CI/CodeRabbit recheck remains
+pending until these changes are pushed.
+
+## 2026-09-28 selected-server API scope audit
+
+The server selector persists in the browser. Audited the API and live streams that
+carry server filters. Character lists (`GET /api/characters` and the `characters`
+stream), saved groups (`GET /api/groups` and the `groups` stream), and character
+detail (`GET /api/characters/{id}` and the `character` stream) now use an exact,
+case-insensitive server match in PostgreSQL. Group membership snapshots contain
+only characters from the requested server; groups with members only on other servers
+are omitted. The group stream retains the current browser scope when reconnecting.
+The character picker and command target picker apply the same scope, and character
+detail returns not-found when its ID belongs to a different selected server.
+
+The other server-filtered APIs were already scoped: `GET /api/events` plus the live
+`events` stream filter event rows by server, while `GET` and `DELETE
+/api/guild-storage` require the exact server and guild pair. The shared validator now
+applies the same length/NUL checks to event, character, group and detail filters.
+`/api/agents` remains global because one logical agent can monitor characters on
+several game servers. Character resources and commands are addressed by globally
+unique character ID and current session; the UI exposes those controls only from a
+character in the selected scope. Group records remain global and may intentionally
+include characters from more than one server; each scoped response returns only its
+server's members.
+
+Cross-server PostgreSQL integration coverage checks case-insensitive character
+filtering, mixed-server group memberships, hidden foreign-only groups, and detail
+rejection. Full Go tests passed against an isolated PostgreSQL 18.6 fixture; `go vet
+./...` passed. Frontend unit tests, Nuxt typecheck, ESLint, Prettier and production
+build passed. ESLint reports 17 non-fatal HTML void-element warnings. The production
+rollout to `10.25` completed with server, web and PostgreSQL healthy and both backend
+readiness endpoints returning `status=ok,database=ok`. The available browser opened
+the deployed Events page at operator sign-in, so the live Servar-vs-Greatest UI
+comparison remains open pending an authenticated browser session.
+
+The character inventory uses the bundled local SRO item assets and static
+definitions across servers. The backend indexes full item presentation by the
+item's stable `servername` code, including rarity/seal, type/classification,
+requirements and reference-stat ranges. Shared definitions label and interpret
+observed item state without substituting another character's inventory values.
+Conflicting fields across configured catalogs are omitted; numeric model IDs are
+never used for cross-server guesses. All 14,227 catalog icon paths exist locally.
+The code now applies shared definitions and reference stats to an unmapped server's
+API item observations. The extension is deployed to `10.25`: `/readyz` on port 8081
+and `/api/health` on port 3005 both report `status=ok,database=ok`, and a local
+game icon returned HTTP 200. PostgreSQL stayed healthy and was not restarted. The
+available browser is unauthenticated, so visual confirmation on a live character's
+Servar inventory remains open.
