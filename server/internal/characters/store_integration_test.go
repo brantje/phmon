@@ -146,7 +146,7 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err := store.Snapshot(ctx, credential.AgentID, a, 1, State{Level: &level}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("stale generation snapshot reclaimed character: %v", err)
 	}
-	if err := store.Snapshot(ctx, credential.AgentID, a, 2, State{HP: &hp}); err != nil {
+	if err := store.Snapshot(ctx, credential.AgentID, a, 2, State{Model: &model, HP: &hp}); err != nil {
 		t.Fatal(err)
 	}
 	// The same old socket can still explicitly claim an unrelated character.
