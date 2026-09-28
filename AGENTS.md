@@ -237,6 +237,14 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Record management           | Character and guild-record deletion with typed-name confirmation, scope/retention explanation and server-side authorization. No accidental bulk removal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 14, 15          |
 | Operations                  | Usable setup, auth/agent token management, compatibility reporting, backups/restore/migrations, retention and deployment/upgrade instructions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 1, 14           |
 
+**Character visibility decision (2026-09-28):** The operator wants the character
+detail Actions tab's “Delete character” control to hide that character everywhere
+in PhMon while retaining its record and all associated data. Hiding is allowed
+online; only a later observed game login for the same server/name restores it.
+Transport reconnect or plugin reload alone must not restore it. The agreed
+implementation and acceptance checks are in
+[docs/character-hide-restore-plan.md](docs/character-hide-restore-plan.md).
+
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
