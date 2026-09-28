@@ -3297,3 +3297,19 @@ the gated store tests and protocol simulator end to end. Complete the 390×844 b
 comparison when a viewport below 500 CSS pixels is available. Keep the installed
 phBot runtime gate open until callback values can be observed. Keep
 `plugin/phMonitorAdapter.py` untouched.
+
+### Resume — 2026-09-28 Slice 6 planning branch
+
+The user requested a plan for Slice 6 on a separate branch from `main`.
+`codex/slice-6-chat-plan` branches from `dd9219f`; planning only is in
+`docs/slice-6-implementation-plan.md`. No Slice 6 feature implementation or real
+chat sends occurred. The plan builds inbound chat from the Slice 5 canonical
+`chat.message_received` event and routes outbound chat through the Slice 3 audited
+command lifecycle. It makes raw chat type/channel, installed `phBotChat` methods,
+message limits and echo/ACK semantics explicit evidence gates. The requested
+`plugin/phManager.py` was not found; the existing untracked
+`plugin/phMonitorAdapter.py` was read as a local example, but remains untouched and
+unversioned. Its mappings and heuristics are leads, not validated PhMon behavior.
+Slice 4/5 blockers remain as recorded above. Exact next action for a Slice 6
+implementation run: verify the reference chat interactions and phBot runtime chat
+semantics, then begin the versioned inbound projection and PostgreSQL migration.
