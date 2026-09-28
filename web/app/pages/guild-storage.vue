@@ -95,6 +95,7 @@ const matchingSlots = computed(() => {
 })
 const hasObservation = computed(() => !!resource.value)
 let requestRevision = 0
+let isMounted = false
 
 async function loadGuildStorage() {
   const scope = selectedScope.value
@@ -133,12 +134,14 @@ watch(
       snapshot.value = null
       requestFailed.value = false
     }
-    void loadGuildStorage()
+    if (isMounted) void loadGuildStorage()
   },
   { immediate: true },
 )
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
+  isMounted = true
+  void loadGuildStorage()
   refreshTimer = setInterval(() => void loadGuildStorage(), 15_000)
 })
 onBeforeUnmount(() => {

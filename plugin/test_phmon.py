@@ -496,6 +496,24 @@ class ResourceTransportTests(unittest.TestCase):
         self.assertEqual(delta['base_revision'], 1)
         self.assertEqual(list(delta['resources']), ['inventory'])
 
+    def test_nested_in_place_item_mutation_emits_resource_delta(self):
+        current = {
+            'inventory': {
+                'availability': 'observed',
+                'slots': [{'item': {'model': 100, 'api_fields': {'blues': {'7': 1}}}}],
+            },
+        }
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, current))
+        current['inventory']['slots'][0]['item']['api_fields']['blues']['7'] = 2
+        self.assertTrue(self.worker._send_resource_snapshot(self.client, current))
+        self.assertEqual(len(self.frames), 2)
+        self.assertEqual(self.frames[1]['type'], 'resource.delta')
+        self.assertEqual(list(self.frames[1]['resources']), ['inventory'])
+        self.assertEqual(
+            self.frames[1]['resources']['inventory']['slots'][0]['item']['api_fields']['blues']['7'],
+            2,
+        )
+
     def test_large_baseline_is_split_into_bounded_atomic_chunks(self):
         value = {
             'inventory': {'availability': 'observed', 'sample': 'a' * 142000},

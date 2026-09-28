@@ -6,10 +6,11 @@ inspection evidence only and are never shipped as PhMon application assets.
 
 ## Slice 4 — Stats, containers, pets, party and academy
 
-Status: a first connected UI and API-backed collection increment is implemented.
-Database integration, authenticated local Slice 4 browser screenshots, current phBot
-runtime collection, verified item metadata and Party Setup application remain open
-acceptance gates.
+Status: Slice 4 has a live API-backed collection and presentation implementation.
+The open gates are full family/blue metadata coverage, packet-based movement retention,
+several UI acceptance comparisons and verified Party Setup application. Current
+runtime evidence is recorded in the dated entries and
+[`item-instance-evidence.md`](item-instance-evidence.md).
 
 The user's supplied Stats captures show two grouped character cards, compact
 character identity/status, independent tabs, page controls above a slot-preserving
@@ -27,12 +28,12 @@ while the existing Slice 3 Actions lifecycle remains the command source.
 
 Inventory pages use four columns by eight rows and preserve empty positions. The
 shared item preview supports hover/focus and click/tap pinning, Escape dismissal and
-bounded internal scrolling. The API collector currently supplies model/code, name,
-plus, quantity and durability; the preview also has normalized fields for verified
-instance detail, but no packet values are currently supplied. Canonical server-dataset
-icons, seal/type/stat taxonomy and item blues therefore remain unavailable. Equipment
-uses the first-13
-mapping as an explicitly unverified adapter lead and displays a runtime warning.
+bounded internal scrolling. Plugin API observations also retain typed whites, blues
+and scalar fields; the backend presents verified available values after
+dataset/model/code matching. Greatest has an explicit dataset mapping and validated
+static catalog. Item packet layouts and unreported values remain unavailable;
+first-13 equipment separation retains its explicit runtime-unverified status. See
+the live verification ledger below.
 Container freshness comes from committed observation timestamps. Storage and guild
 storage preserve their last confirmed contents while marking current availability
 not observed/unavailable; the UI labels these as last known. Pet type, provided pet

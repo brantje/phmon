@@ -631,13 +631,20 @@ each decoded packet to 256 KiB. 0xB034 operations are not subtype-decoded; every
 operation invalidates cached enrichment. Queue loss, unknown flags, malformed data,
 session/profile changes and mismatched API item state invalidate as well. The current
 decoder follows a pinned vSRO 1.188 packet index plus a pinned RSBot implementation
-for the field details; the exact update layouts still require captured Greatest
-runtime fixtures. Storage snapshot and movement decoders remain unavailable.
+for field details, but exact Greatest packet layouts and packet-based item enrichment
+still require captured runtime fixtures. Independently, phBot 20.1.1 API observations
+from plugin 1.2.5+ provide typed white/blues, and 1.2.6+ collects additional typed
+scalar fields; the backend presents validated fields after exact dataset/model/code
+matching. Greatest's explicit mapping and catalog are validated. Unsupported item
+families, unverified blue labels/scales, maximum durability and packet movement
+retention remain unavailable. Storage snapshot and movement decoders remain
+unavailable.
 
 On read, the backend attaches optional `instance_details` only after the server's
 explicit dataset/model/code match. It emits family-specific 5-bit roll quality using
 `floor(roll × 100 / 31)`, plus ordered blues only for validated dataset definitions.
-Absolute combat values, max durability and blue labels/scales without source evidence
+API-backed typed scalar fields are presented when observed and validated; unsupported
+absolute stats, maximum durability and blue labels/scales without source evidence
 remain unavailable. Static metadata and the original source observation stay separate.
 Evidence and the real-runtime gate are tracked in
 [item-instance-evidence.md](item-instance-evidence.md).

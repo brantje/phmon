@@ -1567,17 +1567,22 @@ class AgentWorker(object):
             return False
         full = self._resource_baseline_required or self._confirmed_resources is None
         resource_values = dict(value)
+        # Serialize a complete immutable comparison view before emitting any
+        # chunks. The resource objects may be mutated in place by the collector
+        # between polls, so retaining references would hide nested changes.
+        try:
+            serialized_resources = {
+                key: json.dumps(resource, sort_keys=True, separators=(',', ':'), allow_nan=False)
+                for key, resource in resource_values.items()
+            }
+        except Exception:
+            return False
         changed = resource_values if full else {}
         if not full:
             previous = self._confirmed_resources or {}
-            for key, resource in resource_values.items():
-                try:
-                    current_json = json.dumps(resource, sort_keys=True, separators=(',', ':'), allow_nan=False)
-                    previous_json = json.dumps(previous.get(key), sort_keys=True, separators=(',', ':'), allow_nan=False)
-                except Exception:
-                    return False
-                if current_json != previous_json:
-                    changed[key] = resource
+            for key, resource_json in serialized_resources.items():
+                if resource_json != previous.get(key):
+                    changed[key] = resource_values[key]
             if not changed:
                 return True
 
@@ -1623,16 +1628,22 @@ class AgentWorker(object):
         if not chunks or len(chunks) > 12:
             _log('resource snapshot exceeds the bounded chunk limit')
             return False
+        frames = []
         for index, resources in enumerate(chunks):
             frame = dict(base_fields)
             frame.update({'chunk_index': index, 'chunk_count': len(chunks), 'resources': resources})
-            encoded = json.dumps(frame, separators=(',', ':'), allow_nan=False).encode('utf-8')
+            try:
+                encoded = json.dumps(frame, separators=(',', ':'), allow_nan=False).encode('utf-8')
+            except Exception:
+                return False
             if len(encoded) > MAX_MESSAGE_BYTES:
                 return False
+            frames.append(frame)
+        for frame in frames:
             client.send_json(frame)
         self._resource_revision += 1
         self._resource_baseline_required = False
-        self._confirmed_resources = resource_values
+        self._confirmed_resources = serialized_resources
         return True
 
     def _handle_character_rejected(self, message):

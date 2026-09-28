@@ -95,19 +95,19 @@ establish a Party Setup write contract. The adapter's JSON write plus delayed
 supported configuration fields, write API, reload behavior and effective-state
 readback are confirmed on phBot. No Party Setup mutation is enabled.
 
-Generic passive item enrichment targets vSRO 1.188 only. The archived
+Historical status at the initial Slice 4 collector implementation (superseded by
+the 2026-09-27 and 2026-09-28 evidence below): generic passive item enrichment
+targets vSRO 1.188 only. The archived
 [SilkroadDoc packet index](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/Packets)
 identifies packet families, and its repository states that its analysis targets vSRO
-1.188, but the accessible references do not provide enough verified item-bearing
-field layouts or captured bytes to implement a safe decoder. Therefore the plugin
-does not inspect arbitrary packet offsets and reports item enrichment unavailable;
-enhancement, seal and magic-option values are not inferred. Reopen this gate when
-version-specific structures and representative packet fixtures can be verified.
+1.188. At that point, item layouts had not yet been implemented or corroborated.
+Current parser and API-backed item presentation behavior, along with unresolved
+runtime gates, is recorded in the dated evidence below and in
+[`item-instance-evidence.md`](item-instance-evidence.md).
 
-Static item name/icon/taxonomy enrichment also remains open: the workspace currently
-has a local asset index but no validated server-to-dataset profile/catalog mapping
-with item definitions. A server-specific asset tree alone is insufficient evidence
-for model/code semantics, so no icon or degree is guessed.
+At the time of the initial Slice 4 collector, static item enrichment also remained
+open. It was subsequently implemented through an explicit server-to-dataset mapping;
+see the 2026-09-27/28 evidence below for current catalog coverage and limits.
 
 ## Login and connection status behavior
 
