@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -162,7 +163,21 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(guildRows) != 1 || !strings.Contains(string(guildRows[0].Payload), `"model":99`) || guildRows[0].ObserverName != "observer" || guildRows[0].ObserverCharacterID != observerID {
+	var newestGuild struct {
+		Slots []struct {
+			Item struct {
+				Model json.Number `json:"model"`
+			} `json:"item"`
+		} `json:"slots"`
+	}
+	if len(guildRows) == 1 {
+		decoder := json.NewDecoder(bytes.NewReader(guildRows[0].Payload))
+		decoder.UseNumber()
+		if err := decoder.Decode(&newestGuild); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(guildRows) != 1 || len(newestGuild.Slots) != 1 || newestGuild.Slots[0].Item.Model.String() != "99" || guildRows[0].ObserverName != "observer" || guildRows[0].ObserverCharacterID != observerID {
 		t.Fatalf("stale observer replaced newer guild evidence: %+v", guildRows)
 	}
 
