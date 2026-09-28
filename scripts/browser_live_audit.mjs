@@ -235,7 +235,7 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `document.querySelector('input[aria-label="Search characters, guild, server or zone"]') && document.querySelector('select[aria-label="Filter by character group"]')`,
+          `document.querySelector('input[aria-label="Search characters, guild, server or zone"]') && document.querySelector('nav[aria-label="Character groups"]') && document.querySelector('input[aria-label="Character group name"]')`,
         ),
       'stats character and group controls',
       20000,
@@ -287,22 +287,19 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `[...document.querySelectorAll('select[aria-label="Filter by character group"] option')].some((option) => option.textContent.trim() === ${JSON.stringify(groupName)})`,
+          `[...document.querySelectorAll('button.character-group-chip')].some((button) => button.textContent.trim().startsWith(${JSON.stringify(groupName)}))`,
         ),
       'group mutation replacement snapshot',
       10000,
     )
 
-    // Select the group to exercise filtered character subscription semantics.
+    // Select the group chip to exercise filtered character subscription semantics.
     await evaluate(
       cdp,
       `(() => {
-        const select = document.querySelector('select[aria-label="Filter by character group"]')
-        const option = [...select.options].find((item) => item.textContent.trim() === ${JSON.stringify(groupName)})
-        if (!option) throw new Error('new group option missing')
-        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
-        setter.call(select, option.value)
-        select.dispatchEvent(new Event('change', { bubbles: true }))
+        const chip = [...document.querySelectorAll('button.character-group-chip')].find((button) => button.textContent.trim().startsWith(${JSON.stringify(groupName)}))
+        if (!chip) throw new Error('new group chip missing')
+        chip.click()
         return true
       })()`,
     )
@@ -323,7 +320,7 @@ async function main() {
       () =>
         evaluate(
           cdp,
-          `![...document.querySelectorAll('select[aria-label="Filter by character group"] option')].some((option) => option.textContent.trim() === ${JSON.stringify(groupName)})`,
+          `![...document.querySelectorAll('button.character-group-chip')].some((button) => button.textContent.trim().startsWith(${JSON.stringify(groupName)}))`,
         ),
       'group deletion replacement snapshot',
       10000,
