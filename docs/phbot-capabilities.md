@@ -571,3 +571,71 @@ unverified. For item instance evidence and the Slice 4 visual audit, see
 [`item-instance-evidence.md`](item-instance-evidence.md) and
 [`reference-parity.md`](reference-parity.md). No character or game traffic was
 generated for these checks.
+
+## Slice 5 event-source evidence (2026-09-28)
+
+The public [Events API](https://plugins.phbot.org/phbot-api/events) was rechecked on
+2026-09-28. It says `handle_event(t, data)` receives a string `data`; the table below
+records the documented values and the independent canonical mapping. Event IDs are
+not inferred from third-party snippets.
+
+| ID | Official data meaning | Canonical event | Stored source detail |
+| ---: | --- | --- | --- |
+| 0 `EVENT_UNIQUE_SPAWN` | Monster name | `world.unique_spawned` | Bounded `value` string |
+| 1 `EVENT_HUNTER_SPAWN` | Player name, including traders | `job.hunter_trader_seen` | Bounded `value` string |
+| 2 `EVENT_THIEF_SPAWN` | Player name | `job.thief_seen` | Bounded `value` string |
+| 3 `EVENT_TRANSPORT_DIED` | Transport ID, including horses | `pet.transport_died` | Bounded `value` string |
+| 4 `EVENT_PLAYER_ATTACKING` | Player name | `character.attacked` | Bounded `value` string |
+| 5 `EVENT_RARE_DROP` | Equippable item model ID | `drop.rare` | Numeric model ID only |
+| 6 `EVENT_ITEM_DROP` | Equippable item model ID | `drop.item` | Numeric model ID only |
+| 7 `EVENT_DIED` | Empty string | `character.died` | Cause remains `unknown` |
+| 8 `EVENT_ALCHEMY_FINISHED` | Empty string | `alchemy.finished` | Empty payload; no attempt is inferred |
+| 9 `EVENT_GM_SPAWNED` | Player name | `world.gm_spawned` | Bounded `value` string |
+| 10 `EVENT_LEVEL_UP` | New level | `character.level_up` | Validated integer, 1–255 |
+
+The official [Alchemy API](https://plugins.phbot.org/phbot-api/alchemy) documents
+`alchemy_update(slot, success, plus)` and says it runs after an elixir is used on an
+item. PhMon records one `alchemy.attempt`; it preserves `success` only when Python
+returns a boolean and `plus` only when it returns a bounded integer. The page does
+not define further type semantics or probabilities, and no callback was naturally
+observed during this implementation. Item details are attached only if the current
+same-session inventory observation has that callback slot; otherwise the attempt
+keeps its slot and callback values without an item identity.
+
+The Events API documents `handle_chat(t, player, msg)`, identifies `t` as the type
+sent by the server, and says `player` may be `None` for non-private messages. It does
+not publish a type-to-channel table. PhMon therefore keeps bounded original text,
+bounded raw type, sender/recipient fields when available, and `channel:"unknown"`;
+it does not guess General/Private/Party/Guild/Union/Global mappings.
+
+Lifecycle source details from the same page: `connected()` fires when phBot connects
+to the game server; `disconnected()` may fire several times; `joined_game()` runs on
+character selection before character data loads; `teleported()` runs on teleport and
+right after `joined_game()`; and `event_loop()` runs every 500 ms. PhMon suppresses
+repeated connected/disconnected and joined-game state notifications while still
+allowing later transitions. Event callbacks only enqueue bounded in-memory records;
+the worker performs atomic spool writes and network sends. If no worker exists yet,
+a bounded callback queue holds the event until `event_loop()` starts/observes the
+worker. Process termination before worker spooling can lose those in-memory entries.
+
+The official [Drops API](https://plugins.phbot.org/phbot-api/drops) documents
+`get_drops()` as nearby pickable items keyed by pick ID, with observed name, server
+item code, model, region, coordinates, pickability, blue flag and plus. `handle_event`
+drop callbacks report only an equippable model ID; no stable pick-ID/time correlation
+is documented. PhMon does not query `get_drops()` for these callbacks and does not
+invent ground identity or item-instance fields. Ownership events are separately
+derived from continuous bag, pet, job-pouch and observed storage quantity snapshots.
+
+Runtime boundary for this implementation: a phBot process was present on the Windows
+host, but its native window and plugin callback values were not accessible through the
+available browser-only computer-control surface. This run therefore did not confirm
+the current installed phBot or plugin version, observe any of IDs 0–10, receive chat
+or alchemy callbacks, or validate lifecycle ordering against the running client. The
+previous phBot 20.1.1 / plugin 1.1.0 check establishes only the older agent transport;
+it is not Slice 5 callback evidence. Keep all listed callbacks and the real-runtime
+gate open until naturally observed on a recorded supported runtime. No game action
+was performed to generate an event.
+
+No Slice 5 packet decoder is enabled. Existing Slice 4 item packet handling remains
+separately constrained by its recorded opcode/profile fixtures and does not supply
+event decoding evidence.

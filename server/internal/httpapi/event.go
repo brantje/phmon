@@ -34,11 +34,13 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		CharacterID:    strings.TrimSpace(query.Get("character_id")),
 		CharacterQuery: strings.TrimSpace(query.Get("q")),
 		Kind:           strings.TrimSpace(query.Get("kind")),
+		Category:       strings.TrimSpace(query.Get("category")),
+		ItemQuery:      strings.TrimSpace(query.Get("item")),
 		Cursor:         strings.TrimSpace(query.Get("cursor")),
 		Limit:          10,
 	}
 	if !validServerFilter(filter.Server) || len(filter.CharacterQuery) > 64 || len(filter.CharacterID) > 0 && !agentdomain.ValidAgentID(filter.CharacterID) ||
-		filter.Kind != "" && filter.Kind != events.DeathKind || len(filter.Cursor) > 256 {
+		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid event filter"})
 		return
 	}

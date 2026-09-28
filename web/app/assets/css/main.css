@@ -1402,10 +1402,12 @@ select:focus-visible {
   .is-collapsed .app-sidebar {
     width: min(82vw, 280px);
     transform: translateX(-101%);
+    visibility: hidden;
   }
 
   .app-sidebar.is-mobile-open {
     transform: translateX(0);
+    visibility: visible;
   }
 
   .is-collapsed .brand-copy,
@@ -1970,6 +1972,32 @@ select:focus-visible {
   padding: 10px;
 }
 
+.alchemy-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.alchemy-summary-card {
+  display: grid;
+  min-height: 67px;
+  align-content: center;
+  gap: 5px;
+  padding: 9px 11px;
+}
+
+.alchemy-summary-card span {
+  color: #9caabd;
+  font-size: 10px;
+}
+
+.alchemy-summary-card strong {
+  color: var(--ph-primary);
+  font-size: 18px;
+  font-weight: 600;
+}
+
 .events-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -2007,9 +2035,7 @@ select:focus-visible {
 
 .events-filters {
   display: grid;
-  grid-template-columns:
-    minmax(180px, 1fr) minmax(140px, 0.7fr) minmax(140px, 0.7fr)
-    auto;
+  grid-template-columns: minmax(160px, 1fr) minmax(150px, 1fr) 140px 140px auto;
   align-items: end;
   gap: 8px;
   margin-bottom: 10px;
@@ -2082,6 +2108,33 @@ select:focus-visible {
   color: var(--ph-primary);
 }
 
+.event-item-link {
+  color: var(--ph-primary);
+  text-decoration: none;
+}
+
+.event-item-link:hover {
+  text-decoration: underline;
+}
+
+.event-item-detail {
+  display: block;
+  max-width: 280px;
+  overflow: hidden;
+  color: #8f9db0;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+
+.dashboard-rare-link {
+  color: var(--ph-text);
+  text-decoration: none;
+}
+
+.dashboard-rare-link:hover strong {
+  color: var(--ph-primary);
+}
+
 .event-avatar {
   display: grid;
   width: 38px;
@@ -2142,6 +2195,10 @@ select:focus-visible {
 }
 
 @media (max-width: 720px) {
+  .alchemy-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .events-panel {
     padding: 8px;
   }
