@@ -328,7 +328,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				for _, mode := range capability.Modes {
-					if capability.Name != "training.area.set" || (mode != "current_position" && mode != "position" && mode != "named") {
+					validTrainingMode := capability.Name == "training.area.set" && (mode == "current_position" || mode == "position" || mode == "named")
+					validChatMode := capability.Name == "chat.send" && (mode == "general" || mode == "private" || mode == "party" || mode == "guild" || mode == "union" || mode == "global")
+					if !validTrainingMode && !validChatMode {
 						rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability mode", hello.AgentID, hello.ProtocolVersion)
 						return
 					}
@@ -649,7 +651,7 @@ func validReportedCommandName(name string) bool {
 	switch name {
 	case "bot.start", "bot.stop", "trace.start", "trace.stop",
 		"training.area.set", "training.radius.set", "character.walk",
-		"character.return", "character.disconnect", "client.clientless":
+		"character.return", "character.disconnect", "client.clientless", "chat.send":
 		return true
 	default:
 		return false

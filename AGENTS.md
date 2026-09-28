@@ -3298,18 +3298,38 @@ comparison when a viewport below 500 CSS pixels is available. Keep the installed
 phBot runtime gate open until callback values can be observed. Keep
 `plugin/phMonitorAdapter.py` untouched.
 
-### Resume — 2026-09-28 Slice 6 planning branch
+### Resume — 2026-09-28 Slice 6 implementation
 
-The user requested a plan for Slice 6 on a separate branch from `main`.
-`codex/slice-6-chat-plan` branches from `dd9219f`; planning only is in
-`docs/slice-6-implementation-plan.md`. No Slice 6 feature implementation or real
-chat sends occurred. The plan builds inbound chat from the Slice 5 canonical
-`chat.message_received` event and routes outbound chat through the Slice 3 audited
-command lifecycle. It makes raw chat type/channel, installed `phBotChat` methods,
-message limits and echo/ACK semantics explicit evidence gates. The requested
-`plugin/phManager.py` was not found; the existing untracked
-`plugin/phMonitorAdapter.py` was read as a local example, but remains untouched and
-unversioned. Its mappings and heuristics are leads, not validated PhMon behavior.
-Slice 4/5 blockers remain as recorded above. Exact next action for a Slice 6
-implementation run: verify the reference chat interactions and phBot runtime chat
-semantics, then begin the versioned inbound projection and PostgreSQL migration.
+The user authorized implementation of the planned Slice 6 increment on
+`codex/slice-6-chat-plan`, which branches from `main` at `dd9219f`. Work and evidence
+are recorded in `docs/slice-6-implementation-plan.md`, `docs/protocol.md`,
+`docs/phbot-capabilities.md` and `docs/reference-parity.md`. Added migration
+`000008_chat.sql`, transactionally projected chat history, read/contact/preferences
+APIs, a revision-fenced live stream, `chat.send` validation and session capability
+modes, optional phBot chat adapter, responsive `/chat` UI and `/settings` notification
+controls. Global sends require confirmation; phBot API acceptance does not establish
+delivery. Only self-describing named callback types are canonicalized; numeric types
+remain unknown. `plugin/phManager.py` was absent; the untracked
+`plugin/phMonitorAdapter.py` remains untouched and unversioned.
+
+Dashboard now renders the three latest canonical chat events in a recent-chat card
+with conversation links. The currently open reference browser was inspected read-only:
+it shows six channel tabs, an offline sender selector, and empty General history.
+
+Local validation: `go test ./...`, `go vet ./...`, `go build ./...`, Python plugin
+unit tests/compile, `npm run test:unit` (8 passed), `npm run typecheck`,
+`npm run lint` (0 errors; 22 existing HTML void-element warnings),
+`npm run format:check` and `npm run build` pass. The chat/settings lint warnings added
+by this slice are fixed. PostgreSQL-backed migration/store integration, the production
+simulator end-to-end chat flow, and browser comparison at 1440×1000, 1280×800 and
+390×844 remain open. The local `/chat` route compiles and reloads to operator sign-in;
+the localhost backend refuses connections and the 192.168.10.105 backend readiness
+check timed out. `TEST_DATABASE_URL` is unset and the Docker CLI is unavailable, so
+the PostgreSQL-backed and container build gates remain open. The reference browser
+remains read-only. The installed phBot
+`phBotChat` methods and numeric callback values also remain unobserved; fake-adapter
+tests are not real integration. Keep Slice 6 status in progress until resolvable gates
+are closed and preserve the separate real-runtime gate if phBot access remains
+unavailable. Next actions: capture authenticated local browser comparisons when
+backend authentication/data are available, and run the chat integration test with
+`TEST_DATABASE_URL` when PostgreSQL is available.

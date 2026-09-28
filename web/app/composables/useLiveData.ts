@@ -9,6 +9,7 @@ import {
   type CharactersSnapshot,
   type CharacterView,
   type CommandsSnapshot,
+  type ChatSnapshot,
   type ControlsSnapshot,
   type RemoteCommand,
   type GroupsSnapshot,
@@ -43,6 +44,7 @@ const characterResources = ref<Record<string, CharacterResourcesView>>({})
 const commandHistory = ref<RemoteCommand[]>([])
 const characterControls = ref<ControlsSnapshot | null>(null)
 const eventFeeds = ref<Record<string, EventPage>>({})
+const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const connectionState = ref<LiveConnectionState>('idle')
 const freshnessNow = ref(Date.now())
 const hasSnapshot = ref(false)
@@ -82,6 +84,8 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.item || '') === (right.item || '') &&
     (left.from || '') === (right.from || '') &&
     (left.to || '') === (right.to || '') &&
+    (left.channel || '') === (right.channel || '') &&
+    (left.peer || '') === (right.peer || '') &&
     (left.cursor || '') === (right.cursor || '')
   )
 }
@@ -358,6 +362,22 @@ function clearEventFeed(subscriptionID: string) {
   })
 }
 
+function setChatFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'chat', filter, () => {
+    chatFeeds.value = Object.fromEntries(
+      Object.entries(chatFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+  })
+}
+
+function clearChatFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    chatFeeds.value = Object.fromEntries(
+      Object.entries(chatFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+  })
+}
+
 function removeEventFeedSnapshot(subscriptionID: string) {
   const next: Record<string, EventPage> = {}
   for (const [id, page] of Object.entries(eventFeeds.value)) {
@@ -607,6 +627,27 @@ function applySnapshot(subscription: Subscription, data: unknown) {
         }
         return true
       }
+      if (subscription.stream === 'chat') {
+        const snapshot = data as ChatSnapshot
+        if (
+          !Array.isArray(snapshot.contacts) ||
+          !snapshot.page ||
+          !Array.isArray(snapshot.page.messages) ||
+          snapshot.page.messages.some(
+            (message) =>
+              !message ||
+              typeof message.message_id !== 'string' ||
+              typeof message.message !== 'string' ||
+              typeof message.occurred_at !== 'string',
+          ) ||
+          typeof snapshot.channel !== 'string' ||
+          !snapshot.unread_by_channel ||
+          typeof snapshot.unread_by_channel !== 'object'
+        )
+          return false
+        chatFeeds.value = { ...chatFeeds.value, [subscription.id]: snapshot }
+        return true
+      }
       return false
     }
   }
@@ -705,6 +746,7 @@ export function useLiveData() {
     commandHistory: readonly(commandHistory),
     characterControls: readonly(characterControls),
     eventFeeds: readonly(eventFeeds),
+    chatFeeds: readonly(chatFeeds),
     connectionState: readonly(connectionState),
     freshnessNow: readonly(freshnessNow),
     liveStale,
@@ -721,6 +763,8 @@ export function useLiveData() {
     setCharacterControls,
     setEventFeed,
     clearEventFeed,
+    setChatFeed,
+    clearChatFeed,
     clearCharacterCommandSubscriptions,
     refreshLiveData,
   }

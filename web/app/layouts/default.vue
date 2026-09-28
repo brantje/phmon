@@ -24,12 +24,18 @@ const {
   loginOperator,
 } = useOperatorSession()
 const { startLiveData, stopLiveData } = useLiveData()
+const chatNotifications = useChatNotifications()
 
 watch(
   operatorAuthenticated,
   (authenticated) => {
-    if (authenticated) startLiveData()
-    else stopLiveData()
+    if (authenticated) {
+      startLiveData()
+      chatNotifications.start()
+    } else {
+      chatNotifications.stop()
+      stopLiveData()
+    }
   },
   { immediate: true },
 )

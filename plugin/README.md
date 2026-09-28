@@ -7,6 +7,12 @@ authenticated connection. The backend keeps accepting v2–v5; v5 plugins contin
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type and uses channel `unknown` until that mapping is verified on a supported runtime.
+For Slice 6, explicitly named callback values are normalized by literal channel name;
+numeric/unknown values remain in the advanced Unknown lane. The plugin optionally
+imports `phBotChat`, reports callable General/Private/Party/Guild/Union/Global modes,
+and accepts bounded `chat.send` commands through the existing callback-thread
+dispatcher. A boolean API result records phBot acceptance only, not delivery. No real
+chat callback or send was exercised in the simulator tests.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

@@ -1946,6 +1946,20 @@ select:focus-visible {
   font-size: 9px;
 }
 
+.dashboard-chat-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-chat-list > li > svg {
+  color: #8bbaf1;
+}
+
+.dashboard-stack .dashboard-chat {
+  min-height: 0;
+}
+
 .dashboard-event-empty {
   display: flex;
   min-height: 118px;

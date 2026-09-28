@@ -63,6 +63,53 @@ export interface EventPage {
   alchemy_summary?: AlchemySummary
 }
 
+export interface ChatMessage {
+  message_id: string
+  event_id?: string
+  command_id?: string
+  echo_event_id?: string
+  character_id: string
+  session_id?: string
+  server: string
+  character: string
+  channel: string
+  direction: 'inbound' | 'outbound'
+  raw_type?: string
+  sender?: string
+  peer_name?: string
+  peer_key?: string
+  message: string
+  state: string
+  occurred_at: string
+}
+
+export interface ChatContact {
+  server: string
+  character_id: string
+  character: string
+  peer_name: string
+  peer_key: string
+  last_message_id: string
+  last_message: string
+  last_message_at: string
+  last_direction: 'inbound' | 'outbound'
+  unread: number
+}
+
+export interface ChatPage {
+  messages: ChatMessage[]
+  older_cursor?: string
+  newer_cursor?: string
+  has_older: boolean
+}
+
+export interface ChatSnapshot {
+  channel: string
+  contacts: ChatContact[]
+  page: ChatPage
+  unread_by_channel: Record<string, number>
+}
+
 export interface AlchemySummary {
   attempts: number
   successes: number
@@ -85,6 +132,7 @@ export type LiveStream =
   | 'controls'
   | 'resources'
   | 'events'
+  | 'chat'
 
 export interface LiveFilter {
   q?: string
@@ -101,6 +149,8 @@ export interface LiveFilter {
   from?: string
   to?: string
   cursor?: string
+  channel?: string
+  peer?: string
 }
 
 export interface LiveClientFrame {

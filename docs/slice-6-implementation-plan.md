@@ -1,15 +1,16 @@
-# Slice 6 — Chat implementation plan
+# Slice 6 — Chat plan and implementation record
 
 Prepared 2026-09-28 on `codex/slice-6-chat-plan` from `main` at `dd9219f`.
-This is a planning deliverable. No Slice 6 feature code or real-character chat send
-is authorized by this planning request. Implement Slice 6 in the order below when
-an implementation run is requested; keep the canonical requirements in `AGENTS.md`.
+The user subsequently authorized execution on this branch. The implementation
+increment is in place, but Slice 6 acceptance remains **in progress** because the
+PostgreSQL integration suite and real phBot callback/API observations are unavailable
+in this environment. Keep the canonical requirements in `AGENTS.md`.
 
 ## Starting point and dependency gates
 
 | Existing contract | Slice 6 use or required change |
 | --- | --- |
-| `plugin/PhMon.py` `handle_chat` | Protocol v6 already spools `chat.message_received` through the Slice 5 event batch. It records bounded text/raw type but deliberately sets `channel: "unknown"`. Preserve that single inbound transport. |
+| `plugin/PhMon.py` `handle_chat` | Protocol v6 spools `chat.message_received` through the Slice 5 event batch. It preserves bounded text/raw type, maps only explicit named strings and retains numeric/unknown values as `channel: "unknown"`. Preserve that single inbound transport. |
 | `activity_events`, `server/internal/events` | Durable, idempotent event IDs, session sequence, scope and ordered query exist. Extend chat validation only after verifying channel meanings. Chat history must be derived from these rows. |
 | `server/internal/commands` and `/api/commands` | Authenticated, idempotent, session-fenced, audited command lifecycle exists. Add a typed chat command and per-channel capability modes here. |
 | `web/app/composables/useLiveData.ts` and Go `LiveHub` | One browser WebSocket already manages subscriptions, revisions and stale state. Add chat invalidation/snapshots to it. |
@@ -23,6 +24,44 @@ Slice 6 complete, run the Slice 5 migration and replay tests on PostgreSQL and
 exercise an inbound chat event through the same plugin→Go→PostgreSQL path. Record
 the real phBot runtime gate separately from simulator evidence. Slice 4 has its own
 open Party Setup/item gates; do not mislabel them as Slice 6 completion.
+
+## Implementation record — 2026-09-28
+
+- Inspected the user's open phMonitor v0.5.0 chat screen without sending messages.
+  The current General view shows General, Private, Party, Guild, Union and Global
+  tabs, a sender selector with an offline character, and an empty chronological
+  history. Earlier read-only inspection showed separate General and Private views.
+  Existing checked-in desktop/mobile screenshots remain the visual baseline; no
+  message text or private conversation content was copied into evidence.
+- Added `000008_chat.sql`, transactionally projected inbound canonical events and
+  outbound audited commands, bounded cursor/contact/read APIs, a revision-fenced live
+  chat stream, and operator-scoped sound/browser preferences. A uniquely matching
+  echo is linked only within the same session, exact channel/text/peer and ten-second
+  window; ambiguous echoes remain distinct.
+- Added optional `phBotChat` capability reporting and callback-thread dispatch for
+  General, Private, Party, Guild, Union and Global. Numeric callback types remain
+  Unknown. Outbound messages use a 2,048-byte application cap, are not split, and
+  global sends require an explicit confirmation. API `True` reports phBot acceptance,
+  not recipient delivery.
+- Added the responsive `/chat` screen and `/settings` chat-preference controls. The
+  UI uses session-reported channel capabilities and does not change server scope when
+  selecting a sender. Unknown types are available in Advanced mode.
+- Added a Dashboard recent-chat card sourced from canonical `chat.message_received`
+  events, with character/channel links back into the conversation view.
+- `plugin/phManager.py` was absent. `plugin/phMonitorAdapter.py` is an existing
+  untracked operator file and remains untouched and unversioned; its numeric mappings
+  and packet heuristics were not adopted.
+- Local checks: Go `go test ./...`, `go vet ./...`, `go build ./...`, Python plugin
+  unit tests and `py_compile`, `npm run test:unit` (8 passed), `npm run typecheck`,
+  `npm run lint` (0 errors; 22 existing HTML void-element warnings),
+  `npm run format:check`, and `npm run build` all pass. The local `/chat` route
+  reloads to the operator sign-in gate, but no authenticated session or reachable
+  backend is available for interaction. `TEST_DATABASE_URL` is unset and the Docker
+  CLI is unavailable, so database and container builds could not run. PostgreSQL-backed
+  migration/history, production simulator E2E, and the 1440×1000 / 1280×800 /
+  390×844 browser comparisons have not run. Actual phBot API availability and numeric
+  callback values are unobserved. See `docs/phbot-capabilities.md` and
+  `docs/reference-parity.md`.
 
 ## 0. Freeze source and reference evidence
 

@@ -602,11 +602,28 @@ observed during this implementation. Item details are attached only if the curre
 same-session inventory observation has that callback slot; otherwise the attempt
 keeps its slot and callback values without an item identity.
 
+The official [Chat API](https://plugins.phbot.org/chat-api) documents optional
+`phBotChat` import and these call signatures: `All(text)`, `Party(text)`,
+`Guild(text)`, `Union(text)`, `Stall(text)`, `Private(name, text)`, `Note(name, text)`
+and `Global(text)`. The documentation says `True` means the API sent the message and
+`False` means sending failed; it does not promise recipient delivery. PhMon imports
+the module optionally and advertises only callable `All`, `Private`, `Party`, `Guild`,
+`Union` and `Global` methods as per-session `chat.send` modes. Stall and Note do not
+have matching Slice 6 conversations, and `Notice`/`ClientNotice` are GM functions.
+Global commands require an explicit UI confirmation. The 2,048 UTF-8 byte application
+bound is a transport safety limit; phBot's public page does not establish the game's
+message or encoding limit.
+
 The Events API documents `handle_chat(t, player, msg)`, identifies `t` as the type
 sent by the server, and says `player` may be `None` for non-private messages. It does
-not publish a type-to-channel table. PhMon therefore keeps bounded original text,
-bounded raw type, sender/recipient fields when available, and `channel:"unknown"`;
-it does not guess General/Private/Party/Guild/Union/Global mappings.
+not publish a type-to-channel table. PhMon preserves bounded original text and raw
+type, and retains sender/recipient fields when available. It canonicalizes only
+self-describing string values (`all`/`general`, `private`, `party`, `guild`, `union`,
+`global`). Numeric and other values remain in the Unknown history lane. This is a
+conservative literal-name mapping, not runtime verification of phBot callback values;
+the numeric mapping and current installed `phBotChat` callables still need natural
+observation on a recorded supported runtime. No chat callback or send was generated
+on a real character during this implementation.
 
 Lifecycle source details from the same page: `connected()` fires when phBot connects
 to the game server; `disconnected()` may fire several times; `joined_game()` runs on

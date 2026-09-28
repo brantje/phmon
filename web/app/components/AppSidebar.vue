@@ -64,7 +64,7 @@ const primaryNavigation = [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', href: '/' },
   { label: 'Stats', icon: 'i-lucide-chart-no-axes-combined', href: '/stats' },
   { label: 'Events', icon: 'i-lucide-activity', href: '/events' },
-  { label: 'Chat', icon: 'i-lucide-messages-square' },
+  { label: 'Chat', icon: 'i-lucide-messages-square', href: '/chat' },
   { label: 'Economy', icon: 'i-lucide-coins' },
   { label: 'Alchemy', icon: 'i-lucide-flask-conical', href: '/alchemy' },
   { label: 'Academy', icon: 'i-lucide-graduation-cap' },
@@ -225,16 +225,15 @@ const advancedNavigation = [
       </template>
 
       <p class="nav-heading">{{ advancedMode ? 'Misc' : 'System' }}</p>
-      <button
+      <NuxtLink
+        to="/settings"
         class="nav-item"
-        type="button"
-        disabled
-        title="Settings arrive progressively"
+        :class="{ active: route.path === '/settings' }"
+        :aria-current="route.path === '/settings' ? 'page' : undefined"
       >
         <UIcon name="i-lucide-settings" />
         <span>Settings</span>
-        <span class="nav-soon">later</span>
-      </button>
+      </NuxtLink>
       <button
         v-if="advancedMode"
         class="nav-item"

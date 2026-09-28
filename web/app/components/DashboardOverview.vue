@@ -24,6 +24,9 @@ const recentEvents = computed(() =>
 const recentRareDrops = computed(
   () => eventFeeds.value['dashboard-rare-drops']?.events || [],
 )
+const recentChatMessages = computed(
+  () => eventFeeds.value['dashboard-chat']?.events || [],
+)
 
 function textField(value: unknown) {
   return typeof value === 'string' ? value : ''
@@ -86,6 +89,11 @@ function watchDashboardEvents(server: string) {
     limit: 5,
     kind: 'drop.rare',
   })
+  setEventFeed('dashboard-chat', {
+    ...scope,
+    limit: 3,
+    kind: 'chat.message_received',
+  })
 }
 
 watch(serverScope, watchDashboardEvents, { immediate: true })
@@ -93,6 +101,7 @@ onBeforeUnmount(() => {
   clearEventFeed('dashboard-deaths')
   clearEventFeed('dashboard-events')
   clearEventFeed('dashboard-rare-drops')
+  clearEventFeed('dashboard-chat')
 })
 </script>
 
@@ -256,13 +265,46 @@ onBeforeUnmount(() => {
           <UIcon name="i-lucide-gem" /><strong>No rare drops recorded</strong>
         </div>
       </article>
-      <article class="panel dashboard-later">
+      <article class="panel dashboard-chat">
         <div class="panel-header compact">
           <div><h2>Chat Messages</h2></div>
-          <span class="later-badge">LATER</span>
+          <NuxtLink class="panel-link" to="/chat">Open chat</NuxtLink>
         </div>
-        <div class="later-content compact-later">
-          <UIcon name="i-lucide-messages-square" /><strong>LATER</strong>
+        <ul
+          v-if="recentChatMessages.length"
+          class="dashboard-event-list dashboard-chat-list"
+        >
+          <li v-for="item in recentChatMessages" :key="item.event_id">
+            <UIcon name="i-lucide-messages-square" />
+            <NuxtLink
+              :to="{
+                path: '/chat',
+                query: {
+                  character_id: item.character_id,
+                  channel: textField(item.payload.channel) || 'unknown',
+                },
+              }"
+            >
+              <strong>{{
+                textField(item.payload.sender) || item.character
+              }}</strong>
+              <span class="dashboard-chat-preview"
+                >{{
+                  textField(item.payload.message) || 'Message text unavailable'
+                }}
+                · {{ textField(item.payload.channel) || 'Unknown' }} ·
+                {{ item.server }}</span
+              >
+            </NuxtLink>
+            <time :datetime="item.occurred_at">{{
+              formatTimestamp(item.occurred_at)
+            }}</time>
+          </li>
+        </ul>
+        <div v-else class="later-content compact-later dashboard-chat-empty">
+          <UIcon name="i-lucide-messages-square" /><strong
+            >No recent messages</strong
+          >
         </div>
       </article>
     </div>

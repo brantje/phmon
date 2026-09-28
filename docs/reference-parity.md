@@ -710,3 +710,29 @@ and `/api/health` on port 3005 both report `status=ok,database=ok`, and a local
 game icon returned HTTP 200. PostgreSQL stayed healthy and was not restarted. The
 available browser is unauthenticated, so visual confirmation on a live character's
 Servar inventory remains open.
+
+## Slice 6 — Chat implementation evidence (2026-09-28)
+
+- The user's open v0.5.0 screen was inspected read-only. It showed the sender selector,
+  six channel tabs (General, Private, Party, Guild, Union and Global), an offline
+  sender choice and an empty chronological General history. Earlier inspection showed
+  separate General/Private views and Global history. No message was sent and private
+  message text was not copied. The checked-in
+  [desktop chat capture](reference/phmonitor-chat.png) and
+  [mobile chat capture](reference/phmonitor-chat-mobile.png) remain the design
+  baselines for the conversation pane, private contact column and composer.
+- PhMon adds the six named channel tabs, per-character sender, private contact/new-chat
+  flow, history paging, unread/read cursors, jump-to-latest, composer states, emoji
+  insertion, global confirmation, settings-backed browser/sound notifications, and a
+  narrow-screen contacts/conversation switch. Unsupported outbound channels are
+  read-only using the selected session's reported `chat.send` modes.
+- Dashboard now shows the three latest canonical `chat.message_received` events with
+  sender, channel and message preview, linking each row to the corresponding chat
+  context. Empty state remains in the same stacked recent-chat card.
+- Explicitly named callback types are preserved and normalized by literal name;
+  numeric/unknown types remain in an Advanced-mode Unknown lane until verified on a
+  recorded runtime. The channel mapping therefore remains partially unverified.
+- Browser comparison at 1440×1000, 1280×800 and 390×844 is still open. PostgreSQL
+  migration/store integration and simulator end-to-end verification are also open
+  because this shell has no `TEST_DATABASE_URL`. Plugin adapter unit tests use fake
+  methods and do not establish real phBot integration.

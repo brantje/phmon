@@ -534,6 +534,22 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Server: "Example", Kind: events.DeathKind, From: "2026-09-01", To: "2026-09-28", Limit: 25}},
 			valid:   true,
 		},
+		"character scoped private chat": {
+			message: liveClientMessage{SubscriptionID: "private-chat", Revision: 1, Stream: "chat", Filter: liveFilter{CharacterID: validCharacterID, Channel: "private", Peer: "Beta", Limit: 50}},
+			valid:   true,
+		},
+		"server scoped chat": {
+			message: liveClientMessage{SubscriptionID: "scoped-chat", Revision: 1, Stream: "chat", Filter: liveFilter{Server: "Silkroad", Channel: "general", Limit: 50}},
+			valid:   true,
+		},
+		"unclassified chat lane": {
+			message: liveClientMessage{SubscriptionID: "unknown-chat", Revision: 1, Stream: "chat", Filter: liveFilter{Channel: "unknown", Limit: 50}},
+			valid:   true,
+		},
+		"private peer forbidden on general lane": {
+			message: liveClientMessage{SubscriptionID: "bad-chat", Revision: 1, Stream: "chat", Filter: liveFilter{Channel: "general", Peer: "Beta"}},
+			valid:   false,
+		},
 		"invalid event date": {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{From: "yesterday"}},
 			valid:   false,

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/chat"
 )
 
 var ErrUnauthorizedSession = errors.New("event session is not owned by this agent and character")
@@ -305,8 +306,14 @@ func validateAgentEvent(event AgentEvent) error {
 			Sender    string `json:"sender"`
 			Recipient string `json:"recipient"`
 		}
-		if json.Unmarshal(payload, &fields) != nil || fields.Channel != "unknown" || len(fields.RawType) > 64 || len(fields.Message) > 2048 || len(fields.Sender) > 64 || len(fields.Recipient) > 64 {
+		if json.Unmarshal(payload, &fields) != nil || !chat.ValidChannel(fields.Channel) || len(fields.RawType) > 64 || len(fields.Message) > chat.MaxTextBytes || len(fields.Sender) > 64 || len(fields.Recipient) > 64 {
 			return fmt.Errorf("%w: chat message missing or too large", ErrInvalidEvent)
+		}
+		var direction struct {
+			Value string `json:"direction"`
+		}
+		if json.Unmarshal(payload, &direction) != nil || direction.Value != "inbound" {
+			return fmt.Errorf("%w: invalid chat direction", ErrInvalidEvent)
 		}
 	}
 	if event.Kind == "character.level_up" {
@@ -572,6 +579,14 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19)`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode))
 	if err != nil {
 		return false, false, err
+	}
+	if event.Kind == "chat.message_received" {
+		if err := chat.ProjectInbound(ctx, tx, chat.EventInput{
+			EventID: event.ID, CharacterID: event.CharacterID, SessionID: event.SessionID,
+			Server: event.Server, Character: event.Character, OccurredAt: event.OccurredAt, Payload: event.Payload,
+		}); err != nil {
+			return false, false, fmt.Errorf("%w: chat projection failed", ErrInvalidEvent)
+		}
 	}
 	return true, false, nil
 }

@@ -122,10 +122,31 @@ _API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','
               'set_training_radius','set_training_area','get_training_area','move_to_region',
               'use_return_scroll','disconnect')
 
+_CHAT_METHODS = {
+    'general': ('All',),
+    'private': ('Private',),
+    'party': ('Party',),
+    'guild': ('Guild',),
+    'union': ('Union',),
+    'global': ('Global',),
+}
+
+def _optional_chat_api():
+    try:
+        import phBotChat
+        return phBotChat
+    except Exception:
+        return None
+
 class PhBotAdapter(object):
     """Narrow allowlisted wrapper over documented phBot functions."""
-    def __init__(self, functions=None):
+    def __init__(self, functions=None, chat_functions=None):
         self.functions = functions or dict((name, _optional_phbot_api(name)) for name in _API_NAMES)
+        if chat_functions is None:
+            chat_api = _optional_chat_api()
+            chat_functions = dict((channel, getattr(chat_api, methods[0], None) if chat_api is not None else None)
+                                  for channel, methods in _CHAT_METHODS.items())
+        self.chat_functions = dict(chat_functions)
         self.get_character_data = self.functions.get('get_character_data') or _optional_phbot_api('get_character_data')
         self.get_position = self.functions.get('get_position') or _optional_phbot_api('get_position')
     def has(self, name):
@@ -135,6 +156,13 @@ class PhBotAdapter(object):
         function = self.functions.get(name)
         if not callable(function): raise RuntimeError('unsupported_runtime_primitive')
         return function(*args)
+    def chat_modes(self):
+        return [channel for channel in _CHAT_METHODS if callable(self.chat_functions.get(channel))]
+    def send_chat(self, channel, text, recipient=None):
+        function = self.chat_functions.get(channel)
+        if not callable(function): raise RuntimeError('unsupported_channel')
+        if channel == 'private': return function(recipient, text)
+        return function(text)
     def character(self): return self.get_character_data() if callable(self.get_character_data) else None
     def position(self): return self.get_position() if callable(self.get_position) else None
 
@@ -2392,6 +2420,10 @@ class AgentWorker(object):
                 supported = all(self.api.has(symbol) for symbol in ('generate_path', 'move_to_region', 'get_position'))
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
+        chat_modes = self.api.chat_modes()
+        commands.append({'name': 'chat.send', 'supported': bool(chat_modes),
+                         'reason': '' if chat_modes else 'unsupported_runtime_primitive',
+                         'modes': chat_modes})
         return {'type': 'agent.capabilities', 'protocol_version': PROTOCOL_VERSION, 'schema_version': 1, 'commands': commands}
 
     def _accept_command(self, message):
@@ -2703,6 +2735,29 @@ class AgentWorker(object):
             exact(('name',)); value=args.get('name')
             if not isinstance(value,str) or not value.strip() or len(value.strip().encode('utf-8'))>64: raise ValueError('invalid_arguments')
             result=self.api.call('start_trace',value.strip()); return result,{'name':value.strip()},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
+        if name == 'chat.send':
+            exact(('channel','text','recipient'))
+            channel=args.get('channel'); value=args.get('text'); recipient=args.get('recipient')
+            if not isinstance(channel,str) or channel not in _CHAT_METHODS or not isinstance(value,str):
+                raise ValueError('invalid_arguments')
+            if recipient is not None and not isinstance(recipient,str):
+                raise ValueError('invalid_arguments')
+            recipient=(recipient or '').strip()
+            try:
+                encoded=value.encode('utf-8')
+                recipient_bytes=recipient.encode('utf-8')
+            except Exception:
+                raise ValueError('invalid_arguments')
+            if (not value.strip() or len(encoded)>2048 or b'\x00' in encoded or
+                    len(recipient_bytes)>64 or b'\x00' in recipient_bytes or
+                    (channel == 'private') != bool(recipient)):
+                raise ValueError('invalid_arguments')
+            if channel not in self.api.chat_modes():
+                raise ValueError('unsupported_channel')
+            result=self.api.send_chat(channel,value,recipient or None)
+            effective={'channel':channel,'text':value}
+            if recipient: effective['recipient']=recipient
+            return result,effective,None,'api_confirmed' if isinstance(result,bool) else 'unverified'
         if name == 'training.area.set':
             exact(('mode','name','region','x','y','z')); mode=args.get('mode')
             if mode == 'current_position':
@@ -3103,7 +3158,7 @@ def _lifecycle_event(kind, source_ref, include_identity=False):
 
 
 def handle_chat(chat_type, player, message):
-    """Keep the original bounded message and raw server type until verified."""
+    """Preserve raw type; normalize only explicit self-describing channel names."""
     try:
         character = _get_character_data()
     except Exception:
@@ -3115,9 +3170,15 @@ def handle_chat(chat_type, player, message):
         _log('phBot chat callback had no character identity')
         return
     sender = _bounded_text(player, 64)
+    raw_type = _bounded_text(chat_type, 64)
+    named_channels = {
+        'all': 'general', 'general': 'general', 'private': 'private',
+        'party': 'party', 'guild': 'guild', 'union': 'union', 'global': 'global',
+    }
+    channel = named_channels.get(raw_type.lower()) if isinstance(raw_type, str) else None
     payload = {
-        'channel': 'unknown',
-        'raw_type': _bounded_text(chat_type, 64),
+        'channel': channel or 'unknown',
+        'raw_type': raw_type,
         'sender': sender,
         'recipient': identity.get('name') if sender and identity else None,
         'direction': 'inbound',

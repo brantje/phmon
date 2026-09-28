@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"phmon/server/internal/chat"
 )
 
 type Store struct {
@@ -429,6 +430,11 @@ VALUES($1,'queued',jsonb_build_object('session_id',$2::text,'agent_id',$3::text,
 		command.ID, command.SessionID, command.AgentID, command.ConnectionGeneration,
 	); err != nil {
 		return Command{}, false, fmt.Errorf("insert command audit event: %w", err)
+	}
+	if command.Name == "chat.send" {
+		if err := chat.ProjectCommandTx(ctx, tx, command.ID, command.CharacterID, command.SessionID, command.Args, command.CreatedAt); err != nil {
+			return Command{}, false, fmt.Errorf("project chat command: %w", err)
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Command{}, false, err
