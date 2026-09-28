@@ -1471,6 +1471,13 @@ stop bot / stop training
 set training area using the exact verified phBot training-area representation; do not
 silently substitute stale backend coordinates for a user-selected/current client area
 
+Named `set_training_area(name)` selects an existing area; it does not create a new
+one on the tested phBot 20.1.2 runtime. An unknown unique name returned `False` with
+unchanged area readback on Greatest/nuker1 (2026-09-28). phBot's documented Add
+action is in its own UI; do not present PhMon's named selection as area creation or
+edit phBot configuration files as a substitute for an unverified creation API.
+See `docs/phbot-capabilities.md` for the bounded live test.
+
 set training radius with bounded numeric validation matching the verified runtime
 
 walk using the verified phBot walk/destination arguments and current server/region

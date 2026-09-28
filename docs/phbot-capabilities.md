@@ -656,3 +656,21 @@ was performed to generate an event.
 No Slice 5 packet decoder is enabled. Existing Slice 4 item packet handling remains
 separately constrained by its recorded opcode/profile fixtures and does not supply
 event decoding evidence.
+
+### Live named training-area selection check (2026-09-28)
+
+The operator authorized one test on Greatest/nuker1. Its connected agent reported
+phBot 20.1.2, PhMon plugin 1.4.2 and protocol 6 with the `training.area.set`
+`named` mode supported. Before the command, the current-session control readback
+reported region 25735, X 100, Y 1559, Z 0 and radius 20. One uniquely generated
+`PhMonMissing_<UUID>` name was submitted through the authenticated, session-scoped
+`training.area.set` command. The plugin called `set_training_area(name)` once; the
+command finished `failed` with `api_return:false`, `result_code:api_return_false`
+and `verification:api_confirmed`. Its immediate `get_training_area()` readback
+reported the same region, coordinates and radius. No movement or other bot action
+was requested. This is direct evidence that an unknown name did not create or
+select a training area on this runtime; it is not a guarantee for every phBot
+version. The official [Training Area API](https://plugins.phbot.org/phbot-api/training-area)
+documents `set_training_area(name)` as changing the selected area and provides no
+creation primitive. The official [training-area guide](https://guide.phbot.org/phbot/training-area)
+documents creating a new area through the phBot UI's Add action.
