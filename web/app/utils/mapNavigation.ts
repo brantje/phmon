@@ -53,8 +53,20 @@ export function mapEventLocation(
 ): MappedEventLocation {
   const cave = caveFloorForPosition(profile, event.region, event.z)
   if (cave) {
-    const position = worldPositionToRaster(profile, cave.areaID, cave.floorID, event.region, event.x, event.y, event.z)
-    return { status: position ? 'mapped' : 'coordinates-unmappable', ...cave, position }
+    const position = worldPositionToRaster(
+      profile,
+      cave.areaID,
+      cave.floorID,
+      event.region,
+      event.x,
+      event.y,
+      event.z,
+    )
+    return {
+      status: position ? 'mapped' : 'coordinates-unmappable',
+      ...cave,
+      position,
+    }
   }
   if (outdoorRegionTile(profile, 'world', 'world', event.region)) {
     const position = worldPositionToRaster(
