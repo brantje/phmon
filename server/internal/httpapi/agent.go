@@ -16,6 +16,7 @@ import (
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
@@ -55,6 +56,7 @@ type agentHandler struct {
 	events     *events.Store
 	mobs       *mobs.Store
 	mobLive    *mobs.LiveStore
+	analytics  *mapanalytics.Store
 }
 
 type agentMonsterSnapshot struct {
@@ -580,6 +582,24 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				}
 				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
+			}
+			if hello.ProtocolVersion >= 3 && h.analytics != nil && h.resources != nil && message.State.Region != nil && message.State.X != nil && message.State.Y != nil {
+				if sampledAt, parseErr := time.Parse(time.RFC3339, message.SentAt); parseErr == nil {
+					if character, characterErr := h.characters.GetScoped(sessionCtx, message.CharacterID, ""); characterErr == nil {
+						if datasetID, ok := h.resources.DatasetIDForServer(character.Server); ok {
+							analyticsCtx, analyticsCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+							_, analyticsErr := h.analytics.RecordPosition(analyticsCtx, mapanalytics.PositionSample{
+								AgentID: hello.AgentID, CharacterID: message.CharacterID, SessionID: message.SessionID,
+								DatasetID: datasetID, SampledAt: sampledAt.UTC(), Region: *message.State.Region,
+								X: *message.State.X, Y: *message.State.Y, Z: message.State.Z,
+							}, time.Now().UTC())
+							analyticsCancel()
+							if analyticsErr != nil && !errors.Is(analyticsErr, mapanalytics.ErrStaleSession) {
+								slog.Warn("movement analytics persistence failed", "agent_id", hello.AgentID, "character_id", message.CharacterID, "reason", analyticsErr.Error())
+							}
+						}
+					}
+				}
 			}
 			h.live.Invalidate()
 		case "character.died":

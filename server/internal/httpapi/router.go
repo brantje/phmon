@@ -12,6 +12,7 @@ import (
 	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
@@ -40,6 +41,7 @@ type Dependencies struct {
 	Chat         *chat.Store
 	Mobs         *mobs.Store
 	MobLive      *mobs.LiveStore
+	MapAnalytics *mapanalytics.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -91,6 +93,7 @@ func New(deps Dependencies) http.Handler {
 			events:     deps.Events,
 			mobs:       deps.Mobs,
 			mobLive:    mobLive,
+			analytics:  deps.MapAnalytics,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)

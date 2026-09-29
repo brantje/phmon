@@ -21,6 +21,7 @@ import (
 	"phmon/server/internal/database"
 	"phmon/server/internal/events"
 	"phmon/server/internal/httpapi"
+	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
@@ -68,6 +69,7 @@ func run() error {
 	eventStore := events.NewStore(pool)
 	chatStore := chat.NewStore(pool)
 	mobStore := mobs.NewStore(pool)
+	mapAnalyticsStore := mapanalytics.NewStore(pool)
 	mobLive := mobs.NewLiveStore()
 	metadataDir := os.Getenv("ITEM_METADATA_DIR")
 	if metadataDir == "" {
@@ -115,6 +117,7 @@ func run() error {
 		Chat:       chatStore,
 		Mobs:       mobStore,
 		MobLive:    mobLive,
+		MapAnalytics: mapAnalyticsStore,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.
