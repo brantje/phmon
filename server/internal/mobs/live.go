@@ -17,6 +17,7 @@ type LiveSnapshot struct {
 	Status      string    `json:"status"`
 	Region      int       `json:"region,omitempty"`
 	ObservedAt  time.Time `json:"observed_at"`
+	ObserverZ   *float64  `json:"observer_z,omitempty"`
 	Truncated   bool      `json:"truncated,omitempty"`
 	Monsters    []Monster `json:"monsters"`
 }

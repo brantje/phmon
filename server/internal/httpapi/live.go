@@ -648,31 +648,21 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if selectedArea == nil || !floorFound {
 			return nil, errors.New("map area or floor is unavailable in the selected profile")
 		}
-		if selectedArea.Kind == "cave" {
-			linkedEvents := []events.Event{}
-			if h.events != nil && subscription.Filter.EventID != "" {
-				page, eventErr := h.events.List(ctx, events.Filter{
-					Server:  subscription.Filter.Server,
-					EventID: subscription.Filter.EventID,
-					Limit:   1,
-				})
-				if eventErr != nil {
-					return nil, eventErr
-				}
-				linkedEvents = page.Events
-			}
-			return map[string]any{
-				"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
-				"region": 0, "scope_status": "floor_transform_unavailable", "characters": []characters.Character{},
-				"monsters": []mobs.LiveSnapshot{}, "events": linkedEvents,
-				"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
-			}, nil
-		}
 		charRows, err := h.characters.ListScoped(ctx, "", "", subscription.Filter.Server)
 		if err != nil {
 			return nil, err
 		}
-		if subscription.Filter.Region > 0 {
+		if selectedArea.Kind == "cave" {
+			filtered := make([]characters.Character, 0, len(charRows))
+			for _, character := range charRows {
+				area, floor, ok := mapprofile.ClassifyCave(profile, character.Region, character.Z)
+				if ok && area == subscription.Filter.Area && floor == subscription.Filter.Floor {
+					filtered = append(filtered, character)
+				}
+			}
+			charRows = filtered
+		}
+		if subscription.Filter.Region != 0 {
 			filtered := make([]characters.Character, 0, len(charRows))
 			for _, character := range charRows {
 				if character.Region != nil && *character.Region == subscription.Filter.Region {
@@ -685,11 +675,25 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		monsterRows := []mobs.LiveSnapshot{}
 		if h.mobLive != nil {
 			monsterRows = h.mobLive.Snapshot(subscription.Filter.Server, time.Now().UTC())
-			if subscription.Filter.Region > 0 {
+			if selectedArea.Kind == "cave" {
+				monsterRows = filterCaveMonsterSnapshots(profile, monsterRows, subscription.Filter.Area, subscription.Filter.Floor)
+			}
+			if subscription.Filter.Region != 0 {
 				filtered := make([]mobs.LiveSnapshot, 0, len(monsterRows))
-				for _, monster := range monsterRows {
-					if monster.Region == subscription.Filter.Region {
-						filtered = append(filtered, monster)
+				for _, snapshot := range monsterRows {
+					if mobs.RegionsMatch(subscription.Filter.Region, snapshot.Region) {
+						filtered = append(filtered, snapshot)
+						continue
+					}
+					matching := make([]mobs.Monster, 0, len(snapshot.Monsters))
+					for _, monster := range snapshot.Monsters {
+						if mobs.RegionsMatch(subscription.Filter.Region, monster.Region) {
+							matching = append(matching, monster)
+						}
+					}
+					if len(matching) > 0 {
+						snapshot.Monsters = matching
+						filtered = append(filtered, snapshot)
 					}
 				}
 				monsterRows = filtered
@@ -716,6 +720,16 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			if err != nil {
 				return nil, err
 			}
+			if selectedArea.Kind == "cave" {
+				filtered := make([]events.Event, 0, len(activity))
+				for _, event := range activity {
+					area, floor, ok := mapprofile.ClassifyCave(profile, event.Region, event.Z)
+					if ok && area == subscription.Filter.Area && floor == subscription.Filter.Floor {
+						filtered = append(filtered, event)
+					}
+				}
+				activity = filtered
+			}
 		}
 		if h.resources != nil {
 			for index := range activity {
@@ -728,13 +742,39 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		}
 		return map[string]any{
 			"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
-			"region": subscription.Filter.Region, "scope_status": "region_transform_unvalidated",
+			"region": subscription.Filter.Region, "scope_status": "mapped",
 			"characters": charRows, "monsters": monsterRows, "events": activity,
 			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
 		}, nil
 	default:
 		return nil, errors.New("unsupported live stream")
 	}
+}
+
+func filterCaveMonsterSnapshots(profile mapprofile.Profile, snapshots []mobs.LiveSnapshot, areaID, floorID string) []mobs.LiveSnapshot {
+	filtered := make([]mobs.LiveSnapshot, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		observerRegion := snapshot.Region
+		area, floor, ok := mapprofile.ClassifyCave(profile, &observerRegion, snapshot.ObserverZ)
+		if !ok || area != areaID || floor != floorID {
+			continue
+		}
+		matching := make([]mobs.Monster, 0, len(snapshot.Monsters))
+		for _, monster := range snapshot.Monsters {
+			region := monster.Region
+			z := monster.Z
+			if z == nil {
+				z = snapshot.ObserverZ
+			}
+			area, floor, ok := mapprofile.ClassifyCave(profile, &region, z)
+			if ok && area == areaID && floor == floorID {
+				matching = append(matching, monster)
+			}
+		}
+		snapshot.Monsters = matching
+		filtered = append(filtered, snapshot)
+	}
+	return filtered
 }
 
 func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool) {
@@ -869,7 +909,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		if !validServerFilter(subscription.Filter.Server) || subscription.Filter.Server == "" ||
 			subscription.Filter.CharacterID != "" || subscription.Filter.GroupID != "" || subscription.Filter.Query != "" ||
 			subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 ||
-			len(subscription.Filter.ResourceKeys) != 0 || subscription.Filter.Region < 0 || subscription.Filter.Region > 65535 ||
+			len(subscription.Filter.ResourceKeys) != 0 || subscription.Filter.Region < -32768 || subscription.Filter.Region > 65535 ||
 			len(subscription.Filter.EventID) > 64 || subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
 			len(subscription.Filter.Area) > 96 || len(subscription.Filter.Floor) > 32 || subscription.Filter.Kind != "" ||
 			subscription.Filter.Category != "" || subscription.Filter.Item != "" || subscription.Filter.Cursor != "" {
@@ -881,7 +921,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		if subscription.Filter.Floor == "" {
 			subscription.Filter.Floor = "world"
 		}
-		if subscription.Filter.Area == "world" && subscription.Filter.Floor != "world" || subscription.Filter.Area != "world" && subscription.Filter.Region != 0 {
+		if subscription.Filter.Area == "world" && subscription.Filter.Floor != "world" {
 			return liveSubscription{}, false
 		}
 		var from, to *time.Time
@@ -931,7 +971,7 @@ func collectMapActivity(
 ) ([]events.Event, error) {
 	activity := make([]events.Event, 0, 100)
 	var regionFilter *int
-	if region > 0 {
+	if region != 0 {
 		regionFilter = &region
 	}
 	for _, eventFilter := range []events.Filter{
@@ -943,7 +983,7 @@ func collectMapActivity(
 			return nil, err
 		}
 		for _, event := range page.Events {
-			if event.Region == nil || region > 0 && *event.Region != region {
+			if event.Region == nil || region != 0 && *event.Region != region {
 				continue
 			}
 			activity = append(activity, event)

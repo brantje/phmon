@@ -11,6 +11,7 @@ func TestCharacterWireStateValidation(t *testing.T) {
 	level := 120
 	negative := int64(-1)
 	region := 70000
+	caveRegion := -32767
 	coordinate := 1000001.0
 	validModel := int64(1907)
 	tooLargeModel := int64(4294967296)
@@ -21,6 +22,9 @@ func TestCharacterWireStateValidation(t *testing.T) {
 	}
 	if !validWireState(characters.State{Model: &validModel}) {
 		t.Fatal("valid model-only state was rejected")
+	}
+	if !validWireState(characters.State{Region: &caveRegion}) {
+		t.Fatal("valid signed cave region was rejected")
 	}
 	for _, state := range []characters.State{{}, {HP: &negative}, {Region: &region}, {X: &coordinate}, {Model: &zeroModel}, {Model: &negative}, {Model: &tooLargeModel}} {
 		if validWireState(state) {

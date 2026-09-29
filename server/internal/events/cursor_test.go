@@ -33,4 +33,17 @@ func TestValidPositionRejectsNonFiniteAndOutOfRangeCoordinates(t *testing.T) {
 	}
 }
 
+func TestValidPositionAcceptsSignedCaveRegions(t *testing.T) {
+	for _, region := range []int{-32768, -32767, 32767, 65535} {
+		if !validPosition(&region) {
+			t.Errorf("valid region %d rejected", region)
+		}
+	}
+	for _, region := range []int{-32769, 0, 65536} {
+		if validPosition(&region) {
+			t.Errorf("invalid region %d accepted", region)
+		}
+	}
+}
+
 func cursorFloatPointer(value float64) *float64 { return &value }

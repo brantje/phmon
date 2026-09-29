@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { MapProfile } from '../shared/types/map.ts'
 import {
+  caveFloorForPosition,
   leafletToRasterPosition,
   rasterTileCenterToLeaflet,
   rasterPositionToGame,
@@ -415,6 +416,147 @@ test('coordinate conversion refuses unvalidated, wrong-region, off-catalog and n
       pixelX: 64,
       pixelY: 128,
     }),
+    null,
+  )
+})
+
+test('point conversion derives outdoor region from the clicked tile and reuses current Z', () => {
+  const mapProfile = greatestOutdoorProfile()
+  const result = rasterPositionToGame(
+    mapProfile,
+    'world',
+    'world',
+    25735,
+    {
+      tileX: 168,
+      tileY: 97,
+      pixelX: 128,
+      pixelY: 128,
+    },
+    -93.5,
+  )
+  assert.deepEqual(result, { region: 25000, x: 6432, y: 1056, z: -93.5 })
+})
+
+test('cave floor grids convert signed X/Y and keep Z from the selected character', () => {
+  const mapProfile = profile()
+  mapProfile.coordinate_transform_status = 'outdoor-region-grid'
+  mapProfile.region_mappings_status = 'outdoor-region-grid'
+  const floor = (id: string, minZ: number, maxZ: number) => ({
+    id,
+    label: id,
+    image_status: 'available',
+    transform_status: 'reference-observed',
+    tiles: {
+      status: 'available-for-inspection',
+      orientation_status: 'reference-observed',
+      tile_url_format: `/game-assets/minimap_d/donwhang/dh_a01_floor${id === '1F' ? '01' : '02'}_{x}x{y}.png`,
+      min_x: 127,
+      max_x: 129,
+      min_y: 126,
+      max_y: 128,
+      tile_count: 9,
+      semantics: 'test cave grid',
+    },
+    region_ids: [-32767, 32767],
+    min_z: minZ,
+    max_z: maxZ,
+    auto_detect: true,
+  })
+  mapProfile.areas.push({
+    id: 'donwhang-stone-cave',
+    label: 'Donwhang',
+    kind: 'cave',
+    region_mapping_status: 'reference-observed',
+    floors: [floor('1F', -50, 70), floor('2F', 71, 210)],
+  })
+  mapProfile.coordinate_transforms.push(
+    ...[-32767, 32767].flatMap((region) => [
+      {
+        area_id: 'donwhang-stone-cave',
+        floor_id: '1F',
+        region,
+        status: 'validated' as const,
+        world_origin_x: -24384,
+        world_origin_y: -192,
+        tile_origin_x: 128,
+        tile_origin_y: 127,
+        units_per_tile_x: 192,
+        units_per_tile_y: 192,
+        axis_x: 1 as const,
+        axis_y: 1 as const,
+      },
+      {
+        area_id: 'donwhang-stone-cave',
+        floor_id: '2F',
+        region,
+        status: 'validated' as const,
+        world_origin_x: -24384,
+        world_origin_y: -192,
+        tile_origin_x: 128,
+        tile_origin_y: 127,
+        units_per_tile_x: 192,
+        units_per_tile_y: 192,
+        axis_x: 1 as const,
+        axis_y: 1 as const,
+      },
+    ]),
+  )
+  assert.deepEqual(caveFloorForPosition(mapProfile, -32767, 0), {
+    areaID: 'donwhang-stone-cave',
+    floorID: '1F',
+  })
+  assert.deepEqual(caveFloorForPosition(mapProfile, 32767, 71), {
+    areaID: 'donwhang-stone-cave',
+    floorID: '2F',
+  })
+  assert.equal(caveFloorForPosition(mapProfile, -32767, undefined), null)
+  assert.equal(caveFloorForPosition(mapProfile, -32767, 70.5), null)
+  const raster = worldPositionToRaster(
+    mapProfile,
+    'donwhang-stone-cave',
+    '1F',
+    -32767,
+    -24272.5,
+    -93.5,
+    0,
+  )
+  assert.ok(raster)
+  assert.equal(raster.tileX, 128)
+  const selectedOnOtherFloor =
+    raster &&
+    rasterPositionToGame(
+      mapProfile,
+      'donwhang-stone-cave',
+      '2F',
+      -32767,
+      raster,
+      0,
+    )
+  assert.ok(selectedOnOtherFloor)
+  assert.equal(selectedOnOtherFloor.region, -32767)
+  assert.equal(selectedOnOtherFloor.z, 0)
+  const fallback =
+    raster &&
+    rasterPositionToGame(
+      mapProfile,
+      'donwhang-stone-cave',
+      '2F',
+      -32767,
+      raster,
+      undefined,
+    )
+  assert.ok(fallback)
+  assert.equal(fallback.z, 0)
+  assert.equal(
+    rasterPositionToGame(
+      mapProfile,
+      'donwhang-stone-cave',
+      '2F',
+      undefined,
+      raster!,
+      0,
+    ),
     null,
   )
 })

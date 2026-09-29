@@ -781,7 +781,7 @@ AND payload=$13::jsonb))`, incoming.ID, agentID, characterID, sessionID, DeathKi
 }
 
 func validPosition(region *int, axes ...*float64) bool {
-	if region != nil && (*region < 0 || *region > 65535) {
+	if region != nil && (*region < -32768 || *region > 65535 || *region == 0) {
 		return false
 	}
 	for _, axis := range axes {
@@ -832,7 +832,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if filter.EventID != "" && !agentdomain.ValidAgentID(filter.EventID) {
 		return Page{}, errors.New("invalid event ID")
 	}
-	if filter.Region != nil && (*filter.Region < 1 || *filter.Region > 65535) {
+	if filter.Region != nil && (*filter.Region < -32768 || *filter.Region > 65535 || *filter.Region == 0) {
 		return Page{}, errors.New("invalid event region")
 	}
 	var cursorAt any

@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Slice 7–8 development release is **1.5.2** (`vsro_1188_passive_r2`, API
+The current Slice 7–8 development release is **1.5.4** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v7 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -30,7 +30,7 @@ captured Greatest runtime fixture. Older protocol-v2/v3 plugins retain their exi
 monitoring/command capabilities but do not provide Slice 4 resources or Slice 5 event
 families.
 
-Protocol v7 polls documented `get_monsters()` every ten seconds. Current snapshots
+Protocol v7 polls documented `get_monsters()` every 0.1 seconds. Current snapshots
 are capped at 128 entries; unavailable (`None`/missing/exception), observed empty
 (`{}`), and truncated results stay distinct. Complete observations are locally
 spooled at most once per minute per session, region, world floor and 192-unit
@@ -44,6 +44,11 @@ the level unavailable when the active runtime omits it. Existing 1.5.0 agents st
 connect, but their map popups cannot show fields they did not send.
 This cadence, spool and transport have simulator/unit-test coverage; installed phBot
 behavior and the PostgreSQL-backed reconnect/replay gate remain open.
+
+Plugin 1.5.4 preserves signed cave region IDs, including Donwhang's observed
+`get_position()` `-32767` / `get_monsters()` `32767` pairing, and includes the
+observer's current Z in live monster snapshots so the server can scope sightings
+to the observed cave floor when individual monster Z is unavailable.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket

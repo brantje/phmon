@@ -175,6 +175,7 @@ def _make_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "icon/skillgroup/test.ddj": ddj_rgba((40, 190, 90, 255)),
         "minimap/1x1.ddj": ddj_rgba((40, 80, 220, 255)),
         "minimap/arabia/1x1.ddj": ddj_rgba((30, 70, 210, 255)),
+        "minimap_d/donwhang/dh_a01_floor01_127x126.ddj": ddj_rgba((60, 90, 140, 255)),
         "interface/loading/example.ddj": ddj_rgba((220, 190, 40, 255)),
         "interface/minimap/mm_sign_unique.ddj": ddj_rgba((210, 30, 200, 255)),
         "interface/character/char_ch_man1.ddj": ddj_rgba((180, 140, 110, 255)),
@@ -244,6 +245,10 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
     assert "exact pairs only" in maps_catalog["coordinateSemantics"]
     assert maps_catalog["tileSetOrientations"][0]["status"] == "insufficient-adjacencies"
     assert maps_catalog["uniformOpaqueBlackTileCount"] == 0
+    cave_catalog = json.loads((bundle / "catalogs" / "caveMaps.json").read_text(encoding="utf-8"))
+    assert cave_catalog["floorCount"] == 1
+    assert cave_catalog["records"][0]["floorPrefix"] == "dh_a01_floor01"
+    assert cave_catalog["records"][0]["x"] == 127
     symbols = json.loads((bundle / "catalogs" / "interfaceSymbols.json").read_text(encoding="utf-8"))
     assert symbols["records"][0]["symbolGroup"] == "minimapMarker"
     portraits = json.loads((bundle / "catalogs" / "portraits.json").read_text(encoding="utf-8"))
@@ -251,6 +256,7 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
 
     assert (public_assets / "icon" / "item" / "test_blade.png").is_file()
     assert (public_assets / "icon" / "skill" / "test.png").is_file()
+    assert (public_assets / "minimap_d" / "donwhang" / "dh_a01_floor01_127x126.png").is_file()
     public_index = json.loads((public_assets / "asset-index.json").read_text(encoding="utf-8"))
     public_index_bytes = (public_assets / "asset-index.json").read_bytes()
     assert public_index["format"] == "phmon-game-assets-index"

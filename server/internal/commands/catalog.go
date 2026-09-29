@@ -76,9 +76,9 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 		}
 		normalized, _ := json.Marshal(args)
 		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
-	case "character.walk":
+	case "character.walk", "character.navigate":
 		var args walkArgs
-		if err := decodeExact(raw, &args); err != nil || args.Region <= 0 || !coordinate(args.X) || !coordinate(args.Y) || !coordinate(args.Z) {
+		if err := decodeExact(raw, &args); err != nil || !validRegion(args.Region) || (name == "character.walk" && args.Region < 0) || !coordinate(args.X) || !coordinate(args.Y) || !coordinate(args.Z) {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)
@@ -95,7 +95,7 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 				return Validated{}, ErrInvalid
 			}
 		case "position":
-			if args.Name != nil || args.Region == nil || *args.Region <= 0 || args.X == nil || args.Y == nil || args.Z == nil ||
+			if args.Name != nil || args.Region == nil || !validRegion(*args.Region) || args.X == nil || args.Y == nil || args.Z == nil ||
 				!coordinate(*args.X) || !coordinate(*args.Y) || !coordinate(*args.Z) {
 				return Validated{}, ErrInvalid
 			}
@@ -159,3 +159,5 @@ func finite(value float64) bool {
 func coordinate(value float64) bool {
 	return finite(value) && math.Abs(value) <= maxCoordinate
 }
+
+func validRegion(value int) bool { return value >= -32768 && value <= 65535 && value != 0 }

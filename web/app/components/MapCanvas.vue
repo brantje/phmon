@@ -607,7 +607,11 @@ onMounted(async () => {
         const url = props.profile.tiles.tile_url_format
           .replace('{x}', String(tileX))
           .replace('{y}', String(tileY))
-        image.src = url.startsWith('/game-assets/minimap/') ? url : ''
+        image.src = /^\/game-assets\/minimap(?:_d)?\/[a-z0-9_/-]+\.png$/.test(
+          url,
+        )
+          ? url
+          : ''
       }
       if (coords.z < 0) {
         const pieceSize = 256 / factor
