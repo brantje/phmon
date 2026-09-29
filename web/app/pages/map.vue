@@ -110,6 +110,7 @@ const analyticsCharacterID = ref('')
 const analyticsMobType = ref('')
 const resetLayer = ref<HeatmapLayerID>('deaths')
 const resetOpen = ref(false)
+const resetWindow = ref<{ from: string; to: string } | null>(null)
 const resetBusy = ref(false)
 const resetError = ref('')
 const confirmBroadReset = ref(false)
@@ -604,15 +605,17 @@ async function refreshHeatmaps() {
 
 function openHeatmapReset() {
   const available = resettableLayers.value
-  if (!available.length) return
+  const window = heatmapWindow.value
+  if (!available.length || !window) return
   if (!available.includes(resetLayer.value)) resetLayer.value = available[0]!
+  resetWindow.value = { ...window }
   resetError.value = ''
   confirmBroadReset.value = false
   resetOpen.value = true
 }
 
 async function performHeatmapReset() {
-  const window = heatmapWindow.value
+  const window = resetWindow.value
   if (!window || resetBusy.value) return
   resetBusy.value = true
   resetError.value = ''
@@ -634,6 +637,7 @@ async function performHeatmapReset() {
       confirm_broad: resetIsBroad.value ? confirmBroadReset.value : false,
     })
     resetOpen.value = false
+    resetWindow.value = null
     await refreshHeatmaps()
   } catch (error) {
     resetError.value =
@@ -1419,7 +1423,7 @@ useHead({ title: 'Map · PhMon' })
           </div>
           <div>
             <dt>Time</dt>
-            <dd>{{ heatmapWindow?.from }} → {{ heatmapWindow?.to }}</dd>
+            <dd>{{ resetWindow?.from }} → {{ resetWindow?.to }}</dd>
           </div>
         </dl>
         <p>
