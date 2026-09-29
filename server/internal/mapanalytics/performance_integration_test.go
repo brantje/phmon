@@ -42,8 +42,7 @@ func TestLargeMovementHistoryRemainsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionID, err := characterStore.ClaimSessionID(ctx, credential.AgentID, characterID, 1)
-	if err != nil {
+	if _, err := characterStore.ClaimSessionID(ctx, credential.AgentID, characterID, 1); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
