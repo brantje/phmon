@@ -3837,9 +3837,17 @@ non-merges and level validation. Files affected: `plugin/PhMon.py`, plugin READM
 tests, Go live monster validation/tests, shared live types, map page/marker helper/
 popup and its tests, and this parity/operations ledger.
 
-Checks were not run in this increment. The live `get_monsters()` level field remains
-runtime-dependent and must not be represented as verified until a connected 1.5.2
-phBot agent demonstrates it. Previously connected 1.5.0 agents do not send monster
-names. Slice 7–8 acceptance gates remain open. Exact next action: review the focused
-diff and merge the PR only after CI plus runtime level availability and required map
-viewport checks are recorded.
+The server and web production images built and the previously authorized test host
+was updated; only server/web containers were restarted, while PostgreSQL remained
+healthy. `/map`, `/api/health` and server `/readyz` returned HTTP 200. The authenticated
+map showed seven current rows with names including Edimmu and Dimension pillar, and
+clearly displayed unavailable levels. The remote plugin source hash matches local
+1.5.2. No unit suites were run; regression cases were added for label fallback,
+cross-session collapse, identity/position separation and invalid levels. No bot
+command was sent.
+
+The live `get_monsters()` level field remains runtime-dependent and is not verified;
+older connected plugin versions may lack names. Slice 7–8 acceptance gates remain
+open. Exact next action: record actual level availability from a connected 1.5.2
+runtime (or add a verified level catalog source), then run the focused suites and the
+required map/Stats viewport checks before merging PR #19.

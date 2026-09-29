@@ -1090,3 +1090,10 @@ units, keeping the freshest row. Same-session rows remain distinct. Focused fron
 plugin and Go regression cases cover these rules. Connected 1.5.0 agents still lack
 the newer descriptive fields until replaced; real-runtime level availability and
 Slice 7–8 gates remain unverified.
+
+The change was deployed to the authorized test host after the server and Nuxt
+production images built successfully. `/map`, `/api/health` and server `/readyz`
+returned HTTP 200; PostgreSQL reports healthy, and the staged plugin source hash
+matches 1.5.2. The authenticated map rendered seven current rows with readable names
+such as Edimmu and Dimension pillar. Every row showed “Lv. unavailable”, confirming
+the connected observations did not provide a usable level. No bot command was sent.
