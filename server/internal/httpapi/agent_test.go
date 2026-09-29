@@ -115,6 +115,22 @@ func (s *fakeAgentStore) MarkDisconnected(_ context.Context, _ string, connected
 	return nil
 }
 
+type blockingMarkConnectedStore struct {
+	*fakeAgentStore
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingMarkConnectedStore) MarkConnected(ctx context.Context, agentID string, connectedAt time.Time, protocol int, plugin, phbot string) error {
+	close(s.started)
+	select {
+	case <-s.release:
+		return s.fakeAgentStore.MarkConnected(ctx, agentID, connectedAt, protocol, plugin, phbot)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *fakeAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -181,7 +197,14 @@ func TestCreatedAgentIsListedBeforeFirstConnection(t *testing.T) {
 	server := newAgentTestServer(t, store, AgentOptions{})
 	defer server.Close()
 
-	response, err := http.Post(server.URL+"/api/agents/credentials", "application/json", strings.NewReader("{}"))
+	credentialCtx, credentialCancel := context.WithTimeout(context.Background(), time.Second)
+	defer credentialCancel()
+	credentialRequest, err := http.NewRequestWithContext(credentialCtx, http.MethodPost, server.URL+"/api/agents/credentials", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentialRequest.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(credentialRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +214,13 @@ func TestCreatedAgentIsListedBeforeFirstConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	listResponse, err := http.Get(server.URL + "/api/agents")
+	listCtx, listCancel := context.WithTimeout(context.Background(), time.Second)
+	defer listCancel()
+	listRequest, err := http.NewRequestWithContext(listCtx, http.MethodGet, server.URL+"/api/agents", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listResponse, err := http.DefaultClient.Do(listRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +239,9 @@ func TestRemoveAgentCredential(t *testing.T) {
 	server := newAgentTestServer(t, store, AgentOptions{})
 	defer server.Close()
 
-	request, err := http.NewRequest(http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +272,9 @@ func TestRemoveConnectedAgentCredentialIsRejected(t *testing.T) {
 	}))
 	defer server.Close()
 
-	request, err := http.NewRequest(http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,6 +290,71 @@ func TestRemoveConnectedAgentCredentialIsRejected(t *testing.T) {
 	defer store.mu.Unlock()
 	if len(store.revoked) != 0 {
 		t.Fatalf("connected agent was revoked: %+v", store.revoked)
+	}
+}
+
+func TestAgentRegistrationFencesRevocationBeforeDurableConnectCheck(t *testing.T) {
+	baseStore := newFakeAgentStore()
+	store := &blockingMarkConnectedStore{
+		fakeAgentStore: baseStore,
+		started:        make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	registry := agentdomain.NewRegistry()
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		AgentOptions: AgentOptions{
+			HelloTimeout:      time.Second,
+			HeartbeatInterval: 50 * time.Millisecond,
+			HeartbeatTimeout:  time.Second,
+		},
+	}))
+	defer server.Close()
+
+	conn := dialAgent(t, server.URL, baseStore.token)
+	defer conn.CloseNow()
+	writeHello(t, conn, testAgentID)
+
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("MarkConnected was not reached")
+	}
+	if registry.ConnectionCount(testAgentID) != 1 {
+		close(store.release)
+		t.Fatal("agent was not registered before the durable credential check")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
+	if err != nil {
+		close(store.release)
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		close(store.release)
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusConflict {
+		_ = response.Body.Close()
+		close(store.release)
+		t.Fatalf("revocation raced past pending registration: status=%d", response.StatusCode)
+	}
+	_ = response.Body.Close()
+
+	close(store.release)
+	readCtx, readCancel := context.WithTimeout(context.Background(), time.Second)
+	defer readCancel()
+	var ack helloAck
+	if err := wsjson.Read(readCtx, conn, &ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack.Type != "hello.ack" {
+		t.Fatalf("unexpected ack after fenced revocation attempt: %+v", ack)
 	}
 }
 
