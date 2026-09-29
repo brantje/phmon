@@ -67,6 +67,12 @@ const resource = computed(() =>
   snapshot.value?.items.find((item) => item.resource_key === 'guild_storage'),
 )
 const payload = computed(() => resource.value?.payload || {})
+const guildGold = computed(() => {
+  const gold = payload.value.gold
+  return typeof gold === 'number' && Number.isFinite(gold) && gold >= 0
+    ? gold
+    : null
+})
 const hasSlots = computed(() => Array.isArray(payload.value.slots))
 const effectiveAvailability = computed(() =>
   requestFailed.value
@@ -363,7 +369,15 @@ onBeforeUnmount(() => {
           :observation="observation"
           :availability="effectiveAvailability"
           :reason="requestFailed ? 'refresh_failed' : undefined"
+          :gold="guildGold"
         />
+        <div
+          v-if="search.trim() && hasSlots && guildGold !== null"
+          class="inventory-gold"
+        >
+          <span aria-hidden="true">◈</span> Gold
+          {{ guildGold.toLocaleString() }}
+        </div>
         <p v-if="resource" class="mapping-note">
           Contents are scoped to {{ snapshot?.server }} · {{ snapshot?.guild }}.
           The observer’s last confirmed view may be stale when phBot has not
