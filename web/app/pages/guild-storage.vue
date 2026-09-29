@@ -375,7 +375,8 @@ onBeforeUnmount(() => {
           v-if="search.trim() && hasSlots && guildGold !== null"
           class="inventory-gold"
         >
-          <span aria-hidden="true">◈</span> Gold {{ guildGold.toLocaleString() }}
+          <span aria-hidden="true">◈</span> Gold
+          {{ guildGold.toLocaleString() }}
         </div>
         <p v-if="resource" class="mapping-note">
           Contents are scoped to {{ snapshot?.server }} · {{ snapshot?.guild }}.
