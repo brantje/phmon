@@ -12,6 +12,7 @@ import (
 	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
@@ -40,6 +41,7 @@ type Dependencies struct {
 	Chat         *chat.Store
 	Mobs         *mobs.Store
 	MobLive      *mobs.LiveStore
+	MapAnalytics *mapanalytics.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -91,6 +93,7 @@ func New(deps Dependencies) http.Handler {
 			events:     deps.Events,
 			mobs:       deps.Mobs,
 			mobLive:    mobLive,
+			analytics:  deps.MapAnalytics,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)
@@ -107,10 +110,15 @@ func New(deps Dependencies) http.Handler {
 			register("GET /api/events", false, eventAPI.list)
 		}
 		if deps.Resources != nil {
-			mapAPI := &mapHandler{resources: deps.Resources, mobs: deps.Mobs}
+			mapAPI := &mapHandler{resources: deps.Resources, mobs: deps.Mobs, analytics: deps.MapAnalytics}
 			register("GET /api/map/profile", false, mapAPI.profile)
 			if deps.Mobs != nil {
 				register("GET /api/map/density", false, mapAPI.density)
+			}
+			if deps.MapAnalytics != nil {
+				register("GET /api/map/heatmap", false, mapAPI.heatmap)
+				register("GET /api/map/heatmap/facets", false, mapAPI.heatmapFacets)
+				register("POST /api/map/heatmap/reset", true, mapAPI.heatmapReset)
 			}
 		}
 		register("GET /api/agents", false, handler.list)

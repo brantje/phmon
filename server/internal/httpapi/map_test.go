@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mapprofile"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
@@ -56,6 +60,92 @@ func TestPackagedGreatestDatasetEnablesMapProfile(t *testing.T) {
 	if err != nil || profile.TileCatalog.Status != "available-for-inspection" || len(profile.CaveFloors) != 17 {
 		t.Fatalf("packaged dataset did not enable all cave floors: status=%q floors=%d err=%v", profile.ProfileStatus, len(profile.CaveFloors), err)
 	}
+}
+
+func TestHeatmapAPIFailsClosedForUnverifiedMobDensity(t *testing.T) {
+	metadata := &resources.ItemMetadata{Servers: map[string]string{"greatest": mapprofile.GreatestDatasetID}}
+	resourceStore := resources.NewStore(nil)
+	resourceStore.SetItemMetadata(metadata)
+	handler := New(Dependencies{
+		Agents: newFakeAgentStore(), Registry: agentdomain.NewRegistry(), Resources: resourceStore,
+		MapAnalytics: mapanalytics.NewStore(nil),
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET",
+		"/api/map/heatmap?server=greatest&area=world&floor=world&layer=mob_density&from=2026-09-29T10:00:00Z&to=2026-09-29T11:00:00Z", nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != 200 {
+		t.Fatalf("heatmap status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var result mapanalytics.Result
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != mapanalytics.StatusUnsupported || result.Reason != "observation_coverage_unverified" || len(result.Points) != 0 {
+		t.Fatalf("mob density did not fail closed: %+v", result)
+	}
+}
+
+func TestHeatmapResetErrorClassification(t *testing.T) {
+	metadata := &resources.ItemMetadata{Servers: map[string]string{"greatest": mapprofile.GreatestDatasetID}}
+	resourceStore := resources.NewStore(nil)
+	resourceStore.SetItemMetadata(metadata)
+
+	t.Run("invalid scope", func(t *testing.T) {
+		handler := New(Dependencies{
+			Agents: newFakeAgentStore(), Registry: agentdomain.NewRegistry(), Resources: resourceStore,
+			MapAnalytics: mapanalytics.NewStore(nil),
+		})
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest("POST", "/api/map/heatmap/reset",
+			strings.NewReader(`{"layer":"deaths","server":"greatest","area_id":"missing","floor_id":"world","from":"2026-09-29T10:00:00Z","to":"2026-09-29T11:00:00Z","confirm_broad":false}`))
+		request.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest || strings.Contains(strings.ToLower(recorder.Body.String()), "postgres") {
+			t.Fatalf("invalid reset classification: status=%d body=%s", recorder.Code, recorder.Body.String())
+		}
+	})
+
+	t.Run("broad confirmation", func(t *testing.T) {
+		handler := New(Dependencies{
+			Agents: newFakeAgentStore(), Registry: agentdomain.NewRegistry(), Resources: resourceStore,
+			MapAnalytics: mapanalytics.NewStore(nil),
+		})
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest("POST", "/api/map/heatmap/reset",
+			strings.NewReader(`{"layer":"deaths","server":"greatest","area_id":"world","floor_id":"world","from":"2026-09-29T10:00:00Z","to":"2026-09-29T11:00:00Z","confirm_broad":false}`))
+		request.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "explicit confirmation") {
+			t.Fatalf("broad reset classification: status=%d body=%s", recorder.Code, recorder.Body.String())
+		}
+	})
+
+	t.Run("persistence failure", func(t *testing.T) {
+		pool, err := pgxpool.New(context.Background(), "postgres://phmon:secret@127.0.0.1:1/phmon")
+		if err != nil {
+			t.Fatal(err)
+		}
+		pool.Close()
+		handler := New(Dependencies{
+			Agents: newFakeAgentStore(), Registry: agentdomain.NewRegistry(), Resources: resourceStore,
+			MapAnalytics: mapanalytics.NewStore(pool),
+		})
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest("POST", "/api/map/heatmap/reset",
+			strings.NewReader(`{"layer":"deaths","server":"greatest","area_id":"world","floor_id":"world","region":25273,"from":"2026-09-29T10:00:00Z","to":"2026-09-29T11:00:00Z","confirm_broad":false}`))
+		request.Header.Set("Content-Type", "application/json")
+		handler.ServeHTTP(recorder, request)
+		body := recorder.Body.String()
+		if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(body, "heatmap reset unavailable") {
+			t.Fatalf("persistence reset classification: status=%d body=%s", recorder.Code, body)
+		}
+		for _, leaked := range []string{"postgres", "127.0.0.1", "phmon:secret", "closed pool"} {
+			if strings.Contains(strings.ToLower(body), strings.ToLower(leaked)) {
+				t.Fatalf("persistence error leaked %q: %s", leaked, body)
+			}
+		}
+	})
 }
 
 func TestMapLiveSubscriptionRequiresScopedServerAndFloor(t *testing.T) {

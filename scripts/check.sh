@@ -16,6 +16,7 @@ cd "$(dirname "$0")/.."
 python3 -m unittest discover -s plugin -p 'test_*.py'
 python3 scripts/live_transport_audit.py
 npm --prefix web run format:check
+npm --prefix web run test:unit
 npm --prefix web run lint
 npm --prefix web run typecheck
 npm --prefix web run build

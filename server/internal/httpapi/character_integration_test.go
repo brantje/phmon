@@ -16,6 +16,9 @@ import (
 	"phmon/server/internal/agents"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/database"
+	"phmon/server/internal/mapanalytics"
+	"phmon/server/internal/mapprofile"
+	"phmon/server/internal/resources"
 )
 
 func TestCharacterProtocolAndHTTPAPI(t *testing.T) {
@@ -396,3 +399,140 @@ func identifyAndSnapshot(t *testing.T, ctx context.Context, conn *websocket.Conn
 }
 
 func int64ptr(value int64) *int64 { return &value }
+
+func TestMovementAnalyticsFailureDoesNotRejectCanonicalState(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run character analytics integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentStore := agents.NewStore(pool)
+	if err := agentStore.CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	serverName := "PhMonAnalyticsFailure-" + credential.AgentID
+	characterStore := characters.NewStore(pool)
+	resourceStore := resources.NewStore(nil)
+	resourceStore.SetItemMetadata(&resources.ItemMetadata{Servers: map[string]string{strings.ToLower(serverName): mapprofile.GreatestDatasetID}})
+
+	analyticsConfig, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	analyticsConfig.MaxConns = 1
+	analyticsPool, err := pgxpool.NewWithConfig(ctx, analyticsConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer analyticsPool.Close()
+	held, err := analyticsPool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	t.Cleanup(func() {
+		clean := context.Background()
+		_, _ = pool.Exec(clean, `DELETE FROM character_position_samples WHERE lower(server_name)=lower($1)`, serverName)
+		_, _ = pool.Exec(clean, `DELETE FROM character_sessions WHERE agent_id=$1`, credential.AgentID)
+		_, _ = pool.Exec(clean, `DELETE FROM characters WHERE server_key=$1`, strings.ToLower(serverName))
+		_, _ = pool.Exec(clean, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+
+	web := httptest.NewServer(New(Dependencies{
+		Database: pool, Agents: agentStore, Registry: agents.NewRegistry(), Characters: characterStore,
+		Resources: resourceStore, MapAnalytics: mapanalytics.NewStore(analyticsPool),
+		AgentOptions: AgentOptions{HeartbeatTimeout: 8 * time.Second},
+	}))
+	defer web.Close()
+
+	conn := dialAgent(t, web.URL, credential.Token)
+	defer conn.CloseNow()
+	if err := wsjson.Write(ctx, conn, agentMessage{
+		Type: "hello", ProtocolVersion: agentProtocolVersion, AgentID: credential.AgentID,
+		PluginVersion: "fixture", PhBotVersion: "fixture", SentAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var ack helloAck
+	if err := wsjson.Read(ctx, conn, &ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack.ProtocolVersion != agentProtocolVersion {
+		t.Fatalf("unexpected protocol version: %d", ack.ProtocolVersion)
+	}
+	if err := wsjson.Write(ctx, conn, agentMessage{
+		Type: "character.identify", ProtocolVersion: agentProtocolVersion, Server: serverName,
+		Name: "AnalyticsBlocked", SentAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var registered struct {
+		Type        string `json:"type"`
+		CharacterID string `json:"character_id"`
+		SessionID   string `json:"session_id"`
+	}
+	if err := wsjson.Read(ctx, conn, &registered); err != nil {
+		t.Fatal(err)
+	}
+	if registered.Type != "character.registered" || !agents.ValidAgentID(registered.CharacterID) || !agents.ValidAgentID(registered.SessionID) {
+		t.Fatalf("unexpected registration: %+v", registered)
+	}
+
+	region, x, y, firstHP := 25273, 10.0, 20.0, int64(111)
+	if err := wsjson.Write(ctx, conn, agentMessage{
+		Type: "character.state", ProtocolVersion: agentProtocolVersion, CharacterID: registered.CharacterID,
+		SessionID: registered.SessionID, SentAt: time.Now().UTC().Format(time.RFC3339),
+		State: characters.State{Region: &region, X: &x, Y: &y, HP: &firstHP},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	canonicalDeadline := time.Now().Add(time.Second)
+	for time.Now().Before(canonicalDeadline) {
+		character, getErr := characterStore.Get(ctx, registered.CharacterID)
+		if getErr == nil && character.Region != nil && *character.Region == region &&
+			character.X != nil && *character.X == x && character.Y != nil && *character.Y == y {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	character, getErr := characterStore.Get(ctx, registered.CharacterID)
+	if getErr != nil || character.Region == nil || *character.Region != region ||
+		character.X == nil || *character.X != x || character.Y == nil || *character.Y != y {
+		t.Fatalf("canonical positioned state did not persist before analytics timeout: character=%+v err=%v", character, getErr)
+	}
+
+	secondHP := int64(222)
+	if err := wsjson.Write(ctx, conn, agentMessage{
+		Type: "character.state", ProtocolVersion: agentProtocolVersion, CharacterID: registered.CharacterID,
+		SessionID: registered.SessionID, SentAt: time.Now().UTC().Format(time.RFC3339),
+		State: characters.State{HP: &secondHP},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		character, getErr := characterStore.Get(ctx, registered.CharacterID)
+		if getErr == nil && character.HP != nil && *character.HP == secondHP {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	character, getErr = characterStore.Get(ctx, registered.CharacterID)
+	t.Fatalf("analytics timeout blocked/rejected later canonical state: character=%+v err=%v", character, getErr)
+}
