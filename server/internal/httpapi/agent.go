@@ -212,6 +212,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 
 	sessionCtx, sessionCancel := context.WithCancel(r.Context())
 	generation, _ := h.registry.Register(hello.AgentID)
+	if generation == 0 {
+		sessionCancel()
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "credential revocation in progress", hello.AgentID, hello.ProtocolVersion)
+		return
+	}
 	writer := newAgentWriter(sessionCtx, conn, sessionCancel)
 	if !h.registry.Configure(hello.AgentID, generation, hello.ProtocolVersion, hello.PluginVersion, writer.Send) {
 		sessionCancel()
@@ -823,10 +828,11 @@ func (h *agentHandler) remove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
 		return
 	}
-	if h.registry.ConnectionCount(agentID) > 0 {
-		respondJSON(w, http.StatusConflict, map[string]string{"error": "agent connected"})
+	if !h.registry.BeginCredentialRevocation(agentID) {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "agent connected or removal in progress"})
 		return
 	}
+	defer h.registry.EndCredentialRevocation(agentID)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
