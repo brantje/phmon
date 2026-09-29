@@ -862,3 +862,29 @@ confirmed on the installed phBot copy. After service recovery, a fresh Greatest
 observation in region 26520 had X/Y near `(3423.1,2115.2)`, consistent with
 outdoor tile `(152,103)`. The map uses `region = tileY*256 + tileX` as its primary
 outdoor placement rule with 192 coordinate units per tile. Cave handling is separate.
+
+### Slice 9 historical heatmap capability boundary — 2026-09-29
+
+Slice 9 does not add a phBot protocol or plugin requirement for player movement.
+The backend already receives authenticated, session-fenced `character.snapshot` /
+`character.state` frames containing the documented region/X/Y position. After the
+canonical character update succeeds, the server records a separate bounded movement
+sample at most once every two seconds and only after a region transition or at least
+four horizontal game units of movement. Analytics persistence is secondary to the
+canonical character state and cannot make a successful character update fail.
+
+No verified phBot API/runtime source establishes the spatial footprint covered by a
+`get_monsters()` snapshot. Monster coordinates prove only that those monsters were
+returned; they do not prove which surrounding cells were observable. Therefore the
+new historical API keeps true `mob_density` explicitly unsupported with reason
+`observation_coverage_unverified`. The existing observer-cell calculation is exposed
+only as `mob_observer_average`: returned monster rows divided by eligible complete
+samples whose observer stood in that cell. `mob_types` is a separate historical
+sighting-count layer located at the monsters' reported coordinates and is likewise
+not described as density.
+
+The active map profile still lacks validated cave-floor imagery/transforms for Tomb
+of Qin-Shi, Donwhang Stone Cave and Job Temple. Historical heatmap queries for an
+area/floor without a usable transform return an unsupported state rather than
+projecting the coordinates through the outdoor transform. This preserves the same
+fail-closed coordinate boundary used by Slice 7.

@@ -835,7 +835,7 @@ search checks canonical item code/model and observed item name/code in payloads.
 alchemy-attempt result also includes attempts, recorded success/failure outcomes, and
 highest observed plus; it makes no probability estimate.
 
-Migration `000016_zone_names.sql` adds nullable `activity_events.zone_name` and
+Migration `000018_zone_names.sql` adds nullable `activity_events.zone_name` and
 `character_control_state.training_zone`. Current event and training-area snapshots
 include names from phBot's documented `get_zone_name(region)` when a name is
 available. These additive fields are optional for older plugins and stored events.

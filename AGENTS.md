@@ -3974,6 +3974,60 @@ pass; lint has 0 errors and 30 existing Vue style warnings. Exact next action:
 observe nuker1 through a fresh teleport after the operator loads the staged
 plugin into phBot; keep cave and remaining Slice 7–8 gates open.
 
+### Resume — 2026-09-29 Slice 9 historical heatmaps implementation
+
+Implemented the Slice 9 historical-analytics architecture on
+`codex/slice-9-heatmaps`, starting from merged Slice 7–8 main
+`b98ace71cc5dcde9c68afea41462b5ee2a6e2123`. Migration
+`000016_map_analytics.sql` adds bounded durable character-position samples and
+heatmap-reset projection scopes. The existing authenticated character-state stream
+now feeds server-side movement history without a plugin/protocol bump: samples are
+session fenced, limited to at most one per two seconds, and stationary movement below
+four horizontal game units is suppressed unless the region changes. Analytics write
+failure does not invalidate an otherwise accepted canonical character-state update.
+
+A new `server/internal/mapanalytics` query domain owns historical aggregation,
+validation, bounds and reset semantics. Available sources are deaths, world drops,
+unique-spawn callbacks, player movement and historical monster sightings. Mob-type
+sightings use reported monster coordinates. The existing observer-cell denominator
+is exposed separately as the limited `mob_observer_average` metric. True
+`mob_density` deliberately returns `unsupported / observation_coverage_unverified`
+because no verified phBot/runtime source establishes the spatial footprint observed
+by a monster snapshot. Unvalidated cave/special-area transforms likewise fail closed
+rather than falling back to outdoor coordinates.
+
+Authenticated HTTP/Nuxt APIs now expose heatmap reads, observed mob facets and reset.
+The reset operation records an exact suppression projection and never deletes
+canonical activity events, movement samples or mob-observation rows. A scope with no
+region and no character is considered broad and requires a second explicit
+confirmation on both frontend and backend. PostgreSQL aggregation is spatially
+bucketed and capped at 2,000 returned cells; time windows are capped at 31 days and
+auto-select coarser buckets for longer ranges.
+
+The existing `/map` screen renders historical layers under live marker layers using
+Leaflet canvas vectors and the existing coordinate adapter. It adds independent
+historical controls for 1h/24h/7d/30d/custom ranges, region, character and observed
+mob type, plus per-layer loading/error/empty/limited/truncated states, legends and
+the scoped reset dialog. Live nearby monsters remain current-state only. Same-scope
+historical refresh keeps the previous result visible and cancels stale requests;
+spatial scope changes clear old results.
+
+Added PostgreSQL integration coverage for movement fencing/rate suppression, event
+and mob layer filtering, monster-coordinate bucketing, the observer-local
+denominator, unsupported true density/special maps, scoped reset preservation and a
+100,000-row bounded movement aggregation. Added frontend coverage for historical
+windows, coordinate reuse, normalization and unsupported layers; the existing map
+simulator now includes delayed movement plus death/drop/unique history.
+
+Initial branch CI exposed only Go formatting in the new server wiring/HTTP handler;
+those formatting corrections were pushed afterward. Full current-head CI,
+PostgreSQL performance timing, authenticated viewport inspection, and CodeRabbit
+review are still pending at this resume point. Slices 7–8 remain in progress for
+their pre-existing cave/runtime gates and are not marked complete by Slice 9.
+Exact next action: require current-head CI green, fix only implementation-caused
+failures, then open/review the Slice 9 PR and complete the CodeRabbit review loop
+without merging.
+
 ### Resume — 2026-09-29 cave maps and reference-style Z handling
 
 Active branch/worktree: `codex/cave-maps-reference-z`, created from `main` at
@@ -4064,7 +4118,7 @@ again; keep real command execution as a separate authorization/test gate.
 Implemented on codex/zone-names in an isolated worktree. The plugin uses the
 documented get_zone_name(region) API for canonical event positions and training
 area readback. Events carry an optional zone; training state carries the separate
-optional training_zone in migration 16. The event view and remote command controls
+optional training_zone in migration 18. The event view and remote command controls
 show names with explicit fallbacks, while retaining numeric region IDs for commands
 and map behavior.
 
