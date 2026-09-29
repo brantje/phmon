@@ -68,6 +68,9 @@ const regionOptions = computed(() => {
   for (const character of mapSnapshot.value?.characters || []) {
     if (character.region != null) set.add(character.region)
   }
+  for (const result of Object.values(heatmapResults)) {
+    for (const point of result?.points || []) set.add(point.region)
+  }
   return [...set].sort((left, right) => left - right)
 })
 const server = computed(() => {
