@@ -51,6 +51,7 @@ export interface ActivityEvent {
   dedupe_key?: string
   item_model?: number
   item_code?: string
+  item_metadata?: Record<string, unknown>
   region?: number
   x?: number
   y?: number

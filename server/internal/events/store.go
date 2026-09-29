@@ -69,30 +69,31 @@ type AgentDeath struct {
 }
 
 type Event struct {
-	ID          string          `json:"event_id"`
-	Schema      int             `json:"schema_version"`
-	Kind        string          `json:"kind"`
-	Category    string          `json:"category"`
-	AgentID     string          `json:"agent_id"`
-	CharacterID string          `json:"character_id"`
-	SessionID   string          `json:"session_id"`
-	Server      string          `json:"server"`
-	Character   string          `json:"character"`
-	OccurredAt  time.Time       `json:"occurred_at"`
-	ReceivedAt  time.Time       `json:"received_at"`
-	Source      string          `json:"source"`
-	SourceRef   string          `json:"source_ref"`
-	Region      *int            `json:"region,omitempty"`
-	X           *float64        `json:"x,omitempty"`
-	Y           *float64        `json:"y,omitempty"`
-	Z           *float64        `json:"z,omitempty"`
-	ModelID     *int64          `json:"model_id,omitempty"`
-	PortraitURL string          `json:"portrait_url,omitempty"`
-	Payload     json.RawMessage `json:"payload"`
-	Sequence    *int64          `json:"sequence,omitempty"`
-	DedupeKey   string          `json:"dedupe_key,omitempty"`
-	ItemModel   *int64          `json:"item_model,omitempty"`
-	ItemCode    string          `json:"item_code,omitempty"`
+	ID           string          `json:"event_id"`
+	Schema       int             `json:"schema_version"`
+	Kind         string          `json:"kind"`
+	Category     string          `json:"category"`
+	AgentID      string          `json:"agent_id"`
+	CharacterID  string          `json:"character_id"`
+	SessionID    string          `json:"session_id"`
+	Server       string          `json:"server"`
+	Character    string          `json:"character"`
+	OccurredAt   time.Time       `json:"occurred_at"`
+	ReceivedAt   time.Time       `json:"received_at"`
+	Source       string          `json:"source"`
+	SourceRef    string          `json:"source_ref"`
+	Region       *int            `json:"region,omitempty"`
+	X            *float64        `json:"x,omitempty"`
+	Y            *float64        `json:"y,omitempty"`
+	Z            *float64        `json:"z,omitempty"`
+	ModelID      *int64          `json:"model_id,omitempty"`
+	PortraitURL  string          `json:"portrait_url,omitempty"`
+	Payload      json.RawMessage `json:"payload"`
+	Sequence     *int64          `json:"sequence,omitempty"`
+	DedupeKey    string          `json:"dedupe_key,omitempty"`
+	ItemModel    *int64          `json:"item_model,omitempty"`
+	ItemCode     string          `json:"item_code,omitempty"`
+	ItemMetadata map[string]any  `json:"item_metadata,omitempty"`
 }
 
 // AgentEvent is the bounded occurrence envelope submitted over an authenticated
