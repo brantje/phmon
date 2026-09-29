@@ -285,6 +285,9 @@ def run_map_observations(worker, stopping):
         if first_ack["status"] != "persisted":
             raise SystemExit("mob sample was not persisted: " + str(first_ack["status"]))
 
+        # Let the server-side Slice 9 movement sampler cross its bounded
+        # two-second interval before moving to another observer cell.
+        time.sleep(2.1)
         # Moving to another observer cell allows the observed-empty snapshot to
         # contribute a zero to the historical denominator.
         position.update({"x": 250.0, "y": 20.0})
@@ -313,9 +316,10 @@ def run_map_observations(worker, stopping):
         worker.update_map_monsters(identity, "truncated", 25273, truncated)
         PhMon.handle_event(PhMon.EVENT_ITEM_DROP, "500")
         PhMon.handle_event(PhMon.EVENT_DIED, "")
-        wait_until(lambda: len(event_results) >= 2, timeout, "death and drop event commits")
-        if any(entry.get("status") != "persisted" for entry in event_results[:2]):
-            raise SystemExit("map overlay event was not persisted: " + str(event_results[:2]))
+        PhMon.handle_event(PhMon.EVENT_UNIQUE_SPAWN, "FixtureUnique")
+        wait_until(lambda: len(event_results) >= 3, timeout, "death, drop and unique event commits")
+        if any(entry.get("status") != "persisted" for entry in event_results[:3]):
+            raise SystemExit("map analytics event was not persisted: " + str(event_results[:3]))
 
         # Reconnect and replay a committed sample ID. The server should return a
         # terminal persisted acknowledgement without adding another denominator.
@@ -338,7 +342,7 @@ def run_map_observations(worker, stopping):
         replay_acks = [entry for entry in sample_acks if entry["sample_id"] == first_sample["sample_id"]]
         if replay_acks[-1]["status"] != "persisted":
             raise SystemExit("sample replay was not acknowledged: " + str(replay_acks[-1]["status"]))
-        print("PASS protocol v7 movement, current/empty/unavailable/truncated monster states, death/drop events, reconnect and idempotent sample replay")
+        print("PASS protocol v7 movement, current/empty/unavailable/truncated monster states, death/drop/unique events, reconnect and idempotent sample replay")
         return 0
     finally:
         stopping[0] = True
