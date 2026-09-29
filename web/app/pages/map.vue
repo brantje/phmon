@@ -1681,8 +1681,15 @@ useHead({ title: 'Map · PhMon' })
             <dd>{{ areaID }} / {{ floorID }}</dd>
           </div>
           <div>
-            <dt>Region</dt>
-            <dd>{{ regionID || 'All regions' }}</dd>
+            <dt>Zone</dt>
+            <dd>
+              {{
+                regionID
+                  ? (zoneOptionLabels.get(regionID) ??
+                    zoneNameForRegion(regionID))
+                  : 'All zones'
+              }}
+            </dd>
           </div>
           <div>
             <dt>Character</dt>
