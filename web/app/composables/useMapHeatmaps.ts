@@ -63,10 +63,7 @@ export function useMapHeatmaps(fetcher?: HeatmapFetch) {
     return HISTORICAL_LAYERS.filter((layer) => enabled[layer])
   }
 
-  async function refreshFacets(
-    query: HeatmapQuery,
-    currentGeneration: number,
-  ) {
+  async function refreshFacets(query: HeatmapQuery, currentGeneration: number) {
     if (currentGeneration !== generation) return
     facetsController?.abort()
     const controller = new AbortController()
@@ -83,10 +80,7 @@ export function useMapHeatmaps(fetcher?: HeatmapFetch) {
         '/api/map/heatmap/facets',
         { query: facetQuery, signal: controller.signal },
       )
-      if (
-        currentGeneration === generation &&
-        facetsController === controller
-      )
+      if (currentGeneration === generation && facetsController === controller)
         facets.value = response.facets
     } catch (error) {
       if (
@@ -98,10 +92,7 @@ export function useMapHeatmaps(fetcher?: HeatmapFetch) {
           error instanceof Error ? error.message : 'Mob facets unavailable'
       }
     } finally {
-      if (
-        currentGeneration === generation &&
-        facetsController === controller
-      )
+      if (currentGeneration === generation && facetsController === controller)
         facetsLoading.value = false
     }
   }
@@ -109,8 +100,7 @@ export function useMapHeatmaps(fetcher?: HeatmapFetch) {
   async function refresh(query: HeatmapQuery) {
     const currentGeneration = ++generation
     const layers = activeLayers()
-    const shouldLoadFacets =
-      enabled.mob_types || enabled.mob_observer_average
+    const shouldLoadFacets = enabled.mob_types || enabled.mob_observer_average
 
     for (const layer of HISTORICAL_LAYERS) {
       if (!enabled[layer]) {

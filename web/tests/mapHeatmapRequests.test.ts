@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { effectScope } from 'vue'
-import type {
-  HeatmapResult,
-  MobHeatmapFacet,
-} from '../shared/types/mapAnalytics.ts'
+import type { HeatmapResult, MobHeatmapFacet } from '../shared/types/mapAnalytics.ts'
 import {
   type HeatmapQuery,
   useMapHeatmaps,
@@ -40,7 +37,7 @@ function result(server: string): HeatmapResult {
   }
 }
 
-test('stale heatmap refresh cannot start or install facets after a newer scope', async () => {
+test('stale A facets cannot replace current B facets', async () => {
   const requests: Array<{
     url: string
     server: string
@@ -89,7 +86,8 @@ test('stale heatmap refresh cannot start or install facets after a newer scope',
   const refreshA = heatmaps.refresh(queryA)
   await Promise.resolve()
   const aHeat = requests.find(
-    (request) => request.url === '/api/map/heatmap' && request.server === 'scope-a',
+    (request) =>
+      request.url === '/api/map/heatmap' && request.server === 'scope-a',
   )!
   const aFacet = requests.find(
     (request) =>
@@ -102,7 +100,8 @@ test('stale heatmap refresh cannot start or install facets after a newer scope',
   const refreshB = heatmaps.refresh(queryB)
   await Promise.resolve()
   const bHeat = requests.find(
-    (request) => request.url === '/api/map/heatmap' && request.server === 'scope-b',
+    (request) =>
+      request.url === '/api/map/heatmap' && request.server === 'scope-b',
   )!
   const bFacet = requests.find(
     (request) =>
