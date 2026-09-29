@@ -3830,8 +3830,9 @@ model fallback; it displays the level separately and explicitly reports unavaila
 when no verified integer is present. Plugin version 1.5.2 passes an optional bounded
 level only if the phBot runtime provides it; the documented `get_monsters()` response
 does not promise that field. Map snapshots now collapse sightings only across
-sessions when server, region, monster identity and position (within 8 world units)
-match, selecting the freshest observation. Same-session monsters remain separate.
+sessions when server, region, monster identity, rank and position (within 8 world
+units) match, selecting the freshest observation. Same-session monsters remain
+separate. Each row retains the freshest observer's character name.
 Focused regression cases were added for display labels, cross-observer overlap,
 non-merges and level validation. Files affected: `plugin/PhMon.py`, plugin README and
 tests, Go live monster validation/tests, shared live types, map page/marker helper/
@@ -3850,4 +3851,6 @@ The live `get_monsters()` level field remains runtime-dependent and is not verif
 older connected plugin versions may lack names. Slice 7–8 acceptance gates remain
 open. Exact next action: record actual level availability from a connected 1.5.2
 runtime (or add a verified level catalog source), then run the focused suites and the
-required map/Stats viewport checks before merging PR #19.
+required map/Stats viewport checks before merging PR #19. Live UI inspection also
+showed nearby Shakram rows with distinct General and Party General ranks; the matcher
+now keeps different rank codes separate and preserves the freshest observer label.

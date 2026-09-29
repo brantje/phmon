@@ -89,6 +89,41 @@ test('current monster observers collapse cross-character sightings without mergi
     },
   ])
   assert.equal(distinct.length, 4)
+
+  const differentRanks = dedupeCurrentMonsters([
+    {
+      ...common,
+      observed_at: '2026-09-29T08:00:01Z',
+      monsters: [
+        {
+          id: '100',
+          model_id: 2450,
+          name: 'Shakram',
+          type_code: 0,
+          region: 25735,
+          x: 72,
+          y: 1565,
+        },
+      ],
+    },
+    {
+      ...common,
+      session_id: 's2',
+      observed_at: '2026-09-29T08:00:02Z',
+      monsters: [
+        {
+          id: '101',
+          model_id: 2450,
+          name: 'Shakram',
+          type_code: 16,
+          region: 25735,
+          x: 72,
+          y: 1565,
+        },
+      ],
+    },
+  ])
+  assert.equal(differentRanks.length, 2)
 })
 
 test('monster labels prefer names and prettify server names when name is numeric', () => {

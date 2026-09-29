@@ -1085,8 +1085,9 @@ that evidence is absent. Model/type codes are never presented as monster levels.
 Current snapshots previously keyed rows by each process-local monster ID, which
 could duplicate one mob when two characters assigned it different IDs and could
 merge unrelated mobs when IDs collided. The UI now collapses only cross-session
-sightings with the same server, region and model/server identity within 8 world
-units, keeping the freshest row. Same-session rows remain distinct. Focused frontend,
+Sightings with the same server, region, model/server identity, rank and position
+within 8 world units, keeping the freshest row. Same-session rows remain distinct.
+Each row names the character whose observation is freshest. Focused frontend,
 plugin and Go regression cases cover these rules. Connected 1.5.0 agents still lack
 the newer descriptive fields until replaced; real-runtime level availability and
 Slice 7–8 gates remain unverified.

@@ -63,6 +63,13 @@ function monsterIdentities(monster: MapMonster): string[] {
   return identities
 }
 
+function monsterTypeCode(monster: MapMonster): number | undefined {
+  if (monster.type_code != null) return monster.type_code
+  return monster.type && /^\d{1,3}$/.test(monster.type)
+    ? Number(monster.type)
+    : undefined
+}
+
 export function dedupeCurrentMonsters(
   snapshots: MapMonsterObservation[],
 ): CurrentMapMonster[] {
@@ -77,6 +84,9 @@ export function dedupeCurrentMonsters(
               candidate.observer.server.toLocaleLowerCase() !==
                 observer.server.toLocaleLowerCase() ||
               candidate.region !== monster.region ||
+              (monsterTypeCode(candidate) != null &&
+                monsterTypeCode(monster) != null &&
+                monsterTypeCode(candidate) !== monsterTypeCode(monster)) ||
               !monsterIdentities(candidate).some((identity) =>
                 identities.includes(identity),
               ) ||
