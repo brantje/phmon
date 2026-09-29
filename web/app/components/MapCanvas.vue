@@ -9,6 +9,7 @@ import 'leaflet/dist/leaflet.css'
 import type { ActivityEvent, MapMonster } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
+import type { MapHeatLayer } from '~/utils/mapHeatmap'
 import {
   localMapAsset,
   monsterDisplayName,
@@ -48,6 +49,7 @@ const props = defineProps<{
   initialPosition?: RasterPosition | null
   initialTile?: { x: number; y: number }
   markers?: MapCanvasMarker[]
+  heatLayers?: MapHeatLayer[]
 }>()
 const emit = defineEmits<{
   viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
@@ -56,7 +58,10 @@ const emit = defineEmits<{
 }>()
 const element = ref<HTMLDivElement | null>(null)
 let map: LeafletMap | undefined
+let heatLayerGroup: LayerGroup | undefined
 let markerLayer: LayerGroup | undefined
+let heatRenderer: L.Canvas | undefined
+let makeHeatCircle: typeof import('leaflet').circleMarker | undefined
 let createLatLng: ((latitude: number, longitude: number) => LatLng) | undefined
 let makeMarker:
   | ((
@@ -210,6 +215,77 @@ function syncMarkers() {
     const animationFrame = markerAnimationFrames.get(key)
     if (animationFrame != null) cancelAnimationFrame(animationFrame)
     markerAnimationFrames.delete(key)
+  }
+}
+
+function heatLayerColor(id: MapHeatLayer['id']) {
+  switch (id) {
+    case 'deaths':
+      return '#e75b64'
+    case 'drops':
+      return '#f0c75e'
+    case 'unique_sightings':
+      return '#b88cff'
+    case 'player_movement':
+      return '#56bff2'
+    case 'mob_types':
+      return '#ee8a4c'
+    case 'mob_observer_average':
+      return '#75d783'
+    default:
+      return '#a9b4c2'
+  }
+}
+
+function syncHeatLayers() {
+  if (
+    !map ||
+    !heatLayerGroup ||
+    !heatRenderer ||
+    !makeHeatCircle ||
+    !createLatLng
+  )
+    return
+  heatLayerGroup.clearLayers()
+  for (const layer of props.heatLayers || []) {
+    for (const point of layer.points.slice(0, 2000)) {
+      const { tileX, tileY, pixelX, pixelY } = point.position
+      if (
+        tileX < props.profile.tiles.min_x ||
+        tileX > props.profile.tiles.max_x ||
+        tileY < props.profile.tiles.min_y ||
+        tileY > props.profile.tiles.max_y ||
+        !Number.isFinite(pixelX) ||
+        !Number.isFinite(pixelY)
+      )
+        continue
+      const column = tileX - props.profile.tiles.min_x
+      const row = props.profile.tiles.max_y - tileY
+      const rendered = makeHeatCircle(
+        createLatLng(-(row * 256 + pixelY), column * 256 + pixelX),
+        {
+          renderer: heatRenderer,
+          radius: 8 + 22 * point.intensity,
+          stroke: false,
+          fill: true,
+          fillColor: heatLayerColor(layer.id),
+          fillOpacity: 0.12 + 0.5 * point.intensity,
+          interactive: !props.compact,
+          bubblingMouseEvents: false,
+        },
+      )
+      if (!props.compact) {
+        const value =
+          point.denominator != null
+            ? `${point.numerator ?? point.count} / ${point.denominator} · ${point.weight.toFixed(2)}`
+            : `${point.count} · ${point.weight.toFixed(2)}`
+        rendered.bindTooltip(`${layer.label}: ${value}`, {
+          direction: 'top',
+          opacity: 0.92,
+        })
+      }
+      rendered.addTo(heatLayerGroup)
+    }
   }
 }
 
@@ -447,6 +523,8 @@ onMounted(async () => {
   const L = (await import('leaflet')).default
   if (stopped || !element.value) return
   createLatLng = L.latLng
+  makeHeatCircle = L.circleMarker
+  heatRenderer = L.canvas({ padding: 0.5 })
   const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
   const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
   const bounds = L.latLngBounds(
@@ -571,6 +649,7 @@ onMounted(async () => {
     },
   })
   new tiles().addTo(map)
+  heatLayerGroup = L.layerGroup().addTo(map)
   markerLayer = L.layerGroup().addTo(map)
   makeMarker = (marker, point, existing) => {
     const markerKey = `${marker.kind}:${marker.id}`
@@ -673,6 +752,7 @@ onMounted(async () => {
   map.on('zoomend', snapZoomToPercentStep)
   map.on('moveend zoomend', publishView)
   publishView()
+  syncHeatLayers()
   syncMarkers()
   if (props.compact) {
     map.dragging.disable()
@@ -693,6 +773,7 @@ watch(
   { deep: true },
 )
 watch(() => props.markers, syncMarkers, { deep: true })
+watch(() => props.heatLayers, syncHeatLayers, { deep: true })
 
 onBeforeUnmount(() => {
   stopped = true
@@ -701,7 +782,10 @@ onBeforeUnmount(() => {
   markerAnimationFrames.clear()
   map?.remove()
   map = undefined
+  heatLayerGroup = undefined
   markerLayer = undefined
+  heatRenderer = undefined
+  makeHeatCircle = undefined
   makeMarker = undefined
   renderedMarkers.clear()
   markerIconSignatures.clear()
