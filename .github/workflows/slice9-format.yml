@@ -22,11 +22,12 @@ jobs:
       - name: Format and emit files
         shell: bash
         run: |
-          npm --prefix web exec prettier -- --write             app/pages/map.vue             app/utils/mapHeatmap.ts             shared/types/mapAnalytics.ts             tests/mapHeatmap.test.ts
-          for file in             app/pages/map.vue             app/utils/mapHeatmap.ts             shared/types/mapAnalytics.ts             tests/mapHeatmap.test.ts
+          cd web
+          npx prettier --write app/pages/map.vue app/utils/mapHeatmap.ts shared/types/mapAnalytics.ts tests/mapHeatmap.test.ts
+          for file in app/pages/map.vue app/utils/mapHeatmap.ts shared/types/mapAnalytics.ts tests/mapHeatmap.test.ts
           do
             echo "PHMON_FORMAT_BEGIN:$file"
-            base64 -w0 "web/$file"
+            base64 -w0 "$file"
             echo
             echo "PHMON_FORMAT_END:$file"
           done
