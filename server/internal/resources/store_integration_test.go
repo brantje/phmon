@@ -229,7 +229,6 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	}
 }
 
-
 func TestCurrentPartyObservationsFenceSessionAndAvailability(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
