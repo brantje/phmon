@@ -290,6 +290,69 @@ func TestNewConnectionBeforeOldDisconnectPersistenceIsFenced(t *testing.T) {
 	t.Fatal("agent row not returned")
 }
 
+func TestAgentStoreListsAndRevokesNeverConnectedCredential(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run agent store integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal("cannot initialize test database pool")
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+
+	credential, err := NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(pool)
+	if err := store.CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), "DELETE FROM agents WHERE agent_id = $1", credential.AgentID)
+	})
+
+	records, err := store.ListSeen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, record := range records {
+		if record.AgentID == credential.AgentID {
+			found = true
+			if record.FirstSeenAt != nil {
+				t.Fatalf("new credential unexpectedly has first_seen_at: %v", record.FirstSeenAt)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("never-connected credential was not listed")
+	}
+
+	removed, err := store.RevokeCredential(ctx, credential.AgentID)
+	if err != nil || !removed {
+		t.Fatalf("revoke removed=%v err=%v", removed, err)
+	}
+	if _, err := store.AuthenticateToken(ctx, credential.Token); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("revoked token authenticated: %v", err)
+	}
+	records, err = store.ListSeen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range records {
+		if record.AgentID == credential.AgentID {
+			t.Fatal("revoked credential remained in active agent list")
+		}
+	}
+}
+
 func TestCredentialShape(t *testing.T) {
 	first, err := NewCredential()
 	if err != nil {

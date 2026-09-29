@@ -86,7 +86,7 @@ displaying the secret. Keep the phBot Config directory private. Leaving the toke
 field blank preserves the saved token only while the backend URL and agent ID are
 unchanged; changing either identity field requires pasting the token again.
 
-The agent should appear on the dashboard after the authenticated hello succeeds. The
+The agent should appear under **Settings -> Agents** after the authenticated hello succeeds. The
 plugin reconnects automatically after backend loss and never puts credentials in the
 URL. The default Compose binding keeps port 8081 on loopback. For a phBot host on
 another machine, terminate TLS in front of the Go backend and configure a reachable

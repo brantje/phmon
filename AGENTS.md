@@ -4160,3 +4160,29 @@ is authoritative for the complete Go/Python/Nuxt/PostgreSQL suite. No real bot
 command was sent. Exact next action: push this documentation commit, open the PR,
 require CI green, then complete the requested CodeRabbit review/full-review loop
 without merging.
+
+### Resume — 2026-09-30 Settings agent management restoration
+
+Active branch: `fix/settings-agent-management`, based on main after the dashboard
+redesign. Restored agent provisioning and lifecycle management under
+**Settings -> Agents** by reusing the existing one-time credential panel and live
+agent stream. Active credentials are now listed before first connection, with
+never-connected/offline/online states. Offline removal revokes the credential
+instead of deleting the agent row, preserving historical foreign-key references;
+connected or non-current/stale live state is not removable. Revocation is serialized
+against live registry registration so a connect/remove race cannot leave a newly
+registered socket using a revoked credential.
+
+Backend changes add migration `000020_agent_revocation.sql`,
+`DELETE /api/agents/{id}`, token revocation checks, live invalidation after
+create/remove, and unit/integration coverage for never-connected listing, revocation,
+connected-agent conflict and registry fencing. Nuxt adds the Settings section,
+same-origin delete proxy, responsive remove actions and immediate live refresh.
+README, plugin setup docs, protocol and parity ledgers now point operators to
+Settings -> Agents. Draft PR #38 is open and must not be merged as part of this task.
+
+Validation at this resume point: prior CI attempts were superseded by review fixes;
+the final current-head Validation workflow still needs to complete. No real phBot
+character action is required for this maintenance change. Exact next action: require
+the final PR #38 head to pass both `validate` and `stack`; fix only failures caused
+by this change, then report the draft PR ready for operator review without merging.

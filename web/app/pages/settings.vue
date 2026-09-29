@@ -1,4 +1,9 @@
 <script setup lang="ts">
+const route = useRoute()
+const settingsSection = computed(() =>
+  route.query.section === 'agents' ? 'agents' : 'notifications',
+)
+
 const { preferences, ready, busy, error, save, requestBrowserPermission } =
   useChatPreferences()
 const permission = ref<'default' | 'granted' | 'denied' | 'unsupported'>(
@@ -47,9 +52,30 @@ async function enableNotifications() {
     <PageHeader
       title="Settings"
       icon="i-lucide-settings"
-      description="Operator preferences for chat messages and browser alerts."
+      description="Operator preferences and agent access management."
     />
-    <section class="panel preferences-panel">
+    <nav class="settings-tabs" aria-label="Settings sections">
+      <NuxtLink
+        :to="{ path: '/settings' }"
+        class="settings-tab"
+        :class="{ active: settingsSection === 'notifications' }"
+      >
+        <UIcon name="i-lucide-bell" />
+        Notifications
+      </NuxtLink>
+      <NuxtLink
+        :to="{ path: '/settings', query: { section: 'agents' } }"
+        class="settings-tab"
+        :class="{ active: settingsSection === 'agents' }"
+      >
+        <UIcon name="i-lucide-bot" />
+        Agents
+      </NuxtLink>
+    </nav>
+    <section
+      v-show="settingsSection === 'notifications'"
+      class="panel preferences-panel"
+    >
       <div class="panel-heading">
         <div>
           <h2>Chat notifications</h2>
@@ -124,6 +150,7 @@ async function enableNotifications() {
         text is shown only after browser permission is granted.
       </p>
     </section>
+    <AgentPanel v-show="settingsSection === 'agents'" />
   </div>
 </template>
 
@@ -131,6 +158,37 @@ async function enableNotifications() {
 .settings-page {
   display: grid;
   gap: 14px;
+}
+.settings-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--ph-border-soft);
+  padding-bottom: 8px;
+}
+.settings-tab {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0 10px;
+  color: var(--ph-muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+.settings-tab:hover {
+  border-color: var(--ph-border);
+  color: var(--ph-text);
+}
+.settings-tab.active {
+  border-color: #3d5270;
+  background: #121d2b;
+  color: var(--ph-primary);
+}
+.settings-tab :deep(svg) {
+  width: 14px;
+  height: 14px;
 }
 .preferences-panel {
   padding: 16px;

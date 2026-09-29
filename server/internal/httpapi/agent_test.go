@@ -39,6 +39,7 @@ type fakeAgentStore struct {
 	seenCount         int
 	disconnectedCount int
 	created           []agentdomain.Credential
+	revoked           []string
 }
 
 func newFakeAgentStore() *fakeAgentStore {
@@ -50,6 +51,25 @@ func (s *fakeAgentStore) CreateCredential(_ context.Context, credential agentdom
 	defer s.mu.Unlock()
 	s.created = append(s.created, credential)
 	return nil
+}
+
+func (s *fakeAgentStore) RevokeCredential(_ context.Context, agentID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if agentID != s.agentID {
+		found := false
+		for _, credential := range s.created {
+			if credential.AgentID == agentID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+	s.revoked = append(s.revoked, agentID)
+	return true, nil
 }
 
 func (s *fakeAgentStore) AuthenticateToken(_ context.Context, token string) (string, error) {
@@ -95,13 +115,45 @@ func (s *fakeAgentStore) MarkDisconnected(_ context.Context, _ string, connected
 	return nil
 }
 
+type blockingMarkConnectedStore struct {
+	*fakeAgentStore
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *blockingMarkConnectedStore) MarkConnected(ctx context.Context, agentID string, connectedAt time.Time, protocol int, plugin, phbot string) error {
+	close(s.started)
+	select {
+	case <-s.release:
+		return s.fakeAgentStore.MarkConnected(ctx, agentID, connectedAt, protocol, plugin, phbot)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *fakeAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.record.FirstSeenAt == nil {
-		return []agentdomain.Record{}, nil
+	records := make([]agentdomain.Record, 0, len(s.created)+1)
+	if s.record.AgentID != "" {
+		records = append(records, s.record)
 	}
-	return []agentdomain.Record{s.record}, nil
+	for _, credential := range s.created {
+		if credential.AgentID == s.record.AgentID {
+			continue
+		}
+		revoked := false
+		for _, agentID := range s.revoked {
+			if agentID == credential.AgentID {
+				revoked = true
+				break
+			}
+		}
+		if !revoked {
+			records = append(records, agentdomain.Record{AgentID: credential.AgentID})
+		}
+	}
+	return records, nil
 }
 
 func TestCreateAgentCredential(t *testing.T) {
@@ -137,6 +189,172 @@ func TestCreateAgentCredential(t *testing.T) {
 	defer store.mu.Unlock()
 	if len(store.created) != 1 || store.created[0].AgentID != credential.AgentID || store.created[0].Token != credential.AgentToken {
 		t.Fatalf("credential was not stored exactly once: %+v", store.created)
+	}
+}
+
+func TestCreatedAgentIsListedBeforeFirstConnection(t *testing.T) {
+	store := newFakeAgentStore()
+	server := newAgentTestServer(t, store, AgentOptions{})
+	defer server.Close()
+
+	credentialCtx, credentialCancel := context.WithTimeout(context.Background(), time.Second)
+	defer credentialCancel()
+	credentialRequest, err := http.NewRequestWithContext(credentialCtx, http.MethodPost, server.URL+"/api/agents/credentials", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentialRequest.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(credentialRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var credential AgentCredentialView
+	if err := json.NewDecoder(response.Body).Decode(&credential); err != nil {
+		t.Fatal(err)
+	}
+
+	listCtx, listCancel := context.WithTimeout(context.Background(), time.Second)
+	defer listCancel()
+	listRequest, err := http.NewRequestWithContext(listCtx, http.MethodGet, server.URL+"/api/agents", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listResponse, err := http.DefaultClient.Do(listRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listResponse.Body.Close()
+	var agents []AgentView
+	if err := json.NewDecoder(listResponse.Body).Decode(&agents); err != nil {
+		t.Fatal(err)
+	}
+	if len(agents) != 1 || agents[0].AgentID != credential.AgentID || agents[0].Connected || agents[0].FirstSeenAt != nil {
+		t.Fatalf("unexpected never-connected agent list: %+v", agents)
+	}
+}
+
+func TestRemoveAgentCredential(t *testing.T) {
+	store := newFakeAgentStore()
+	server := newAgentTestServer(t, store, AgentOptions{})
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %d", response.StatusCode)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.revoked) != 1 || store.revoked[0] != testAgentID {
+		t.Fatalf("agent was not revoked exactly once: %+v", store.revoked)
+	}
+}
+
+func TestRemoveConnectedAgentCredentialIsRejected(t *testing.T) {
+	store := newFakeAgentStore()
+	registry := agentdomain.NewRegistry()
+	generation, _ := registry.Register(testAgentID)
+	defer registry.Unregister(testAgentID, generation)
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("unexpected status: %d", response.StatusCode)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.revoked) != 0 {
+		t.Fatalf("connected agent was revoked: %+v", store.revoked)
+	}
+}
+
+func TestAgentRegistrationFencesRevocationBeforeDurableConnectCheck(t *testing.T) {
+	baseStore := newFakeAgentStore()
+	store := &blockingMarkConnectedStore{
+		fakeAgentStore: baseStore,
+		started:        make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	registry := agentdomain.NewRegistry()
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		AgentOptions: AgentOptions{
+			HelloTimeout:      time.Second,
+			HeartbeatInterval: 50 * time.Millisecond,
+			HeartbeatTimeout:  time.Second,
+		},
+	}))
+	defer server.Close()
+
+	conn := dialAgent(t, server.URL, baseStore.token)
+	defer conn.CloseNow()
+	writeHello(t, conn, testAgentID)
+
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("MarkConnected was not reached")
+	}
+	if registry.ConnectionCount(testAgentID) != 1 {
+		close(store.release)
+		t.Fatal("agent was not registered before the durable credential check")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, server.URL+"/api/agents/"+testAgentID, nil)
+	if err != nil {
+		close(store.release)
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		close(store.release)
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusConflict {
+		_ = response.Body.Close()
+		close(store.release)
+		t.Fatalf("revocation raced past pending registration: status=%d", response.StatusCode)
+	}
+	_ = response.Body.Close()
+
+	close(store.release)
+	readCtx, readCancel := context.WithTimeout(context.Background(), time.Second)
+	defer readCancel()
+	var ack helloAck
+	if err := wsjson.Read(readCtx, conn, &ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack.Type != "hello.ack" {
+		t.Fatalf("unexpected ack after fenced revocation attempt: %+v", ack)
 	}
 }
 
@@ -453,6 +671,9 @@ type failingAgentStore struct{}
 
 func (failingAgentStore) CreateCredential(context.Context, agentdomain.Credential) error {
 	return errors.New("password=super-secret")
+}
+func (failingAgentStore) RevokeCredential(context.Context, string) (bool, error) {
+	return false, errors.New("password=super-secret")
 }
 func (failingAgentStore) AuthenticateToken(context.Context, string) (string, error) {
 	return "", errors.New("password=super-secret")

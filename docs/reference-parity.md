@@ -318,17 +318,20 @@ same-viewport browser comparison remains BLOCKED in the current execution enviro
   agent ID, token or other credential.
 - Backend readiness remains a calm top-strip diagnostic. Agent API failures retain the
   last successful list and show stale/unavailable state instead of a recurring modal.
-- The Slice 1 dashboard is backed by GET /api/agents and shows real connected state,
-  stable agent ID, plugin/phBot/protocol versions, connection age and last-seen time.
-  It can also create a new agent ID/token pair through a no-store same-origin POST;
-  the plaintext token remains visible only in the current provisioning panel and is
-  not recoverable later. No fabricated monitoring data is used.
+- Agent management lives under Settings → Agents after the dashboard redesign. It
+  lists all active credentials, including never-connected identities, with real
+  connected state, stable agent ID, plugin/phBot/protocol versions, connection age
+  and last-seen time. Operators can create a new one-time ID/token pair and revoke an
+  offline credential; connected or stale-state removals are blocked. Revocation keeps
+  historical agent references intact while preventing future authentication. The
+  plaintext token remains visible only in the current provisioning panel and is not
+  recoverable later. No fabricated monitoring data is used.
 
 ### Evidence and deliberate deferrals
 
 Backend evidence is the authenticated /agent protocol, PostgreSQL agent metadata and
 generation-fenced active registry. Plugin evidence is PhMon.py plus the shared
-simulator contract. UI evidence is the Nuxt shell and same-origin /api/agents route.
+simulator contract. UI evidence is the Nuxt shell, Settings → Agents panel and same-origin agent action routes.
 
 The neutral dark backdrop is deliberate Slice 1 development treatment; approved
 game-world artwork is still required before final visual completion. Character/server

@@ -91,7 +91,7 @@ func (s *Store) AuthenticateToken(ctx context.Context, token string) (string, er
 	}
 	hash := HashToken(token)
 	var agentID string
-	err := s.pool.QueryRow(ctx, "SELECT agent_id::text FROM agents WHERE token_hash = $1", hash[:]).Scan(&agentID)
+	err := s.pool.QueryRow(ctx, "SELECT agent_id::text FROM agents WHERE token_hash = $1 AND revoked_at IS NULL", hash[:]).Scan(&agentID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrInvalidToken
 	}
@@ -101,17 +101,32 @@ func (s *Store) AuthenticateToken(ctx context.Context, token string) (string, er
 	return agentID, nil
 }
 
+func (s *Store) RevokeCredential(ctx context.Context, agentID string) (bool, error) {
+	if !ValidAgentID(agentID) {
+		return false, nil
+	}
+	tag, err := s.pool.Exec(ctx, "UPDATE agents SET revoked_at = now() WHERE agent_id = $1 AND revoked_at IS NULL", agentID)
+	if err != nil {
+		return false, fmt.Errorf("revoke agent credential: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 func (s *Store) MarkConnected(ctx context.Context, agentID string, connectedAt time.Time, protocolVersion int, pluginVersion, phBotVersion string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE agents
+	tag, err := s.pool.Exec(ctx, `UPDATE agents
 SET first_seen_at = COALESCE(first_seen_at, $2),
     last_seen_at = GREATEST(COALESCE(last_seen_at, $2), $2),
     last_connected_at = GREATEST(COALESCE(last_connected_at, $2), $2),
     protocol_version = $3,
     plugin_version = $4,
     phbot_version = $5
-WHERE agent_id = $1`, agentID, connectedAt, protocolVersion, pluginVersion, phBotVersion)
+WHERE agent_id = $1
+  AND revoked_at IS NULL`, agentID, connectedAt, protocolVersion, pluginVersion, phBotVersion)
 	if err != nil {
 		return fmt.Errorf("mark agent connected: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrInvalidToken
 	}
 	return nil
 }
@@ -140,8 +155,8 @@ func (s *Store) ListSeen(ctx context.Context) ([]Record, error) {
 	rows, err := s.pool.Query(ctx, `SELECT agent_id::text, created_at, first_seen_at, last_seen_at,
        last_connected_at, last_disconnected_at, protocol_version, plugin_version, phbot_version
 FROM agents
-WHERE first_seen_at IS NOT NULL
-ORDER BY last_seen_at DESC NULLS LAST, agent_id`)
+WHERE revoked_at IS NULL
+ORDER BY last_seen_at DESC NULLS LAST, created_at DESC, agent_id`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
 	}

@@ -178,3 +178,31 @@ func TestDisconnectFenceDoesNotAdvanceWhenANewerConnectionRegisters(t *testing.T
 		t.Fatal("captured disconnect fence changed to include a newer connection")
 	}
 }
+
+func TestCredentialRevocationReservationFencesRegistration(t *testing.T) {
+	registry := NewRegistry()
+	if !registry.BeginCredentialRevocation("agent") {
+		t.Fatal("offline agent revocation reservation was rejected")
+	}
+	generation, connectedAt := registry.Register("agent")
+	if generation != 0 || !connectedAt.IsZero() {
+		t.Fatalf("registration bypassed revocation reservation: generation=%d at=%v", generation, connectedAt)
+	}
+	if registry.BeginCredentialRevocation("agent") {
+		t.Fatal("duplicate revocation reservation was accepted")
+	}
+	registry.EndCredentialRevocation("agent")
+
+	generation, _ = registry.Register("agent")
+	if generation == 0 {
+		t.Fatal("registration remained blocked after revocation reservation ended")
+	}
+	if registry.BeginCredentialRevocation("agent") {
+		t.Fatal("connected agent revocation reservation was accepted")
+	}
+	registry.Unregister("agent", generation)
+	if !registry.BeginCredentialRevocation("agent") {
+		t.Fatal("offline agent could not be reserved after disconnect")
+	}
+	registry.EndCredentialRevocation("agent")
+}
