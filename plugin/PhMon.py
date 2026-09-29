@@ -401,12 +401,16 @@ def _normalize_container(raw, resource_key):
     if slots is None:
         return {'availability': 'unavailable', 'reason': 'invalid_api_shape'}
     used = sum(1 for entry in slots if entry is not None)
-    return {
+    result = {
         'availability': 'observed',
         'capacity': raw_size,
         'used_slots': used,
         'slots': slots,
     }
+    gold = raw.get('gold')
+    if isinstance(gold, int) and not isinstance(gold, bool) and gold >= 0:
+        result['gold'] = gold
+    return result
 
 
 def collect_resource_inputs(api=None):
