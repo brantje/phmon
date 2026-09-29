@@ -281,7 +281,14 @@ func (h *mapHandler) heatmapReset(w http.ResponseWriter, r *http.Request) {
 		ModelID: body.ModelID, From: from, To: to, ConfirmBroad: body.ConfirmBroad,
 	})
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		switch {
+		case errors.Is(err, mapanalytics.ErrInvalidFilter):
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid reset scope"})
+		case errors.Is(err, mapanalytics.ErrBroadResetUnconfirmed):
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "broad heatmap reset requires explicit confirmation"})
+		default:
+			respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "heatmap reset unavailable"})
+		}
 		return
 	}
 	respondJSON(w, http.StatusCreated, reset)

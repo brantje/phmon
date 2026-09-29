@@ -10,7 +10,10 @@ import (
 	agentdomain "phmon/server/internal/agents"
 )
 
-var ErrInvalidFilter = errors.New("invalid heatmap filter")
+var (
+	ErrInvalidFilter          = errors.New("invalid heatmap filter")
+	ErrBroadResetUnconfirmed = errors.New("broad heatmap reset requires explicit confirmation")
+)
 
 func validLayer(layer string) bool {
 	switch layer {
@@ -349,7 +352,7 @@ func (s *Store) Reset(ctx context.Context, input ResetScope) (ResetScope, error)
 	}
 	broad := filter.Region == nil && filter.CharacterID == ""
 	if broad && !input.ConfirmBroad {
-		return ResetScope{}, errors.New("broad heatmap reset requires explicit confirmation")
+		return ResetScope{}, ErrBroadResetUnconfirmed
 	}
 	var reset ResetScope
 	err = s.pool.QueryRow(ctx, `INSERT INTO map_heatmap_resets
