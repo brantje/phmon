@@ -1100,3 +1100,7 @@ returned HTTP 200; PostgreSQL reports healthy, and the staged plugin source hash
 matches 1.5.2. The authenticated map rendered seven current rows with readable names
 such as Edimmu and Dimension pillar. Every row showed “Lv. unavailable”, confirming
 the connected observations did not provide a usable level. No bot command was sent.
+The nearby list retains its working monster Type field with an explicit label;
+observed General and Party General types display by name, while unsupported code 27
+is shown as `Unknown (27)` under Type. Map marker labels still show only name and
+level.

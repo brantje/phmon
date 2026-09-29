@@ -3856,6 +3856,8 @@ showed nearby Shakram rows with distinct General and Party General ranks; the ma
 now keeps different rank codes separate and preserves the freshest observer label.
 The rank-aware web build was deployed to the same test host. After reconnect, the
 authenticated map showed four current monster rows by name and each row identified
-the freshest observer; marker labels showed only name and level, with numeric type
-codes removed from that summary. Level remained unavailable. PostgreSQL stayed
-healthy and only the web container was restarted in this follow-up deployment.
+the freshest observer; marker labels showed name and level, while the nearby list
+also showed its working Type field. Live rows confirmed Party General and General
+labels, and unknown code 27 remains explicitly identified as type. Level remained
+unavailable. The list change was deployed; PostgreSQL stayed healthy and only the web
+container was restarted in this follow-up deployment.
