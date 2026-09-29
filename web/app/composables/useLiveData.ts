@@ -94,6 +94,7 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.area || '') === (right.area || '') &&
     (left.floor || '') === (right.floor || '') &&
     (left.region || 0) === (right.region || 0) &&
+    (left.event_id || '') === (right.event_id || '') &&
     (left.cursor || '') === (right.cursor || '')
   )
 }

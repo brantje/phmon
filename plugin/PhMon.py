@@ -233,6 +233,8 @@ def collect_monster_observation(api=None):
         if model is not None:
             monster['model_id'] = model
         monster_type = _bounded_text(value.get('type'), 64)
+        while monster_type and len(monster_type.encode('utf-8')) > 64:
+            monster_type = monster_type[:-1]
         if monster_type is not None:
             monster['type'] = monster_type
         raw_type = value.get('type')
@@ -240,6 +242,8 @@ def collect_monster_observation(api=None):
             monster['type_code'] = raw_type
         for source, target in (('name', 'name'), ('servername', 'servername')):
             detail = _bounded_text(value.get(source), 128)
+            while detail and len(detail.encode('utf-8')) > 128:
+                detail = detail[:-1]
             if detail is not None:
                 monster[target] = detail
         level = value.get('level')
@@ -3703,7 +3707,7 @@ def _sample_monsters(identity, state, position, now=None):
         throttle_key = (worker_session, region, 'unmapped', cell[0], cell[1])
         last_sampled = _last_mob_cell_samples.get(throttle_key)
         if last_sampled is None or now - last_sampled >= MOB_SAMPLE_INTERVAL_SECONDS:
-            sampled_at = _utc_now()
+            sampled_at = _worker_utc_now(_worker)
             observer = {'x': float(x), 'y': float(y)}
             z = position.get('z') if isinstance(position, dict) else None
             if _number(z) and abs(z) <= 1000000:
