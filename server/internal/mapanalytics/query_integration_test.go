@@ -240,7 +240,6 @@ func TestNormalizeFilterKeepsWorldBucketsAlignedToRegionTiles(t *testing.T) {
 	}
 }
 
-
 func TestNormalizeFilterAcceptsSignedCaveRegionButRejectsZero(t *testing.T) {
 	now := time.Now().UTC()
 	region := -32767
@@ -262,7 +261,6 @@ func TestNormalizeFilterAcceptsSignedCaveRegionButRejectsZero(t *testing.T) {
 		t.Fatalf("region zero accepted: %v", err)
 	}
 }
-
 
 func TestMobFacetsHonorMobSightingsResetProjection(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")

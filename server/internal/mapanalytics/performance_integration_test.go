@@ -85,7 +85,6 @@ func TestLargeMovementHistoryRemainsBounded(t *testing.T) {
 	t.Logf("100k movement samples aggregated to %d points in %s", len(result.Points), elapsed)
 }
 
-
 func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {

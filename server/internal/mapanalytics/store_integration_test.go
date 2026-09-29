@@ -106,7 +106,6 @@ func TestRecordPositionFencesSessionsAndSuppressesStationarySamples(t *testing.T
 	}
 }
 
-
 func TestRecordPositionAcceptsSignedCaveRegion(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
