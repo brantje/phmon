@@ -160,10 +160,10 @@ export function useMapHeatmaps(fetcher?: HeatmapFetch) {
     ])
   }
 
-  async function reset(request: HeatmapResetRequest) {
+  async function reset(input: HeatmapResetRequest) {
     return await request<HeatmapResetResult>('/api/map/heatmap/reset', {
       method: 'POST',
-      body: request,
+      body: input,
     })
   }
 
