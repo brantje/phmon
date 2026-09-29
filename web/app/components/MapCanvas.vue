@@ -20,10 +20,7 @@ import {
   rasterTileCenterToLeaflet,
   type RasterPosition,
 } from '~/utils/mapCoordinates'
-
-const MIN_MAP_ZOOM = -1
-const MAX_MAP_ZOOM = 4
-const INITIAL_MAP_ZOOM = Math.log2(1.25)
+import { INITIAL_MAP_ZOOM, MAP_ZOOM_OPTIONS } from '~/utils/mapZoom'
 
 interface MapCanvasMarker {
   id: string
@@ -399,8 +396,7 @@ onMounted(async () => {
   )
   map = L.map(element.value, {
     crs: L.CRS.Simple,
-    minZoom: MIN_MAP_ZOOM,
-    maxZoom: MAX_MAP_ZOOM,
+    ...MAP_ZOOM_OPTIONS,
     zoomSnap: 0.125,
     zoomDelta: 0.25,
     maxBounds: bounds,
@@ -411,7 +407,12 @@ onMounted(async () => {
     preferCanvas: true,
   })
   const tiles = L.GridLayer.extend({
-    options: { tileSize: 256, noWrap: true, keepBuffer: 2 },
+    options: {
+      tileSize: 256,
+      ...MAP_ZOOM_OPTIONS,
+      noWrap: true,
+      keepBuffer: 2,
+    },
     createTile(
       coords: { x: number; y: number; z: number },
       done: (error: Error | null, tile: HTMLElement) => void,

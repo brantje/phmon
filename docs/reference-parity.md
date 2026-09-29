@@ -1128,3 +1128,12 @@ production build passed. Deployment to the authorized host returned HTTP 200 for
 characters and nearby monsters after 35 seconds. Nuxt typecheck still reports errors
 in unchanged `map.vue` and `mapMarkerPresentation.ts` code. Open-popup retention has
 not yet been directly exercised in the browser.
+
+The operator reported that the raster disappears below 100% zoom. Browser inspection
+reproduced the blank map at 84% while marker layers remained; Leaflet's GridLayer was
+pruning tiles below its default minimum zoom of 0. The map's configured zoom limits
+now apply to both the map and raster GridLayer. After rebuilding and deploying web,
+browser inspection at the 50% minimum showed the map imagery, markers and 16 raster
+tile canvases with no failed tiles. `/map`, `/api/health` and server `/readyz` all
+returned HTTP 200. The mapZoom regression test, all 34 frontend unit tests, ESLint on
+changed files and local Nuxt production build passed.

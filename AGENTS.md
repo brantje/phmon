@@ -3894,3 +3894,15 @@ image was deployed to the authorized test host; `/map`, `/api/health` and server
 Greatest map, the authenticated UI still showed character positions and 10 nearby
 monsters after the refresh interval. Exact next action: commit/push this fix to PR #19
 and verify an open marker popup across a refresh with a connected browser session.
+
+### Resume — 2026-09-29 raster visibility below 100% zoom
+
+The map's Leaflet instance allowed zoom down to 50%, but its GridLayer retained the
+Leaflet default `minZoom: 0`. Below 100%, GridLayer pruned all raster tiles while
+markers remained visible. `MapCanvas.vue` now applies one shared min/max zoom range
+to the map and raster layer. The focused test and all 34 frontend unit tests passed;
+changed-file ESLint and local Nuxt production build passed. The test host web image
+rebuilt successfully and `/map`, `/api/health` and server `/readyz` returned HTTP 200.
+Browser verification at the 50% minimum showed the raster with 16 loaded tile canvases
+and zero failed tiles, along with characters and monster markers. Exact next action:
+commit/push this correction to PR #19; Slice 7–8 gates remain open.
