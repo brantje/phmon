@@ -1,6 +1,8 @@
 <script setup lang="ts">
 const credentialPanelOpen = ref(false)
 const credentialCreating = ref(false)
+const removingAgentID = ref('')
+const removeError = ref('')
 const {
   agents: lastAgents,
   connectionState: liveConnectionState,
@@ -29,6 +31,40 @@ const agentsStatus = computed(() => {
     ? 'pending'
     : 'success'
 })
+async function removeAgent(agentID: string) {
+  if (removingAgentID.value || agentsUnavailable.value || !import.meta.client) return
+  if (
+    !window.confirm(
+      `Remove agent ${agentID}? Its credential will be revoked and cannot be recovered.`,
+    )
+  ) {
+    return
+  }
+
+  removingAgentID.value = agentID
+  removeError.value = ''
+  try {
+    await $fetch('/api/agents/' + encodeURIComponent(agentID), {
+      method: 'DELETE',
+      retry: 0,
+    })
+    refreshLiveData(['agents'])
+  } catch (error) {
+    const failure = error as {
+      statusCode?: number
+      data?: { error?: string; message?: string }
+    }
+    removeError.value =
+      failure.statusCode === 409
+        ? 'Disconnect all phBot sessions for this agent before removing it.'
+        : failure.data?.error ||
+          failure.data?.message ||
+          'Could not remove the agent. Try again.'
+  } finally {
+    removingAgentID.value = ''
+  }
+}
+
 function formatConnectionAge(value?: string) {
   if (!value || now.value === null) return 'Connected'
   const elapsed = Math.max(
@@ -50,8 +86,8 @@ function formatConnectionAge(value?: string) {
       <div>
         <h2>phBot agents</h2>
         <p>
-          Live connection state, plugin version and phBot version. Credentials
-          are never exposed here.
+          Create, inspect and revoke phBot agent credentials. Plaintext tokens
+          are only shown once when a credential is created.
         </p>
       </div>
       <div class="panel-actions">
@@ -93,7 +129,12 @@ function formatConnectionAge(value?: string) {
     <AgentCredentialPanel
       v-model:open="credentialPanelOpen"
       v-model:creating="credentialCreating"
+      @created="refreshLiveData(['agents'])"
     />
+
+    <p v-if="removeError" class="agent-remove-error" role="alert">
+      {{ removeError }}
+    </p>
 
     <div
       v-if="agentsStatus === 'pending' && lastAgents.length === 0"
@@ -116,7 +157,7 @@ function formatConnectionAge(value?: string) {
 
     <div v-else-if="lastAgents.length === 0" class="empty-state">
       <UIcon name="i-lucide-plug-zap" />
-      <strong>No agents have connected yet</strong>
+      <strong>No active agent credentials</strong>
       <p>
         Create a credential above (or use
         <code>phmonctl agent create</code>), then configure the matching profile
@@ -135,6 +176,7 @@ function formatConnectionAge(value?: string) {
             <th>Protocol</th>
             <th>Connected</th>
             <th>Last seen</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -157,7 +199,9 @@ function formatConnectionAge(value?: string) {
                       : 'Last known offline'
                     : agent.connected
                       ? 'Online'
-                      : 'Offline'
+                      : agent.first_seen_at
+                        ? 'Offline'
+                        : 'Never connected'
                 }}
               </span>
             </td>
@@ -182,6 +226,35 @@ function formatConnectionAge(value?: string) {
               <time :datetime="agent.last_seen_at">
                 {{ formatTimestamp(agent.last_seen_at) }}
               </time>
+            </td>
+            <td>
+              <button
+                class="compact-button danger-button"
+                type="button"
+                :disabled="
+                  agentsUnavailable ||
+                  agent.connected ||
+                  removingAgentID === agent.agent_id
+                "
+                :title="
+                  agent.connected
+                    ? 'Disconnect this agent before removing it'
+                    : agentsUnavailable
+                      ? 'Wait for current agent state before removing'
+                      : 'Revoke this agent credential'
+                "
+                @click="removeAgent(agent.agent_id)"
+              >
+                <UIcon
+                  :name="
+                    removingAgentID === agent.agent_id
+                      ? 'i-lucide-loader-circle'
+                      : 'i-lucide-trash-2'
+                  "
+                  :class="{ spinning: removingAgentID === agent.agent_id }"
+                />
+                {{ removingAgentID === agent.agent_id ? 'Removing…' : 'Remove' }}
+              </button>
             </td>
           </tr>
         </tbody>
@@ -211,7 +284,9 @@ function formatConnectionAge(value?: string) {
                     : 'Last known offline'
                   : agent.connected
                     ? 'Online'
-                    : 'Offline'
+                    : agent.first_seen_at
+                      ? 'Offline'
+                      : 'Never connected'
               }}
             </span>
             <span>
@@ -243,8 +318,58 @@ function formatConnectionAge(value?: string) {
               </dd>
             </div>
           </dl>
+          <div class="agent-card-actions">
+            <button
+              class="compact-button danger-button"
+              type="button"
+              :disabled="
+                agentsUnavailable ||
+                agent.connected ||
+                removingAgentID === agent.agent_id
+              "
+              @click="removeAgent(agent.agent_id)"
+            >
+              <UIcon
+                :name="
+                  removingAgentID === agent.agent_id
+                    ? 'i-lucide-loader-circle'
+                    : 'i-lucide-trash-2'
+                "
+                :class="{ spinning: removingAgentID === agent.agent_id }"
+              />
+              {{ removingAgentID === agent.agent_id ? 'Removing…' : 'Remove agent' }}
+            </button>
+          </div>
         </article>
       </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.agent-remove-error {
+  margin: 10px;
+  border: 1px solid rgba(217, 84, 104, 0.35);
+  border-radius: 4px;
+  background: rgba(84, 25, 39, 0.22);
+  padding: 8px 10px;
+  color: #ff9eaa;
+  font-size: 11px;
+}
+
+.danger-button {
+  border-color: rgba(191, 80, 99, 0.55);
+  color: #ef9aa8;
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: #bf5063;
+  background: rgba(86, 34, 47, 0.42);
+}
+
+.agent-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+</style>
