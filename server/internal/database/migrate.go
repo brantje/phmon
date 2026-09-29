@@ -36,18 +36,17 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("read embedded migrations: %w", err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	if err := validateMigrationVersions(entries); err != nil {
+		return err
+	}
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
 			continue
 		}
-		versionText, _, ok := strings.Cut(entry.Name(), "_")
-		if !ok {
-			return fmt.Errorf("invalid migration filename %q", entry.Name())
-		}
-		version, err := strconv.ParseInt(versionText, 10, 64)
+		version, err := migrationVersion(entry.Name())
 		if err != nil {
-			return fmt.Errorf("invalid migration version %q: %w", entry.Name(), err)
+			return err
 		}
 		var applied bool
 		if err := tx.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)", version).Scan(&applied); err != nil {
@@ -72,4 +71,34 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("commit migrations: %w", err)
 	}
 	return nil
+}
+
+func validateMigrationVersions(entries []fs.DirEntry) error {
+	seen := make(map[int64]string)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		version, err := migrationVersion(entry.Name())
+		if err != nil {
+			return err
+		}
+		if previous, exists := seen[version]; exists {
+			return fmt.Errorf("duplicate migration version %d in %q and %q", version, previous, entry.Name())
+		}
+		seen[version] = entry.Name()
+	}
+	return nil
+}
+
+func migrationVersion(name string) (int64, error) {
+	versionText, _, ok := strings.Cut(name, "_")
+	if !ok || !strings.HasSuffix(name, ".sql") {
+		return 0, fmt.Errorf("invalid migration filename %q", name)
+	}
+	version, err := strconv.ParseInt(versionText, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid migration version %q: %w", name, err)
+	}
+	return version, nil
 }

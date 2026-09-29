@@ -4118,7 +4118,7 @@ again; keep real command execution as a separate authorization/test gate.
 Implemented on codex/zone-names in an isolated worktree. The plugin uses the
 documented get_zone_name(region) API for canonical event positions and training
 area readback. Events carry an optional zone; training state carries the separate
-optional training_zone in migration 18. The event view and remote command controls
+optional training_zone in migration 19. The event view and remote command controls
 show names with explicit fallbacks, while retaining numeric region IDs for commands
 and map behavior.
 
