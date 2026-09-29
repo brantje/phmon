@@ -254,8 +254,8 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 			t.Fatal(rows.Err())
 		}
 		plan := strings.Join(lines, "\n")
-		if !strings.Contains(plan, "mob_observation_samples_heatmap_time_idx") {
-			t.Fatalf("%s plan did not use mob heatmap time index:\n%s", name, plan)
+		if !strings.Contains(plan, "mob_observation_scope_time_idx") {
+			t.Fatalf("%s plan did not use the existing bounded mob scope/time index:\n%s", name, plan)
 		}
 		t.Logf("%s plan:\n%s", name, plan)
 		return plan
