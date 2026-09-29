@@ -31,6 +31,7 @@ import {
 } from '~/utils/mapNavigation'
 import { relativeMapEventWindow } from '~/utils/mapTimeRange'
 import { zoneNameText } from '~/utils/event-location'
+import { uniqueRegionOptionLabels } from '~/utils/mapRegionLabels'
 
 const {
   mapFeeds,
@@ -566,6 +567,9 @@ const zoneNameForRegion = (region?: number | null) => {
   )
   return zoneNameText(event?.zone)
 }
+const zoneOptionLabels = computed(() =>
+  uniqueRegionOptionLabels(regionOptions.value, zoneNameForRegion),
+)
 const characterLocation = (character?: CharacterView) => {
   if (
     !character ||
@@ -901,7 +905,7 @@ useHead({ title: 'Map · PhMon' })
         <select v-model.number="regionID" aria-label="Filter map data by zone">
           <option :value="0">All zones</option>
           <option v-for="region in regionOptions" :key="region" :value="region">
-            {{ zoneNameForRegion(region) }}
+            {{ zoneOptionLabels.get(region) }}
           </option>
         </select>
       </label>
