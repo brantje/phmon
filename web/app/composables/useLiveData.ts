@@ -20,6 +20,7 @@ import {
   type LiveServerFrame,
   type LiveStream,
 } from '~~/shared/types/live'
+import { mapSnapshotMatchesScope } from '~/utils/mapRefresh'
 
 type Subscription = {
   id: string
@@ -372,9 +373,12 @@ function clearEventFeed(subscriptionID: string) {
 function setMapFeed(subscriptionID: string, filter: LiveFilter) {
   ensureSubscription(subscriptionID, 'map', filter, () => {
     mapFeedCurrent.value = { ...mapFeedCurrent.value, [subscriptionID]: false }
-    mapFeeds.value = Object.fromEntries(
-      Object.entries(mapFeeds.value).filter(([id]) => id !== subscriptionID),
-    )
+    const existing = mapFeeds.value[subscriptionID]
+    if (!existing || !mapSnapshotMatchesScope(existing, filter)) {
+      mapFeeds.value = Object.fromEntries(
+        Object.entries(mapFeeds.value).filter(([id]) => id !== subscriptionID),
+      )
+    }
   })
 }
 

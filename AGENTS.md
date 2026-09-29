@@ -3877,3 +3877,20 @@ so live visual comparison against an actual offline row remains unverified. Exac
 next action: when a retained offline character is available, compare the deployed
 marker at desktop and mobile sizes; keep Slices 7–8 in progress until all acceptance
 gates, including real phBot and cave transform validation, are met.
+
+### Resume — 2026-09-29 retain map data during refresh
+
+The recurring relative event-window refresh called `setMapFeed`, whose resubscription
+callback erased the entire cached map snapshot. This briefly removed character and
+monster markers and caused Leaflet to close their popups. Map refresh now keeps the
+rendered snapshot while the server, area, floor and region scope match; it still
+clears the snapshot when that spatial scope changes, and a valid empty snapshot still
+clears markers when received. Added focused scope-retention tests. The Nuxt production
+build passed, ESLint on changed TypeScript files passed, and all 33 frontend unit tests
+passed. Nuxt typecheck remains red on existing errors in `map.vue` lines 174–188 and
+`mapMarkerPresentation.ts` line 111; no errors referenced the changed files. The web
+image was deployed to the authorized test host; `/map`, `/api/health` and server
+`/readyz` returned HTTP 200 with PostgreSQL healthy. After 35 seconds in the deployed
+Greatest map, the authenticated UI still showed character positions and 10 nearby
+monsters after the refresh interval. Exact next action: commit/push this fix to PR #19
+and verify an open marker popup across a refresh with a connected browser session.

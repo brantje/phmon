@@ -1115,3 +1115,16 @@ tests and the production web image was deployed; `/map`, `/api/health` and serve
 `/readyz` returned HTTP 200 with PostgreSQL healthy. The inspected Greatest scope had
 four online and zero offline characters, so a live offline-marker screenshot and
 viewport comparison remain open until an offline character is present.
+
+The operator reported that characters and nearby monsters disappeared and open map
+popups closed during refresh. The relative event window advances every 30 seconds;
+that changed the map subscription and its reset callback discarded the full snapshot.
+Map feed refresh now retains existing data while server/area/floor/region remain the
+same and marks it syncing until the replacement arrives. Switching spatial scope
+still drops old-scope data; an observed empty monster snapshot still clears monsters.
+The focused frontend suite passed (33 tests), changed-file ESLint passed and the Nuxt
+production build passed. Deployment to the authorized host returned HTTP 200 for
+`/map`, `/api/health` and server `/readyz`; the authenticated map still displayed
+characters and nearby monsters after 35 seconds. Nuxt typecheck still reports errors
+in unchanged `map.vue` and `mapMarkerPresentation.ts` code. Open-popup retention has
+not yet been directly exercised in the browser.
