@@ -32,10 +32,28 @@ for path, text in sources.items():
     if re.search(r"['\"]\/api\/characters(?:\/|['\"])", text):
         errors.append(f"{rel}: browser character reads/actions must not use HTTP in this slice")
 
-    for match in re.finditer(r"['\"]\/api\/agents(?:\/[^'\"]*)?['\"]", text):
-        endpoint = match.group(0).strip("'\"")
-        if endpoint != "/api/agents/credentials":
-            errors.append(f"{rel}: {endpoint} is a prohibited browser live HTTP read")
+    allowed_agent_actions: set[tuple[int, int]] = set()
+    for action in re.finditer(
+        r"\\$fetch(?:<[^>]+>)?\\s*\\(\\s*(?P<quote>['\"])(?P<endpoint>\/api\/agents(?:\/[^'\"]*)?)(?P=quote)",
+        text,
+    ):
+        endpoint = action.group("endpoint")
+        window = text[action.start() : action.start() + 500]
+        method = re.search(r"method\\s*:\\s*['\"](POST|PATCH|PUT|DELETE)['\"]", window)
+        verb = method.group(1) if method else ""
+        if (endpoint == "/api/agents/credentials" and verb == "POST") or (
+            endpoint.startswith("/api/agents/") and verb == "DELETE"
+        ):
+            allowed_agent_actions.add(action.span("endpoint"))
+
+    for match in re.finditer(
+        r"['\"](?P<endpoint>\/api\/agents(?:\/[^'\"]*)?)['\"]",
+        text,
+    ):
+        if match.span("endpoint") in allowed_agent_actions:
+            continue
+        endpoint = match.group("endpoint")
+        errors.append(f"{rel}: {endpoint} is a prohibited browser live HTTP read")
 
     for match in re.finditer(r"\$fetch(?:<[^>]+>)?\s*\(\s*['\"]\/api\/groups", text):
         window = text[match.start() : match.start() + 500]
