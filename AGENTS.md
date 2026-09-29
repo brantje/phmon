@@ -3596,3 +3596,27 @@ source or packet correlation is needed. Next: build, review the diff against
 the concurrent Slice 7/8 and level-up changes, integrate without overwriting
 the live code, deploy the combined version when authorized, and verify an
 authenticated drop row and screenshot.
+
+### Resume — 2026-09-29 level-up callback investigation
+
+The live Greatest Events page showed four level-up occurrences with payload
+`{"level":71}` for nuker1–4, and all four character details currently show level
+72. Read-only PostgreSQL inspection tied all four events to plugin 1.5.0,
+protocol 7 and phBot 20.1.2. The deployed plugin forwards the callback integer
+unchanged. Official phBot documentation says the callback contains the new level,
+so this correction is grounded in the observed runtime behavior and retains the
+raw callback value for future diagnosis.
+
+This branch normalizes unmarked level-up callbacks for phBot 20.1.2 in
+`server/internal/events/store.go`; `validation_test.go` covers normalization and
+replay, and `000015_level_up_callback_correction.sql` corrects historical rows.
+Migration 15 leaves 14 available for the ongoing Slice 7/8 mob-observation
+migration, which is already present on the live deployment. Updated
+`docs/phbot-capabilities.md` and `docs/reference-parity.md`. `go test ./...`
+passed from `server/`; PostgreSQL accepted an `EXPLAIN` of the migration update
+against the live schema without executing it. Database integration tests were not
+run because no disposable `TEST_DATABASE_URL` is configured. The live server has
+not been updated; do not deploy main over the live Slice 7/8 source. Exact next
+action: integrate this patch with the current Slice 7/8 branch, run relevant tests
+and migration against a disposable database, then deploy the combined server and
+verify the four Events rows show level 72.

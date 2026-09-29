@@ -610,6 +610,28 @@ not inferred from third-party snippets.
 | 9 `EVENT_GM_SPAWNED` | Player name | `world.gm_spawned` | Bounded `value` string |
 | 10 `EVENT_LEVEL_UP` | New level | `character.level_up` | Validated integer, 1–255 |
 
+### Level-up callback correction (2026-09-29)
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) labels
+`EVENT_LEVEL_UP` data as the new level. The live Greatest deployment contradicts
+that description for phBot 20.1.2 with PhMon plugin 1.5.0 (protocol 7): four
+independent callbacks on 2026-09-29 carried `71`, one for each of nuker1–4, while
+all four character records and current character views report level 72. Each
+character has exactly one level-up occurrence in the stored timeline. The deployed
+plugin forwards the callback integer unchanged; the Events UI also displayed it
+unchanged. This is evidence for the installed runtime, not a universal phBot API
+guarantee.
+
+For agents reporting phBot 20.1.2, the server now maps an unmarked
+`phbot.callback` `EVENT_LEVEL_UP` payload to the reached level by adding one,
+retaining the original integer as `callback_level`. Other phBot versions keep the
+documented interpretation pending runtime evidence.
+A payload containing both fields is accepted only when `level` is exactly
+`callback_level + 1`, so a future plugin can send the normalized value explicitly.
+Migration `000015_level_up_callback_correction.sql` applies the same correction to
+prior unmarked occurrences from agents currently recorded as phBot 20.1.2.
+Recheck this behavior against future phBot versions before changing the mapping.
+
 The official [Alchemy API](https://plugins.phbot.org/phbot-api/alchemy) documents
 `alchemy_update(slot, success, plus)` and says it runs after an elixir is used on an
 item. PhMon records one `alchemy.attempt`; it preserves `success` only when Python

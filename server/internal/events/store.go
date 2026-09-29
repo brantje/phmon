@@ -255,6 +255,41 @@ func (s *Store) AppendBatch(ctx context.Context, agentID string, incoming []Agen
 	return results, changed, nil
 }
 
+// phBot 20.1.2 reports the level being left in EVENT_LEVEL_UP.
+// Preserve that callback value while storing the reached level consistently.
+// A plugin that already normalized the value can send both fields and is left alone.
+func normalizeLevelUpEvent(event *AgentEvent, phbotVersion string) error {
+	if event.Kind != "character.level_up" || event.Source != "phbot.callback" || event.SourceRef != "EVENT_LEVEL_UP" {
+		return nil
+	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(event.Payload, &payload); err != nil || payload == nil {
+		return ErrInvalidEvent
+	}
+	var level int
+	if err := json.Unmarshal(payload["level"], &level); err != nil || level < 1 || level > 255 {
+		return ErrInvalidEvent
+	}
+	if raw, present := payload["callback_level"]; present {
+		var callbackLevel int
+		if err := json.Unmarshal(raw, &callbackLevel); err != nil || callbackLevel < 1 || callbackLevel >= 255 || level != callbackLevel+1 {
+			return ErrInvalidEvent
+		}
+		return nil
+	}
+	if phbotVersion != "20.1.2" {
+		return nil
+	}
+	if level >= 255 {
+		return ErrInvalidEvent
+	}
+	payload["callback_level"], _ = json.Marshal(level)
+	payload["level"], _ = json.Marshal(level + 1)
+	var err error
+	event.Payload, err = json.Marshal(payload)
+	return err
+}
+
 func validateAgentEvent(event AgentEvent) error {
 	category, known := eventKinds[event.Kind]
 	if !known || event.Category != category || event.Schema != 1 ||
@@ -545,6 +580,24 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 		}
 		if !exists || !strings.HasPrefix(event.Kind, "session.") {
 			return false, false, ErrUnauthorizedSession
+		}
+	}
+	if event.Kind == "character.level_up" && event.Source == "phbot.callback" && event.SourceRef == "EVENT_LEVEL_UP" {
+		var phbotVersion string
+		var previouslyNormalized bool
+		// A queued retry can arrive after the agent upgrades phBot. Preserve the
+		// interpretation used for the already stored occurrence in that case.
+		if err := tx.QueryRow(ctx, `SELECT coalesce(a.phbot_version, ''), EXISTS (
+			SELECT 1 FROM activity_events e WHERE e.event_id=$2::uuid AND e.agent_id=a.agent_id
+			AND e.kind='character.level_up' AND e.payload ? 'callback_level'
+		) FROM agents a WHERE a.agent_id=$1::uuid`, agentID, event.ID).Scan(&phbotVersion, &previouslyNormalized); err != nil {
+			return false, false, err
+		}
+		if previouslyNormalized {
+			phbotVersion = "20.1.2"
+		}
+		if err := normalizeLevelUpEvent(&event, phbotVersion); err != nil {
+			return false, false, err
 		}
 	}
 	var same bool

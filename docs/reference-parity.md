@@ -71,6 +71,14 @@ recorded in the Slice 5 entry below.
 
 ## Slice 5 — Canonical event pipeline (2026-09-28)
 
+Live level-up correction (2026-09-29): the Greatest instance showed four
+`Reached level 71` rows for nuker1–4, while the character details showed level 72.
+The stored callback payloads were all `{"level":71}` and came from phBot 20.1.2
+with plugin 1.5.0. For this phBot version, server ingestion now preserves
+`callback_level:71` and stores the reached `level:72`; migration 000015 corrects
+existing rows. The live deployment still needs the migration and updated server
+before this UI evidence can be closed.
+
 ### Reference inspection
 
 The public demo was opened at `https://phmonitor.com/demo` in the in-app browser. The
