@@ -137,7 +137,7 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 			$6::timestamptz + (n * interval '20 seconds'),
 			decode(md5(n::text)||md5('phmon-'||n::text),'hex'),
 			date_trunc('minute',$6::timestamptz + (n * interval '20 seconds')),
-			(n % 1000)::double precision,((n / 1000) % 1000)::double precision,n::integer,0
+			((n % 1000) * 100)::double precision,(((n / 1000) % 1000) * 100)::double precision,n::integer,0
 		FROM generate_series(0,$7-1) AS n`,
 		credential.AgentID, characterID, sessionID, server, mapprofile.GreatestDatasetID, start, sampleCount)
 	if err != nil {

@@ -500,6 +500,22 @@ func TestMovementAnalyticsFailureDoesNotRejectCanonicalState(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
+	canonicalDeadline := time.Now().Add(time.Second)
+	for time.Now().Before(canonicalDeadline) {
+		character, getErr := characterStore.Get(ctx, registered.CharacterID)
+		if getErr == nil && character.Region != nil && *character.Region == region &&
+			character.X != nil && *character.X == x && character.Y != nil && *character.Y == y {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	character, getErr := characterStore.Get(ctx, registered.CharacterID)
+	if getErr != nil || character.Region == nil || *character.Region != region ||
+		character.X == nil || *character.X != x || character.Y == nil || *character.Y != y {
+		t.Fatalf("canonical positioned state did not persist before analytics timeout: character=%+v err=%v", character, getErr)
+	}
+
 	secondHP := int64(222)
 	if err := wsjson.Write(ctx, conn, agentMessage{
 		Type: "character.state", ProtocolVersion: agentProtocolVersion, CharacterID: registered.CharacterID,
@@ -512,11 +528,11 @@ func TestMovementAnalyticsFailureDoesNotRejectCanonicalState(t *testing.T) {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		character, getErr := characterStore.Get(ctx, registered.CharacterID)
-		if getErr == nil && character.HP != nil && *character.HP == secondHP && character.Region != nil && *character.Region == region {
+		if getErr == nil && character.HP != nil && *character.HP == secondHP {
 			return
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	character, getErr := characterStore.Get(ctx, registered.CharacterID)
+	character, getErr = characterStore.Get(ctx, registered.CharacterID)
 	t.Fatalf("analytics timeout blocked/rejected later canonical state: character=%+v err=%v", character, getErr)
 }
