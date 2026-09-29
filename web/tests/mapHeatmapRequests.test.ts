@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { effectScope } from 'vue'
-import type { HeatmapResult, MobHeatmapFacet } from '../shared/types/mapAnalytics.ts'
+import type {
+  HeatmapResult,
+  MobHeatmapFacet,
+} from '../shared/types/mapAnalytics.ts'
 import {
   type HeatmapQuery,
   useMapHeatmaps,
