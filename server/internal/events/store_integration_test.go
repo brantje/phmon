@@ -236,6 +236,53 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || page.Total != 1 || page.Alchemy == nil || page.Alchemy.Attempts != 1 || page.Alchemy.Successes != 1 || page.Alchemy.HighestPlus == nil || *page.Alchemy.HighestPlus != 5 {
 		t.Fatalf("alchemy summary = %+v, err=%v", page, err)
 	}
+
+	if _, err := pool.Exec(ctx, `UPDATE agents SET phbot_version='20.1.2' WHERE agent_id=$1`, credential.AgentID); err != nil {
+		t.Fatal(err)
+	}
+	levelUp := AgentEvent{
+		ID: newTestEventID(t), Schema: 1, Kind: "character.level_up", Category: "character",
+		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
+		OccurredAt: databaseNow.UTC().Add(2 * time.Second), Sequence: int64Pointer64(3),
+		Source: "phbot.callback", SourceRef: "EVENT_LEVEL_UP", Payload: json.RawMessage(`{"level":71}`),
+	}
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{levelUp})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("level-up batch = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	var levelPayload json.RawMessage
+	if err := pool.QueryRow(ctx, `SELECT payload FROM activity_events WHERE event_id=$1`, levelUp.ID).Scan(&levelPayload); err != nil {
+		t.Fatal(err)
+	}
+	var reached struct {
+		Level         int `json:"level"`
+		CallbackLevel int `json:"callback_level"`
+	}
+	if err := json.Unmarshal(levelPayload, &reached); err != nil || reached.Level != 72 || reached.CallbackLevel != 71 {
+		t.Fatalf("stored reached level = %s", levelPayload)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE agents SET phbot_version='20.1.3' WHERE agent_id=$1`, credential.AgentID); err != nil {
+		t.Fatal(err)
+	}
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{levelUp})
+	if err != nil || changed || results[0].Status != "persisted" {
+		t.Fatalf("level-up replay after version change = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	otherVersionLevelUp := levelUp
+	otherVersionLevelUp.ID = newTestEventID(t)
+	otherVersionLevelUp.Sequence = int64Pointer64(4)
+	otherVersionLevelUp.OccurredAt = levelUp.OccurredAt.Add(time.Second)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{otherVersionLevelUp})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("unverified-version level-up = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT payload FROM activity_events WHERE event_id=$1`, otherVersionLevelUp.ID).Scan(&levelPayload); err != nil {
+		t.Fatal(err)
+	}
+	var unverified map[string]any
+	if err := json.Unmarshal(levelPayload, &unverified); err != nil || unverified["level"] != float64(71) || unverified["callback_level"] != nil {
+		t.Fatalf("unverified-version stored level = %s", levelPayload)
+	}
 }
 
 func TestInvalidDeathEventReturnsClassifiableError(t *testing.T) {

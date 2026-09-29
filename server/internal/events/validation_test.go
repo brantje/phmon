@@ -41,6 +41,37 @@ func TestValidateAgentEventAcceptsPublishedCallbackCatalog(t *testing.T) {
 	}
 }
 
+func TestNormalizeLevelUpEventPreservesRawCallbackAndIsIdempotent(t *testing.T) {
+	event := validTestEvent("character.level_up", "character", "phbot.callback", "EVENT_LEVEL_UP", `{"level":71}`)
+	if err := normalizeLevelUpEvent(&event, "20.1.2"); err != nil {
+		t.Fatal(err)
+	}
+	if string(event.Payload) != `{"callback_level":71,"level":72}` {
+		t.Fatalf("normalized payload = %s", event.Payload)
+	}
+	if err := validateAgentEvent(event); err != nil {
+		t.Fatal(err)
+	}
+	if err := normalizeLevelUpEvent(&event, "20.1.2"); err != nil || string(event.Payload) != `{"callback_level":71,"level":72}` {
+		t.Fatalf("replayed payload = %s, %v", event.Payload, err)
+	}
+	otherVersion := validTestEvent("character.level_up", "character", "phbot.callback", "EVENT_LEVEL_UP", `{"level":71}`)
+	if err := normalizeLevelUpEvent(&otherVersion, "20.1.3"); err != nil || string(otherVersion.Payload) != `{"level":71}` {
+		t.Fatalf("unverified version payload = %s, %v", otherVersion.Payload, err)
+	}
+
+	for _, payload := range []string{
+		`{"level":255}`,
+		`{"level":72,"callback_level":71.5}`,
+		`{"level":71,"callback_level":71}`,
+	} {
+		invalid := validTestEvent("character.level_up", "character", "phbot.callback", "EVENT_LEVEL_UP", payload)
+		if err := normalizeLevelUpEvent(&invalid, "20.1.2"); err == nil {
+			t.Errorf("accepted inconsistent level-up payload %s", payload)
+		}
+	}
+}
+
 func TestValidateAgentEventBoundsAndRequiresSessionSequence(t *testing.T) {
 	event := validTestEvent("character.died", "character", "phbot.callback", "EVENT_DIED", `{}`)
 	event.Sequence = nil
