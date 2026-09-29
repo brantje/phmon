@@ -113,16 +113,20 @@ func (s *Store) RevokeCredential(ctx context.Context, agentID string) (bool, err
 }
 
 func (s *Store) MarkConnected(ctx context.Context, agentID string, connectedAt time.Time, protocolVersion int, pluginVersion, phBotVersion string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE agents
+	tag, err := s.pool.Exec(ctx, `UPDATE agents
 SET first_seen_at = COALESCE(first_seen_at, $2),
     last_seen_at = GREATEST(COALESCE(last_seen_at, $2), $2),
     last_connected_at = GREATEST(COALESCE(last_connected_at, $2), $2),
     protocol_version = $3,
     plugin_version = $4,
     phbot_version = $5
-WHERE agent_id = $1`, agentID, connectedAt, protocolVersion, pluginVersion, phBotVersion)
+WHERE agent_id = $1
+  AND revoked_at IS NULL`, agentID, connectedAt, protocolVersion, pluginVersion, phBotVersion)
 	if err != nil {
 		return fmt.Errorf("mark agent connected: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return ErrInvalidToken
 	}
 	return nil
 }
