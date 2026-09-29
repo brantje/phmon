@@ -104,19 +104,19 @@ func run() error {
 	go dispatcher.Run(ctx)
 	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
-		Database:   pool,
-		Auth:       operatorAuth,
-		Agents:     store,
-		Registry:   registry,
-		Characters: characterStore,
-		Commands:   commandService,
-		Dispatcher: dispatcher,
-		Live:       live,
-		Resources:  resourceStore,
-		Events:     eventStore,
-		Chat:       chatStore,
-		Mobs:       mobStore,
-		MobLive:    mobLive,
+		Database:     pool,
+		Auth:         operatorAuth,
+		Agents:       store,
+		Registry:     registry,
+		Characters:   characterStore,
+		Commands:     commandService,
+		Dispatcher:   dispatcher,
+		Live:         live,
+		Resources:    resourceStore,
+		Events:       eventStore,
+		Chat:         chatStore,
+		Mobs:         mobStore,
+		MobLive:      mobLive,
 		MapAnalytics: mapAnalyticsStore,
 	})
 
