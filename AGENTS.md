@@ -18,6 +18,8 @@ implementation runs. `prompt.md` is historical context. This guide is the curren
 project contract. A request merely to edit this document does not itself start an
 implementation run. Explicit limits in the current user request always take priority.
 
+**Git workspace rule:** Never create, use, or switch to a Git worktree unless the user explicitly asks for a worktree. Work in the existing checkout/branch by default.
+
 Working loop:
 
 1. Inspect Git status, this file, the current implementation and the relevant tests.
