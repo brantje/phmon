@@ -106,8 +106,11 @@ export function useMapHeatmaps() {
     facetsLoading.value = true
     facetsError.value = ''
     try {
-      const { monster_type: _monsterType, model_id: _modelID, ...facetQuery } =
-        query
+      const {
+        monster_type: _monsterType,
+        model_id: _modelID,
+        ...facetQuery
+      } = query
       const response = await $fetch<{ facets: MobHeatmapFacet[] }>(
         '/api/map/heatmap/facets',
         { query: facetQuery, signal: controller.signal },
