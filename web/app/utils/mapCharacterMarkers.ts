@@ -80,6 +80,7 @@ export function characterMapMarkers(
       character.region,
       character.x,
       character.y,
+      character.z,
     )
     if (exact) {
       markers.push({

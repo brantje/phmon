@@ -10,6 +10,7 @@ import json
 import math
 import os
 import random
+import re
 import select
 import socket
 import ssl
@@ -27,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.5.2'
+pVersion = '1.5.4'
 pUrl = ''
 
 PROTOCOL_VERSION = 7
@@ -126,7 +127,7 @@ def _optional_phbot_api(name):
 
 _API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','generate_path','set_training_position',
               'set_training_radius','set_training_area','get_training_area','move_to_region',
-              'use_return_scroll','disconnect')
+              'generate_script','start_script','use_return_scroll','disconnect')
 
 _CHAT_METHODS = {
     'general': ('All',),
@@ -179,6 +180,17 @@ def _result_json(value):
 def _number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and abs(value) != float('inf')
 
+def _valid_position_region(value):
+    return (isinstance(value, int) and not isinstance(value, bool) and
+            value != 0 and -32768 <= value <= 65535)
+
+
+def _mob_region_matches(observer_region, monster_region):
+    # Donwhang Stone Cave reports its character region as -32767 while
+    # get_monsters() reports the same cave region as 32767.
+    return (monster_region == observer_region or
+            observer_region == -32767 and monster_region == 32767)
+
 
 def _call_api(name):
     function = _optional_phbot_api(name)
@@ -223,8 +235,7 @@ def collect_monster_observation(api=None):
         x = value.get('x', value.get('X'))
         y = value.get('y', value.get('Y'))
         z = value.get('z', value.get('Z'))
-        if (identifier is None or model is not None and (not isinstance(model, int) or isinstance(model, bool) or model < 0 or model > 4294967295) or not isinstance(region, int) or
-                isinstance(region, bool) or region < 1 or region > 65535 or
+        if (identifier is None or model is not None and (not isinstance(model, int) or isinstance(model, bool) or model < 0 or model > 4294967295) or not _valid_position_region(region) or
                 not _number(x) or not _number(y) or abs(x) > 1000000 or abs(y) > 1000000):
             truncated = True
             continue
@@ -1737,8 +1748,7 @@ def _valid_mob_sample(sample):
     if (not _validate_agent_id(sample.get('sample_id')) or
             not _validate_agent_id(sample.get('character_id')) or
             not _validate_agent_id(sample.get('session_id')) or
-            not isinstance(sample.get('region'), int) or isinstance(sample.get('region'), bool) or
-            sample.get('region') < 1 or sample.get('region') > 65535 or
+            not _valid_position_region(sample.get('region')) or
             sample.get('area_id') != 'region:' + str(sample.get('region')) or
             sample.get('floor_id') != 'unmapped' or not isinstance(sample.get('observer'), dict) or
             not isinstance(sample.get('monsters'), list) or len(sample['monsters']) > MAX_MONSTERS_PER_SNAPSHOT):
@@ -1756,7 +1766,8 @@ def _valid_mob_sample(sample):
         for monster in sample['monsters']:
             if (not isinstance(monster, dict) or not isinstance(monster.get('id'), str) or
                     not monster['id'] or len(monster['id']) > 64 or monster['id'] in seen or
-                    monster.get('region') != sample['region'] or
+                    not _valid_position_region(monster.get('region')) or
+                    not _mob_region_matches(sample['region'], monster.get('region')) or
                     not _number(monster.get('x')) or abs(monster['x']) > 1000000 or
                     not _number(monster.get('y')) or abs(monster['y']) > 1000000):
                 return False
@@ -1946,11 +1957,13 @@ class AgentWorker(object):
         self._latest_resources_identity = None
         self._item_tracker = PassiveItemTracker()
 
-    def update_map_monsters(self, identity, status, region, monsters, sample=None):
+    def update_map_monsters(self, identity, status, region, monsters, sample=None, observer_z=None):
         observation = {
             'identity': dict(identity), 'status': status, 'region': region,
             'monsters': [dict(monster) for monster in monsters], 'observed_at': _worker_utc_now(self),
         }
+        if _number(observer_z) and abs(observer_z) <= 1000000:
+            observation['observer_z'] = float(observer_z)
         try:
             self._map_samples.put_nowait(observation)
         except _queue.Full:
@@ -1995,6 +2008,8 @@ class AgentWorker(object):
                 'region': observation['region'], 'monsters': observation['monsters'],
                 'truncated': observation['status'] == 'truncated',
             }
+            if observation.get('observer_z') is not None:
+                snapshot['observer_z'] = observation['observer_z']
             client.send_json({'type': 'map.monsters', 'protocol_version': PROTOCOL_VERSION,
                               'map_snapshot': snapshot})
             self._last_map_sent_at = observation['observed_at']
@@ -2170,7 +2185,7 @@ class AgentWorker(object):
         }
         if isinstance(position, dict):
             region = position.get('region')
-            if isinstance(region, int) and not isinstance(region, bool) and 0 <= region <= 65535:
+            if _valid_position_region(region):
                 event['region'] = region
             for axis in ('x', 'y', 'z'):
                 value = position.get(axis)
@@ -2720,6 +2735,7 @@ class AgentWorker(object):
             'training.area.set': (None, 'unsupported_runtime_primitive'),
             'training.radius.set': ('set_training_radius', 'unsupported_runtime_primitive'),
             'character.walk': ('move_to_region', 'unsupported_runtime_primitive'),
+            'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
             'client.clientless': (None, 'unsupported_runtime_primitive'),
@@ -2738,6 +2754,8 @@ class AgentWorker(object):
             if name == 'training.radius.set': supported = self.api.has('set_training_radius') and self.api.has('get_training_area')
             if name == 'character.walk':
                 supported = all(self.api.has(symbol) for symbol in ('generate_path', 'move_to_region', 'get_position'))
+            if name == 'character.navigate':
+                supported = self.api.has('generate_script') and self.api.has('start_script')
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
         chat_modes = self.api.chat_modes()
@@ -3082,10 +3100,10 @@ class AgentWorker(object):
             exact(('mode','name','region','x','y','z')); mode=args.get('mode')
             if mode == 'current_position':
                 position=self.api.position()
-                if not isinstance(position,dict) or not all(_number(position.get(k)) and abs(position.get(k))<=10000000 for k in ('x','y','z')) or not isinstance(position.get('region'),int) or isinstance(position.get('region'),bool) or position.get('region')<=0: raise ValueError('position_unavailable')
+                if not isinstance(position,dict) or not all(_number(position.get(k)) and abs(position.get(k))<=10000000 for k in ('x','y','z')) or not isinstance(position.get('region'),int) or isinstance(position.get('region'),bool) or position.get('region') < -32768 or position.get('region') > 65535 or position.get('region')==0: raise ValueError('position_unavailable')
                 region=int(position['region']); coords=[float(position[k]) for k in ('x','y','z')]
             elif mode == 'position':
-                if not isinstance(args.get('region'),int) or isinstance(args.get('region'),bool) or args.get('region')<=0 or current_region!=args.get('region') or not all(_number(args.get(k)) and abs(args[k])<=10000000 for k in ('x','y','z')): raise ValueError('invalid_arguments')
+                if not isinstance(args.get('region'),int) or isinstance(args.get('region'),bool) or args.get('region') < -32768 or args.get('region') > 65535 or args.get('region')==0 or not all(_number(args.get(k)) and abs(args[k])<=10000000 for k in ('x','y','z')): raise ValueError('invalid_arguments')
                 region=args['region']; coords=[float(args[k]) for k in ('x','y','z')]
             elif mode == 'named':
                 value=args.get('name')
@@ -3103,6 +3121,26 @@ class AgentWorker(object):
             result=self.api.call('set_training_radius',float(radius)); observed=self.api.call('get_training_area') if self.api.has('get_training_area') else None
             confirmed=isinstance(observed,dict) and observed.get('radius')==float(radius)
             return result,{'radius':float(radius)},self._safe_area(observed),'observed' if confirmed else ('api_confirmed' if isinstance(result,bool) else 'unverified')
+        if name == 'character.navigate':
+            exact(('region','x','y','z'))
+            region=args.get('region')
+            if (not isinstance(region,int) or isinstance(region,bool) or region==0 or region < -32768 or region > 65535 or
+                    not all(_number(args.get(axis)) and abs(args[axis])<=10000000 for axis in ('x','y','z'))):
+                raise ValueError('invalid_arguments')
+            generated=self.api.call('generate_script',region,float(args['x']),float(args['y']),float(args['z']))
+            if generated is False: raise ValueError('path_rate_limited_or_not_in_game')
+            if generated is None: raise ValueError('path_not_found')
+            if not isinstance(generated,(list,tuple)) or not generated or len(generated)>256:
+                raise ValueError('invalid_path')
+            lines=[]
+            for line in generated:
+                if not isinstance(line,str) or len(line)>256 or not re.fullmatch(r'(?:walk,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?|wait,\d{1,6}|teleport,[A-Za-z0-9_]+,[A-Za-z0-9_]+)',line):
+                    raise ValueError('invalid_path')
+                lines.append(line)
+            script='\n'.join(lines)
+            if len(script.encode('utf-8'))>32768: raise ValueError('invalid_path')
+            result=self.api.call('start_script',script)
+            return result,{'region':region,'x':float(args['x']),'y':float(args['y']),'z':float(args['z']),'route_steps':len(lines)},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
         if name == 'character.walk':
             raise ValueError('walk_requires_callback_path')
         raise ValueError('unsupported_command')
@@ -3450,7 +3488,7 @@ def _queue_canonical_event(kind, category, source, source_ref, payload, identity
             observed_position = None
         if isinstance(observed_position, dict):
             region = observed_position.get('region')
-            if isinstance(region, int) and not isinstance(region, bool) and 0 <= region <= 65535:
+            if _valid_position_region(region):
                 event['region'] = region
             for axis in ('x', 'y', 'z'):
                 value = observed_position.get(axis)
@@ -3597,7 +3635,9 @@ def _sample_character():
     state = {}
     for source in ('level','hp','hp_max','mp','mp_max','current_exp','max_exp','sp','gold','region'):
         value = data.get(source)
-        if isinstance(value, (int,float)) and not isinstance(value,bool) and value >= 0:
+        if source == 'region' and _valid_position_region(value):
+            state[source] = value
+        elif source != 'region' and isinstance(value, (int,float)) and not isinstance(value,bool) and value >= 0:
             state[source] = int(value)
     model = data.get('model')
     if isinstance(model, int) and not isinstance(model, bool) and 1 <= model <= 0xffffffff:
@@ -3616,8 +3656,8 @@ def _sample_character():
             if isinstance(value,(int,float)) and not isinstance(value,bool):
                 state[axis] = float(value)
         region = position.get('region')
-        if isinstance(region,int) and not isinstance(region,bool) and region >= 0:
-            state['region'] = region
+        if _valid_position_region(region):
+            state['region'] = int(region)
     if isinstance(state.get('region'),int):
         try:
             zone = _get_zone_name(state['region'])
@@ -3683,9 +3723,9 @@ def _sample_monsters(identity, state, position, now=None):
     _last_monster_poll_at = now
     status, monsters, truncated = collect_monster_observation()
     region = state.get('region') if isinstance(state, dict) else None
-    if not isinstance(region, int) or isinstance(region, bool) or region < 1 or region > 65535:
+    if not _valid_position_region(region):
         return False
-    matching = [monster for monster in monsters if monster.get('region') == region]
+    matching = [monster for monster in monsters if _mob_region_matches(region, monster.get('region'))]
     if len(matching) != len(monsters):
         truncated = True
         status = 'truncated'
@@ -3718,12 +3758,13 @@ def _sample_monsters(identity, state, position, now=None):
                 'floor_id': 'unmapped', 'region': region, 'sampled_at': sampled_at,
                 'observer': observer, 'monsters': matching,
             }
-            if _worker.update_map_monsters(identity, status, region, matching, sample):
+            if _worker.update_map_monsters(identity, status, region, matching, sample, position.get('z')):
                 _last_mob_cell_samples[throttle_key] = now
             else:
                 return False
             return True
-    _worker.update_map_monsters(identity, status, region, matching)
+    _worker.update_map_monsters(identity, status, region, matching,
+                                observer_z=position.get('z') if isinstance(position, dict) else None)
     if len(_last_mob_cell_samples) > 4096:
         oldest = sorted(_last_mob_cell_samples.items(), key=lambda item: item[1])[:2048]
         for key, _ in oldest:

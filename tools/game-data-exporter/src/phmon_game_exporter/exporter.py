@@ -31,6 +31,7 @@ ITEM_SHARD = re.compile(r"ItemData_(\d+)\.txt\Z", re.IGNORECASE)
 ENTITY_SHARD = re.compile(r"CharacterData_(\d+)\.txt\Z", re.IGNORECASE)
 SKILL_SHARD = re.compile(r"SkillData_(\d+)\.txt\Z", re.IGNORECASE)
 TILE_FILE = re.compile(r"(?P<x>\d+)x(?P<y>\d+)\.ddj\Z", re.IGNORECASE)
+CAVE_TILE_FILE = re.compile(r"(?P<prefix>(?:dh_a01_floor0[1-4]|qt_a01_floor0[1-6]|rn_sd_egypt1_0[12]|rn_sd_egypt01_0[2-6]))_(?P<x>\d+)x(?P<y>\d+)\.ddj\Z", re.IGNORECASE)
 EXCLUDED_BY_OPERATOR = {
     "sounds": "operator excluded sound export",
     "interfaceControls": "operator excluded interface controls and control artwork",
@@ -1026,6 +1027,36 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 tileSetOrientations=tile_set_orientations,
                 uniformOpaqueBlackTileCount=len(uniform_black_tiles),
                 coordinateSemantics="root filename indices join refregion gridX/gridZ on exact pairs only; each tile set reports edge-continuity-supported grid direction when evidence meets its threshold; in-tile world coordinates, marker anchors, offsets, and cross-set registration remain unvalidated",
+            ))
+
+            # Named minimap_d grids are separate floor rasters. Retain their
+            # exact filename coordinates; the server profile supplies the
+            # observed 2D anchors and region/floor rules independently.
+            cave_records: list[dict[str, Any]] = []
+            for entry in media_info.entries:
+                if entry.kind != 2 or not entry.path.casefold().startswith("minimap_d/"):
+                    continue
+                match = CAVE_TILE_FILE.fullmatch(entry.name)
+                if match is None:
+                    continue
+                prefix = match.group("prefix").casefold()
+                x, y = int(match.group("x")), int(match.group("y"))
+                asset_key = f"cave-tile:{dataset_id}:{prefix}:{x}:{y}"
+                _, width, height = _write_asset(
+                    staging_bundle=bundle, category="maps", entry=entry,
+                    archive=media, semantic_key=asset_key,
+                    assets_by_hash=assets_by_hash,
+                    converted_by_source=converted_by_source,
+                    source_audit=asset_refs,
+                )
+                cave_records.append({"id": asset_key, "floorPrefix": prefix,
+                                     "x": x, "y": y, "assetKey": asset_key,
+                                     "width": width, "height": height})
+            _json_write(bundle / "catalogs" / "caveMaps.json", _catalog(
+                dataset_id, "caveMaps", "parsed" if cave_records else "unresolved",
+                sorted(cave_records, key=lambda row: (row["floorPrefix"], row["y"], row["x"])),
+                floorCount=len({row["floorPrefix"] for row in cave_records}),
+                coordinateSemantics="named floor tile indices only; 2D anchors and region/Z floor rules are supplied by the versioned server map profile",
             ))
 
             # Regions have an independently documented 21-column text schema.

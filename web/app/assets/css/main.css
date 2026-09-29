@@ -3189,6 +3189,17 @@ select:focus-visible {
   padding: 0.45rem 0.65rem;
   border-top: 1px solid #273449;
 }
+.map-point-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  border-top: 1px solid #273449;
+  color: #cbd5e5;
+  font-size: 0.72rem;
+}
+.map-point-actions span { flex-basis: 100%; }
 .map-validation-note {
   padding: 0.5rem 0.65rem;
   border-top: 1px solid rgba(203, 171, 98, 0.2);

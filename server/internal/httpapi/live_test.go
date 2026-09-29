@@ -534,6 +534,10 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Server: "Example", Kind: events.DeathKind, From: "2026-09-01", To: "2026-09-28", Limit: 25}},
 			valid:   true,
 		},
+		"signed cave map region": {
+			message: liveClientMessage{SubscriptionID: "map", Revision: 1, Stream: "map", Filter: liveFilter{Server: "Greatest", Area: "donwhang-stone-cave", Floor: "1F", Region: -32767}},
+			valid:   true,
+		},
 		"character scoped private chat": {
 			message: liveClientMessage{SubscriptionID: "private-chat", Revision: 1, Stream: "chat", Filter: liveFilter{CharacterID: validCharacterID, Channel: "private", Peer: "Beta", Limit: 50}},
 			valid:   true,

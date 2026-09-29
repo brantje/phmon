@@ -3,6 +3,11 @@ export interface MapFloorProfile {
   label: string
   image_status: string
   transform_status: string
+  tiles?: MapProfile['tiles']
+  region_ids?: number[]
+  min_z?: number
+  max_z?: number
+  auto_detect?: boolean
 }
 
 export interface MapAreaProfile {

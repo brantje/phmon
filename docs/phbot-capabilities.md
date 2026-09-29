@@ -725,20 +725,26 @@ documents creating a new area through the phBot UI's Add action.
   documents no-argument `get_position()` returning current region and x/y/z, or
   `None`. This supplies observer positions and retains optional observed Z; it does
   not establish a map transform.
-- Plugin v1.5.2 / agent protocol v7 polls the getter every 0.1 seconds and limits each
+- Plugin v1.5.4 / agent protocol v7 polls the getter every 0.1 seconds and limits each
   snapshot to 128 entries. `None`/missing/exception, observed empty and truncated are
   kept distinct. Only complete untruncated snapshots enter the local durable sample
   spool. Sample cadence is one minute per session/region/unmapped-floor/192-unit
   observer cell. The `unmapped` floor label avoids claiming outdoor or cave membership
   without verified region mappings; no real-runtime behavior is inferred from tests.
+- Cave monster reports use the observing character's signed region and current Z
+  when a monster omits Z. Plugin 1.5.4 preserves nonzero region IDs in
+  `-32768..65535`; live Donwhang map evidence showed the `-32767` observer region
+  and current monster coordinates. The server classifies the observation's floor
+  from the observer's Z, then uses that Z only as the cave marker's floor context.
 - Cave member region/floor is not documented by the Academy API. The map reports
   Academy member coordinates unavailable rather than projecting unscoped rows.
-- No navigation command is enabled. The official [Paths API](https://plugins.phbot.org/phbot-api/paths)
-  rate-limits path generation to one call per five seconds; `generate_script()` can
-  produce bounded route text, but its effects and arrival confirmation have not
-  been verified on the installed runtime. Coordinate conversion also requires
-  a verified reverse transform and command-Z evidence. The active profile has only
-  four forward outdoor marker transforms and no command-Z evidence.
+- Earlier outdoor-only verification had no navigation action because it lacked
+  cave transforms and command-Z evidence. The later cave implementation below
+  adds selected-point navigation using the executable's observed current-Z/zero
+  rule. The official [Paths API](https://plugins.phbot.org/phbot-api/paths)
+  rate-limits path generation to one call per five seconds; `generate_script()`
+  produces bounded route text, but real-runtime route execution and arrival remain
+  unverified.
 
 Go unit checks cover protocol bounds, empty clearing and expiry; frontend unit checks
 cover transform round trips. PostgreSQL integration tests for sample deduplication,
@@ -753,9 +759,50 @@ return region and X/Y, including examples `(25000, 6428.2373, 1086.6726)` and
 outdoor region and the selected export's root tiles `(168,97)` and `(168,96)`.
 Synchronized marker positions on the connected Greatest reference map confirm +X
 right and +Y up. This supports forward marker placement for the four explicitly
-joined outdoor regions in the current profile. It does not supply command Z,
-dedicated cave transforms, or real phBot navigation evidence; the command gate
-above remains closed.
+joined outdoor regions in the profile at that time. This outdoor observation did
+not supply command Z or real phBot navigation evidence; cave transforms are
+documented separately below.
+
+### Cave maps and reference-style point actions (2026-09-29)
+
+Static inspection of the operator-authorized `phMonitor-v0.5.0.exe` found all
+three cave families and the reference's 2D tile anchors. Its tile size is 192
+world units. The cave tile coordinate maps X/Y only; there is no terrain-height
+lookup. phMonitor's map action reuses the selected character's current Z when
+converting a clicked destination, including a different floor, and initializes
+Z to zero when unavailable. PhMon follows this 2D behavior and never calibrates
+per-pixel height.
+
+- GreatestSRO `Media.pk2` contains cave DDJ tiles for all 17 floors (6 Tomb, 4
+  Donwhang Stone Cave, 7 Job Temple). The exporter now publishes only converted
+  PNGs under local `game-assets/minimap_d/` paths and a separate `caveMaps`
+  catalog; archives and exporter audit remain outside the app assets.
+- Tomb floors have distinct observed regions -32761 through -32766. Donwhang
+  uses observed region IDs -32767 and 32767 with Z bands -50..70, 71..210,
+  211..350 and 351..490. The one observed Job Temple region (-32752) is shared;
+  region alone classifies 1F only. Higher floors require explicit map selection.
+- The official [Paths API](https://plugins.phbot.org/phbot-api/paths) documents
+  `generate_script(region,x,y,z)` as returning route strings, including waits and
+  teleports; it can return `None` for no route or `False` when rate-limited/not
+  in game, with a five-second generation limit. The official [Script API](https://plugins.phbot.org/phbot-api/script) documents `start_script(str)` as
+  background execution. PhMon's typed navigation command accepts only bounded
+  generated `walk`, `wait` and `teleport` lines, reports the phBot return, and is
+  enabled only when both runtime functions are reported. A completed command
+  means phBot accepted the script; it is not an arrival claim.
+- Point navigation and training-area positioning use the authenticated command
+  lifecycle's selected character/session. Cave region ambiguity disables the
+  action. Explicit signed cave regions are preserved, including cross-floor
+  selection. Session freshness remains mandatory.
+
+Observed live reference sample, kept separate from the stale PhMon observation:
+the operator teleported nuker1 to Donwhang Stone Cave. phBot v20.1.2 showed
+X=-24272.5, Y=-93.5; phMonitor v0.5.0 placed the marker on its 1F image at
+approximately (-24273.0,-93.5), Z=0.0. Switching to its 2F image changed the
+floor raster and hid the 1F marker. PhMon still showed nuker1 at a prior Hotan
+position, observed at 2026-09-29 15:45:25Z, so that PhMon map observation was
+stale and is not used as Donwhang validation. No command was sent to the live
+character. The deterministic adapter test covers signed region navigation and
+phBot rejection/acceptance; the installed real runtime has not run this command.
 
 ### Map monster presentation fields — 2026-09-29
 

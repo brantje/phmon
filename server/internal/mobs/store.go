@@ -74,7 +74,7 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 func ValidateSample(sample Sample, now time.Time) error {
 	if !agentdomain.ValidAgentID(sample.ID) || !agentdomain.ValidAgentID(sample.CharacterID) ||
-		!agentdomain.ValidAgentID(sample.SessionID) || sample.Region < 1 || sample.Region > 65535 ||
+		!agentdomain.ValidAgentID(sample.SessionID) || !ValidRegion(sample.Region) ||
 		sample.AreaID != "region:"+intString(sample.Region) || sample.FloorID != "unmapped" ||
 		sample.SampledAt.IsZero() || sample.SampledAt.After(now.Add(2*time.Minute)) || sample.SampledAt.Before(now.Add(-24*time.Hour)) ||
 		!validCoordinate(sample.Observer.X) || !validCoordinate(sample.Observer.Y) ||
@@ -85,7 +85,7 @@ func ValidateSample(sample Sample, now time.Time) error {
 	seen := make(map[string]struct{}, len(sample.Monsters))
 	for _, monster := range sample.Monsters {
 		if monster.ID == "" || len(monster.ID) > 64 || strings.ContainsRune(monster.ID, 0) ||
-			monster.Region != sample.Region || !validCoordinate(monster.X) || !validCoordinate(monster.Y) ||
+			!ValidRegion(monster.Region) || !RegionsMatch(sample.Region, monster.Region) || !validCoordinate(monster.X) || !validCoordinate(monster.Y) ||
 			monster.Model != nil && (*monster.Model < 0 || *monster.Model > 4294967295) || !validMonsterDetails(monster) ||
 			monster.Z != nil && !validCoordinate(*monster.Z) {
 			return ErrInvalidSample
@@ -102,6 +102,8 @@ func validCoordinate(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= -1_000_000 && value <= 1_000_000
 }
 
+func ValidCoordinate(value float64) bool { return validCoordinate(value) }
+
 func validMonsterDetails(monster Monster) bool {
 	const maxSafeJSONInteger = 9007199254740991
 	return len(monster.Type) <= 64 && !strings.ContainsRune(monster.Type, 0) &&
@@ -114,7 +116,7 @@ func validMonsterDetails(monster Monster) bool {
 }
 
 func ValidateLiveSnapshot(status string, region int, monsters []Monster, now time.Time, observedAt time.Time) error {
-	if status != "observed" && status != "unavailable" && status != "truncated" || region < 1 || region > 65535 ||
+	if status != "observed" && status != "unavailable" && status != "truncated" || !ValidRegion(region) ||
 		observedAt.IsZero() || observedAt.After(now.Add(2*time.Minute)) || observedAt.Before(now.Add(-2*time.Minute)) || len(monsters) > MaxMonsters {
 		return ErrInvalidSample
 	}
@@ -123,7 +125,8 @@ func ValidateLiveSnapshot(status string, region int, monsters []Monster, now tim
 	}
 	seen := make(map[string]struct{}, len(monsters))
 	for _, monster := range monsters {
-		if monster.ID == "" || len(monster.ID) > 64 || strings.ContainsRune(monster.ID, 0) || monster.Region != region ||
+		if monster.ID == "" || len(monster.ID) > 64 || strings.ContainsRune(monster.ID, 0) ||
+			!ValidRegion(monster.Region) || !RegionsMatch(region, monster.Region) ||
 			!validCoordinate(monster.X) || !validCoordinate(monster.Y) || monster.Model != nil && (*monster.Model < 0 || *monster.Model > 4294967295) ||
 			!validMonsterDetails(monster) || monster.Z != nil && !validCoordinate(*monster.Z) {
 			return ErrInvalidSample
@@ -134,6 +137,17 @@ func ValidateLiveSnapshot(status string, region int, monsters []Monster, now tim
 		seen[monster.ID] = struct{}{}
 	}
 	return nil
+}
+
+// ValidRegion accepts SRO's signed cave region IDs and unsigned outdoor IDs.
+func ValidRegion(region int) bool { return region != 0 && region >= -32768 && region <= 65535 }
+
+// RegionsMatch accounts for the observed Donwhang convention: get_position()
+// reports -32767 while get_monsters() reports the same cave as 32767.
+func RegionsMatch(observerRegion, monsterRegion int) bool {
+	return observerRegion == monsterRegion ||
+		observerRegion == -32767 && monsterRegion == 32767 ||
+		observerRegion == 32767 && monsterRegion == -32767
 }
 
 func intString(value int) string {
@@ -272,7 +286,7 @@ func ValidateDensityFilter(filter DensityFilter) error {
 	regionText := strings.TrimPrefix(filter.AreaID, "region:")
 	region, regionErr := strconv.Atoi(regionText)
 	if len(filter.Server) == 0 || len(filter.Server) > 100 || filter.AreaID == "" || len(filter.AreaID) > 96 ||
-		!strings.HasPrefix(filter.AreaID, "region:") || regionErr != nil || region < 1 || region > 65535 || filter.AreaID != "region:"+intString(region) ||
+		!strings.HasPrefix(filter.AreaID, "region:") || regionErr != nil || !ValidRegion(region) || filter.AreaID != "region:"+intString(region) ||
 		filter.FloorID != "unmapped" || filter.From.IsZero() || filter.To.IsZero() || !filter.To.After(filter.From) ||
 		filter.To.Sub(filter.From) > MaxQueryWindow || filter.Limit < 1 || filter.Limit > MaxQueryCells ||
 		len(filter.MonsterType) > 64 || filter.ModelID != nil && (*filter.ModelID < 0 || *filter.ModelID > 4294967295) {
