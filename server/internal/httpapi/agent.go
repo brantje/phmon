@@ -201,29 +201,35 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connectedAt := time.Now().UTC()
-	updateCtx, updateCancel := context.WithTimeout(r.Context(), 2*time.Second)
-	err = h.store.MarkConnected(updateCtx, hello.AgentID, connectedAt, hello.ProtocolVersion, hello.PluginVersion, hello.PhBotVersion)
-	updateCancel()
-	if errors.Is(err, agentdomain.ErrInvalidToken) {
-		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "credential revoked", hello.AgentID, hello.ProtocolVersion)
-		return
-	}
-	if err != nil {
-		rejectAgentFrame(conn, websocket.StatusInternalError, "state unavailable", hello.AgentID, hello.ProtocolVersion)
-		return
-	}
-
 	sessionCtx, sessionCancel := context.WithCancel(r.Context())
-	generation, _ := h.registry.Register(hello.AgentID)
+	generation, connectedAt := h.registry.Register(hello.AgentID)
 	if generation == 0 {
 		sessionCancel()
 		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "credential revocation in progress", hello.AgentID, hello.ProtocolVersion)
 		return
 	}
+	unregisterPendingSession := func() {
+		sessionCancel()
+		h.registry.Unregister(hello.AgentID, generation)
+	}
+
+	updateCtx, updateCancel := context.WithTimeout(r.Context(), 2*time.Second)
+	err = h.store.MarkConnected(updateCtx, hello.AgentID, connectedAt, hello.ProtocolVersion, hello.PluginVersion, hello.PhBotVersion)
+	updateCancel()
+	if errors.Is(err, agentdomain.ErrInvalidToken) {
+		unregisterPendingSession()
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "credential revoked", hello.AgentID, hello.ProtocolVersion)
+		return
+	}
+	if err != nil {
+		unregisterPendingSession()
+		rejectAgentFrame(conn, websocket.StatusInternalError, "state unavailable", hello.AgentID, hello.ProtocolVersion)
+		return
+	}
+
 	writer := newAgentWriter(sessionCtx, conn, sessionCancel)
 	if !h.registry.Configure(hello.AgentID, generation, hello.ProtocolVersion, hello.PluginVersion, writer.Send) {
-		sessionCancel()
+		unregisterPendingSession()
 		return
 	}
 	h.live.Invalidate()
