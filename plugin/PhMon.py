@@ -72,6 +72,7 @@ MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # decoded item fields only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
+GUILD_STORAGE_GOLD_OPCODE = 0x3253
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -401,16 +402,12 @@ def _normalize_container(raw, resource_key):
     if slots is None:
         return {'availability': 'unavailable', 'reason': 'invalid_api_shape'}
     used = sum(1 for entry in slots if entry is not None)
-    result = {
+    return {
         'availability': 'observed',
         'capacity': raw_size,
         'used_slots': used,
         'slots': slots,
     }
-    gold = raw.get('gold')
-    if isinstance(gold, int) and not isinstance(gold, bool) and gold >= 0:
-        result['gold'] = gold
-    return result
 
 
 def collect_resource_inputs(api=None):
@@ -879,9 +876,16 @@ def parse_item_durability_update(data):
     return {'source_slot': slot, 'fields': {'durability': durability}}
 
 
+def parse_guild_storage_gold(payload):
+    """Decode the exact vSRO 1.188 server 0x3253 guild-storage gold payload."""
+    if not isinstance(payload, (bytes, bytearray)) or len(payload) != 8:
+        raise ItemPacketError('invalid_guild_storage_gold_packet')
+    return struct.unpack('<Q', bytes(payload))[0]
+
+
 class PassiveItemTracker(object):
-    """Bounded packet queue plus session-local, fail-closed item observations."""
-    ALLOWED_OPCODES = (0x3040, 0x3052, 0xB034)
+    """Bounded packet queue plus session-local, fail-closed packet observations."""
+    ALLOWED_OPCODES = (0x3040, 0x3052, 0xB034, GUILD_STORAGE_GOLD_OPCODE)
 
     def __init__(self, capture_enabled=None):
         self.capture_enabled = ITEM_PACKET_CAPTURE_ENABLED if capture_enabled is None else bool(capture_enabled)
@@ -890,6 +894,8 @@ class PassiveItemTracker(object):
         self._queued_bytes = 0
         self._overflow = False
         self._states = {}
+        self._guild_storage_gold = None
+        self._guild_storage_gold_sequence = None
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
         self._epoch = 0
@@ -935,6 +941,8 @@ class PassiveItemTracker(object):
 
     def reset(self, reason='session_changed', protocol=None):
         self._states.clear()
+        self._guild_storage_gold = None
+        self._guild_storage_gold_sequence = None
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
@@ -984,6 +992,21 @@ class PassiveItemTracker(object):
 
     def _process(self, opcode, payload):
         self._sequence += 1
+        if opcode == GUILD_STORAGE_GOLD_OPCODE:
+            if self._protocol != 'vsro-1.188':
+                self._guild_storage_gold = None
+                self._guild_storage_gold_sequence = None
+                self._last_invalidation = 'unsupported_protocol'
+                return
+            try:
+                self._guild_storage_gold = parse_guild_storage_gold(payload)
+            except ItemPacketError as error:
+                self._guild_storage_gold = None
+                self._guild_storage_gold_sequence = None
+                self._last_invalidation = str(error)
+                return
+            self._guild_storage_gold_sequence = self._sequence
+            return
         if opcode == 0xB034:
             self._invalidate('inventory_operation_unclassified')
             self._capture({'opcode': '0xB034', 'sequence': str(self._sequence), 'result': 'invalidated'})
@@ -1023,6 +1046,8 @@ class PassiveItemTracker(object):
         overflow, events = self._take_queue()
         if overflow:
             self._invalidate('packet_queue_overflow')
+            self._guild_storage_gold = None
+            self._guild_storage_gold_sequence = None
         for opcode, payload in events:
             self._process(opcode, payload)
 
@@ -1079,6 +1104,15 @@ class PassiveItemTracker(object):
                     instance['magic_options'] = list(observed_fields.get('magic_options', []))
                 item['instance'] = instance
                 attached += 1
+        guild_storage = resources.get('guild_storage')
+        if (isinstance(guild_storage, dict) and
+                guild_storage.get('availability') == 'observed' and
+                self._guild_storage_gold is not None and
+                self._guild_storage_gold_sequence is not None):
+            guild_storage['gold'] = self._guild_storage_gold
+            guild_storage['gold_source'] = 'vsro_1188_packet_0x3253'
+            guild_storage['gold_observation_sequence'] = str(self._guild_storage_gold_sequence)
+
         resources['item_enrichment'] = {
             'availability': 'observed' if attached else 'not_observed',
             'protocol': self._protocol,
