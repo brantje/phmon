@@ -102,6 +102,7 @@ const selectedCharacterID = ref(
 )
 const selectedDestinationID = ref('')
 const dateRange = ref('24h')
+const eventWindowNow = ref(Date.now())
 const heatmapRange = ref('24h')
 const heatmapCustomFrom = ref('')
 const heatmapCustomTo = ref('')
@@ -688,7 +689,6 @@ watch(mapProfile, (profile) => {
     updateRouteQuery()
   }
 })
-const eventWindowNow = ref(Date.now())
 watch(
   [
     server,
