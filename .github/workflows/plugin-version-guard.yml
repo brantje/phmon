@@ -1,0 +1,102 @@
+name: Plugin version guard
+
+on:
+  pull_request:
+    paths:
+      - plugin/PhMon.py
+      - .github/workflows/plugin-version-guard.yml
+
+permissions:
+  contents: read
+
+jobs:
+  version-guard:
+    name: Require plugin version bump
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate plugin version
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          PLUGIN_PATH = "plugin/PhMon.py"
+
+          def read_base():
+              try:
+                  return subprocess.check_output(
+                      ["git", "show", f"{os.environ['BASE_SHA']}:{PLUGIN_PATH}"],
+                      text=True,
+                  )
+              except subprocess.CalledProcessError as exc:
+                  print(
+                      f"::error file={PLUGIN_PATH}::"
+                      "Could not read the base version of PhMon.py"
+                  )
+                  raise SystemExit(exc.returncode)
+
+          def extract(text, name):
+              if name == "pVersion":
+                  pattern = r"(?m)^pVersion\s*=\s*['\"]([^'\"]+)['\"]\s*(?:#.*)?$"
+              else:
+                  pattern = rf"(?m)^{re.escape(name)}\s*=\s*(\d+)\s*(?:#.*)?$"
+
+              match = re.search(pattern, text)
+              if not match:
+                  print(
+                      f"::error file={PLUGIN_PATH}::"
+                      f"Could not find {name}"
+                  )
+                  raise SystemExit(1)
+              return match.group(1)
+
+          def parse_version(value):
+              if not re.fullmatch(r"\d+(?:\.\d+)+", value):
+                  print(
+                      f"::error file={PLUGIN_PATH}::"
+                      f"pVersion must be a dotted numeric version, got {value!r}"
+                  )
+                  raise SystemExit(1)
+              return tuple(int(part) for part in value.split("."))
+
+          before = read_base()
+          with open(PLUGIN_PATH, "r", encoding="utf-8") as handle:
+              after = handle.read()
+
+          old_plugin = extract(before, "pVersion")
+          new_plugin = extract(after, "pVersion")
+          old_protocol = extract(before, "PROTOCOL_VERSION")
+          new_protocol = extract(after, "PROTOCOL_VERSION")
+
+          plugin_changed = before != after
+          protocol_changed = old_protocol != new_protocol
+
+          print(f"Plugin file changed: {plugin_changed}")
+          print(f"Plugin version:      {old_plugin} -> {new_plugin}")
+          print(f"Protocol version:    {old_protocol} -> {new_protocol}")
+
+          if plugin_changed and parse_version(new_plugin) <= parse_version(old_plugin):
+              detail = (
+                  f"PROTOCOL_VERSION changed ({old_protocol} -> {new_protocol}) and "
+                  if protocol_changed
+                  else ""
+              )
+              print(
+                  f"::error file={PLUGIN_PATH}::"
+                  f"{detail}PhMon.py changed, but pVersion was not bumped "
+                  f"({old_plugin} -> {new_plugin})."
+              )
+              raise SystemExit(1)
+
+          print("Plugin version check passed.")
+          PY
