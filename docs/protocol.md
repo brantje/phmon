@@ -315,8 +315,8 @@ Existing read endpoints (`GET /api/agents`, `GET /api/characters`,
 `GET /api/characters/{character_id}` and `GET /api/groups`) remain available for
 diagnostics/backward compatibility only. The Nuxt live UI MUST NOT call them.
 
-HTTP remains the action transport for credential creation and group mutations, as well
-as static assets, uploads/downloads, health checks and future non-live historical
+HTTP remains the action transport for credential creation/revocation and group mutations,
+as well as static assets, uploads/downloads, health checks and future non-live historical
 queries. A successful action response acknowledges that action only; browser live
 state changes exclusively when the corresponding WebSocket replacement arrives.
 
@@ -416,14 +416,21 @@ up to 256 command IDs during its process lifetime.
 
 ## HTTP agent API
 
-GET /api/agents returns safe presentation fields for agents that have connected at
-least once: stable id, connected state, first/last seen, connect/disconnect times,
-current connection start when active, protocol version, plugin version and phBot
-version. Stored credential hashes/tokens are never returned.
+GET /api/agents returns safe presentation fields for all active agent credentials,
+including credentials that have not connected yet: stable id, connected state,
+optional first/last seen and connect/disconnect times, current connection start when
+active, protocol version, plugin version and phBot version. Stored credential
+hashes/tokens are never returned.
 
 POST /api/agents/credentials creates one new stable agent identity/token pair using
 the same domain generator/store path as phmonctl. The plaintext token is returned in
-that creation response only; PostgreSQL persists only its SHA-256 hash. Both endpoints
+that creation response only; PostgreSQL persists only its SHA-256 hash.
+
+DELETE /api/agents/{agent_id} revokes an offline credential. Connected agents return
+409 until all of their phBot sockets disconnect. Revocation preserves the agent row
+and historical foreign-key references, excludes the identity from active listings and
+causes subsequent token authentication to fail. A connect that races revocation is
+also rejected before it can become an active registered session. Agent API responses
 are no-store.
 
 Nuxt retains same-origin diagnostic read equivalents and HTTP action routes. The live
