@@ -3854,3 +3854,7 @@ runtime (or add a verified level catalog source), then run the focused suites an
 required map/Stats viewport checks before merging PR #19. Live UI inspection also
 showed nearby Shakram rows with distinct General and Party General ranks; the matcher
 now keeps different rank codes separate and preserves the freshest observer label.
+The rank-aware web build was deployed to the same test host. After reconnect, the
+authenticated map showed four current monster rows by name and each row identified
+the freshest observer; level remained unavailable. PostgreSQL stayed healthy and
+only the web container was restarted in this follow-up deployment.
