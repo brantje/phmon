@@ -10,6 +10,7 @@ import (
 
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mapprofile"
 	"phmon/server/internal/resources"
 )
@@ -39,6 +40,30 @@ func TestMapProfileAPIReturnsTileReferencesAndHonestValidation(t *testing.T) {
 	tiles, ok := profile["tiles"].(map[string]any)
 	if !ok || tiles["tile_url_format"] != "/game-assets/minimap/{x}x{y}.png" || tiles["tile_count"] != float64(5118) {
 		t.Fatalf("tile catalog reference missing: %v", profile["tiles"])
+	}
+}
+
+func TestHeatmapAPIFailsClosedForUnverifiedMobDensity(t *testing.T) {
+	metadata := &resources.ItemMetadata{Servers: map[string]string{"greatest": mapprofile.GreatestDatasetID}}
+	resourceStore := resources.NewStore(nil)
+	resourceStore.SetItemMetadata(metadata)
+	handler := New(Dependencies{
+		Agents: newFakeAgentStore(), Registry: agentdomain.NewRegistry(), Resources: resourceStore,
+		MapAnalytics: mapanalytics.NewStore(nil),
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest("GET",
+		"/api/map/heatmap?server=greatest&area=world&floor=world&layer=mob_density&from=2026-09-29T10:00:00Z&to=2026-09-29T11:00:00Z", nil)
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != 200 {
+		t.Fatalf("heatmap status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var result mapanalytics.Result
+	if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != mapanalytics.StatusUnsupported || result.Reason != "observation_coverage_unverified" || len(result.Points) != 0 {
+		t.Fatalf("mob density did not fail closed: %+v", result)
 	}
 }
 
