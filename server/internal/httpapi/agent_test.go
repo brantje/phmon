@@ -236,7 +236,7 @@ func TestRemoveConnectedAgentCredentialIsRejected(t *testing.T) {
 	defer registry.Unregister(testAgentID, generation)
 	server := httptest.NewServer(New(Dependencies{
 		Database: pingFunc(func(context.Context) error { return nil }),
-		Agents: store,
+		Agents:   store,
 		Registry: registry,
 	}))
 	defer server.Close()
