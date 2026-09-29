@@ -43,9 +43,9 @@ function eventHeadline(event: ActivityEvent) {
     case 'drop.item': {
       const details = payload.item as Record<string, unknown> | undefined
       const name =
+        textField(event.item_metadata?.name) ||
         textField(details?.name) ||
-        textField(payload.item_name) ||
-        textField(event.item_metadata?.name)
+        textField(payload.item_name)
       const model = payload.model ?? event.item_model
       return `${event.kind === 'drop.rare' ? 'Rare drop' : 'Item drop'}${name ? ` · ${name}` : model != null ? ` · model ${String(model)}` : ''}`
     }

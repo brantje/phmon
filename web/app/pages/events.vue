@@ -227,10 +227,16 @@ function eventSummary(item: ActivityEvent) {
 function eventItemName(item: ActivityEvent) {
   const payload = record(item.payload)
   const snapshot = record(payload.item)
+  const metadata = record(item.item_metadata)
+  if (
+    (item.kind === 'drop.rare' || item.kind === 'drop.item') &&
+    typeof metadata.name === 'string' &&
+    metadata.name
+  )
+    return metadata.name
   if (typeof snapshot.name === 'string' && snapshot.name) return snapshot.name
   if (typeof payload.item_name === 'string' && payload.item_name)
     return payload.item_name
-  const metadata = record(item.item_metadata)
   if (typeof metadata.name === 'string' && metadata.name) return metadata.name
   const model = item.item_model ?? payload.model
   return model == null ? '' : `Model ${String(model)}`
@@ -387,12 +393,6 @@ function localDateBoundary(value: string, addDays: number) {
                 {{ eventSummary(item) }}
               </td>
               <td>
-                <img
-                  v-if="eventItemIcon(item)"
-                  :src="eventItemIcon(item)"
-                  class="event-item-icon"
-                  alt=""
-                />
                 <NuxtLink
                   v-if="item.character_id"
                   class="event-character-link"
@@ -408,6 +408,12 @@ function localDateBoundary(value: string, addDays: number) {
                 <span v-else>{{ item.character || '—' }}</span>
               </td>
               <td>
+                <img
+                  v-if="eventItemIcon(item)"
+                  :src="eventItemIcon(item)"
+                  class="event-item-icon"
+                  alt=""
+                />
                 <NuxtLink
                   v-if="
                     item.item_model != null ||
