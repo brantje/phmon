@@ -306,10 +306,14 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
 			cancel()
 			if characterErr != nil || !character.Online || character.SessionID == nil || *character.SessionID != frame.SessionID ||
-				character.AgentID == nil || *character.AgentID != hello.AgentID || character.Region == nil || *character.Region != frame.Region {
+				character.AgentID == nil || *character.AgentID != hello.AgentID {
 				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, frame.CharacterID, frame.SessionID) {
 					return
 				}
+				continue
+			}
+			if character.Region == nil || *character.Region != frame.Region {
+				// State and snapshot can arrive out of order at a region seam; drop only this snapshot.
 				continue
 			}
 			h.mobLive.Apply(mobs.LiveSnapshot{Server: character.Server, AgentID: hello.AgentID, CharacterID: frame.CharacterID, SessionID: frame.SessionID,
@@ -336,7 +340,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			character, characterErr := h.characters.GetScoped(ctx, sample.CharacterID, "")
 			cancel()
 			if characterErr != nil {
-				ackMobSample(sessionCtx, writer, hello.ProtocolVersion, sample.ID, "rejected", "unknown_character")
+				status, reason := "retry", "temporarily_unavailable"
+				if errors.Is(characterErr, characters.ErrNotFound) {
+					status, reason = "rejected", "unknown_character"
+				}
+				if !ackMobSample(sessionCtx, writer, hello.ProtocolVersion, sample.ID, status, reason) {
+					return
+				}
 				continue
 			}
 			dataset, knownServer := h.resources.DatasetIDForServer(character.Server)

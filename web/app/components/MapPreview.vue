@@ -117,16 +117,18 @@ async function loadMapProfile(server: string) {
   profile.value = null
   profileUnavailable.value = false
   if (!import.meta.client || !server) return
-  let request = mapProfileCache.get(server.toLowerCase())
+  const key = server.toLowerCase()
+  let request = mapProfileCache.get(key)
   if (!request) {
     request = $fetch<MapProfile>(
       `/api/map/profile?server=${encodeURIComponent(server)}`,
     )
-    mapProfileCache.set(server.toLowerCase(), request)
+    mapProfileCache.set(key, request)
   }
   try {
     profile.value = await request
   } catch {
+    if (mapProfileCache.get(key) === request) mapProfileCache.delete(key)
     profileUnavailable.value = true
   }
 }

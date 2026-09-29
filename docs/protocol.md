@@ -979,6 +979,8 @@ The browser reuses authenticated `/api/live` revision-fenced subscriptions for s
 `map` snapshots. `GET /api/map/profile?server=...` returns the server dataset,
 area/floor catalogue, tile references and validation status. `GET /api/map/density`
 requires server, area, floor and RFC3339 time bounds and caps queries to 31 days and
-500 cells. Each cell returns its monster-observation `numerator`, eligible-sample
-`denominator`, calculated `density`, dataset and time range. Historical heatmap
-rendering and reset remain Slice 9 work.
+500 cells. The response `metric` is `observer_local_average_count`. Each observer
+cell returns `monster_observations`, `eligible_samples`,
+`average_observed_per_sample`, dataset and time range. Coverage is unverified, so
+no `density` field is returned. Historical heatmap rendering and reset remain
+Slice 9 work.

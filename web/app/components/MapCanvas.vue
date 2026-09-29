@@ -20,7 +20,13 @@ import {
   rasterTileCenterToLeaflet,
   type RasterPosition,
 } from '~/utils/mapCoordinates'
-import { INITIAL_MAP_ZOOM, MAP_ZOOM_OPTIONS } from '~/utils/mapZoom'
+import {
+  INITIAL_MAP_ZOOM,
+  MAP_ZOOM_OPTIONS,
+  mapZoomLevelForPercent,
+  mapZoomPercentForLevel,
+  snapMapZoomPercent,
+} from '~/utils/mapZoom'
 import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 
 interface MapCanvasMarker {
@@ -120,8 +126,17 @@ function publishView() {
   if (!map) return
   emit('viewchange', {
     ...indexAt(map.getCenter()),
-    zoomPercent: Math.round(100 * 2 ** map.getZoom()),
+    zoomPercent: mapZoomPercentForLevel(map.getZoom()),
   })
+}
+
+function snapZoomToPercentStep() {
+  if (!map) return
+  const snappedPercent = snapMapZoomPercent(
+    mapZoomPercentForLevel(map.getZoom()),
+  )
+  const targetZoom = mapZoomLevelForPercent(snappedPercent)
+  if (Math.abs(map.getZoom() - targetZoom) > 1e-9) map.setZoom(targetZoom)
 }
 
 function moveMarker(markerKey: string, marker: LeafletMarker, target: LatLng) {
@@ -437,7 +452,7 @@ onMounted(async () => {
   map = L.map(element.value, {
     crs: L.CRS.Simple,
     ...MAP_ZOOM_OPTIONS,
-    zoomSnap: 0.125,
+    zoomSnap: 0,
     zoomDelta: 0.25,
     maxBounds: bounds,
     maxBoundsViscosity: 0.8,
@@ -650,6 +665,7 @@ onMounted(async () => {
     L.DomEvent.preventDefault(event.originalEvent)
     selectPoint(event.latlng)
   })
+  map.on('zoomend', snapZoomToPercentStep)
   map.on('moveend zoomend', publishView)
   publishView()
   syncMarkers()

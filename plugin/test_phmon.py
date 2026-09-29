@@ -93,6 +93,16 @@ class MobObservationTests(unittest.TestCase):
         self.assertEqual(monsters[0]['max_hp'], 9000)
         self.assertTrue(monsters[0]['attacking'])
 
+    def test_monster_collector_bounds_text_fields_by_utf8_bytes(self):
+        raw = {'1': {'model': 1933, 'type': '界' * 64, 'name': '虎' * 128,
+                     'servername': '龍' * 128, 'region': 25735,
+                     'x': 48.8, 'y': 1550.7}}
+        _, monsters, _ = plugin.collect_monster_observation(
+            {'get_monsters': lambda: raw})
+        self.assertLessEqual(len(monsters[0]['type'].encode('utf-8')), 64)
+        self.assertLessEqual(len(monsters[0]['name'].encode('utf-8')), 128)
+        self.assertLessEqual(len(monsters[0]['servername'].encode('utf-8')), 128)
+
     def test_monster_collector_ignores_invalid_or_undocumented_level_values(self):
         for value in (0, 256, True, '72'):
             raw = {'1': {'model': 1933, 'region': 25735, 'x': 1, 'y': 2,

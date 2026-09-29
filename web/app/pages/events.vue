@@ -127,6 +127,8 @@ watch(
             [key]: profile,
           }
         } catch {
+          if (mapProfileRequests.get(key) === request)
+            mapProfileRequests.delete(key)
           // An unavailable profile leaves the map action disabled for this server.
         }
       }),

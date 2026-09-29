@@ -92,6 +92,7 @@ const selectedTile = ref<RasterPosition | null>(null)
 const jumpSequence = ref(0)
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
+const appliedLinkedEventKey = ref('')
 const linkedEvent = computed(() =>
   linkedEventID.value
     ? mapSnapshot.value?.events.find(
@@ -506,6 +507,9 @@ watch(server, (value) => {
 })
 watch([mapProfile, linkedEvent], ([profile, event]) => {
   if (!profile || !event) return
+  const eventKey = `${server.value.toLowerCase()}\u0000${event.event_id}`
+  if (appliedLinkedEventKey.value === eventKey) return
+  appliedLinkedEventKey.value = eventKey
   const location = mapEventLocation(profile, event)
   areaID.value = location.areaID
   floorID.value = location.floorID
