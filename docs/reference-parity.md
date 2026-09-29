@@ -1171,3 +1171,30 @@ After deployment, a 2026-09-29 browser comparison showed nuker1 at Hotan
 PhMon rendered four character markers, including nuker1, with region 23687 and
 tile `(135,92)` in its readout. This verifies the current Hotan placement at the
 observed browser state; a subsequent teleport and plugin reload remain unobserved.
+
+### Slice 9 historical heatmap surface — 2026-09-29
+
+The existing Map screen now owns historical analytics rather than introducing a
+second map application. Current characters, current nearby monsters and recent
+death/drop markers retain their Slice 7 live/current semantics. A separate historical
+section can independently enable observer-local mob averages, mob-type sightings,
+deaths, drops, unique sightings and player movement, using the same raster coordinate
+adapter and rendering below interactive live markers.
+
+Historical controls include 1h, 24h, 7d and 30d relative windows plus a validated
+custom range, region scope, historical character scope and observed mob-type facets.
+Relative windows advance on the existing 30-second map clock. In-flight historical
+requests are cancellable and sequence guarded; a same-scope refresh keeps the last
+valid overlay visible while the replacement loads. Server/area/floor/region changes
+clear stale historical results.
+
+True spatial mob density remains visibly unavailable because observation coverage has
+not been verified. The observer-local layer is labelled as limited and explicitly
+states that it is not spatial mob density. Cave/special-area queries fail closed while
+their imagery/transforms remain unvalidated.
+
+Heatmap reset records a server-owned suppression projection with the exact active
+layer/server/area/floor/time and optional region/character/mob filters. It does not
+delete canonical activity events, movement samples or mob observations. A reset
+without both region and character narrowing is treated as broad and requires an
+additional explicit confirmation enforced by the backend as well as the UI.
