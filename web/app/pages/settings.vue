@@ -72,7 +72,10 @@ async function enableNotifications() {
         Agents
       </NuxtLink>
     </nav>
-    <section v-if="settingsSection === 'notifications'" class="panel preferences-panel">
+    <section
+      v-if="settingsSection === 'notifications'"
+      class="panel preferences-panel"
+    >
       <div class="panel-heading">
         <div>
           <h2>Chat notifications</h2>
