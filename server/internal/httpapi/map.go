@@ -233,17 +233,17 @@ func (h *mapHandler) heatmapReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Layer        string  `json:"layer"`
-		Server       string  `json:"server"`
-		AreaID       string  `json:"area_id"`
-		FloorID      string  `json:"floor_id"`
-		Region       *int    `json:"region"`
-		CharacterID  string  `json:"character_id"`
-		MonsterType  string  `json:"monster_type"`
-		ModelID      *int64  `json:"model_id"`
-		From         string  `json:"from"`
-		To           string  `json:"to"`
-		ConfirmBroad bool    `json:"confirm_broad"`
+		Layer        string `json:"layer"`
+		Server       string `json:"server"`
+		AreaID       string `json:"area_id"`
+		FloorID      string `json:"floor_id"`
+		Region       *int   `json:"region"`
+		CharacterID  string `json:"character_id"`
+		MonsterType  string `json:"monster_type"`
+		ModelID      *int64 `json:"model_id"`
+		From         string `json:"from"`
+		To           string `json:"to"`
+		ConfirmBroad bool   `json:"confirm_broad"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 8193))
 	decoder.DisallowUnknownFields()
