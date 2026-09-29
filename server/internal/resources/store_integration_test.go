@@ -228,3 +228,108 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 		t.Fatalf("prior session update error = %v", err)
 	}
 }
+
+
+func TestCurrentPartyObservationsFenceSessionAndAvailability(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run resource integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.NewStore(pool).CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	server := "party-resource-" + credential.AgentID[:8]
+	charactersStore := characters.NewStore(pool)
+	characterID, err := charactersStore.Resolve(ctx, characters.Identity{Server: server, Name: "observer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanup := context.Background()
+		_, _ = pool.Exec(cleanup, `DELETE FROM characters WHERE server_key=$1`, strings.ToLower(server))
+		_, _ = pool.Exec(cleanup, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+	sessionID, err := charactersStore.ClaimSessionID(ctx, credential.AgentID, characterID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	region, z := 25273, 5.0
+	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, characterID, 1, sessionID, characters.State{Region: &region, Z: &z}); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(pool)
+	party := json.RawMessage(`{"availability":"observed","members":[{"party_id":"55","player_id":700,"name":"Ally","guild":"Guild","level":110,"hp_percent":80,"mp_percent":90,"x":123.5,"y":-456.25}]}`)
+	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 1, sessionID, Snapshot{Revision: 1, Full: true, Resources: map[string]json.RawMessage{"party": party}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, truncated, err := store.CurrentPartyObservations(ctx, server)
+	if err != nil || truncated || len(rows) != 1 || len(rows[0].Members) != 1 {
+		t.Fatalf("current party observations rows=%+v truncated=%v err=%v", rows, truncated, err)
+	}
+	member := rows[0].Members[0]
+	if rows[0].SessionID != sessionID || rows[0].ObserverRegion == nil || *rows[0].ObserverRegion != region ||
+		member.PlayerID != 700 || member.X == nil || *member.X != 123.5 || member.HPPercent == nil || *member.HPPercent != 80 {
+		t.Fatalf("current party observation lost bounded fields or scope: row=%+v member=%+v", rows[0], member)
+	}
+
+	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 2, sessionID, Snapshot{Revision: 2, BaseRevision: 1, Resources: map[string]json.RawMessage{
+		"party": json.RawMessage(`{"availability":"observed","members":[]}`),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err = store.CurrentPartyObservations(ctx, server)
+	if err != nil || len(rows) != 1 || rows[0].Availability != "observed" || len(rows[0].Members) != 0 {
+		t.Fatalf("observed empty party did not clear members: rows=%+v err=%v", rows, err)
+	}
+
+	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 3, sessionID, Snapshot{Revision: 3, BaseRevision: 2, Resources: map[string]json.RawMessage{
+		"party": json.RawMessage(`{"availability":"unavailable","members":[]}`),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err = store.CurrentPartyObservations(ctx, server)
+	if err != nil || len(rows) != 1 || rows[0].Availability != "unavailable" || len(rows[0].Members) != 0 {
+		t.Fatalf("unavailable party retained stale payload members: rows=%+v err=%v", rows, err)
+	}
+
+	if err := charactersStore.EndSession(ctx, credential.AgentID, characterID, 1, sessionID, "agent_disconnected"); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err = store.CurrentPartyObservations(ctx, server)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("ended session retained party observation: rows=%+v err=%v", rows, err)
+	}
+
+	newSession, err := charactersStore.ClaimSessionID(ctx, credential.AgentID, characterID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, characterID, 2, newSession, characters.State{Region: &region, Z: &z}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err = store.CurrentPartyObservations(ctx, server)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("replacement session reused prior party row before new baseline: rows=%+v err=%v", rows, err)
+	}
+	if err := store.Apply(ctx, credential.AgentID, characterID, 2, 1, newSession, Snapshot{Revision: 1, Full: true, Resources: map[string]json.RawMessage{"party": party}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _, err = store.CurrentPartyObservations(ctx, server)
+	if err != nil || len(rows) != 1 || rows[0].SessionID != newSession || len(rows[0].Members) != 1 {
+		t.Fatalf("replacement session party baseline unavailable: rows=%+v err=%v", rows, err)
+	}
+}

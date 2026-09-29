@@ -196,6 +196,87 @@ func TestCaveMonsterSnapshotsUseObserverZAndRetainObservedEmpty(t *testing.T) {
 	}
 }
 
+func TestProjectPartyMembersFiltersSpawnStateAndPrefersFreshestDuplicate(t *testing.T) {
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	region := 25273
+	z := 0.0
+	stateAt := time.Now().UTC()
+	old := stateAt.Add(-time.Minute)
+	x1, y1, x2, y2 := 100.0, 200.0, 111.0, 222.0
+	observations := []resources.PartyObservation{
+		{
+			ObserverCharacterID: "00000000-0000-4000-8000-000000000001", ObserverName: "Alpha", SessionID: "00000000-0000-4000-8000-000000000011",
+			Availability: "observed", ObserverRegion: &region, ObserverZ: &z, StateUpdatedAt: &stateAt, CheckedAt: old,
+			Members: []resources.PartyMember{
+				{PartyID: "55", PlayerID: 500, Name: "Ally", X: &x1, Y: &y1},
+				{PartyID: "56", PlayerID: 0, Name: "Unspawned", X: &x1, Y: &y1},
+			},
+		},
+		{
+			ObserverCharacterID: "00000000-0000-4000-8000-000000000002", ObserverName: "Beta", SessionID: "00000000-0000-4000-8000-000000000012",
+			Availability: "observed", ObserverRegion: &region, ObserverZ: &z, StateUpdatedAt: &stateAt, CheckedAt: stateAt,
+			Members: []resources.PartyMember{{PartyID: "55", PlayerID: 500, Name: "Ally", X: &x2, Y: &y2}},
+		},
+	}
+	got := projectPartyMembers(profile, observations, false, "world", "world", region)
+	if got.Status != "observed" || len(got.Members) != 1 {
+		t.Fatalf("party projection did not collapse current observations: %+v", got)
+	}
+	if got.Members[0].X != x2 || got.Members[0].Y != y2 || got.Members[0].ObserverName != "Beta" || got.Members[0].PlayerID != 500 {
+		t.Fatalf("party projection did not prefer freshest duplicate: %+v", got.Members[0])
+	}
+}
+
+func TestProjectPartyMembersFailsClosedForUnprovenCaveFloor(t *testing.T) {
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	region := -32767
+	validZ := -9.0
+	stateAt := time.Now().UTC()
+	x, y := -24294.0, -91.0
+	observations := []resources.PartyObservation{
+		{
+			ObserverCharacterID: "00000000-0000-4000-8000-000000000001", ObserverName: "Valid", SessionID: "00000000-0000-4000-8000-000000000011",
+			Availability: "observed", ObserverRegion: &region, ObserverZ: &validZ, StateUpdatedAt: &stateAt, CheckedAt: stateAt,
+			Members: []resources.PartyMember{{PartyID: "1", PlayerID: 101, Name: "SameFloor", X: &x, Y: &y}},
+		},
+		{
+			ObserverCharacterID: "00000000-0000-4000-8000-000000000002", ObserverName: "UnknownFloor", SessionID: "00000000-0000-4000-8000-000000000012",
+			Availability: "observed", ObserverRegion: &region, StateUpdatedAt: &stateAt, CheckedAt: stateAt.Add(time.Second),
+			Members: []resources.PartyMember{{PartyID: "2", PlayerID: 102, Name: "NoZ", X: &x, Y: &y}},
+		},
+	}
+	got := projectPartyMembers(profile, observations, false, "donwhang-stone-cave", "1F", 0)
+	if len(got.Members) != 1 || got.Members[0].Name != "SameFloor" {
+		t.Fatalf("unproven cave party scope was not rejected: %+v", got)
+	}
+}
+
+func TestProjectPartyMembersClearsUnavailableAndReportsTruncation(t *testing.T) {
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	region := 25273
+	stateAt := time.Now().UTC()
+	got := projectPartyMembers(profile, []resources.PartyObservation{{
+		ObserverCharacterID: "00000000-0000-4000-8000-000000000001", Availability: "unavailable",
+		ObserverRegion: &region, StateUpdatedAt: &stateAt, CheckedAt: stateAt,
+	}}, false, "world", "world", 0)
+	if got.Status != "unavailable" || len(got.Members) != 0 {
+		t.Fatalf("unavailable party retained map members: %+v", got)
+	}
+	got = projectPartyMembers(profile, nil, true, "world", "world", 0)
+	if got.Status != "truncated" || !got.Truncated {
+		t.Fatalf("party source truncation was not explicit: %+v", got)
+	}
+}
+
 type mapEventListerStub struct {
 	events  []events.Event
 	filters []events.Filter
