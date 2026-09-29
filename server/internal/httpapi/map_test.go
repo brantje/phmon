@@ -11,6 +11,7 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/events"
 	"phmon/server/internal/mapprofile"
+	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
 
@@ -42,6 +43,21 @@ func TestMapProfileAPIReturnsTileReferencesAndHonestValidation(t *testing.T) {
 	}
 }
 
+func TestPackagedGreatestDatasetEnablesMapProfile(t *testing.T) {
+	metadata, err := resources.LoadItemMetadata("../../game-data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataset, ok := metadata.DatasetForServer("greatest")
+	if !ok || dataset != mapprofile.GreatestDatasetID {
+		t.Fatalf("packaged Greatest dataset=%q, map profile expects %q", dataset, mapprofile.GreatestDatasetID)
+	}
+	profile, err := mapprofile.ForServer("greatest", dataset)
+	if err != nil || profile.TileCatalog.Status != "available-for-inspection" || len(profile.CaveFloors) != 17 {
+		t.Fatalf("packaged dataset did not enable all cave floors: status=%q floors=%d err=%v", profile.ProfileStatus, len(profile.CaveFloors), err)
+	}
+}
+
 func TestMapLiveSubscriptionRequiresScopedServerAndFloor(t *testing.T) {
 	base := liveClientMessage{ProtocolVersion: liveProtocolVersion, SubscriptionID: "map", Revision: 1, Stream: "map",
 		Filter: liveFilter{Server: "greatest", Area: "world", Floor: "world", Region: 25273}}
@@ -63,8 +79,30 @@ func TestMapLiveSubscriptionRequiresScopedServerAndFloor(t *testing.T) {
 	}
 	base.Filter.Server = "greatest"
 	base.Filter.Area = "job-temple"
-	if _, ok := validateLiveSubscription(base); ok {
-		t.Fatal("cave subscription with outdoor region accepted")
+	base.Filter.Floor = "1F"
+	base.Filter.Region = -32752
+	if _, ok := validateLiveSubscription(base); !ok {
+		t.Fatal("signed cave region subscription rejected")
+	}
+}
+
+func TestCaveMonsterSnapshotsUseObserverZAndRetainObservedEmpty(t *testing.T) {
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := -9.0
+	wrongFloorZ := 100.0
+	snapshots := []mobs.LiveSnapshot{
+		{Region: -32767, ObserverZ: &z, Status: "observed", Monsters: []mobs.Monster{
+			{ID: "same-floor", Region: 32767, X: -24300, Y: 20},
+			{ID: "other-floor", Region: 32767, X: -24300, Y: 20, Z: &wrongFloorZ},
+		}},
+		{Region: -32767, ObserverZ: &z, Status: "observed", Monsters: []mobs.Monster{}},
+	}
+	got := filterCaveMonsterSnapshots(profile, snapshots, "donwhang-stone-cave", "1F")
+	if len(got) != 2 || len(got[0].Monsters) != 1 || got[0].Monsters[0].ID != "same-floor" || len(got[1].Monsters) != 0 {
+		t.Fatalf("cave floor feed lost observer-scoped sightings or empty status: %+v", got)
 	}
 }
 

@@ -26,6 +26,36 @@ export interface MapTileGrid {
   max_y: number
 }
 
+export function tileCatalogForFloor(
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+) {
+  return (
+    profile.areas
+      .find((area) => area.id === areaID)
+      ?.floors.find((floor) => floor.id === floorID)?.tiles || profile.tiles
+  )
+}
+
+export function caveFloorForPosition(
+  profile: MapProfile,
+  region: number | undefined,
+  z: number | undefined,
+) {
+  if (region == null) return null
+  for (const area of profile.areas) {
+    if (area.kind !== 'cave') continue
+    for (const floor of area.floors) {
+      if (!floor.auto_detect || !floor.region_ids?.includes(region)) continue
+      if (floor.min_z != null && (z == null || z < floor.min_z)) continue
+      if (floor.max_z != null && (z == null || z > floor.max_z)) continue
+      return { areaID: area.id, floorID: floor.id }
+    }
+  }
+  return null
+}
+
 export interface LeafletPoint {
   lat: number
   lng: number
@@ -132,16 +162,23 @@ function usableTransform(
       command_z: observed?.command_z,
     }
   }
-  if (
-    profile.coordinate_transform_status !== 'validated' ||
-    profile.region_mappings_status !== 'validated'
-  )
-    return undefined
   const area = profile.areas.find((item) => item.id === areaID)
   const floor = area?.floors.find((item) => item.id === floorID)
+  const profiledCave =
+    area?.kind === 'cave' && Boolean(floor?.region_ids?.length)
   if (
-    area?.region_mapping_status !== 'validated' ||
-    floor?.transform_status !== 'validated'
+    !profiledCave &&
+    (profile.coordinate_transform_status !== 'validated' ||
+      profile.region_mappings_status !== 'validated')
+  )
+    return undefined
+  if (
+    !(
+      profiledCave ? ['validated', 'reference-observed'] : ['validated']
+    ).includes(area?.region_mapping_status || '') ||
+    !(
+      profiledCave ? ['validated', 'reference-observed'] : ['validated']
+    ).includes(floor?.transform_status || '')
   )
     return undefined
   return profile.coordinate_transforms.find(
@@ -163,12 +200,20 @@ function usableTransform(
   )
 }
 
-function inCatalog(profile: MapProfile, tileX: number, tileY: number) {
+function inCatalog(
+  profile: MapProfile,
+  tileX: number,
+  tileY: number,
+  areaID = 'world',
+  floorID = 'world',
+) {
+  const grid = tileCatalogForFloor(profile, areaID, floorID)
+  if (!grid) return false
   return (
-    tileX >= profile.tiles.min_x &&
-    tileX <= profile.tiles.max_x &&
-    tileY >= profile.tiles.min_y &&
-    tileY <= profile.tiles.max_y
+    tileX >= grid.min_x &&
+    tileX <= grid.max_x &&
+    tileY >= grid.min_y &&
+    tileY <= grid.max_y
   )
 }
 
@@ -218,6 +263,7 @@ export function worldPositionToRaster(
   region: number | undefined,
   x: number | undefined,
   y: number | undefined,
+  z?: number,
 ): RasterPosition | null {
   if (
     region == null ||
@@ -227,6 +273,19 @@ export function worldPositionToRaster(
     !Number.isFinite(y)
   )
     return null
+  const area = profile.areas.find((item) => item.id === areaID)
+  if (
+    area?.kind === 'cave' &&
+    area.floors.some((floor) => floor.region_ids?.length)
+  ) {
+    const classified = caveFloorForPosition(profile, region, z)
+    if (
+      !classified ||
+      classified.areaID !== areaID ||
+      classified.floorID !== floorID
+    )
+      return null
+  }
   const transform = usableTransform(profile, areaID, floorID, region)
   if (!transform) return null
   const rasterX =
@@ -248,7 +307,7 @@ export function worldPositionToRaster(
     tileY -= 1
     fractionY = 1
   }
-  if (!inCatalog(profile, tileX, tileY)) return null
+  if (!inCatalog(profile, tileX, tileY, areaID, floorID)) return null
   if (outdoorGridEnabled(profile, areaID, floorID)) {
     const encoded = outdoorRegionTile(profile, areaID, floorID, region)
     // A region update and X/Y may arrive in separate phBot samples. Wait for a
@@ -270,10 +329,24 @@ export function rasterPositionToGame(
   floorID: string,
   region: number | undefined,
   position: RasterPosition,
+  currentZ?: number,
 ): GamePosition | null {
+  const floor = profile.areas
+    .find((area) => area.id === areaID)
+    ?.floors.find((item) => item.id === floorID)
+  const regionIDs = floor?.region_ids || []
+  const resolvedRegion = outdoorGridEnabled(profile, areaID, floorID)
+    ? position.tileY * 256 + position.tileX
+    : areaID === 'world'
+      ? region
+      : regionIDs.length === 1
+        ? regionIDs[0]
+        : regionIDs.includes(region ?? 0)
+          ? region
+          : undefined
   if (
-    region == null ||
-    !inCatalog(profile, position.tileX, position.tileY) ||
+    resolvedRegion == null ||
+    !inCatalog(profile, position.tileX, position.tileY, areaID, floorID) ||
     !Number.isFinite(position.pixelX) ||
     !Number.isFinite(position.pixelY) ||
     position.pixelX < 0 ||
@@ -282,18 +355,20 @@ export function rasterPositionToGame(
     position.pixelY >= TILE_SIZE
   )
     return null
-  const transform = usableTransform(profile, areaID, floorID, region)
+  const transform = usableTransform(profile, areaID, floorID, resolvedRegion)
+  const cave = profile.areas.find((area) => area.id === areaID)?.kind === 'cave'
   if (
     !transform ||
-    profile.command_z_evidence_status !== 'verified' ||
-    transform.command_z == null ||
-    !Number.isFinite(transform.command_z)
+    (currentZ == null &&
+      !cave &&
+      (profile.command_z_evidence_status !== 'verified' ||
+        transform.command_z == null))
   )
     return null
   const rasterX = position.tileX + position.pixelX / TILE_SIZE
   const rasterY = position.tileY + 1 - position.pixelY / TILE_SIZE
   return {
-    region,
+    region: resolvedRegion,
     x:
       transform.world_origin_x +
       (rasterX - transform.tile_origin_x) *
@@ -304,6 +379,11 @@ export function rasterPositionToGame(
       (rasterY - transform.tile_origin_y) *
         transform.units_per_tile_y *
         transform.axis_y,
-    z: transform.command_z,
+    z:
+      currentZ != null && Number.isFinite(currentZ)
+        ? currentZ
+        : cave
+          ? 0
+          : (transform.command_z ?? 0),
   }
 }

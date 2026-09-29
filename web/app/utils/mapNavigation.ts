@@ -1,4 +1,5 @@
 import {
+  caveFloorForPosition,
   outdoorRegionTile,
   worldPositionToRaster,
   type RasterPosition,
@@ -14,6 +15,7 @@ export interface MapEventCoordinates {
   region?: number
   x?: number
   y?: number
+  z?: number
 }
 
 export interface MappedEventLocation {
@@ -49,6 +51,23 @@ export function mapEventLocation(
   profile: MapProfile,
   event: MapEventCoordinates,
 ): MappedEventLocation {
+  const cave = caveFloorForPosition(profile, event.region, event.z)
+  if (cave) {
+    const position = worldPositionToRaster(
+      profile,
+      cave.areaID,
+      cave.floorID,
+      event.region,
+      event.x,
+      event.y,
+      event.z,
+    )
+    return {
+      status: position ? 'mapped' : 'coordinates-unmappable',
+      ...cave,
+      position,
+    }
+  }
   if (outdoorRegionTile(profile, 'world', 'world', event.region)) {
     const position = worldPositionToRaster(
       profile,

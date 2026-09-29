@@ -207,7 +207,7 @@ func validWireState(s characters.State) bool {
 	if s.Zone != nil && (len(*s.Zone) > 100 || strings.TrimSpace(*s.Zone) == "") {
 		return false
 	}
-	if s.Region != nil && (*s.Region < 0 || *s.Region > 65535) {
+	if s.Region != nil && (*s.Region < -32768 || *s.Region > 65535 || *s.Region == 0) {
 		return false
 	}
 	return true

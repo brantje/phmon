@@ -1171,3 +1171,118 @@ After deployment, a 2026-09-29 browser comparison showed nuker1 at Hotan
 PhMon rendered four character markers, including nuker1, with region 23687 and
 tile `(135,92)` in its readout. This verifies the current Hotan placement at the
 observed browser state; a subsequent teleport and plugin reload remain unobserved.
+
+### Cave floors and 2D point Z handling — 2026-09-29
+
+The operator-authorized phMonitor v0.5.0 executable inspection found these
+floor definitions and 192-unit map anchors: Tomb B1–B6 use distinct regions
+-32761..-32766; Donwhang 1F–4F use region -32767 or 32767 and Z bands -50..70,
+71..210, 211..350, 351..490; Job Temple's single region -32752 identifies 1F,
+while its 2F and Annex 1–5 share that region and cannot be inferred from it.
+GreatestSRO `Media.pk2` has tiles for all 17 floors. The offline exporter now
+publishes local PNGs in `game-assets/minimap_d/`; Leaflet switches each floor's
+own grid and markers.
+
+The reference map point is two dimensional. phMonitor converts it to X/Y and a
+region, then reuses the selected character's current Z even when the chosen map
+floor differs; it falls back to Z=0 when unavailable. PhMon follows this rule,
+without terrain-height lookup or per-pixel Z calibration. Donwhang actions need
+one of the observed region IDs; if the current character does not provide that
+choice, actions stay disabled. Job Temple higher-floor actions use the explicit
+shared region after a manual floor choice.
+
+Live reference sample: after the operator teleported nuker1 to Donwhang Stone
+Cave, phBot v20.1.2 showed X=-24272.5, Y=-93.5. phMonitor v0.5.0 put the
+character near (-24273.0,-93.5), Z=0, on its 1F map; selecting 2F changed the
+raster and hid the 1F marker. In the separate PhMon view, nuker1 still showed
+its prior Hotan position observed at 2026-09-29 15:45:25Z. That entry was stale
+and is not presented as Donwhang validation. No live bot command was used.
+
+Implementation evidence: cave tile inventory/export, 17-floor profile tests,
+coordinate and Z fallback tests, authenticated signed-region command flow, and
+deterministic phBot adapter coverage. Local browser inspection showed distinct
+Donwhang 1F/2F imagery, floor switching, nine loaded tiles, and the 3F layout at
+the 1280 desktop setting. Desktop layout had no horizontal overflow. At the mobile
+setting, controls stack and the floor bar remains reachable by vertical scrolling;
+the browser tool constrained the requested 390px width to a 500px page viewport,
+so exact 390px visual parity still needs a browser that honors that width. The
+fixture had no live characters and did not send commands. Real-runtime command
+execution remains open.
+
+### Cave map test deployment — 2026-09-29
+
+Deployed `codex/cave-maps-reference-z` to the authorized test host
+`node@192.168.10.25:/var/www/phmon`. The source transfer contained the cave PNGs
+and asset index; it excluded `.env`. A rollback archive of the pre-deploy source
+files is at `/var/www/.deploy-cave-maps-reference-z-20260929/source-before.tar.gz`.
+The Go server and Nuxt web images built successfully, and only those two services
+were recreated. PostgreSQL kept container ID
+`96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d`; the separate
+Silkroad containers were not changed.
+
+Post-deploy checks: all Compose services report healthy; server `/readyz` and web
+`/api/health` return `status=ok,database=ok`; `/map` returns HTTP 200; the public
+asset index reports dataset `gamedata-17f8847c77edd7c7fadd`; all 1,891 cave PNGs
+are present in the built web image. Donwhang 1F/2F, Job Temple 1F and Tomb B1
+representative tile URLs return HTTP 200 `image/png`. The map-profile API requires
+operator authentication, so its unauthenticated probe returned 401 as expected.
+No database migration, simulator data or phBot command was applied. The plugin
+source is on the test host but was not installed into a running phBot client.
+Real-runtime navigation and authenticated browser verification remain open.
+
+Follow-up after the first deployment: the server's packaged
+`server/game-data/servers.json` still pointed Greatest at the previous dataset ID,
+so the profile correctly marked the new tile set unavailable. Generated the new
+compact server metadata from the matching exporter bundle and public asset index,
+updated the Greatest dataset mapping, and added a regression that loads the
+packaged metadata and checks it enables all 17 cave floors. `go test ./...` passed.
+Rebuilt and recreated only the Go server. The running container now reports the
+new dataset mapping; `/readyz`, web `/api/health`, `/map`, and the representative
+Donwhang cave tile all pass. PostgreSQL retained the same container ID.
+
+### Signed region and character jump diagnosis — 2026-09-29
+
+The operator's `plugin/phMonitorAdapter.py` `normalize_position()` reads
+`get_position()`, preserves `int(pos.get('region', 0) or 0)`, and returns it
+alongside X/Y/Z. It does not reject negative cave region IDs. The live read-only
+nuker1 snapshot on the deployed map instead had fresh X/Y/Z (`-24294, -91, 0`)
+and no region; selecting nuker1 left **Jump to character** disabled. The PhMon
+collector had filtered negative regions in both `get_character_data()` and
+`get_position()` paths, and the Go wire-state validator also rejected negative
+values. This dropped the region needed by the existing cave classifier and jump
+handler.
+
+Updated plugin collection and event location validation to preserve nonzero signed
+regions in `-32768..65535`. Updated Go state/event validation and cave map region
+filters for the same signed range; bumped the plugin to 1.5.3. No coordinate
+inference fallback was added.
+Plugin tests (91), Go tests (`go test ./...`), Nuxt unit tests (43), typecheck and
+production build pass. Rebuilt/recreated only the Go server; database and web
+service were left running, health/readiness pass, and agents reconnected. The
+updated plugin source is on the test host but was **not** installed in phBot; the
+live nuker1 snapshot still lacks the region, so the deployed Jump action remains
+disabled until the updated plugin is installed/reloaded and reports a fresh
+signed region. No bot command was sent.
+
+### Cave monster snapshot visibility — 2026-09-29
+
+After nuker1 loaded plugin 1.5.3, its live Donwhang position retained region
+`-32767`, but the map reported no current monster snapshot. The collector still
+required a positive observer region, and the server's live-snapshot validator
+rejected signed regions. The cave live filter also discarded empty snapshots and
+could not assign a monster without Z to the observer's floor. The current live
+sample after the fix reports the monsters in region `-32767`; the cave profile also
+retains the separately observed `32767` Donwhang region ID as a supported alias.
+
+Plugin 1.5.4 now accepts the signed cave region, preserves the observed Donwhang
+region alias, and sends the observer's current Z with live snapshots. Go validates
+the signed region and alias, classifies cave monsters using monster Z or the
+snapshot observer Z, and preserves a current empty snapshot scoped to the observer's
+floor. Cave marker projection uses that same observer-Z fallback. A migration
+widens signed mob-region storage constraints for future durable samples. Plugin
+tests (93), `go test ./...`, Nuxt unit tests (43) and Nuxt typecheck pass. Live
+verification after deployment shows nine current nuker1 monsters in Donwhang 1F,
+with visible map markers and nine entries in the nearby-monsters panel. Their
+reported region is `-32767`; the current observer position carries Z `-9`. The
+active client plugin version was not surfaced in the map view. No character
+command was sent during this check.

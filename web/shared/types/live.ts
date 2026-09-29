@@ -142,6 +142,7 @@ export interface MapMonsterObservation {
   character: string
   status: 'observed' | 'unavailable' | 'truncated'
   region?: number
+  observer_z?: number
   observed_at: string
   truncated?: boolean
   monsters: MapMonster[]

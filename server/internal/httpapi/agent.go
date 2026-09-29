@@ -63,6 +63,7 @@ type agentMonsterSnapshot struct {
 	SessionID   string         `json:"session_id"`
 	ObservedAt  time.Time      `json:"observed_at"`
 	Region      int            `json:"region"`
+	ObserverZ   *float64       `json:"observer_z,omitempty"`
 	Truncated   bool           `json:"truncated,omitempty"`
 	Monsters    []mobs.Monster `json:"monsters"`
 }
@@ -297,6 +298,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			frame := message.MapSnapshot
 			if hello.ProtocolVersion < 7 || frame == nil || h.characters == nil || h.mobLive == nil ||
 				!agentdomain.ValidAgentID(frame.CharacterID) || !agentdomain.ValidAgentID(frame.SessionID) ||
+				frame.ObserverZ != nil && !mobs.ValidCoordinate(*frame.ObserverZ) ||
 				mobs.ValidateLiveSnapshot(frame.Status, frame.Region, frame.Monsters, time.Now().UTC(), frame.ObservedAt) != nil ||
 				(frame.Status == "truncated") != frame.Truncated {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid map monster snapshot", hello.AgentID, hello.ProtocolVersion)
@@ -318,7 +320,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			h.mobLive.Apply(mobs.LiveSnapshot{Server: character.Server, AgentID: hello.AgentID, CharacterID: frame.CharacterID, SessionID: frame.SessionID,
 				Character: character.Name, Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
-				Truncated: frame.Truncated, Monsters: frame.Monsters})
+				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Monsters: frame.Monsters})
 			h.live.Invalidate()
 		case "mob.sample":
 			if hello.ProtocolVersion < 7 || h.mobs == nil || h.characters == nil || h.resources == nil || message.MobSample == nil {
@@ -764,7 +766,7 @@ func writeCharacterRejected(ctx context.Context, writer *agentWriter, protocol i
 func validReportedCommandName(name string) bool {
 	switch name {
 	case "bot.start", "bot.stop", "trace.start", "trace.stop",
-		"training.area.set", "training.radius.set", "character.walk",
+		"training.area.set", "training.radius.set", "character.walk", "character.navigate",
 		"character.return", "character.disconnect", "client.clientless", "chat.send":
 		return true
 	default:

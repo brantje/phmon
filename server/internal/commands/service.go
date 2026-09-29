@@ -87,7 +87,7 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 		return nil, err
 	}
 	capabilities := make(map[string]Capability)
-	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
+	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
 		ok, reason := false, "plugin_upgrade_required"
 		if s.capabilities != nil {
 			ok, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, name)
@@ -179,15 +179,8 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 			return Command{}, false, "", ErrInvalid
 		}
 	}
-	if validated.Name == "training.area.set" {
-		var args trainingAreaArgs
-		if err := json.Unmarshal(validated.Args, &args); err != nil {
-			return Command{}, false, "", ErrInvalid
-		}
-		if args.Mode == "position" && (target.Region == nil || args.Region == nil || *args.Region != *target.Region) {
-			return Command{}, false, "", ErrInvalid
-		}
-	}
+	// Position mode carries an explicit region, including signed cave IDs;
+	// phBot validates whether the destination was accepted.
 
 	supported, reason := false, "plugin_upgrade_required"
 	if s.capabilities != nil {

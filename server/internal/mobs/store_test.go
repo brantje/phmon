@@ -33,6 +33,29 @@ func TestEmptySampleIsEligibleAndCoordinatesAreBounded(t *testing.T) {
 	}
 }
 
+func TestSignedDonwhangRegionAcceptsMonsterRegionAlias(t *testing.T) {
+	now := time.Now().UTC()
+	sample := Sample{ID: testSampleID, CharacterID: testCharacterID, SessionID: testSessionID,
+		AreaID: "region:-32767", FloorID: "unmapped", Region: -32767, SampledAt: now,
+		Observer: Position{X: -24300, Y: 20, Z: floatPointer(-9)},
+		Monsters: []Monster{{ID: "7", Region: 32767, X: -24300, Y: 20, Z: floatPointer(-9)}}}
+	if err := ValidateSample(sample, now); err != nil {
+		t.Fatalf("valid signed cave sample rejected: %v", err)
+	}
+	if err := ValidateLiveSnapshot("observed", -32767, sample.Monsters, now, now); err != nil {
+		t.Fatalf("valid signed cave live snapshot rejected: %v", err)
+	}
+	if err := ValidateDensityFilter(DensityFilter{Server: "greatest", AreaID: "region:-32767", FloorID: "unmapped",
+		From: now.Add(-time.Minute), To: now, Limit: 10}); err != nil {
+		t.Fatalf("valid signed cave density scope rejected: %v", err)
+	}
+	if RegionsMatch(-32767, 32766) {
+		t.Fatal("unobserved cave region alias accepted")
+	}
+}
+
+func floatPointer(value float64) *float64 { return &value }
+
 func TestDensityFilterHasRequiredScopeAndBoundedWindow(t *testing.T) {
 	now := time.Now().UTC()
 	filter := DensityFilter{Server: "greatest", AreaID: "region:25273", FloorID: "unmapped", From: now.Add(-24 * time.Hour), To: now, Limit: 200}

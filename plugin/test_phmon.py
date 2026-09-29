@@ -34,7 +34,7 @@ class MobObservationTests(unittest.TestCase):
             def _identity_key(self, identity):
                 return identity.get('name')
 
-            def update_map_monsters(self, identity, status, region, monsters, sample=None):
+            def update_map_monsters(self, identity, status, region, monsters, sample=None, observer_z=None):
                 self.snapshots.append((status, region, monsters))
                 return True
 
@@ -75,6 +75,13 @@ class MobObservationTests(unittest.TestCase):
         self.assertEqual(len(monsters), plugin.MAX_MONSTERS_PER_SNAPSHOT)
         self.assertEqual(monsters[0]['model_id'], 300)
         self.assertEqual(monsters[0]['type'], 'Tiger')
+
+    def test_monster_collector_accepts_signed_cave_regions(self):
+        raw = {'7': {'model': 1933, 'region': -32767, 'x': -24300, 'y': 20, 'z': -9}}
+        status, monsters, truncated = plugin.collect_monster_observation(
+            {'get_monsters': lambda: raw})
+        self.assertEqual((status, truncated), ('observed', False))
+        self.assertEqual(monsters[0]['region'], -32767)
 
     def test_monster_collector_preserves_bounded_popup_and_hp_ring_fields(self):
         raw = {46296: {'model': 1933, 'type': 20, 'name': 'Eldimmu',
@@ -145,7 +152,7 @@ class MobObservationTests(unittest.TestCase):
             def _identity_key(self, identity):
                 return identity.get('name')
 
-            def update_map_monsters(self, identity, status, region, monsters, sample=None):
+            def update_map_monsters(self, identity, status, region, monsters, sample=None, observer_z=None):
                 if sample is not None:
                     self.samples.append(sample)
                 return True
@@ -170,6 +177,47 @@ class MobObservationTests(unittest.TestCase):
             plugin._last_monster_poll_at = previous_poll
             plugin._last_mob_cell_samples = previous_cells
 
+    def test_cave_monsters_match_donwhang_unsigned_alias_and_carry_observer_z(self):
+        previous_worker = plugin._worker
+        previous_poll = plugin._last_monster_poll_at
+        previous_cells = plugin._last_mob_cell_samples
+
+        class WorkerStub:
+            character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            session_id = 'ffffffff-1111-4222-8333-444444444444'
+            _current_identity = {'name': 'Alpha'}
+
+            def __init__(self):
+                self.snapshots = []
+
+            def _identity_key(self, identity):
+                return identity.get('name')
+
+            def update_map_monsters(self, identity, status, region, monsters, sample=None, observer_z=None):
+                self.snapshots.append((status, region, monsters, sample, observer_z))
+                return True
+
+        worker = WorkerStub()
+        try:
+            plugin._worker = worker
+            plugin._last_monster_poll_at = float('-inf')
+            plugin._last_mob_cell_samples = {}
+            monster = {'id': '7', 'region': 32767, 'x': -24300.0, 'y': 20.0}
+            with patch.object(plugin, 'collect_monster_observation', return_value=('observed', [monster], False)):
+                plugin._sample_monsters({'name': 'Alpha'}, {'region': -32767},
+                                        {'x': -24300, 'y': 20, 'z': -9}, now=20)
+            self.assertEqual(len(worker.snapshots), 1)
+            status, region, monsters, sample, observer_z = worker.snapshots[0]
+            self.assertEqual((status, region, monsters, observer_z), ('observed', -32767, [monster], -9))
+            self.assertEqual(sample['region'], -32767)
+            self.assertEqual(sample['monsters'], [monster])
+            self.assertEqual(sample['observer']['z'], -9.0)
+            self.assertTrue(plugin._valid_mob_sample(sample))
+        finally:
+            plugin._worker = previous_worker
+            plugin._last_monster_poll_at = previous_poll
+            plugin._last_mob_cell_samples = previous_cells
+
     def test_worker_sends_scoped_current_snapshot_and_durable_sample_then_acks(self):
         with tempfile.TemporaryDirectory() as directory:
             worker = plugin.AgentWorker(
@@ -189,7 +237,7 @@ class MobObservationTests(unittest.TestCase):
                 'sampled_at': plugin._utc_now(), 'observer': {'x': 10, 'y': 20},
                 'monsters': [],
             }
-            self.assertTrue(worker.update_map_monsters(identity, 'observed', 25273, [], sample))
+            self.assertTrue(worker.update_map_monsters(identity, 'observed', 25273, [], sample, observer_z=-9))
 
             class Client:
                 def __init__(self):
@@ -204,6 +252,7 @@ class MobObservationTests(unittest.TestCase):
                              ['map.monsters', 'mob.sample'])
             self.assertEqual(client.sent[0]['map_snapshot']['status'], 'observed')
             self.assertEqual(client.sent[0]['map_snapshot']['monsters'], [])
+            self.assertEqual(client.sent[0]['map_snapshot']['observer_z'], -9.0)
             self.assertEqual(client.sent[1]['sample']['floor_id'], 'unmapped')
             self.assertEqual(len(worker._mob_spool.pending()), 1)
             worker._handle_server_message({
@@ -1422,6 +1471,74 @@ class CanonicalCallbackTests(unittest.TestCase):
 
 
 class CharacterCollectorTests(unittest.TestCase):
+    def test_signed_cave_region_from_get_position_is_preserved(self):
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        )
+        worker = Mock()
+        try:
+            plugin._worker = worker
+            plugin._character_joined = True
+            plugin._last_character_signature = None
+            plugin._last_character_sample_at = 0
+            plugin._last_resources_sample_at = time.monotonic()
+            position = {'region': -32767, 'x': -24294.0, 'y': -91.0, 'z': 0.0}
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_character_data', return_value={
+                        'server': 'Greatest', 'name': 'nuker1', 'region': -32767,
+                    }), \
+                    patch.object(plugin, '_get_position', return_value=position), \
+                    patch.object(plugin, '_get_zone_name', return_value='Donwhang Stone Cave'):
+                plugin._sample_character()
+
+            state = worker.update_character.call_args.args[1]
+            self.assertEqual(state['region'], -32767)
+            self.assertEqual(state['x'], -24294.0)
+            self.assertEqual(state['y'], -91.0)
+            self.assertEqual(state['z'], 0.0)
+            self.assertEqual(state['zone'], 'Donwhang Stone Cave')
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at,
+             plugin._last_resources_sample_at) = previous
+
+    def test_invalid_signed_position_regions_are_omitted(self):
+        for region in (0, -32769, 65536, True):
+            with self.subTest(region=region):
+                previous = (
+                    plugin._worker,
+                    plugin._character_joined,
+                    plugin._last_character_signature,
+                    plugin._last_character_sample_at,
+                    plugin._last_resources_sample_at,
+                )
+                worker = Mock()
+                try:
+                    plugin._worker = worker
+                    plugin._character_joined = True
+                    plugin._last_character_signature = None
+                    plugin._last_character_sample_at = 0
+                    plugin._last_resources_sample_at = time.monotonic()
+                    with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                            patch.object(plugin, '_get_character_data', return_value={
+                                'server': 'Greatest', 'name': 'nuker1',
+                            }), \
+                            patch.object(plugin, '_get_position', return_value={
+                                'region': region, 'x': -24294.0, 'y': -91.0, 'z': 0.0,
+                            }), \
+                            patch.object(plugin, '_get_zone_name', return_value=None):
+                        plugin._sample_character()
+                    state = worker.update_character.call_args.args[1]
+                    self.assertNotIn('region', state)
+                finally:
+                    (plugin._worker, plugin._character_joined,
+                     plugin._last_character_signature, plugin._last_character_sample_at,
+                     plugin._last_resources_sample_at) = previous
+
     def test_dead_state_is_sent_only_when_phbot_returns_a_boolean(self):
         previous = (
             plugin._worker,
@@ -1909,7 +2026,68 @@ class BackoffTests(unittest.TestCase):
         self.assertTrue(caps['training.radius.set']['supported'])
         self.assertFalse(caps['character.walk']['supported'])
         self.assertFalse(caps['client.clientless']['supported'])
+        self.assertFalse(caps['character.navigate']['supported'])
         self.assertEqual(worker._safe_area({'region': 25000, 'x': 1, 'path': 'secret'}), {'training_region': 25000, 'training_x': 1.0})
+
+    def test_cave_navigation_uses_explicit_signed_region_and_reports_phbot_result(self):
+        calls = []
+        reject_script = []
+        adapter = plugin.PhBotAdapter({
+            'generate_script': lambda *args: calls.append(('generate', args)) or ['walk,-24272.5,-93.5,0', 'wait,500'],
+            'start_script': lambda script: calls.append(('start', script)) or (False if reject_script else True),
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {'type':'command.execute','protocol_version':plugin.PROTOCOL_VERSION,
+                 'command_id':'cmd_00000000-0000-4000-8000-000000000006',
+                 'character_id':AGENT_ID,'session_id':worker.session_id,
+                 'name':'character.navigate',
+                 'args':{'region':-32767,'x':-24272.5,'y':-93.5,'z':0},
+                 'ttl_ms':10000,'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
+        worker._accept_command(frame)
+        self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767))
+        self.assertEqual(worker._outgoing.get_nowait()['type'], 'command.ack')
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['verification'], 'api_confirmed')
+        self.assertEqual(calls[0], ('generate', (-32767, -24272.5, -93.5, 0.0)))
+        self.assertEqual(calls[1], ('start', 'walk,-24272.5,-93.5,0\nwait,500'))
+        self.assertEqual(worker._outgoing.get_nowait()['type'], 'character.control_state')
+
+        frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000008'
+        reject_script.append(True)
+        worker._accept_command(frame)
+        worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767)
+        worker._outgoing.get_nowait()
+        rejected = worker._outgoing.get_nowait()
+        self.assertEqual(rejected['status'], 'failed')
+        self.assertEqual(rejected['reason'], 'api_return_false')
+        self.assertIs(rejected['api_return'], False)
+        self.assertEqual(worker._outgoing.get_nowait()['type'], 'character.control_state')
+
+        frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000007'
+        frame['args']['region'] = 0
+        worker._accept_command(frame)
+        worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767)
+        worker._outgoing.get_nowait()
+        self.assertEqual(worker._outgoing.get_nowait()['reason'], 'invalid_arguments')
+        self.assertEqual(len(calls), 4)
+
+        frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000009'
+        frame['args'] = {'region':-32767,'x':-24272.5,'y':-93.5,'z':0}
+        worker._accept_command(frame)
+        worker._outgoing.get_nowait()
+        worker.session_id = '33333333-4444-4555-8666-777777777777'
+        self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767))
+        stale = worker._outgoing.get_nowait()
+        self.assertEqual(stale['status'], 'failed')
+        self.assertEqual(stale['reason'], 'stale_session')
+        self.assertEqual(len(calls), 4)
 
     def test_control_state_is_initial_session_scoped_and_rate_limited(self):
         adapter = plugin.PhBotAdapter({

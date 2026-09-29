@@ -7,6 +7,8 @@ import type {
 } from '~~/shared/types/live'
 import type { MapAreaProfile, MapProfile } from '~~/shared/types/map'
 import {
+  caveFloorForPosition,
+  tileCatalogForFloor,
   rasterPositionToGame,
   regionTileCenter,
   worldPositionToRaster,
@@ -38,6 +40,12 @@ const {
   freshnessNow,
   setMapFeed,
   clearMapFeed,
+  characterControls,
+  commandHistory,
+  liveStale,
+  setCharacterControls,
+  setCharacterCommands,
+  clearCharacterCommandSubscriptions,
 } = useLiveData()
 const { serverScope } = useServerScope()
 const route = useRoute()
@@ -45,6 +53,10 @@ const router = useRouter()
 const subscriptionID = 'map-page'
 const regionOptions = computed(() => {
   const set = new Set<number>()
+  const floor = mapProfile.value?.areas
+    .find((area) => area.id === areaID.value)
+    ?.floors.find((item) => item.id === floorID.value)
+  for (const region of floor?.region_ids || []) set.add(region)
   for (const character of mapSnapshot.value?.characters || []) {
     if (character.region != null) set.add(character.region)
   }
@@ -92,6 +104,9 @@ const profileError = ref('')
 const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
 const selectedTile = ref<RasterPosition | null>(null)
 const jumpSequence = ref(0)
+const actionBusy = ref(false)
+const actionMessage = ref('')
+const acceptedCommandID = ref('')
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
 const appliedLinkedEventKey = ref('')
@@ -108,6 +123,12 @@ const streamCurrent = computed(
 const profileArea = computed<MapAreaProfile | undefined>(() =>
   mapProfile.value?.areas.find((area) => area.id === areaID.value),
 )
+const canvasProfile = computed(() => {
+  const profile = mapProfile.value
+  if (!profile) return null
+  const tiles = tileCatalogForFloor(profile, areaID.value, floorID.value)
+  return tiles ? { ...profile, tiles } : null
+})
 const linkedEventLocation = computed(() =>
   mapProfile.value && linkedEvent.value
     ? mapEventLocation(mapProfile.value, linkedEvent.value)
@@ -133,14 +154,16 @@ const linkedEventMessage = computed(() => {
       (item) => item.id === linkedEventLocation.value?.floorID,
     )
     return floor?.image_status === 'available'
-      ? 'The linked event coordinates resolve, but cave-floor markers are not available in this map view.'
+      ? `Linked event location resolved on ${floor.label}.`
       : `The linked event coordinates resolve to ${linkedEventLocation.value?.areaID} / ${linkedEventLocation.value?.floorID}, but that floor image is unavailable, so the location cannot be displayed.`
   }
   return `Linked event location resolved in ${linkedEventLocation.value?.areaID} / ${linkedEventLocation.value?.floorID}.`
 })
 const currentCharacter = computed(() =>
-  (mapSnapshot.value?.characters || []).find(
-    (character) => character.character_id === selectedCharacterID.value,
+  fleetCharacters.value.find(
+    (character) =>
+      character.character_id === selectedCharacterID.value &&
+      character.server.toLowerCase() === server.value.toLowerCase(),
   ),
 )
 const currentRegion = computed(
@@ -178,6 +201,7 @@ const exactCharacterRasterPosition = computed(() => {
     character.region,
     character.x,
     character.y,
+    character.z,
   )
 })
 const characterRasterPosition = computed(() => {
@@ -222,6 +246,7 @@ const destinationRasterPosition = computed(() => {
     destination.region,
     destination.x,
     destination.y,
+    destination.z,
   )
 })
 const mapInitialPosition = computed(() => {
@@ -241,7 +266,7 @@ const mapInitialPosition = computed(() => {
   for (const character of characters) {
     if (
       !positionCanBeDisplayed(character) ||
-      (regionID.value > 0 && character.region !== regionID.value)
+      (regionID.value !== 0 && character.region !== regionID.value)
     )
       continue
     const position =
@@ -252,6 +277,7 @@ const mapInitialPosition = computed(() => {
         character.region,
         character.x,
         character.y,
+        character.z,
       ) ||
       regionTileCenter(
         mapProfile.value,
@@ -277,11 +303,113 @@ const selectedGamePosition = computed(() => {
     floorID.value,
     currentRegion.value,
     selectedTile.value,
+    currentCharacter.value?.z ?? 0,
   )
 })
+const jumpAvailable = computed(() =>
+  Boolean(
+    currentCharacter.value &&
+    positionCanBeDisplayed(currentCharacter.value) &&
+    mapProfile.value,
+  ),
+)
+const commandTargetReady = computed(() =>
+  Boolean(
+    currentCharacter.value?.online &&
+    currentCharacter.value.session_id &&
+    !liveStale.value &&
+    streamCurrent.value &&
+    characterControls.value?.character_id ===
+      currentCharacter.value.character_id &&
+    characterControls.value.session_id === currentCharacter.value.session_id,
+  ),
+)
+const acceptedCommand = computed(() =>
+  commandHistory.value.find(
+    (command) => command.command_id === acceptedCommandID.value,
+  ),
+)
+const selectedRegionAmbiguous = computed(() => {
+  const floor = profileArea.value?.floors.find(
+    (item) => item.id === floorID.value,
+  )
+  return Boolean(
+    selectedTile.value &&
+    floor?.region_ids &&
+    floor.region_ids.length > 1 &&
+    !floor.region_ids.includes(currentRegion.value ?? 0),
+  )
+})
+function mapActionReason(name: string) {
+  if (!selectedTile.value) return 'Select a point on the map.'
+  if (selectedRegionAmbiguous.value)
+    return 'Choose a verified cave region or a character currently in that region.'
+  if (!selectedGamePosition.value)
+    return 'The selected point has no verified region and X/Y conversion.'
+  if (!commandTargetReady.value)
+    return 'Select an online character with a current session and capability report.'
+  const capability = characterControls.value?.capabilities[name]
+  return capability?.supported
+    ? ''
+    : capability?.reason || 'The phBot action is unavailable in this session.'
+}
+async function submitMapAction(
+  name: 'training.area.set' | 'character.navigate',
+) {
+  if (
+    mapActionReason(name) ||
+    !selectedGamePosition.value ||
+    !currentCharacter.value?.session_id
+  )
+    return
+  const target = {
+    id: currentCharacter.value.character_id,
+    session: currentCharacter.value.session_id,
+    name: currentCharacter.value.name,
+  }
+  const point = { ...selectedGamePosition.value }
+  const label =
+    name === 'character.navigate'
+      ? 'start a generated path'
+      : 'set the training area'
+  if (
+    !window.confirm(
+      `Confirm ${label} for ${target.name} at ${point.x.toFixed(1)}, ${point.y.toFixed(1)}, Z ${point.z.toFixed(1)} in region ${point.region}?`,
+    )
+  )
+    return
+  if (currentCharacter.value?.session_id !== target.session) return
+  actionBusy.value = true
+  actionMessage.value = ''
+  try {
+    const accepted = await $fetch<{ command_id: string }>('/api/commands', {
+      method: 'POST',
+      body: {
+        character_id: target.id,
+        expected_session_id: target.session,
+        name,
+        args:
+          name === 'training.area.set' ? { mode: 'position', ...point } : point,
+        idempotency_key: createIdempotencyKey(),
+        confirmation: true,
+      },
+    })
+    acceptedCommandID.value = accepted.command_id
+    actionMessage.value = `Command ${accepted.command_id} accepted; waiting for phBot's result.`
+    setCharacterCommands(target.id)
+  } catch (error) {
+    const failure = error as { data?: { message?: string; error?: string } }
+    actionMessage.value =
+      failure.data?.message ||
+      failure.data?.error ||
+      'The command was rejected.'
+  } finally {
+    actionBusy.value = false
+  }
+}
 const scopedCharacters = computed(() => {
   const items = mapSnapshot.value?.characters || []
-  if (regionID.value > 0)
+  if (regionID.value !== 0)
     return items.filter((character) => character.region === regionID.value)
   return items
 })
@@ -320,7 +448,7 @@ const visibleEvents = computed(() => {
 })
 const mapMarkers = computed(() => {
   const profile = mapProfile.value
-  if (!profile || areaID.value !== 'world') return []
+  if (!profile) return []
   const markers: Array<{
     id: string
     label: string
@@ -353,6 +481,7 @@ const mapMarkers = computed(() => {
     region: number | undefined,
     x: number | undefined,
     y: number | undefined,
+    z: number | undefined,
     details?: {
       monster?: MapMonster
       itemName?: string
@@ -360,7 +489,7 @@ const mapMarkers = computed(() => {
       event?: ActivityEvent
     },
   ) => {
-    if (regionID.value > 0 && region !== regionID.value) return
+    if (regionID.value !== 0 && region !== regionID.value) return
     const position = worldPositionToRaster(
       profile,
       areaID.value,
@@ -368,6 +497,7 @@ const mapMarkers = computed(() => {
       region,
       x,
       y,
+      z,
     )
     if (position) markers.push({ id, label, kind, position, ...details })
   }
@@ -380,6 +510,7 @@ const mapMarkers = computed(() => {
         entry.region,
         entry.x,
         entry.y,
+        entry.z ?? entry.observer.observer_z,
         { monster: entry },
       )
     }
@@ -402,6 +533,7 @@ const mapMarkers = computed(() => {
       event.region,
       event.x,
       event.y,
+      event.z,
       { itemName: event.item_name, itemIconUrl: event.item_icon_url, event },
     )
   }
@@ -492,10 +624,49 @@ function returnToWorld() {
 }
 
 function jumpToCharacter() {
-  if (characterRasterPosition.value) jumpSequence.value++
+  const character = currentCharacter.value
+  const profile = mapProfile.value
+  if (!character || !profile) return
+  const cave = caveFloorForPosition(profile, character.region, character.z)
+  if (
+    cave &&
+    (areaID.value !== cave.areaID || floorID.value !== cave.floorID)
+  ) {
+    areaID.value = cave.areaID
+    floorID.value = cave.floorID
+    regionID.value = 0
+    updateRouteQuery()
+  } else if (
+    character.region != null &&
+    character.region > 0 &&
+    areaID.value !== 'world'
+  ) {
+    areaID.value = 'world'
+    floorID.value = 'world'
+    regionID.value = 0
+    updateRouteQuery()
+  }
+  nextTick(() => {
+    jumpSequence.value++
+  })
 }
 
 function selectQuickDestination(destinationID: string) {
+  if (destinationID.startsWith('floor:')) {
+    const [, area, floor] = destinationID.split(':')
+    if (
+      !mapProfile.value?.areas
+        .find((item) => item.id === area)
+        ?.floors.some((item) => item.id === floor)
+    )
+      return
+    areaID.value = area || 'world'
+    floorID.value = floor || 'world'
+    regionID.value = 0
+    selectedDestinationID.value = destinationID
+    updateRouteQuery()
+    return
+  }
   const destination = mapProfile.value?.quick_destinations.find(
     (item) => item.id === destinationID && item.status === 'validated',
   )
@@ -526,6 +697,12 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
 })
 watch(selectedCharacterID, (characterID) => {
   if (characterID) selectedDestinationID.value = ''
+  acceptedCommandID.value = ''
+  actionMessage.value = ''
+  if (characterID) {
+    setCharacterControls(characterID)
+    setCharacterCommands(characterID)
+  }
   const selected = mapSnapshot.value?.characters.find(
     (character) => character.character_id === characterID,
   )
@@ -604,6 +781,7 @@ onBeforeUnmount(() => {
   if (eventWindowTimer) clearInterval(eventWindowTimer)
   profileRequestID++
   clearMapFeed(subscriptionID)
+  clearCharacterCommandSubscriptions()
 })
 
 useHead({ title: 'Map · PhMon' })
@@ -704,11 +882,7 @@ useHead({ title: 'Map · PhMon' })
         <select
           :value="selectedDestinationID"
           aria-label="Quick destination"
-          :disabled="
-            !mapProfile?.quick_destinations.some(
-              (item) => item.status === 'validated',
-            )
-          "
+          :disabled="!mapProfile"
           @change="
             selectQuickDestination(($event.target as HTMLSelectElement).value)
           "
@@ -729,6 +903,21 @@ useHead({ title: 'Map · PhMon' })
           >
             {{ destination.label }}
           </option>
+          <optgroup
+            v-for="area in mapProfile?.areas.filter(
+              (item) => item.kind === 'cave',
+            ) || []"
+            :key="area.id"
+            :label="area.label"
+          >
+            <option
+              v-for="floor in area.floors"
+              :key="floor.id"
+              :value="`floor:${area.id}:${floor.id}`"
+            >
+              {{ area.label }} · {{ floor.label }}
+            </option>
+          </optgroup>
         </select>
       </label>
       <label>
@@ -744,7 +933,9 @@ useHead({ title: 'Map · PhMon' })
         <select v-model="selectedCharacterID" aria-label="Select character">
           <option value="">Choose character</option>
           <option
-            v-for="character in mapSnapshot?.characters || []"
+            v-for="character in fleetCharacters.filter(
+              (item) => item.server.toLowerCase() === server.toLowerCase(),
+            )"
             :key="character.character_id"
             :value="character.character_id"
           >
@@ -755,7 +946,7 @@ useHead({ title: 'Map · PhMon' })
       <button
         class="compact-button"
         type="button"
-        :disabled="!characterRasterPosition"
+        :disabled="!jumpAvailable"
         :title="
           characterPlacement === 'exact'
             ? 'Jump to the selected character position.'
@@ -802,12 +993,9 @@ useHead({ title: 'Map · PhMon' })
         <div class="map-canvas-frame">
           <ClientOnly>
             <MapCanvas
-              v-if="
-                areaID === 'world' &&
-                mapProfile?.tiles.status === 'available-for-inspection'
-              "
+              v-if="canvasProfile?.tiles.status === 'available-for-inspection'"
               :key="`${server}:${areaID}:${floorID}:${selectedCharacterID}:${jumpSequence}`"
-              :profile="mapProfile"
+              :profile="canvasProfile"
               :initial-position="mapInitialPosition"
               :initial-tile="mapInitialTile"
               :markers="mapMarkers"
@@ -824,13 +1012,13 @@ useHead({ title: 'Map · PhMon' })
               </div></template
             >
           </ClientOnly>
-          <div v-if="areaID !== 'world'" class="map-empty-view">
+          <div
+            v-if="areaID !== 'world' && !canvasProfile"
+            class="map-empty-view"
+          >
             <UIcon name="i-lucide-map-pinned" />
             <strong>{{ profileArea?.label }} · {{ floorID }}</strong>
-            <span
-              >Floor imagery is not present in the active export. Outdoor tiles
-              are not substituted.</span
-            >
+            <span>Floor imagery is unavailable for this dataset.</span>
           </div>
           <div
             v-else-if="mapProfile?.tiles.status !== 'available-for-inspection'"
@@ -864,8 +1052,7 @@ useHead({ title: 'Map · PhMon' })
         <div class="map-viewport-footer">
           <span v-if="selectedTile && selectedGamePosition"
             >Selected {{ selectedGamePosition.x.toFixed(1) }},
-            {{ selectedGamePosition.y.toFixed(1) }}, Z
-            {{ selectedGamePosition.z.toFixed(1) }} in region
+            {{ selectedGamePosition.y.toFixed(1) }} in region
             {{ selectedGamePosition.region }}.</span
           >
           <span v-else-if="selectedTile"
@@ -877,9 +1064,50 @@ useHead({ title: 'Map · PhMon' })
             selects a raster tile.</span
           >
           <span
-            >Transform:
-            {{ mapProfile?.coordinate_transform_status || 'unavailable' }}</span
+            >Z for action:
+            {{ selectedGamePosition?.z.toFixed(1) ?? '—' }} (selected character
+            or 0)</span
           >
+        </div>
+        <div class="map-point-actions" aria-label="Selected map point actions">
+          <button
+            class="compact-button"
+            type="button"
+            :disabled="
+              actionBusy || Boolean(mapActionReason('character.navigate'))
+            "
+            :title="mapActionReason('character.navigate')"
+            @click="submitMapAction('character.navigate')"
+          >
+            Generate path and navigate
+          </button>
+          <button
+            class="compact-button"
+            type="button"
+            :disabled="
+              actionBusy || Boolean(mapActionReason('training.area.set'))
+            "
+            :title="mapActionReason('training.area.set')"
+            @click="submitMapAction('training.area.set')"
+          >
+            Set training area here
+          </button>
+          <span v-if="selectedRegionAmbiguous" role="status"
+            >This floor has two possible region IDs. Choose a region above or
+            select a character in that region.</span
+          >
+          <span v-if="acceptedCommand" role="status"
+            >{{ acceptedCommand.name }}: {{ acceptedCommand.state
+            }}{{ acceptedCommand.message ? ` · ${acceptedCommand.message}` : ''
+            }}{{
+              acceptedCommand.verification
+                ? ` · ${acceptedCommand.verification}`
+                : ''
+            }}</span
+          >
+          <span v-else-if="actionMessage" role="status">{{
+            actionMessage
+          }}</span>
         </div>
         <div class="map-validation-note" role="status">
           {{
@@ -888,9 +1116,10 @@ useHead({ title: 'Map · PhMon' })
           }}
           Outdoor region IDs locate their root tile directly. Reported X/Y
           positions locate markers within that tile; outlined dots indicate a
-          region-only position. Older observations remain visible as last
-          observed positions. Cave floors still need their own imagery and
-          coordinate model.
+          region-only position. Cave imagery uses a 2D X/Y anchor and
+          region/floor rules. Actions reuse the selected character's reported Z,
+          or 0 when unavailable. Older observations remain visible as last
+          observed positions.
         </div>
       </section>
 
