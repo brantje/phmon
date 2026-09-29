@@ -6,7 +6,7 @@ import type { MapProfile } from '~~/shared/types/map'
 import {
   worldPositionToRaster,
   type RasterPosition,
-} from '~/utils/mapCoordinates'
+} from './mapCoordinates.ts'
 
 export interface RenderedHeatPoint {
   position: RasterPosition
