@@ -348,7 +348,9 @@ function formatConnectionAge(value?: string) {
                 :class="{ spinning: removingAgentID === agent.agent_id }"
               />
               {{
-                removingAgentID === agent.agent_id ? 'Removing…' : 'Remove agent'
+                removingAgentID === agent.agent_id
+                  ? 'Removing…'
+                  : 'Remove agent'
               }}
             </button>
           </div>
