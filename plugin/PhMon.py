@@ -274,6 +274,16 @@ def collect_monster_observation(api=None):
     return ('truncated' if truncated else 'observed'), monsters, truncated
 
 
+def _zone_name_for_region(region, limit=80):
+    if not _valid_position_region(region) or not callable(_get_zone_name):
+        return None
+    try:
+        value = _get_zone_name(region)
+    except Exception:
+        return None
+    return _bounded_text(value, limit) if isinstance(value, str) else None
+
+
 def _normalize_item(value):
     if value is None:
         return None
@@ -2225,6 +2235,9 @@ class AgentWorker(object):
             region = position.get('region')
             if _valid_position_region(region):
                 event['region'] = region
+                zone = _zone_name_for_region(region)
+                if zone:
+                    event['zone'] = zone
             for axis in ('x', 'y', 'z'):
                 value = position.get(axis)
                 if _number(value) and abs(value) <= 1000000:
@@ -2912,7 +2925,7 @@ class AgentWorker(object):
             wire = {
                 key: event.get(key) for key in (
                     'event_id', 'schema_version', 'kind', 'category', 'character_id', 'session_id',
-                    'occurred_at', 'sequence', 'source', 'source_ref', 'dedupe_key', 'region',
+                    'occurred_at', 'sequence', 'source', 'source_ref', 'dedupe_key', 'region', 'zone',
                     'x', 'y', 'z', 'item_model', 'item_code', 'payload')
                 if event.get(key) is not None
             }
@@ -3190,7 +3203,11 @@ class AgentWorker(object):
         for key in ('region','x','y','z','radius'):
             value=area.get(key)
             if key=='region':
-                if isinstance(value,int) and not isinstance(value,bool): safe['training_region']=value
+                if _valid_position_region(value):
+                    safe['training_region']=value
+                    zone = _zone_name_for_region(value, 100)
+                    if zone:
+                        safe['training_zone']=zone
             elif _number(value): safe['training_'+key]=float(value)
         return safe
 
@@ -3528,6 +3545,9 @@ def _queue_canonical_event(kind, category, source, source_ref, payload, identity
             region = observed_position.get('region')
             if _valid_position_region(region):
                 event['region'] = region
+                zone = _zone_name_for_region(region)
+                if zone:
+                    event['zone'] = zone
             for axis in ('x', 'y', 'z'):
                 value = observed_position.get(axis)
                 if isinstance(value, (int, float)) and not isinstance(value, bool) and -1000000 <= value <= 1000000:
@@ -3697,12 +3717,9 @@ def _sample_character():
         if _valid_position_region(region):
             state['region'] = int(region)
     if isinstance(state.get('region'),int):
-        try:
-            zone = _get_zone_name(state['region'])
-            if isinstance(zone,str) and zone.strip():
-                state['zone'] = zone.strip()[:100]
-        except Exception:
-            pass
+        zone = _zone_name_for_region(state['region'], 100)
+        if zone:
+            state['zone'] = zone
     # Official Botting docs expose start/stop mutations but no state getter.
     state['botting'] = None
     identity = {

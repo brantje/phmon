@@ -2,6 +2,7 @@ package events
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,10 +35,25 @@ func TestValidateAgentEventAcceptsPublishedCallbackCatalog(t *testing.T) {
 		t.Run(test.sourceRef, func(t *testing.T) {
 			event := validTestEvent(test.kind, test.category, "phbot.callback", test.sourceRef, test.payload)
 			event.ItemModel = test.model
+			event.Zone = "Jangan"
 			if err := validateAgentEvent(event); err != nil {
 				t.Fatalf("validateAgentEvent() error = %v", err)
 			}
 		})
+	}
+}
+
+func TestValidateAgentEventBoundsAndTrimsZoneName(t *testing.T) {
+	event := validTestEvent("character.died", "character", "phbot.callback", "EVENT_DIED", `{"cause":"unknown"}`)
+	event.Zone = "Jangan"
+	if err := validateAgentEvent(event); err != nil {
+		t.Fatalf("valid zone name rejected: %v", err)
+	}
+	for _, zone := range []string{" Jangan", "Jangan ", strings.Repeat("Z", 101)} {
+		event.Zone = zone
+		if err := validateAgentEvent(event); err == nil {
+			t.Errorf("invalid zone name %q was accepted", zone)
+		}
 	}
 }
 

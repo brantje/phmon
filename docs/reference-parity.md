@@ -1317,3 +1317,17 @@ with visible map markers and nine entries in the nearby-monsters panel. Their
 reported region is `-32767`; the current observer position carries Z `-9`. The
 active client plugin version was not surfaced in the map view. No character
 command was sent during this check.
+
+### Region names — 2026-09-29
+
+The public phBot Game Data API documents get_zone_name(region) and its example
+returns Jangan. PhMon carries an optional zone on canonical events and a separate
+optional training_zone for training-area readback. Both values come from the
+runtime for the specific observed region; numeric region IDs remain available for
+map and command behavior.
+
+Events and remote command controls display zone names. Historical events without
+a captured name show Unknown zone when coordinates exist; there is no historic
+backfill. Plugin fixtures, Go validation and persistence coverage, frontend
+location tests and Nuxt typecheck cover the flow. Database integration and live
+phBot runtime checks remain open.

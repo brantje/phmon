@@ -72,6 +72,19 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	})
 
 	service := NewService(store, allowCapabilities{})
+	trainingRegion := 25000
+	trainingZone := "Donwhang Cave"
+	if err := service.SaveControlState(ctx, characterID, target.SessionID, credential.AgentID, 77, ControlState{
+		TrainingAvailable: true,
+		TrainingRegion:    &trainingRegion,
+		TrainingZone:      &trainingZone,
+	}); err != nil {
+		t.Fatalf("save training area state: %v", err)
+	}
+	training, err := store.CurrentControlState(ctx, characterID)
+	if err != nil || training == nil || training.TrainingZone == nil || *training.TrainingZone != trainingZone {
+		t.Fatalf("training zone readback = %+v, err=%v", training, err)
+	}
 	input := SubmitInput{
 		CharacterID:       characterID,
 		ExpectedSessionID: target.SessionID,

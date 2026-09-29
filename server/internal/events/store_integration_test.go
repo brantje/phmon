@@ -193,7 +193,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		ID: newTestEventID(t), Schema: 1, Kind: "drop.rare", Category: "drop",
 		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
 		OccurredAt: databaseNow.UTC(), Sequence: &sequence, Source: "phbot.callback", SourceRef: "EVENT_RARE_DROP",
-		ItemModel: &model, Payload: json.RawMessage(`{"model":777}`),
+		ItemModel: &model, Zone: "Jangan", Payload: json.RawMessage(`{"model":777}`),
 	}
 	unauthorized := rareDrop
 	unauthorized.ID = newTestEventID(t)
@@ -212,8 +212,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("exact event lookup = %+v, err=%v", exact, err)
 	}
 	conflict := rareDrop
-	conflictRegion := 25273
-	conflict.Region = &conflictRegion
+	conflict.Zone = "Donwhang"
 	results, _, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{conflict})
 	if err != nil || results[0].Status != "rejected" || results[0].Reason != "session_or_event_rejected" {
 		t.Fatalf("event ID conflict = %+v, err=%v", results, err)
@@ -225,7 +224,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("sequence conflict = %+v, err=%v", results, err)
 	}
 	page, err = store.List(ctx, Filter{Server: server, Kind: "drop.rare", Category: "drop", ItemQuery: "777", Limit: 10})
-	if err != nil || page.Total != 1 || len(page.Events) != 1 || page.Events[0].ID != rareDrop.ID {
+	if err != nil || page.Total != 1 || len(page.Events) != 1 || page.Events[0].ID != rareDrop.ID || page.Events[0].Zone != "Jangan" {
 		t.Fatalf("generic item-filtered events = %+v, err=%v", page, err)
 	}
 

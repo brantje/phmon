@@ -55,6 +55,7 @@ export interface ActivityEvent {
   item_icon_url?: string
   item_name?: string
   region?: number
+  zone?: string
   x?: number
   y?: number
   z?: number
@@ -305,6 +306,7 @@ export interface ControlsSnapshot {
     session_id: string
     training_available: boolean
     training_region?: number
+    training_zone?: string
     training_x?: number
     training_y?: number
     training_z?: number

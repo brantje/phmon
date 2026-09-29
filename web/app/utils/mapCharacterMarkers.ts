@@ -1,4 +1,5 @@
 import type { MapProfile } from '../../shared/types/map.ts'
+import { zoneNameText } from './event-location.ts'
 import {
   regionTileCenter,
   worldPositionToRaster,
@@ -110,7 +111,15 @@ export function characterMapMarkers(
       const angle = -Math.PI / 2 + (2 * Math.PI * index) / sorted.length
       markers.push({
         id: character.character_id,
-        label: `${character.name} · Region ${character.region} · tile ${group.center.tileX}×${group.center.tileY}. Exact pixel unverified; markers are spread for visibility.`,
+        label:
+          character.name +
+          ' · ' +
+          zoneNameText(character.zone) +
+          ' · tile ' +
+          group.center.tileX +
+          '×' +
+          group.center.tileY +
+          '. Exact pixel unverified; markers are spread for visibility.',
         kind: 'character',
         placement: 'region-tile',
         position: {

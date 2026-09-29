@@ -4112,3 +4112,17 @@ staged on the test host; the active phBot plugin version was not surfaced in the
 map view. No bot movement command was sent. Exact next action: no further work is
 needed for the reported visibility issue unless the operator sees the feed drop
 again; keep real command execution as a separate authorization/test gate.
+
+### Resume — 2026-09-29 region zone names
+
+Implemented on codex/zone-names in an isolated worktree. The plugin uses the
+documented get_zone_name(region) API for canonical event positions and training
+area readback. Events carry an optional zone; training state carries the separate
+optional training_zone in migration 19. The event view and remote command controls
+show names with explicit fallbacks, while retaining numeric region IDs for commands
+and map behavior.
+
+Validation before rebasing onto current main passed: 82 plugin tests, go test ./...,
+16 frontend unit tests, Nuxt typecheck, Prettier checks and git diff --check.
+Database integration tests were skipped because TEST_DATABASE_URL is unset; no
+real phBot runtime was available. Re-run checks on the current-main integration.
