@@ -261,7 +261,9 @@ function formatConnectionAge(value?: string) {
                   "
                   :class="{ spinning: removingAgentID === agent.agent_id }"
                 />
-                {{ removingAgentID === agent.agent_id ? 'Removing…' : 'Remove' }}
+                {{
+                  removingAgentID === agent.agent_id ? 'Removing…' : 'Remove'
+                }}
               </button>
             </td>
           </tr>
@@ -345,7 +347,9 @@ function formatConnectionAge(value?: string) {
                 "
                 :class="{ spinning: removingAgentID === agent.agent_id }"
               />
-              {{ removingAgentID === agent.agent_id ? 'Removing…' : 'Remove agent' }}
+              {{
+                removingAgentID === agent.agent_id ? 'Removing…' : 'Remove agent'
+              }}
             </button>
           </div>
         </article>
