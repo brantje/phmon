@@ -57,6 +57,20 @@ Slice 3 agent path only.
   `plugin/phMonitorAdapter.py` independently suggests the first 13 entries are
   equipment, but this is a lead only; the collector labels that mapping
   `adapter_lead_runtime_unverified` and exposes the limitation in the UI.
+- Guild-storage gold is intentionally **not** read from `get_guild_storage()`: the
+  phBot API documents only `size` and `items` for that getter. For a
+  version-resolved generic vSRO 1.188 session, PhMon instead accepts the server-to-client
+  opcode `0x3253` as a bounded fallback. The
+  [OasisBot handler](https://github.com/Silkroad-Developer-Community/OasisBot/blob/c45862494707fe4ca2d3e51df1fa6a54172b6f0a/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryGuildStorageDataBeginResponse.cs)
+  maps `0x3253` to guild-storage initialization and reads one unsigned 64-bit gold
+  value; [DarkEmu](https://github.com/CarlosX/DarkEmu/blob/9dcf9744dcf774f6d0769e408fc4bb870c113280/src/Game/Gamesystem/GuildPackets/GuildSystemPackets.cs)
+  emits the same opcode with one `LWord` and sends it both when guild storage opens
+  and after guild-gold changes. PhMon therefore accepts **exactly eight**
+  little-endian payload bytes, only for `vsro-1.188`, and attaches the value only to
+  an observed guild-storage snapshot. Malformed packets, queue overflow,
+  session/protocol reset, or an unsupported protocol fail closed. This packet path
+  remains runtime-unverified on the current deployment until an actual `0x3253`
+  observation is seen; no arbitrary offset fallback is used.
 - [Pets](https://plugins.phbot.org/phbot-api/pets): `get_pets()` is `None` or a
   dictionary keyed by pet ID; an empty dictionary is a valid no-summoned-pets state.
   The example pet has `name`, `servername`, `model`, `type`, `hp`, `mounted`, and
