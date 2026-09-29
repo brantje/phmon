@@ -100,8 +100,8 @@ func TestHeatmapLayersFiltersAndResetPreserveCanonicalSources(t *testing.T) {
 	_, err = pool.Exec(ctx, `INSERT INTO mob_observation_samples
 		(sample_id,agent_id,character_id,session_id,server_name,dataset_id,area_id,floor_id,region,sampled_at,sample_hash,sample_minute,observer_x,observer_y,observer_cell_x,observer_cell_y)
 		VALUES
-		('00000000-0000-4000-8000-000000009101',$1,$2,$3,$4,$5,'region:25273','unmapped',$6,$7,decode(repeat('01',32),'hex'),date_trunc('minute',$7),10,20,0,0),
-		('00000000-0000-4000-8000-000000009102',$1,$8,$9,$4,$5,'region:25273','unmapped',$6,$10,decode(repeat('02',32),'hex'),date_trunc('minute',$10),12,18,0,0)`,
+		('00000000-0000-4000-8000-000000009101',$1,$2,$3,$4,$5,'region:25273','unmapped',$6,$7,decode(repeat('01',32),'hex'),date_trunc('minute',$7::timestamptz),10,20,0,0),
+		('00000000-0000-4000-8000-000000009102',$1,$8,$9,$4,$5,'region:25273','unmapped',$6,$10,decode(repeat('02',32),'hex'),date_trunc('minute',$10::timestamptz),12,18,0,0)`,
 		credential.AgentID, first, firstSession, server, mapprofile.GreatestDatasetID, region, now.Add(-12*time.Minute), second, secondSession, now.Add(-11*time.Minute))
 	if err != nil {
 		t.Fatal(err)
