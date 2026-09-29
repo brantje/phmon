@@ -110,10 +110,15 @@ func New(deps Dependencies) http.Handler {
 			register("GET /api/events", false, eventAPI.list)
 		}
 		if deps.Resources != nil {
-			mapAPI := &mapHandler{resources: deps.Resources, mobs: deps.Mobs}
+			mapAPI := &mapHandler{resources: deps.Resources, mobs: deps.Mobs, analytics: deps.MapAnalytics}
 			register("GET /api/map/profile", false, mapAPI.profile)
 			if deps.Mobs != nil {
 				register("GET /api/map/density", false, mapAPI.density)
+			}
+			if deps.MapAnalytics != nil {
+				register("GET /api/map/heatmap", false, mapAPI.heatmap)
+				register("GET /api/map/heatmap/facets", false, mapAPI.heatmapFacets)
+				register("POST /api/map/heatmap/reset", true, mapAPI.heatmapReset)
 			}
 		}
 		register("GET /api/agents", false, handler.list)
