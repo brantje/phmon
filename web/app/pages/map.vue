@@ -1088,7 +1088,10 @@ useHead({ title: 'Map · PhMon' })
           </div>
           <label>
             Range
-            <select v-model="heatmapRange" aria-label="Historical heatmap time range">
+            <select
+              v-model="heatmapRange"
+              aria-label="Historical heatmap time range"
+            >
               <option value="1h">Last hour</option>
               <option value="24h">Last 24 hours</option>
               <option value="7d">Last 7 days</option>
@@ -1112,7 +1115,10 @@ useHead({ title: 'Map · PhMon' })
           </div>
           <label>
             Historical character
-            <select v-model="analyticsCharacterID" aria-label="Historical heatmap character">
+            <select
+              v-model="analyticsCharacterID"
+              aria-label="Historical heatmap character"
+            >
               <option value="">All characters</option>
               <option
                 v-for="character in historicalCharacters"
@@ -1123,32 +1129,55 @@ useHead({ title: 'Map · PhMon' })
               </option>
             </select>
           </label>
-          <label v-if="historicalLayers.mob_types || historicalLayers.mob_observer_average">
+          <label
+            v-if="
+              historicalLayers.mob_types ||
+              historicalLayers.mob_observer_average
+            "
+          >
             Mob type
             <select v-model="analyticsMobType" aria-label="Historical mob type">
               <option value="">All observed types</option>
-              <option v-for="type in historicalMobTypes" :key="type" :value="type">
+              <option
+                v-for="type in historicalMobTypes"
+                :key="type"
+                :value="type"
+              >
                 {{ type }}
               </option>
             </select>
           </label>
-          <p v-if="heatmapFacetsLoading" class="map-empty-copy">Loading observed mob types…</p>
-          <p v-else-if="heatmapFacetsError" class="map-empty-copy">{{ heatmapFacetsError }}</p>
+          <p v-if="heatmapFacetsLoading" class="map-empty-copy">
+            Loading observed mob types…
+          </p>
+          <p v-else-if="heatmapFacetsError" class="map-empty-copy">
+            {{ heatmapFacetsError }}
+          </p>
 
-          <label class="map-layer-toggle disabled" title="Observation coverage is not verified">
+          <label
+            class="map-layer-toggle disabled"
+            title="Observation coverage is not verified"
+          >
             <input type="checkbox" disabled /> Mob density
             <span>Unavailable</span>
           </label>
           <p class="heatmap-warning">
-            Spatial mob density is unavailable until observation coverage is verified.
+            Spatial mob density is unavailable until observation coverage is
+            verified.
           </p>
           <label class="map-layer-toggle">
-            <input v-model="historicalLayers.mob_observer_average" type="checkbox" />
+            <input
+              v-model="historicalLayers.mob_observer_average"
+              type="checkbox"
+            />
             Observer-local mob average
-            <span>{{ heatmapResults.mob_observer_average?.points.length || 0 }}</span>
+            <span>{{
+              heatmapResults.mob_observer_average?.points.length || 0
+            }}</span>
           </label>
           <label class="map-layer-toggle">
-            <input v-model="historicalLayers.mob_types" type="checkbox" /> Mob types
+            <input v-model="historicalLayers.mob_types" type="checkbox" /> Mob
+            types
             <span>{{ heatmapResults.mob_types?.points.length || 0 }}</span>
           </label>
           <label class="map-layer-toggle">
@@ -1160,15 +1189,27 @@ useHead({ title: 'Map · PhMon' })
             <span>{{ heatmapResults.drops?.points.length || 0 }}</span>
           </label>
           <label class="map-layer-toggle">
-            <input v-model="historicalLayers.unique_sightings" type="checkbox" /> Unique sightings
-            <span>{{ heatmapResults.unique_sightings?.points.length || 0 }}</span>
+            <input
+              v-model="historicalLayers.unique_sightings"
+              type="checkbox"
+            />
+            Unique sightings
+            <span>{{
+              heatmapResults.unique_sightings?.points.length || 0
+            }}</span>
           </label>
           <label class="map-layer-toggle">
-            <input v-model="historicalLayers.player_movement" type="checkbox" /> Player movement
-            <span>{{ heatmapResults.player_movement?.points.length || 0 }}</span>
+            <input v-model="historicalLayers.player_movement" type="checkbox" />
+            Player movement
+            <span>{{
+              heatmapResults.player_movement?.points.length || 0
+            }}</span>
           </label>
 
-          <template v-for="layer in activeHistoricalLayers()" :key="`heat-status-${layer}`">
+          <template
+            v-for="layer in activeHistoricalLayers()"
+            :key="`heat-status-${layer}`"
+          >
             <p v-if="heatmapLoading[layer]" class="map-empty-copy">
               Refreshing {{ heatmapLayerLabel(layer) }}…
             </p>
@@ -1179,7 +1220,8 @@ useHead({ title: 'Map · PhMon' })
               v-else-if="heatmapResults[layer]?.status === 'unsupported'"
               class="heatmap-warning"
             >
-              {{ heatmapLayerLabel(layer) }}: {{ heatmapResults[layer]?.interpretation }}
+              {{ heatmapLayerLabel(layer) }}:
+              {{ heatmapResults[layer]?.interpretation }}
             </p>
             <p
               v-else-if="heatmapResults[layer]?.status === 'limited'"
@@ -1188,18 +1230,29 @@ useHead({ title: 'Map · PhMon' })
               {{ heatmapResults[layer]?.interpretation }}
             </p>
             <p
-              v-else-if="heatmapResults[layer] && heatmapResults[layer]?.points.length === 0"
+              v-else-if="
+                heatmapResults[layer] &&
+                heatmapResults[layer]?.points.length === 0
+              "
               class="map-empty-copy"
             >
-              No {{ heatmapLayerLabel(layer).toLowerCase() }} data in this scope.
+              No {{ heatmapLayerLabel(layer).toLowerCase() }} data in this
+              scope.
             </p>
             <p v-if="heatmapResults[layer]?.truncated" class="heatmap-warning">
               {{ heatmapLayerLabel(layer) }} reached the bounded result limit.
             </p>
           </template>
 
-          <div v-if="renderedHeatLayers.length" class="heatmap-legend" aria-label="Heatmap legend">
-            <div v-for="layer in renderedHeatLayers" :key="`legend-${layer.id}`">
+          <div
+            v-if="renderedHeatLayers.length"
+            class="heatmap-legend"
+            aria-label="Heatmap legend"
+          >
+            <div
+              v-for="layer in renderedHeatLayers"
+              :key="`legend-${layer.id}`"
+            >
               <strong>{{ layer.label }}</strong>
               <span>{{ layer.metric }} · low → high</span>
             </div>
@@ -1329,15 +1382,28 @@ useHead({ title: 'Map · PhMon' })
         <label>
           Layer
           <select v-model="resetLayer">
-            <option v-for="layer in resettableLayers" :key="layer" :value="layer">
+            <option
+              v-for="layer in resettableLayers"
+              :key="layer"
+              :value="layer"
+            >
               {{ heatmapLayerLabel(layer) }}
             </option>
           </select>
         </label>
         <dl>
-          <div><dt>Server</dt><dd>{{ server }}</dd></div>
-          <div><dt>Area / floor</dt><dd>{{ areaID }} / {{ floorID }}</dd></div>
-          <div><dt>Region</dt><dd>{{ regionID || 'All regions' }}</dd></div>
+          <div>
+            <dt>Server</dt>
+            <dd>{{ server }}</dd>
+          </div>
+          <div>
+            <dt>Area / floor</dt>
+            <dd>{{ areaID }} / {{ floorID }}</dd>
+          </div>
+          <div>
+            <dt>Region</dt>
+            <dd>{{ regionID || 'All regions' }}</dd>
+          </div>
           <div>
             <dt>Character</dt>
             <dd>{{ analyticsCharacterID || 'All characters' }}</dd>
@@ -1357,7 +1423,11 @@ useHead({ title: 'Map · PhMon' })
         </label>
         <p v-if="resetError" class="heatmap-warning">{{ resetError }}</p>
         <div class="heatmap-reset-actions">
-          <button class="compact-button" type="button" @click="resetOpen = false">
+          <button
+            class="compact-button"
+            type="button"
+            @click="resetOpen = false"
+          >
             Cancel
           </button>
           <button
