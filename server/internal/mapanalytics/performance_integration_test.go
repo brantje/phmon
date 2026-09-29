@@ -256,7 +256,7 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 		plan := strings.Join(lines, "\n")
 		indexCondition := ""
 		for index, line := range lines {
-			if !strings.Contains(line, "mob_observation_samples_heatmap_time_idx") {
+			if !strings.Contains(line, "mob_observation_scope_time_idx") {
 				continue
 			}
 			for next := index + 1; next < len(lines) && next <= index+3; next++ {
