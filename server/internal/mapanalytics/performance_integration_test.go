@@ -128,18 +128,35 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT now()`).Scan(&dbNow); err != nil {
 		t.Fatal(err)
 	}
-	const sampleCount = 100000
+	const (
+		sampleCount  = 100000
+		sessionCount = 128
+	)
 	start := dbNow.UTC().Add(-time.Duration(sampleCount) * 20 * time.Second)
-	_, err = pool.Exec(ctx, `INSERT INTO mob_observation_samples
+	_, err = pool.Exec(ctx, `INSERT INTO character_sessions
+		(session_id,character_id,agent_id,connection_generation,started_at,last_activity_at,ended_at,end_reason)
+		SELECT gen_random_uuid(),$1,$2,n + 100,$3,$3,$4,'left'
+		FROM generate_series(1,$5-1) AS n`,
+		characterID, credential.AgentID, start, dbNow.UTC(), sessionCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `WITH sessions AS (
+		SELECT session_id,row_number() OVER (ORDER BY session_id) AS rn
+		FROM character_sessions
+		WHERE character_id=$2 AND agent_id=$1
+	)
+	INSERT INTO mob_observation_samples
 		(sample_id,agent_id,character_id,session_id,server_name,dataset_id,area_id,floor_id,region,
 		 sampled_at,sample_hash,sample_minute,observer_x,observer_y,observer_cell_x,observer_cell_y)
-		SELECT gen_random_uuid(),$1,$2,$3,$4,$5,'region:25273','unmapped',25273,
-			$6::timestamptz + (n * interval '20 seconds'),
+		SELECT gen_random_uuid(),$1,$2,sessions.session_id,$3,$4,'region:25273','unmapped',25273,
+			$5::timestamptz + (n * interval '20 seconds'),
 			decode(md5(n::text)||md5('phmon-'||n::text),'hex'),
-			date_trunc('minute',$6::timestamptz + (n * interval '20 seconds')),
+			date_trunc('minute',$5::timestamptz + (n * interval '20 seconds')),
 			((n % 1000) * 100)::double precision,(((n / 1000) % 1000) * 100)::double precision,n::integer,0
-		FROM generate_series(0,$7-1) AS n`,
-		credential.AgentID, characterID, sessionID, server, mapprofile.GreatestDatasetID, start, sampleCount)
+		FROM generate_series(0,$6-1) AS n
+		JOIN sessions ON sessions.rn=((n % $7)+1)`,
+		credential.AgentID, characterID, server, mapprofile.GreatestDatasetID, start, sampleCount, sessionCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +278,6 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 		GROUP BY o.monster_type,o.model_id`,
 		server, mapprofile.GreatestDatasetID, from, to)
 
-	t.Logf("100k mob samples: sightings=%s observer_average=%s facets=%s source_rows=%d",
-		sightingsDuration, averageDuration, facetDuration, sightings.SourceRows)
+	t.Logf("100k mob samples across %d sessions: sightings=%s observer_average=%s facets=%s source_rows=%d",
+		sessionCount, sightingsDuration, averageDuration, facetDuration, sightings.SourceRows)
 }
