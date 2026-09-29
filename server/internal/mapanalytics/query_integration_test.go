@@ -207,3 +207,17 @@ func TestNormalizeFilterRejectsInvalidBounds(t *testing.T) {
 		t.Fatalf("oversized query window error=%v", err)
 	}
 }
+
+func TestNormalizeFilterRejectsMobFiltersOnUnrelatedLayers(t *testing.T) {
+	now := time.Now().UTC()
+	for _, layer := range []string{LayerDeaths, LayerDrops, LayerUniqueSightings, LayerPlayerMovement} {
+		filter := Filter{
+			Layer: layer, Server: "greatest", DatasetID: mapprofile.GreatestDatasetID,
+			AreaID: "world", FloorID: "world", From: now.Add(-time.Hour), To: now, Limit: 1,
+			MonsterType: "General",
+		}
+		if _, err := NormalizeFilter(filter); !errors.Is(err, ErrInvalidFilter) {
+			t.Fatalf("layer %s accepted an ignored mob filter: %v", layer, err)
+		}
+	}
+}

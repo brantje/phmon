@@ -22,6 +22,10 @@ func validLayer(layer string) bool {
 	}
 }
 
+func layerSupportsMobFilters(layer string) bool {
+	return layer == LayerMobDensity || layer == LayerMobObserverAvg || layer == LayerMobTypes
+}
+
 func defaultResolution(window time.Duration) float64 {
 	switch {
 	case window <= time.Hour:
@@ -45,6 +49,7 @@ func NormalizeFilter(filter Filter) (Filter, error) {
 		filter.AreaID == "" || len(filter.AreaID) > 96 || filter.FloorID == "" || len(filter.FloorID) > 32 ||
 		filter.From.IsZero() || filter.To.IsZero() || !filter.To.After(filter.From) || filter.To.Sub(filter.From) > MaxQueryWindow ||
 		(filter.CharacterID != "" && !agentdomain.ValidAgentID(filter.CharacterID)) || len(filter.MonsterType) > 64 ||
+		(!layerSupportsMobFilters(filter.Layer) && (filter.MonsterType != "" || filter.ModelID != nil)) ||
 		(filter.ModelID != nil && (*filter.ModelID < 0 || *filter.ModelID > 4294967295)) ||
 		(filter.Region != nil && (*filter.Region < 1 || *filter.Region > 65535)) {
 		return Filter{}, ErrInvalidFilter

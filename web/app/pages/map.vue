@@ -1408,6 +1408,15 @@ useHead({ title: 'Map · PhMon' })
             <dt>Character</dt>
             <dd>{{ analyticsCharacterID || 'All characters' }}</dd>
           </div>
+          <div
+            v-if="
+              resetLayer === 'mob_types' ||
+              resetLayer === 'mob_observer_average'
+            "
+          >
+            <dt>Mob type</dt>
+            <dd>{{ analyticsMobType || 'All observed types' }}</dd>
+          </div>
           <div>
             <dt>Time</dt>
             <dd>{{ heatmapWindow?.from }} → {{ heatmapWindow?.to }}</dd>
