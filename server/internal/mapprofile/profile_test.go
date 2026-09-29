@@ -59,7 +59,9 @@ func TestRequiredMapFamiliesHaveIndependentFloorAndTransformStatus(t *testing.T)
 	if tileCount != 1891 {
 		t.Fatalf("expected 1891 cave tiles across 17 floors, got %d", tileCount)
 	}
-	if len(assetFormats) != 17 { t.Fatalf("expected one local tile format for each of 17 floors, got %d", len(assetFormats)) }
+	if len(assetFormats) != 17 {
+		t.Fatalf("expected one local tile format for each of 17 floors, got %d", len(assetFormats))
+	}
 }
 
 func TestCaveFloorClassification(t *testing.T) {
