@@ -18,6 +18,46 @@ AGENT_ID = '11111111-2222-4333-8444-555555555555'
 
 
 class MobObservationTests(unittest.TestCase):
+    def test_current_monster_polling_runs_at_one_tenth_second_interval(self):
+        previous_worker = plugin._worker
+        previous_poll = plugin._last_monster_poll_at
+        previous_cells = plugin._last_mob_cell_samples
+
+        class WorkerStub:
+            character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            session_id = 'ffffffff-1111-4222-8333-444444444444'
+            _current_identity = {'name': 'Alpha'}
+
+            def __init__(self):
+                self.snapshots = []
+
+            def _identity_key(self, identity):
+                return identity.get('name')
+
+            def update_map_monsters(self, identity, status, region, monsters, sample=None):
+                self.snapshots.append((status, region, monsters))
+                return True
+
+        worker = WorkerStub()
+        identity = {'name': 'Alpha'}
+        try:
+            plugin._worker = worker
+            plugin._last_monster_poll_at = float('-inf')
+            plugin._last_mob_cell_samples = {}
+            with patch.object(plugin, 'collect_monster_observation',
+                              return_value=('observed', [], False)) as collect:
+                plugin._sample_monsters(identity, {'region': 25273}, {'x': 10, 'y': 20}, now=20)
+                plugin._sample_monsters(identity, {'region': 25273}, {'x': 10, 'y': 20}, now=20.099)
+                plugin._sample_monsters(identity, {'region': 25273}, {'x': 10, 'y': 20}, now=20.1)
+
+            self.assertEqual(plugin.MOB_POLL_INTERVAL_SECONDS, 0.1)
+            self.assertEqual(collect.call_count, 2)
+            self.assertEqual(len(worker.snapshots), 2)
+        finally:
+            plugin._worker = previous_worker
+            plugin._last_monster_poll_at = previous_poll
+            plugin._last_mob_cell_samples = previous_cells
+
     def test_monster_collector_distinguishes_missing_empty_and_truncated(self):
         self.assertEqual(plugin.collect_monster_observation({'get_monsters': lambda: None}),
                          ('unavailable', [], False))

@@ -725,7 +725,7 @@ documents creating a new area through the phBot UI's Add action.
   documents no-argument `get_position()` returning current region and x/y/z, or
   `None`. This supplies observer positions and retains optional observed Z; it does
   not establish a map transform.
-- Plugin v1.5.2 / agent protocol v7 polls the getter every ten seconds and limits each
+- Plugin v1.5.2 / agent protocol v7 polls the getter every 0.1 seconds and limits each
   snapshot to 128 entries. `None`/missing/exception, observed empty and truncated are
   kept distinct. Only complete untruncated snapshots enter the local durable sample
   spool. Sample cadence is one minute per session/region/unmapped-floor/192-unit
@@ -770,3 +770,13 @@ absent fields cannot be reconstructed from a map screenshot or stored rows. Curr
 map sightings are deduplicated across sessions by server, region, model/server name
 and an 8-unit position tolerance, while retaining same-session rows. The installed
 real phBot runtime has not yet been verified with 1.5.2 or a level field.
+
+### Current map marker polling trial — 2026-09-29
+
+The operator requested faster current monster snapshots because the previous
+ten-second delay made combat markers too slow. `MOB_POLL_INTERVAL_SECONDS` is now
+0.1; the durable observation spool still samples at most once per minute per
+observer cell. The focused plugin suite passes (86 tests), including a regression
+that verifies polling is skipped at 0.099 seconds and resumes at 0.1 seconds. This is
+source/test evidence only: the updated plugin must be loaded by the connected phBot
+runtime before actual CPU cost and map freshness can be measured.

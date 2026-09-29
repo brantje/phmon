@@ -21,6 +21,7 @@ import {
   type RasterPosition,
 } from '~/utils/mapCoordinates'
 import { INITIAL_MAP_ZOOM, MAP_ZOOM_OPTIONS } from '~/utils/mapZoom'
+import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 
 interface MapCanvasMarker {
   id: string
@@ -60,6 +61,8 @@ let makeMarker:
   | undefined
 const renderedMarkers = new Map<string, LeafletMarker>()
 const markerIconSignatures = new Map<string, string>()
+const markerAnimationFrames = new Map<string, number>()
+const MARKER_ANIMATION_DURATION_MS = 120
 let stopped = false
 let lastFocusedTile = ''
 
@@ -121,6 +124,40 @@ function publishView() {
   })
 }
 
+function moveMarker(markerKey: string, marker: LeafletMarker, target: LatLng) {
+  const previousFrame = markerAnimationFrames.get(markerKey)
+  if (previousFrame != null) cancelAnimationFrame(previousFrame)
+
+  const start = marker.getLatLng()
+  const distance = Math.hypot(target.lat - start.lat, target.lng - start.lng)
+  if (distance < 0.01) {
+    markerAnimationFrames.delete(markerKey)
+    marker.setLatLng(target)
+    return
+  }
+
+  let startedAt: number | undefined
+  const animate = (timestamp: number) => {
+    if (stopped || !renderedMarkers.has(markerKey)) {
+      markerAnimationFrames.delete(markerKey)
+      return
+    }
+    startedAt ??= timestamp
+    const progress = Math.min(
+      1,
+      (timestamp - startedAt) / MARKER_ANIMATION_DURATION_MS,
+    )
+    const position = interpolateMarkerPosition(start, target, progress)
+    marker.setLatLng(createLatLng!(position.lat, position.lng))
+    if (progress >= 1) {
+      markerAnimationFrames.delete(markerKey)
+      return
+    }
+    markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
+  }
+  markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
+}
+
 function syncMarkers() {
   if (!map || !markerLayer || !createLatLng) return
   if (!makeMarker) return
@@ -155,6 +192,9 @@ function syncMarkers() {
     markerLayer.removeLayer(rendered)
     renderedMarkers.delete(key)
     markerIconSignatures.delete(key)
+    const animationFrame = markerAnimationFrames.get(key)
+    if (animationFrame != null) cancelAnimationFrame(animationFrame)
+    markerAnimationFrames.delete(key)
   }
 }
 
@@ -564,7 +604,7 @@ onMounted(async () => {
         : undefined
     markerIconSignatures.set(markerKey, signature)
     if (existing) {
-      existing.setLatLng(point)
+      moveMarker(markerKey, existing, point)
       if (icon) existing.setIcon(icon)
       if (!props.compact) existing.setPopupContent(markerPopup(marker))
       return existing
@@ -635,6 +675,9 @@ watch(() => props.markers, syncMarkers, { deep: true })
 
 onBeforeUnmount(() => {
   stopped = true
+  for (const frame of markerAnimationFrames.values())
+    cancelAnimationFrame(frame)
+  markerAnimationFrames.clear()
   map?.remove()
   map = undefined
   markerLayer = undefined

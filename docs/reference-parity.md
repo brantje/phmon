@@ -1137,3 +1137,19 @@ browser inspection at the 50% minimum showed the map imagery, markers and 16 ras
 tile canvases with no failed tiles. `/map`, `/api/health` and server `/readyz` all
 returned HTTP 200. The mapZoom regression test, all 34 frontend unit tests, ESLint on
 changed files and local Nuxt production build passed.
+
+### Faster current monster snapshots — 2026-09-29
+
+The operator reported that a ten-second nearby-monster polling interval was too slow
+for combat and confirmed that 0.1 seconds works on the active setup. Plugin
+current-snapshot polling is now 0.1 seconds; durable historical sampling remains once
+per minute per observer cell. Moving character and monster markers now interpolate
+between snapshots over 120 ms. Follow-up inspection found that sub-0.5-pixel changes
+were being snapped directly; the threshold is now 0.01 pixels and every existing
+marker kind interpolates position changes. Added small-delta coverage. All 86 plugin
+tests and all 37 frontend unit tests pass, and the Nuxt production build succeeds. The web service was
+rebuilt and restarted on the authorized test host; `/map`, `/api/health` and
+`/readyz` return successfully while PostgreSQL and Go remain running. The updated
+plugin source is staged at `/var/www/phmon/plugin/PhMon.py`; this does not replace the
+copy already loaded by phBot. Runtime load and visible animation need live movement
+after the browser reloads and the plugin is reloaded.

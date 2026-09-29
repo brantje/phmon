@@ -3906,3 +3906,19 @@ rebuilt successfully and `/map`, `/api/health` and server `/readyz` returned HTT
 Browser verification at the 50% minimum showed the raster with 16 loaded tile canvases
 and zero failed tiles, along with characters and monster markers. Exact next action:
 commit/push this correction to PR #19; Slice 7–8 gates remain open.
+
+### Resume — 2026-09-29 faster current monster snapshots
+
+The operator confirmed that a 0.1-second monster poll works on the active setup and
+asked for marker movement animation. Current plugin `get_monsters()` polling is 0.1
+seconds; durable sampling remains once per minute per observer cell. Character and
+marker positions interpolate between live snapshots over 120 ms. A 0.5-pixel snap
+threshold caused some updates to jump; it is now 0.01 pixels and all existing marker
+kinds interpolate. Added poll-boundary, interpolation and small-delta tests; all 86
+plugin and 37 frontend unit tests pass.
+The web build is deployed and healthy; PostgreSQL and Go remained running. The plugin
+is staged at `/var/www/phmon/plugin/PhMon.py`; the active phBot copy has not been
+replaced from this workspace. Runtime CPU impact and visible animation still need
+verification with fresh page/plugin loads and moving markers. Exact next action:
+reload the map page and staged plugin, then observe movement smoothness, update
+freshness and phBot load; keep Slices 7–8 in progress.
