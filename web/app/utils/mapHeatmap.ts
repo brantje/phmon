@@ -3,10 +3,7 @@ import type {
   HeatmapResult,
 } from '~~/shared/types/mapAnalytics'
 import type { MapProfile } from '~~/shared/types/map'
-import {
-  worldPositionToRaster,
-  type RasterPosition,
-} from './mapCoordinates.ts'
+import { worldPositionToRaster, type RasterPosition } from './mapCoordinates.ts'
 
 export interface RenderedHeatPoint {
   position: RasterPosition
