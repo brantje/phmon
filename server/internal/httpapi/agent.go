@@ -205,6 +205,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 	updateCtx, updateCancel := context.WithTimeout(r.Context(), 2*time.Second)
 	err = h.store.MarkConnected(updateCtx, hello.AgentID, connectedAt, hello.ProtocolVersion, hello.PluginVersion, hello.PhBotVersion)
 	updateCancel()
+	if errors.Is(err, agentdomain.ErrInvalidToken) {
+		rejectAgentFrame(conn, websocket.StatusPolicyViolation, "credential revoked", hello.AgentID, hello.ProtocolVersion)
+		return
+	}
 	if err != nil {
 		rejectAgentFrame(conn, websocket.StatusInternalError, "state unavailable", hello.AgentID, hello.ProtocolVersion)
 		return
