@@ -73,7 +73,7 @@ async function enableNotifications() {
       </NuxtLink>
     </nav>
     <section
-      v-if="settingsSection === 'notifications'"
+      v-show="settingsSection === 'notifications'"
       class="panel preferences-panel"
     >
       <div class="panel-heading">
@@ -150,7 +150,7 @@ async function enableNotifications() {
         text is shown only after browser permission is granted.
       </p>
     </section>
-    <AgentPanel v-else />
+    <AgentPanel v-show="settingsSection === 'agents'" />
   </div>
 </template>
 
