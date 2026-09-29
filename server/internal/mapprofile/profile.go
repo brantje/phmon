@@ -123,10 +123,10 @@ func ForServer(server, dataset string) (Profile, error) {
 			OrientationStatus: "edge-continuity-supported",
 			TileURLFormat:     "/game-assets/minimap/{x}x{y}.png",
 			MinX:              26, MaxX: 252, MinY: 35, MaxY: 126, TileCount: 5118,
-			Semantics: "root grid orientation is edge-continuity-supported (X right, Y up); the selected outdoor regions have a separately validated 192-unit position transform, while other regions and cave floors remain unmapped",
+			Semantics: "outdoor region ID encodes root tile X/Y; outdoor positions use 192 world units per tile with X right and Y up. Cave floors remain unmapped",
 		},
 		ValidationRequirements: []string{
-			"extend synchronized position/map and boundary checks to remaining outdoor regions",
+			"compare decoded outdoor region placement across towns and region boundaries",
 			"verified Z values for map-issued commands",
 			"dedicated imagery and transforms for each cave floor",
 		},
@@ -138,12 +138,10 @@ func ForServer(server, dataset string) (Profile, error) {
 		profile.TileCatalog.TileCount = 0
 		profile.ViewPresets = []ViewPreset{}
 	} else {
-		// The four joins exist in the selected export's root minimap set.
-		// phBot's documented outdoor examples and synchronized reference-map
-		// markers support 192 displayed X/Y units per region with X right/Y up.
-		// Keep this partial: other regions and cave floors have no placement entry.
-		profile.CoordinateTransform = "partial-validated-outdoor"
-		profile.RegionMappingsStatus = "partial-validated"
+		// The outdoor region ID encodes the root grid tile as high-byte Y and
+		// low-byte X. Keep the four observed joins as evidence, not an allowlist.
+		profile.CoordinateTransform = "outdoor-region-grid"
+		profile.RegionMappingsStatus = "outdoor-region-grid"
 		profile.RegionMappings = []RegionMapping{
 			{Region: 24744, AreaID: "world", FloorID: "world", TileX: 168, TileY: 96, Status: "validated"},
 			{Region: 25000, AreaID: "world", FloorID: "world", TileX: 168, TileY: 97, Status: "validated"},
@@ -162,9 +160,9 @@ func ForServer(server, dataset string) (Profile, error) {
 	}
 	worldRegionStatus := "unvalidated"
 	worldTransformStatus := "unvalidated"
-	if profile.RegionMappingsStatus == "partial-validated" {
-		worldRegionStatus = "partial-validated"
-		worldTransformStatus = "partial-validated"
+	if profile.RegionMappingsStatus == "outdoor-region-grid" {
+		worldRegionStatus = "outdoor-region-grid"
+		worldTransformStatus = "outdoor-region-grid"
 	}
 	profile.Areas = []Area{
 		{ID: "world", Label: "World map", Kind: "outdoor", RegionMappingStatus: worldRegionStatus, Floors: []Floor{{ID: "world", Label: "World", ImageStatus: profile.TileCatalog.Status, TransformStatus: worldTransformStatus}}},

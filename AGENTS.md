@@ -3922,3 +3922,34 @@ replaced from this workspace. Runtime CPU impact and visible animation still nee
 verification with fresh page/plugin loads and moving markers. Exact next action:
 reload the map page and staged plugin, then observe movement smoothness, update
 freshness and phBot load; keep Slices 7–8 in progress.
+
+### Resume — 2026-09-29 teleport-following outdoor map
+
+Active Slices 7–8 remain in progress. The map now uses the encoded outdoor region
+tile as primary placement (Hotan 23687→135/92; live Donwhang 26520→152/103), with
+192 world units per tile for exact X/Y. Four explicit profile joins remain examples,
+not an allowlist. An old region filter no longer drops a selected character after
+teleport; it clears when the new region arrives. Stale online positions remain
+visible and labelled. A repeated phBot `connected()` callback no longer resets the
+joined-game sampling flag. Files changed: plugin callback/test, Go map profile/API
+tests, web coordinate adapter, map feed/markers/UI/tests, and evidence docs. Python
+88 tests, focused Go tests, Nuxt 40 unit tests, typecheck and production build pass.
+Live phBot reload and side-by-side browser comparison are still required. Cave
+imagery/transforms and remaining Slice 7–8 gates stay open. Exact next action:
+deploy server/web and stage plugin on the authorized test host, then compare
+nuker1 against the reference while teleports occur; confirm sampling after the
+operator reloads the plugin.
+
+Deployment and browser follow-up: the first web build exposed an older remote
+`mapZoom.ts`; it was backed up and synchronized from this branch. Server and web
+production images then built and were restarted without restarting PostgreSQL.
+`/map`, `/api/health`, and `/readyz` returned HTTP 200; all three containers are
+healthy. Browser inspection uncovered a separate array-filter callback bug that
+hid every marker. A dedicated character-list filter and regression test fixed it;
+the second web build/restart passed. The authenticated map now shows four markers,
+including nuker1 on Hotan tile `(135,92)` at `(77.5,9.0)`. The reference shows
+nuker1 at the same coordinates and plaza position. Final local checks: 88 Python
+tests, focused Go tests, 41 Nuxt unit tests, Nuxt typecheck and production build
+pass; lint has 0 errors and 30 existing Vue style warnings. Exact next action:
+observe nuker1 through a fresh teleport after the operator loads the staged
+plugin into phBot; keep cave and remaining Slice 7–8 gates open.

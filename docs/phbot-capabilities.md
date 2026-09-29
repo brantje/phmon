@@ -780,3 +780,15 @@ observer cell. The focused plugin suite passes (86 tests), including a regressio
 that verifies polling is skipped at 0.099 seconds and resumes at 0.1 seconds. This is
 source/test evidence only: the updated plugin must be loaded by the connected phBot
 runtime before actual CPU cost and map freshness can be measured.
+
+### Teleport sampling and outdoor region placement — 2026-09-29
+
+During a Hotan teleport, the agent heartbeat continued while character state stopped
+advancing. A repeated plugin `connected()` callback cleared `_character_joined` even
+for an existing connection, preventing position sampling until `joined_game()` or
+a plugin reload. The callback now clears that flag only for a new connection; a
+focused test covers the repeated-callback case. This is a plausible cause, not yet
+confirmed on the installed phBot copy. After service recovery, a fresh Greatest
+observation in region 26520 had X/Y near `(3423.1,2115.2)`, consistent with
+outdoor tile `(152,103)`. The map uses `region = tileY*256 + tileX` as its primary
+outdoor placement rule with 192 coordinate units per tile. Cave handling is separate.

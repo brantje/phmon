@@ -1153,3 +1153,21 @@ rebuilt and restarted on the authorized test host; `/map`, `/api/health` and
 plugin source is staged at `/var/www/phmon/plugin/PhMon.py`; this does not replace the
 copy already loaded by phBot. Runtime load and visible animation need live movement
 after the browser reloads and the plugin is reloaded.
+
+### Teleport-following map correction — 2026-09-29
+
+The reference showed nuker1 in Hotan while PhMon omitted it. PhMon's four-region
+allowlist excluded Hotan region 23687, which encodes root tile `(135,92)`.
+The Greatest map now decodes outdoor region IDs as its primary tile source and
+places X/Y within that tile using 192 units per tile. A fresh Donwhang observation
+in region 26520 resolves to `(152,103)`. A selected character's subscription spans
+outdoor regions, and an old region filter clears after teleport. Stale positions
+remain displayed with a stale treatment. The plugin preserves joined-game sampling
+on a repeated `connected()` callback. Side-by-side browser comparison and reload of
+the running plugin remain open, as do cave floors and full Slice 7–8 acceptance.
+
+After deployment, a 2026-09-29 browser comparison showed nuker1 at Hotan
+`(77.5,9.0)` on both PhMon and phMonitor, on the same central plaza feature.
+PhMon rendered four character markers, including nuker1, with region 23687 and
+tile `(135,92)` in its readout. This verifies the current Hotan placement at the
+observed browser state; a subsequent teleport and plugin reload remain unobserved.

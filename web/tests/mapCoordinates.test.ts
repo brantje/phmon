@@ -10,6 +10,7 @@ import {
 import {
   characterHasDisplayableMapPosition,
   characterMapMarkers,
+  displayableMapCharacters,
 } from '../app/utils/mapCharacterMarkers.ts'
 
 const profile = (): MapProfile => ({
@@ -89,21 +90,21 @@ const greatestOutdoorProfile = (): MapProfile => {
   result.tiles.max_x = 252
   result.tiles.min_y = 35
   result.tiles.max_y = 126
-  result.coordinate_transform_status = 'partial-validated-outdoor'
-  result.region_mappings_status = 'partial-validated'
+  result.coordinate_transform_status = 'outdoor-region-grid'
+  result.region_mappings_status = 'outdoor-region-grid'
   result.command_z_evidence_status = 'unverified'
   result.areas = [
     {
       id: 'world',
       label: 'World',
       kind: 'outdoor',
-      region_mapping_status: 'partial-validated',
+      region_mapping_status: 'outdoor-region-grid',
       floors: [
         {
           id: 'world',
           label: 'World',
           image_status: 'available-for-inspection',
-          transform_status: 'partial-validated',
+          transform_status: 'outdoor-region-grid',
         },
       ],
     },
@@ -232,7 +233,7 @@ test('four fresh characters in one outdoor tile retain distinct exact pixels', (
   )
 })
 
-test('offline characters remain displayable at last known coordinates but online stale ones do not', () => {
+test('offline and stale online characters retain last observed map positions', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')
   const offline = {
     character_id: 'offline',
@@ -246,15 +247,65 @@ test('offline characters remain displayable at last known coordinates but online
   assert.equal(characterHasDisplayableMapPosition(offline, now), true)
   assert.equal(
     characterHasDisplayableMapPosition({ ...offline, x: undefined }, now),
-    false,
+    true,
   )
   assert.equal(
     characterHasDisplayableMapPosition(
       { ...offline, online: true, state_updated_at: '2026-09-29T11:00:00Z' },
       now,
     ),
-    false,
+    true,
   )
+})
+
+test('list filtering passes the actual clock to every character', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  const characters = ['one', 'two'].map((character_id) => ({
+    character_id,
+    name: character_id,
+    region: 25735,
+    state_updated_at: '2026-09-29T11:59:59Z',
+  }))
+  assert.deepEqual(displayableMapCharacters(characters, now), characters)
+})
+
+test('encoded outdoor region is primary without an explicit region mapping', () => {
+  const mapProfile = greatestOutdoorProfile()
+  mapProfile.region_mappings = []
+  mapProfile.coordinate_transforms = []
+  for (const [region, x, y, tileX, tileY] of [
+    [23687, 114, 16, 135, 92], // Hotan
+    [26520, 3423.1, 2115.2, 152, 103], // live Donwhang
+  ]) {
+    const raster = worldPositionToRaster(
+      mapProfile,
+      'world',
+      'world',
+      region!,
+      x!,
+      y!,
+    )
+    assert.ok(raster)
+    assert.equal(raster.tileX, tileX)
+    assert.equal(raster.tileY, tileY)
+  }
+  assert.equal(
+    worldPositionToRaster(mapProfile, 'world', 'world', 23687, 3423.1, 2115.2),
+    null,
+    'a mixed region and coordinate sample must not jump to a different tile',
+  )
+  const markers = characterMapMarkers(mapProfile, 'world', 'world', [
+    { character_id: 'nuker1', name: 'nuker1', region: 23687, x: 114, y: 16 },
+    {
+      character_id: 'donwhang',
+      name: 'donwhang',
+      region: 26520,
+      x: 3423.1,
+      y: 2115.2,
+    },
+  ])
+  assert.equal(markers.length, 2)
+  assert.ok(markers.every((marker) => marker.placement === 'exact'))
 })
 
 test('a known region without X/Y is labelled approximate and an unknown region is omitted', () => {

@@ -23,6 +23,7 @@ export interface CharacterMarkerInput {
   gold?: number
   sp?: number
   online?: boolean
+  position_stale?: boolean
   dead?: boolean | null
   state_updated_at?: string
 }
@@ -45,13 +46,19 @@ export function characterHasDisplayableMapPosition(
     : Number.NaN
   const hasPosition =
     character.region != null &&
-    Number.isFinite(character.x) &&
-    Number.isFinite(character.y) &&
+    Number.isInteger(character.region) &&
     Number.isFinite(updatedAt)
   if (!hasPosition) return false
-  if (!character.online) return true
-  const age = now - updatedAt
-  return age >= -5_000 && age <= 35_000
+  return updatedAt <= now + 5_000
+}
+
+export function displayableMapCharacters<T extends CharacterMarkerInput>(
+  characters: T[],
+  now = Date.now(),
+): T[] {
+  return characters.filter((character) =>
+    characterHasDisplayableMapPosition(character, now),
+  )
 }
 
 export function characterMapMarkers(

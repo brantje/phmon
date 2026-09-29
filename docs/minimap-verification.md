@@ -456,3 +456,34 @@ their exact X/Y values. These changes do not establish transforms for other outd
 regions, cave floors, command Z, or safe navigation. The exporter metadata retains
 its historical `worldTransformStatus`; this correction describes the separately
 verified profile registration, not a rewrite of the exported files.
+
+## Outdoor region grid as primary placement — 2026-09-29
+
+The earlier four-region registration excluded Hotan even though the outdoor region
+number itself identifies the root tile: `tileX = region % 256` and
+`tileY = floor(region / 256)`. Hotan region 23687 decodes to `(135,92)`; a live
+position near `(114,16)` falls inside it. After the game server returned, a fresh
+nuker1 sample in Donwhang region 26520, near `(3423.1,2115.2)`, decoded to
+`(152,103)` and its X/Y independently fell in that tile. The four earlier joins
+remain recorded examples, not a placement allowlist. The active Greatest adapter
+uses the encoded tile as the primary outdoor transform, then 192 world units per
+tile for the marker pixel. It rejects a transient region/X/Y disagreement rather
+than drawing the character in the wrong tile. When X/Y are temporarily absent,
+the character is shown at the encoded tile center with an approximate label.
+
+A selected character's map subscription now spans outdoor regions so a teleport
+does not remove it from the feed. An old region filter clears when the moved
+character arrives. Last observed online coordinates stay visible and marked stale
+if phBot briefly stops position updates. The plugin's repeated `connected()`
+callback no longer clears the joined-game sampling flag; that callback was a
+plausible cause of the observed heartbeat-without-position-update interval and
+needs confirmation after the running phBot copy is reloaded. Cave floors still
+need dedicated assets and transforms. No real movement command was issued.
+
+The first deployed browser inspection exposed an additional UI bug: passing
+`positionCanBeDisplayed` directly to `Array.filter` supplied the array index as
+its second `now` argument, suppressing all character markers. A dedicated list
+filter now passes one explicit clock and has a two-character regression test.
+After redeployment, the authenticated browser showed four character markers;
+nuker1 was on Hotan tile `(135,92)` at `(77.5,9.0)`, matching the reference's
+same live coordinates and plaza location.

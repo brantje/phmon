@@ -236,6 +236,17 @@ class ConfigTests(unittest.TestCase):
                 except plugin._queue.Empty:
                     break
 
+    def test_repeated_connected_callback_keeps_joined_character_sampling(self):
+        previous = (plugin._worker, plugin._phbot_connected_state, plugin._character_joined)
+        try:
+            plugin._worker = None
+            plugin._phbot_connected_state = True
+            plugin._character_joined = True
+            plugin.connected()
+            self.assertTrue(plugin._character_joined)
+        finally:
+            plugin._worker, plugin._phbot_connected_state, plugin._character_joined = previous
+
     def test_valid_config_normalizes_agent_path(self):
         config = plugin.validate_config({
             'backend_url': 'ws://127.0.0.1:8081',

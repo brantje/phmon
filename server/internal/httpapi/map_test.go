@@ -30,7 +30,7 @@ func TestMapProfileAPIReturnsTileReferencesAndHonestValidation(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &profile); err != nil {
 		t.Fatal(err)
 	}
-	if profile["dataset_id"] != mapprofile.GreatestDatasetID || profile["coordinate_transform_status"] != "partial-validated-outdoor" || profile["command_z_evidence_status"] != "unverified" {
+	if profile["dataset_id"] != mapprofile.GreatestDatasetID || profile["coordinate_transform_status"] != "outdoor-region-grid" || profile["command_z_evidence_status"] != "unverified" {
 		t.Fatalf("profile omits selected dataset or overstates placement evidence: %v", profile)
 	}
 	if mappings, ok := profile["region_mappings"].([]any); !ok || len(mappings) != 4 {

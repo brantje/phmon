@@ -105,7 +105,7 @@ export function dedupeCurrentMonsters(
         continue
       }
 
-      const previous = monsters[matchIndex]
+      const previous = monsters[matchIndex]!
       if (
         Date.parse(observer.observed_at) >
         Date.parse(previous.observer.observed_at)

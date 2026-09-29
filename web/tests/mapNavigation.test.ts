@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { MapProfile } from '../shared/types/map.ts'
 import {
+  mapFeedRegion,
   mapEventLocation,
   mapEventRoute,
   mapPreviewLocation,
@@ -152,4 +153,10 @@ test('a late map profile response is current only for the latest selected server
   assert.equal(mapProfileRequestIsCurrent(2, 2, 'greatest', 'greatest'), true)
   assert.equal(mapProfileRequestIsCurrent(1, 2, 'old', 'greatest'), false)
   assert.equal(mapProfileRequestIsCurrent(2, 2, 'old', 'greatest'), false)
+})
+
+test('selected character remains in the live feed after crossing a region boundary', () => {
+  assert.equal(mapFeedRegion(23687, 'nuker1-id'), undefined)
+  assert.equal(mapFeedRegion(23687, ''), 23687)
+  assert.equal(mapFeedRegion(0, ''), undefined)
 })

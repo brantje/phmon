@@ -15,6 +15,9 @@ export interface GamePosition {
 }
 
 const TILE_SIZE = 256
+const OUTDOOR_UNITS_PER_TILE = 192
+const OUTDOOR_ORIGIN_TILE_X = 135
+const OUTDOOR_ORIGIN_TILE_Y = 92
 
 export interface MapTileGrid {
   min_x: number
@@ -65,32 +68,80 @@ export function leafletToRasterPosition(
   }
 }
 
+function outdoorGridEnabled(
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+) {
+  return (
+    areaID === 'world' &&
+    floorID === 'world' &&
+    profile.tiles.status === 'available-for-inspection' &&
+    profile.coordinate_transform_status === 'outdoor-region-grid'
+  )
+}
+
+export function outdoorRegionTile(
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+  region: number | undefined,
+) {
+  if (
+    !outdoorGridEnabled(profile, areaID, floorID) ||
+    region == null ||
+    !Number.isInteger(region) ||
+    region < 1 ||
+    region > 65535
+  )
+    return null
+  const tileX = region % 256
+  const tileY = Math.floor(region / 256)
+  return inCatalog(profile, tileX, tileY) ? { tileX, tileY } : null
+}
+
 function usableTransform(
   profile: MapProfile,
   areaID: string,
   floorID: string,
   region: number,
 ): MapCoordinateTransform | undefined {
-  const partialOutdoor =
-    areaID === 'world' &&
-    floorID === 'world' &&
-    profile.coordinate_transform_status === 'partial-validated-outdoor' &&
-    profile.region_mappings_status === 'partial-validated'
+  const outdoor = outdoorRegionTile(profile, areaID, floorID, region)
+  if (outdoor) {
+    const observed = profile.coordinate_transforms.find(
+      (transform) =>
+        transform.area_id === areaID &&
+        transform.floor_id === floorID &&
+        transform.region === region,
+    )
+    return {
+      area_id: areaID,
+      floor_id: floorID,
+      region,
+      status: 'outdoor-region-grid',
+      world_origin_x:
+        (outdoor.tileX - OUTDOOR_ORIGIN_TILE_X) * OUTDOOR_UNITS_PER_TILE,
+      world_origin_y:
+        (outdoor.tileY - OUTDOOR_ORIGIN_TILE_Y) * OUTDOOR_UNITS_PER_TILE,
+      tile_origin_x: outdoor.tileX,
+      tile_origin_y: outdoor.tileY,
+      units_per_tile_x: OUTDOOR_UNITS_PER_TILE,
+      units_per_tile_y: OUTDOOR_UNITS_PER_TILE,
+      axis_x: 1,
+      axis_y: 1,
+      command_z: observed?.command_z,
+    }
+  }
   if (
-    !partialOutdoor &&
-    (profile.coordinate_transform_status !== 'validated' ||
-      profile.region_mappings_status !== 'validated')
+    profile.coordinate_transform_status !== 'validated' ||
+    profile.region_mappings_status !== 'validated'
   )
     return undefined
   const area = profile.areas.find((item) => item.id === areaID)
   const floor = area?.floors.find((item) => item.id === floorID)
   if (
-    (area?.region_mapping_status !== 'validated' &&
-      !(
-        partialOutdoor && area?.region_mapping_status === 'partial-validated'
-      )) ||
-    (floor?.transform_status !== 'validated' &&
-      !(partialOutdoor && floor?.transform_status === 'partial-validated'))
+    area?.region_mapping_status !== 'validated' ||
+    floor?.transform_status !== 'validated'
   )
     return undefined
   return profile.coordinate_transforms.find(
@@ -121,14 +172,17 @@ function inCatalog(profile: MapProfile, tileX: number, tileY: number) {
   )
 }
 
-// A documented refregion-to-root-tile join can locate an outdoor region on
-// the raster without claiming a character's pixel inside that tile.
+// The encoded outdoor region tile can locate a character even when phBot has
+// not yet supplied a usable X/Y pair during a teleport transition.
 export function regionTileCenter(
   profile: MapProfile,
   areaID: string,
   floorID: string,
   region: number | undefined,
 ): RasterPosition | null {
+  const outdoor = outdoorRegionTile(profile, areaID, floorID, region)
+  if (outdoor)
+    return { ...outdoor, pixelX: TILE_SIZE / 2, pixelY: TILE_SIZE / 2 }
   if (
     region == null ||
     !Number.isInteger(region) ||
@@ -195,17 +249,11 @@ export function worldPositionToRaster(
     fractionY = 1
   }
   if (!inCatalog(profile, tileX, tileY)) return null
-  if (profile.coordinate_transform_status === 'partial-validated-outdoor') {
-    const mapping = profile.region_mappings.find(
-      (item) =>
-        item.region === region &&
-        item.area_id === areaID &&
-        item.floor_id === floorID &&
-        item.status === 'validated',
-    )
-    // A phBot position that crosses a region seam before its region ID changes
-    // must wait for a consistent snapshot instead of appearing in another tile.
-    if (!mapping || mapping.tile_x !== tileX || mapping.tile_y !== tileY)
+  if (outdoorGridEnabled(profile, areaID, floorID)) {
+    const encoded = outdoorRegionTile(profile, areaID, floorID, region)
+    // A region update and X/Y may arrive in separate phBot samples. Wait for a
+    // consistent pair instead of moving the marker into the wrong tile.
+    if (!encoded || encoded.tileX !== tileX || encoded.tileY !== tileY)
       return null
   }
   return {

@@ -15,6 +15,7 @@ import {
 import {
   characterHasDisplayableMapPosition,
   characterMapMarkers,
+  displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
 import {
   dedupeCurrentMonsters,
@@ -22,6 +23,7 @@ import {
   monsterTypePresentation,
 } from '~/utils/mapMarkerPresentation'
 import {
+  mapFeedRegion,
   mapEventLocation,
   mapProfileRequestIsCurrent,
 } from '~/utils/mapNavigation'
@@ -167,7 +169,8 @@ const currentCharacterPositionFresh = computed(() => {
 })
 const exactCharacterRasterPosition = computed(() => {
   const character = currentCharacter.value
-  if (!mapProfile.value || !positionCanBeDisplayed(character)) return null
+  if (!mapProfile.value || !character || !positionCanBeDisplayed(character))
+    return null
   return worldPositionToRaster(
     mapProfile.value,
     areaID.value,
@@ -181,7 +184,8 @@ const characterRasterPosition = computed(() => {
   if (exactCharacterRasterPosition.value)
     return exactCharacterRasterPosition.value
   const character = currentCharacter.value
-  if (!mapProfile.value || !positionCanBeDisplayed(character)) return null
+  if (!mapProfile.value || !character || !positionCanBeDisplayed(character))
+    return null
   return regionTileCenter(
     mapProfile.value,
     areaID.value,
@@ -332,12 +336,14 @@ const mapMarkers = computed(() => {
         profile,
         areaID.value,
         floorID.value,
-        scopedCharacters.value
-          .filter(positionCanBeDisplayed)
-          .map((character) => ({
-            ...character,
-            group_name: groupByCharacter.value.get(character.character_id),
-          })),
+        displayableMapCharacters(
+          scopedCharacters.value,
+          freshnessNow.value,
+        ).map((character) => ({
+          ...character,
+          group_name: groupByCharacter.value.get(character.character_id),
+          position_stale: character.online && !positionIsFresh(character),
+        })),
       )
     : []
   const addMarker = (
@@ -520,6 +526,15 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
 })
 watch(selectedCharacterID, (characterID) => {
   if (characterID) selectedDestinationID.value = ''
+  const selected = mapSnapshot.value?.characters.find(
+    (character) => character.character_id === characterID,
+  )
+  if (selected && regionID.value && regionID.value !== selected.region)
+    regionID.value = 0
+})
+watch(currentCharacter, (character) => {
+  if (character && regionID.value && regionID.value !== character.region)
+    regionID.value = 0
 })
 watch([server, areaID, floorID, regionID, selectedCharacterID], () => {
   selectedTile.value = null
@@ -541,15 +556,24 @@ watch(mapProfile, (profile) => {
 })
 const eventWindowNow = ref(Date.now())
 watch(
-  [server, areaID, floorID, regionID, dateRange, eventWindowNow, linkedEventID],
-  ([selectedServer, area, floor, region, range, now, eventID]) => {
+  [
+    server,
+    areaID,
+    floorID,
+    regionID,
+    selectedCharacterID,
+    dateRange,
+    eventWindowNow,
+    linkedEventID,
+  ],
+  ([selectedServer, area, floor, region, characterID, range, now, eventID]) => {
     if (!selectedServer) return
     const { from, to } = relativeMapEventWindow(range, now)
     setMapFeed(subscriptionID, {
       server: selectedServer,
       area,
       floor,
-      region: area === 'world' ? region || undefined : undefined,
+      region: area === 'world' ? mapFeedRegion(region, characterID) : undefined,
       from,
       to,
       event_id: eventID || undefined,
@@ -736,8 +760,8 @@ useHead({ title: 'Map · PhMon' })
           characterPlacement === 'exact'
             ? 'Jump to the selected character position.'
             : characterPlacement === 'region-tile'
-              ? 'Jump to the matched region tile. Exact position is unverified.'
-              : 'No verified tile is available for this character.'
+              ? 'Jump to the character’s encoded outdoor region tile.'
+              : 'No outdoor tile is available for this character.'
         "
         @click="jumpToCharacter"
       >
@@ -862,11 +886,11 @@ useHead({ title: 'Map · PhMon' })
             mapProfile?.tiles.semantics ||
             'Tile and coordinate evidence is unavailable.'
           }}
-          Fresh characters in validated outdoor regions use their reported X/Y
-          positions. Outlined tile-only dots, when present, indicate an
-          approximate region. Other regions and cave floors remain unmapped;
-          training-area selection and navigation remain unavailable without
-          verified command Z.
+          Outdoor region IDs locate their root tile directly. Reported X/Y
+          positions locate markers within that tile; outlined dots indicate a
+          region-only position. Older observations remain visible as last
+          observed positions. Cave floors still need their own imagery and
+          coordinate model.
         </div>
       </section>
 
@@ -930,7 +954,11 @@ useHead({ title: 'Map · PhMon' })
               ></span
             >
             <small>{{
-              character.online ? 'Online' : 'Offline · last position'
+              character.online
+                ? positionIsFresh(character)
+                  ? 'Online'
+                  : 'Online · last observed position'
+                : 'Offline · last position'
             }}</small>
           </button>
           <p v-if="!scopedCharacters.length" class="map-empty-copy">

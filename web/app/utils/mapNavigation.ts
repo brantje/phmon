@@ -1,4 +1,8 @@
-import { worldPositionToRaster, type RasterPosition } from './mapCoordinates.ts'
+import {
+  outdoorRegionTile,
+  worldPositionToRaster,
+  type RasterPosition,
+} from './mapCoordinates.ts'
 import type { MapProfile } from '../../shared/types/map.ts'
 
 export interface MapPreviewCharacterScope {
@@ -45,6 +49,22 @@ export function mapEventLocation(
   profile: MapProfile,
   event: MapEventCoordinates,
 ): MappedEventLocation {
+  if (outdoorRegionTile(profile, 'world', 'world', event.region)) {
+    const position = worldPositionToRaster(
+      profile,
+      'world',
+      'world',
+      event.region,
+      event.x,
+      event.y,
+    )
+    return {
+      status: position ? 'mapped' : 'coordinates-unmappable',
+      areaID: 'world',
+      floorID: 'world',
+      position,
+    }
+  }
   const mapping =
     event.region == null
       ? undefined
@@ -86,6 +106,10 @@ export function mapProfileRequestIsCurrent(
   selectedServer: string,
 ) {
   return requestID === activeRequestID && requestedServer === selectedServer
+}
+
+export function mapFeedRegion(region: number, selectedCharacterID: string) {
+  return selectedCharacterID ? undefined : region || undefined
 }
 
 export function mapPreviewLocation(

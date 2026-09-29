@@ -76,7 +76,7 @@ export interface MapCoordinateTransform {
   area_id: string
   floor_id: string
   region: number
-  status: 'unvalidated' | 'validated'
+  status: 'unvalidated' | 'validated' | 'outdoor-region-grid'
   world_origin_x: number
   world_origin_y: number
   tile_origin_x: number

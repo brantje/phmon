@@ -3300,8 +3300,8 @@ def connected():
     global _character_joined, _phbot_connected_state
     already_connected = _phbot_connected_state is True
     _phbot_connected_state = True
-    _character_joined = False
     if not already_connected:
+        _character_joined = False
         _lifecycle_event('session.connected', 'connected')
 
 

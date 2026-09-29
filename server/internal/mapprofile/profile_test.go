@@ -7,14 +7,14 @@ func TestRequiredMapFamiliesHaveIndependentFloorAndTransformStatus(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if profile.CoordinateTransform != "partial-validated-outdoor" || profile.CommandZEvidence != "unverified" || profile.RegionMappingsStatus != "partial-validated" {
+	if profile.CoordinateTransform != "outdoor-region-grid" || profile.CommandZEvidence != "unverified" || profile.RegionMappingsStatus != "outdoor-region-grid" {
 		t.Fatalf("map evidence was overstated: %+v", profile)
 	}
 	if len(profile.QuickDestinations) != 0 {
 		t.Fatalf("unvalidated map entries were advertised: %+v", profile)
 	}
 	if len(profile.RegionMappings) != 4 || len(profile.CoordinateTransforms) != 4 {
-		t.Fatalf("expected only the four documented outdoor joins: %+v", profile.RegionMappings)
+		t.Fatalf("expected four observed outdoor examples: %+v", profile.RegionMappings)
 	}
 	for _, mapping := range profile.RegionMappings {
 		if mapping.Status != "validated" || mapping.AreaID != "world" || mapping.FloorID != "world" {

@@ -280,7 +280,9 @@ function markerPopup(marker: MapCanvasMarker) {
     const character = marker.character
     title.textContent = character.name
     subtitle.textContent = character.online
-      ? `Level ${integer(character.level)} | ${character.dead ? 'Dead' : 'In Field'}`
+      ? character.position_stale
+        ? `Level ${integer(character.level)} | Online · last observed position`
+        : `Level ${integer(character.level)} | ${character.dead ? 'Dead' : 'In Field'}`
       : `Level ${integer(character.level)} | Offline · last known position`
     header.prepend(
       markerPortrait(character.portrait_url, character.name, 'portrait'),
@@ -376,6 +378,8 @@ function markerIconContent(marker: MapCanvasMarker) {
     content.className = 'phmon-map-character-pin'
     if (marker.character?.online === false)
       content.classList.add('phmon-map-character-pin--offline')
+    if (marker.character?.position_stale)
+      content.classList.add('phmon-map-character-pin--stale')
     const fallback = document.createElement('span')
     fallback.textContent =
       marker.character?.name.slice(0, 1).toUpperCase() || 'C'
@@ -588,6 +592,7 @@ onMounted(async () => {
       marker.character?.name,
       marker.character?.portrait_url,
       marker.character?.online,
+      marker.character?.position_stale,
       type?.code,
       type?.scale,
       type?.party,
@@ -767,6 +772,17 @@ onBeforeUnmount(() => {
   box-shadow:
     0 0 0 2px #07111bcc,
     0 2px 7px #000b;
+}
+
+:global(.phmon-map-character-pin--stale) {
+  border-color: #d3b77c;
+  background: #34332e;
+  color: #e4d9bd;
+}
+
+:global(.phmon-map-character-pin--stale img) {
+  filter: saturate(0.5);
+  opacity: 0.8;
 }
 
 :global(.phmon-map-character-pin img) {
