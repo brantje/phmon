@@ -136,9 +136,10 @@ func (s *Store) eventHeatmap(ctx context.Context, filter Filter) (Result, error)
 		SELECT region,floor(x/$10)::bigint bx,floor(y/$10)::bigint by,count(*)::bigint n
 		FROM source WHERE NOT suppressed GROUP BY region,bx,by
 	), ranked AS (
-		SELECT *,count(*) OVER()::bigint total_groups FROM grouped ORDER BY n DESC,region,bx,by LIMIT $11
+		SELECT *,count(*) OVER()::bigint total_groups,sum(n) OVER()::bigint total_source_rows
+		FROM grouped ORDER BY n DESC,region,bx,by LIMIT $11
 	)
-	SELECT region,(bx+0.5)*$10,(by+0.5)*$10,n,total_groups FROM ranked`, kindSQL)
+	SELECT region,(bx+0.5)*$10,(by+0.5)*$10,n,total_groups,total_source_rows FROM ranked`, kindSQL)
 	rows, err := s.pool.Query(ctx, query, filter.Layer, filter.Server, filter.DatasetID, filter.AreaID, filter.FloorID,
 		filter.From.UTC(), filter.To.UTC(), filter.Region, filter.CharacterID, filter.Resolution, filter.Limit)
 	if err != nil {
@@ -149,11 +150,10 @@ func (s *Store) eventHeatmap(ctx context.Context, filter Filter) (Result, error)
 	var totalGroups int64
 	for rows.Next() {
 		var point Point
-		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Count, &totalGroups); err != nil {
+		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Count, &totalGroups, &result.SourceRows); err != nil {
 			return Result{}, err
 		}
 		point.Weight = float64(point.Count)
-		result.SourceRows += point.Count
 		result.Points = append(result.Points, point)
 	}
 	if err := rows.Err(); err != nil {
@@ -186,9 +186,10 @@ func (s *Store) positionHeatmap(ctx context.Context, filter Filter) (Result, err
 		SELECT region,floor(x/$10)::bigint bx,floor(y/$10)::bigint by,count(*)::bigint n
 		FROM source WHERE NOT suppressed GROUP BY region,bx,by
 	), ranked AS (
-		SELECT *,count(*) OVER()::bigint total_groups FROM grouped ORDER BY n DESC,region,bx,by LIMIT $11
+		SELECT *,count(*) OVER()::bigint total_groups,sum(n) OVER()::bigint total_source_rows
+		FROM grouped ORDER BY n DESC,region,bx,by LIMIT $11
 	)
-	SELECT region,(bx+0.5)*$10,(by+0.5)*$10,n,total_groups FROM ranked`, filter.Layer, filter.Server, filter.DatasetID,
+	SELECT region,(bx+0.5)*$10,(by+0.5)*$10,n,total_groups,total_source_rows FROM ranked`, filter.Layer, filter.Server, filter.DatasetID,
 		filter.AreaID, filter.FloorID, filter.From.UTC(), filter.To.UTC(), filter.Region, filter.CharacterID, filter.Resolution, filter.Limit)
 	if err != nil {
 		return Result{}, err
@@ -198,11 +199,10 @@ func (s *Store) positionHeatmap(ctx context.Context, filter Filter) (Result, err
 	var totalGroups int64
 	for rows.Next() {
 		var point Point
-		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Count, &totalGroups); err != nil {
+		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Count, &totalGroups, &result.SourceRows); err != nil {
 			return Result{}, err
 		}
 		point.Weight = float64(point.Count)
-		result.SourceRows += point.Count
 		result.Points = append(result.Points, point)
 	}
 	if err := rows.Err(); err != nil {
@@ -236,9 +236,10 @@ func (s *Store) mobSightings(ctx context.Context, filter Filter) (Result, error)
 		SELECT region,floor(x/$12)::bigint bx,floor(y/$12)::bigint by,count(*)::bigint n
 		FROM source WHERE NOT suppressed GROUP BY region,bx,by
 	), ranked AS (
-		SELECT *,count(*) OVER()::bigint total_groups FROM grouped ORDER BY n DESC,region,bx,by LIMIT $13
+		SELECT *,count(*) OVER()::bigint total_groups,sum(n) OVER()::bigint total_source_rows
+		FROM grouped ORDER BY n DESC,region,bx,by LIMIT $13
 	)
-	SELECT region,(bx+0.5)*$12,(by+0.5)*$12,n,total_groups FROM ranked`, filter.Layer, filter.Server, filter.DatasetID,
+	SELECT region,(bx+0.5)*$12,(by+0.5)*$12,n,total_groups,total_source_rows FROM ranked`, filter.Layer, filter.Server, filter.DatasetID,
 		filter.AreaID, filter.FloorID, filter.From.UTC(), filter.To.UTC(), filter.Region, filter.CharacterID,
 		filter.MonsterType, filter.ModelID, filter.Resolution, filter.Limit)
 	if err != nil {
@@ -249,11 +250,10 @@ func (s *Store) mobSightings(ctx context.Context, filter Filter) (Result, error)
 	var totalGroups int64
 	for rows.Next() {
 		var point Point
-		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Count, &totalGroups); err != nil {
+		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Count, &totalGroups, &result.SourceRows); err != nil {
 			return Result{}, err
 		}
 		point.Weight = float64(point.Count)
-		result.SourceRows += point.Count
 		result.Points = append(result.Points, point)
 	}
 	if err := rows.Err(); err != nil {
@@ -282,11 +282,11 @@ func (s *Store) observerAverage(ctx context.Context, filter Filter) (Result, err
 			AND ($10='' OR o.monster_type=$10) AND ($11::bigint IS NULL OR o.model_id=$11)
 		GROUP BY s.region,s.observer_cell_x,s.observer_cell_y
 	), ranked AS (
-		SELECT *,count(*) OVER()::bigint total_groups FROM grouped
+		SELECT *,count(*) OVER()::bigint total_groups,sum(numerator) OVER()::bigint total_source_rows FROM grouped
 		ORDER BY CASE WHEN denominator=0 THEN 0 ELSE numerator::double precision/denominator END DESC,region,observer_cell_x,observer_cell_y LIMIT $12
 	)
 	SELECT region,(observer_cell_x+0.5)*$13,(observer_cell_y+0.5)*$13,numerator,denominator,
-		CASE WHEN denominator=0 THEN 0 ELSE numerator::double precision/denominator END,total_groups FROM ranked`,
+		CASE WHEN denominator=0 THEN 0 ELSE numerator::double precision/denominator END,total_groups,total_source_rows FROM ranked`,
 		filter.Layer, filter.Server, filter.DatasetID, filter.AreaID, filter.FloorID, filter.From.UTC(), filter.To.UTC(), filter.Region,
 		filter.CharacterID, filter.MonsterType, filter.ModelID, filter.Limit, float64(192))
 	if err != nil {
@@ -298,11 +298,10 @@ func (s *Store) observerAverage(ctx context.Context, filter Filter) (Result, err
 	var totalGroups int64
 	for rows.Next() {
 		var point Point
-		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Numerator, &point.Denominator, &point.Weight, &totalGroups); err != nil {
+		if err := rows.Scan(&point.Region, &point.X, &point.Y, &point.Numerator, &point.Denominator, &point.Weight, &totalGroups, &result.SourceRows); err != nil {
 			return Result{}, err
 		}
 		point.Count = point.Numerator
-		result.SourceRows += point.Numerator
 		result.Points = append(result.Points, point)
 	}
 	if err := rows.Err(); err != nil {
@@ -322,10 +321,16 @@ func (s *Store) MobFacets(ctx context.Context, input Filter, limit int) ([]MobFa
 	}
 	rows, err := s.pool.Query(ctx, `SELECT o.monster_type,o.model_id,count(*)::bigint
 		FROM mob_observation_samples s JOIN mob_observations o ON o.sample_id=s.sample_id
-		WHERE lower(s.server_name)=lower($1) AND s.dataset_id=$2 AND s.sampled_at >= $3 AND s.sampled_at < $4
-			AND ($5::integer IS NULL OR o.region=$5) AND ($6='' OR s.character_id=$6::uuid)
-		GROUP BY o.monster_type,o.model_id ORDER BY count(*) DESC,o.monster_type,o.model_id LIMIT $7`,
-		filter.Server, filter.DatasetID, filter.From.UTC(), filter.To.UTC(), filter.Region, filter.CharacterID, limit)
+		WHERE lower(s.server_name)=lower($1) AND s.dataset_id=$2 AND s.sampled_at >= $5 AND s.sampled_at < $6
+			AND ($7::integer IS NULL OR o.region=$7) AND ($8='' OR s.character_id=$8::uuid)
+			AND NOT EXISTS(SELECT 1 FROM map_heatmap_resets r WHERE r.layer=$3 AND lower(r.server_name)=lower($1)
+				AND r.dataset_id=$2 AND r.area_id=$9 AND r.floor_id=$10
+				AND (r.region IS NULL OR r.region=o.region) AND (r.character_id IS NULL OR r.character_id=s.character_id)
+				AND (r.monster_type IS NULL OR r.monster_type=o.monster_type) AND (r.model_id IS NULL OR r.model_id=o.model_id)
+				AND s.sampled_at>=r.from_time AND s.sampled_at<r.to_time)
+		GROUP BY o.monster_type,o.model_id ORDER BY count(*) DESC,o.monster_type,o.model_id LIMIT $4`,
+		filter.Server, filter.DatasetID, LayerMobTypes, limit, filter.From.UTC(), filter.To.UTC(), filter.Region, filter.CharacterID,
+		filter.AreaID, filter.FloorID)
 	if err != nil {
 		return nil, err
 	}

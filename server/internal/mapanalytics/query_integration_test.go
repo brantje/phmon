@@ -262,3 +262,94 @@ func TestNormalizeFilterAcceptsSignedCaveRegionButRejectsZero(t *testing.T) {
 		t.Fatalf("region zero accepted: %v", err)
 	}
 }
+
+
+func TestMobFacetsHonorMobSightingsResetProjection(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run map analytics integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.NewStore(pool).CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	server := "facet-reset-" + credential.AgentID
+	characterStore := characters.NewStore(pool)
+	characterID, err := characterStore.Resolve(ctx, characters.Identity{Server: server, Name: "FacetReset"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID, err := characterStore.ClaimSessionID(ctx, credential.AgentID, characterID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM map_heatmap_resets WHERE lower(server_name)=lower($1)`, server)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM mob_observation_samples WHERE lower(server_name)=lower($1)`, server)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM character_sessions WHERE agent_id=$1`, credential.AgentID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM characters WHERE server_key=lower($1)`, server)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+	var now time.Time
+	if err := pool.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO mob_observation_samples
+		(sample_id,agent_id,character_id,session_id,server_name,dataset_id,area_id,floor_id,region,sampled_at,sample_hash,sample_minute,observer_x,observer_y,observer_cell_x,observer_cell_y)
+		VALUES
+		('00000000-0000-4000-8000-000000009201',$1,$2,$3,$4,$5,'region:25273','unmapped',25273,$6,decode(repeat('11',32),'hex'),date_trunc('minute',$6::timestamptz),10,20,0,0),
+		('00000000-0000-4000-8000-000000009202',$1,$2,$3,$4,$5,'region:25273','unmapped',25273,$7,decode(repeat('12',32),'hex'),date_trunc('minute',$7::timestamptz),20,20,1,0)`,
+		credential.AgentID, characterID, sessionID, server, mapprofile.GreatestDatasetID,
+		now.Add(-10*time.Minute), now.Add(-9*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO mob_observations(sample_id,ordinal,monster_id,model_id,monster_type,region,x,y)
+		VALUES
+		('00000000-0000-4000-8000-000000009201',0,'g',500,'General',25273,100,100),
+		('00000000-0000-4000-8000-000000009202',0,'c',501,'Champion',25273,120,100)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(pool)
+	from, to := now.Add(-time.Hour), now.Add(time.Minute)
+	before, err := store.MobFacets(ctx, Filter{
+		Layer: LayerMobTypes, Server: server, DatasetID: mapprofile.GreatestDatasetID,
+		AreaID: "world", FloorID: "world", From: from, To: to, Limit: 100,
+	}, 100)
+	if err != nil || len(before) != 2 {
+		t.Fatalf("facet fixture unavailable before reset: facets=%+v err=%v", before, err)
+	}
+	region := 25273
+	_, err = store.Reset(ctx, ResetScope{
+		Layer: LayerMobTypes, Server: server, DatasetID: mapprofile.GreatestDatasetID,
+		AreaID: "world", FloorID: "world", Region: &region, MonsterType: "General",
+		From: from, To: to,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := store.MobFacets(ctx, Filter{
+		Layer: LayerMobTypes, Server: server, DatasetID: mapprofile.GreatestDatasetID,
+		AreaID: "world", FloorID: "world", From: from, To: to, Limit: 100,
+	}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].MonsterType != "Champion" || after[0].Count != 1 {
+		t.Fatalf("mob facets ignored reset projection: %+v", after)
+	}
+}

@@ -56,6 +56,8 @@ type Result struct {
 	To             time.Time `json:"to"`
 	Resolution     float64   `json:"resolution"`
 	Points         []Point   `json:"points"`
+	// SourceRows is the total unsuppressed canonical source population contributing
+	// to the aggregation before the bounded point limit is applied.
 	SourceRows     int64     `json:"source_rows"`
 	SuppressedRows int64     `json:"suppressed_rows"`
 	Truncated      bool      `json:"truncated"`

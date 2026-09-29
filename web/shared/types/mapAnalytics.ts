@@ -32,6 +32,7 @@ export interface HeatmapResult {
   to: string
   resolution: number
   points: HeatmapPoint[]
+  /** Total unsuppressed source rows before the bounded point limit. */
   source_rows: number
   suppressed_rows: number
   truncated: boolean
