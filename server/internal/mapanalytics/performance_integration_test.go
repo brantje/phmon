@@ -254,14 +254,20 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 			t.Fatal(rows.Err())
 		}
 		plan := strings.Join(lines, "\n")
-		indexLine := ""
-		for _, line := range lines {
-			if strings.Contains(line, "mob_observation_samples_heatmap_time_idx") {
-				indexLine = line
-				break
+		indexCondition := ""
+		for index, line := range lines {
+			if !strings.Contains(line, "mob_observation_samples_heatmap_time_idx") {
+				continue
 			}
+			for next := index + 1; next < len(lines) && next <= index+3; next++ {
+				if strings.Contains(lines[next], "Index Cond:") {
+					indexCondition = lines[next]
+					break
+				}
+			}
+			break
 		}
-		if indexLine == "" || !strings.Contains(indexLine, "sampled_at") {
+		if indexCondition == "" || !strings.Contains(indexCondition, "sampled_at") {
 			t.Fatalf("%s plan did not use a time-bounded mob history index condition:\n%s", name, plan)
 		}
 		t.Logf("%s plan:\n%s", name, plan)
