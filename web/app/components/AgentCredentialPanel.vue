@@ -2,6 +2,7 @@
 import type { AgentCredential } from '~~/shared/types/agent'
 const credentialPanelOpen = defineModel<boolean>('open', { required: true })
 const credentialCreating = defineModel<boolean>('creating', { required: true })
+const emit = defineEmits<{ created: [] }>()
 const createdCredential = ref<AgentCredential | null>(null)
 const credentialError = ref('')
 const credentialCopied = ref<'agent_id' | 'agent_token' | null>(null)
@@ -34,6 +35,7 @@ async function createAgentCredential() {
         retry: 0,
       },
     )
+    emit('created')
   } catch {
     credentialError.value =
       'Could not create a credential. Check backend/database readiness and try again.'
