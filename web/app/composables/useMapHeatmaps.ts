@@ -1,3 +1,4 @@
+import { getCurrentScope, onScopeDispose, reactive, ref } from 'vue'
 import type {
   HeatmapLayerID,
   HeatmapResetRequest,
@@ -18,6 +19,16 @@ export interface HeatmapQuery {
   to: string
 }
 
+type HeatmapFetch = <T>(
+  request: string,
+  options?: {
+    query?: Record<string, unknown>
+    signal?: AbortSignal
+    method?: string
+    body?: unknown
+  },
+) => Promise<T>
+
 const HISTORICAL_LAYERS: HeatmapLayerID[] = [
   'mob_observer_average',
   'mob_types',
@@ -27,7 +38,8 @@ const HISTORICAL_LAYERS: HeatmapLayerID[] = [
   'player_movement',
 ]
 
-export function useMapHeatmaps() {
+export function useMapHeatmaps(fetcher?: HeatmapFetch) {
+  const request = fetcher || ($fetch as HeatmapFetch)
   const enabled = reactive<Record<HeatmapLayerID, boolean>>({
     mob_density: false,
     mob_observer_average: false,
@@ -51,55 +63,11 @@ export function useMapHeatmaps() {
     return HISTORICAL_LAYERS.filter((layer) => enabled[layer])
   }
 
-  async function refresh(query: HeatmapQuery) {
-    const currentGeneration = ++generation
-    const layers = activeLayers()
-    for (const layer of HISTORICAL_LAYERS) {
-      if (!enabled[layer]) {
-        controllers.get(layer)?.abort()
-        controllers.delete(layer)
-        results[layer] = undefined
-        errors[layer] = undefined
-        loading[layer] = undefined
-      }
-    }
-    await Promise.all(
-      layers.map(async (layer) => {
-        controllers.get(layer)?.abort()
-        const controller = new AbortController()
-        controllers.set(layer, controller)
-        loading[layer] = true
-        errors[layer] = ''
-        try {
-          const result = await $fetch<HeatmapResult>('/api/map/heatmap', {
-            query: { ...query, layer },
-            signal: controller.signal,
-          })
-          if (
-            currentGeneration === generation &&
-            controllers.get(layer) === controller
-          )
-            results[layer] = result
-        } catch (error) {
-          if (
-            currentGeneration === generation &&
-            controllers.get(layer) === controller &&
-            !controller.signal.aborted
-          )
-            errors[layer] =
-              error instanceof Error ? error.message : 'Heatmap query failed'
-        } finally {
-          if (
-            currentGeneration === generation &&
-            controllers.get(layer) === controller
-          )
-            loading[layer] = false
-        }
-      }),
-    )
-  }
-
-  async function loadFacets(query: HeatmapQuery) {
+  async function refreshFacets(
+    query: HeatmapQuery,
+    currentGeneration: number,
+  ) {
+    if (currentGeneration !== generation) return
     facetsController?.abort()
     const controller = new AbortController()
     facetsController = controller
@@ -111,23 +79,99 @@ export function useMapHeatmaps() {
         model_id: _modelID,
         ...facetQuery
       } = query
-      const response = await $fetch<{ facets: MobHeatmapFacet[] }>(
+      const response = await request<{ facets: MobHeatmapFacet[] }>(
         '/api/map/heatmap/facets',
         { query: facetQuery, signal: controller.signal },
       )
-      if (facetsController === controller) facets.value = response.facets
+      if (
+        currentGeneration === generation &&
+        facetsController === controller
+      )
+        facets.value = response.facets
     } catch (error) {
-      if (facetsController === controller && !controller.signal.aborted) {
+      if (
+        currentGeneration === generation &&
+        facetsController === controller &&
+        !controller.signal.aborted
+      ) {
         facetsError.value =
           error instanceof Error ? error.message : 'Mob facets unavailable'
       }
     } finally {
-      if (facetsController === controller) facetsLoading.value = false
+      if (
+        currentGeneration === generation &&
+        facetsController === controller
+      )
+        facetsLoading.value = false
     }
   }
 
+  async function refresh(query: HeatmapQuery) {
+    const currentGeneration = ++generation
+    const layers = activeLayers()
+    const shouldLoadFacets =
+      enabled.mob_types || enabled.mob_observer_average
+
+    for (const layer of HISTORICAL_LAYERS) {
+      if (!enabled[layer]) {
+        controllers.get(layer)?.abort()
+        controllers.delete(layer)
+        results[layer] = undefined
+        errors[layer] = undefined
+        loading[layer] = undefined
+      }
+    }
+    if (!shouldLoadFacets) {
+      facetsController?.abort()
+      facetsController = undefined
+      facets.value = []
+      facetsError.value = ''
+      facetsLoading.value = false
+    }
+
+    const layerRequests = layers.map(async (layer) => {
+      controllers.get(layer)?.abort()
+      const controller = new AbortController()
+      controllers.set(layer, controller)
+      loading[layer] = true
+      errors[layer] = ''
+      try {
+        const result = await request<HeatmapResult>('/api/map/heatmap', {
+          query: { ...query, layer },
+          signal: controller.signal,
+        })
+        if (
+          currentGeneration === generation &&
+          controllers.get(layer) === controller
+        )
+          results[layer] = result
+      } catch (error) {
+        if (
+          currentGeneration === generation &&
+          controllers.get(layer) === controller &&
+          !controller.signal.aborted
+        )
+          errors[layer] =
+            error instanceof Error ? error.message : 'Heatmap query failed'
+      } finally {
+        if (
+          currentGeneration === generation &&
+          controllers.get(layer) === controller
+        )
+          loading[layer] = false
+      }
+    })
+
+    await Promise.all([
+      ...layerRequests,
+      shouldLoadFacets
+        ? refreshFacets(query, currentGeneration)
+        : Promise.resolve(),
+    ])
+  }
+
   async function reset(request: HeatmapResetRequest) {
-    return await $fetch<HeatmapResetResult>('/api/map/heatmap/reset', {
+    return await request<HeatmapResetResult>('/api/map/heatmap/reset', {
       method: 'POST',
       body: request,
     })
@@ -149,7 +193,7 @@ export function useMapHeatmaps() {
     facetsLoading.value = false
   }
 
-  onBeforeUnmount(clear)
+  if (getCurrentScope()) onScopeDispose(clear)
 
   return {
     enabled,
@@ -161,7 +205,6 @@ export function useMapHeatmaps() {
     facetsError,
     activeLayers,
     refresh,
-    loadFacets,
     reset,
     clear,
   }

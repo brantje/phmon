@@ -63,7 +63,6 @@ const {
   facetsError: heatmapFacetsError,
   activeLayers: activeHistoricalLayers,
   refresh: refreshHistoricalHeatmaps,
-  loadFacets: loadHeatmapFacets,
   reset: resetHistoricalHeatmap,
   clear: clearHistoricalHeatmaps,
 } = useMapHeatmaps()
@@ -773,8 +772,6 @@ async function refreshHeatmaps() {
   const query = historicalQuery.value
   if (!query) return
   await refreshHistoricalHeatmaps(query)
-  if (historicalLayers.mob_types || historicalLayers.mob_observer_average)
-    await loadHeatmapFacets(query)
 }
 
 function openHeatmapReset() {
