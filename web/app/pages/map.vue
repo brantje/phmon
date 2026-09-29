@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   CharacterView,
   MapMonster,
+  MapPartyMember,
   MapSnapshot,
 } from '~~/shared/types/live'
 import type { MapAreaProfile, MapProfile } from '~~/shared/types/map'
@@ -20,6 +21,7 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
+import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   dedupeCurrentMonsters,
   monsterDisplayName,
@@ -131,6 +133,7 @@ const resetBusy = ref(false)
 const resetError = ref('')
 const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
+const layerParty = ref(true)
 const layerMonsters = ref(true)
 const layerDeaths = ref(true)
 const layerDrops = ref(true)
@@ -520,6 +523,7 @@ const currentMonsters = computed(() => {
   if (!layerMonsters.value) return []
   return dedupeCurrentMonsters(mapSnapshot.value?.monsters || [])
 })
+const currentPartyMembers = computed(() => mapSnapshot.value?.party.members || [])
 const groupByCharacter = computed(() => {
   const names = new Map<string, string>()
   for (const group of groups.value) {
@@ -552,17 +556,7 @@ const visibleEvents = computed(() => {
 const mapMarkers = computed(() => {
   const profile = mapProfile.value
   if (!profile) return []
-  const markers: Array<{
-    id: string
-    label: string
-    kind: 'character' | 'monster' | 'death' | 'drop' | 'event'
-    position: RasterPosition
-    placement?: 'exact' | 'region-tile'
-    monster?: MapMonster
-    itemName?: string
-    itemIconUrl?: string
-    event?: ActivityEvent
-  }> = layerCharacters.value
+  const characterMarkers = layerCharacters.value
     ? characterMapMarkers(
         profile,
         areaID.value,
@@ -577,6 +571,18 @@ const mapMarkers = computed(() => {
         })),
       )
     : []
+  const markers: Array<{
+    id: string
+    label: string
+    kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
+    position: RasterPosition
+    placement?: 'exact' | 'region-tile'
+    party?: MapPartyMember
+    monster?: MapMonster
+    itemName?: string
+    itemIconUrl?: string
+    event?: ActivityEvent
+  }> = [...characterMarkers]
   const addMarker = (
     id: string,
     label: string,
@@ -603,6 +609,19 @@ const mapMarkers = computed(() => {
       z,
     )
     if (position) markers.push({ id, label, kind, position, ...details })
+  }
+  if (layerParty.value) {
+    markers.push(
+      ...partyMapMarkers(
+        profile,
+        areaID.value,
+        floorID.value,
+        currentPartyMembers.value,
+        layerCharacters.value
+          ? characterMarkers.map((marker) => marker.character.name)
+          : [],
+      ),
+    )
   }
   if (layerMonsters.value) {
     for (const entry of currentMonsters.value) {
@@ -644,6 +663,9 @@ const mapMarkers = computed(() => {
 })
 const placedCharacterCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'character').length,
+)
+const placedPartyCount = computed(
+  () => mapMarkers.value.filter((marker) => marker.kind === 'party').length,
 )
 const zoneNameForRegion = (region?: number | null) => {
   if (region == null) return 'Unknown zone'
@@ -1342,6 +1364,10 @@ useHead({ title: 'Map · PhMon' })
           <label class="map-layer-toggle"
             ><input v-model="layerCharacters" type="checkbox" /> Characters
             <span>{{ placedCharacterCount }} shown</span></label
+          >
+          <label class="map-layer-toggle"
+            ><input v-model="layerParty" type="checkbox" /> Party members
+            <span>{{ placedPartyCount }} shown</span></label
           >
           <label class="map-layer-toggle"
             ><input v-model="layerMonsters" type="checkbox" /> Current nearby
