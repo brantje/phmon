@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ErrInvalidFilter		 = errors.New("invalid heatmap filter")
+	ErrInvalidFilter         = errors.New("invalid heatmap filter")
 	ErrBroadResetUnconfirmed = errors.New("broad heatmap reset requires explicit confirmation")
 )
 

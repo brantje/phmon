@@ -481,9 +481,9 @@ func TestMovementAnalyticsFailureDoesNotRejectCanonicalState(t *testing.T) {
 		t.Fatal(err)
 	}
 	var registered struct {
-		Type		string `json:"type"`
-		CharacterID	string `json:"character_id"`
-		SessionID	string `json:"session_id"`
+		Type        string `json:"type"`
+		CharacterID string `json:"character_id"`
+		SessionID   string `json:"session_id"`
 	}
 	if err := wsjson.Read(ctx, conn, &registered); err != nil {
 		t.Fatal(err)
