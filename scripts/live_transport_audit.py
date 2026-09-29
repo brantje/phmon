@@ -34,12 +34,12 @@ for path, text in sources.items():
 
     allowed_agent_actions: set[tuple[int, int]] = set()
     for action in re.finditer(
-        r"\\$fetch(?:<[^>]+>)?\\s*\\(\\s*(?P<quote>['\"])(?P<endpoint>\/api\/agents(?:\/[^'\"]*)?)(?P=quote)",
+        r"\$fetch(?:<[^>]+>)?\s*\(\s*(?P<quote>['\"])(?P<endpoint>/api/agents(?:/[^'\"]*)?)(?P=quote)",
         text,
     ):
         endpoint = action.group("endpoint")
         window = text[action.start() : action.start() + 500]
-        method = re.search(r"method\\s*:\\s*['\"](POST|PATCH|PUT|DELETE)['\"]", window)
+        method = re.search(r"method\s*:\s*['\"](POST|PATCH|PUT|DELETE)['\"]", window)
         verb = method.group(1) if method else ""
         if (endpoint == "/api/agents/credentials" and verb == "POST") or (
             endpoint.startswith("/api/agents/") and verb == "DELETE"
