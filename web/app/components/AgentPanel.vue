@@ -23,6 +23,9 @@ onUnmounted(() => {
 const agentsUnavailable = computed(
   () => liveStale.value || liveConnectionState.value === 'stale',
 )
+const agentMutationsUnavailable = computed(
+  () => agentsUnavailable.value || liveConnectionState.value !== 'current',
+)
 const agentsStatus = computed(() => {
   if (agentsUnavailable.value || liveConnectionState.value === 'reconnecting')
     return 'unavailable'
@@ -32,7 +35,12 @@ const agentsStatus = computed(() => {
     : 'success'
 })
 async function removeAgent(agentID: string) {
-  if (removingAgentID.value || agentsUnavailable.value || !import.meta.client) return
+  if (
+    removingAgentID.value ||
+    agentMutationsUnavailable.value ||
+    !import.meta.client
+  )
+    return
   if (
     !window.confirm(
       `Remove agent ${agentID}? Its credential will be revoked and cannot be recovered.`,
@@ -232,14 +240,14 @@ function formatConnectionAge(value?: string) {
                 class="compact-button danger-button"
                 type="button"
                 :disabled="
-                  agentsUnavailable ||
+                  agentMutationsUnavailable ||
                   agent.connected ||
                   removingAgentID === agent.agent_id
                 "
                 :title="
                   agent.connected
                     ? 'Disconnect this agent before removing it'
-                    : agentsUnavailable
+                    : agentMutationsUnavailable
                       ? 'Wait for current agent state before removing'
                       : 'Revoke this agent credential'
                 "
@@ -323,7 +331,7 @@ function formatConnectionAge(value?: string) {
               class="compact-button danger-button"
               type="button"
               :disabled="
-                agentsUnavailable ||
+                agentMutationsUnavailable ||
                 agent.connected ||
                 removingAgentID === agent.agent_id
               "
