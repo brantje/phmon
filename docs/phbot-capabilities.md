@@ -39,6 +39,33 @@ ID/token identifies one logical PhMon agent; operators may reuse it across multi
 concurrent phBot processes/profiles that should belong to the same logical agent, or
 create separate credentials for separate logical agents.
 
+## Issue #23 live party map evidence (2026-09-30)
+
+The official [Party API](https://plugins.phbot.org/phbot-api/party) documents
+`get_party()` as `None` or an object keyed by party ID; an empty object is a
+valid observed-empty party. `player_id` remains zero until that member spawns
+near the observer, and Joymax HP/MP percentages are 0–10. PhMon's existing
+resource collector remains the only party observation source. It keeps party
+membership in the resource snapshot/delta path, normalizes HP/MP to 0–100, and
+retains only finite bounded X/Y coordinates.
+
+Issue #23 projects those canonical current resource observations into the
+existing live map. The server fences each resource row against both
+`character_resource_state.session_id` and the still-open
+`character_sessions.session_id`; unavailable rows never reuse their retained
+last-known payload for live party markers. Unchanged party data is not expired
+only because its resource timestamp is old, since resource deltas intentionally
+omit unchanged payloads. Party member region and Z remain unavailable from the
+API. The observer's current region/Z are carried only as live observation scope,
+cave floors fail closed when that scope cannot be proven, and the frontend still
+uses the existing world-to-raster transform for final placement.
+
+No party-position history, packet fallback, second poller, party control action,
+new WebSocket, or new persistence table is introduced. Automated plugin,
+PostgreSQL session-fencing, server projection and frontend transform tests are
+part of the implementation. Actual phBot runtime/browser validation of the new
+party layer remains a separate gate until performed on an authorized runtime.
+
 ## Slice 4 resource/API evidence (2026-09-27)
 
 The plugin's resource collector uses the documented getters below. Official API
