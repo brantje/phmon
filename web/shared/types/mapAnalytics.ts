@@ -57,7 +57,10 @@ export interface HeatmapResetRequest {
   confirm_broad: boolean
 }
 
-export interface HeatmapResetResult extends Omit<HeatmapResetRequest, 'confirm_broad'> {
+export interface HeatmapResetResult extends Omit<
+  HeatmapResetRequest,
+  'confirm_broad'
+> {
   dataset_version: string
   broad_scope: boolean
   created_at: string
