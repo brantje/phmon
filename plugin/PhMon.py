@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.5.4'
+pVersion = '1.5.5'
 pUrl = ''
 
 PROTOCOL_VERSION = 7

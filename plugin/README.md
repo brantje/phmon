@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Slice 7–8 development release is **1.5.4** (`vsro_1188_passive_r2`, API
+The current Slice 7–8 development release is **1.5.5** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v7 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -49,6 +49,11 @@ Plugin 1.5.4 preserves signed cave region IDs, including Donwhang's observed
 `get_position()` `-32767` / `get_monsters()` `32767` pairing, and includes the
 observer's current Z in live monster snapshots so the server can scope sightings
 to the observed cave floor when individual monster Z is unavailable.
+
+Plugin 1.5.5 hardens the existing documented party resource collection for the live
+map layer: party X/Y values are emitted only when finite and within the same bounded
+coordinate envelope used by the backend projection. It does not add a second party
+poller, packet fallback, or protocol-version change.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket
