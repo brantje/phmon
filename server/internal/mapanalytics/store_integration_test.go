@@ -105,3 +105,64 @@ func TestRecordPositionFencesSessionsAndSuppressesStationarySamples(t *testing.T
 		t.Fatalf("expected first, moved and region-transition samples; got %d", count)
 	}
 }
+
+
+func TestRecordPositionAcceptsSignedCaveRegion(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run map analytics integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.NewStore(pool).CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	server := "signed-movement-" + credential.AgentID
+	characterStore := characters.NewStore(pool)
+	characterID, err := characterStore.Resolve(ctx, characters.Identity{Server: server, Name: "CaveWalker"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionID, err := characterStore.ClaimSessionID(ctx, credential.AgentID, characterID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM character_position_samples WHERE agent_id=$1`, credential.AgentID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM character_sessions WHERE agent_id=$1`, credential.AgentID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM characters WHERE server_key=lower($1)`, server)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+	var now time.Time
+	if err := pool.QueryRow(ctx, `SELECT now()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	sample := PositionSample{
+		AgentID: credential.AgentID, CharacterID: characterID, SessionID: sessionID,
+		DatasetID: mapprofile.GreatestDatasetID, SampledAt: now.UTC().Truncate(time.Microsecond),
+		Region: -32767, X: -24300, Y: 20,
+	}
+	inserted, err := NewStore(pool).RecordPosition(ctx, sample, now)
+	if err != nil || !inserted {
+		t.Fatalf("signed cave movement sample inserted=%v err=%v", inserted, err)
+	}
+	var region int
+	if err := pool.QueryRow(ctx, `SELECT region FROM character_position_samples WHERE session_id=$1`, sessionID).Scan(&region); err != nil {
+		t.Fatal(err)
+	}
+	if region != -32767 {
+		t.Fatalf("signed cave region changed during persistence: %d", region)
+	}
+}

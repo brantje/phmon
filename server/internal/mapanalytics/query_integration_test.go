@@ -239,3 +239,26 @@ func TestNormalizeFilterKeepsWorldBucketsAlignedToRegionTiles(t *testing.T) {
 		t.Fatalf("non-aligned world resolution was accepted: %v", err)
 	}
 }
+
+
+func TestNormalizeFilterAcceptsSignedCaveRegionButRejectsZero(t *testing.T) {
+	now := time.Now().UTC()
+	region := -32767
+	filter, err := NormalizeFilter(Filter{
+		Layer: LayerDeaths, Server: "greatest", DatasetID: mapprofile.GreatestDatasetID,
+		AreaID: "donwhang-stone-cave", FloorID: "1F", Region: &region,
+		From: now.Add(-time.Hour), To: now, Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("signed cave region rejected: %v", err)
+	}
+	result, err := NewStore(nil).Heatmap(context.Background(), filter)
+	if err != nil || result.Status != StatusUnsupported || result.Reason != "coordinate_transform_unverified" {
+		t.Fatalf("signed cave scope did not fail closed at transform boundary: result=%+v err=%v", result, err)
+	}
+	zero := 0
+	filter.Region = &zero
+	if _, err := NormalizeFilter(filter); !errors.Is(err, ErrInvalidFilter) {
+		t.Fatalf("region zero accepted: %v", err)
+	}
+}

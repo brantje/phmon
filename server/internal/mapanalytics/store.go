@@ -40,6 +40,10 @@ func validCoordinate(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= -1_000_000 && value <= 1_000_000
 }
 
+func validMapRegion(region int) bool {
+	return region >= -32768 && region <= 65535 && region != 0
+}
+
 func validDatasetID(value string) bool {
 	if !strings.HasPrefix(value, "gamedata-") || len(value) < 10 || len(value) > 73 {
 		return false
@@ -55,7 +59,7 @@ func validDatasetID(value string) bool {
 func ValidatePositionSample(sample PositionSample, now time.Time) error {
 	if !agentdomain.ValidAgentID(sample.AgentID) || !agentdomain.ValidAgentID(sample.CharacterID) ||
 		!agentdomain.ValidAgentID(sample.SessionID) || !validDatasetID(sample.DatasetID) ||
-		sample.Region < 1 || sample.Region > 65535 || sample.SampledAt.IsZero() ||
+		!validMapRegion(sample.Region) || sample.SampledAt.IsZero() ||
 		sample.SampledAt.After(now.Add(5*time.Minute)) || sample.SampledAt.Before(now.Add(-24*time.Hour)) ||
 		!validCoordinate(sample.X) || !validCoordinate(sample.Y) || sample.Z != nil && !validCoordinate(*sample.Z) {
 		return ErrInvalidPosition

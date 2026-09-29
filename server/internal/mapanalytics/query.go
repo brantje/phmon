@@ -50,7 +50,7 @@ func NormalizeFilter(filter Filter) (Filter, error) {
 		(filter.CharacterID != "" && !agentdomain.ValidAgentID(filter.CharacterID)) || len(filter.MonsterType) > 64 ||
 		(!layerSupportsMobFilters(filter.Layer) && (filter.MonsterType != "" || filter.ModelID != nil)) ||
 		(filter.ModelID != nil && (*filter.ModelID < 0 || *filter.ModelID > 4294967295)) ||
-		(filter.Region != nil && (*filter.Region < 1 || *filter.Region > 65535)) {
+		(filter.Region != nil && !validMapRegion(*filter.Region)) {
 		return Filter{}, ErrInvalidFilter
 	}
 	if filter.Limit == 0 {
