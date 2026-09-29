@@ -3861,3 +3861,15 @@ also showed its working Type field. Live rows confirmed Party General and Genera
 labels, and unknown code 27 remains explicitly identified as type. Level remained
 unavailable. The list change was deployed; PostgreSQL stayed healthy and only the web
 container was restarted in this follow-up deployment.
+
+### Resume — 2026-09-29 offline character map treatment
+
+The operator supplied an offline-character map example with desaturated portrait
+pins and name badges. `/map` now includes offline characters with retained region,
+X/Y and a valid `state_updated_at`; the portrait is grayscale with a gray border, and
+the row/popup says offline last-known position. These coordinates are display-only:
+fresh online state is still required for current-position actions. Added focused
+eligibility coverage. The current Greatest browser view has four online characters,
+so an offline live screenshot comparison remains unverified. Exact next action: build
+and deploy the web change to the authorized test host, then verify against an actual
+offline character at desktop and mobile sizes; run the focused frontend test suite.

@@ -12,7 +12,10 @@ import {
   worldPositionToRaster,
   type RasterPosition,
 } from '~/utils/mapCoordinates'
-import { characterMapMarkers } from '~/utils/mapCharacterMarkers'
+import {
+  characterHasDisplayableMapPosition,
+  characterMapMarkers,
+} from '~/utils/mapCharacterMarkers'
 import {
   dedupeCurrentMonsters,
   monsterDisplayName,
@@ -152,13 +155,18 @@ function positionIsFresh(character?: CharacterView) {
     age <= 35_000,
   )
 }
+function positionCanBeDisplayed(character?: CharacterView) {
+  return Boolean(
+    character &&
+    characterHasDisplayableMapPosition(character, freshnessNow.value),
+  )
+}
 const currentCharacterPositionFresh = computed(() => {
   return positionIsFresh(currentCharacter.value)
 })
 const exactCharacterRasterPosition = computed(() => {
   const character = currentCharacter.value
-  if (!mapProfile.value || !character || !currentCharacterPositionFresh.value)
-    return null
+  if (!mapProfile.value || !positionCanBeDisplayed(character)) return null
   return worldPositionToRaster(
     mapProfile.value,
     areaID.value,
@@ -172,8 +180,7 @@ const characterRasterPosition = computed(() => {
   if (exactCharacterRasterPosition.value)
     return exactCharacterRasterPosition.value
   const character = currentCharacter.value
-  if (!mapProfile.value || !character || !currentCharacterPositionFresh.value)
-    return null
+  if (!mapProfile.value || !positionCanBeDisplayed(character)) return null
   return regionTileCenter(
     mapProfile.value,
     areaID.value,
@@ -223,9 +230,12 @@ const mapInitialPosition = computed(() => {
   if (destinationRasterPosition.value) return destinationRasterPosition.value
   if (selectedCharacterID.value) return characterRasterPosition.value
   if (!mapProfile.value) return null
-  for (const character of mapSnapshot.value?.characters || []) {
+  const characters = [...(mapSnapshot.value?.characters || [])].sort(
+    (left, right) => Number(right.online) - Number(left.online),
+  )
+  for (const character of characters) {
     if (
-      !positionIsFresh(character) ||
+      !positionCanBeDisplayed(character) ||
       (regionID.value > 0 && character.region !== regionID.value)
     )
       continue
@@ -321,10 +331,12 @@ const mapMarkers = computed(() => {
         profile,
         areaID.value,
         floorID.value,
-        scopedCharacters.value.filter(positionIsFresh).map((character) => ({
-          ...character,
-          group_name: groupByCharacter.value.get(character.character_id),
-        })),
+        scopedCharacters.value
+          .filter(positionCanBeDisplayed)
+          .map((character) => ({
+            ...character,
+            group_name: groupByCharacter.value.get(character.character_id),
+          })),
       )
     : []
   const addMarker = (
@@ -913,7 +925,9 @@ useHead({ title: 'Map · PhMon' })
                 {{ character.region ?? '—' }}</small
               ></span
             >
-            <small>{{ character.online ? 'Online' : 'Offline' }}</small>
+            <small>{{
+              character.online ? 'Online' : 'Offline · last position'
+            }}</small>
           </button>
           <p v-if="!scopedCharacters.length" class="map-empty-copy">
             No characters in this server and region scope.

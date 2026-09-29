@@ -7,7 +7,10 @@ import {
   rasterPositionToGame,
   worldPositionToRaster,
 } from '../app/utils/mapCoordinates.ts'
-import { characterMapMarkers } from '../app/utils/mapCharacterMarkers.ts'
+import {
+  characterHasDisplayableMapPosition,
+  characterMapMarkers,
+} from '../app/utils/mapCharacterMarkers.ts'
 
 const profile = (): MapProfile => ({
   server: 'test',
@@ -226,6 +229,31 @@ test('four fresh characters in one outdoor tile retain distinct exact pixels', (
       ),
     ).size,
     4,
+  )
+})
+
+test('offline characters remain displayable at last known coordinates but online stale ones do not', () => {
+  const now = Date.parse('2026-09-29T12:00:00Z')
+  const offline = {
+    character_id: 'offline',
+    name: 'MagicBuff',
+    online: false,
+    state_updated_at: '2026-09-20T12:00:00Z',
+    region: 25735,
+    x: 96.4,
+    y: 1558.9,
+  }
+  assert.equal(characterHasDisplayableMapPosition(offline, now), true)
+  assert.equal(
+    characterHasDisplayableMapPosition({ ...offline, x: undefined }, now),
+    false,
+  )
+  assert.equal(
+    characterHasDisplayableMapPosition(
+      { ...offline, online: true, state_updated_at: '2026-09-29T11:00:00Z' },
+      now,
+    ),
+    false,
   )
 })
 

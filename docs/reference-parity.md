@@ -1104,3 +1104,11 @@ The nearby list retains its working monster Type field with an explicit label;
 observed General and Party General types display by name, while unsupported code 27
 is shown as `Unknown (27)` under Type. Map marker labels still show only name and
 level.
+
+The operator supplied an offline-character map crop showing muted grayscale portrait
+pins at each character's last location. The map now includes offline characters when
+their saved location and observation timestamp exist, renders their portraits in
+grayscale with a gray outline, and labels their row/popup as an offline last-known
+position. Their last-known location can be viewed or jumped to, while current-position
+freshness remains required for live actions. Automated checks and viewport comparison
+for the offline treatment remain to be run.

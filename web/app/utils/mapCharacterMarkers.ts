@@ -24,6 +24,7 @@ export interface CharacterMarkerInput {
   sp?: number
   online?: boolean
   dead?: boolean | null
+  state_updated_at?: string
 }
 
 export interface CharacterMapMarker {
@@ -33,6 +34,24 @@ export interface CharacterMapMarker {
   placement: 'exact' | 'region-tile'
   position: RasterPosition
   character: CharacterMarkerInput
+}
+
+export function characterHasDisplayableMapPosition(
+  character: CharacterMarkerInput,
+  now = Date.now(),
+) {
+  const updatedAt = character.state_updated_at
+    ? Date.parse(character.state_updated_at)
+    : Number.NaN
+  const hasPosition =
+    character.region != null &&
+    Number.isFinite(character.x) &&
+    Number.isFinite(character.y) &&
+    Number.isFinite(updatedAt)
+  if (!hasPosition) return false
+  if (!character.online) return true
+  const age = now - updatedAt
+  return age >= -5_000 && age <= 35_000
 }
 
 export function characterMapMarkers(

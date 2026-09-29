@@ -227,7 +227,9 @@ function markerPopup(marker: MapCanvasMarker) {
   if (marker.kind === 'character' && marker.character) {
     const character = marker.character
     title.textContent = character.name
-    subtitle.textContent = `Level ${integer(character.level)} | ${character.dead ? 'Dead' : character.online ? 'In Field' : 'Offline'}`
+    subtitle.textContent = character.online
+      ? `Level ${integer(character.level)} | ${character.dead ? 'Dead' : 'In Field'}`
+      : `Level ${integer(character.level)} | Offline · last known position`
     header.prepend(
       markerPortrait(character.portrait_url, character.name, 'portrait'),
     )
@@ -320,6 +322,8 @@ function markerIconContent(marker: MapCanvasMarker) {
   const content = document.createElement('span')
   if (marker.kind === 'character') {
     content.className = 'phmon-map-character-pin'
+    if (marker.character?.online === false)
+      content.classList.add('phmon-map-character-pin--offline')
     const fallback = document.createElement('span')
     fallback.textContent =
       marker.character?.name.slice(0, 1).toUpperCase() || 'C'
@@ -527,6 +531,7 @@ onMounted(async () => {
       marker.placement,
       marker.character?.name,
       marker.character?.portrait_url,
+      marker.character?.online,
       type?.code,
       type?.scale,
       type?.party,
@@ -695,6 +700,15 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+:global(.phmon-map-character-pin--offline) {
+  border-color: #a1a8a3;
+  background: #343a37;
+  color: #d6dad7;
+  box-shadow:
+    0 0 0 2px #07111bcc,
+    0 2px 7px #000b;
+}
+
 :global(.phmon-map-character-pin img) {
   position: absolute;
   inset: 0;
@@ -702,6 +716,11 @@ onBeforeUnmount(() => {
   height: 100%;
   border-radius: 50%;
   object-fit: cover;
+}
+
+:global(.phmon-map-character-pin--offline img) {
+  filter: grayscale(1);
+  opacity: 0.68;
 }
 
 :global(.phmon-map-character-name) {
@@ -721,6 +740,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   box-shadow: 0 1px 4px #000b;
+}
+
+:global(.phmon-map-character-pin--offline .phmon-map-character-name) {
+  color: #d4d8d5;
+  background: #252b29ed;
 }
 
 :global(.phmon-map-marker--region-tile .phmon-map-character-pin) {
