@@ -6,6 +6,7 @@ import type {
   MapSnapshot,
 } from '~~/shared/types/live'
 import type { MapAreaProfile, MapProfile } from '~~/shared/types/map'
+import type { HeatmapLayerID } from '~~/shared/types/mapAnalytics'
 import {
   rasterPositionToGame,
   regionTileCenter,
@@ -28,6 +29,11 @@ import {
   mapProfileRequestIsCurrent,
 } from '~/utils/mapNavigation'
 import { relativeMapEventWindow } from '~/utils/mapTimeRange'
+import {
+  heatmapLayerLabel,
+  heatmapResultToLayer,
+  historicalHeatmapWindow,
+} from '~/utils/mapHeatmap'
 
 const {
   mapFeeds,
@@ -39,6 +45,20 @@ const {
   setMapFeed,
   clearMapFeed,
 } = useLiveData()
+const {
+  enabled: historicalLayers,
+  results: heatmapResults,
+  loading: heatmapLoading,
+  errors: heatmapErrors,
+  facets: heatmapFacets,
+  facetsLoading: heatmapFacetsLoading,
+  facetsError: heatmapFacetsError,
+  activeLayers: activeHistoricalLayers,
+  refresh: refreshHistoricalHeatmaps,
+  loadFacets: loadHeatmapFacets,
+  reset: resetHistoricalHeatmap,
+  clear: clearHistoricalHeatmaps,
+} = useMapHeatmaps()
 const { serverScope } = useServerScope()
 const route = useRoute()
 const router = useRouter()
@@ -82,6 +102,16 @@ const selectedCharacterID = ref(
 )
 const selectedDestinationID = ref('')
 const dateRange = ref('24h')
+const heatmapRange = ref('24h')
+const heatmapCustomFrom = ref('')
+const heatmapCustomTo = ref('')
+const analyticsCharacterID = ref('')
+const analyticsMobType = ref('')
+const resetLayer = ref<HeatmapLayerID>('deaths')
+const resetOpen = ref(false)
+const resetBusy = ref(false)
+const resetError = ref('')
+const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerMonsters = ref(true)
 const layerDeaths = ref(true)
@@ -94,6 +124,61 @@ const selectedTile = ref<RasterPosition | null>(null)
 const jumpSequence = ref(0)
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
+const heatmapWindow = computed(() =>
+  historicalHeatmapWindow(
+    heatmapRange.value,
+    eventWindowNow.value,
+    heatmapCustomFrom.value,
+    heatmapCustomTo.value,
+  ),
+)
+const historicalCharacters = computed(() =>
+  fleetCharacters.value
+    .filter(
+      (character) =>
+        character.server.toLowerCase() === server.value.toLowerCase(),
+    )
+    .sort((left, right) => left.name.localeCompare(right.name)),
+)
+const historicalMobTypes = computed(() =>
+  [
+    ...new Set(
+      heatmapFacets.value
+        .map((facet) => facet.monster_type?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ].sort((left, right) => left.localeCompare(right)),
+)
+const historicalQuery = computed(() => {
+  const window = heatmapWindow.value
+  if (!window) return null
+  return {
+    server: server.value,
+    area: areaID.value,
+    floor: floorID.value,
+    region: regionID.value || undefined,
+    character_id: analyticsCharacterID.value || undefined,
+    monster_type: analyticsMobType.value || undefined,
+    from: window.from,
+    to: window.to,
+  }
+})
+const renderedHeatLayers = computed(() => {
+  if (!mapProfile.value) return []
+  return activeHistoricalLayers()
+    .map((layer) => heatmapResults[layer])
+    .filter((result) => result && result.status !== 'unsupported')
+    .map((result) => heatmapResultToLayer(result!, mapProfile.value!))
+    .filter((layer) => layer != null)
+})
+const resettableLayers = computed(() =>
+  activeHistoricalLayers().filter(
+    (layer) => heatmapResults[layer]?.status !== 'unsupported',
+  ),
+)
+const resetIsBroad = computed(
+  () => regionID.value === 0 && analyticsCharacterID.value === '',
+)
 const appliedLinkedEventKey = ref('')
 const linkedEvent = computed(() =>
   linkedEventID.value
@@ -508,6 +593,55 @@ function selectQuickDestination(destinationID: string) {
   updateRouteQuery()
 }
 
+async function refreshHeatmaps() {
+  const query = historicalQuery.value
+  if (!query) return
+  await refreshHistoricalHeatmaps(query)
+  if (historicalLayers.mob_types || historicalLayers.mob_observer_average)
+    await loadHeatmapFacets(query)
+}
+
+function openHeatmapReset() {
+  const available = resettableLayers.value
+  if (!available.length) return
+  if (!available.includes(resetLayer.value)) resetLayer.value = available[0]!
+  resetError.value = ''
+  confirmBroadReset.value = false
+  resetOpen.value = true
+}
+
+async function performHeatmapReset() {
+  const window = heatmapWindow.value
+  if (!window || resetBusy.value) return
+  resetBusy.value = true
+  resetError.value = ''
+  try {
+    await resetHistoricalHeatmap({
+      layer: resetLayer.value,
+      server: server.value,
+      area_id: areaID.value,
+      floor_id: floorID.value,
+      region: regionID.value || undefined,
+      character_id: analyticsCharacterID.value || undefined,
+      monster_type:
+        resetLayer.value === 'mob_types' ||
+        resetLayer.value === 'mob_observer_average'
+          ? analyticsMobType.value || undefined
+          : undefined,
+      from: window.from,
+      to: window.to,
+      confirm_broad: resetIsBroad.value ? confirmBroadReset.value : false,
+    })
+    resetOpen.value = false
+    await refreshHeatmaps()
+  } catch (error) {
+    resetError.value =
+      error instanceof Error ? error.message : 'Heatmap reset failed'
+  } finally {
+    resetBusy.value = false
+  }
+}
+
 watch(server, (value) => {
   void loadProfile(value)
 })
@@ -593,6 +727,33 @@ watch(
   },
 )
 watch([areaID, floorID, regionID, selectedCharacterID], updateRouteQuery)
+watch([server, areaID, floorID, regionID], () => {
+  clearHistoricalHeatmaps()
+})
+watch(
+  [
+    server,
+    areaID,
+    floorID,
+    regionID,
+    analyticsCharacterID,
+    analyticsMobType,
+    heatmapRange,
+    heatmapCustomFrom,
+    heatmapCustomTo,
+    eventWindowNow,
+    () => historicalLayers.mob_observer_average,
+    () => historicalLayers.mob_types,
+    () => historicalLayers.deaths,
+    () => historicalLayers.drops,
+    () => historicalLayers.unique_sightings,
+    () => historicalLayers.player_movement,
+  ],
+  () => {
+    void refreshHeatmaps()
+  },
+  { immediate: true },
+)
 let eventWindowTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void loadProfile(server.value)
@@ -811,6 +972,7 @@ useHead({ title: 'Map · PhMon' })
               :initial-position="mapInitialPosition"
               :initial-tile="mapInitialTile"
               :markers="mapMarkers"
+              :heat-layers="renderedHeatLayers"
               @viewchange="mapView = $event"
               @pointselect="selectedTile = $event"
               @opencharacter="
@@ -905,18 +1067,6 @@ useHead({ title: 'Map · PhMon' })
             ><input v-model="layerMonsters" type="checkbox" /> Current nearby
             monsters <span>{{ currentMonsters.length }}</span></label
           >
-          <label
-            class="map-layer-toggle disabled"
-            title="Historical density overlays are part of Slice 9"
-            ><input type="checkbox" disabled /> Mob density
-            <span>Slice 9</span></label
-          >
-          <label
-            class="map-layer-toggle disabled"
-            title="Historical monster type overlays are part of Slice 9"
-            ><input type="checkbox" disabled /> Mob types
-            <span>Slice 9</span></label
-          >
           <label class="map-layer-toggle"
             ><input v-model="layerDeaths" type="checkbox" /> Recent
             deaths</label
@@ -930,6 +1080,138 @@ useHead({ title: 'Map · PhMon' })
             ><input type="checkbox" disabled /> Academy members
             <span>Unavailable</span></label
           >
+        </section>
+        <section class="map-side-list heatmap-controls">
+          <div class="map-list-heading">
+            <h2>Historical heatmaps</h2>
+            <span>{{ renderedHeatLayers.length }} active</span>
+          </div>
+          <label>
+            Range
+            <select v-model="heatmapRange" aria-label="Historical heatmap time range">
+              <option value="1h">Last hour</option>
+              <option value="24h">Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div v-if="heatmapRange === 'custom'" class="heatmap-custom-range">
+            <label
+              >From<input
+                v-model="heatmapCustomFrom"
+                type="datetime-local"
+                aria-label="Historical heatmap start"
+            /></label>
+            <label
+              >To<input
+                v-model="heatmapCustomTo"
+                type="datetime-local"
+                aria-label="Historical heatmap end"
+            /></label>
+          </div>
+          <label>
+            Historical character
+            <select v-model="analyticsCharacterID" aria-label="Historical heatmap character">
+              <option value="">All characters</option>
+              <option
+                v-for="character in historicalCharacters"
+                :key="character.character_id"
+                :value="character.character_id"
+              >
+                {{ character.name }}
+              </option>
+            </select>
+          </label>
+          <label v-if="historicalLayers.mob_types || historicalLayers.mob_observer_average">
+            Mob type
+            <select v-model="analyticsMobType" aria-label="Historical mob type">
+              <option value="">All observed types</option>
+              <option v-for="type in historicalMobTypes" :key="type" :value="type">
+                {{ type }}
+              </option>
+            </select>
+          </label>
+          <p v-if="heatmapFacetsLoading" class="map-empty-copy">Loading observed mob types…</p>
+          <p v-else-if="heatmapFacetsError" class="map-empty-copy">{{ heatmapFacetsError }}</p>
+
+          <label class="map-layer-toggle disabled" title="Observation coverage is not verified">
+            <input type="checkbox" disabled /> Mob density
+            <span>Unavailable</span>
+          </label>
+          <p class="heatmap-warning">
+            Spatial mob density is unavailable until observation coverage is verified.
+          </p>
+          <label class="map-layer-toggle">
+            <input v-model="historicalLayers.mob_observer_average" type="checkbox" />
+            Observer-local mob average
+            <span>{{ heatmapResults.mob_observer_average?.points.length || 0 }}</span>
+          </label>
+          <label class="map-layer-toggle">
+            <input v-model="historicalLayers.mob_types" type="checkbox" /> Mob types
+            <span>{{ heatmapResults.mob_types?.points.length || 0 }}</span>
+          </label>
+          <label class="map-layer-toggle">
+            <input v-model="historicalLayers.deaths" type="checkbox" /> Deaths
+            <span>{{ heatmapResults.deaths?.points.length || 0 }}</span>
+          </label>
+          <label class="map-layer-toggle">
+            <input v-model="historicalLayers.drops" type="checkbox" /> Drops
+            <span>{{ heatmapResults.drops?.points.length || 0 }}</span>
+          </label>
+          <label class="map-layer-toggle">
+            <input v-model="historicalLayers.unique_sightings" type="checkbox" /> Unique sightings
+            <span>{{ heatmapResults.unique_sightings?.points.length || 0 }}</span>
+          </label>
+          <label class="map-layer-toggle">
+            <input v-model="historicalLayers.player_movement" type="checkbox" /> Player movement
+            <span>{{ heatmapResults.player_movement?.points.length || 0 }}</span>
+          </label>
+
+          <template v-for="layer in activeHistoricalLayers()" :key="`heat-status-${layer}`">
+            <p v-if="heatmapLoading[layer]" class="map-empty-copy">
+              Refreshing {{ heatmapLayerLabel(layer) }}…
+            </p>
+            <p v-else-if="heatmapErrors[layer]" class="heatmap-warning">
+              {{ heatmapLayerLabel(layer) }}: {{ heatmapErrors[layer] }}
+            </p>
+            <p
+              v-else-if="heatmapResults[layer]?.status === 'unsupported'"
+              class="heatmap-warning"
+            >
+              {{ heatmapLayerLabel(layer) }}: {{ heatmapResults[layer]?.interpretation }}
+            </p>
+            <p
+              v-else-if="heatmapResults[layer]?.status === 'limited'"
+              class="heatmap-warning"
+            >
+              {{ heatmapResults[layer]?.interpretation }}
+            </p>
+            <p
+              v-else-if="heatmapResults[layer] && heatmapResults[layer]?.points.length === 0"
+              class="map-empty-copy"
+            >
+              No {{ heatmapLayerLabel(layer).toLowerCase() }} data in this scope.
+            </p>
+            <p v-if="heatmapResults[layer]?.truncated" class="heatmap-warning">
+              {{ heatmapLayerLabel(layer) }} reached the bounded result limit.
+            </p>
+          </template>
+
+          <div v-if="renderedHeatLayers.length" class="heatmap-legend" aria-label="Heatmap legend">
+            <div v-for="layer in renderedHeatLayers" :key="`legend-${layer.id}`">
+              <strong>{{ layer.label }}</strong>
+              <span>{{ layer.metric }} · low → high</span>
+            </div>
+          </div>
+          <button
+            class="compact-button"
+            type="button"
+            :disabled="!resettableLayers.length"
+            @click="openHeatmapReset"
+          >
+            Reset selected heatmap…
+          </button>
         </section>
         <section class="map-side-list">
           <div class="map-list-heading">
@@ -1031,5 +1313,168 @@ useHead({ title: 'Map · PhMon' })
         </section>
       </aside>
     </div>
+
+    <div
+      v-if="resetOpen"
+      class="heatmap-reset-backdrop"
+      @click.self="resetOpen = false"
+    >
+      <section
+        class="panel heatmap-reset-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="heatmap-reset-title"
+      >
+        <h2 id="heatmap-reset-title">Reset historical heatmap</h2>
+        <label>
+          Layer
+          <select v-model="resetLayer">
+            <option v-for="layer in resettableLayers" :key="layer" :value="layer">
+              {{ heatmapLayerLabel(layer) }}
+            </option>
+          </select>
+        </label>
+        <dl>
+          <div><dt>Server</dt><dd>{{ server }}</dd></div>
+          <div><dt>Area / floor</dt><dd>{{ areaID }} / {{ floorID }}</dd></div>
+          <div><dt>Region</dt><dd>{{ regionID || 'All regions' }}</dd></div>
+          <div>
+            <dt>Character</dt>
+            <dd>{{ analyticsCharacterID || 'All characters' }}</dd>
+          </div>
+          <div>
+            <dt>Time</dt>
+            <dd>{{ heatmapWindow?.from }} → {{ heatmapWindow?.to }}</dd>
+          </div>
+        </dl>
+        <p>
+          This clears this historical heatmap projection only. Canonical event,
+          movement and mob-observation history is preserved.
+        </p>
+        <label v-if="resetIsBroad" class="heatmap-broad-confirm">
+          <input v-model="confirmBroadReset" type="checkbox" />
+          Confirm this broader all-region/all-character reset scope.
+        </label>
+        <p v-if="resetError" class="heatmap-warning">{{ resetError }}</p>
+        <div class="heatmap-reset-actions">
+          <button class="compact-button" type="button" @click="resetOpen = false">
+            Cancel
+          </button>
+          <button
+            class="compact-button"
+            type="button"
+            :disabled="resetBusy || (resetIsBroad && !confirmBroadReset)"
+            @click="performHeatmapReset"
+          >
+            {{ resetBusy ? 'Resetting…' : 'Confirm reset' }}
+          </button>
+        </div>
+      </section>
+    </div>
   </section>
 </template>
+
+<style scoped>
+.heatmap-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.heatmap-controls > label:not(.map-layer-toggle),
+.heatmap-custom-range label {
+  display: grid;
+  gap: 4px;
+}
+
+.heatmap-custom-range {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.heatmap-warning {
+  margin: 0;
+  color: #d6b979;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.heatmap-legend {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #394553;
+  border-radius: 6px;
+}
+
+.heatmap-legend div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.heatmap-legend span {
+  color: #aeb9c5;
+  font-size: 11px;
+}
+
+.heatmap-reset-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #05080dbf;
+}
+
+.heatmap-reset-dialog {
+  width: min(560px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.heatmap-reset-dialog dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.heatmap-reset-dialog dl div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+}
+
+.heatmap-reset-dialog dt {
+  color: #aeb9c5;
+}
+
+.heatmap-reset-dialog dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.heatmap-broad-confirm {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.heatmap-reset-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .heatmap-custom-range {
+    grid-template-columns: 1fr;
+  }
+
+  .heatmap-reset-dialog dl div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+</style>
