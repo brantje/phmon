@@ -523,7 +523,9 @@ const currentMonsters = computed(() => {
   if (!layerMonsters.value) return []
   return dedupeCurrentMonsters(mapSnapshot.value?.monsters || [])
 })
-const currentPartyMembers = computed(() => mapSnapshot.value?.party.members || [])
+const currentPartyMembers = computed(
+  () => mapSnapshot.value?.party.members || [],
+)
 const groupByCharacter = computed(() => {
   const names = new Map<string, string>()
   for (const group of groups.value) {

@@ -139,8 +139,7 @@ test('party markers reuse exact world transform and fail closed on bad scope', (
 
 test('managed character suppresses duplicate only while supplied as visible', () => {
   assert.equal(
-    partyMapMarkers(profile(), 'world', 'world', [member()], [' ally '])
-      .length,
+    partyMapMarkers(profile(), 'world', 'world', [member()], [' ally ']).length,
     0,
   )
   assert.equal(

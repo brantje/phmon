@@ -1,9 +1,6 @@
 import type { MapPartyMember } from '../../shared/types/live.ts'
 import type { MapProfile } from '../../shared/types/map.ts'
-import {
-  worldPositionToRaster,
-  type RasterPosition,
-} from './mapCoordinates.ts'
+import { worldPositionToRaster, type RasterPosition } from './mapCoordinates.ts'
 
 export interface PartyMapMarker {
   id: string

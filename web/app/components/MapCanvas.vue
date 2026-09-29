@@ -705,11 +705,11 @@ onMounted(async () => {
           ? 24
           : marker.kind === 'monster'
             ? Math.round(12 * (type?.scale || 1))
-          : marker.kind === 'drop'
-            ? 36
-            : marker.kind === 'death'
-              ? 34
-              : 16
+            : marker.kind === 'drop'
+              ? 36
+              : marker.kind === 'death'
+                ? 34
+                : 16
     const signature = JSON.stringify([
       marker.kind,
       marker.placement,
