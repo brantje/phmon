@@ -13,12 +13,14 @@ import {
   type ControlsSnapshot,
   type RemoteCommand,
   type GroupsSnapshot,
+  type MapSnapshot,
   type LiveClientFrame,
   type LiveConnectionState,
   type LiveFilter,
   type LiveServerFrame,
   type LiveStream,
 } from '~~/shared/types/live'
+import { mapSnapshotMatchesScope } from '~/utils/mapRefresh'
 
 type Subscription = {
   id: string
@@ -46,6 +48,8 @@ const characterControls = ref<ControlsSnapshot | null>(null)
 const eventFeeds = ref<Record<string, EventPage>>({})
 const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const chatFeedCurrent = ref<Record<string, boolean>>({})
+const mapFeeds = ref<Record<string, MapSnapshot>>({})
+const mapFeedCurrent = ref<Record<string, boolean>>({})
 const connectionState = ref<LiveConnectionState>('idle')
 const freshnessNow = ref(Date.now())
 const hasSnapshot = ref(false)
@@ -87,6 +91,10 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.to || '') === (right.to || '') &&
     (left.channel || '') === (right.channel || '') &&
     (left.peer || '') === (right.peer || '') &&
+    (left.area || '') === (right.area || '') &&
+    (left.floor || '') === (right.floor || '') &&
+    (left.region || 0) === (right.region || 0) &&
+    (left.event_id || '') === (right.event_id || '') &&
     (left.cursor || '') === (right.cursor || '')
   )
 }
@@ -363,6 +371,31 @@ function clearEventFeed(subscriptionID: string) {
   })
 }
 
+function setMapFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'map', filter, () => {
+    mapFeedCurrent.value = { ...mapFeedCurrent.value, [subscriptionID]: false }
+    const existing = mapFeeds.value[subscriptionID]
+    if (!existing || !mapSnapshotMatchesScope(existing, filter)) {
+      mapFeeds.value = Object.fromEntries(
+        Object.entries(mapFeeds.value).filter(([id]) => id !== subscriptionID),
+      )
+    }
+  })
+}
+
+function clearMapFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    mapFeeds.value = Object.fromEntries(
+      Object.entries(mapFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    mapFeedCurrent.value = Object.fromEntries(
+      Object.entries(mapFeedCurrent.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
+  })
+}
+
 function setChatFeed(subscriptionID: string, filter: LiveFilter) {
   const previousFilter = subscriptions.get(subscriptionID)?.filter
   const sameContactScope =
@@ -546,6 +579,12 @@ function handleFrame(frame: LiveServerFrame) {
     subscription.unavailable = true
     staleCycle.value = true
     connectionState.value = 'stale'
+    if (subscription.stream === 'map') {
+      mapFeedCurrent.value = {
+        ...mapFeedCurrent.value,
+        [subscription.id]: false,
+      }
+    }
     return
   }
   if (frame.type === 'subscription.rejected') {
@@ -554,6 +593,12 @@ function handleFrame(frame: LiveServerFrame) {
       subscription.unavailable = true
       staleCycle.value = true
       connectionState.value = 'stale'
+    }
+    if (subscription.stream === 'map') {
+      mapFeedCurrent.value = {
+        ...mapFeedCurrent.value,
+        [subscription.id]: false,
+      }
     }
     return
   }
@@ -670,6 +715,27 @@ function applySnapshot(subscription: Subscription, data: unknown) {
         }
         return true
       }
+      if (subscription.stream === 'map') {
+        const snapshot = data as MapSnapshot
+        if (
+          typeof snapshot.server !== 'string' ||
+          snapshot.server.toLowerCase() !==
+            (subscription.filter.server || '').toLowerCase() ||
+          !Array.isArray(snapshot.characters) ||
+          !Array.isArray(snapshot.monsters) ||
+          !Array.isArray(snapshot.events) ||
+          !snapshot.academy ||
+          typeof snapshot.academy.status !== 'string' ||
+          !Array.isArray(snapshot.academy.members)
+        )
+          return false
+        mapFeeds.value = { ...mapFeeds.value, [subscription.id]: snapshot }
+        mapFeedCurrent.value = {
+          ...mapFeedCurrent.value,
+          [subscription.id]: true,
+        }
+        return true
+      }
       if (subscription.stream === 'chat') {
         const snapshot = data as ChatSnapshot
         if (
@@ -729,6 +795,12 @@ function updateCurrentState() {
 function markSubscriptionsStale() {
   for (const subscription of subscriptions.values()) {
     subscription.current = false
+    if (subscription.stream === 'map') {
+      mapFeedCurrent.value = {
+        ...mapFeedCurrent.value,
+        [subscription.id]: false,
+      }
+    }
   }
   staleCycle.value = true
   connectionState.value = hasSnapshot.value ? 'stale' : 'reconnecting'
@@ -798,6 +870,8 @@ export function useLiveData() {
     eventFeeds: readonly(eventFeeds),
     chatFeeds: readonly(chatFeeds),
     chatFeedCurrent: readonly(chatFeedCurrent),
+    mapFeeds: readonly(mapFeeds),
+    mapFeedCurrent: readonly(mapFeedCurrent),
     connectionState: readonly(connectionState),
     freshnessNow: readonly(freshnessNow),
     liveStale,
@@ -814,6 +888,8 @@ export function useLiveData() {
     setCharacterControls,
     setEventFeed,
     clearEventFeed,
+    setMapFeed,
+    clearMapFeed,
     setChatFeed,
     clearChatFeed,
     applyChatReadState,

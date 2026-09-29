@@ -78,7 +78,7 @@ const primaryNavigation = [
 
 const advancedNavigation = [
   { label: 'Analytics', icon: 'i-lucide-chart-no-axes-column-increasing' },
-  { label: 'Map', icon: 'i-lucide-map' },
+  { label: 'Map', icon: 'i-lucide-map', href: '/map' },
   { label: 'Item Search', icon: 'i-lucide-search' },
   { label: 'Skill Builder', icon: 'i-lucide-git-branch' },
   { label: 'Automations', icon: 'i-lucide-zap' },
@@ -210,8 +210,20 @@ const advancedNavigation = [
 
       <template v-if="advancedMode">
         <p class="nav-heading">Tools</p>
+        <NuxtLink
+          v-for="item in advancedNavigation.filter((item) => item.href)"
+          :key="item.label"
+          :to="item.href"
+          class="nav-item"
+          :class="{ active: route.path === item.href }"
+          :aria-current="route.path === item.href ? 'page' : undefined"
+          :title="collapsed ? item.label : undefined"
+        >
+          <UIcon :name="item.icon" />
+          <span>{{ item.label }}</span>
+        </NuxtLink>
         <button
-          v-for="item in advancedNavigation"
+          v-for="item in advancedNavigation.filter((item) => !item.href)"
           :key="item.label"
           type="button"
           class="nav-item"

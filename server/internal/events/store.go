@@ -94,6 +94,8 @@ type Event struct {
 	ItemModel    *int64          `json:"item_model,omitempty"`
 	ItemCode     string          `json:"item_code,omitempty"`
 	ItemMetadata map[string]any  `json:"item_metadata,omitempty"`
+	ItemName     string          `json:"item_name,omitempty"`
+	ItemIconURL  string          `json:"item_icon_url,omitempty"`
 }
 
 // AgentEvent is the bounded occurrence envelope submitted over an authenticated
@@ -128,16 +130,19 @@ type AppendResult struct {
 }
 
 type Filter struct {
-	Server         string
-	CharacterID    string
-	CharacterQuery string
-	Kind           string
-	Category       string
-	ItemQuery      string
-	From           *time.Time
-	To             *time.Time
-	Cursor         string
-	Limit          int
+	Server             string
+	CharacterID        string
+	CharacterQuery     string
+	Kind               string
+	Category           string
+	ItemQuery          string
+	EventID            string
+	Region             *int
+	RequireMapPosition bool
+	From               *time.Time
+	To                 *time.Time
+	Cursor             string
+	Limit              int
 }
 
 type Page struct {
@@ -824,25 +829,36 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	if filter.EventID != "" && !agentdomain.ValidAgentID(filter.EventID) {
+		return Page{}, errors.New("invalid event ID")
+	}
+	if filter.Region != nil && (*filter.Region < 1 || *filter.Region > 65535) {
+		return Page{}, errors.New("invalid event region")
+	}
 	var cursorAt any
 	var cursorID any
 	if !cursor.OccurredAt.IsZero() {
 		cursorAt, cursorID = cursor.OccurredAt, cursor.EventID
 	}
+	var eventID any
+	if filter.EventID != "" {
+		eventID = filter.EventID
+	}
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
 	AND ($3='' OR c.character_name ILIKE '%'||$3||'%') AND ($4='' OR e.kind=$4)
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
-	AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
-	AND ($8::timestamptz IS NULL OR e.occurred_at < $8)`
+		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
+		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
+		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id
-`+base+` AND ($9::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($9::timestamptz,$10::uuid))
-ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $11`, filter.Server, filter.CharacterID, filter.CharacterQuery,
-		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, cursorAt, cursorID, filter.Limit+1)
+		`+base+` AND ($12::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($12::timestamptz,$13::uuid))
+ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $14`, filter.Server, filter.CharacterID, filter.CharacterQuery,
+		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, cursorAt, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list events: %w", err)
 	}
@@ -852,7 +868,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $11`, filter.Server, filter.Ch
 		var summary AlchemySummary
 		var highest *int
 		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),max((e.payload->>'plus')::integer) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest

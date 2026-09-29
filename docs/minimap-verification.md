@@ -386,3 +386,104 @@ This response is still more than ten hours later than the saved `07-map.png`; no
 current map renderer exists in `web/app`. It cannot prove where these characters
 would render within either tile. The candidate 1920-unit transform remains
 untrusted, and the `worldTransformStatus` stays unresolved.
+
+## Slice 7 renderer and transform gate — 2026-09-29
+
+The new `/map` uses Leaflet `CRS.Simple` over the GreatestSRO root tile catalog and
+the shared grid adapter also powers the Stats group and character Overview previews.
+The renderer applies the separately supported root orientation (X increases right,
+Y increases up), but it does not extrapolate the unsupported within-tile character
+transform from a matching filename or seam evidence. `web/app/utils/mapCoordinates.ts`
+refuses world-to-raster conversion unless the selected dataset, area, floor, region
+mapping and transform are all marked validated; reverse selection also requires
+verified command Z. The profile currently provides no validated transforms, so
+character markers, character jumps, destination coordinates and map commands stay
+disabled. Click/touch/context-menu and Enter/Space can select a raster point only.
+
+`GET /api/map/profile` reports root tiles for inspection and lists each required cave
+family/floor independently. No dedicated cave image or transform exists in the active
+export; the UI shows the floor bar and Back to world map without substituting outdoor
+imagery. Unit tests use a synthetic validated transform only to verify round-trip
+math and fail-closed gates; this is not map validation evidence. Historical density
+rendering and reset remain Slice 9 work. The old statement above that no renderer
+exists describes the 2026-09-27 capture date; the renderer now exists but remains
+deliberately unregistered to live position coordinates.
+
+## Deployed raster/profile smoke — 2026-09-29
+
+On the operator-authorized test deployment, the authenticated Greatest profile
+endpoint returned the 5,118-tile catalog and four area entries. A representative
+`/game-assets/minimap/169x97.png` request returned HTTP 200 as `image/png`. The
+production-style database has no Slice 8 observations yet, so its bounded density
+query returned an empty cell list. A separate localhost-only test database exercised
+the simulator write/replay path and returned two density cells with numerator 1 and
+denominator 2. The full Go suite also passed against a fresh isolated PostgreSQL
+instance, including two-observer aggregation, duplicate replay and stationary
+sampling. The temporary database was removed. This validates the profile/asset
+endpoint and observation query path; it does not validate a character's within-tile
+pixel coordinate, region boundary, cave floor or command Z. No matched viewport
+screenshot was taken, and all transform and real phBot gates above remain open.
+
+## Outdoor marker transform correction — 2026-09-29
+
+The earlier Slice 7 entry treated the exporter row's `worldTransformStatus` as the
+only available evidence. That was too restrictive for the documented outdoor
+coordinate system. The [phBot character API](https://plugins.phbot.org/phbot-api/character)
+publishes `(region=25000, x=6428.2373, y=1086.6726)` and
+`(region=24744, x=6435.8999, y=828.8)`. Both land in the exported root tiles
+`(168,97)` and `(168,96)` using `tileX=floor(x/192)+135` and
+`tileY=floor(y/192)+92`. The selected export's exact region joins also include
+25735→`(135,100)` and 23941→`(133,93)`; their recent live X/Y values fall inside
+those tiles. This independently checks positive and negative X and multiple Y rows.
+
+The connected Greatest reference map was inspected with a selected character and
+Jump at 07:51:14 UTC. Its live marker titles and screen positions showed nuker1
+`(96.4,1558.9)` at `(475,319)` and nuker4 `(93.4,1553.6)` at
+`(471.25,325.625)` at displayed 125% zoom. Thus increasing X moves right and
+increasing Y moves up. That reference uses a different displayed tile scale; these
+pixels validate direction and relative movement, while the local 256 px tile
+coordinate follows from the 192-unit region span and its 256 px raster. This is
+the synchronized marker evidence missing from the older entries above.
+
+The active Greatest profile now registers forward transforms for only these four
+outdoor region/tile joins. Within a tile, local pixel X is the coordinate fraction
+times 256; local pixel Y is one minus the Y fraction times 256. The adapter checks
+that the computed tile still matches the reported region before rendering. Fresh
+characters and Stats previews can use exact tile-local pixels; an unmapped region
+can use a clearly labelled tile-center marker only if its region/tile join exists.
+The current four live Greatest characters are in 25735 and should therefore use
+their exact X/Y values. These changes do not establish transforms for other outdoor
+regions, cave floors, command Z, or safe navigation. The exporter metadata retains
+its historical `worldTransformStatus`; this correction describes the separately
+verified profile registration, not a rewrite of the exported files.
+
+## Outdoor region grid as primary placement — 2026-09-29
+
+The earlier four-region registration excluded Hotan even though the outdoor region
+number itself identifies the root tile: `tileX = region % 256` and
+`tileY = floor(region / 256)`. Hotan region 23687 decodes to `(135,92)`; a live
+position near `(114,16)` falls inside it. After the game server returned, a fresh
+nuker1 sample in Donwhang region 26520, near `(3423.1,2115.2)`, decoded to
+`(152,103)` and its X/Y independently fell in that tile. The four earlier joins
+remain recorded examples, not a placement allowlist. The active Greatest adapter
+uses the encoded tile as the primary outdoor transform, then 192 world units per
+tile for the marker pixel. It rejects a transient region/X/Y disagreement rather
+than drawing the character in the wrong tile. When X/Y are temporarily absent,
+the character is shown at the encoded tile center with an approximate label.
+
+A selected character's map subscription now spans outdoor regions so a teleport
+does not remove it from the feed. An old region filter clears when the moved
+character arrives. Last observed online coordinates stay visible and marked stale
+if phBot briefly stops position updates. The plugin's repeated `connected()`
+callback no longer clears the joined-game sampling flag; that callback was a
+plausible cause of the observed heartbeat-without-position-update interval and
+needs confirmation after the running phBot copy is reloaded. Cave floors still
+need dedicated assets and transforms. No real movement command was issued.
+
+The first deployed browser inspection exposed an additional UI bug: passing
+`positionCanBeDisplayed` directly to `Array.filter` supplied the array index as
+its second `now` argument, suppressing all character markers. A dedicated list
+filter now passes one explicit clock and has a two-character regression test.
+After redeployment, the authenticated browser showed four character markers;
+nuker1 was on Hotan tile `(135,92)` at `(77.5,9.0)`, matching the reference's
+same live coordinates and plaza location.

@@ -713,3 +713,82 @@ version. The official [Training Area API](https://plugins.phbot.org/phbot-api/tr
 documents `set_training_area(name)` as changing the selected area and provides no
 creation primitive. The official [training-area guide](https://guide.phbot.org/phbot/training-area)
 documents creating a new area through the phBot UI's Add action.
+
+## Slice 7–8 position and monster observation source (2026-09-29)
+
+- The official [Monsters API](https://plugins.phbot.org/phbot-api/monsters)
+  documents no-argument `get_monsters()`. It returns `None` or a dictionary that may
+  be empty; dictionary keys are monster IDs. The example documents model, type,
+  region and x/y along with name/server name and combat fields. PhMon keeps only the
+  identifier, model, type, region and coordinates required for map observations.
+- The official [Character API](https://plugins.phbot.org/phbot-api/character)
+  documents no-argument `get_position()` returning current region and x/y/z, or
+  `None`. This supplies observer positions and retains optional observed Z; it does
+  not establish a map transform.
+- Plugin v1.5.2 / agent protocol v7 polls the getter every 0.1 seconds and limits each
+  snapshot to 128 entries. `None`/missing/exception, observed empty and truncated are
+  kept distinct. Only complete untruncated snapshots enter the local durable sample
+  spool. Sample cadence is one minute per session/region/unmapped-floor/192-unit
+  observer cell. The `unmapped` floor label avoids claiming outdoor or cave membership
+  without verified region mappings; no real-runtime behavior is inferred from tests.
+- Cave member region/floor is not documented by the Academy API. The map reports
+  Academy member coordinates unavailable rather than projecting unscoped rows.
+- No navigation command is enabled. The official [Paths API](https://plugins.phbot.org/phbot-api/paths)
+  rate-limits path generation to one call per five seconds; `generate_script()` can
+  produce bounded route text, but its effects and arrival confirmation have not
+  been verified on the installed runtime. Coordinate conversion also requires
+  a verified reverse transform and command-Z evidence. The active profile has only
+  four forward outdoor marker transforms and no command-Z evidence.
+
+Go unit checks cover protocol bounds, empty clearing and expiry; frontend unit checks
+cover transform round trips. PostgreSQL integration tests for sample deduplication,
+density math and multiple observers are present but were not run because this worktree
+has no `TEST_DATABASE_URL`. The real phBot v1.5.0 integration gate remains open.
+
+### Outdoor position display evidence — 2026-09-29
+
+The documented [character getters](https://plugins.phbot.org/phbot-api/character)
+return region and X/Y, including examples `(25000, 6428.2373, 1086.6726)` and
+`(24744, 6435.8999, 828.8)`. Both agree with 192 displayed coordinate units per
+outdoor region and the selected export's root tiles `(168,97)` and `(168,96)`.
+Synchronized marker positions on the connected Greatest reference map confirm +X
+right and +Y up. This supports forward marker placement for the four explicitly
+joined outdoor regions in the current profile. It does not supply command Z,
+dedicated cave transforms, or real phBot navigation evidence; the command gate
+above remains closed.
+
+### Map monster presentation fields — 2026-09-29
+
+The documented `get_monsters()` response exposes each nearby monster's `name`,
+`servername`, `model`, numeric `type`, `region`, X/Y, `hp`, `max_hp` and `attacking`;
+it does not document a level field. Plugin 1.5.1 carries bounded optional name,
+numeric type, HP and attacking values, and 1.5.2 additionally forwards a level only
+if supplied by the runtime. Go validates these fields in the existing v7
+`map.monsters` frame. The map never treats a numeric type/model code as a level and
+shows level unavailable when absent. Older agents remain compatible, but their
+absent fields cannot be reconstructed from a map screenshot or stored rows. Current
+map sightings are deduplicated across sessions by server, region, model/server name
+and an 8-unit position tolerance, while retaining same-session rows. The installed
+real phBot runtime has not yet been verified with 1.5.2 or a level field.
+
+### Current map marker polling trial — 2026-09-29
+
+The operator requested faster current monster snapshots because the previous
+ten-second delay made combat markers too slow. `MOB_POLL_INTERVAL_SECONDS` is now
+0.1; the durable observation spool still samples at most once per minute per
+observer cell. The focused plugin suite passes (86 tests), including a regression
+that verifies polling is skipped at 0.099 seconds and resumes at 0.1 seconds. This is
+source/test evidence only: the updated plugin must be loaded by the connected phBot
+runtime before actual CPU cost and map freshness can be measured.
+
+### Teleport sampling and outdoor region placement — 2026-09-29
+
+During a Hotan teleport, the agent heartbeat continued while character state stopped
+advancing. A repeated plugin `connected()` callback cleared `_character_joined` even
+for an existing connection, preventing position sampling until `joined_game()` or
+a plugin reload. The callback now clears that flag only for a new connection; a
+focused test covers the repeated-callback case. This is a plausible cause, not yet
+confirmed on the installed phBot copy. After service recovery, a fresh Greatest
+observation in region 26520 had X/Y near `(3423.1,2115.2)`, consistent with
+outdoor tile `(152,103)`. The map uses `region = tileY*256 + tileX` as its primary
+outdoor placement rule with 192 coordinate units per tile. Cave handling is separate.

@@ -23,6 +23,17 @@ type ItemMetadata struct {
 	SharedPresentations map[string]map[string]any
 	SharedMagicOptions  map[string]MagicOptionDefinition
 }
+
+// DatasetForServer returns the selected exported profile using the same
+// normalized server mapping used by item reference lookups.
+func (m *ItemMetadata) DatasetForServer(server string) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	dataset, ok := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	return dataset, ok
+}
+
 type ItemCatalog struct {
 	DatasetID          string                           `json:"dataset_id"`
 	Items              map[string]ItemDefinition        `json:"items"`
@@ -166,6 +177,9 @@ func (m *ItemMetadata) PortraitURL(server string, model *int64) string {
 		return ""
 	}
 	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	if dataset == "" {
+		return ""
+	}
 	portrait, ok := m.Catalogs[dataset].CharacterPortraits[strconv.FormatInt(*model, 10)]
 	if !ok || !validPortraitURL(portrait.PortraitURL) {
 		return ""
@@ -200,6 +214,31 @@ func (m *ItemMetadata) ItemPresentation(server string, model *int64, code string
 		}
 	}
 	return nil
+}
+
+// MapItemPresentation uses the selected server's model catalog first. A stable
+// item code is used only when its shared presentation is unambiguous.
+func (m *ItemMetadata) MapItemPresentation(server string, model *int64, code string) (name, iconURL string) {
+	if m == nil {
+		return "", ""
+	}
+	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	if dataset == "" {
+		return "", ""
+	}
+	if model != nil && *model > 0 && *model <= 4294967295 {
+		if item, ok := m.Catalogs[dataset].Items[strconv.FormatInt(*model, 10)]; ok {
+			name, _ = item.Presentation["name"].(string)
+			iconURL, _ = item.Presentation["icon_url"].(string)
+			return name, iconURL
+		}
+	}
+	if code == "" {
+		return "", ""
+	}
+	name, _ = m.SharedPresentations[code]["name"].(string)
+	iconURL = m.SharedIcons[code]
+	return name, iconURL
 }
 
 func addSharedPresentation(index map[string]map[string]any, ambiguous map[string]map[string]bool, code string, presentation map[string]any) {
@@ -487,6 +526,13 @@ func parseUnsigned64(value string) (uint64, error) {
 
 func (s *Store) SetItemMetadata(metadata *ItemMetadata) { s.metadata = metadata }
 
+func (s *Store) DatasetIDForServer(server string) (string, bool) {
+	if s == nil {
+		return "", false
+	}
+	return s.metadata.DatasetForServer(server)
+}
+
 func (s *Store) PortraitURL(server string, model *int64) string {
 	if s == nil || s.metadata == nil {
 		return ""
@@ -499,4 +545,11 @@ func (s *Store) ItemPresentation(server string, model *int64, code string) map[s
 		return nil
 	}
 	return s.metadata.ItemPresentation(server, model, code)
+}
+
+func (s *Store) MapItemPresentation(server string, model *int64, code string) (name, iconURL string) {
+	if s == nil || s.metadata == nil {
+		return "", ""
+	}
+	return s.metadata.MapItemPresentation(server, model, code)
 }

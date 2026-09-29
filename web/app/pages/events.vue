@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '~~/shared/types/live'
+import type { MapProfile } from '~~/shared/types/map'
+import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
 const { serverScope } = useServerScope()
@@ -58,6 +60,8 @@ let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
 let itemSearchTimer: ReturnType<typeof setTimeout> | undefined
 const feedID = 'activity-history'
 const page = computed(() => eventFeeds.value[feedID])
+const eventMapProfiles = ref<Record<string, MapProfile>>({})
+const mapProfileRequests = new Map<string, Promise<MapProfile>>()
 const invalidDateRange = computed(
   () => !!fromDate.value && !!toDate.value && fromDate.value > toDate.value,
 )
@@ -81,7 +85,57 @@ const locationText = (event: {
     return 'Location unknown'
   return `Region ${event.region} · ${event.x.toFixed(1)}, ${event.y.toFixed(1)}, ${event.z?.toFixed(1) ?? '—'}`
 }
-const hasReliableMapLocation = (_event: ActivityEvent) => false
+const hasReliableMapLocation = (event: ActivityEvent) => {
+  const profile = eventMapProfiles.value[event.server.toLowerCase()]
+  return Boolean(
+    profile && mapEventLocation(profile, event).status === 'mapped',
+  )
+}
+
+const eventMapTarget = (event: ActivityEvent) => {
+  const profile = eventMapProfiles.value[event.server.toLowerCase()]
+  const location = profile ? mapEventLocation(profile, event) : undefined
+  return mapEventRoute(
+    event.server,
+    event.event_id,
+    event.character_id,
+    event.region,
+    location,
+  )
+}
+
+watch(
+  page,
+  async (eventPage) => {
+    const serverNames = [
+      ...new Set((eventPage?.events || []).map((event) => event.server)),
+    ]
+    await Promise.all(
+      serverNames.map(async (server) => {
+        const key = server.toLowerCase()
+        let request = mapProfileRequests.get(key)
+        if (!request) {
+          request = $fetch<MapProfile>(
+            `/api/map/profile?server=${encodeURIComponent(server)}`,
+          )
+          mapProfileRequests.set(key, request)
+        }
+        try {
+          const profile = await request
+          eventMapProfiles.value = {
+            ...eventMapProfiles.value,
+            [key]: profile,
+          }
+        } catch {
+          if (mapProfileRequests.get(key) === request)
+            mapProfileRequests.delete(key)
+          // An unavailable profile leaves the map action disabled for this server.
+        }
+      }),
+    )
+  },
+  { immediate: true },
+)
 
 watch(characterInput, (value) => {
   if (characterSearchTimer) clearTimeout(characterSearchTimer)
@@ -454,7 +508,7 @@ function localDateBoundary(value: string, addDays: number) {
                 <NuxtLink
                   v-if="hasReliableMapLocation(item)"
                   class="compact-button map-event-link"
-                  :to="`/map?region=${item.region}&x=${item.x}&y=${item.y}`"
+                  :to="eventMapTarget(item)"
                   aria-label="Open event location on map"
                 >
                   <UIcon name="i-lucide-map-pin" />

@@ -1,9 +1,11 @@
 # PhMon phBot plugin
 
-The current Slice 6 development release is **1.4.2** (`vsro_1188_passive_r2`, API
-evidence schema 2). It sends canonical callbacks, inbound chat, alchemy attempts and
-reliable membership/container deltas in protocol-v6 batches over the existing
-authenticated connection. The backend keeps accepting v2–v5; v5 plugins continue
+The current Slice 7–8 development release is **1.5.2** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v7 over the existing authenticated
+connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
+membership/container deltas and bounded v6 event batches. It adds current nearby
+monster snapshots and profile-scoped durable observation samples; the backend keeps
+accepting protocol v2–v6 and v5 plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime
@@ -27,6 +29,21 @@ server is unambiguously selected as vSRO 1.188. Those layouts still need a natur
 captured Greatest runtime fixture. Older protocol-v2/v3 plugins retain their existing
 monitoring/command capabilities but do not provide Slice 4 resources or Slice 5 event
 families.
+
+Protocol v7 polls documented `get_monsters()` every ten seconds. Current snapshots
+are capped at 128 entries; unavailable (`None`/missing/exception), observed empty
+(`{}`), and truncated results stay distinct. Complete observations are locally
+spooled at most once per minute per session, region, world floor and 192-unit
+observer cell. Empty observations are durable zero samples. Unavailable and truncated
+results never enter historical storage. The spool is bounded to 2,048 samples / 8 MiB
+and rows leave it only after the Go service reports persistence or a terminal rejection.
+Version 1.5.1 added bounded monster name, numeric type, HP/max HP and attack state;
+1.5.2 also passes an optional bounded level when the runtime includes it. The
+documented `get_monsters()` response does not promise a level field, so the map labels
+the level unavailable when the active runtime omits it. Existing 1.5.0 agents still
+connect, but their map popups cannot show fields they did not send.
+This cadence, spool and transport have simulator/unit-test coverage; installed phBot
+behavior and the PostgreSQL-backed reconnect/replay gate remain open.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket

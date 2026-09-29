@@ -1,12 +1,13 @@
-# Agent protocol versions 2–6
+# Agent protocol versions 2–7
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
 leave messages. Slice 3 adds v3 command delivery. Slice 4 adds v4 resource snapshots
 and deltas. Protocol v5 adds nullable live death state and the original death event
-frame. Protocol v6 adds canonical event batches. The backend continues accepting
-v2–v5 agents; v2–v4 cannot submit events, and v5 retains its death frame and
-individual acknowledgement.
+frame. Protocol v6 adds canonical event batches. Protocol v7 adds live monster
+snapshots and durable observation samples. The backend continues accepting v2–v6
+agents; v2–v4 cannot submit events, and v5 retains its death frame and individual
+acknowledgement.
 Sections below retain the v2 baseline contract; later sections define version-specific
 extensions and limits.
 
@@ -31,9 +32,9 @@ extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: latest 5. Version 1 agents are rejected with an explicit
+Protocol version: latest 7. Version 1 agents are rejected with an explicit
 unsupported protocol close reason because the character identity/state contract is
-required. Versions 2–4 remain accepted for rolling deployment compatibility.
+required. Versions 2–6 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -895,3 +896,91 @@ mean a remote recipient received the message. Global sends require explicit
 confirmation. Numeric inbound channel mappings were confirmed by the operator on
 phBot 20.1.2. phBot's actual accepted text limit remains a runtime gate; the app
 currently caps one message at 2,048 UTF-8 bytes and does not split messages.
+
+## Slice 7 and 8 protocol v7: current monsters and durable samples
+
+An authenticated v7 agent sends current monster state independently of historical
+sampling. The frame is scoped to its current character session and region:
+
+    {
+      "type": "map.monsters",
+      "protocol_version": 7,
+      "map_snapshot": {
+        "character_id": "<current character UUID>",
+        "session_id": "<current session UUID>",
+        "status": "observed",
+        "observed_at": "<UTC RFC3339>",
+        "region": 25273,
+        "truncated": false,
+        "monsters": [
+          {"id":"42","model_id":300,"type":"4","type_code":4,
+           "name":"Tiger","hp":7515,"max_hp":7515,"attacking":false,
+           "region":25273,"x":10.0,"y":20.0,"z":0.0}
+        ]
+      }
+    }
+
+The plugin reads documented `get_monsters()` from phBot and bounds a snapshot to 128
+rows. `None`, a missing getter or an exception is `unavailable`; an empty dictionary
+is an observed empty snapshot and clears the current layer. A result over the bound or
+containing malformed entries is `truncated`; its bounded valid members may be shown
+as current data, but it is never eligible for historical sampling. The Go server
+checks agent, character, active session and region before replacing the ephemeral
+current snapshot. Empty observations clear its monster rows; unavailable observations
+clear its monster rows and mark the snapshot unavailable. Entries expire after 35
+seconds. Current monsters are never merged into historical
+density.
+
+Plugin 1.5.1 adds optional bounded `type_code`, `name`, `servername`, `hp`,
+`max_hp` and `attacking` fields to each monster. Older v7 agents remain accepted;
+their missing popup fields are shown as unavailable. Type codes 0/1/4 and
+16/17/20 drive the normal/champion/giant and party map presentation, while
+unknown types retain an explicit unknown label.
+
+At most once per minute for each observer session, region, floor and 192-unit
+observer-position cell, the plugin durably spools a complete, untruncated `observed`
+sample. Empty dictionaries are eligible and contribute zero monster rows. The frame
+has a stable sample UUID:
+
+    {
+      "type": "mob.sample",
+      "protocol_version": 7,
+      "sample": {
+        "sample_id": "<stable UUID>",
+        "character_id": "<character UUID>",
+        "session_id": "<session UUID>",
+        "area_id": "region:25273",
+        "floor_id": "unmapped",
+        "region": 25273,
+        "sampled_at": "<UTC RFC3339>",
+        "observer": {"x":10.0,"y":20.0,"z":0.0},
+        "monsters": []
+      }
+    }
+
+Only fully observed, untruncated results enter the historical spool; unavailable and
+truncated results do not. Each monster row has an ID, region, X/Y and optional model,
+type and Z facts. The backend derives server and dataset from the authenticated
+character, validates the active dataset, explicit region bucket, unmapped floor,
+coordinate bounds, sample frequency and original session ownership. The `unmapped`
+floor label is deliberate: the documented getter does not identify outdoor versus
+cave floor, and this profile has no validated region-to-floor mappings. Replayed
+sample IDs are idempotent. `mob.sample.ack`
+reports `persisted`, terminal `rejected` or `retry`; `persisted` is sent only after
+the PostgreSQL transaction commits. The local spool removes a row only after a
+terminal acknowledgement.
+
+Density is defined as nearby monster observation rows divided by eligible observer
+samples centered in the cell. Empty samples stay in the denominator and add zero to
+the numerator. Unavailable and truncated results contribute to neither. This is an
+average nearby observation count, not a count of distinct monsters or population.
+
+The browser reuses authenticated `/api/live` revision-fenced subscriptions for scoped
+`map` snapshots. `GET /api/map/profile?server=...` returns the server dataset,
+area/floor catalogue, tile references and validation status. `GET /api/map/density`
+requires server, area, floor and RFC3339 time bounds and caps queries to 31 days and
+500 cells. The response `metric` is `observer_local_average_count`. Each observer
+cell returns `monster_observations`, `eligible_samples`,
+`average_observed_per_sample`, dataset and time range. Coverage is unverified, so
+no `density` field is returned. Historical heatmap rendering and reset remain
+Slice 9 work.

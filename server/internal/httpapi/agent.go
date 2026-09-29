@@ -16,11 +16,12 @@ import (
 	"phmon/server/internal/characters"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
 
 const (
-	agentProtocolVersion    = 6
+	agentProtocolVersion    = 7
 	agentMinProtocolVersion = 2
 )
 
@@ -52,6 +53,18 @@ type agentHandler struct {
 	commands   *commands.Service
 	resources  *resources.Store
 	events     *events.Store
+	mobs       *mobs.Store
+	mobLive    *mobs.LiveStore
+}
+
+type agentMonsterSnapshot struct {
+	Status      string         `json:"status"`
+	CharacterID string         `json:"character_id"`
+	SessionID   string         `json:"session_id"`
+	ObservedAt  time.Time      `json:"observed_at"`
+	Region      int            `json:"region"`
+	Truncated   bool           `json:"truncated,omitempty"`
+	Monsters    []mobs.Monster `json:"monsters"`
 }
 
 type agentCapability struct {
@@ -93,6 +106,8 @@ type agentMessage struct {
 	DeathEvent       *events.AgentDeath         `json:"event,omitempty"`
 	Events           []events.AgentEvent        `json:"events,omitempty"`
 	EventResults     []events.AppendResult      `json:"results,omitempty"`
+	MapSnapshot      *agentMonsterSnapshot      `json:"map_snapshot,omitempty"`
+	MobSample        *mobs.Sample               `json:"sample,omitempty"`
 }
 
 type helloAck struct {
@@ -221,6 +236,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !stillConnected {
+			if h.mobLive != nil {
+				h.mobLive.RemoveAgent(hello.AgentID)
+			}
 			if disconnectFence.IsZero() {
 				disconnectFence = connectedAt
 			}
@@ -275,6 +293,89 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		switch message.Type {
+		case "map.monsters":
+			frame := message.MapSnapshot
+			if hello.ProtocolVersion < 7 || frame == nil || h.characters == nil || h.mobLive == nil ||
+				!agentdomain.ValidAgentID(frame.CharacterID) || !agentdomain.ValidAgentID(frame.SessionID) ||
+				mobs.ValidateLiveSnapshot(frame.Status, frame.Region, frame.Monsters, time.Now().UTC(), frame.ObservedAt) != nil ||
+				(frame.Status == "truncated") != frame.Truncated {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid map monster snapshot", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
+			cancel()
+			if characterErr != nil || !character.Online || character.SessionID == nil || *character.SessionID != frame.SessionID ||
+				character.AgentID == nil || *character.AgentID != hello.AgentID {
+				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, frame.CharacterID, frame.SessionID) {
+					return
+				}
+				continue
+			}
+			if character.Region == nil || *character.Region != frame.Region {
+				// State and snapshot can arrive out of order at a region seam; drop only this snapshot.
+				continue
+			}
+			h.mobLive.Apply(mobs.LiveSnapshot{Server: character.Server, AgentID: hello.AgentID, CharacterID: frame.CharacterID, SessionID: frame.SessionID,
+				Character: character.Name, Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
+				Truncated: frame.Truncated, Monsters: frame.Monsters})
+			h.live.Invalidate()
+		case "mob.sample":
+			if hello.ProtocolVersion < 7 || h.mobs == nil || h.characters == nil || h.resources == nil || message.MobSample == nil {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid mob sample", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			sample := *message.MobSample
+			if !agentdomain.ValidAgentID(sample.ID) || !agentdomain.ValidAgentID(sample.CharacterID) || !agentdomain.ValidAgentID(sample.SessionID) {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid mob sample identity", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			if mobs.ValidateSample(sample, time.Now().UTC()) != nil {
+				if !ackMobSample(sessionCtx, writer, hello.ProtocolVersion, sample.ID, "rejected", "invalid_sample") {
+					return
+				}
+				continue
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			character, characterErr := h.characters.GetScoped(ctx, sample.CharacterID, "")
+			cancel()
+			if characterErr != nil {
+				status, reason := "retry", "temporarily_unavailable"
+				if errors.Is(characterErr, characters.ErrNotFound) {
+					status, reason = "rejected", "unknown_character"
+				}
+				if !ackMobSample(sessionCtx, writer, hello.ProtocolVersion, sample.ID, status, reason) {
+					return
+				}
+				continue
+			}
+			dataset, knownServer := h.resources.DatasetIDForServer(character.Server)
+			status, reason := "retry", "temporarily_unavailable"
+			if !knownServer {
+				status, reason = "rejected", "unsupported_server_profile"
+			} else {
+				ctx, cancel = context.WithTimeout(sessionCtx, 3*time.Second)
+				inserted, appendErr := h.mobs.Append(ctx, hello.AgentID, dataset, sample, time.Now().UTC())
+				cancel()
+				switch {
+				case appendErr == nil:
+					status, reason = "persisted", ""
+					if inserted {
+						h.live.Invalidate()
+					}
+				case errors.Is(appendErr, mobs.ErrSamplingFrequency):
+					status, reason = "rejected", "sample_frequency_limit"
+				case errors.Is(appendErr, mobs.ErrUnauthorized):
+					status, reason = "rejected", "session_or_region_rejected"
+				case errors.Is(appendErr, mobs.ErrInvalidSample), errors.Is(appendErr, mobs.ErrConflict):
+					status, reason = "rejected", "invalid_or_conflicting_sample"
+				default:
+					slog.Warn("mob observation persistence failed", "agent_id", hello.AgentID, "reason", appendErr.Error())
+				}
+			}
+			if !ackMobSample(sessionCtx, writer, hello.ProtocolVersion, sample.ID, status, reason) {
+				return
+			}
 		case "event.batch":
 			if hello.ProtocolVersion < 6 || message.ProtocolVersion != hello.ProtocolVersion || h.events == nil || len(message.Events) < 1 || len(message.Events) > events.MaxBatchSize || !validMessageTime(message.SentAt) {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid event batch", hello.AgentID, hello.ProtocolVersion)
@@ -544,6 +645,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
+			if h.mobLive != nil && message.SessionID != "" {
+				h.mobLive.RemoveSession(message.SessionID)
+			}
 			h.live.Invalidate()
 		case "resource.snapshot", "resource.delta":
 			if hello.ProtocolVersion < 4 || h.resources == nil || h.characters == nil ||
@@ -617,6 +721,16 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func ackMobSample(ctx context.Context, writer *agentWriter, protocol int, sampleID, status, reason string) bool {
+	ack := map[string]any{"type": "mob.sample.ack", "protocol_version": protocol, "sample_id": sampleID, "status": status}
+	if reason != "" {
+		ack["reason"] = reason
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return writer.Send(writeCtx, ack) == nil
 }
 
 func validCommandResultStatus(status string) bool {

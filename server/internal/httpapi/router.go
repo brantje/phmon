@@ -12,6 +12,7 @@ import (
 	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
 
@@ -37,6 +38,8 @@ type Dependencies struct {
 	Resources    *resources.Store
 	Events       *events.Store
 	Chat         *chat.Store
+	Mobs         *mobs.Store
+	MobLive      *mobs.LiveStore
 }
 
 func New(deps Dependencies) http.Handler {
@@ -71,6 +74,12 @@ func New(deps Dependencies) http.Handler {
 		live.SetResources(deps.Resources)
 		live.SetEvents(deps.Events)
 		live.SetChat(deps.Chat)
+		mobLive := deps.MobLive
+		if mobLive == nil {
+			mobLive = mobs.NewLiveStore()
+		}
+		live.SetMobObservations(deps.Mobs)
+		live.SetMobLive(mobLive)
 		handler := &agentHandler{
 			store:      deps.Agents,
 			registry:   deps.Registry,
@@ -80,6 +89,8 @@ func New(deps Dependencies) http.Handler {
 			commands:   deps.Commands,
 			resources:  deps.Resources,
 			events:     deps.Events,
+			mobs:       deps.Mobs,
+			mobLive:    mobLive,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)
@@ -94,6 +105,13 @@ func New(deps Dependencies) http.Handler {
 		if deps.Events != nil {
 			eventAPI := &eventHandler{store: deps.Events, resources: deps.Resources}
 			register("GET /api/events", false, eventAPI.list)
+		}
+		if deps.Resources != nil {
+			mapAPI := &mapHandler{resources: deps.Resources, mobs: deps.Mobs}
+			register("GET /api/map/profile", false, mapAPI.profile)
+			if deps.Mobs != nil {
+				register("GET /api/map/density", false, mapAPI.density)
+			}
 		}
 		register("GET /api/agents", false, handler.list)
 		register("POST /api/agents/credentials", true, handler.createCredential)
