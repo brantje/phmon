@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -83,6 +84,7 @@ type Event struct {
 	Source       string          `json:"source"`
 	SourceRef    string          `json:"source_ref"`
 	Region       *int            `json:"region,omitempty"`
+	Zone         string          `json:"zone,omitempty"`
 	X            *float64        `json:"x,omitempty"`
 	Y            *float64        `json:"y,omitempty"`
 	Z            *float64        `json:"z,omitempty"`
@@ -115,6 +117,7 @@ type AgentEvent struct {
 	SourceRef   string          `json:"source_ref"`
 	DedupeKey   string          `json:"dedupe_key,omitempty"`
 	Region      *int            `json:"region,omitempty"`
+	Zone        string          `json:"zone,omitempty"`
 	X           *float64        `json:"x,omitempty"`
 	Y           *float64        `json:"y,omitempty"`
 	Z           *float64        `json:"z,omitempty"`
@@ -302,6 +305,7 @@ func validateAgentEvent(event AgentEvent) error {
 		event.OccurredAt.After(time.Now().UTC().Add(5*time.Minute)) ||
 		event.OccurredAt.Before(time.Now().UTC().Add(-365*24*time.Hour)) ||
 		!validPosition(event.Region, event.X, event.Y, event.Z) ||
+		!validZoneName(event.Zone) ||
 		!validEventSources[event.Source][event.SourceRef] || len(event.SourceRef) > 120 ||
 		len(event.DedupeKey) > 160 || len(event.Server) > 100 || len(event.Character) > 64 ||
 		len(event.ItemCode) > 128 {
@@ -606,7 +610,7 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 		}
 	}
 	var same bool
-	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM activity_events WHERE event_id=$1::uuid AND agent_id=$2::uuid AND kind=$3 AND category=$4 AND character_id IS NOT DISTINCT FROM NULLIF($5,'')::uuid AND session_id IS NOT DISTINCT FROM NULLIF($6,'')::uuid AND server_name IS NOT DISTINCT FROM NULLIF($7,'') AND occurred_at=$8 AND source=$9 AND source_ref=$10 AND region IS NOT DISTINCT FROM $11 AND x IS NOT DISTINCT FROM $12 AND y IS NOT DISTINCT FROM $13 AND z IS NOT DISTINCT FROM $14 AND payload=$15::jsonb AND sequence IS NOT DISTINCT FROM $16 AND dedupe_key IS NOT DISTINCT FROM NULLIF($17,'') AND item_model IS NOT DISTINCT FROM $18 AND item_code IS NOT DISTINCT FROM NULLIF($19,''))`, event.ID, agentID, event.Kind, event.Category, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, event.DedupeKey, event.ItemModel, event.ItemCode).Scan(&same)
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM activity_events WHERE event_id=$1::uuid AND agent_id=$2::uuid AND kind=$3 AND category=$4 AND character_id IS NOT DISTINCT FROM NULLIF($5,'')::uuid AND session_id IS NOT DISTINCT FROM NULLIF($6,'')::uuid AND server_name IS NOT DISTINCT FROM NULLIF($7,'') AND occurred_at=$8 AND source=$9 AND source_ref=$10 AND region IS NOT DISTINCT FROM $11 AND x IS NOT DISTINCT FROM $12 AND y IS NOT DISTINCT FROM $13 AND z IS NOT DISTINCT FROM $14 AND payload=$15::jsonb AND sequence IS NOT DISTINCT FROM $16 AND dedupe_key IS NOT DISTINCT FROM NULLIF($17,'') AND item_model IS NOT DISTINCT FROM $18 AND item_code IS NOT DISTINCT FROM NULLIF($19,'') AND zone_name IS NOT DISTINCT FROM NULLIF($20,''))`, event.ID, agentID, event.Kind, event.Category, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, event.DedupeKey, event.ItemModel, event.ItemCode, event.Zone).Scan(&same)
 	if err != nil {
 		return false, false, err
 	}
@@ -642,8 +646,8 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 			return false, false, fmt.Errorf("create chat projection savepoint: %w", err)
 		}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload,sequence,dedupe_key,item_model,item_code)
-VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19)`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode))
+	_, err = tx.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload,sequence,dedupe_key,item_model,item_code,zone_name)
+VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19,NULLIF($20,''))`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode), event.Zone)
 	if err != nil {
 		return false, false, err
 	}
@@ -792,6 +796,10 @@ func validPosition(region *int, axes ...*float64) bool {
 	return true
 }
 
+func validZoneName(zone string) bool {
+	return zone == "" || (zone == strings.TrimSpace(zone) && utf8.RuneCountInString(zone) <= 100)
+}
+
 func EncodeCursor(cursor Cursor) string {
 	value := cursor.OccurredAt.UTC().Format(time.RFC3339Nano) + "|" + cursor.EventID
 	return base64.RawURLEncoding.EncodeToString([]byte(value))
@@ -855,7 +863,7 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
-	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id
+	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,'')
 		`+base+` AND ($12::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($12::timestamptz,$13::uuid))
 ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $14`, filter.Server, filter.CharacterID, filter.CharacterQuery,
 		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, cursorAt, cursorID, filter.Limit+1)
@@ -876,7 +884,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $14`, filter.Server, filter.Ch
 	}
 	for rows.Next() {
 		var item Event
-		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID); err != nil {
+		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID, &item.Zone); err != nil {
 			return Page{}, err
 		}
 		page.Events = append(page.Events, item)

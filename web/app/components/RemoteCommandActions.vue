@@ -79,6 +79,20 @@ const currentSession = computed(() =>
   ),
 )
 
+const trainingZoneName = computed(() => {
+  const training = characterControls.value?.training
+  const observedZone = training?.training_zone?.trim()
+  const currentZone = props.character.zone?.trim()
+  if (observedZone) return observedZone
+  if (
+    training?.training_region != null &&
+    training.training_region === props.character.region &&
+    currentZone
+  )
+    return currentZone
+  return 'Unknown zone'
+})
+
 const sessionCapabilityNotice = computed(() => {
   if (liveStale.value || !currentSession.value) return ''
   const capabilities = characterControls.value?.capabilities || {}
@@ -315,8 +329,8 @@ async function submit(name: string) {
     <p v-if="characterControls?.training" class="status-banner">
       Training area
       <template v-if="characterControls.training.training_available">
-        · region {{ characterControls.training.training_region ?? 'unknown' }} ·
-        position {{ characterControls.training.training_x ?? '—' }},
+        · {{ trainingZoneName }} · position
+        {{ characterControls.training.training_x ?? '—' }},
         {{ characterControls.training.training_y ?? '—' }},
         {{ characterControls.training.training_z ?? '—' }} · radius
         {{ characterControls.training.training_radius ?? 'unknown' }}
@@ -412,9 +426,11 @@ async function submit(name: string) {
             /></label>
           </div>
           <small
-            >Region {{ character.region ?? 'unavailable' }}. Named areas must
-            exactly match a name configured in phBot. Selection is available
-            only when this plugin runtime reports its documented API.</small
+            >Coordinates are interpreted in
+            {{ character.zone || 'the current zone (name unavailable)' }}. Named
+            areas must exactly match a name configured in phBot. Selection is
+            available only when this plugin runtime reports its documented
+            API.</small
           >
         </template>
         <label v-if="dialog === 'training.radius.set'"
@@ -443,10 +459,10 @@ async function submit(name: string) {
             >Z<input v-model="walk.z" type="number" step="any" required
           /></label>
           <small
-            >phBot calculates a waypoint route within observed region
-            {{ character.region ?? 'unavailable' }}; teleport routes are not
-            supported. Arrival is reported only after live position readback
-            reaches the destination.</small
+            >phBot calculates a waypoint route within
+            {{ character.zone || 'the observed zone (name unavailable)' }};
+            teleport routes are not supported. Arrival is reported only after
+            live position readback reaches the destination.</small
           >
         </div>
         <p v-if="errorText" role="alert">{{ errorText }}</p>

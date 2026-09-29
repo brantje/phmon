@@ -1023,6 +1023,7 @@ class DeathEventTransportTests(unittest.TestCase):
 
     def test_spool_replays_same_stable_event_until_persisted_ack(self):
         event = self.death()
+        event['zone'] = 'Jangan'
         self.assertTrue(self.worker.queue_death_event(self.identity, event))
         self.worker._flush_death_events(self.client)
         self.assertEqual(len(self.frames), 1)
@@ -1033,6 +1034,7 @@ class DeathEventTransportTests(unittest.TestCase):
         self.assertEqual(wire_event['character_id'], self.worker.character_id)
         self.assertEqual(wire_event['session_id'], self.worker.session_id)
         self.assertEqual(wire_event['sequence'], 1)
+        self.assertEqual(wire_event['zone'], 'Jangan')
 
         recovered = plugin.DeathEventSpool(self.spool_path)
         self.assertEqual(recovered.pending()[0]['event_id'], event['event_id'])
@@ -1045,6 +1047,7 @@ class DeathEventTransportTests(unittest.TestCase):
         replay = []
         retry_worker._flush_death_events(type('Client', (), {'send_json': lambda _, frame: replay.append(frame)})())
         self.assertEqual(replay[0]['events'][0]['event_id'], event['event_id'])
+        self.assertEqual(replay[0]['events'][0]['zone'], 'Jangan')
         retry_worker._handle_server_message({
             'type': 'event.batch.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
             'results': [{'event_id': event['event_id'], 'status': 'retry'}],
@@ -1307,6 +1310,25 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(rare['item_model'], 77)
         self.assertNotIn('item', rare['payload'])
         self.assertEqual(normal['payload'], {'model': 78})
+
+    def test_canonical_event_captures_bounded_zone_for_observed_region(self):
+        with patch.object(plugin, '_get_zone_name', return_value=' Jangan ') as get_zone:
+            event = self.callback(plugin.handle_event, plugin.EVENT_PLAYER_ATTACKING, 'mob')
+
+        self.assertEqual(event['zone'], 'Jangan')
+        get_zone.assert_called_once_with(25273)
+
+    def test_canonical_event_omits_missing_or_failed_zone_lookup(self):
+        with patch.object(plugin, '_get_zone_name', side_effect=RuntimeError('lookup failed')):
+            event = self.callback(plugin.handle_event, plugin.EVENT_DIED, '')
+        self.assertNotIn('zone', event)
+
+    def test_zone_lookup_rejects_missing_api_and_invalid_regions(self):
+        with patch.object(plugin, '_get_zone_name', return_value='Jangan') as get_zone:
+            self.assertIsNone(plugin._zone_name_for_region(0))
+            self.assertIsNone(plugin._zone_name_for_region(True))
+            self.assertIsNone(plugin._zone_name_for_region(70000))
+        get_zone.assert_not_called()
 
     def test_chat_and_alchemy_callbacks_use_canonical_queue_and_keep_raw_fields(self):
         chat = self.callback(plugin.handle_chat, 'party', None, 'hello' * 500)
@@ -2027,7 +2049,10 @@ class BackoffTests(unittest.TestCase):
         self.assertFalse(caps['character.walk']['supported'])
         self.assertFalse(caps['client.clientless']['supported'])
         self.assertFalse(caps['character.navigate']['supported'])
-        self.assertEqual(worker._safe_area({'region': 25000, 'x': 1, 'path': 'secret'}), {'training_region': 25000, 'training_x': 1.0})
+        with patch.object(plugin, '_get_zone_name', return_value='Jangan'):
+            self.assertEqual(worker._safe_area({'region': 25000, 'x': 1, 'path': 'secret'}), {
+                'training_region': 25000, 'training_zone': 'Jangan', 'training_x': 1.0,
+            })
 
     def test_cave_navigation_uses_explicit_signed_region_and_reports_phbot_result(self):
         calls = []
@@ -2103,12 +2128,14 @@ class BackoffTests(unittest.TestCase):
         worker.character_id = AGENT_ID
         worker.session_id = '22222222-3333-4444-8555-666666666666'
 
-        self.assertTrue(worker.report_control_state())
+        with patch.object(plugin, '_get_zone_name', return_value='Jangan'):
+            self.assertTrue(worker.report_control_state())
         self.assertFalse(worker.report_control_state())
         frame = worker._outgoing.get_nowait()
         self.assertEqual(frame['type'], 'character.control_state')
         self.assertEqual(frame['session_id'], worker.session_id)
         self.assertEqual(frame['control_state']['training_radius'], 50.0)
+        self.assertEqual(frame['control_state']['training_zone'], 'Jangan')
         self.assertNotIn('path', frame['control_state'])
 
         worker.session_id = '33333333-3333-4444-8555-666666666666'

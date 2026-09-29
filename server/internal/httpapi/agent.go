@@ -488,7 +488,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var control commands.ControlState
-			if err := json.Unmarshal(message.ControlState, &control); err != nil {
+			if err := json.Unmarshal(message.ControlState, &control); err != nil || !control.ZoneNameValid() {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid control state", hello.AgentID, hello.ProtocolVersion)
 				return
 			}

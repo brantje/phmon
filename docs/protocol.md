@@ -800,14 +800,15 @@ send `character.died` and receives `event.ack`; only a v6 hello may send `event.
         "category":"drop","character_id":"<uuid>","session_id":"<uuid>",
         "server":"Silkroad","character":"Alpha","occurred_at":"<UTC RFC3339>",
         "sequence":12,"source":"phbot.callback","source_ref":"EVENT_RARE_DROP",
-        "item_model":1234,"payload":{"model":1234}}
+        "region":25000,"zone":"Jangan","item_model":1234,
+        "payload":{"model":1234}}
      ]}
 
 Each batch has 1–16 events and stays within the WebSocket 256 KiB frame limit. Event
 payloads are JSON objects no larger than 32 KiB, at most eight levels deep and 512
 nodes, with 8 KiB maximum per string. Common event identity, kind/category, source,
-timestamp, sequence, location and item identity remain columns. Agent ID is taken from
-the authenticated connection, never from the event body.
+timestamp, sequence, location (including optional zone name) and item identity remain
+columns. Agent ID is taken from the authenticated connection, never from the event body.
 
 Character-scoped events carry registered character and session IDs, matching
 server/character identity when supplied, and a positive per-session sequence assigned
@@ -833,6 +834,13 @@ character ID/name, kind, category, item, date, cursor and page-size filters. Ite
 search checks canonical item code/model and observed item name/code in payloads. The
 alchemy-attempt result also includes attempts, recorded success/failure outcomes, and
 highest observed plus; it makes no probability estimate.
+
+Migration `000016_zone_names.sql` adds nullable `activity_events.zone_name` and
+`character_control_state.training_zone`. Current event and training-area snapshots
+include names from phBot's documented `get_zone_name(region)` when a name is
+available. These additive fields are optional for older plugins and stored events.
+The UI shows `Unknown zone` for historical event locations with coordinates but no
+captured name; no historical name is inferred from the character's current position.
 
 The plugin upgrades the profile-scoped death spool in place and keeps stable UUIDs
 while retrying. The durable spool reserves 512 critical events / 8 MiB and allows

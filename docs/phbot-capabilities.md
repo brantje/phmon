@@ -217,6 +217,12 @@ Sources checked 2026-09-26:
   and region, or `None`.
 - [Game Data](https://plugins.phbot.org/phbot-api/game-data) documents
   `get_zone_name(region)` for deriving a display zone from the region code.
+
+PhMon uses this function on the phBot callback thread to attach an optional zone
+name to observed event positions and training-area readback. A missing result or
+lookup exception leaves the name absent while preserving the numeric region and
+coordinates; historical event names are not inferred. The API documentation does
+not specify behavior for unsupported/custom region IDs, so those remain unnamed.
 - [Botting](https://plugins.phbot.org/phbot-api/botting) documents `start_bot()` and
   `stop_bot()` mutations but no read-only botting/training-state getter. Slice 2
   reports this field as unknown rather than inferring state from commands or UI.
@@ -301,7 +307,10 @@ The server also requires the advertised plugin version to be at least 1.1.2 for
 `character.walk`; older v3 plugins expose only direct movement and are rejected for
 this command even if they report `move_to_region` support.
 
-Training readback exposes only typed region/x/y/z/radius availability and values.
+Training readback exposes typed region/x/y/z/radius values and an optional
+`training_zone` derived with phBot's documented `get_zone_name(region)` function.
+The training-area name is separate from the character's current zone because a
+configured area can be elsewhere.
 The documented local script `path` is deliberately not sent to the backend. A
 `current_position` training-area operation resolves position on the callback thread
 immediately before invocation. Region zero auto-derivation is not used. Named-area

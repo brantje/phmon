@@ -2,6 +2,7 @@
 import type { ActivityEvent } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
+import { eventLocationText } from '~/utils/event-location'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
 const { serverScope } = useServerScope()
@@ -75,16 +76,6 @@ const itemTab = computed(
       'item.transferred',
     ].includes(filterKind.value || '') || activeTabLabel.value === 'All',
 )
-const locationText = (event: {
-  region?: number
-  x?: number
-  y?: number
-  z?: number
-}) => {
-  if (event.region == null || event.x == null || event.y == null)
-    return 'Location unknown'
-  return `Region ${event.region} · ${event.x.toFixed(1)}, ${event.y.toFixed(1)}, ${event.z?.toFixed(1) ?? '—'}`
-}
 const hasReliableMapLocation = (event: ActivityEvent) => {
   const profile = eventMapProfiles.value[event.server.toLowerCase()]
   return Boolean(
@@ -503,7 +494,7 @@ function localDateBoundary(value: string, addDays: number) {
                   }}</span>
                 </details>
               </td>
-              <td>{{ locationText(item) }}</td>
+              <td>{{ eventLocationText(item) }}</td>
               <td>
                 <NuxtLink
                   v-if="hasReliableMapLocation(item)"

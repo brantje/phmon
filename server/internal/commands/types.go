@@ -3,7 +3,9 @@ package commands
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -102,9 +104,17 @@ type ControlState struct {
 	SessionID         string     `json:"session_id"`
 	TrainingAvailable bool       `json:"training_available"`
 	TrainingRegion    *int       `json:"training_region,omitempty"`
+	TrainingZone      *string    `json:"training_zone,omitempty"`
 	TrainingX         *float64   `json:"training_x,omitempty"`
 	TrainingY         *float64   `json:"training_y,omitempty"`
 	TrainingZ         *float64   `json:"training_z,omitempty"`
 	TrainingRadius    *float64   `json:"training_radius,omitempty"`
 	ObservedAt        *time.Time `json:"observed_at,omitempty"`
+}
+
+func (s ControlState) ZoneNameValid() bool {
+	if s.TrainingZone == nil {
+		return true
+	}
+	return *s.TrainingZone != "" && *s.TrainingZone == strings.TrimSpace(*s.TrainingZone) && utf8.RuneCountInString(*s.TrainingZone) <= 100
 }
