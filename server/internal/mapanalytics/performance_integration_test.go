@@ -58,7 +58,7 @@ func TestLargeMovementHistoryRemainsBounded(t *testing.T) {
 	from := dbNow.UTC().Add(-30 * 24 * time.Hour)
 	_, err = pool.Exec(ctx, `INSERT INTO character_position_samples
 		(agent_id,character_id,session_id,server_name,dataset_id,sampled_at,region,x,y)
-		SELECT $1,$2,$3,$4,$5,$6 + (n * interval '20 seconds'),25273,
+		SELECT $1,$2,$3,$4,$5,$6::timestamptz + (n * interval '20 seconds'),25273,
 			((n % 10000)::double precision),((n / 10000) * 220)::double precision
 		FROM generate_series(0,99999) AS n`,
 		credential.AgentID, characterID, sessionID, server, mapprofile.GreatestDatasetID, from)
