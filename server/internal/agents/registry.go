@@ -67,15 +67,23 @@ type Registry struct {
 	next     uint64
 	sessions map[uint64]activeSession
 	latest   map[string]time.Time
+	revoking map[string]struct{}
 }
 
 func NewRegistry() *Registry {
-	return &Registry{sessions: make(map[uint64]activeSession), latest: make(map[string]time.Time)}
+	return &Registry{
+		sessions: make(map[uint64]activeSession),
+		latest:   make(map[string]time.Time),
+		revoking: make(map[string]struct{}),
+	}
 }
 
 func (r *Registry) Register(agentID string) (generation uint64, connectedAt time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if _, blocked := r.revoking[agentID]; blocked {
+		return 0, time.Time{}
+	}
 	r.next++
 	connectedAt = time.Now().UTC()
 	if previous, ok := r.latest[agentID]; ok && !connectedAt.After(previous) {
@@ -238,6 +246,25 @@ func (r *Registry) UnregisterWithFence(agentID string, generation uint64) (remov
 		disconnectFence = r.latest[agentID]
 	}
 	return true, stillConnected, disconnectFence
+}
+
+// BeginCredentialRevocation reserves an offline logical agent against new live
+// registrations while its credential is being revoked. The caller must always pair
+// a successful reservation with EndCredentialRevocation.
+func (r *Registry) BeginCredentialRevocation(agentID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.revoking[agentID]; exists || r.hasConnectionsLocked(agentID) {
+		return false
+	}
+	r.revoking[agentID] = struct{}{}
+	return true
+}
+
+func (r *Registry) EndCredentialRevocation(agentID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.revoking, agentID)
 }
 
 func (r *Registry) ConnectedAt(agentID string) (time.Time, bool) {
