@@ -57,7 +57,7 @@ history and future command policy remain server-owned.
 
 ## Install
 
-1. Provision a credential from the PhMon dashboard with **Create credential**, or
+1. Provision a credential under **Settings -> Agents** with **Create credential**, or
    use the CLI for a headless/operator flow:
 
        docker compose exec server phmonctl agent create
@@ -70,7 +70,7 @@ history and future command policy remain server-owned.
 3. Join the game with the account/profile you want to configure.
 4. Open **Plugins -> PhMon** and enter:
    - Backend WebSocket URL, for example `wss://phmon.example.internal/agent`
-   - Agent ID from the dashboard or CLI provisioning result
+   - Agent ID from Settings -> Agents or the CLI provisioning result
    - Agent token from that same one-time result
 5. Click **Save & Connect**. The agent should appear in PhMon after the authenticated
    hello handshake succeeds.
