@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.5.4'
+pVersion = '1.5.5'
 pUrl = ''
 
 PROTOCOL_VERSION = 7
@@ -542,8 +542,8 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
                     member[key] = value
             for axis in ('x', 'y'):
                 value = entry.get(axis)
-                if _number(value):
-                    member[axis] = value
+                if _number(value) and abs(value) <= 1000000:
+                    member[axis] = float(value)
             for key in ('hp_percent', 'mp_percent'):
                 value = entry.get(key)
                 if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 10:

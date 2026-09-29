@@ -4,6 +4,29 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Live party map layer — 2026-09-30
+
+Issue #23 adds a current-state **Party members** layer to the existing Map screen.
+It uses the locally served Silkroad minimap asset
+`/game-assets/interface/minimap/mm_sign_party.png`. The map payload is assembled
+server-side from the canonical party resource observations rather than adding
+per-character browser subscriptions. Spawned members require `player_id > 0`,
+usable X/Y and a current observer region/Z scope. Outdoor and cave placement reuse
+the existing coordinate transform; no region-tile fallback or guessed cave floor
+is allowed.
+
+Multiple current observers collapse to one logical party member, preferring the
+freshest valid party observation. When the Characters and Party layers are both
+enabled, a currently rendered managed-character marker suppresses the matching
+party marker; disabling Characters allows that party marker to render. Popups
+show only supplied name/guild/level/HP/MP values. Empty or unavailable party state,
+disconnects and session replacement remove the old live contribution through the
+existing live-map invalidation path.
+
+This entry records implementation/test semantics, not a live phBot screenshot.
+A same-viewport runtime check with a spawned party member, duplicate observers and
+a cave floor remains open.
+
 ## Cave-floor map reference inspection — 2026-09-28
 
 In the operator-supplied phMonitor v0.5.0 map at `192.168.10.105`, Quick navigation

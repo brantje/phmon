@@ -6,10 +6,15 @@ import type {
   Marker as LeafletMarker,
 } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { ActivityEvent, MapMonster } from '~~/shared/types/live'
+import type {
+  ActivityEvent,
+  MapMonster,
+  MapPartyMember,
+} from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
 import type { MapHeatLayer } from '~/utils/mapHeatmap'
+import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
 import {
   localMapAsset,
   monsterDisplayName,
@@ -33,10 +38,11 @@ import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 interface MapCanvasMarker {
   id: string
   label: string
-  kind: 'character' | 'monster' | 'death' | 'drop' | 'event'
+  kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
   position: RasterPosition
   placement?: 'exact' | 'region-tile'
   character?: CharacterMarkerInput
+  party?: MapPartyMember
   monster?: MapMonster
   itemName?: string
   itemIconUrl?: string
@@ -339,6 +345,16 @@ function markerPortrait(
   return frame
 }
 
+function partyIconElement(className: string) {
+  const frame = document.createElement('span')
+  frame.className = className
+  const img = document.createElement('img')
+  img.src = PARTY_MEMBER_ICON
+  img.alt = ''
+  frame.append(img)
+  return frame
+}
+
 function markerPopup(marker: MapCanvasMarker) {
   const panel = document.createElement('section')
   panel.className = `phmon-map-detail phmon-map-detail--${marker.kind}`
@@ -392,6 +408,23 @@ function markerPopup(marker: MapCanvasMarker) {
     })
     actions.append(open)
     panel.append(header, details, actions)
+  } else if (marker.kind === 'party' && marker.party) {
+    const party = marker.party
+    title.textContent = party.name || 'Party member'
+    subtitle.textContent = 'Party member'
+    header.prepend(partyIconElement('phmon-map-detail-party-icon'))
+    const rows: HTMLElement[] = []
+    if (party.guild) rows.push(detailRow('Guild', party.guild))
+    if (party.level != null) rows.push(detailRow('Level', String(party.level)))
+    if (party.hp_percent != null)
+      rows.push(detailRow('HP', `${party.hp_percent}%`))
+    if (party.mp_percent != null)
+      rows.push(detailRow('MP', `${party.mp_percent}%`))
+    panel.append(header)
+    if (rows.length) {
+      details.append(...rows)
+      panel.append(details)
+    }
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
     title.textContent = monsterDisplayName(monster)
@@ -472,6 +505,12 @@ function markerIconContent(marker: MapCanvasMarker) {
     name.className = 'phmon-map-character-name'
     name.textContent = marker.character?.name || marker.label
     content.append(name)
+  } else if (marker.kind === 'party') {
+    content.className = 'phmon-map-party-icon'
+    const img = document.createElement('img')
+    img.src = PARTY_MEMBER_ICON
+    img.alt = ''
+    content.append(img)
   } else if (marker.kind === 'monster') {
     content.className = 'phmon-map-monster-bubble'
     const fraction = marker.monster && monsterHPFraction(marker.monster)
@@ -662,13 +701,15 @@ onMounted(async () => {
     const size =
       marker.kind === 'character'
         ? 28
-        : marker.kind === 'monster'
-          ? Math.round(12 * (type?.scale || 1))
-          : marker.kind === 'drop'
-            ? 36
-            : marker.kind === 'death'
-              ? 34
-              : 16
+        : marker.kind === 'party'
+          ? 24
+          : marker.kind === 'monster'
+            ? Math.round(12 * (type?.scale || 1))
+            : marker.kind === 'drop'
+              ? 36
+              : marker.kind === 'death'
+                ? 34
+                : 16
     const signature = JSON.stringify([
       marker.kind,
       marker.placement,
@@ -720,9 +761,11 @@ onMounted(async () => {
       zIndexOffset:
         marker.kind === 'character'
           ? 1000
-          : marker.kind === 'drop' || marker.kind === 'death'
-            ? 400
-            : 0,
+          : marker.kind === 'party'
+            ? 700
+            : marker.kind === 'drop' || marker.kind === 'death'
+              ? 400
+              : 0,
     })
     if (!props.compact)
       rendered.bindPopup(markerPopup(marker), {
@@ -914,6 +957,30 @@ onBeforeUnmount(() => {
 :global(.phmon-map-marker--region-tile .phmon-map-character-pin) {
   border-style: dashed;
   border-color: #fef6c3;
+}
+
+:global(.phmon-map-party-icon),
+:global(.phmon-map-detail-party-icon) {
+  display: grid;
+  place-items: center;
+}
+
+:global(.phmon-map-party-icon) {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 3px #000c);
+}
+
+:global(.phmon-map-party-icon img),
+:global(.phmon-map-detail-party-icon img) {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+:global(.phmon-map-detail-party-icon) {
+  width: 32px;
+  height: 32px;
 }
 
 :global(.phmon-map-monster-bubble) {

@@ -149,6 +149,31 @@ export interface MapMonsterObservation {
   monsters: MapMonster[]
 }
 
+export interface MapPartyMember {
+  id: string
+  party_id?: string
+  player_id: number
+  name?: string
+  guild?: string
+  level?: number
+  hp_percent?: number
+  mp_percent?: number
+  x: number
+  y: number
+  observer_character_id: string
+  observer_name: string
+  observer_session_id: string
+  observer_region: number
+  observer_z?: number
+  observed_at: string
+}
+
+export interface MapPartySnapshot {
+  status: 'observed' | 'unavailable' | 'truncated'
+  truncated?: boolean
+  members: MapPartyMember[]
+}
+
 export interface MapSnapshot {
   server: string
   area_id: string
@@ -156,6 +181,7 @@ export interface MapSnapshot {
   region: number
   scope_status?: string
   characters: CharacterView[]
+  party: MapPartySnapshot
   monsters: MapMonsterObservation[]
   events: ActivityEvent[]
   academy: {
