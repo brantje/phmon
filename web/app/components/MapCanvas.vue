@@ -1,0 +1,987 @@
+<script setup lang="ts">
+import type {
+  LayerGroup,
+  Map as LeafletMap,
+  LatLng,
+  Marker as LeafletMarker,
+} from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import type { ActivityEvent, MapMonster } from '~~/shared/types/live'
+import type { MapProfile } from '~~/shared/types/map'
+import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
+import {
+  localMapAsset,
+  monsterHPFraction,
+  monsterTypePresentation,
+} from '~/utils/mapMarkerPresentation'
+import {
+  leafletToRasterPosition,
+  rasterTileCenterToLeaflet,
+  type RasterPosition,
+} from '~/utils/mapCoordinates'
+
+const MIN_MAP_ZOOM = -1
+const MAX_MAP_ZOOM = 4
+const INITIAL_MAP_ZOOM = Math.log2(1.25)
+
+interface MapCanvasMarker {
+  id: string
+  label: string
+  kind: 'character' | 'monster' | 'death' | 'drop' | 'event'
+  position: RasterPosition
+  placement?: 'exact' | 'region-tile'
+  character?: CharacterMarkerInput
+  monster?: MapMonster
+  itemName?: string
+  itemIconUrl?: string
+  event?: ActivityEvent
+}
+
+const props = defineProps<{
+  profile: MapProfile
+  compact?: boolean
+  initialPosition?: RasterPosition | null
+  initialTile?: { x: number; y: number }
+  markers?: MapCanvasMarker[]
+}>()
+const emit = defineEmits<{
+  viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
+  pointselect: [point: RasterPosition]
+  opencharacter: [characterID: string]
+}>()
+const element = ref<HTMLDivElement | null>(null)
+let map: LeafletMap | undefined
+let markerLayer: LayerGroup | undefined
+let createLatLng: ((latitude: number, longitude: number) => LatLng) | undefined
+let makeMarker:
+  | ((
+      marker: MapCanvasMarker,
+      point: LatLng,
+      existing?: LeafletMarker,
+    ) => LeafletMarker)
+  | undefined
+const renderedMarkers = new Map<string, LeafletMarker>()
+const markerIconSignatures = new Map<string, string>()
+let stopped = false
+let lastFocusedTile = ''
+
+function indexAt(position: LatLng) {
+  return leafletToRasterPosition(
+    props.profile.tiles,
+    position.lat,
+    position.lng,
+  )
+}
+
+function setInitialView() {
+  if (!map || !createLatLng) return
+  if (props.initialPosition) {
+    lastFocusedTile = `${props.initialPosition.tileX}:${props.initialPosition.tileY}`
+    const column = props.initialPosition.tileX - props.profile.tiles.min_x
+    const row = props.profile.tiles.max_y - props.initialPosition.tileY
+    map.setView(
+      createLatLng(
+        -(row * 256 + props.initialPosition.pixelY),
+        column * 256 + props.initialPosition.pixelX,
+      ),
+      INITIAL_MAP_ZOOM,
+    )
+    return
+  }
+  const initial = props.initialTile || { x: 168, y: 97 }
+  lastFocusedTile = `${initial.x}:${initial.y}`
+  const center = rasterTileCenterToLeaflet(
+    props.profile.tiles,
+    initial.x,
+    initial.y,
+  )
+  if (center) {
+    map.setView(createLatLng(center.lat, center.lng), INITIAL_MAP_ZOOM)
+    return
+  }
+  const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
+  const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
+  const column = Math.max(
+    0,
+    Math.min(columns - 1, initial.x - props.profile.tiles.min_x),
+  )
+  const row = Math.max(
+    0,
+    Math.min(rows - 1, props.profile.tiles.max_y - initial.y),
+  )
+  map.setView(
+    createLatLng(-(row * 256 + 128), column * 256 + 128),
+    INITIAL_MAP_ZOOM,
+  )
+}
+
+function publishView() {
+  if (!map) return
+  emit('viewchange', {
+    ...indexAt(map.getCenter()),
+    zoomPercent: Math.round(100 * 2 ** map.getZoom()),
+  })
+}
+
+function syncMarkers() {
+  if (!map || !markerLayer || !createLatLng) return
+  if (!makeMarker) return
+  const current = new Set<string>()
+  for (const marker of (props.markers || []).slice(0, 2000)) {
+    const { tileX, tileY, pixelX, pixelY } = marker.position
+    if (
+      tileX < props.profile.tiles.min_x ||
+      tileX > props.profile.tiles.max_x ||
+      tileY < props.profile.tiles.min_y ||
+      tileY > props.profile.tiles.max_y ||
+      !Number.isFinite(pixelX) ||
+      !Number.isFinite(pixelY) ||
+      pixelX < 0 ||
+      pixelX >= 256 ||
+      pixelY < 0 ||
+      pixelY >= 256
+    )
+      continue
+    const column = tileX - props.profile.tiles.min_x
+    const row = props.profile.tiles.max_y - tileY
+    const point = createLatLng(-(row * 256 + pixelY), column * 256 + pixelX)
+    const key = `${marker.kind}:${marker.id}`
+    current.add(key)
+    renderedMarkers.set(
+      key,
+      makeMarker(marker, point, renderedMarkers.get(key)),
+    )
+  }
+  for (const [key, rendered] of renderedMarkers) {
+    if (current.has(key)) continue
+    markerLayer.removeLayer(rendered)
+    renderedMarkers.delete(key)
+    markerIconSignatures.delete(key)
+  }
+}
+
+const integer = (value: number | undefined) =>
+  value == null || !Number.isFinite(value)
+    ? '—'
+    : Math.round(value).toLocaleString('en-US')
+const compactNumber = (value: number | undefined) =>
+  value == null || !Number.isFinite(value)
+    ? '—'
+    : new Intl.NumberFormat('en-US', {
+        notation: 'compact',
+        maximumFractionDigits: 1,
+      }).format(value)
+const positionText = (
+  x: number | undefined,
+  y: number | undefined,
+  z: number | undefined,
+) =>
+  x == null || y == null
+    ? 'Unavailable'
+    : `${[x, y, z].map((value) => (value == null ? '—' : value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }))).join(', ')}`
+
+function detailRow(label: string, value: string) {
+  const row = document.createElement('div')
+  row.className = 'phmon-map-detail-row'
+  const heading = document.createElement('span')
+  heading.textContent = label
+  const content = document.createElement('span')
+  content.textContent = value
+  row.append(heading, content)
+  return row
+}
+
+function markerPortrait(
+  url: string | undefined,
+  name: string,
+  kind: 'portrait' | 'item',
+) {
+  const frame = document.createElement('span')
+  frame.className = 'phmon-map-detail-portrait'
+  frame.textContent = name.slice(0, 1).toUpperCase() || '?'
+  const safeURL = localMapAsset(url, kind)
+  if (safeURL) {
+    const img = document.createElement('img')
+    img.src = safeURL
+    img.alt = ''
+    img.onerror = () => img.remove()
+    frame.append(img)
+  }
+  return frame
+}
+
+function markerPopup(marker: MapCanvasMarker) {
+  const panel = document.createElement('section')
+  panel.className = `phmon-map-detail phmon-map-detail--${marker.kind}`
+  const header = document.createElement('div')
+  header.className = 'phmon-map-detail-head'
+  const copy = document.createElement('div')
+  const title = document.createElement('strong')
+  const subtitle = document.createElement('span')
+  copy.append(title, subtitle)
+  header.append(copy)
+  const details = document.createElement('div')
+  details.className = 'phmon-map-detail-grid'
+
+  if (marker.kind === 'character' && marker.character) {
+    const character = marker.character
+    title.textContent = character.name
+    subtitle.textContent = `Level ${integer(character.level)} | ${character.dead ? 'Dead' : character.online ? 'In Field' : 'Offline'}`
+    header.prepend(
+      markerPortrait(character.portrait_url, character.name, 'portrait'),
+    )
+    details.append(
+      detailRow('Group', character.group_name || '—'),
+      detailRow('Zone', character.zone || '—'),
+      detailRow(
+        'Position',
+        positionText(character.x, character.y, character.z),
+      ),
+      detailRow(
+        'HP / MP',
+        `${integer(character.hp)}/${integer(character.hp_max)} | ${integer(character.mp)}/${integer(character.mp_max)}`,
+      ),
+      detailRow(
+        'Gold / SP',
+        `${compactNumber(character.gold)} | ${compactNumber(character.sp)}`,
+      ),
+    )
+    if (marker.placement === 'region-tile')
+      details.append(detailRow('Map placement', 'Region tile only'))
+    const actions = document.createElement('div')
+    actions.className = 'phmon-map-detail-actions'
+    const open = document.createElement('button')
+    open.type = 'button'
+    open.textContent = 'Open Stats'
+    open.addEventListener('click', (event) => {
+      event.stopPropagation()
+      emit('opencharacter', character.character_id)
+    })
+    actions.append(open)
+    panel.append(header, details, actions)
+  } else if (marker.kind === 'monster' && marker.monster) {
+    const monster = marker.monster
+    title.textContent =
+      monster.name ||
+      monster.servername ||
+      `Model ${monster.model_id ?? 'unknown'}`
+    subtitle.textContent = `Position | ${positionText(monster.x, monster.y, monster.z)}`
+    const dot = document.createElement('span')
+    dot.className = 'phmon-map-detail-monster-dot'
+    header.prepend(dot)
+    details.append(
+      detailRow('Type', monsterTypePresentation(monster).label),
+      detailRow('HP', `${integer(monster.hp)} / ${integer(monster.max_hp)}`),
+    )
+    panel.append(header, details)
+    const fraction = monsterHPFraction(monster)
+    if (fraction != null) {
+      const track = document.createElement('div')
+      track.className = 'phmon-map-detail-hp-track'
+      const fill = document.createElement('span')
+      fill.style.width = `${(fraction * 100).toFixed(1)}%`
+      track.append(fill)
+      panel.append(track)
+    }
+  } else {
+    title.textContent = marker.itemName || marker.label
+    subtitle.textContent =
+      marker.kind === 'drop'
+        ? 'World drop'
+        : marker.kind === 'death'
+          ? 'Death'
+          : 'Event'
+    const icon =
+      marker.kind === 'drop'
+        ? markerPortrait(marker.itemIconUrl, marker.itemName || 'Item', 'item')
+        : markerPortrait(
+            marker.event?.portrait_url,
+            marker.event?.character || 'Event',
+            'portrait',
+          )
+    header.prepend(icon)
+    if (marker.event) {
+      details.append(
+        detailRow('Character', marker.event.character || '—'),
+        detailRow(
+          'Position',
+          positionText(marker.event.x, marker.event.y, marker.event.z),
+        ),
+      )
+    }
+    panel.append(header, details)
+  }
+  return panel
+}
+
+function markerIconContent(marker: MapCanvasMarker) {
+  const content = document.createElement('span')
+  if (marker.kind === 'character') {
+    content.className = 'phmon-map-character-pin'
+    const fallback = document.createElement('span')
+    fallback.textContent =
+      marker.character?.name.slice(0, 1).toUpperCase() || 'C'
+    content.append(fallback)
+    const portrait = localMapAsset(marker.character?.portrait_url, 'portrait')
+    if (portrait) {
+      const img = document.createElement('img')
+      img.src = portrait
+      img.alt = ''
+      img.onerror = () => img.remove()
+      content.append(img)
+    }
+    const name = document.createElement('span')
+    name.className = 'phmon-map-character-name'
+    name.textContent = marker.character?.name || marker.label
+    content.append(name)
+  } else if (marker.kind === 'monster') {
+    content.className = 'phmon-map-monster-bubble'
+    const fraction = marker.monster && monsterHPFraction(marker.monster)
+    content.style.setProperty('--phmon-monster-hp', String(fraction ?? 0))
+  } else if (marker.kind === 'drop') {
+    content.className = 'phmon-map-drop-icon'
+    const icon = localMapAsset(marker.itemIconUrl, 'item')
+    if (icon) {
+      const img = document.createElement('img')
+      img.src = icon
+      img.alt = ''
+      img.onerror = () => img.remove()
+      content.append(img)
+    } else {
+      content.textContent = '✦'
+    }
+    const badge = document.createElement('span')
+    badge.className = 'phmon-map-drop-badge'
+    badge.textContent = '✦'
+    content.append(badge)
+  } else if (marker.kind === 'death') {
+    content.className = 'phmon-map-death-icon'
+    const img = document.createElement('img')
+    img.src = '/game-assets/icon/item/etc/etc_helmet_stone.png'
+    img.alt = ''
+    img.onerror = () => img.remove()
+    content.append(img)
+    const portrait = localMapAsset(marker.event?.portrait_url, 'portrait')
+    const badge = document.createElement('span')
+    badge.className = 'phmon-map-death-badge'
+    if (portrait) {
+      const badgeImage = document.createElement('img')
+      badgeImage.src = portrait
+      badgeImage.alt = ''
+      badgeImage.onerror = () => badgeImage.remove()
+      badge.append(badgeImage)
+    }
+    content.append(badge)
+  }
+  return content
+}
+
+onMounted(async () => {
+  if (
+    !element.value ||
+    props.profile.tiles.status !== 'available-for-inspection'
+  )
+    return
+  const L = (await import('leaflet')).default
+  if (stopped || !element.value) return
+  createLatLng = L.latLng
+  const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
+  const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
+  const bounds = L.latLngBounds(
+    L.latLng(-rows * 256, 0),
+    L.latLng(0, columns * 256),
+  )
+  map = L.map(element.value, {
+    crs: L.CRS.Simple,
+    minZoom: MIN_MAP_ZOOM,
+    maxZoom: MAX_MAP_ZOOM,
+    zoomSnap: 0.125,
+    zoomDelta: 0.25,
+    maxBounds: bounds,
+    maxBoundsViscosity: 0.8,
+    keyboard: true,
+    zoomControl: !props.compact,
+    attributionControl: false,
+    preferCanvas: true,
+  })
+  const tiles = L.GridLayer.extend({
+    options: { tileSize: 256, noWrap: true, keepBuffer: 2 },
+    createTile(
+      coords: { x: number; y: number; z: number },
+      done: (error: Error | null, tile: HTMLElement) => void,
+    ) {
+      const canvas = document.createElement('canvas')
+      canvas.width = 256
+      canvas.height = 256
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        queueMicrotask(() => done(null, canvas))
+        return canvas
+      }
+      const factor = coords.z < 0 ? 2 ** -coords.z : 1
+      const pieces = factor * factor
+      let remaining = pieces
+      const complete = () => {
+        remaining--
+        if (remaining === 0) done(null, canvas)
+      }
+      const drawSourceTile = (
+        tileX: number,
+        tileY: number,
+        sourceX: number,
+        sourceY: number,
+        sourceSize: number,
+        destinationX: number,
+        destinationY: number,
+        destinationSize: number,
+      ) => {
+        if (
+          tileX < props.profile.tiles.min_x ||
+          tileX > props.profile.tiles.max_x ||
+          tileY < props.profile.tiles.min_y ||
+          tileY > props.profile.tiles.max_y
+        ) {
+          complete()
+          return
+        }
+        const image = new Image()
+        image.onload = () => {
+          ctx.drawImage(
+            image,
+            sourceX,
+            sourceY,
+            sourceSize,
+            sourceSize,
+            destinationX,
+            destinationY,
+            destinationSize,
+            destinationSize,
+          )
+          complete()
+        }
+        image.onerror = complete
+        const url = props.profile.tiles.tile_url_format
+          .replace('{x}', String(tileX))
+          .replace('{y}', String(tileY))
+        image.src = url.startsWith('/game-assets/minimap/') ? url : ''
+      }
+      if (coords.z < 0) {
+        const pieceSize = 256 / factor
+        for (let row = 0; row < factor; row++) {
+          for (let column = 0; column < factor; column++) {
+            drawSourceTile(
+              props.profile.tiles.min_x + coords.x * factor + column,
+              props.profile.tiles.max_y - (coords.y * factor + row),
+              0,
+              0,
+              256,
+              column * pieceSize,
+              row * pieceSize,
+              pieceSize,
+            )
+          }
+        }
+      } else {
+        const scale = 2 ** coords.z
+        const baseColumn = Math.floor(coords.x / scale)
+        const baseRow = Math.floor(coords.y / scale)
+        const tileX = props.profile.tiles.min_x + baseColumn
+        const tileY = props.profile.tiles.max_y - baseRow
+        const offsetX = ((coords.x % scale) + scale) % scale
+        const offsetY = ((coords.y % scale) + scale) % scale
+        const sourceSize = 256 / scale
+        drawSourceTile(
+          tileX,
+          tileY,
+          offsetX * sourceSize,
+          offsetY * sourceSize,
+          sourceSize,
+          0,
+          0,
+          256,
+        )
+      }
+      return canvas
+    },
+  })
+  new tiles().addTo(map)
+  markerLayer = L.layerGroup().addTo(map)
+  makeMarker = (marker, point, existing) => {
+    const markerKey = `${marker.kind}:${marker.id}`
+    const type = marker.monster ? monsterTypePresentation(marker.monster) : null
+    const hp = marker.monster ? monsterHPFraction(marker.monster) : null
+    const size =
+      marker.kind === 'character'
+        ? 28
+        : marker.kind === 'monster'
+          ? Math.round(12 * (type?.scale || 1))
+          : marker.kind === 'drop'
+            ? 36
+            : marker.kind === 'death'
+              ? 34
+              : 16
+    const signature = JSON.stringify([
+      marker.kind,
+      marker.placement,
+      marker.character?.name,
+      marker.character?.portrait_url,
+      type?.code,
+      type?.scale,
+      type?.party,
+      type?.unknown,
+      hp,
+      marker.monster?.attacking,
+      marker.itemIconUrl,
+    ])
+    const icon =
+      !existing || markerIconSignatures.get(markerKey) !== signature
+        ? L.divIcon({
+            className: [
+              'phmon-map-marker',
+              `phmon-map-marker--${marker.kind}`,
+              marker.placement === 'region-tile'
+                ? 'phmon-map-marker--region-tile'
+                : '',
+              type?.party ? 'phmon-map-marker--party' : '',
+              type?.unknown ? 'phmon-map-marker--unknown' : '',
+              hp == null ? 'phmon-map-marker--hp-unavailable' : '',
+              marker.monster?.attacking ? 'phmon-map-marker--attacking' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+            html: markerIconContent(marker),
+          })
+        : undefined
+    markerIconSignatures.set(markerKey, signature)
+    if (existing) {
+      existing.setLatLng(point)
+      if (icon) existing.setIcon(icon)
+      if (!props.compact) existing.setPopupContent(markerPopup(marker))
+      return existing
+    }
+    const rendered = L.marker(point, {
+      icon: icon!,
+      title: marker.label,
+      keyboard: true,
+      riseOnHover: true,
+      zIndexOffset:
+        marker.kind === 'character'
+          ? 1000
+          : marker.kind === 'drop' || marker.kind === 'death'
+            ? 400
+            : 0,
+    })
+    if (!props.compact)
+      rendered.bindPopup(markerPopup(marker), {
+        className: 'phmon-map-popup',
+        closeButton: false,
+        maxWidth: 280,
+        offset: [0, -10],
+        autoPan: false,
+      })
+    rendered.addTo(markerLayer!)
+    return rendered
+  }
+
+  setInitialView()
+  const selectPoint = (position: LatLng) =>
+    emit('pointselect', indexAt(position))
+  const onKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    if (map) selectPoint(map.getCenter())
+  }
+  element.value.addEventListener('keydown', onKeydown)
+  map.once('unload', () =>
+    element.value?.removeEventListener('keydown', onKeydown),
+  )
+  map.on('click', (event: L.LeafletMouseEvent) => selectPoint(event.latlng))
+  map.on('contextmenu', (event: L.LeafletMouseEvent) => {
+    L.DomEvent.preventDefault(event.originalEvent)
+    selectPoint(event.latlng)
+  })
+  map.on('moveend zoomend', publishView)
+  publishView()
+  syncMarkers()
+  if (props.compact) {
+    map.dragging.disable()
+    map.scrollWheelZoom.disable()
+    map.doubleClickZoom.disable()
+    map.touchZoom.disable()
+    map.boxZoom.disable()
+    map.keyboard.disable()
+  }
+})
+
+watch(
+  () => props.initialPosition,
+  (position) => {
+    if (position && `${position.tileX}:${position.tileY}` !== lastFocusedTile)
+      setInitialView()
+  },
+  { deep: true },
+)
+watch(() => props.markers, syncMarkers, { deep: true })
+
+onBeforeUnmount(() => {
+  stopped = true
+  map?.remove()
+  map = undefined
+  markerLayer = undefined
+  makeMarker = undefined
+  renderedMarkers.clear()
+  markerIconSignatures.clear()
+})
+</script>
+
+<template>
+  <div
+    ref="element"
+    class="map-canvas"
+    :class="{ 'map-canvas-compact': compact }"
+    :aria-label="
+      compact
+        ? 'Map tile preview'
+        : 'Interactive raster map. Use arrow keys to pan, then Enter or Space to select the center tile.'
+    "
+    role="application"
+    tabindex="0"
+  />
+</template>
+
+<style scoped>
+.map-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 340px;
+  background: #101923;
+  outline: none;
+}
+
+.map-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px #9bc8ff;
+}
+
+.map-canvas-compact {
+  min-height: 112px;
+  height: 112px;
+  pointer-events: none;
+}
+
+:global(.phmon-map-marker) {
+  border: 0;
+  background: transparent;
+}
+
+:global(.phmon-map-character-pin) {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid #4db9ff;
+  border-radius: 50%;
+  background: #111923;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow:
+    0 0 0 2px #07111bcc,
+    0 2px 7px #000b;
+  position: relative;
+}
+
+:global(.phmon-map-character-pin img) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+:global(.phmon-map-character-name) {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 105px;
+  padding: 2px 5px;
+  border-radius: 7px;
+  background: #0d1119ec;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 4px #000b;
+}
+
+:global(.phmon-map-marker--region-tile .phmon-map-character-pin) {
+  border-style: dashed;
+  border-color: #fef6c3;
+}
+
+:global(.phmon-map-monster-bubble) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+        circle at 37% 32%,
+        #ffafb0 0,
+        #fa383c 25%,
+        #95151a 76%,
+        #350b12 100%
+      )
+      padding-box,
+    conic-gradient(
+        from -90deg,
+        #72f077 0turn,
+        #72f077 calc(var(--phmon-monster-hp) * 1turn),
+        #324e39 calc(var(--phmon-monster-hp) * 1turn),
+        #324e39 1turn
+      )
+      border-box;
+  box-shadow:
+    0 0 0 1px #101723ad,
+    0 1px 4px #000a;
+}
+
+:global(.phmon-map-marker--party .phmon-map-monster-bubble) {
+  background:
+    radial-gradient(
+        circle at 37% 32%,
+        #ffafb0 0,
+        #fa383c 25%,
+        #95151a 76%,
+        #350b12 100%
+      )
+      padding-box,
+    conic-gradient(
+        from -90deg,
+        #6baaff 0turn,
+        #6baaff calc(var(--phmon-monster-hp) * 1turn),
+        #304661 calc(var(--phmon-monster-hp) * 1turn),
+        #304661 1turn
+      )
+      border-box;
+}
+
+:global(.phmon-map-marker--hp-unavailable .phmon-map-monster-bubble) {
+  border-color: #9380ae;
+}
+
+:global(.phmon-map-marker--attacking .phmon-map-monster-bubble) {
+  box-shadow:
+    0 0 0 1px #f39040,
+    0 0 8px #f04c3d;
+}
+
+:global(.phmon-map-drop-icon),
+:global(.phmon-map-death-icon) {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  color: #f6d780;
+  font-size: 20px;
+}
+
+:global(.phmon-map-drop-icon) {
+  border: 1px solid #fff0c48c;
+  border-radius: 6px;
+  background: #090909eb;
+  box-shadow: 0 2px 6px #0008;
+}
+
+:global(.phmon-map-drop-icon img),
+:global(.phmon-map-death-icon img) {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+:global(.phmon-map-drop-badge) {
+  position: absolute;
+  right: -2px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  background: #a87919;
+  color: #fff7ce;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: 0 1px 3px #000b;
+}
+
+:global(.phmon-map-death-badge) {
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #ffecc48c;
+  border-radius: 50%;
+  background: #090909eb;
+  overflow: hidden;
+  box-shadow: 0 2px 6px #0008;
+}
+
+:global(.phmon-map-marker--event) {
+  border-radius: 50%;
+  background: #c69bff;
+}
+
+:global(.phmon-map-popup .leaflet-popup-content-wrapper) {
+  width: 280px;
+  padding: 0;
+  border: 1px solid #384551;
+  border-top: 2px solid #4db9ff;
+  border-radius: 9px;
+  background: #1b2028f5;
+  color: #eaf1ff;
+  box-shadow: 0 8px 24px #000a;
+}
+
+:global(.phmon-map-popup .leaflet-popup-content) {
+  width: 280px !important;
+  margin: 0;
+}
+
+:global(.phmon-map-popup .leaflet-popup-tip) {
+  background: #1b2028f5;
+}
+
+:global(.phmon-map-detail) {
+  padding: 10px 12px;
+  font:
+    12px Segoe UI,
+    Tahoma,
+    Arial,
+    sans-serif;
+}
+
+:global(.phmon-map-detail--monster) {
+  border-top: 1px solid #ff555c;
+}
+
+:global(.phmon-map-detail-head) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding-bottom: 8px;
+}
+
+:global(.phmon-map-detail-head > div) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+:global(.phmon-map-detail-head strong) {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+:global(.phmon-map-detail-head span) {
+  color: #d7dce3;
+}
+
+:global(.phmon-map-detail-portrait),
+:global(.phmon-map-detail-monster-dot) {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  box-sizing: border-box;
+  border: 2px solid #42b6ff;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: #080c11;
+  color: #fff;
+  font-size: 17px;
+}
+
+:global(.phmon-map-detail-portrait img) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+:global(.phmon-map-detail-monster-dot) {
+  border-color: #ff1f31;
+}
+
+:global(.phmon-map-detail-grid) {
+  border-top: 1px solid #3b414a75;
+}
+
+:global(.phmon-map-detail-row) {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 1px;
+  border-bottom: 1px solid #3b414a75;
+}
+
+:global(.phmon-map-detail-row span:first-child) {
+  color: #c8cfd8;
+}
+
+:global(.phmon-map-detail-row span:last-child) {
+  color: #eaf1ff;
+  text-align: right;
+}
+
+:global(.phmon-map-detail-hp-track) {
+  height: 8px;
+  margin: 9px 1px 1px;
+  border-radius: 5px;
+  background: #532c32;
+  overflow: hidden;
+}
+
+:global(.phmon-map-detail-hp-track span) {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #ff8584;
+}
+
+:global(.phmon-map-detail-actions) {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 9px;
+}
+
+:global(.phmon-map-detail-actions button) {
+  padding: 5px 8px;
+  border: 1px solid #a9a9a2;
+  border-radius: 4px;
+  background: #9d9e9380;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+</style>

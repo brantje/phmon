@@ -120,6 +120,54 @@ const selectedGroupName = computed(
     scopedGroups.value.find((group) => group.group_id === selectedGroup.value)
       ?.name,
 )
+const summaryGroups = computed(() =>
+  scopedGroups.value
+    .map((group) => {
+      const members = group.members.filter((character) =>
+        matchesServer(character.server),
+      )
+      const server =
+        members.find((character) => character.online)?.server ||
+        members[0]?.server ||
+        ''
+      const online = members.filter((character) => character.online).length
+      const average = (key: 'hp' | 'mp', maximum: 'hp_max' | 'mp_max') => {
+        const values = members.flatMap((character) => {
+          const current = character[key]
+          const total = character[maximum]
+          return current != null && total != null && total > 0
+            ? [Math.max(0, Math.min(100, (current / total) * 100))]
+            : []
+        })
+        return values.length
+          ? `${(values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)}%`
+          : '—'
+      }
+      const summary = [
+        { label: 'Characters', value: String(members.length) },
+        {
+          label: 'Online',
+          value: `${online} online · ${members.length - online} offline`,
+        },
+        { label: 'HP', value: average('hp', 'hp_max') },
+        { label: 'MP', value: average('mp', 'mp_max') },
+        {
+          label: 'Gold',
+          value: `${members.reduce((sum, character) => sum + (character.gold || 0), 0).toLocaleString()} total`,
+        },
+      ]
+      return { ...group, members, server, summary }
+    })
+    .filter((group) => group.members.length > 0 && group.server),
+)
+const displayedSummaryGroups = computed(() => {
+  if (manageGroupMembers.value || selectedGroup.value === 'unassigned')
+    return []
+  if (!selectedGroup.value) return summaryGroups.value
+  return summaryGroups.value.filter(
+    (group) => group.group_id === selectedGroup.value,
+  )
+})
 const characterPageCount = computed(() =>
   Math.max(1, Math.ceil(visibleCharacters.value.length / characterPageSize)),
 )
@@ -331,6 +379,21 @@ onUnmounted(() => {
         Unassigned
       </button>
     </nav>
+    <div
+      v-if="props.presentation === 'cards' && displayedSummaryGroups.length"
+      class="character-group-summaries"
+      aria-label="Character group summaries"
+    >
+      <MapPreview
+        v-for="group in displayedSummaryGroups"
+        :key="group.group_id"
+        class="character-group-map-preview"
+        :title="`${group.name} group map`"
+        :server="group.server"
+        :members="group.members"
+        :summary-items="group.summary"
+      />
+    </div>
     <p
       v-if="props.presentation === 'cards' && selectedGroupName"
       class="character-group-caption"

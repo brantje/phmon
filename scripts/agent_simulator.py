@@ -211,9 +211,148 @@ def run_death_events(worker, config, workers, stopping, spool_directory):
         PhMon._get_zone_name = old_values["zone_getter"]
 
 
+def run_map_observations(worker, stopping):
+    """Exercise v7 live snapshots, samples, event overlays and replay."""
+    timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+    wait_until(lambda: "Connected" in worker.status, timeout, "backend connection")
+    sample_acks = []
+    event_results = []
+    original_handler = worker._handle_server_message
+
+    def record_ack(message):
+        result = original_handler(message)
+        if isinstance(message, dict):
+            if message.get("type") == "mob.sample.ack":
+                sample_acks.append({"sample_id": message.get("sample_id"),
+                                    "status": message.get("status")})
+            elif message.get("type") == "event.batch.ack":
+                event_results.extend(message.get("results", []))
+            elif message.get("type") == "event.ack":
+                event_results.append(message)
+        return result
+
+    worker._handle_server_message = record_ack
+    previous = {
+        "worker": PhMon._worker,
+        "character_getter": PhMon._get_character_data,
+        "position_getter": PhMon._get_position,
+        "death_active": PhMon._death_callback_active,
+    }
+    identity = {"server": "greatest", "name": "MapFixtureAlpha", "guild": "Fixture"}
+    api = dict(identity)
+    position = {"region": 25273, "x": 10.0, "y": 20.0, "z": 0.0}
+    state = {"level": 50, "dead": False, "region": 25273, "zone": "Fixture Jangan",
+             "x": 10.0, "y": 20.0, "z": 0.0, "botting": False}
+    monster = {"id": "fixture-monster-1", "model_id": 500, "type": "Tiger",
+               "region": 25273, "x": 30.0, "y": 40.0}
+    PhMon._worker = worker
+    PhMon._get_character_data = lambda: dict(api)
+    PhMon._get_position = lambda: dict(position)
+    PhMon._death_callback_active = False
+
+    def sample(sample_id, monsters, x):
+        return {
+            "sample_id": sample_id,
+            "character_id": worker.character_id,
+            "session_id": worker.session_id,
+            "area_id": "region:25273",
+            "floor_id": "unmapped",
+            "region": 25273,
+            "sampled_at": PhMon._utc_now(),
+            "observer": {"x": float(x), "y": 20.0, "z": 0.0},
+            "monsters": monsters,
+        }
+
+    try:
+        worker.update_character(identity, state)
+        wait_until(lambda: worker.character_id and worker.session_id, timeout,
+                   "fixture character registration")
+        wait_until(
+            lambda: worker._current_identity is not None
+            and worker._identity_key(worker._current_identity) == worker._identity_key(identity),
+            timeout,
+            "fixture character identity",
+        )
+        first_session = worker.session_id
+        first_sample = sample(str(uuid.uuid4()), [monster], 10.0)
+        worker.update_map_monsters(identity, "observed", 25273, [monster], first_sample)
+        wait_until(
+            lambda: any(entry["sample_id"] == first_sample["sample_id"] for entry in sample_acks),
+            timeout,
+            "first mob sample commit",
+        )
+        first_ack = next(entry for entry in sample_acks if entry["sample_id"] == first_sample["sample_id"])
+        if first_ack["status"] != "persisted":
+            raise SystemExit("mob sample was not persisted: " + str(first_ack["status"]))
+
+        # Moving to another observer cell allows the observed-empty snapshot to
+        # contribute a zero to the historical denominator.
+        position.update({"x": 250.0, "y": 20.0})
+        state.update({"x": 250.0, "y": 20.0})
+        worker.update_character(identity, state)
+        wait_until(
+            lambda: worker._latest_sample is not None
+            and worker._latest_sample.get("state", {}).get("x") == 250.0,
+            timeout,
+            "moved observer position",
+        )
+        empty_sample = sample(str(uuid.uuid4()), [], 250.0)
+        worker.update_map_monsters(identity, "observed", 25273, [], empty_sample)
+        wait_until(
+            lambda: any(entry["sample_id"] == empty_sample["sample_id"] for entry in sample_acks),
+            timeout,
+            "empty mob sample commit",
+        )
+        empty_ack = next(entry for entry in sample_acks if entry["sample_id"] == empty_sample["sample_id"])
+        if empty_ack["status"] != "persisted":
+            raise SystemExit("empty mob sample was not persisted: " + str(empty_ack["status"]))
+
+        worker.update_map_monsters(identity, "unavailable", 25273, [])
+        truncated = [dict(monster, id="fixture-truncated-" + str(index))
+                     for index in range(PhMon.MAX_MONSTERS_PER_SNAPSHOT)]
+        worker.update_map_monsters(identity, "truncated", 25273, truncated)
+        PhMon.handle_event(PhMon.EVENT_ITEM_DROP, "500")
+        PhMon.handle_event(PhMon.EVENT_DIED, "")
+        wait_until(lambda: len(event_results) >= 2, timeout, "death and drop event commits")
+        if any(entry.get("status") != "persisted" for entry in event_results[:2]):
+            raise SystemExit("map overlay event was not persisted: " + str(event_results[:2]))
+
+        # Reconnect and replay a committed sample ID. The server should return a
+        # terminal persisted acknowledgement without adding another denominator.
+        current_socket = worker._socket
+        if current_socket is None:
+            raise SystemExit("worker had no socket for sample replay fixture")
+        current_socket.close()
+        wait_until(
+            lambda: "Connected" in worker.status and worker.session_id != first_session,
+            timeout,
+            "reconnected fixture session",
+        )
+        if not worker._mob_spool.add(first_sample):
+            raise SystemExit("could not stage committed sample replay")
+        wait_until(
+            lambda: sum(entry["sample_id"] == first_sample["sample_id"] for entry in sample_acks) >= 2,
+            timeout,
+            "idempotent sample replay",
+        )
+        replay_acks = [entry for entry in sample_acks if entry["sample_id"] == first_sample["sample_id"]]
+        if replay_acks[-1]["status"] != "persisted":
+            raise SystemExit("sample replay was not acknowledged: " + str(replay_acks[-1]["status"]))
+        print("PASS protocol v7 movement, current/empty/unavailable/truncated monster states, death/drop events, reconnect and idempotent sample replay")
+        return 0
+    finally:
+        stopping[0] = True
+        worker.stop()
+        worker.join(3.0)
+        PhMon._worker = previous["worker"]
+        PhMon._get_character_data = previous["character_getter"]
+        PhMon._get_position = previous["position_getter"]
+        PhMon._death_callback_active = previous["death_active"]
+
+
 def main():
     scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
-    spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario == "death-events" else None
+    spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario in ("death-events", "map-observations") else None
     config = {
         'backend_url': required('PHMON_AGENT_URL'),
         'agent_id': required('PHMON_AGENT_ID'),
@@ -221,6 +360,8 @@ def main():
     }
     if spool_directory:
         config['death_spool_path'] = os.path.join(spool_directory, "socket-one.json")
+        if scenario == "map-observations":
+            config['mob_spool_path'] = os.path.join(spool_directory, "mob-samples.json")
     fake_calls = []
     api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or True}) if scenario == 'commands' else None
     worker = PhMon.AgentWorker(config, 'simulator-fixture', api_adapter=api)
@@ -241,6 +382,13 @@ def main():
     if scenario == "death-events":
         try:
             return run_death_events(worker, config, workers, stopping, spool_directory)
+        finally:
+            if spool_directory and os.path.isdir(spool_directory):
+                shutil.rmtree(spool_directory, ignore_errors=True)
+
+    if scenario == "map-observations":
+        try:
+            return run_map_observations(worker, stopping)
         finally:
             if spool_directory and os.path.isdir(spool_directory):
                 shutil.rmtree(spool_directory, ignore_errors=True)

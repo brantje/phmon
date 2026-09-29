@@ -94,6 +94,14 @@ func TestBundledGreatestPortraitCatalogHasVerifiedLocalMappings(t *testing.T) {
 			t.Errorf("model %d portrait = %q, want %q", model, got, expectedURL)
 		}
 	}
+	itemModel := int64(13310)
+	name, icon := metadata.MapItemPresentation("Greatest", &itemModel, "")
+	if name != "Crater Gold Cuirassir Poleyn" || icon != "/game-assets/icon/item/europe/woman_item/heavy_07_la.png" {
+		t.Fatalf("map drop presentation is not sourced from the selected catalog: %q %q", name, icon)
+	}
+	if name, icon := metadata.MapItemPresentation("unmapped", &itemModel, ""); name != "" || icon != "" {
+		t.Fatalf("unknown server received a map drop icon: %q %q", name, icon)
+	}
 }
 
 func TestSharedSROItemMetadataFallbackUsesItemCodeAcrossServers(t *testing.T) {

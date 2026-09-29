@@ -13,6 +13,13 @@ func characterWithPortrait(character characters.Character, metadata *resources.S
 	return character
 }
 
+func mapCharactersWithPortraits(items []characters.Character, metadata *resources.Store) []characters.Character {
+	for i := range items {
+		items[i] = characterWithPortrait(items[i], metadata)
+	}
+	return items
+}
+
 func groupsWithPortraits(groups []characters.Group, metadata *resources.Store) []characters.Group {
 	for i := range groups {
 		for j := range groups[i].Members {

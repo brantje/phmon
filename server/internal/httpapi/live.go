@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ import (
 	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
 	"phmon/server/internal/events"
+	"phmon/server/internal/mapprofile"
+	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
 
@@ -47,11 +50,15 @@ type liveFilter struct {
 	Kind         string   `json:"kind,omitempty"`
 	Category     string   `json:"category,omitempty"`
 	Item         string   `json:"item,omitempty"`
+	EventID      string   `json:"event_id,omitempty"`
 	From         string   `json:"from,omitempty"`
 	To           string   `json:"to,omitempty"`
 	Cursor       string   `json:"cursor,omitempty"`
 	Channel      string   `json:"channel,omitempty"`
 	Peer         string   `json:"peer,omitempty"`
+	Area         string   `json:"area,omitempty"`
+	Floor        string   `json:"floor,omitempty"`
+	Region       int      `json:"region,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -89,6 +96,8 @@ type LiveHub struct {
 	resources  *resources.Store
 	events     *events.Store
 	chat       *chat.Store
+	mobs       *mobs.Store
+	mobLive    *mobs.LiveStore
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -99,6 +108,8 @@ func (h *LiveHub) SetCommands(service *commands.Service) { h.commands = service 
 func (h *LiveHub) SetResources(store *resources.Store)   { h.resources = store }
 func (h *LiveHub) SetEvents(store *events.Store)         { h.events = store }
 func (h *LiveHub) SetChat(store *chat.Store)             { h.chat = store }
+func (h *LiveHub) SetMobObservations(store *mobs.Store)  { h.mobs = store }
+func (h *LiveHub) SetMobLive(store *mobs.LiveStore)      { h.mobLive = store }
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
@@ -576,7 +587,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, errors.New("event history unavailable")
 		}
 		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
-			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item,
+			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item, EventID: subscription.Filter.EventID,
 			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit}
 		var err error
 		if subscription.Filter.From != "" {
@@ -607,6 +618,120 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID,
 			Channel: subscription.Filter.Channel, Peer: subscription.Filter.Peer, Limit: limit,
 		})
+	case "map":
+		if h.characters == nil || h.resources == nil {
+			return nil, errors.New("map character state unavailable")
+		}
+		datasetID, knownServer := h.resources.DatasetIDForServer(subscription.Filter.Server)
+		if !knownServer {
+			return nil, errors.New("map dataset unavailable")
+		}
+		profile, profileErr := mapprofile.ForServer(subscription.Filter.Server, datasetID)
+		if profileErr != nil {
+			return nil, errors.New("map profile unavailable")
+		}
+		var selectedArea *mapprofile.Area
+		floorFound := false
+		for index := range profile.Areas {
+			if profile.Areas[index].ID != subscription.Filter.Area {
+				continue
+			}
+			selectedArea = &profile.Areas[index]
+			for _, floor := range selectedArea.Floors {
+				if floor.ID == subscription.Filter.Floor {
+					floorFound = true
+					break
+				}
+			}
+			break
+		}
+		if selectedArea == nil || !floorFound {
+			return nil, errors.New("map area or floor is unavailable in the selected profile")
+		}
+		if selectedArea.Kind == "cave" {
+			linkedEvents := []events.Event{}
+			if h.events != nil && subscription.Filter.EventID != "" {
+				page, eventErr := h.events.List(ctx, events.Filter{
+					Server:  subscription.Filter.Server,
+					EventID: subscription.Filter.EventID,
+					Limit:   1,
+				})
+				if eventErr != nil {
+					return nil, eventErr
+				}
+				linkedEvents = page.Events
+			}
+			return map[string]any{
+				"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
+				"region": 0, "scope_status": "floor_transform_unavailable", "characters": []characters.Character{},
+				"monsters": []mobs.LiveSnapshot{}, "events": linkedEvents,
+				"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
+			}, nil
+		}
+		charRows, err := h.characters.ListScoped(ctx, "", "", subscription.Filter.Server)
+		if err != nil {
+			return nil, err
+		}
+		if subscription.Filter.Region > 0 {
+			filtered := make([]characters.Character, 0, len(charRows))
+			for _, character := range charRows {
+				if character.Region != nil && *character.Region == subscription.Filter.Region {
+					filtered = append(filtered, character)
+				}
+			}
+			charRows = filtered
+		}
+		charRows = mapCharactersWithPortraits(charRows, h.resources)
+		monsterRows := []mobs.LiveSnapshot{}
+		if h.mobLive != nil {
+			monsterRows = h.mobLive.Snapshot(subscription.Filter.Server, time.Now().UTC())
+			if subscription.Filter.Region > 0 {
+				filtered := make([]mobs.LiveSnapshot, 0, len(monsterRows))
+				for _, monster := range monsterRows {
+					if monster.Region == subscription.Filter.Region {
+						filtered = append(filtered, monster)
+					}
+				}
+				monsterRows = filtered
+			}
+		}
+		to := time.Now().UTC()
+		from := to.Add(-24 * time.Hour)
+		if subscription.Filter.From != "" {
+			from, err = parseEventBound(subscription.Filter.From, false)
+			if err != nil {
+				return nil, errors.New("invalid map time range")
+			}
+		}
+		if subscription.Filter.To != "" {
+			to, err = parseEventBound(subscription.Filter.To, false)
+			if err != nil {
+				return nil, errors.New("invalid map time range")
+			}
+		}
+		activity := []events.Event{}
+		if h.events != nil {
+			activity, err = collectMapActivity(ctx, h.events, subscription.Filter.Server, from, to,
+				subscription.Filter.Region, subscription.Filter.EventID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if h.resources != nil {
+			for index := range activity {
+				activity[index].PortraitURL = h.resources.PortraitURL(activity[index].Server, activity[index].ModelID)
+				if activity[index].Category == "drop" {
+					activity[index].ItemName, activity[index].ItemIconURL = h.resources.MapItemPresentation(
+						activity[index].Server, activity[index].ItemModel, activity[index].ItemCode)
+				}
+			}
+		}
+		return map[string]any{
+			"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
+			"region": subscription.Filter.Region, "scope_status": "region_transform_unvalidated",
+			"characters": charRows, "monsters": monsterRows, "events": activity,
+			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
+		}, nil
 	default:
 		return nil, errors.New("unsupported live stream")
 	}
@@ -626,8 +751,10 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			Limit:        message.Filter.Limit,
 			ResourceKeys: append([]string(nil), message.Filter.ResourceKeys...),
 			Server:       strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
-			From: message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
+			EventID: message.Filter.EventID,
+			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 			Channel: message.Filter.Channel, Peer: message.Filter.Peer,
+			Area: message.Filter.Area, Floor: message.Filter.Floor, Region: message.Filter.Region,
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
@@ -697,7 +824,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 	case "events":
 		if len(subscription.Filter.Query) > 64 || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || len(subscription.Filter.ResourceKeys) != 0 ||
 			!validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
-			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 ||
+			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 || subscription.Filter.EventID != "" ||
 			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) {
 			return liveSubscription{}, false
 		}
@@ -738,6 +865,43 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		} else if subscription.Filter.Peer != "" {
 			return liveSubscription{}, false
 		}
+	case "map":
+		if !validServerFilter(subscription.Filter.Server) || subscription.Filter.Server == "" ||
+			subscription.Filter.CharacterID != "" || subscription.Filter.GroupID != "" || subscription.Filter.Query != "" ||
+			subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 ||
+			len(subscription.Filter.ResourceKeys) != 0 || subscription.Filter.Region < 0 || subscription.Filter.Region > 65535 ||
+			len(subscription.Filter.EventID) > 64 || subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
+			len(subscription.Filter.Area) > 96 || len(subscription.Filter.Floor) > 32 || subscription.Filter.Kind != "" ||
+			subscription.Filter.Category != "" || subscription.Filter.Item != "" || subscription.Filter.Cursor != "" {
+			return liveSubscription{}, false
+		}
+		if subscription.Filter.Area == "" {
+			subscription.Filter.Area = "world"
+		}
+		if subscription.Filter.Floor == "" {
+			subscription.Filter.Floor = "world"
+		}
+		if subscription.Filter.Area == "world" && subscription.Filter.Floor != "world" || subscription.Filter.Area != "world" && subscription.Filter.Region != 0 {
+			return liveSubscription{}, false
+		}
+		var from, to *time.Time
+		for index, raw := range []string{subscription.Filter.From, subscription.Filter.To} {
+			if raw == "" {
+				continue
+			}
+			parsed, err := parseEventBound(raw, false)
+			if err != nil {
+				return liveSubscription{}, false
+			}
+			if index == 0 {
+				from = &parsed
+			} else {
+				to = &parsed
+			}
+		}
+		if from != nil && to != nil && (!to.After(*from) || to.Sub(*from) > mobs.MaxQueryWindow) {
+			return liveSubscription{}, false
+		}
 	default:
 		return liveSubscription{}, false
 	}
@@ -749,7 +913,78 @@ func hasEventFilters(filter liveFilter) bool {
 }
 
 func hasEventSpecificFilters(filter liveFilter) bool {
-	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.From != "" || filter.To != "" || filter.Cursor != ""
+	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != ""
+}
+
+type mapEventLister interface {
+	List(context.Context, events.Filter) (events.Page, error)
+}
+
+func collectMapActivity(
+	ctx context.Context,
+	store mapEventLister,
+	server string,
+	from time.Time,
+	to time.Time,
+	region int,
+	eventID string,
+) ([]events.Event, error) {
+	activity := make([]events.Event, 0, 100)
+	var regionFilter *int
+	if region > 0 {
+		regionFilter = &region
+	}
+	for _, eventFilter := range []events.Filter{
+		{Server: server, Kind: events.DeathKind, Region: regionFilter, RequireMapPosition: true, From: &from, To: &to, Limit: events.MaxPageSize},
+		{Server: server, Category: "drop", Region: regionFilter, RequireMapPosition: true, From: &from, To: &to, Limit: events.MaxPageSize},
+	} {
+		page, err := store.List(ctx, eventFilter)
+		if err != nil {
+			return nil, err
+		}
+		for _, event := range page.Events {
+			if event.Region == nil || region > 0 && *event.Region != region {
+				continue
+			}
+			activity = append(activity, event)
+		}
+	}
+	sort.Slice(activity, func(left, right int) bool {
+		if activity[left].OccurredAt.Equal(activity[right].OccurredAt) {
+			return activity[left].ID > activity[right].ID
+		}
+		return activity[left].OccurredAt.After(activity[right].OccurredAt)
+	})
+	limit := events.MaxPageSize
+	if eventID != "" {
+		limit--
+	}
+	if len(activity) > limit {
+		activity = activity[:limit]
+	}
+
+	if eventID != "" {
+		page, err := store.List(ctx, events.Filter{Server: server, EventID: eventID, Region: regionFilter, Limit: 1})
+		if err != nil {
+			return nil, err
+		}
+		for _, event := range page.Events {
+			if event.Region == nil || region > 0 && *event.Region != region {
+				continue
+			}
+			found := false
+			for _, existing := range activity {
+				if existing.ID == event.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				activity = append(activity, event)
+			}
+		}
+	}
+	return activity, nil
 }
 
 func validServerFilter(server string) bool {

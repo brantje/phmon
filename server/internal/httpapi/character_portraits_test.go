@@ -27,6 +27,10 @@ func TestCharacterPortraitIsAddedToCharacterGroupAndEventViews(t *testing.T) {
 	if got := characterWithPortrait(character, metadata).PortraitURL; got != wantURL {
 		t.Fatalf("character portrait URL = %q", got)
 	}
+	mapCharacters := mapCharactersWithPortraits([]characters.Character{character}, metadata)
+	if got := mapCharacters[0].PortraitURL; got != wantURL {
+		t.Fatalf("map character portrait URL = %q", got)
+	}
 	group := groupsWithPortraits([]characters.Group{{Members: []characters.Character{character}}}, metadata)
 	if got := group[0].Members[0].PortraitURL; got != wantURL {
 		t.Fatalf("group member portrait URL = %q", got)

@@ -17,6 +17,142 @@ spec.loader.exec_module(plugin)
 AGENT_ID = '11111111-2222-4333-8444-555555555555'
 
 
+class MobObservationTests(unittest.TestCase):
+    def test_monster_collector_distinguishes_missing_empty_and_truncated(self):
+        self.assertEqual(plugin.collect_monster_observation({'get_monsters': lambda: None}),
+                         ('unavailable', [], False))
+        self.assertEqual(plugin.collect_monster_observation({'get_monsters': lambda: {}}),
+                         ('observed', [], False))
+        raw = {
+            str(index): {'model': 300, 'type': 'Tiger', 'region': 25273,
+                         'x': index, 'y': index + 1, 'z': 4}
+            for index in range(plugin.MAX_MONSTERS_PER_SNAPSHOT + 1)
+        }
+        status, monsters, truncated = plugin.collect_monster_observation(
+            {'get_monsters': lambda: raw})
+        self.assertEqual(status, 'truncated')
+        self.assertTrue(truncated)
+        self.assertEqual(len(monsters), plugin.MAX_MONSTERS_PER_SNAPSHOT)
+        self.assertEqual(monsters[0]['model_id'], 300)
+        self.assertEqual(monsters[0]['type'], 'Tiger')
+
+    def test_monster_collector_preserves_bounded_popup_and_hp_ring_fields(self):
+        raw = {46296: {'model': 1933, 'type': 20, 'name': 'Eldimmu',
+                       'servername': 'MOB_EU_ELDIMMU', 'region': 25735,
+                       'x': 48.8, 'y': 1550.7, 'hp': 7515, 'max_hp': 9000,
+                       'attacking': 1}}
+        status, monsters, truncated = plugin.collect_monster_observation(
+            {'get_monsters': lambda: raw})
+        self.assertEqual((status, truncated), ('observed', False))
+        self.assertEqual(monsters[0]['type_code'], 20)
+        self.assertEqual(monsters[0]['name'], 'Eldimmu')
+        self.assertEqual(monsters[0]['servername'], 'MOB_EU_ELDIMMU')
+        self.assertEqual(monsters[0]['hp'], 7515)
+        self.assertEqual(monsters[0]['max_hp'], 9000)
+        self.assertTrue(monsters[0]['attacking'])
+
+    def test_spool_reloads_pending_sample_and_removes_only_after_ack(self):
+        sample = {
+            'sample_id': '00000000-0000-4000-8000-000000000001',
+            'character_id': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            'session_id': 'ffffffff-1111-4222-8333-444444444444',
+            'area_id': 'region:25273', 'floor_id': 'unmapped', 'region': 25273,
+            'sampled_at': '2026-09-29T00:00:00Z',
+            'observer': {'x': 192, 'y': -1, 'z': 0}, 'monsters': [],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'mob-samples.json')
+            spool = plugin.MobObservationSpool(path)
+            self.assertTrue(spool.add(sample))
+            recovered = plugin.MobObservationSpool(path)
+            self.assertEqual(recovered.pending(), [sample])
+            self.assertTrue(recovered.acknowledge(sample['sample_id']))
+            self.assertEqual(plugin.MobObservationSpool(path).pending(), [])
+
+    def test_stationary_sampling_throttles_per_session_cell_and_keeps_empty_samples(self):
+        previous_worker = plugin._worker
+        previous_poll = plugin._last_monster_poll_at
+        previous_cells = plugin._last_mob_cell_samples
+
+        class WorkerStub:
+            character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            session_id = 'ffffffff-1111-4222-8333-444444444444'
+            _current_identity = {'name': 'Alpha'}
+
+            def __init__(self):
+                self.samples = []
+
+            def _identity_key(self, identity):
+                return identity.get('name')
+
+            def update_map_monsters(self, identity, status, region, monsters, sample=None):
+                if sample is not None:
+                    self.samples.append(sample)
+                return True
+
+        worker = WorkerStub()
+        identity = {'name': 'Alpha'}
+        try:
+            plugin._worker = worker
+            plugin._last_monster_poll_at = float('-inf')
+            plugin._last_mob_cell_samples = {}
+            with patch.object(plugin, 'collect_monster_observation', return_value=('observed', [], False)):
+                plugin._sample_monsters(identity, {'region': 25273}, {'x': 10, 'y': 20}, now=20)
+                plugin._sample_monsters(identity, {'region': 25273}, {'x': 10, 'y': 20}, now=35)
+                plugin._sample_monsters(identity, {'region': 25273}, {'x': 10, 'y': 20}, now=80)
+            self.assertEqual(len(worker.samples), 2)
+            self.assertEqual(worker.samples[0]['monsters'], [])
+            self.assertEqual(worker.samples[0]['area_id'], 'region:25273')
+            self.assertEqual(worker.samples[0]['floor_id'], 'unmapped')
+            self.assertEqual(worker.samples[0]['observer'], {'x': 10.0, 'y': 20.0})
+        finally:
+            plugin._worker = previous_worker
+            plugin._last_monster_poll_at = previous_poll
+            plugin._last_mob_cell_samples = previous_cells
+
+    def test_worker_sends_scoped_current_snapshot_and_durable_sample_then_acks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worker = plugin.AgentWorker(
+                {'backend_url': 'ws://127.0.0.1:1', 'agent_id': AGENT_ID,
+                 'agent_token': 'fixture-token',
+                 'mob_spool_path': os.path.join(directory, 'mob-samples.json')},
+                'fixture',
+            )
+            identity = {'server': 'greatest', 'name': 'Alpha', 'guild': ''}
+            worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+            worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+            worker._current_identity = identity
+            sample = {
+                'sample_id': '00000000-0000-4000-8000-000000000001',
+                'character_id': worker.character_id, 'session_id': worker.session_id,
+                'area_id': 'region:25273', 'floor_id': 'unmapped', 'region': 25273,
+                'sampled_at': plugin._utc_now(), 'observer': {'x': 10, 'y': 20},
+                'monsters': [],
+            }
+            self.assertTrue(worker.update_map_monsters(identity, 'observed', 25273, [], sample))
+
+            class Client:
+                def __init__(self):
+                    self.sent = []
+
+                def send_json(self, message):
+                    self.sent.append(message)
+
+            client = Client()
+            worker._flush_map_observations(client)
+            self.assertEqual([message['type'] for message in client.sent],
+                             ['map.monsters', 'mob.sample'])
+            self.assertEqual(client.sent[0]['map_snapshot']['status'], 'observed')
+            self.assertEqual(client.sent[0]['map_snapshot']['monsters'], [])
+            self.assertEqual(client.sent[1]['sample']['floor_id'], 'unmapped')
+            self.assertEqual(len(worker._mob_spool.pending()), 1)
+            worker._handle_server_message({
+                'type': 'mob.sample.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
+                'sample_id': sample['sample_id'], 'status': 'persisted',
+            })
+            self.assertEqual(worker._mob_spool.pending(), [])
+
+
 class ConfigTests(unittest.TestCase):
     def test_profile_path_is_unavailable_until_phbot_reports_login(self):
         with patch.object(plugin, '_get_profile', return_value=None):

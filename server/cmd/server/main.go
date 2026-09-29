@@ -21,6 +21,7 @@ import (
 	"phmon/server/internal/database"
 	"phmon/server/internal/events"
 	"phmon/server/internal/httpapi"
+	"phmon/server/internal/mobs"
 	"phmon/server/internal/resources"
 )
 
@@ -66,6 +67,8 @@ func run() error {
 	resourceStore := resources.NewStore(pool)
 	eventStore := events.NewStore(pool)
 	chatStore := chat.NewStore(pool)
+	mobStore := mobs.NewStore(pool)
+	mobLive := mobs.NewLiveStore()
 	metadataDir := os.Getenv("ITEM_METADATA_DIR")
 	if metadataDir == "" {
 		metadataDir = "game-data"
@@ -88,6 +91,8 @@ func run() error {
 	live.SetResources(resourceStore)
 	live.SetEvents(eventStore)
 	live.SetChat(chatStore)
+	live.SetMobObservations(mobStore)
+	live.SetMobLive(mobLive)
 	dispatchStore := commands.NewStore(pool)
 	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
 		return errors.New("cannot recover interrupted commands")
@@ -108,6 +113,8 @@ func run() error {
 		Resources:  resourceStore,
 		Events:     eventStore,
 		Chat:       chatStore,
+		Mobs:       mobStore,
+		MobLive:    mobLive,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.

@@ -18,7 +18,7 @@ const {
 const deathState = computed(() =>
   characterDeathState(props.character, false, freshnessNow.value),
 )
-const selectedTab = ref('Inventory')
+const selectedTab = ref('Overview')
 const selectedContainer = ref('storage')
 const cardElement = ref<HTMLElement | null>(null)
 const cardVisible = ref(false)
@@ -218,54 +218,63 @@ onBeforeUnmount(() => {
       Showing the last received resource observations as stale.
     </div>
     <div v-if="selectedTab === 'Overview'" class="character-overview">
-      <dl class="character-stats">
-        <div>
-          <dt>HP</dt>
-          <dd>
-            {{ character.hp?.toLocaleString() ?? '—' }} /
-            {{ character.hp_max?.toLocaleString() ?? '—' }}
-          </dd>
-        </div>
-        <div>
-          <dt>MP</dt>
-          <dd>
-            {{ character.mp?.toLocaleString() ?? '—' }} /
-            {{ character.mp_max?.toLocaleString() ?? '—' }}
-          </dd>
-        </div>
-        <div>
-          <dt>XP</dt>
-          <dd>{{ formatProgress(character) }}</dd>
-        </div>
-        <div>
-          <dt>SP</dt>
-          <dd>{{ character.sp?.toLocaleString() ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt>Gold</dt>
-          <dd>{{ character.gold?.toLocaleString() ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt>Location</dt>
-          <dd>{{ character.zone || 'Unknown zone' }}</dd>
-        </div>
-        <div>
-          <dt>Training</dt>
-          <dd>
-            {{
-              character.botting == null
-                ? 'Unknown'
-                : character.botting
-                  ? 'Training'
-                  : 'Idle'
-            }}
-          </dd>
-        </div>
-        <div>
-          <dt>Resource freshness</dt>
-          <dd>{{ freshness }}</dd>
-        </div>
-      </dl>
+      <div class="character-overview-main">
+        <dl class="character-stats">
+          <div>
+            <dt>HP</dt>
+            <dd>
+              {{ character.hp?.toLocaleString() ?? '—' }} /
+              {{ character.hp_max?.toLocaleString() ?? '—' }}
+            </dd>
+          </div>
+          <div>
+            <dt>MP</dt>
+            <dd>
+              {{ character.mp?.toLocaleString() ?? '—' }} /
+              {{ character.mp_max?.toLocaleString() ?? '—' }}
+            </dd>
+          </div>
+          <div>
+            <dt>XP</dt>
+            <dd>{{ formatProgress(character) }}</dd>
+          </div>
+          <div>
+            <dt>SP</dt>
+            <dd>{{ character.sp?.toLocaleString() ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>Gold</dt>
+            <dd>{{ character.gold?.toLocaleString() ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>Location</dt>
+            <dd>{{ character.zone || 'Unknown zone' }}</dd>
+          </div>
+          <div>
+            <dt>Training</dt>
+            <dd>
+              {{
+                character.botting == null
+                  ? 'Unknown'
+                  : character.botting
+                    ? 'Training'
+                    : 'Idle'
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>Resource freshness</dt>
+            <dd>{{ freshness }}</dd>
+          </div>
+        </dl>
+        <MapPreview
+          class="character-card-preview"
+          :title="`${character.name} map`"
+          :server="character.server"
+          :members="[character]"
+          character-card
+        />
+      </div>
       <div class="character-mini-summary">
         <span
           >{{ pets.length }} summoned

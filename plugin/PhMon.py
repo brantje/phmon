@@ -27,10 +27,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.4.2'
+pVersion = '1.5.1'
 pUrl = ''
 
-PROTOCOL_VERSION = 6
+PROTOCOL_VERSION = 7
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -51,6 +51,12 @@ MAX_EVENT_SPOOL_BYTES = MAX_EVENT_CRITICAL_BYTES + MAX_EVENT_ORDINARY_BYTES
 MAX_EVENT_BYTES = 40 * 1024
 MAX_EVENT_PAYLOAD_BYTES = 32768
 MAX_EVENT_BATCH_SIZE = 16
+MAX_MONSTERS_PER_SNAPSHOT = 128
+MAX_MOB_SPOOL_ITEMS = 2048
+MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
+MOB_POLL_INTERVAL_SECONDS = 10.0
+MOB_SAMPLE_INTERVAL_SECONDS = 60.0
+MOB_OBSERVER_CELL_SIZE = 192.0
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
@@ -118,7 +124,7 @@ def _optional_phbot_api(name):
     except Exception:
         return None
 
-_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','generate_path','set_training_position',
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','generate_path','set_training_position',
               'set_training_radius','set_training_area','get_training_area','move_to_region',
               'use_return_scroll','disconnect')
 
@@ -189,6 +195,64 @@ def _bounded_text(value, limit=256):
         return None
     result = str(value).strip()
     return result[:limit] if result else None
+
+
+def collect_monster_observation(api=None):
+    """Return an explicitly classified, bounded get_monsters() observation."""
+    function = (api or {}).get('get_monsters') if isinstance(api, dict) else None
+    if not callable(function):
+        function = _optional_phbot_api('get_monsters')
+    if not callable(function):
+        return 'unavailable', [], False
+    try:
+        raw = function()
+    except Exception:
+        return 'unavailable', [], False
+    if raw is None or not isinstance(raw, dict):
+        return 'unavailable', [], False
+    entries = list(raw.items())
+    truncated = len(entries) > MAX_MONSTERS_PER_SNAPSHOT
+    monsters = []
+    for monster_id, value in entries[:MAX_MONSTERS_PER_SNAPSHOT]:
+        if not isinstance(value, dict):
+            truncated = True
+            continue
+        identifier = _bounded_text(monster_id, 64)
+        model = value.get('model')
+        region = value.get('region')
+        x = value.get('x', value.get('X'))
+        y = value.get('y', value.get('Y'))
+        z = value.get('z', value.get('Z'))
+        if (identifier is None or model is not None and (not isinstance(model, int) or isinstance(model, bool) or model < 0 or model > 4294967295) or not isinstance(region, int) or
+                isinstance(region, bool) or region < 1 or region > 65535 or
+                not _number(x) or not _number(y) or abs(x) > 1000000 or abs(y) > 1000000):
+            truncated = True
+            continue
+        monster = {'id': identifier, 'region': region,
+                   'x': float(x), 'y': float(y)}
+        if model is not None:
+            monster['model_id'] = model
+        monster_type = _bounded_text(value.get('type'), 64)
+        if monster_type is not None:
+            monster['type'] = monster_type
+        raw_type = value.get('type')
+        if isinstance(raw_type, int) and not isinstance(raw_type, bool) and 0 <= raw_type <= 255:
+            monster['type_code'] = raw_type
+        for source, target in (('name', 'name'), ('servername', 'servername')):
+            detail = _bounded_text(value.get(source), 128)
+            if detail is not None:
+                monster[target] = detail
+        for source in ('hp', 'max_hp'):
+            detail = value.get(source)
+            if isinstance(detail, int) and not isinstance(detail, bool) and 0 <= detail <= 9007199254740991:
+                monster[source] = detail
+        attacking = value.get('attacking')
+        if isinstance(attacking, (bool, int)):
+            monster['attacking'] = attacking > 0
+        if _number(z) and abs(z) <= 1000000:
+            monster['z'] = float(z)
+        monsters.append(monster)
+    return ('truncated' if truncated else 'observed'), monsters, truncated
 
 
 def _normalize_item(value):
@@ -1163,6 +1227,17 @@ def _death_spool_path(config_dir, agent_id, settings_path):
     return os.path.join(config_dir, pName, filename)
 
 
+def _mob_spool_path(config_dir, agent_id, settings_path):
+    if (not isinstance(config_dir, str) or not config_dir.strip() or
+            not _validate_agent_id(agent_id) or
+            not isinstance(settings_path, str) or not settings_path.strip()):
+        return None
+    profile_identity = os.path.normcase(os.path.abspath(settings_path)).encode('utf-8')
+    profile_key = hashlib.sha256(profile_identity).hexdigest()[:16]
+    filename = 'mob-observations-' + agent_id + '-' + profile_key + '.json'
+    return os.path.join(config_dir, pName, filename)
+
+
 def load_saved_config(path):
     values = {}
     with open(path, 'r') as handle:
@@ -1649,6 +1724,153 @@ def _valid_event_spool_item(item):
     return len(encoded) <= MAX_EVENT_BYTES and len(payload) <= MAX_EVENT_PAYLOAD_BYTES
 
 
+def _valid_mob_sample(sample):
+    if not isinstance(sample, dict):
+        return False
+    if (not _validate_agent_id(sample.get('sample_id')) or
+            not _validate_agent_id(sample.get('character_id')) or
+            not _validate_agent_id(sample.get('session_id')) or
+            not isinstance(sample.get('region'), int) or isinstance(sample.get('region'), bool) or
+            sample.get('region') < 1 or sample.get('region') > 65535 or
+            sample.get('area_id') != 'region:' + str(sample.get('region')) or
+            sample.get('floor_id') != 'unmapped' or not isinstance(sample.get('observer'), dict) or
+            not isinstance(sample.get('monsters'), list) or len(sample['monsters']) > MAX_MONSTERS_PER_SNAPSHOT):
+        return False
+    try:
+        _utc_epoch(sample.get('sampled_at'))
+        for axis in ('x', 'y'):
+            value = sample['observer'].get(axis)
+            if not _number(value) or abs(value) > 1000000:
+                return False
+        observer_z = sample['observer'].get('z')
+        if observer_z is not None and (not _number(observer_z) or abs(observer_z) > 1000000):
+            return False
+        seen = set()
+        for monster in sample['monsters']:
+            if (not isinstance(monster, dict) or not isinstance(monster.get('id'), str) or
+                    not monster['id'] or len(monster['id']) > 64 or monster['id'] in seen or
+                    monster.get('region') != sample['region'] or
+                    not _number(monster.get('x')) or abs(monster['x']) > 1000000 or
+                    not _number(monster.get('y')) or abs(monster['y']) > 1000000):
+                return False
+            seen.add(monster['id'])
+            model = monster.get('model_id')
+            if model is not None and (not isinstance(model, int) or isinstance(model, bool) or model < 0 or model > 4294967295):
+                return False
+            if monster.get('z') is not None and (not _number(monster['z']) or abs(monster['z']) > 1000000):
+                return False
+            if monster.get('type') is not None and (not isinstance(monster['type'], str) or len(monster['type']) > 64):
+                return False
+            if monster.get('type_code') is not None and (not isinstance(monster['type_code'], int) or isinstance(monster['type_code'], bool) or monster['type_code'] < 0 or monster['type_code'] > 255):
+                return False
+            for detail in ('name', 'servername'):
+                if monster.get(detail) is not None and (not isinstance(monster[detail], str) or len(monster[detail]) > 128):
+                    return False
+            for detail in ('hp', 'max_hp'):
+                if monster.get(detail) is not None and (not isinstance(monster[detail], int) or isinstance(monster[detail], bool) or monster[detail] < 0 or monster[detail] > 9007199254740991):
+                    return False
+            if monster.get('attacking') is not None and not isinstance(monster['attacking'], bool):
+                return False
+        encoded = json.dumps(sample, separators=(',', ':'), sort_keys=True, allow_nan=False).encode('utf-8')
+    except Exception:
+        return False
+    return len(encoded) <= 64 * 1024
+
+
+class MobObservationSpool(object):
+    """Profile-scoped atomic spool; an item is removed only after a terminal ACK."""
+    def __init__(self, path, max_items=MAX_MOB_SPOOL_ITEMS, max_bytes=MAX_MOB_SPOOL_BYTES):
+        self.path = path
+        self.max_items = max_items
+        self.max_bytes = max_bytes
+        self._lock = threading.Lock()
+        self._items = []
+        if path:
+            self._load()
+
+    def _load(self):
+        try:
+            with open(self.path, 'rb') as handle:
+                raw = handle.read(self.max_bytes + 1)
+            if len(raw) > self.max_bytes:
+                raise ValueError('spool exceeds size limit')
+            value = json.loads(raw.decode('utf-8'))
+            if not isinstance(value, list) or len(value) > self.max_items:
+                raise ValueError('invalid spool')
+            self._items = [item for item in value if _valid_mob_sample(item)]
+            if self._items != value:
+                with self._lock:
+                    self._save_locked()
+        except IOError:
+            self._items = []
+        except Exception as error:
+            _log('mob observation spool could not be loaded (' + error.__class__.__name__ + ')')
+            self._items = []
+
+    def _save_locked(self):
+        if not self.path:
+            return False
+        directory = os.path.dirname(self.path)
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory)
+        temporary = self.path + '.tmp'
+        raw = json.dumps(self._items, separators=(',', ':'), sort_keys=True, allow_nan=False).encode('utf-8')
+        if len(raw) > self.max_bytes:
+            return False
+        with open(temporary, 'wb') as handle:
+            handle.write(raw)
+            handle.flush()
+            try:
+                os.fsync(handle.fileno())
+            except Exception:
+                pass
+        replace = getattr(os, 'replace', None)
+        if replace:
+            replace(temporary, self.path)
+        else:  # pragma: no cover
+            if os.path.exists(self.path):
+                os.remove(self.path)
+            os.rename(temporary, self.path)
+        return True
+
+    def add(self, sample):
+        if not self.path or not _valid_mob_sample(sample):
+            return False
+        with self._lock:
+            if any(item.get('sample_id') == sample['sample_id'] for item in self._items):
+                return True
+            encoded = json.dumps(sample, separators=(',', ':'), sort_keys=True, allow_nan=False).encode('utf-8')
+            current = sum(len(json.dumps(item, separators=(',', ':'), sort_keys=True).encode('utf-8')) for item in self._items)
+            if len(self._items) >= self.max_items or current + len(encoded) > self.max_bytes:
+                return False
+            self._items.append(dict(sample))
+            try:
+                if self._save_locked():
+                    return True
+            except Exception as error:
+                _log('mob observation spool write failed (' + error.__class__.__name__ + ')')
+            self._items.pop()
+            return False
+
+    def pending(self):
+        with self._lock:
+            return [dict(item) for item in self._items]
+
+    def acknowledge(self, sample_id):
+        with self._lock:
+            previous = self._items
+            self._items = [item for item in previous if item.get('sample_id') != sample_id]
+            if len(previous) == len(self._items):
+                return True
+            try:
+                if self._save_locked():
+                    return True
+            except Exception as error:
+                _log('mob observation spool acknowledgement failed (' + error.__class__.__name__ + ')')
+            self._items = previous
+            return False
+
+
 # Compatibility alias: existing installations and tests may still use this name.
 DeathEventSpool = EventSpool
 
@@ -1657,6 +1879,7 @@ class AgentWorker(object):
     def __init__(self, config, phbot_version, websocket_factory=None, api_adapter=None):
         self.config = validate_config(config)
         self.config['death_spool_path'] = config.get('death_spool_path') if isinstance(config, dict) else None
+        self.config['mob_spool_path'] = config.get('mob_spool_path') if isinstance(config, dict) else None
         self.phbot_version = str(phbot_version)
         self.websocket_factory = websocket_factory or WebSocketClient
         self.api = api_adapter or PhBotAdapter()
@@ -1675,6 +1898,13 @@ class AgentWorker(object):
         self._event_samples = _queue.Queue(maxsize=256)
         self._death_samples = self._event_samples
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
+        self._map_samples = _queue.Queue(maxsize=1)
+        self._mob_samples = _queue.Queue(maxsize=32)
+        self._mob_spool = MobObservationSpool(self.config.get('mob_spool_path'))
+        self._pending_mob_spool_sample = None
+        self._mob_retry_at = {}
+        self._latest_map_observation = None
+        self._last_map_sent_at = None
         self._event_sequence_lock = threading.Lock()
         self._event_sequences = {}
         self._alchemy_items_lock = threading.Lock()
@@ -1706,6 +1936,67 @@ class AgentWorker(object):
         self._latest_resources = None
         self._latest_resources_identity = None
         self._item_tracker = PassiveItemTracker()
+
+    def update_map_monsters(self, identity, status, region, monsters, sample=None):
+        observation = {
+            'identity': dict(identity), 'status': status, 'region': region,
+            'monsters': [dict(monster) for monster in monsters], 'observed_at': _worker_utc_now(self),
+        }
+        try:
+            self._map_samples.put_nowait(observation)
+        except _queue.Full:
+            try: self._map_samples.get_nowait()
+            except _queue.Empty: pass
+            try: self._map_samples.put_nowait(observation)
+            except _queue.Full: pass
+        if sample is not None:
+            try:
+                self._mob_samples.put_nowait(dict(sample))
+            except _queue.Full:
+                self.status = 'Mob observation queue is full; a sample needs operator attention.'
+                _log('mob observation was not queued because its bounded worker queue is full')
+                return False
+        return True
+
+    def _spool_queued_mob_samples(self):
+        while True:
+            sample = self._pending_mob_spool_sample
+            if sample is None:
+                try: sample = self._mob_samples.get_nowait()
+                except _queue.Empty: break
+            if not self._mob_spool.add(sample):
+                self._pending_mob_spool_sample = sample
+                self.status = 'Mob observation spool is unavailable or full; a sample needs operator attention.'
+                _log('mob observation was not sent because durable local spooling failed')
+                break
+            self._pending_mob_spool_sample = None
+
+    def _flush_map_observations(self, client):
+        self._spool_queued_mob_samples()
+        while True:
+            try: self._latest_map_observation = self._map_samples.get_nowait()
+            except _queue.Empty: break
+        observation = self._latest_map_observation
+        if (observation is not None and self.character_id is not None and self.session_id is not None and
+                self._identity_key(observation.get('identity')) == self._identity_key(self._current_identity) and
+                observation.get('observed_at') != self._last_map_sent_at):
+            snapshot = {
+                'status': observation['status'], 'character_id': self.character_id,
+                'session_id': self.session_id, 'observed_at': observation['observed_at'],
+                'region': observation['region'], 'monsters': observation['monsters'],
+                'truncated': observation['status'] == 'truncated',
+            }
+            client.send_json({'type': 'map.monsters', 'protocol_version': PROTOCOL_VERSION,
+                              'map_snapshot': snapshot})
+            self._last_map_sent_at = observation['observed_at']
+        now = _monotonic()
+        for sample in self._mob_spool.pending():
+            sample_id = sample.get('sample_id')
+            if self._mob_retry_at.get(sample_id, 0.0) > now:
+                continue
+            client.send_json({'type': 'mob.sample', 'protocol_version': PROTOCOL_VERSION, 'sample': sample})
+            self._mob_retry_at[sample_id] = now + 3.0
+            break
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
@@ -2015,6 +2306,7 @@ class AgentWorker(object):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
             self._spool_queued_events()
+            self._spool_queued_mob_samples()
             client = None
             try:
                 self.status = 'Connecting to PhMon backend...'
@@ -2045,6 +2337,7 @@ class AgentWorker(object):
                 self._confirmed_resources = None
                 self._latest_resources = None
                 self._latest_resources_identity = None
+                self._last_map_sent_at = None
                 self._item_tracker.reset('backend_reconnect')
                 # Callbacks may have queued a leave while the backend was
                 # unavailable. Apply the newest queued fact before replaying
@@ -2063,6 +2356,8 @@ class AgentWorker(object):
                             self._latest_sample = None
                             self._latest_resources = None
                             self._latest_resources_identity = None
+                            self._latest_map_observation = None
+                            self._last_map_sent_at = None
                             self._resource_baseline_required = True
                             self._confirmed_resources = None
                             self._item_tracker.reset('character_left')
@@ -2074,6 +2369,7 @@ class AgentWorker(object):
                     except _queue.Empty:
                         pass
                     self._flush_death_events(client)
+                    self._flush_map_observations(client)
                     try:
                         resource_sample = self._resource_samples.get_nowait()
                         if self.character_id is not None and resource_sample.get('identity') == self._current_identity:
@@ -2121,6 +2417,7 @@ class AgentWorker(object):
                         self._handle_server_message(message)
                     self._flush_results(client)
                     self._flush_death_events(client)
+                    self._flush_map_observations(client)
             except Exception as error:
                 if not self.stop_event.is_set():
                     self.status = 'Backend unavailable; retrying...'
@@ -2153,6 +2450,7 @@ class AgentWorker(object):
                 deadline = _monotonic() + delay
                 while not self.stop_event.is_set():
                     self._spool_queued_events()
+                    self._spool_queued_mob_samples()
                     remaining = deadline - _monotonic()
                     if remaining <= 0 or self.stop_event.wait(min(0.25, remaining)):
                         break
@@ -2376,6 +2674,19 @@ class AgentWorker(object):
                     _log('death event rejected by backend (' + str(message.get('reason', 'unknown'))[:80] + ')')
             else:
                 self._death_retry_at[message['event_id']] = _monotonic() + 3.0
+        elif message.get('type') == 'mob.sample.ack':
+            sample_id = message.get('sample_id')
+            if (message.get('protocol_version') != PROTOCOL_VERSION or
+                    not _validate_agent_id(sample_id) or
+                    message.get('status') not in ('persisted', 'rejected', 'retry')):
+                raise WebSocketClosed('invalid mob sample acknowledgement')
+            if message['status'] in ('persisted', 'rejected'):
+                self._mob_spool.acknowledge(sample_id)
+                self._mob_retry_at.pop(sample_id, None)
+                if message['status'] == 'rejected':
+                    _log('mob observation rejected by backend (' + str(message.get('reason', 'unknown'))[:80] + ')')
+            else:
+                self._mob_retry_at[sample_id] = _monotonic() + 3.0
         elif message.get('type') == 'command.execute': self._accept_command(message)
         elif message.get('type') == 'command.revoke': self._revoke_session(message)
         elif message.get('type') == 'resource.ack':
@@ -2837,6 +3148,8 @@ _gui_status = None
 _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
+_last_monster_poll_at = 0.0
+_last_mob_cell_samples = {}
 _death_callback_active = False
 _phbot_connected_state = None
 _pending_callback_events = _queue.Queue(maxsize=64)
@@ -2880,10 +3193,14 @@ def _start_worker(config):
                 settings_path = _current_settings_path()
             config['death_spool_path'] = _death_spool_path(
                 config_dir, config['agent_id'], settings_path)
+            config['mob_spool_path'] = _mob_spool_path(
+                config_dir, config['agent_id'], settings_path)
         else:
             config['death_spool_path'] = None
+            config['mob_spool_path'] = None
     except Exception:
         config['death_spool_path'] = None
+        config['mob_spool_path'] = None
     try:
         version = _get_phbot_version()
     except Exception:
@@ -3333,6 +3650,7 @@ def _sample_character():
         _worker.update_character(identity,state)
         _last_character_signature = signature
         _last_character_sample_at = now
+    _sample_monsters(identity, state, position, now)
     if hasattr(_worker, 'report_control_state'):
         try: _worker.report_control_state()
         except Exception as error: _log('control-state sample failed (' + error.__class__.__name__ + ')')
@@ -3344,6 +3662,64 @@ def _sample_character():
     if hasattr(_worker, 'process_walk_step'):
         try: _worker.process_walk_step(identity, state.get('region'))
         except Exception as error: _log('walk callback failed (' + error.__class__.__name__ + ')')
+
+
+def _sample_monsters(identity, state, position, now=None):
+    global _last_monster_poll_at, _last_mob_cell_samples
+    if _worker is None:
+        return False
+    now = _monotonic() if now is None else now
+    if now - _last_monster_poll_at < MOB_POLL_INTERVAL_SECONDS:
+        return False
+    _last_monster_poll_at = now
+    status, monsters, truncated = collect_monster_observation()
+    region = state.get('region') if isinstance(state, dict) else None
+    if not isinstance(region, int) or isinstance(region, bool) or region < 1 or region > 65535:
+        return False
+    matching = [monster for monster in monsters if monster.get('region') == region]
+    if len(matching) != len(monsters):
+        truncated = True
+        status = 'truncated'
+    if truncated:
+        status = 'truncated'
+    elif status == 'observed':
+        status = 'observed'
+    worker_character = getattr(_worker, 'character_id', None)
+    worker_session = getattr(_worker, 'session_id', None)
+    current_identity = getattr(_worker, '_current_identity', None)
+    sample = None
+    x = position.get('x') if isinstance(position, dict) else None
+    y = position.get('y') if isinstance(position, dict) else None
+    if (status == 'observed' and worker_character and worker_session and
+            _worker._identity_key(identity) == _worker._identity_key(current_identity) and
+            _number(x) and _number(y) and abs(x) <= 1000000 and abs(y) <= 1000000):
+        cell = (int(math.floor(float(x) / MOB_OBSERVER_CELL_SIZE)),
+                int(math.floor(float(y) / MOB_OBSERVER_CELL_SIZE)))
+        throttle_key = (worker_session, region, 'unmapped', cell[0], cell[1])
+        last_sampled = _last_mob_cell_samples.get(throttle_key)
+        if last_sampled is None or now - last_sampled >= MOB_SAMPLE_INTERVAL_SECONDS:
+            sampled_at = _utc_now()
+            observer = {'x': float(x), 'y': float(y)}
+            z = position.get('z') if isinstance(position, dict) else None
+            if _number(z) and abs(z) <= 1000000:
+                observer['z'] = float(z)
+            sample = {
+                'sample_id': str(uuid.uuid4()), 'character_id': worker_character,
+                'session_id': worker_session, 'area_id': 'region:' + str(region),
+                'floor_id': 'unmapped', 'region': region, 'sampled_at': sampled_at,
+                'observer': observer, 'monsters': matching,
+            }
+            if _worker.update_map_monsters(identity, status, region, matching, sample):
+                _last_mob_cell_samples[throttle_key] = now
+            else:
+                return False
+            return True
+    _worker.update_map_monsters(identity, status, region, matching)
+    if len(_last_mob_cell_samples) > 4096:
+        oldest = sorted(_last_mob_cell_samples.items(), key=lambda item: item[1])[:2048]
+        for key, _ in oldest:
+            _last_mob_cell_samples.pop(key, None)
+    return True
 
 
 def finished():

@@ -52,6 +52,8 @@ export interface ActivityEvent {
   item_model?: number
   item_code?: string
   item_metadata?: Record<string, unknown>
+  item_icon_url?: string
+  item_name?: string
   region?: number
   x?: number
   y?: number
@@ -115,6 +117,50 @@ export interface ChatSnapshot {
   unread_by_channel: Record<string, number>
 }
 
+export interface MapMonster {
+  id: string
+  model_id?: number
+  type?: string
+  type_code?: number
+  name?: string
+  servername?: string
+  hp?: number
+  max_hp?: number
+  attacking?: boolean
+  region: number
+  x: number
+  y: number
+  z?: number
+}
+
+export interface MapMonsterObservation {
+  server: string
+  agent_id: string
+  character_id: string
+  session_id: string
+  character: string
+  status: 'observed' | 'unavailable' | 'truncated'
+  region?: number
+  observed_at: string
+  truncated?: boolean
+  monsters: MapMonster[]
+}
+
+export interface MapSnapshot {
+  server: string
+  area_id: string
+  floor_id: string
+  region: number
+  scope_status?: string
+  characters: CharacterView[]
+  monsters: MapMonsterObservation[]
+  events: ActivityEvent[]
+  academy: {
+    status: string
+    members: unknown[]
+  }
+}
+
 export interface AlchemySummary {
   attempts: number
   successes: number
@@ -138,6 +184,7 @@ export type LiveStream =
   | 'resources'
   | 'events'
   | 'chat'
+  | 'map'
 
 export interface LiveFilter {
   q?: string
@@ -151,11 +198,15 @@ export interface LiveFilter {
   kind?: string
   category?: string
   item?: string
+  event_id?: string
   from?: string
   to?: string
   cursor?: string
   channel?: string
   peer?: string
+  area?: string
+  floor?: string
+  region?: number
 }
 
 export interface LiveClientFrame {

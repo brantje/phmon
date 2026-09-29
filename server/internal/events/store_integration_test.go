@@ -177,6 +177,11 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if page.Total != 3 || len(page.Events) != 1 || page.Events[0].ID != deferred.ID || page.NextCursor != "" {
 		t.Fatalf("third filtered page: %+v", page)
 	}
+	mapRegion := 25273
+	mapPage, err := store.List(ctx, Filter{Server: server, Kind: DeathKind, Region: &mapRegion, RequireMapPosition: true, Limit: MaxPageSize})
+	if err != nil || mapPage.Total != 3 || len(mapPage.Events) != 3 {
+		t.Fatalf("map-location event filters = %+v, err=%v", mapPage, err)
+	}
 	page, err = store.List(ctx, Filter{Server: "different-server", Limit: 10})
 	if err != nil || page.Total != 0 {
 		t.Fatalf("server filter leaked events: page=%+v err=%v", page, err)
@@ -201,6 +206,10 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{rareDrop})
 	if err != nil || changed || results[0].Status != "persisted" {
 		t.Fatalf("idempotent batch replay = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err := store.List(ctx, Filter{Server: server, EventID: rareDrop.ID, Limit: 1})
+	if err != nil || exact.Total != 1 || len(exact.Events) != 1 || exact.Events[0].ID != rareDrop.ID {
+		t.Fatalf("exact event lookup = %+v, err=%v", exact, err)
 	}
 	conflict := rareDrop
 	conflictRegion := 25273

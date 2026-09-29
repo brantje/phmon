@@ -882,3 +882,194 @@ turning catalog ranges into apparent instance values.
 
 Focused Go resource/API/event tests, Nuxt typecheck and 13 frontend unit tests
 passed locally. Browser and deployed-server verification remain open.
+
+## Slice 7–8 map and Stats placement — 2026-09-29
+
+The operator corrected the reference target to
+`http://192.168.10.105/?server=greatest&view=map&guild=ibot&x_from=2026-09-21&x_to=2026-09-28&e_sub=custom&an_from=2026-09-21&an_to=2026-09-28&u_page=8&c_tab=union&c_char=greatest%7Cgreatest%3Anuker1%3A1907`.
+After the
+reference connected, Map showed the large raster viewport, character selector and
+Jump To Character button on the left, Quick navigation on the right, coordinate/tile/
+zoom readouts above the viewport, and layer controls alongside the map for characters,
+Academy members, deaths, drops, mob density and mob types. The app normalized away the
+`server=greatest` query value and displayed All servers in its selector; the saved
+baseline capture remains the Greatest-scoped reference. Existing screenshot:
+[`07-map.png`](../phmonitor_screenshots/07-map.png).
+
+Stats screenshots confirm two separate map placements. The group summary card puts a
+compact map on its left beside group event counts, HP/MP bars, gold and online counts
+([`02-stats-01.png`](../phmonitor_screenshots/02-stats-01.png)). Each character's
+Overview card has its own smaller map on the right beside status, region and position
+([`02-stats-02.png`](../phmonitor_screenshots/02-stats-02.png)). In the local build,
+`CharacterPanel.vue` supplies the group-scope preview and `CharacterCard.vue` places a
+separate preview inside each Overview card. Both links carry server, area/floor,
+region and selected character into `/map`.
+
+Current GreatestSRO tiles can be displayed as an edge-continuity-supported raster
+grid, with increasing X rightward and increasing Y upward. That evidence does not
+validate a live character's within-tile world coordinates. The shared adapter is
+covered by synthetic round-trip/refusal tests and still returns no position for this
+active profile, whose transform, region mapping and command-Z evidence are open.
+Therefore the local previews currently show a labelled raster reference and position
+readout without asserting that the character marker is in the right pixel. Cave-floor
+imagery and navigation actions stay unavailable pending their separate gates.
+
+The worktree's Nuxt production build and development server both start. The local
+`/map` browser check reached the operator sign-in screen, so I could not inspect the
+authenticated Map or Stats UI or capture local comparisons at 1440×1000, 1280×800 and
+390×844. The PostgreSQL integration suite was also skipped because this environment
+does not define `TEST_DATABASE_URL`. These remain verification gates; simulator and
+unit results do not substitute for them.
+
+### Test deployment and protocol E2E — 2026-09-29
+
+The operator authorized a test deployment to `node@192.168.10.25:/var/www/phmon` and
+provided an operator access secret. The value is stored in the remote `.env` only and
+is intentionally omitted from this document. A private rollback snapshot of the
+previous app and `.env` is at `/var/www/.deploy-slice-7-8-luna-20260929`. The existing
+5,118 local map tiles were already present on the host; the count and representative
+hashes matched, so no game assets were transferred.
+
+Rebuilt server and web, applied migration 14, and verified `/readyz` and `/api/health`
+healthy. Authenticated read-only HTTP checks through the deployed Nuxt proxies returned
+the Greatest map profile (4 areas, 5,118 tiles), density readback (currently no real
+observations), `/map` and `/stats` HTML, and a local PNG map tile. The remote stack
+still reports the same PostgreSQL container ID; the agent API reports three records,
+two connected, and the character API reports eight records.
+
+The protocol v7 simulator then ran in a second Compose project bound only to
+localhost, with a separate empty PostgreSQL volume. It passed movement, monster
+appearance, empty/unavailable/truncated snapshots, death/drop events, reconnect and
+idempotent sample replay. The separate density readback returned two observer cells,
+numerator 1, denominator 2, and averages 1 and 0. The temporary test project, data
+volume, environment file and copied harness were removed; the production database
+received no synthetic agent, character, event or mob data.
+
+The full Go suite was also run in a temporary Go container against a separate empty
+PostgreSQL project; every package passed, including the mob integration test for two
+observers, sample-ID replay and stationary sampling limits. That project's database
+volume and environment files were removed after the run.
+
+The in-app browser reaches the deployed sign-in screen, but I did not automate the
+sign-in form. Therefore matched visual captures at 1440×1000, 1280×800 and 390×844
+remain outstanding. Deployment and simulator evidence do not validate the live
+coordinate transform, cave imagery, real phBot behavior or map navigation commands.
+
+### Stats group map and Map navigation correction — 2026-09-29
+
+The operator reported that `/stats?group_id=497f328c-bd2f-45b0-9b50-8f4431ce7945`
+showed no map and that Map remained disabled in Tools. The Stats template hid every
+group summary whenever a group was selected; it now keeps the selected group's map
+preview visible. The advanced Tools navigation now links Map to `/map` while keeping
+unimplemented tools disabled. Nuxt typecheck, all 18 frontend unit tests, lint (zero
+errors; 29 existing void-element warnings) and the production build passed.
+
+Deployed only the web changes, preserving the Go server, PostgreSQL container, `.env`
+and data volume. The new web container is healthy; `/map` and the reported group Stats
+route return successfully, `/readyz` reports the database healthy, and migration 14
+remains applied. Two live agents continue to report plugin 1.5.0 / protocol 7. The
+production database has 17 mob samples and 37 observations. Authenticated visual
+browser inspection remains open because the UI is at its operator sign-in screen and
+sign-in was not automated.
+
+## Slice 7–8 review findings — 2026-09-29
+
+Addressed the six scoped review findings in `codex/slice-7-8-luna`:
+
+- The Leaflet preset-to-tile conversion now uses the same north-up `max_y - tile_y`
+  transform as tile rendering; a round-trip regression confirms preset (168, 97)
+  opens and reads back as tile (168, 97).
+- Last hour/day/week event windows roll forward every 30 seconds so incoming deaths
+  and drops enter the map snapshot without changing the range selection.
+- Map activity queries select deaths and drops separately, require mapped-position
+  fields, and apply server region constraints before their per-query limits. The
+  merged map list is then capped at 100. Event-ID deep links perform a server-scoped
+  exact lookup outside the rolling window and use the selected profile's region to
+  resolve the correct area/floor. If location transforms or cave imagery are absent,
+  the map reports why it cannot display the event.
+- Map profile responses are ignored when their request sequence or server scope is
+  stale.
+- Observation readback is explicitly named `observer_local_average_count`; it reports
+  observer-cell sample counts and observed monster rows, says coverage is unverified,
+  and does not return a `density` field. A cross-cell PostgreSQL integration assertion
+  ensures a monster coordinate alone does not imply sampled coverage in that cell.
+
+Evidence: `go test ./...`, 23 Nuxt utility tests, Nuxt typecheck, ESLint (0 errors;
+29 void-element warnings), Nuxt production build, and 83 plugin tests passed. The
+event and mob PostgreSQL integration tests were skipped because this worktree has no
+`TEST_DATABASE_URL`; Docker is unavailable, so the new cross-cell DB assertion remains
+unexecuted here. No authenticated browser or real phBot run was made for these fixes.
+The Slice 7–8 acceptance gates remain open for outdoor coordinate/reverse-transform
+validation, cave images/transforms, visual checks at the required viewports, and real
+runtime evidence.
+Exact next action: rerun the event and cross-cell mob PostgreSQL integration tests
+with a disposable `TEST_DATABASE_URL`, then complete authenticated map verification
+at the required viewports when that environment is available.
+
+### Review-fix deployment — 2026-09-29
+
+Deployed the six review fixes to the operator-authorized test host
+`node@192.168.10.25:/var/www/phmon`. The Go server and Nuxt web images both built;
+only those two containers were restarted. PostgreSQL was not restarted, its container
+ID remained `96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d`, and
+migration 14 remains current. The pre-update server/web source snapshot is at
+`/var/www/.deploy-slice-7-8-review-fixes-20260929/source-before.tar.gz`.
+
+Post-deploy checks returned HTTP 200 for `/map`, the reported `/stats` route,
+`/api/health`, and a local map tile; `/readyz` reports the database healthy. The
+deployed source hashes match the worktree for the map live handler, observation
+readback, MapCanvas, map page, events page and event-link resolver. The 10,172
+deployed game assets were preserved (representative tile SHA-256 unchanged). No
+database fixture data or phBot commands were sent. PostgreSQL integration tests and
+authenticated visual/browser checks remain open; keep Slices 7 and 8 in progress.
+Exact next action remains to run the event and cross-cell mob PostgreSQL integration
+tests against a disposable database, then perform authenticated map verification at
+the required viewports.
+
+### Live character marker correction — 2026-09-29
+
+The deployed API has four fresh online Greatest characters in region 25735, but the
+map had no character markers: the renderer rejected every marker while the active
+profile's transform was marked unvalidated, and the default viewport opened at
+tile (168,97) rather than their region tile (135,100). The prior ledger entry had
+treated the exporter metadata as conclusive and missed the separately documented
+outdoor transform. See `docs/minimap-verification.md` for the official phBot
+position examples, exported tile joins, and synchronized reference marker evidence.
+
+The Greatest profile now supplies forward 192-coordinate-unit transforms for four
+verified outdoor regions, including 25735. `/map` and Stats previews render fresh
+characters at their tile-local X/Y and center on a fresh character when no explicit
+selection is present. A region with an exact tile join but no pixel transform may
+show a labelled approximate tile marker; unsupported regions still show none. The
+map's marker count reports placed characters, and the Jump control distinguishes
+exact position from tile-only placement. Commands still require verified reverse
+conversion and Z, so this display fix does not enable character operation.
+
+### Map marker and popup comparison — 2026-09-29
+
+The operator's three screenshot crops and authorized static inspection of
+`%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` establish 28 px circular character
+portraits with a blue outline and small name badge, monster bubbles with a 12 px
+normal/party-general base size, 1.2× champion and 1.5× giant scale, a thin HP ring,
+and 280 px dark monster/character popups. The reference uses a 36 px item icon card
+with a small drop badge, and a 34 px death icon with a character portrait badge.
+
+PhMon now enriches map characters and events with model portraits, renders local
+item icons from the selected server catalog, sizes monster bubbles by numeric type,
+and uses the documented monster name, HP/max HP and attack state when received.
+Clicking a marker opens its detail popup; the character action opens the detail page.
+The map keeps one popup open across live refreshes by updating markers in place.
+The deployed browser showed loaded portraits for four Greatest characters, one
+stable popup after an 11.5-second live refresh, and successful Open Stats navigation.
+
+The currently connected 1.5.0 agents do not transmit monster name or HP. The
+deployed popup therefore labels a live mob by model and shows unavailable HP; the
+1.5.1 plugin source in this worktree adds those optional fields without changing
+protocol v7. The reference drop badge artwork is absent from the approved local
+asset export, so the current locally drawn badge is a visible parity gap. The
+required cave floors, command Z/reverse transform, and real 1.5.1 phBot verification
+remain open; Slices 7–8 are in progress.
+
+Map zoom now spans 50%–2000%, starts at 125%, and advances in 25% increments. The
+50% tile layer combines four adjacent exported tiles into one raster tile so the
+minimum zoom displays the local map artwork.

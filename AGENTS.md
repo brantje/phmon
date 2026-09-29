@@ -2484,6 +2484,11 @@ Conceptual density:
 
 density = mob observations / observation samples
 
+This ratio is only a conceptual starting point. Monster positions returned in a
+snapshot do not establish which spatial cells the observer could see. Until a
+coverage footprint is supported by verified data, label the readback as an
+observer-local average count and do not claim spatial mob density.
+
 Exact spatial model may evolve during implementation.
 
 **Acceptance criteria:**
@@ -2492,7 +2497,9 @@ observations from multiple characters can contribute
 
 standing still for a long period does not incorrectly create arbitrarily hot cells merely because time passed
 
-backend can query spatial mob density by area/time range
+backend can query spatial mob density by area/time range only after an eligible
+observation-coverage model has been verified; otherwise expose the limited
+observer-local metric explicitly
 
 ### Slice 9 — Heatmaps
 
@@ -3620,3 +3627,197 @@ not been updated; do not deploy main over the live Slice 7/8 source. Exact next
 action: integrate this patch with the current Slice 7/8 branch, run relevant tests
 and migration against a disposable database, then deploy the combined server and
 verify the four Events rows show level 72.
+
+### Resume — 2026-09-29 Slices 7–8 map and mob observations
+
+Implemented a substantial Slice 7 map surface and Slice 8 observation foundation in
+the isolated worktree `C:\Users\sander\Documents\phmon-slice-7-8-luna` on
+`codex/slice-7-8-luna`, based on `main`. The user's earlier
+`codex/slice-7-8-map-density-plan` and the original checkout were left untouched.
+The local map reference was corrected to
+`http://192.168.10.105/?server=greatest&view=map&guild=ibot&x_from=2026-09-21&x_to=2026-09-28&e_sub=custom&an_from=2026-09-21&an_to=2026-09-28&u_page=8&c_tab=union&c_char=greatest%7Cgreatest%3Anuker1%3A1907`.
+Reference inspection confirms the Stats group summary has a compact map beside its
+summary and every character Overview card has its own position map; details and
+captured reference filenames are recorded in `docs/reference-parity.md`.
+
+Added `/map`, a shared Leaflet `CRS.Simple` tile renderer and a fail-closed coordinate
+adapter; Stats map previews preserve server/area/floor and fresh character selection.
+The profile endpoint describes the exported Greatest dataset, tile inventory, cave
+families/floors and validation status. Existing authenticated live updates now carry
+scoped map snapshots for character positions, current monster snapshots and recent
+death/drop events. Agent protocol v7 accepts legacy versions, gathers bounded
+`get_monsters()` snapshots, clears live monsters for empty/unavailable results, and
+spools eligible complete samples for commit-acknowledged persistence. Migration
+`000014_mob_observations.sql` adds idempotent durable samples/monster rows. The
+bounded readback groups by observer cell; because monster coordinates do not
+establish coverage, the API now identifies the ratio as an observer-local average
+and makes no spatial density claim. Event map links and both required Stats preview
+placements were added.
+Navigation and training-area command controls remain disabled until transform and
+runtime validation is available; historical density rendering/reset stay in Slice 9.
+
+Files changed include `server/internal/{httpapi,mapprofile,mobs}` and migration 14,
+`plugin/PhMon.py`, its tests/docs, `scripts/agent_simulator.py`, the map page/canvas,
+authenticated Nuxt proxy routes for map profile/density, Stats cards/panel, events,
+shared map/live types, frontend tests, the reference parity and capability documents,
+and this resume ledger. No generated game assets were committed.
+
+Validation: `python -m py_compile scripts/agent_simulator.py`; 83 plugin tests;
+`go test ./...`; Nuxt typecheck; 18 frontend unit tests; ESLint (0 errors, 29 existing
+and new HTML void-element warnings); Prettier check; and Nuxt production build all
+pass. `git diff --check` passes. The local worktree has no `TEST_DATABASE_URL`, so the
+database-backed Go suite was run inside a temporary remote Go container against a
+fresh isolated PostgreSQL project; `go test ./...` passed all packages, including the
+two-observer aggregation, sample replay and stationary-rate integration test. That
+test project's database and environment files were removed afterward. Separately, I
+ran `map-observations` against an isolated Compose project
+with its own temporary PostgreSQL volume. The protocol v7 simulator passed movement,
+current/empty/unavailable/truncated monster snapshots, death/drop events, reconnect
+and idempotent replay. Authenticated density readback contained two cells with
+numerator 1, denominator 2, and averages 1 and 0. The temporary project, database
+volume, environment file and copied harness were removed. The regular deployment's
+`/readyz` and `/api/health` are healthy; migration 14 is recorded, three agent records
+remain with two connected, eight character records remain, and the PostgreSQL
+container ID is unchanged. Authenticated HTTP checks passed for map profile, empty
+density readback, `/map`, `/stats` and a map PNG tile. The browser still shows the
+sign-in screen; no UI sign-in was automated, so screenshots at 1440×1000, 1280×800
+and 390×844 remain outstanding.
+
+Keep Slices 7 and 8 in progress. Root tile orientation evidence is documented, but
+the in-tile coordinate transform, reverse conversion, region boundaries and command
+Z are unvalidated. Qin-Shi Cave, Donwhang Stone Cave and Job Temple floor imagery and
+transforms are unavailable. Academy member map positions and a live current ground
+drop source are unavailable. Real phBot runtime validation and authorized navigation
+testing remain open. Exact next action: capture the three required viewport
+comparisons, then validate the selected server's outdoor and cave transforms against
+synchronized in-game/map observations and a supported phBot runtime before enabling
+map-issued commands or marking either slice complete.
+
+### Test deployment — 2026-09-29
+
+The operator authorized deploying this worktree to
+`node@192.168.10.25:/var/www/phmon` and supplied the test operator secret. The secret
+was placed in the remote `.env` with mode 0600 and is not recorded here. Before
+overlaying source, captured the prior application and `.env` to the mode-0700
+rollback snapshot `/var/www/.deploy-slice-7-8-luna-20260929`. Reused the already
+deployed 5,118 local map tiles after verifying the count and representative hashes;
+no additional game assets were transferred.
+
+The server and web containers were rebuilt and restarted, and additive migration 14
+applied successfully. The deployment is healthy, authenticated Map API proxies work,
+and PostgreSQL remained on its prior container and volume. A second Compose project
+bound to localhost used a separate temporary PostgreSQL volume for the protocol v7
+simulator and density readback; all test state was removed afterward. The production
+database received no simulator characters, events or mob samples. No phBot client
+was changed or operated. The deployed UI was not visually inspected beyond HTTP route
+responses because the browser is at the sign-in screen; visual and real-runtime gates
+remain open.
+
+### Resume — Stats map preview and navigation — 2026-09-29
+
+Fixed the selected-group Stats view hiding its group map and the disabled Map item in
+advanced Tools. `CharacterPanel.vue` now shows the selected group's summary preview;
+`AppSidebar.vue` links Map to `/map`. Nuxt typecheck, 18 frontend unit tests, lint
+(zero errors; 29 existing warnings) and production build pass. Deployed only the web
+container to `node@192.168.10.25`; Go and PostgreSQL were not restarted. Health,
+`/map`, the reported group Stats route and migration 14 were verified. Two v1.5.0 / v7
+agents remain connected; the database contains 17 mob samples / 37 observations.
+Exact next action: have the operator refresh the logged-in Stats page and confirm the
+selected-group map preview and active Map link visually; keep transform/cave/runtime
+acceptance gates open.
+
+### Resume — 2026-09-29 six Slice 7–8 review fixes
+
+Fixed only the six review findings in the isolated `codex/slice-7-8-luna` worktree.
+`MapCanvas.vue` now uses the same max-Y tile transform for opening and reading a
+preset, with a regression for tile (168, 97). Relative 1h/24h/7d map event windows
+advance every 30 seconds. Map event snapshots query deaths and drops independently,
+apply region and coordinate requirements in PostgreSQL before each 100-row bound,
+then merge and cap; an exact server-scoped event-ID query preserves deep links outside
+the rolling range. Events links carry the profile-mapped area/floor, and `/map`
+focuses a resolvable event while explaining missing region transforms or floor art.
+Profile responses are guarded by request sequence and selected server.
+
+The observation readback now exposes `observer_local_average_count`, observer-cell
+coordinates, monster-row and eligible-sample counts, and the average per sample. It
+explicitly says coverage is unverified and the metric is not spatial mob density.
+The PostgreSQL integration test now places a monster in another cell and checks that
+its location does not create a density value there; it is written but not run here.
+
+Validation passed: `go test ./...`; 23 Nuxt unit tests; Nuxt typecheck; ESLint (zero
+errors, 29 existing void-element warnings); Nuxt production build; and 83 plugin
+tests. The focused PostgreSQL integration tests were skipped because
+`TEST_DATABASE_URL` is unset and Docker is unavailable. No browser viewport comparison
+or real phBot session was run for these fixes. Slices 7 and 8 remain in progress: the
+outdoor transforms, cave maps, coordinate-linked marker parity and real-runtime gates
+are still open. Exact next action: rerun the event and mob PostgreSQL integration
+tests with a disposable `TEST_DATABASE_URL`, then complete authenticated map browser
+verification when that environment is available.
+
+### Resume — 2026-09-29 Slice 7–8 review-fix deployment
+
+Deployed the scoped six-finding fixes from this worktree to the previously authorized
+`node@192.168.10.25:/var/www/phmon` test deployment. Uploaded only `server/` and
+`web/` source (excluding local game assets and build artifacts); kept the remote root
+`.env` unchanged. The remote pre-update source snapshot is
+`/var/www/.deploy-slice-7-8-review-fixes-20260929/source-before.tar.gz`. Both images
+built successfully; only server and web were restarted. PostgreSQL was not restarted,
+its container ID stayed `96e300a6b9864d6d426fa21dc1a92f150e41e882169be9b038f3601308e8e20d`,
+and schema migration 14 remains current. The deployed asset count and representative
+map tile hash are unchanged.
+
+Post-deploy evidence: `/readyz` reports database healthy; `/map`, the group Stats
+route, `/api/health` and a local map tile return HTTP 200; deployed hashes for the
+Go map event handler, mob observation store and affected map/events UI files match
+this worktree. No production database fixtures or phBot commands were sent. The
+PostgreSQL integration tests and authenticated visual checks remain open; slices 7–8
+remain in progress. Exact next action: run the event and cross-cell mob integration
+tests with a disposable `TEST_DATABASE_URL`, then complete authenticated browser
+verification at 1440×1000, 1280×800 and 390×844. Keep transform, cave imagery and
+real phBot runtime gates open.
+
+### Resume — 2026-09-29 live map marker and popup parity
+
+Scoped to the operator's three map screenshots and authorized static inspection of
+the local phMonitor v0.5.0 executable. `MapCanvas.vue` now renders model portraits,
+small name labels, monster type/HP bubbles, item/drop and death markers, and
+character/monster/event detail popups. The character popup's Open Stats action
+routes to the character detail page. Incremental marker updates retain one popup
+through live snapshots. `map.vue` supplies group and event details; the shared
+presentation helper tests type scales, HP math, deduplication and local asset URLs.
+
+The map live response now applies the existing portrait catalog to characters and
+events and resolves drop item names/icons in the selected server catalog. Plugin
+1.5.1 includes bounded optional monster name, type code, HP/max HP and attack state;
+Go validates and relays these fields while keeping older v7 agents compatible.
+Files affected: `plugin/PhMon.py`, plugin test/README, Go mob validation/resources/
+live portrait enrichment and focused tests, map UI/types/utils/tests, protocol and
+capability/parity docs. No schema or command behavior changed in this increment.
+
+Validation: 84 plugin tests, `go test ./...`, 29 Nuxt unit tests, Nuxt typecheck,
+production build and lint (0 errors, 29 pre-existing void-element warnings) pass.
+Deployed server and web to `node@192.168.10.25:/var/www/phmon`; the remote source
+backup is `/var/www/.deploy-map-visuals-20260929/source-before.tar.gz`.
+PostgreSQL stayed healthy with its original container ID. The authenticated browser
+showed four loaded local model portraits and one character popup surviving an
+11.5-second live refresh; Open Stats navigated to `/characters/<id>`.
+
+Remaining blockers: connected 1.5.0 agents do not send monster name/HP, so those
+fields remain unavailable until the operator installs/restarts 1.5.1 and real
+phBot is observed. The reference drop badge image is absent from the approved
+local export, so the current locally drawn badge differs. Cave imagery/transforms,
+reverse command Z, real navigation, complete viewport comparison and the disposable
+PostgreSQL integration gates remain open. Keep Slices 7–8 in progress.
+Exact next action: install/verify plugin 1.5.1 on the real phBot agents and compare
+map markers and popups at the three required viewports with the operator's reference
+crops.
+
+### Map zoom adjustment — 2026-09-29
+
+Changed the full map zoom range to 50%–2000%, the default to 125%, and wheel/button
+increments to 25%. At the 50% floor, the Leaflet grid composites four neighboring
+exported 256 px map tiles into each rendered tile. The change is in
+`web/app/components/MapCanvas.vue`; `docs/reference-parity.md` records the chosen
+zoom behavior. No tests or builds were run for this small UI adjustment.
+Exact next action: review the PR after CI completes, then continue the real-runtime
+and required viewport parity checks while keeping Slices 7–8 in progress.
