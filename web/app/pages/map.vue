@@ -932,7 +932,8 @@ useHead({ title: 'Map · PhMon' })
             <span
               ><strong>{{ monsterDisplayName(entry) }}</strong
               ><small
-                >Lv. {{ entry.level ?? 'unavailable' }} ·
+                >Lv. {{ entry.level ?? 'unavailable' }} · Type:
+                {{ monsterTypePresentation(entry).label }} ·
                 {{ entry.observer.character }} · Region
                 {{ entry.region }}</small
               ></span
