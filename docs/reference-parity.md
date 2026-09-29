@@ -1080,7 +1080,9 @@ The Nearby monsters list now prefers a monster's display name, falls back to a
 humanized server name, and shows its level and type. The installed phBot docs for
 `get_monsters()` do not promise a level property; plugin 1.5.2 forwards it only when
 the runtime supplies a bounded integer. The UI clearly says “level unavailable” when
-that evidence is absent. Model/type codes are never presented as monster levels.
+that evidence is absent. Nearby list and map marker labels contain only name and
+level; numeric model/type codes remain available in the detailed popup for diagnosis
+and are never presented as monster levels.
 
 Current snapshots previously keyed rows by each process-local monster ID, which
 could duplicate one mob when two characters assigned it different IDs and could

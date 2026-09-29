@@ -356,7 +356,7 @@ const mapMarkers = computed(() => {
     for (const entry of currentMonsters.value) {
       addMarker(
         `${entry.observer.session_id}:${entry.id}`,
-        `${monsterDisplayName(entry)}${entry.level == null ? '' : ` · Lv. ${entry.level}`} · ${monsterTypePresentation(entry).label}`,
+        `${monsterDisplayName(entry)} · Lv. ${entry.level ?? 'unavailable'}`,
         'monster',
         entry.region,
         entry.x,
@@ -933,7 +933,6 @@ useHead({ title: 'Map · PhMon' })
               ><strong>{{ monsterDisplayName(entry) }}</strong
               ><small
                 >Lv. {{ entry.level ?? 'unavailable' }} ·
-                {{ monsterTypePresentation(entry).label }} ·
                 {{ entry.observer.character }} · Region
                 {{ entry.region }}</small
               ></span
