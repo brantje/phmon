@@ -2,6 +2,7 @@
 import type { CharacterView } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { regionTileCenter, worldPositionToRaster } from '~/utils/mapCoordinates'
+import { zoneNameText } from '~/utils/event-location'
 import { characterMapMarkers } from '~/utils/mapCharacterMarkers'
 import { mapPreviewLocation } from '~/utils/mapNavigation'
 
@@ -153,7 +154,7 @@ onMounted(() => void loadMapProfile(props.server))
           >{{ server }} · World ·
           {{
             centerCharacter
-              ? `${sameRegionCount} in Region ${centerCharacter.region}`
+              ? sameRegionCount + ' in ' + zoneNameText(centerCharacter.zone)
               : 'No fresh positions'
           }}</span
         >
@@ -195,13 +196,13 @@ onMounted(() => void loadMapProfile(props.server))
         <div class="map-preview-group-position">
           <strong v-if="centerCharacter">{{ centerCharacter.name }}</strong>
           <span v-if="centerCharacter"
-            >Region {{ centerCharacter.region }} ·
+            >{{ zoneNameText(centerCharacter.zone) }} ·
             {{ centerCharacter.x?.toFixed(1) }},
             {{ centerCharacter.y?.toFixed(1) }}</span
           >
           <span v-else>No fresh member position</span>
           <span v-if="offMapCount && centerCharacter"
-            >{{ offMapCount }} outside this region</span
+            >{{ offMapCount }} outside this zone</span
           >
           <span v-else-if="offMapCount"
             >{{ offMapCount }} position{{
@@ -221,14 +222,14 @@ onMounted(() => void loadMapProfile(props.server))
       </div>
       <div v-else class="map-preview-position">
         <span v-if="positionCharacter">
-          World · {{ positionCharacter.name }} · Region
-          {{ positionCharacter.region }} ·
+          World · {{ positionCharacter.name }} ·
+          {{ zoneNameText(positionCharacter.zone) }} ·
           {{ positionCharacter.x?.toFixed(1) }},
           {{ positionCharacter.y?.toFixed(1) }}
         </span>
         <span v-else>Position not available</span>
         <span v-if="offMapCount && centerCharacter"
-          >{{ offMapCount }} outside this region</span
+          >{{ offMapCount }} outside this zone</span
         >
         <span v-else-if="offMapCount"
           >{{ offMapCount }} position{{

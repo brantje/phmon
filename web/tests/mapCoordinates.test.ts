@@ -315,12 +315,19 @@ test('a known region without X/Y is labelled approximate and an unknown region i
     'world',
     'world',
     [
-      { character_id: 'tile-only', name: 'tile-only', region: 25735 },
+      {
+        character_id: 'tile-only',
+        name: 'tile-only',
+        region: 25735,
+        zone: 'Jangan',
+      },
       { character_id: 'unknown', name: 'unknown', region: 1, x: 1, y: 1 },
     ],
   )
   assert.equal(markers.length, 1)
   assert.equal(markers[0]?.placement, 'region-tile')
+  assert.match(markers[0]?.label || '', /Jangan/)
+  assert.doesNotMatch(markers[0]?.label || '', /Region 25735/)
   assert.deepEqual(markers[0]?.position, {
     tileX: 135,
     tileY: 100,

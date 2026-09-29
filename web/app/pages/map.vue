@@ -30,6 +30,7 @@ import {
   mapProfileRequestIsCurrent,
 } from '~/utils/mapNavigation'
 import { relativeMapEventWindow } from '~/utils/mapTimeRange'
+import { zoneNameText } from '~/utils/event-location'
 
 const {
   mapFeeds,
@@ -143,7 +144,7 @@ const linkedEventMessage = computed(() => {
   if (!mapProfile.value)
     return 'The linked event was found, but its server map profile is unavailable.'
   if (linkedEventLocation.value?.status === 'region-unmapped')
-    return `Region ${linkedEvent.value.region ?? 'unknown'} has no area mapping in this server profile; the event cannot be placed.`
+    return `${zoneNameText(linkedEvent.value.zone)} has no area mapping in this server profile; the event cannot be placed.`
   if (linkedEventLocation.value?.status === 'coordinates-unmappable')
     return `The event is in ${linkedEventLocation.value.areaID} / ${linkedEventLocation.value.floorID}, but its coordinates cannot be mapped with the current profile.`
   if (linkedEventLocation.value?.areaID !== 'world') {
@@ -374,7 +375,19 @@ async function submitMapAction(
       : 'set the training area'
   if (
     !window.confirm(
-      `Confirm ${label} for ${target.name} at ${point.x.toFixed(1)}, ${point.y.toFixed(1)}, Z ${point.z.toFixed(1)} in region ${point.region}?`,
+      'Confirm ' +
+        label +
+        ' for ' +
+        target.name +
+        ' at ' +
+        point.x.toFixed(1) +
+        ', ' +
+        point.y.toFixed(1) +
+        ', Z ' +
+        point.z.toFixed(1) +
+        ' in ' +
+        zoneNameForRegion(point.region) +
+        '?',
     )
   )
     return
@@ -542,6 +555,17 @@ const mapMarkers = computed(() => {
 const placedCharacterCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'character').length,
 )
+const zoneNameForRegion = (region?: number | null) => {
+  if (region == null) return 'Unknown zone'
+  const character = mapSnapshot.value?.characters.find(
+    (item) => item.region === region && item.zone,
+  )
+  if (character?.zone) return zoneNameText(character.zone)
+  const event = mapSnapshot.value?.events.find(
+    (item) => item.region === region && item.zone,
+  )
+  return zoneNameText(event?.zone)
+}
 const characterLocation = (character?: CharacterView) => {
   if (
     !character ||
@@ -550,7 +574,14 @@ const characterLocation = (character?: CharacterView) => {
     character.y == null
   )
     return 'Position unavailable'
-  return `Region ${character.region} · ${character.x.toFixed(1)}, ${character.y.toFixed(1)}${character.z == null ? '' : `, ${character.z.toFixed(1)}`}`
+  return (
+    zoneNameText(character.zone) +
+    ' · ' +
+    character.x.toFixed(1) +
+    ', ' +
+    character.y.toFixed(1) +
+    (character.z == null ? '' : ', ' + character.z.toFixed(1))
+  )
 }
 let profileRequestID = 0
 async function loadProfile(selectedServer: string) {
@@ -866,14 +897,11 @@ useHead({ title: 'Map · PhMon' })
         </select>
       </label>
       <label>
-        Region
-        <select
-          v-model.number="regionID"
-          aria-label="Filter map data by region"
-        >
-          <option :value="0">All regions</option>
+        Zone
+        <select v-model.number="regionID" aria-label="Filter map data by zone">
+          <option :value="0">All zones</option>
           <option v-for="region in regionOptions" :key="region" :value="region">
-            Region {{ region }}
+            {{ zoneNameForRegion(region) }}
           </option>
         </select>
       </label>
@@ -1052,8 +1080,8 @@ useHead({ title: 'Map · PhMon' })
         <div class="map-viewport-footer">
           <span v-if="selectedTile && selectedGamePosition"
             >Selected {{ selectedGamePosition.x.toFixed(1) }},
-            {{ selectedGamePosition.y.toFixed(1) }} in region
-            {{ selectedGamePosition.region }}.</span
+            {{ selectedGamePosition.y.toFixed(1) }} in
+            {{ zoneNameForRegion(selectedGamePosition.region) }}.</span
           >
           <span v-else-if="selectedTile"
             >Selected raster tile {{ selectedTile.tileX }} ×
@@ -1178,8 +1206,8 @@ useHead({ title: 'Map · PhMon' })
             <span
               ><strong>{{ character.name }}</strong
               ><small
-                >{{ character.server }} · Region
-                {{ character.region ?? '—' }}</small
+                >{{ character.server }} ·
+                {{ zoneNameText(character.zone) }}</small
               ></span
             >
             <small>{{
@@ -1191,7 +1219,7 @@ useHead({ title: 'Map · PhMon' })
             }}</small>
           </button>
           <p v-if="!scopedCharacters.length" class="map-empty-copy">
-            No characters in this server and region scope.
+            No characters in this server and zone scope.
           </p>
         </section>
         <section class="map-side-list">
@@ -1209,8 +1237,8 @@ useHead({ title: 'Map · PhMon' })
               ><small
                 >Lv. {{ entry.level ?? 'unavailable' }} · Type:
                 {{ monsterTypePresentation(entry).label }} ·
-                {{ entry.observer.character }} · Region
-                {{ entry.region }}</small
+                {{ entry.observer.character }} ·
+                {{ zoneNameForRegion(entry.region) }}</small
               ></span
             >
             <small>{{ entry.x.toFixed(0) }}, {{ entry.y.toFixed(0) }}</small>
@@ -1247,7 +1275,7 @@ useHead({ title: 'Map · PhMon' })
                     : 'Drop'
               }}</strong
               ><small
-                >{{ event.character }} · Region {{ event.region ?? '—' }}</small
+                >{{ event.character }} · {{ zoneNameText(event.zone) }}</small
               ></span
             >
             <time :datetime="event.occurred_at">{{

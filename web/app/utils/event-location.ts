@@ -1,14 +1,25 @@
 import type { ActivityEvent } from '~~/shared/types/live'
 
+export function zoneNameText(zone?: string | null): string {
+  return typeof zone === 'string' && zone.trim() ? zone.trim() : 'Unknown zone'
+}
+
 export function eventLocationText(event: ActivityEvent): string {
-  const zone = typeof event.zone === 'string' ? event.zone.trim() : ''
+  const zone = zoneNameText(event.zone)
   const x = event.x
   const y = event.y
 
   if (x != null && y != null) {
-    const label = zone || 'Unknown zone'
-    return `${label} · ${x.toFixed(1)}, ${y.toFixed(1)}, ${event.z?.toFixed(1) ?? '—'}`
+    return (
+      zone +
+      ' · ' +
+      x.toFixed(1) +
+      ', ' +
+      y.toFixed(1) +
+      ', ' +
+      (event.z?.toFixed(1) ?? '—')
+    )
   }
 
-  return zone || 'Location unknown'
+  return event.zone?.trim() ? zone : 'Location unknown'
 }

@@ -261,7 +261,7 @@ func (s *Store) MarkUnknown(ctx context.Context, id, reason string, at time.Time
 
 func (s *Store) SaveControlState(ctx context.Context, characterID, sessionID string, state ControlState) error {
 	_, err := s.pool.Exec(ctx, `INSERT INTO character_control_state(session_id,character_id,training_available,training_region,training_zone,training_x,training_y,training_z,training_radius,observed_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(session_id) DO UPDATE SET training_available=EXCLUDED.training_available,training_region=EXCLUDED.training_region,training_zone=EXCLUDED.training_zone,training_x=EXCLUDED.training_x,training_y=EXCLUDED.training_y,training_z=EXCLUDED.training_z,training_radius=EXCLUDED.training_radius,observed_at=EXCLUDED.observed_at`, sessionID, characterID, state.TrainingAvailable, state.TrainingRegion, state.TrainingZone, state.TrainingX, state.TrainingY, state.TrainingZ, state.TrainingRadius, state.ObservedAt)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::timestamptz,now())) ON CONFLICT(session_id) DO UPDATE SET training_available=EXCLUDED.training_available,training_region=EXCLUDED.training_region,training_zone=EXCLUDED.training_zone,training_x=EXCLUDED.training_x,training_y=EXCLUDED.training_y,training_z=EXCLUDED.training_z,training_radius=EXCLUDED.training_radius,observed_at=EXCLUDED.observed_at`, sessionID, characterID, state.TrainingAvailable, state.TrainingRegion, state.TrainingZone, state.TrainingX, state.TrainingY, state.TrainingZ, state.TrainingRadius, state.ObservedAt)
 	return err
 }
 
