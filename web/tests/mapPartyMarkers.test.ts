@@ -117,45 +117,40 @@ test('party marker uses the configured Silkroad party minimap icon', () => {
 })
 
 test('party markers reuse exact world transform and fail closed on bad scope', () => {
-  const valid = partyMapMarkers(profile(), 'world', 'world', [member()])
-  assert.equal(valid.length, 1)
+  const visible = partyMapMarkers(profile(), 'world', 'world', [member()])
+  assert.equal(visible.length, 1)
 
-  const wrongRegion = member({ observer_region: 25274 })
-  const rejectedRegion = partyMapMarkers(
+  const wrongRegionMember = member({ observer_region: 25274 })
+  const wrongRegion = partyMapMarkers(
     profile(),
     'world',
     'world',
-    [wrongRegion],
+    [wrongRegionMember],
   )
-  assert.equal(rejectedRegion.length, 0)
+  assert.equal(wrongRegion.length, 0)
 
-  const outOfBounds = member({ x: 999999 })
-  const rejectedCoordinate = partyMapMarkers(
+  const outOfRangeMember = member({ x: 999999 })
+  const outOfRange = partyMapMarkers(
     profile(),
     'world',
     'world',
-    [outOfBounds],
+    [outOfRangeMember],
   )
-  assert.equal(rejectedCoordinate.length, 0)
+  assert.equal(outOfRange.length, 0)
 })
 
 test('managed character suppresses duplicate only while supplied as visible', () => {
-  const hiddenDuplicate = partyMapMarkers(
+  const managed = partyMapMarkers(
     profile(),
     'world',
     'world',
     [member()],
     [' ally '],
   )
-  assert.equal(hiddenDuplicate.length, 0)
+  assert.equal(managed.length, 0)
 
-  const visiblePartyMember = partyMapMarkers(
-    profile(),
-    'world',
-    'world',
-    [member()],
-  )
-  assert.equal(visiblePartyMember.length, 1)
+  const partyOnly = partyMapMarkers(profile(), 'world', 'world', [member()])
+  assert.equal(partyOnly.length, 1)
 })
 
 test('cave party placement requires observer floor Z', () => {
@@ -167,10 +162,12 @@ test('cave party placement requires observer floor Z', () => {
     x: -24294,
     y: -91,
   })
-  const placed = partyMapMarkers(profile(), 'cave', '1F', [cave])
-  assert.equal(placed.length, 1)
+  const visible = partyMapMarkers(profile(), 'cave', '1F', [cave])
+  assert.equal(visible.length, 1)
 
-  const withoutZ = { ...cave, observer_z: undefined }
-  const rejected = partyMapMarkers(profile(), 'cave', '1F', [withoutZ])
-  assert.equal(rejected.length, 0)
+  const { observer_z: _ignored, ...withoutZ } = cave
+  const unscoped = partyMapMarkers(profile(), 'cave', '1F', [
+    withoutZ as MapPartyMember,
+  ])
+  assert.equal(unscoped.length, 0)
 })
