@@ -3821,3 +3821,25 @@ exported 256 px map tiles into each rendered tile. The change is in
 zoom behavior. No tests or builds were run for this small UI adjustment.
 Exact next action: review the PR after CI completes, then continue the real-runtime
 and required viewport parity checks while keeping Slices 7–8 in progress.
+
+### Resume — 2026-09-29 nearby monster names and duplicate sightings
+
+The current map side list displayed numeric monster data and deduped only on
+process-local IDs. It now uses monster name, then a readable server name, then a
+model fallback; it displays the level separately and explicitly reports unavailable
+when no verified integer is present. Plugin version 1.5.2 passes an optional bounded
+level only if the phBot runtime provides it; the documented `get_monsters()` response
+does not promise that field. Map snapshots now collapse sightings only across
+sessions when server, region, monster identity and position (within 8 world units)
+match, selecting the freshest observation. Same-session monsters remain separate.
+Focused regression cases were added for display labels, cross-observer overlap,
+non-merges and level validation. Files affected: `plugin/PhMon.py`, plugin README and
+tests, Go live monster validation/tests, shared live types, map page/marker helper/
+popup and its tests, and this parity/operations ledger.
+
+Checks were not run in this increment. The live `get_monsters()` level field remains
+runtime-dependent and must not be represented as verified until a connected 1.5.2
+phBot agent demonstrates it. Previously connected 1.5.0 agents do not send monster
+names. Slice 7–8 acceptance gates remain open. Exact next action: review the focused
+diff and merge the PR only after CI plus runtime level availability and required map
+viewport checks are recorded.

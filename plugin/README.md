@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Slice 7–8 development release is **1.5.1** (`vsro_1188_passive_r2`, API
+The current Slice 7–8 development release is **1.5.2** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v7 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -37,9 +37,11 @@ spooled at most once per minute per session, region, world floor and 192-unit
 observer cell. Empty observations are durable zero samples. Unavailable and truncated
 results never enter historical storage. The spool is bounded to 2,048 samples / 8 MiB
 and rows leave it only after the Go service reports persistence or a terminal rejection.
-Version 1.5.1 also passes bounded monster name, numeric type, HP/max HP and attack
-state through the current live snapshot for the map marker and popup. Existing 1.5.0
-agents still connect, but their map popups cannot show fields they did not send.
+Version 1.5.1 added bounded monster name, numeric type, HP/max HP and attack state;
+1.5.2 also passes an optional bounded level when the runtime includes it. The
+documented `get_monsters()` response does not promise a level field, so the map labels
+the level unavailable when the active runtime omits it. Existing 1.5.0 agents still
+connect, but their map popups cannot show fields they did not send.
 This cadence, spool and transport have simulator/unit-test coverage; installed phBot
 behavior and the PostgreSQL-backed reconnect/replay gate remain open.
 

@@ -107,10 +107,11 @@ func TestCurrentMonsterSnapshotsClearAndExpireSeparately(t *testing.T) {
 
 func TestLiveMonsterPopupFieldsAreOptionalAndBounded(t *testing.T) {
 	now := time.Now().UTC()
-	typeCode, hp, maxHP := 20, int64(7515), int64(9000)
+	typeCode, level, hp, maxHP := 20, 72, int64(7515), int64(9000)
 	monster := Monster{ID: "46296", Region: 25735, X: 48.8, Y: 1550.7,
 		Type: "20", TypeCode: &typeCode, Name: "Eldimmu", ServerName: "MOB_EU_ELDIMMU",
-		HP: &hp, MaxHP: &maxHP, Attacking: true}
+		Level: &level,
+		HP:    &hp, MaxHP: &maxHP, Attacking: true}
 	if err := ValidateLiveSnapshot("observed", 25735, []Monster{monster}, now, now); err != nil {
 		t.Fatalf("documented monster fields rejected: %v", err)
 	}
@@ -119,6 +120,11 @@ func TestLiveMonsterPopupFieldsAreOptionalAndBounded(t *testing.T) {
 		t.Fatal("oversized monster name accepted")
 	}
 	monster.Name = "Eldimmu"
+	level = 256
+	if err := ValidateLiveSnapshot("observed", 25735, []Monster{monster}, now, now); err == nil {
+		t.Fatal("invalid monster level accepted")
+	}
+	level = 72
 	maxHP = 9007199254740992
 	if err := ValidateLiveSnapshot("observed", 25735, []Monster{monster}, now, now); err == nil {
 		t.Fatal("unsafe JSON HP accepted")

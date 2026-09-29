@@ -725,7 +725,7 @@ documents creating a new area through the phBot UI's Add action.
   documents no-argument `get_position()` returning current region and x/y/z, or
   `None`. This supplies observer positions and retains optional observed Z; it does
   not establish a map transform.
-- Plugin v1.5.0 / agent protocol v7 polls the getter every ten seconds and limits each
+- Plugin v1.5.2 / agent protocol v7 polls the getter every ten seconds and limits each
   snapshot to 128 entries. `None`/missing/exception, observed empty and truncated are
   kept distinct. Only complete untruncated snapshots enter the local durable sample
   spool. Sample cadence is one minute per session/region/unmapped-floor/192-unit
@@ -760,10 +760,13 @@ above remains closed.
 ### Map monster presentation fields — 2026-09-29
 
 The documented `get_monsters()` response exposes each nearby monster's `name`,
-`servername`, `model`, numeric `type`, `region`, X/Y, `hp`, `max_hp` and `attacking`.
-Plugin 1.5.1 carries bounded optional name, numeric type, HP and attacking values
-through the existing v7 `map.monsters` frame. Go validates them before replacing
-the current snapshot. Older agents remain compatible, but their absent fields
-cannot be reconstructed from a map screenshot or the stored observation rows.
-The 1.5.1 frame and rendering path passed plugin, Go and Nuxt checks; the installed
-real phBot runtime has not yet been verified with 1.5.1.
+`servername`, `model`, numeric `type`, `region`, X/Y, `hp`, `max_hp` and `attacking`;
+it does not document a level field. Plugin 1.5.1 carries bounded optional name,
+numeric type, HP and attacking values, and 1.5.2 additionally forwards a level only
+if supplied by the runtime. Go validates these fields in the existing v7
+`map.monsters` frame. The map never treats a numeric type/model code as a level and
+shows level unavailable when absent. Older agents remain compatible, but their
+absent fields cannot be reconstructed from a map screenshot or stored rows. Current
+map sightings are deduplicated across sessions by server, region, model/server name
+and an 8-unit position tolerance, while retaining same-session rows. The installed
+real phBot runtime has not yet been verified with 1.5.2 or a level field.

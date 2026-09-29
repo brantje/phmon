@@ -11,6 +11,7 @@ import type { MapProfile } from '~~/shared/types/map'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
 import {
   localMapAsset,
+  monsterDisplayName,
   monsterHPFraction,
   monsterTypePresentation,
 } from '~/utils/mapMarkerPresentation'
@@ -261,16 +262,17 @@ function markerPopup(marker: MapCanvasMarker) {
     panel.append(header, details, actions)
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
-    title.textContent =
-      monster.name ||
-      monster.servername ||
-      `Model ${monster.model_id ?? 'unknown'}`
+    title.textContent = monsterDisplayName(monster)
     subtitle.textContent = `Position | ${positionText(monster.x, monster.y, monster.z)}`
     const dot = document.createElement('span')
     dot.className = 'phmon-map-detail-monster-dot'
     header.prepend(dot)
     details.append(
       detailRow('Type', monsterTypePresentation(monster).label),
+      detailRow(
+        'Level',
+        monster.level == null ? 'Unavailable' : String(monster.level),
+      ),
       detailRow('HP', `${integer(monster.hp)} / ${integer(monster.max_hp)}`),
     )
     panel.append(header, details)

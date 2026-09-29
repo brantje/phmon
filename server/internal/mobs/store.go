@@ -44,6 +44,7 @@ type Monster struct {
 	TypeCode   *int     `json:"type_code,omitempty"`
 	Name       string   `json:"name,omitempty"`
 	ServerName string   `json:"servername,omitempty"`
+	Level      *int     `json:"level,omitempty"`
 	HP         *int64   `json:"hp,omitempty"`
 	MaxHP      *int64   `json:"max_hp,omitempty"`
 	Attacking  bool     `json:"attacking,omitempty"`
@@ -107,6 +108,7 @@ func validMonsterDetails(monster Monster) bool {
 		(monster.TypeCode == nil || *monster.TypeCode >= 0 && *monster.TypeCode <= 255) &&
 		len(monster.Name) <= 128 && !strings.ContainsRune(monster.Name, 0) &&
 		len(monster.ServerName) <= 128 && !strings.ContainsRune(monster.ServerName, 0) &&
+		(monster.Level == nil || *monster.Level >= 1 && *monster.Level <= 255) &&
 		(monster.HP == nil || *monster.HP >= 0 && *monster.HP <= maxSafeJSONInteger) &&
 		(monster.MaxHP == nil || *monster.MaxHP >= 0 && *monster.MaxHP <= maxSafeJSONInteger)
 }

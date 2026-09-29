@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.5.1'
+pVersion = '1.5.2'
 pUrl = ''
 
 PROTOCOL_VERSION = 7
@@ -242,6 +242,9 @@ def collect_monster_observation(api=None):
             detail = _bounded_text(value.get(source), 128)
             if detail is not None:
                 monster[target] = detail
+        level = value.get('level')
+        if isinstance(level, int) and not isinstance(level, bool) and 1 <= level <= 255:
+            monster['level'] = level
         for source in ('hp', 'max_hp'):
             detail = value.get(source)
             if isinstance(detail, int) and not isinstance(detail, bool) and 0 <= detail <= 9007199254740991:
@@ -1766,6 +1769,8 @@ def _valid_mob_sample(sample):
             for detail in ('name', 'servername'):
                 if monster.get(detail) is not None and (not isinstance(monster[detail], str) or len(monster[detail]) > 128):
                     return False
+            if monster.get('level') is not None and (not isinstance(monster['level'], int) or isinstance(monster['level'], bool) or monster['level'] < 1 or monster['level'] > 255):
+                return False
             for detail in ('hp', 'max_hp'):
                 if monster.get(detail) is not None and (not isinstance(monster[detail], int) or isinstance(monster[detail], bool) or monster[detail] < 0 or monster[detail] > 9007199254740991):
                     return False

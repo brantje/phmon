@@ -124,6 +124,7 @@ export interface MapMonster {
   type_code?: number
   name?: string
   servername?: string
+  level?: number
   hp?: number
   max_hp?: number
   attacking?: boolean

@@ -1073,3 +1073,20 @@ remain open; Slices 7–8 are in progress.
 Map zoom now spans 50%–2000%, starts at 125%, and advances in 25% increments. The
 50% tile layer combines four adjacent exported tiles into one raster tile so the
 minimum zoom displays the local map artwork.
+
+### Nearby monster labels and cross-character deduplication — 2026-09-29
+
+The Nearby monsters list now prefers a monster's display name, falls back to a
+humanized server name, and shows its level and type. The installed phBot docs for
+`get_monsters()` do not promise a level property; plugin 1.5.2 forwards it only when
+the runtime supplies a bounded integer. The UI clearly says “level unavailable” when
+that evidence is absent. Model/type codes are never presented as monster levels.
+
+Current snapshots previously keyed rows by each process-local monster ID, which
+could duplicate one mob when two characters assigned it different IDs and could
+merge unrelated mobs when IDs collided. The UI now collapses only cross-session
+sightings with the same server, region and model/server identity within 8 world
+units, keeping the freshest row. Same-session rows remain distinct. Focused frontend,
+plugin and Go regression cases cover these rules. Connected 1.5.0 agents still lack
+the newer descriptive fields until replaced; real-runtime level availability and
+Slice 7–8 gates remain unverified.

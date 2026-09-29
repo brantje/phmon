@@ -39,7 +39,8 @@ class MobObservationTests(unittest.TestCase):
     def test_monster_collector_preserves_bounded_popup_and_hp_ring_fields(self):
         raw = {46296: {'model': 1933, 'type': 20, 'name': 'Eldimmu',
                        'servername': 'MOB_EU_ELDIMMU', 'region': 25735,
-                       'x': 48.8, 'y': 1550.7, 'hp': 7515, 'max_hp': 9000,
+                       'x': 48.8, 'y': 1550.7, 'level': 72,
+                       'hp': 7515, 'max_hp': 9000,
                        'attacking': 1}}
         status, monsters, truncated = plugin.collect_monster_observation(
             {'get_monsters': lambda: raw})
@@ -47,9 +48,18 @@ class MobObservationTests(unittest.TestCase):
         self.assertEqual(monsters[0]['type_code'], 20)
         self.assertEqual(monsters[0]['name'], 'Eldimmu')
         self.assertEqual(monsters[0]['servername'], 'MOB_EU_ELDIMMU')
+        self.assertEqual(monsters[0]['level'], 72)
         self.assertEqual(monsters[0]['hp'], 7515)
         self.assertEqual(monsters[0]['max_hp'], 9000)
         self.assertTrue(monsters[0]['attacking'])
+
+    def test_monster_collector_ignores_invalid_or_undocumented_level_values(self):
+        for value in (0, 256, True, '72'):
+            raw = {'1': {'model': 1933, 'region': 25735, 'x': 1, 'y': 2,
+                         'level': value}}
+            _, monsters, _ = plugin.collect_monster_observation(
+                {'get_monsters': lambda raw=raw: raw})
+            self.assertNotIn('level', monsters[0])
 
     def test_spool_reloads_pending_sample_and_removes_only_after_ack(self):
         sample = {

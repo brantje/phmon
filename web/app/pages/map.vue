@@ -15,6 +15,7 @@ import {
 import { characterMapMarkers } from '~/utils/mapCharacterMarkers'
 import {
   dedupeCurrentMonsters,
+  monsterDisplayName,
   monsterTypePresentation,
 } from '~/utils/mapMarkerPresentation'
 import {
@@ -355,7 +356,7 @@ const mapMarkers = computed(() => {
     for (const entry of currentMonsters.value) {
       addMarker(
         `${entry.observer.session_id}:${entry.id}`,
-        `${entry.name || entry.servername || `Model ${entry.model_id ?? 'unknown'}`} · ${monsterTypePresentation(entry).label}`,
+        `${monsterDisplayName(entry)}${entry.level == null ? '' : ` · Lv. ${entry.level}`} · ${monsterTypePresentation(entry).label}`,
         'monster',
         entry.region,
         entry.x,
@@ -929,13 +930,10 @@ useHead({ title: 'Map · PhMon' })
             class="map-observation-row"
           >
             <span
-              ><strong>{{
-                entry.name ||
-                entry.servername ||
-                `Model ${entry.model_id ?? 'unknown'}`
-              }}</strong
+              ><strong>{{ monsterDisplayName(entry) }}</strong
               ><small
-                >{{ monsterTypePresentation(entry).label }} · Region
+                >Lv. {{ entry.level ?? 'unavailable' }} ·
+                {{ monsterTypePresentation(entry).label }} · Region
                 {{ entry.region }}</small
               ></span
             >

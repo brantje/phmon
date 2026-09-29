@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   dedupeCurrentMonsters,
   localMapAsset,
+  monsterDisplayName,
   monsterHPFraction,
   monsterTypePresentation,
 } from '../app/utils/mapMarkerPresentation.ts'
@@ -29,7 +30,7 @@ test('reference monster types retain the documented normal/champion/giant scale'
   assert.equal(monsterHPFraction({}), null)
 })
 
-test('current monster observers collapse one game monster without losing the freshest details', () => {
+test('current monster observers collapse cross-character sightings without merging nearby mobs', () => {
   const common = {
     server: 'Greatest',
     agent_id: 'a',
@@ -43,18 +44,73 @@ test('current monster observers collapse one game monster without losing the fre
     {
       ...common,
       observed_at: '2026-09-29T08:00:00Z',
-      monsters: [{ id: '42', region: 25735, x: 1, y: 2, hp: 20 }],
+      monsters: [
+        { id: '42', model_id: 1933, region: 25735, x: 1, y: 2, hp: 20 },
+      ],
     },
     {
       ...common,
       session_id: 's2',
       observed_at: '2026-09-29T08:00:01Z',
-      monsters: [{ id: '42', region: 25735, x: 3, y: 4, hp: 10 }],
+      monsters: [
+        { id: '77', model_id: 1933, region: 25735, x: 3, y: 4, hp: 10 },
+      ],
     },
   ])
   assert.equal(monsters.length, 1)
   assert.equal(monsters[0]?.x, 3)
   assert.equal(monsters[0]?.hp, 10)
+
+  const distinct = dedupeCurrentMonsters([
+    {
+      ...common,
+      observed_at: '2026-09-29T08:00:01Z',
+      monsters: [
+        { id: '42', model_id: 1933, region: 25735, x: 1, y: 2 },
+        { id: '44', model_id: 1933, region: 25735, x: 30, y: 2 },
+      ],
+    },
+    {
+      ...common,
+      session_id: 's2',
+      observed_at: '2026-09-29T08:00:02Z',
+      monsters: [
+        { id: '42', model_id: 9999, region: 25735, x: 1, y: 2 },
+        { id: '77', model_id: 1933, region: 25735, x: 2, y: 2 },
+        { id: '78', model_id: 1933, region: 25735, x: 31, y: 2 },
+      ],
+    },
+    {
+      ...common,
+      server: 'Other server',
+      session_id: 'other-server',
+      observed_at: '2026-09-29T08:00:03Z',
+      monsters: [{ id: '45', model_id: 1933, region: 25735, x: 1, y: 2 }],
+    },
+  ])
+  assert.equal(distinct.length, 4)
+})
+
+test('monster labels prefer names and prettify server names when name is numeric', () => {
+  assert.equal(
+    monsterDisplayName({ id: '1', name: 'Eldimmu', region: 1, x: 0, y: 0 }),
+    'Eldimmu',
+  )
+  assert.equal(
+    monsterDisplayName({
+      id: '1',
+      name: '16',
+      servername: 'MOB_EU_ELDIMMU',
+      region: 1,
+      x: 0,
+      y: 0,
+    }),
+    'Eldimmu',
+  )
+  assert.equal(
+    monsterDisplayName({ id: '1', model_id: 1933, region: 1, x: 0, y: 0 }),
+    'Unknown monster',
+  )
 })
 
 test('map artwork accepts only local portrait and item assets', () => {

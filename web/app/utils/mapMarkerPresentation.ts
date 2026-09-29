@@ -51,24 +51,76 @@ export interface CurrentMapMonster extends MapMonster {
   observer: MapMonsterObservation
 }
 
+const CROSS_OBSERVER_MATCH_DISTANCE = 8
+
+function monsterIdentities(monster: MapMonster): string[] {
+  const identities: string[] = []
+  if (monster.model_id != null) identities.push(`model:${monster.model_id}`)
+  if (monster.servername)
+    identities.push(`server:${monster.servername.trim().toLocaleLowerCase()}`)
+  if (monster.name && !/^\d+$/.test(monster.name))
+    identities.push(`name:${monster.name.trim().toLocaleLowerCase()}`)
+  return identities
+}
+
 export function dedupeCurrentMonsters(
   snapshots: MapMonsterObservation[],
 ): CurrentMapMonster[] {
-  const byID = new Map<string, CurrentMapMonster>()
+  const monsters: CurrentMapMonster[] = []
   for (const observer of snapshots) {
     if (observer.status === 'unavailable') continue
     for (const monster of observer.monsters) {
-      const key = `${observer.server.toLowerCase()}\u0000${monster.region}\u0000${monster.id}`
-      const previous = byID.get(key)
+      const identities = monsterIdentities(monster)
+      const matchIndex = identities.length
+        ? monsters.findIndex((candidate) => {
+            if (
+              candidate.observer.server.toLocaleLowerCase() !==
+                observer.server.toLocaleLowerCase() ||
+              candidate.region !== monster.region ||
+              !monsterIdentities(candidate).some((identity) =>
+                identities.includes(identity),
+              ) ||
+              candidate.observer.session_id === observer.session_id
+            )
+              return false
+            return (
+              Math.hypot(candidate.x - monster.x, candidate.y - monster.y) <=
+              CROSS_OBSERVER_MATCH_DISTANCE
+            )
+          })
+        : -1
+      const current = { ...monster, observer }
+      if (matchIndex < 0) {
+        monsters.push(current)
+        continue
+      }
+
+      const previous = monsters[matchIndex]
       if (
-        !previous ||
         Date.parse(observer.observed_at) >
-          Date.parse(previous.observer.observed_at)
+        Date.parse(previous.observer.observed_at)
       )
-        byID.set(key, { ...monster, observer })
+        monsters[matchIndex] = current
     }
   }
-  return [...byID.values()]
+  return monsters
+}
+
+export function monsterDisplayName(monster: MapMonster): string {
+  const name = monster.name?.trim()
+  if (name && !/^\d+$/.test(name)) return name
+
+  const servername = monster.servername?.trim()
+  if (servername) {
+    const readable = servername
+      .replace(/^MOB_[A-Z]{2}_/i, '')
+      .replace(/^MOB_/i, '')
+      .replace(/_/g, ' ')
+      .toLocaleLowerCase()
+      .replace(/\b\w/g, (letter) => letter.toLocaleUpperCase())
+    if (readable) return readable
+  }
+  return 'Unknown monster'
 }
 
 export function localMapAsset(
