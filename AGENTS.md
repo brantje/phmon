@@ -3869,7 +3869,11 @@ pins and name badges. `/map` now includes offline characters with retained regio
 X/Y and a valid `state_updated_at`; the portrait is grayscale with a gray border, and
 the row/popup says offline last-known position. These coordinates are display-only:
 fresh online state is still required for current-position actions. Added focused
-eligibility coverage. The current Greatest browser view has four online characters,
-so an offline live screenshot comparison remains unverified. Exact next action: build
-and deploy the web change to the authorized test host, then verify against an actual
-offline character at desktop and mobile sizes; run the focused frontend test suite.
+eligibility coverage. The web production image built and was deployed to the
+authorized test host; `/map`, `/api/health` and server `/readyz` returned HTTP 200,
+and PostgreSQL reports healthy. The focused frontend suite passed (31 tests). The
+current Greatest browser scope still has four online and zero offline characters,
+so live visual comparison against an actual offline row remains unverified. Exact
+next action: when a retained offline character is available, compare the deployed
+marker at desktop and mobile sizes; keep Slices 7–8 in progress until all acceptance
+gates, including real phBot and cave transform validation, are met.

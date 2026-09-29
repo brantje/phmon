@@ -1110,5 +1110,8 @@ pins at each character's last location. The map now includes offline characters 
 their saved location and observation timestamp exist, renders their portraits in
 grayscale with a gray outline, and labels their row/popup as an offline last-known
 position. Their last-known location can be viewed or jumped to, while current-position
-freshness remains required for live actions. Automated checks and viewport comparison
-for the offline treatment remain to be run.
+freshness remains required for live actions. The focused frontend suite passed all 31
+tests and the production web image was deployed; `/map`, `/api/health` and server
+`/readyz` returned HTTP 200 with PostgreSQL healthy. The inspected Greatest scope had
+four online and zero offline characters, so a live offline-marker screenshot and
+viewport comparison remain open until an offline character is present.
