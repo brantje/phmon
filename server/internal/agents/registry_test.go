@@ -179,7 +179,6 @@ func TestDisconnectFenceDoesNotAdvanceWhenANewerConnectionRegisters(t *testing.T
 	}
 }
 
-
 func TestCredentialRevocationReservationFencesRegistration(t *testing.T) {
 	registry := NewRegistry()
 	if !registry.BeginCredentialRevocation("agent") {
