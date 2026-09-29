@@ -19,6 +19,7 @@ import (
 
 type AgentStore interface {
 	CreateCredential(context.Context, agentdomain.Credential) error
+	RevokeCredential(context.Context, string) (bool, error)
 	AuthenticateToken(context.Context, string) (string, error)
 	MarkConnected(context.Context, string, time.Time, int, string, string) error
 	MarkSeen(context.Context, string) error
@@ -123,6 +124,7 @@ func New(deps Dependencies) http.Handler {
 		}
 		register("GET /api/agents", false, handler.list)
 		register("POST /api/agents/credentials", true, handler.createCredential)
+		register("DELETE /api/agents/{id}", true, handler.remove)
 		if deps.Characters != nil {
 			ch := &characterHandler{store: deps.Characters, live: live, resources: deps.Resources}
 			register("GET /api/characters", false, ch.list)
