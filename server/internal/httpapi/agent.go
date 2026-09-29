@@ -807,11 +807,42 @@ func (h *agentHandler) createCredential(w http.ResponseWriter, r *http.Request) 
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
 		return
 	}
+	if h.live != nil {
+		h.live.Invalidate()
+	}
 
 	respondJSON(w, http.StatusCreated, AgentCredentialView{
 		AgentID:    credential.AgentID,
 		AgentToken: credential.Token,
 	})
+}
+
+func (h *agentHandler) remove(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("id")
+	if !agentdomain.ValidAgentID(agentID) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+		return
+	}
+	if h.registry.ConnectionCount(agentID) > 0 {
+		respondJSON(w, http.StatusConflict, map[string]string{"error": "agent connected"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	removed, err := h.store.RevokeCredential(ctx, agentID)
+	if err != nil {
+		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
+		return
+	}
+	if !removed {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "agent not found"})
+		return
+	}
+	if h.live != nil {
+		h.live.Invalidate()
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "removed"})
 }
 
 func (h *agentHandler) list(w http.ResponseWriter, r *http.Request) {
