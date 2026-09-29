@@ -4128,3 +4128,35 @@ Validation before rebasing onto current main passed: 82 plugin tests, go test ./
 16 frontend unit tests, Nuxt typecheck, Prettier checks and git diff --check.
 Database integration tests were skipped because TEST_DATABASE_URL is unset; no
 real phBot runtime was available. Re-run checks on the current-main integration.
+
+
+### Resume — 2026-09-30 issue #23 live party map
+
+Active branch: `feat/23-map-party-members`, created from main
+`1f5a1d1038749d4c6594a8f84e09e99dba55b226`. Implemented the Issue #23
+current-party map projection without a new poller, protocol version, WebSocket or
+persistence table. Plugin normalization now bounds party X/Y like other live map
+coordinates and has focused malformed/non-finite/empty/member-bound coverage.
+The resource store exposes one server-scoped current-party query fenced by the
+resource-state session and active character session; unavailable rows cannot leak
+their retained prior payload. Server map projection uses observer region/Z only as
+scope, fails closed on unproven cave floors, deduplicates current observations and
+bounds the response.
+
+The Nuxt map has a Party members toggle, exact-transform-only party marker helper,
+managed-character precedence, the local `mm_sign_party.png` icon and conditional
+name/guild/level/HP/MP popup fields. Focused server and frontend tests cover
+spawn-state filtering, duplicate freshness, unavailable/empty/session replacement,
+cave scope, transform rejection, managed overlap and the configured icon.
+
+Commits so far:
+- `df8037661238ebdda574bfe60f39172ed718d64e` — plugin normalization/tests.
+- `15f7322e1bc64c0f32885afec803c5fccfce3741` — current-party backend projection/tests.
+- `f238719a6715f20954b21d9173ec405f953d25bf` — party map UI/types/tests.
+
+The execution environment cannot directly clone GitHub, so repository changes are
+being committed through the connected GitHub API and the hosted validation workflow
+is authoritative for the complete Go/Python/Nuxt/PostgreSQL suite. No real bot
+command was sent. Exact next action: push this documentation commit, open the PR,
+require CI green, then complete the requested CodeRabbit review/full-review loop
+without merging.

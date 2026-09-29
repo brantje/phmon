@@ -452,7 +452,7 @@ class ResourceCollectorTests(unittest.TestCase):
             'get_guild_storage': lambda: None,
             'get_job_pouch': lambda: {'size': 1, 'items': [None]},
             'get_pets': lambda: {123: {'name': 'Wolf', 'type': 'wolf', 'items': [None, {'model': 10, 'quantity': 2}]}},
-            'get_party': lambda: {55: {'name': 'Ally', 'hp_percent': 8, 'mp_percent': 10, 'player_id': 0}},
+            'get_party': lambda: {55: {'name': 'Ally', 'guild': 'Guild', 'level': 110, 'hp_percent': 8, 'mp_percent': 10, 'player_id': 0, 'x': 123.5, 'y': -456}},
             'get_academy': lambda: {
                 'id': 237,
                 6699: {'online': 1, 'type': 0, 'x': 1.5, 'y': 2.5, 'level': 110, 'name': 'AcademyMember'},
@@ -472,6 +472,9 @@ class ResourceCollectorTests(unittest.TestCase):
         self.assertEqual(result['pets']['pets'][0]['slots'][1]['item']['quantity'], 2)
         self.assertEqual(result['party']['members'][0]['hp_percent'], 80)
         self.assertEqual(result['party']['members'][0]['mp_percent'], 100)
+        self.assertEqual(result['party']['members'][0]['player_id'], 0)
+        self.assertEqual(result['party']['members'][0]['x'], 123.5)
+        self.assertEqual(result['party']['members'][0]['y'], -456.0)
         self.assertEqual(result['academy'], {
             'availability': 'observed',
             'value': {
@@ -483,6 +486,36 @@ class ResourceCollectorTests(unittest.TestCase):
             },
         })
         self.assertEqual(result['party_setup']['mode'], 'read_only_unverified')
+
+    def test_party_normalization_rejects_malformed_nonfinite_and_out_of_range_coordinates(self):
+        result = plugin.collect_resources(api={
+            'get_party': lambda: {
+                1: {'name': 'Valid', 'player_id': 101, 'x': 12, 'y': -34.5},
+                2: {'name': 'NaN', 'player_id': 102, 'x': float('nan'), 'y': 1},
+                3: {'name': 'Inf', 'player_id': 103, 'x': 1, 'y': float('inf')},
+                4: {'name': 'String', 'player_id': 104, 'x': '2', 'y': 3},
+                5: {'name': 'Huge', 'player_id': 105, 'x': 1000001, 'y': -1000001},
+            },
+        })
+        by_name = dict((member['name'], member) for member in result['party']['members'])
+        self.assertEqual(by_name['Valid']['x'], 12.0)
+        self.assertEqual(by_name['Valid']['y'], -34.5)
+        self.assertNotIn('x', by_name['NaN'])
+        self.assertEqual(by_name['NaN']['y'], 1.0)
+        self.assertEqual(by_name['Inf']['x'], 1.0)
+        self.assertNotIn('y', by_name['Inf'])
+        self.assertNotIn('x', by_name['String'])
+        self.assertEqual(by_name['String']['y'], 3.0)
+        self.assertNotIn('x', by_name['Huge'])
+        self.assertNotIn('y', by_name['Huge'])
+
+    def test_party_empty_and_member_bound_are_preserved(self):
+        empty = plugin.collect_resources(api={'get_party': lambda: {}})
+        self.assertEqual(empty['party'], {'availability': 'observed', 'members': []})
+        bounded = plugin.collect_resources(api={
+            'get_party': lambda: dict((index, {'name': 'M%s' % index, 'player_id': index}) for index in range(40)),
+        })
+        self.assertEqual(len(bounded['party']['members']), 32)
 
     def test_guild_storage_getter_does_not_trust_undocumented_gold(self):
         result = plugin.collect_resources(api={
