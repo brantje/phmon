@@ -51,7 +51,10 @@ export function historicalHeatmapWindow(
     const to = Date.parse(customTo)
     if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from)
       return null
-    return { from: new Date(from).toISOString(), to: new Date(to).toISOString() }
+    return {
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+    }
   }
   const durations: Record<string, number> = {
     '1h': 60 * 60_000,
