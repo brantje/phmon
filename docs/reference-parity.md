@@ -1188,6 +1188,10 @@ requests are cancellable and sequence guarded; a same-scope refresh keeps the la
 valid overlay visible while the replacement loads. Server/area/floor/region changes
 clear stale historical results.
 
+Heatmap API `source_rows` reports the total unsuppressed canonical source population
+contributing to an aggregation before the bounded point limit is applied. It is not
+the sum of only the returned cells.
+
 True spatial mob density remains visibly unavailable because observation coverage has
 not been verified. The observer-local layer is labelled as limited and explicitly
 states that it is not spatial mob density. Cave/special-area queries fail closed while
@@ -1196,7 +1200,7 @@ their imagery/transforms remain unvalidated.
 Heatmap reset records a server-owned suppression projection with the exact active
 layer/server/area/floor/time and optional region/character/mob filters. It does not
 delete canonical activity events, movement samples or mob observations. A reset
-without both region and character narrowing is treated as broad and requires an
+with neither a region nor a character filter is treated as broad and requires an
 additional explicit confirmation enforced by the backend as well as the UI.
 
 ### Cave floors and 2D point Z handling — 2026-09-29

@@ -155,7 +155,10 @@ func TestAccumulatedMobHistoryUsesTimeScopeIndexAndStaysBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `ANALYZE mob_observation_samples; ANALYZE mob_observations`); err != nil {
+	if _, err := pool.Exec(ctx, `ANALYZE mob_observation_samples`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `ANALYZE mob_observations`); err != nil {
 		t.Fatal(err)
 	}
 
