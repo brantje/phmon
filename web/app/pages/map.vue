@@ -648,6 +648,8 @@ async function performHeatmapReset() {
 }
 
 watch(server, (value) => {
+  analyticsCharacterID.value = ''
+  analyticsMobType.value = ''
   void loadProfile(value)
 })
 watch([mapProfile, linkedEvent], ([profile, event]) => {
@@ -731,9 +733,22 @@ watch(
   },
 )
 watch([areaID, floorID, regionID, selectedCharacterID], updateRouteQuery)
-watch([server, areaID, floorID, regionID], () => {
-  clearHistoricalHeatmaps()
-})
+watch(
+  [
+    server,
+    areaID,
+    floorID,
+    regionID,
+    analyticsCharacterID,
+    analyticsMobType,
+    heatmapRange,
+    heatmapCustomFrom,
+    heatmapCustomTo,
+  ],
+  () => {
+    clearHistoricalHeatmaps()
+  },
+)
 watch(
   [
     server,
