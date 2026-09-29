@@ -1,0 +1,129 @@
+name: Plugin version guard
+
+on:
+  pull_request:
+    paths:
+      - plugin/PhMon.py
+      - scripts/plugin_protocol_contract.py
+      - .github/workflows/plugin-version-guard.yml
+
+permissions:
+  contents: read
+
+jobs:
+  version-guard:
+    name: Require plugin/protocol version bumps
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate base and head protocol contracts
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git show "$BASE_SHA:plugin/PhMon.py" > /tmp/PhMon.base.py
+          python3 scripts/plugin_protocol_contract.py /tmp/PhMon.base.py > /tmp/plugin-contract-base.json
+          python3 scripts/plugin_protocol_contract.py plugin/PhMon.py > /tmp/plugin-contract-head.json
+
+      - name: Validate plugin and protocol versions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+
+          PLUGIN_PATH = "plugin/PhMon.py"
+
+          def read_base():
+              try:
+                  return subprocess.check_output(
+                      ["git", "show", f"{os.environ['BASE_SHA']}:{PLUGIN_PATH}"],
+                      text=True,
+                  )
+              except subprocess.CalledProcessError as exc:
+                  print(
+                      f"::error file={PLUGIN_PATH}::"
+                      "Could not read the base version of PhMon.py"
+                  )
+                  raise SystemExit(exc.returncode)
+
+          def extract(text, name):
+              if name == "pVersion":
+                  pattern = r"(?m)^pVersion\s*=\s*['\"]([^'\"]+)['\"]\s*(?:#.*)?$"
+              else:
+                  pattern = rf"(?m)^{re.escape(name)}\s*=\s*(\d+)\s*(?:#.*)?$"
+              match = re.search(pattern, text)
+              if not match:
+                  print(f"::error file={PLUGIN_PATH}::Could not find {name}")
+                  raise SystemExit(1)
+              return match.group(1)
+
+          def parse_plugin_version(value):
+              if not re.fullmatch(r"\d+(?:\.\d+)+", value):
+                  print(
+                      f"::error file={PLUGIN_PATH}::"
+                      f"pVersion must be a dotted numeric version, got {value!r}"
+                  )
+                  raise SystemExit(1)
+              return tuple(int(part) for part in value.split("."))
+
+          before = read_base()
+          with open(PLUGIN_PATH, "r", encoding="utf-8") as handle:
+              after = handle.read()
+          with open("/tmp/plugin-contract-base.json", "r", encoding="utf-8") as handle:
+              base_contract = json.load(handle)
+          with open("/tmp/plugin-contract-head.json", "r", encoding="utf-8") as handle:
+              head_contract = json.load(handle)
+
+          old_plugin = extract(before, "pVersion")
+          new_plugin = extract(after, "pVersion")
+          old_protocol = int(extract(before, "PROTOCOL_VERSION"))
+          new_protocol = int(extract(after, "PROTOCOL_VERSION"))
+
+          plugin_changed = before != after
+          contract_changed = base_contract != head_contract
+
+          print(f"Plugin file changed:      {plugin_changed}")
+          print(f"Plugin version:           {old_plugin} -> {new_plugin}")
+          print(f"Monitor contract changed: {contract_changed}")
+          print(f"Protocol version:         {old_protocol} -> {new_protocol}")
+
+          failed = False
+
+          if plugin_changed and parse_plugin_version(new_plugin) <= parse_plugin_version(old_plugin):
+              print(
+                  f"::error file={PLUGIN_PATH}::"
+                  "PhMon.py changed, but pVersion was not increased "
+                  f"({old_plugin} -> {new_plugin})."
+              )
+              failed = True
+
+          if contract_changed and new_protocol <= old_protocol:
+              print(
+                  f"::error file={PLUGIN_PATH}::"
+                  "The generated monitor output contract changed, but "
+                  f"PROTOCOL_VERSION was not increased ({old_protocol} -> {new_protocol})."
+              )
+              failed = True
+
+          if not contract_changed and new_protocol != old_protocol:
+              print(
+                  f"::error file={PLUGIN_PATH}::"
+                  "PROTOCOL_VERSION changed, but the generated monitor output "
+                  "contract did not change. Only bump the protocol when monitor output changes."
+              )
+              failed = True
+
+          if failed:
+              raise SystemExit(1)
+
+          print("Plugin and protocol version checks passed.")
+          PY
