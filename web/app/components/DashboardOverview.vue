@@ -42,7 +42,10 @@ function eventHeadline(event: ActivityEvent) {
     case 'drop.rare':
     case 'drop.item': {
       const details = payload.item as Record<string, unknown> | undefined
-      const name = textField(details?.name) || textField(payload.item_name)
+      const name =
+        textField(event.item_metadata?.name) ||
+        textField(details?.name) ||
+        textField(payload.item_name)
       const model = payload.model ?? event.item_model
       return `${event.kind === 'drop.rare' ? 'Rare drop' : 'Item drop'}${name ? ` · ${name}` : model != null ? ` · model ${String(model)}` : ''}`
     }
@@ -267,7 +270,7 @@ onBeforeUnmount(() => {
             },
           }"
         >
-          <UIcon name="i-lucide-gem" /><strong>{{
+          <UIcon name="i-lucide-gem" /><strong class="rare-drop-item">{{
             eventHeadline(recentRareDrops[0])
           }}</strong>
           <span>{{

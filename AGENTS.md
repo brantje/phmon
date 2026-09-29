@@ -3576,6 +3576,27 @@ PR changes. Exact next action: commit and push the workflow fix, then check fres
 and CodeRabbit feedback. Live authenticated send verification remains for the
 operator because the available browser session is unauthenticated.
 
+### Resume — 2026-09-29 drop names and reference stats
+
+The operator reported that Rare/Normal Drops on the live Events page show no
+item names or stats and requested gold rare-item text. This focused correction
+is separate from authorization to execute the whole roadmap. Local changes to
+`server/internal/resources/metadata.go`, `server/internal/events/store.go`,
+`server/internal/httpapi/character_portraits.go`, `web/shared/types/live.ts`,
+`web/app/pages/events.vue`, `web/app/components/DashboardOverview.vue`, CSS,
+tests and `docs/reference-parity.md` resolve static item presentation by
+server-scoped model at query time, show reference ranges with an explicit
+non-observed label and color rare-drop text gold. Full Go tests/build/vet,
+Nuxt typecheck/build, lint and 13 frontend unit tests pass. The reference
+Normal/Rare Drops were inspected read-only in the browser; exact value
+tooltips there confirm the remaining collection gap. The live Events API requires auth
+and this correction has not been deployed. Exact rolled stats/blues remain
+blocked by the documented model-only phBot drop callback; a verified per-drop
+source or packet correlation is needed. Next: build, review the diff against
+the concurrent Slice 7/8 and level-up changes, integrate without overwriting
+the live code, deploy the combined version when authorized, and verify an
+authenticated drop row and screenshot.
+
 ### Resume — 2026-09-29 level-up callback investigation
 
 The live Greatest Events page showed four level-up occurrences with payload

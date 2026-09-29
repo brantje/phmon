@@ -41,3 +41,29 @@ func TestCharacterPortraitIsAddedToCharacterGroupAndEventViews(t *testing.T) {
 		t.Fatalf("unknown model unexpectedly resolved to %q", got)
 	}
 }
+
+func TestDropEventsResolveStaticItemPresentation(t *testing.T) {
+	itemModel := int64(847)
+	metadata := resources.NewStore(nil)
+	metadata.SetItemMetadata(&resources.ItemMetadata{
+		Servers: map[string]string{"greatest": "gamedata-test"},
+		Catalogs: map[string]resources.ItemCatalog{
+			"gamedata-test": {Items: map[string]resources.ItemDefinition{
+				"847": {Code: "ITEM_TEST", Presentation: map[string]any{
+					"name": "Gold Armor", "icon_url": "/game-assets/icon/item.png",
+					"reference_stats": map[string]any{"phy_def_pwr": map[string]any{"min": "50", "max": "60"}},
+				}},
+			}},
+		},
+	})
+	page := eventsWithPortraits(events.Page{Events: []events.Event{
+		{Kind: "drop.rare", Server: "Greatest", ItemModel: &itemModel},
+		{Kind: "drop.item", Server: "Other", ItemModel: &itemModel},
+	}}, metadata)
+	if page.Events[0].ItemMetadata["name"] != "Gold Armor" || page.Events[0].ItemMetadata["reference_stats"] == nil {
+		t.Fatalf("rare drop lacked catalog name and reference ranges: %+v", page.Events[0])
+	}
+	if page.Events[1].ItemMetadata != nil {
+		t.Fatalf("model from an unmapped server was guessed: %+v", page.Events[1])
+	}
+}

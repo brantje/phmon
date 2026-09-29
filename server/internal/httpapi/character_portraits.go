@@ -26,6 +26,7 @@ func eventsWithPortraits(page events.Page, metadata *resources.Store) events.Pag
 	for i := range page.Events {
 		if metadata != nil {
 			page.Events[i].PortraitURL = metadata.PortraitURL(page.Events[i].Server, page.Events[i].ModelID)
+			page.Events[i].ItemMetadata = metadata.ItemPresentation(page.Events[i].Server, page.Events[i].ItemModel, page.Events[i].ItemCode)
 		}
 	}
 	return page

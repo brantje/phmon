@@ -109,6 +109,20 @@ func TestSharedSROItemMetadataFallbackUsesItemCodeAcrossServers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	model := int64(847)
+	if got := metadata.ItemPresentation("Greatest", &model, ""); got["name"] != "SRO Test Armor" || got["dataset_id"] != "gamedata-test" {
+		t.Fatalf("server model presentation missing: %+v", got)
+	}
+	wrongModel := int64(99999)
+	if got := metadata.ItemPresentation("other", &wrongModel, ""); got != nil {
+		t.Fatalf("unmapped server model was guessed: %+v", got)
+	}
+	if got := metadata.ItemPresentation("other", &wrongModel, "ITEM_TEST"); got["name"] != "SRO Test Armor" {
+		t.Fatalf("stable item code did not resolve shared presentation: %+v", got)
+	}
+	if got := metadata.ItemPresentation("Greatest", &model, "WRONG_CODE"); got != nil {
+		t.Fatalf("conflicting code was ignored: %+v", got)
+	}
 
 	// The numeric model differs from the catalog. The stable SRO item code
 	// resolves the shared static item definition, including rarity and reference

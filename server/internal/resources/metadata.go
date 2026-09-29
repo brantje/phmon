@@ -173,6 +173,35 @@ func (m *ItemMetadata) PortraitURL(server string, model *int64) string {
 	return portrait.PortraitURL
 }
 
+// ItemPresentation resolves static data using the server's model mapping. A
+// model from an unmapped server is never assumed to identify the same item.
+func (m *ItemMetadata) ItemPresentation(server string, model *int64, code string) map[string]any {
+	if m == nil {
+		return nil
+	}
+	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	if dataset != "" && model != nil && *model >= 0 {
+		if definition, ok := m.Catalogs[dataset].Items[strconv.FormatInt(*model, 10)]; ok && (code == "" || code == definition.Code) {
+			result := make(map[string]any, len(definition.Presentation)+1)
+			for key, value := range definition.Presentation {
+				result[key] = value
+			}
+			result["dataset_id"] = dataset
+			return result
+		}
+	}
+	if code != "" {
+		if presentation, ok := m.SharedPresentations[code]; ok {
+			result := make(map[string]any, len(presentation))
+			for key, value := range presentation {
+				result[key] = value
+			}
+			return result
+		}
+	}
+	return nil
+}
+
 func addSharedPresentation(index map[string]map[string]any, ambiguous map[string]map[string]bool, code string, presentation map[string]any) {
 	if code == "" || len(presentation) == 0 {
 		return
@@ -463,4 +492,11 @@ func (s *Store) PortraitURL(server string, model *int64) string {
 		return ""
 	}
 	return s.metadata.PortraitURL(server, model)
+}
+
+func (s *Store) ItemPresentation(server string, model *int64, code string) map[string]any {
+	if s == nil || s.metadata == nil {
+		return nil
+	}
+	return s.metadata.ItemPresentation(server, model, code)
 }

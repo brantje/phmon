@@ -852,3 +852,33 @@ character state with phBot's `model` field, character portraits use the initials
 fallback. Next verification is a live agent observation of a mapped `model_id` and
 the resulting portrait in Stats/detail/event views. PostgreSQL restart persistence
 and real phBot callback/runtime validation remain open.
+
+### Drop display correction — 2026-09-29
+
+The Events Rare Drops and Normal Drops rows previously showed only a numeric
+model when the callback contained no item snapshot. Event responses now resolve
+static name, icon and reference ranges through the server's versioned game-data
+profile. The model is resolved only within its mapped server profile; a stable
+item code can supply shared presentation across servers. This also applies to
+historical occurrences at query time. Rare-drop event labels and item names
+are gold. The Dashboard rare-drop headline uses the same resolved name.
+
+The item detail expander labels catalog ranges as reference stats. phBot's
+documented drop callbacks supply a model ID only, so exact rolled stats, blue
+options and plus values in the supplied tooltip image remain unavailable for
+these occurrences. No individual roll is inferred from a catalog range. A
+verified per-drop item observation or correlatable packet is required to close
+that gap. The live `192.168.10.25` Events API returned 401 from this workspace,
+so authenticated live data and screenshot comparison were not available here.
+
+The operator-provided `192.168.10.105` reference was inspected read-only in a
+browser on 2026-09-29. Normal Drops rows showed an item icon and name first,
+then time, character and location; clicking the name opened a compact dark
+tooltip with individual defense/reinforcement/durability values and percentages.
+Rare Drops used gold item names and a similarly opened tooltip with seal and
+stats. Some tooltip trailing values lacked labels, so they are not copied into
+PhMon. This confirms the remaining rolled-stat visual/collection gap rather than
+turning catalog ranges into apparent instance values.
+
+Focused Go resource/API/event tests, Nuxt typecheck and 13 frontend unit tests
+passed locally. Browser and deployed-server verification remain open.
