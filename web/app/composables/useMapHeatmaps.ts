@@ -58,9 +58,9 @@ export function useMapHeatmaps() {
       if (!enabled[layer]) {
         controllers.get(layer)?.abort()
         controllers.delete(layer)
-        delete results[layer]
-        delete errors[layer]
-        delete loading[layer]
+        results[layer] = undefined
+        errors[layer] = undefined
+        loading[layer] = undefined
       }
     }
     await Promise.all(
@@ -140,9 +140,9 @@ export function useMapHeatmaps() {
     facetsController?.abort()
     facetsController = undefined
     for (const layer of HISTORICAL_LAYERS) {
-      delete results[layer]
-      delete loading[layer]
-      delete errors[layer]
+      results[layer] = undefined
+      loading[layer] = undefined
+      errors[layer] = undefined
     }
     facets.value = []
     facetsError.value = ''
