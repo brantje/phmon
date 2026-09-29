@@ -1077,7 +1077,8 @@ minimum zoom displays the local map artwork.
 ### Nearby monster labels and cross-character deduplication — 2026-09-29
 
 The Nearby monsters list now prefers a monster's display name, falls back to a
-humanized server name, and shows its level and type. The installed phBot docs for
+humanized server name, and shows its level. Monster type stays in the marker popup.
+The installed phBot docs for
 `get_monsters()` do not promise a level property; plugin 1.5.2 forwards it only when
 the runtime supplies a bounded integer. The UI clearly says “level unavailable” when
 that evidence is absent. Nearby list and map marker labels contain only name and
