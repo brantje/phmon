@@ -435,6 +435,18 @@ class ResourceCollectorTests(unittest.TestCase):
         })
         self.assertEqual(result['party_setup']['mode'], 'read_only_unverified')
 
+    def test_guild_storage_preserves_reported_gold(self):
+        result = plugin.collect_resources(api={
+            'get_guild_storage': lambda: {
+                'size': 2,
+                'gold': 4567890123,
+                'items': [None, {'model': 12, 'quantity': 3}],
+            },
+        })
+        self.assertEqual(result['guild_storage']['availability'], 'observed')
+        self.assertEqual(result['guild_storage']['gold'], 4567890123)
+        self.assertEqual(result['guild_storage']['slots'][1]['item']['model'], 12)
+
     def test_callback_collection_keeps_raw_values_for_worker_normalization(self):
         inventory = {'size': 0, 'gold': 17, 'items': []}
         inputs = plugin.collect_resource_inputs({'get_inventory': lambda: inventory})
