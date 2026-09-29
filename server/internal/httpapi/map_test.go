@@ -204,6 +204,7 @@ func TestProjectPartyMembersFiltersSpawnStateAndPrefersFreshestDuplicate(t *test
 	region := 25273
 	z := 0.0
 	stateAt := time.Now().UTC()
+	staleStateAt := stateAt.Add(-partyObserverStateMaxAge - time.Second)
 	old := stateAt.Add(-time.Minute)
 	x1, y1, x2, y2 := 100.0, 200.0, 111.0, 222.0
 	observations := []resources.PartyObservation{
@@ -220,8 +221,13 @@ func TestProjectPartyMembersFiltersSpawnStateAndPrefersFreshestDuplicate(t *test
 			Availability: "observed", ObserverRegion: &region, ObserverZ: &z, StateUpdatedAt: &stateAt, CheckedAt: stateAt,
 			Members: []resources.PartyMember{{PartyID: "55", PlayerID: 500, Name: "Ally", X: &x2, Y: &y2}},
 		},
+		{
+			ObserverCharacterID: "00000000-0000-4000-8000-000000000003", ObserverName: "Stale", SessionID: "00000000-0000-4000-8000-000000000013",
+			Availability: "observed", ObserverRegion: &region, ObserverZ: &z, StateUpdatedAt: &staleStateAt, CheckedAt: stateAt.Add(time.Second),
+			Members: []resources.PartyMember{{PartyID: "55", PlayerID: 500, Name: "Ally", X: &x1, Y: &y1}},
+		},
 	}
-	got := projectPartyMembers(profile, observations, false, "world", "world", region)
+	got := projectPartyMembers(profile, observations, false, "world", "world", region, stateAt.Add(2*time.Second))
 	if got.Status != "observed" || len(got.Members) != 1 {
 		t.Fatalf("party projection did not collapse current observations: %+v", got)
 	}
@@ -251,7 +257,7 @@ func TestProjectPartyMembersFailsClosedForUnprovenCaveFloor(t *testing.T) {
 			Members: []resources.PartyMember{{PartyID: "2", PlayerID: 102, Name: "NoZ", X: &x, Y: &y}},
 		},
 	}
-	got := projectPartyMembers(profile, observations, false, "donwhang-stone-cave", "1F", 0)
+	got := projectPartyMembers(profile, observations, false, "donwhang-stone-cave", "1F", 0, stateAt.Add(2*time.Second))
 	if len(got.Members) != 1 || got.Members[0].Name != "SameFloor" {
 		t.Fatalf("unproven cave party scope was not rejected: %+v", got)
 	}
@@ -267,11 +273,11 @@ func TestProjectPartyMembersClearsUnavailableAndReportsTruncation(t *testing.T) 
 	got := projectPartyMembers(profile, []resources.PartyObservation{{
 		ObserverCharacterID: "00000000-0000-4000-8000-000000000001", Availability: "unavailable",
 		ObserverRegion: &region, StateUpdatedAt: &stateAt, CheckedAt: stateAt,
-	}}, false, "world", "world", 0)
+	}}, false, "world", "world", 0, stateAt)
 	if got.Status != "unavailable" || len(got.Members) != 0 {
 		t.Fatalf("unavailable party retained map members: %+v", got)
 	}
-	got = projectPartyMembers(profile, nil, true, "world", "world", 0)
+	got = projectPartyMembers(profile, nil, true, "world", "world", 0, stateAt)
 	if got.Status != "truncated" || !got.Truncated {
 		t.Fatalf("party source truncation was not explicit: %+v", got)
 	}

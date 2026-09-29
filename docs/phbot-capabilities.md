@@ -56,9 +56,11 @@ existing live map. The server fences each resource row against both
 last-known payload for live party markers. Unchanged party data is not expired
 only because its resource timestamp is old, since resource deltas intentionally
 omit unchanged payloads. Party member region and Z remain unavailable from the
-API. The observer's current region/Z are carried only as live observation scope,
-cave floors fail closed when that scope cannot be proven, and the frontend still
-uses the existing world-to-raster transform for final placement.
+API. The observer's region/Z are carried only as live observation scope and must
+come from fresh character state (the map's existing 35-second freshness window,
+with its 5-second future-skew allowance). Cave floors fail closed when that scope
+cannot be proven, and the frontend still uses the existing world-to-raster
+transform for final placement.
 
 No party-position history, packet fallback, second poller, party control action,
 new WebSocket, or new persistence table is introduced. Automated plugin,

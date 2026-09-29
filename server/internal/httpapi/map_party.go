@@ -12,6 +12,8 @@ import (
 )
 
 const maxMapPartyMembers = 256
+const partyObserverStateMaxAge = 35 * time.Second
+const partyObserverStateFutureSkew = 5 * time.Second
 
 type mapPartyMember struct {
 	ID                  string   `json:"id"`
@@ -39,7 +41,7 @@ type mapPartySnapshot struct {
 	Members   []mapPartyMember `json:"members"`
 }
 
-func projectPartyMembers(profile mapprofile.Profile, observations []resources.PartyObservation, sourceTruncated bool, areaID, floorID string, regionFilter int) mapPartySnapshot {
+func projectPartyMembers(profile mapprofile.Profile, observations []resources.PartyObservation, sourceTruncated bool, areaID, floorID string, regionFilter int, now time.Time) mapPartySnapshot {
 	areaKind := ""
 	for _, area := range profile.Areas {
 		if area.ID == areaID {
@@ -50,11 +52,11 @@ func projectPartyMembers(profile mapprofile.Profile, observations []resources.Pa
 	anyObserved := false
 	byIdentity := make(map[string]mapPartyMember)
 	for _, observation := range observations {
-		if observation.Availability != "observed" {
+		if observation.Availability != "observed" || !partyObserverStateFresh(observation.StateUpdatedAt, now) {
 			continue
 		}
 		anyObserved = true
-		if observation.ObserverRegion == nil || observation.StateUpdatedAt == nil {
+		if observation.ObserverRegion == nil {
 			continue
 		}
 		if areaKind == "cave" {
@@ -128,4 +130,12 @@ func partyMemberIdentity(member resources.PartyMember) string {
 		return "name:" + name
 	}
 	return ""
+}
+
+func partyObserverStateFresh(updatedAt *time.Time, now time.Time) bool {
+	if updatedAt == nil || now.IsZero() {
+		return false
+	}
+	age := now.Sub(updatedAt.UTC())
+	return age >= -partyObserverStateFutureSkew && age <= partyObserverStateMaxAge
 }

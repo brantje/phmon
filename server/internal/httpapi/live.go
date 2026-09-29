@@ -676,7 +676,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		party := projectPartyMembers(profile, partyObservations, partySourceTruncated, subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region)
+		party := projectPartyMembers(profile, partyObservations, partySourceTruncated, subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, time.Now().UTC())
 		monsterRows := []mobs.LiveSnapshot{}
 		if h.mobLive != nil {
 			monsterRows = h.mobLive.Snapshot(subscription.Filter.Server, time.Now().UTC())
