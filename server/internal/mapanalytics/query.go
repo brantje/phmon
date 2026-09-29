@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -35,7 +34,7 @@ func defaultResolution(window time.Duration) float64 {
 	case window <= 7*24*time.Hour:
 		return 192
 	default:
-		return 384
+		return 192
 	}
 }
 
@@ -63,7 +62,7 @@ func NormalizeFilter(filter Filter) (Filter, error) {
 	if filter.Resolution == 0 {
 		filter.Resolution = defaultResolution(filter.To.Sub(filter.From))
 	}
-	if math.IsNaN(filter.Resolution) || math.IsInf(filter.Resolution, 0) || filter.Resolution < 12 || filter.Resolution > 1536 {
+	if filter.Resolution != 48 && filter.Resolution != 96 && filter.Resolution != 192 {
 		return Filter{}, ErrInvalidFilter
 	}
 	return filter, nil

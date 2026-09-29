@@ -221,3 +221,21 @@ func TestNormalizeFilterRejectsMobFiltersOnUnrelatedLayers(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeFilterKeepsWorldBucketsAlignedToRegionTiles(t *testing.T) {
+	now := time.Now().UTC()
+	filter, err := NormalizeFilter(Filter{
+		Layer: LayerDeaths, Server: "greatest", DatasetID: mapprofile.GreatestDatasetID,
+		AreaID: "world", FloorID: "world", From: now.Add(-30 * 24 * time.Hour), To: now, Limit: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filter.Resolution != 192 {
+		t.Fatalf("30-day world query used non-tile-aligned resolution %v", filter.Resolution)
+	}
+	filter.Resolution = 100
+	if _, err := NormalizeFilter(filter); !errors.Is(err, ErrInvalidFilter) {
+		t.Fatalf("non-aligned world resolution was accepted: %v", err)
+	}
+}
