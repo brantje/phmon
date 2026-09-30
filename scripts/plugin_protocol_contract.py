@@ -389,6 +389,23 @@ def frame_fixtures(plugin, resources, monsters):
         "monsters": copy.deepcopy(monsters),
     }
     map_worker._mob_spool = MemorySpool([sample])
+    map_worker._latest_npc_observation = {
+        "identity": dict(map_worker._current_identity),
+        "status": "observed",
+        "region": 25000,
+        "npcs": [{
+            "id": "10",
+            "name": "Jangan",
+            "servername": "GATE_CH",
+            "model_id": 2094,
+            "role": "teleporter",
+            "region": 25000,
+            "x": 30.0,
+            "y": 40.0,
+        }],
+        "observed_at": "2026-01-01T00:00:00Z",
+        "observer_z": -6.0,
+    }
     map_worker._flush_map_observations(map_client)
     frames["map"] = map_client.sent
 

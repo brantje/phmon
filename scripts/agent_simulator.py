@@ -275,6 +275,13 @@ def run_map_observations(worker, stopping):
             "fixture character identity",
         )
         first_session = worker.session_id
+        npc = {
+            "id": "10", "name": "Jangan", "servername": "GATE_CH", "model_id": 2094,
+            "role": "teleporter", "region": 25273, "x": 30.0, "y": 40.0,
+        }
+        worker.update_map_npcs(identity, "observed", 25273, [npc], observer_z=0.0)
+        time.sleep(0.3)
+        worker.update_map_npcs(identity, "observed", 25273, [], observer_z=0.0)
         first_sample = sample(str(uuid.uuid4()), [monster], 10.0)
         worker.update_map_monsters(identity, "observed", 25273, [monster], first_sample)
         wait_until(

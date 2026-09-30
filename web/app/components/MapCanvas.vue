@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import type {
   ActivityEvent,
   MapMonster,
+  MapNpc,
   MapPartyMember,
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
@@ -22,6 +23,11 @@ import {
   trainingAreaAtPoint,
   type TrainingAreaOverlay,
 } from '~/utils/mapTrainingAreas'
+import {
+  NPC_MARKER_ICON,
+  npcDisplayLabel,
+  npcRoleLabel,
+} from '~/utils/mapNpcMarkers'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
 import {
   localMapAsset,
@@ -47,12 +53,13 @@ import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 interface MapCanvasMarker {
   id: string
   label: string
-  kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
+  kind: 'character' | 'party' | 'npc' | 'monster' | 'death' | 'drop' | 'event'
   position: RasterPosition
   placement?: 'exact' | 'region-tile'
   selected?: boolean
   character?: CharacterMarkerInput
   party?: MapPartyMember
+  npc?: MapNpc
   monster?: MapMonster
   showLabel?: boolean
   itemName?: string
@@ -81,6 +88,7 @@ const emit = defineEmits<{
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
+  navigateto: [point: RasterPosition, anchor: { x: number; y: number }]
   mapdrag: []
   opencharacter: [characterID: string]
 }>()
@@ -794,6 +802,38 @@ function markerPopup(marker: MapCanvasMarker) {
       details.append(...rows)
       panel.append(details)
     }
+  } else if (marker.kind === 'npc' && marker.npc) {
+    const npc = marker.npc
+    title.textContent = npcDisplayLabel(npc)
+    subtitle.textContent = npcRoleLabel(npc.role)
+    const icon = document.createElement('img')
+    icon.className = 'phmon-map-detail-npc-icon'
+    icon.src = NPC_MARKER_ICON
+    icon.alt = ''
+    header.prepend(icon)
+    const observers = npc.observers
+      .map((observer) => observer.name)
+      .filter(Boolean)
+      .join(', ')
+    details.append(
+      detailRow('Server name', npc.servername || '—'),
+      detailRow('Model', npc.model_id == null ? '—' : String(npc.model_id)),
+      detailRow('Region', String(npc.region)),
+      detailRow('Position', positionText(npc.x, npc.y, npc.observer_z)),
+      detailRow('Observed by', observers || '—'),
+    )
+    const actions = document.createElement('div')
+    actions.className = 'phmon-map-detail-actions'
+    const navigate = document.createElement('button')
+    navigate.type = 'button'
+    navigate.textContent = 'Navigate here'
+    navigate.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const rect = navigate.getBoundingClientRect()
+      emit('navigateto', marker.position, { x: rect.left, y: rect.bottom })
+    })
+    actions.append(navigate)
+    panel.append(header, details, actions)
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
     title.textContent = monsterDisplayName(monster)
@@ -887,6 +927,16 @@ function markerIconContent(
     const name = document.createElement('span')
     name.className = 'phmon-map-party-name'
     name.textContent = marker.party?.name?.trim() || marker.label
+    content.append(name)
+  } else if (marker.kind === 'npc') {
+    content.className = 'phmon-map-npc-icon'
+    const img = document.createElement('img')
+    img.src = NPC_MARKER_ICON
+    img.alt = ''
+    content.append(img)
+    const name = document.createElement('span')
+    name.className = 'phmon-map-npc-name'
+    name.textContent = marker.npc ? npcDisplayLabel(marker.npc) : marker.label
     content.append(name)
   } else if (marker.kind === 'monster') {
     content.className = 'phmon-map-monster-bubble'
@@ -1117,7 +1167,7 @@ onMounted(async () => {
     const size =
       marker.kind === 'character'
         ? 28
-        : marker.kind === 'party'
+        : marker.kind === 'party' || marker.kind === 'npc'
           ? 24
           : marker.kind === 'monster'
             ? Math.round(12 * (type?.scale || 1))
@@ -1134,6 +1184,9 @@ onMounted(async () => {
       marker.character?.online,
       marker.character?.position_stale,
       marker.selected,
+      marker.npc ? npcDisplayLabel(marker.npc) : '',
+      marker.npc?.role,
+      marker.npc?.servername,
       type?.code,
       type?.scale,
       type?.party,
@@ -1191,9 +1244,11 @@ onMounted(async () => {
           ? 1000
           : marker.kind === 'party'
             ? 700
-            : marker.kind === 'drop' || marker.kind === 'death'
-              ? 400
-              : 0,
+            : marker.kind === 'npc'
+              ? 650
+              : marker.kind === 'drop' || marker.kind === 'death'
+                ? 400
+                : 0,
     })
     if (!props.compact)
       rendered.bindPopup(markerPopup(marker), {
@@ -1522,6 +1577,26 @@ onBeforeUnmount(() => {
   filter: drop-shadow(0 1px 3px #000c);
 }
 
+:global(.phmon-map-npc-icon) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 3px #000c);
+}
+
+:global(.phmon-map-npc-icon img),
+:global(.phmon-map-detail-npc-icon) {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+:global(.phmon-map-detail-npc-icon) {
+  width: 32px;
+  height: 32px;
+}
+
+:global(.phmon-map-npc-name),
 :global(.phmon-map-party-name) {
   position: absolute;
   top: calc(100% - 2px);

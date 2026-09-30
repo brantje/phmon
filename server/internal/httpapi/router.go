@@ -15,6 +15,7 @@ import (
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
+	"phmon/server/internal/npcs"
 	"phmon/server/internal/resources"
 )
 
@@ -43,6 +44,7 @@ type Dependencies struct {
 	Chat         *chat.Store
 	Mobs         *mobs.Store
 	MobLive      *mobs.LiveStore
+	NPCLive      *npcs.LiveStore
 	MapAnalytics *mapanalytics.Store
 }
 
@@ -84,6 +86,11 @@ func New(deps Dependencies) http.Handler {
 		}
 		live.SetMobObservations(deps.Mobs)
 		live.SetMobLive(mobLive)
+		npcLive := deps.NPCLive
+		if npcLive == nil {
+			npcLive = npcs.NewLiveStore()
+		}
+		live.SetNPCLive(npcLive)
 		if live.navigation == nil {
 			live.SetNavigation(navigation.NewStore())
 		}
@@ -98,6 +105,7 @@ func New(deps Dependencies) http.Handler {
 			events:     deps.Events,
 			mobs:       deps.Mobs,
 			mobLive:    mobLive,
+			npcLive:    npcLive,
 			analytics:  deps.MapAnalytics,
 			navigation: live.navigation,
 		}

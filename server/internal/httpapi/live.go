@@ -22,6 +22,7 @@ import (
 	"phmon/server/internal/mapprofile"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
+	"phmon/server/internal/npcs"
 	"phmon/server/internal/resources"
 )
 
@@ -108,6 +109,7 @@ type LiveHub struct {
 	chat       *chat.Store
 	mobs       *mobs.Store
 	mobLive    *mobs.LiveStore
+	npcLive    *npcs.LiveStore
 	navigation *navigation.Store
 
 	mu         sync.RWMutex
@@ -121,6 +123,14 @@ func (h *LiveHub) SetEvents(store *events.Store)         { h.events = store }
 func (h *LiveHub) SetChat(store *chat.Store)             { h.chat = store }
 func (h *LiveHub) SetMobObservations(store *mobs.Store)  { h.mobs = store }
 func (h *LiveHub) SetMobLive(store *mobs.LiveStore)      { h.mobLive = store }
+func (h *LiveHub) SetNPCLive(store *npcs.LiveStore)      { h.npcLive = store }
+
+func (h *LiveHub) npcSnapshots(server string) []npcs.LiveSnapshot {
+	if h == nil || h.npcLive == nil {
+		return []npcs.LiveSnapshot{}
+	}
+	return h.npcLive.Snapshot(server, time.Now().UTC())
+}
 func (h *LiveHub) SetNavigation(store *navigation.Store) {
 	if store != nil {
 		h.navigation = store
@@ -821,7 +831,9 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		mapData := map[string]any{
 			"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
 			"region": subscription.Filter.Region, "scope_status": "mapped",
-			"characters": charRows, "party": party, "training_areas": training, "monsters": monsterRows, "events": activity,
+			"characters": charRows, "party": party, "training_areas": training, "monsters": monsterRows,
+			"npcs":    projectNPCs(profile, h.npcSnapshots(subscription.Filter.Server), subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region),
+			"events":  activity,
 			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
 		}
 		basePayload, _ := json.Marshal(mapData)

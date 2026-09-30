@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   CharacterView,
   MapMonster,
+  MapNpc,
   MapPartyMember,
   MapSnapshot,
 } from '~~/shared/types/live'
@@ -21,6 +22,7 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
+import { npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
@@ -171,6 +173,7 @@ const resetError = ref('')
 const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerParty = ref(true)
+const layerNPCs = ref(true)
 const layerTraining = ref(true)
 const layerMonsters = ref(true)
 const showNearbyMonsterNames = ref(DEFAULT_SHOW_NEARBY_MONSTER_NAMES)
@@ -589,6 +592,16 @@ function openContextNavigation(action: {
     document.querySelector<HTMLElement>('.map-canvas'),
   )
 }
+function openNpcNavigation(
+  point: RasterPosition,
+  anchor: { x: number; y: number },
+) {
+  void navigationAction.open(
+    point,
+    anchor,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
+}
 const scopedCharacters = computed(() => {
   const items = mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.characters || []
@@ -714,11 +727,12 @@ const mapMarkers = computed(() => {
   const markers: Array<{
     id: string
     label: string
-    kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
+    kind: 'character' | 'party' | 'npc' | 'monster' | 'death' | 'drop' | 'event'
     position: RasterPosition
     placement?: 'exact' | 'region-tile'
     selected?: boolean
     party?: MapPartyMember
+    npc?: MapNpc
     monster?: MapMonster
     showLabel?: boolean
     itemName?: string
@@ -766,6 +780,15 @@ const mapMarkers = computed(() => {
       ),
     )
   }
+  markers.push(
+    ...npcMapMarkers(
+      profile,
+      areaID.value,
+      floorID.value,
+      mapSnapshot.value?.npcs?.npcs || [],
+      layerNPCs.value,
+    ),
+  )
   if (layerMonsters.value) {
     for (const entry of currentMonsters.value) {
       addMarker(
@@ -826,6 +849,9 @@ const placedCharacterCount = computed(
 )
 const placedPartyCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'party').length,
+)
+const placedNpcCount = computed(
+  () => mapMarkers.value.filter((marker) => marker.kind === 'npc').length,
 )
 const zoneNameForRegion = (region?: number | null) => {
   if (region == null) return 'Unknown zone'
@@ -1421,6 +1447,7 @@ useHead({ title: 'Map · PhMon' })
               @trainingmove="trainingEditor.moveCenter"
               @trainingresize="trainingEditor.resizeFromPixels"
               @contextaction="openContextNavigation"
+              @navigateto="openNpcNavigation"
               @mapdrag="navigationAction.close(false)"
               @opencharacter="
                 (characterID) =>
@@ -1960,6 +1987,10 @@ useHead({ title: 'Map · PhMon' })
           <label class="map-layer-toggle"
             ><input v-model="layerParty" type="checkbox" /> Party members
             <span>{{ placedPartyCount }} shown</span></label
+          >
+          <label class="map-layer-toggle"
+            ><input v-model="layerNPCs" type="checkbox" /> NPCs
+            <span>{{ placedNpcCount }} shown</span></label
           >
           <label class="map-layer-toggle"
             ><input v-model="layerTraining" type="checkbox" /> Training areas

@@ -23,6 +23,7 @@ import (
 	"phmon/server/internal/httpapi"
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
+	"phmon/server/internal/npcs"
 	"phmon/server/internal/resources"
 )
 
@@ -71,6 +72,7 @@ func run() error {
 	mobStore := mobs.NewStore(pool)
 	mapAnalyticsStore := mapanalytics.NewStore(pool)
 	mobLive := mobs.NewLiveStore()
+	npcLive := npcs.NewLiveStore()
 	metadataDir := os.Getenv("ITEM_METADATA_DIR")
 	if metadataDir == "" {
 		metadataDir = "game-data"
@@ -95,6 +97,7 @@ func run() error {
 	live.SetChat(chatStore)
 	live.SetMobObservations(mobStore)
 	live.SetMobLive(mobLive)
+	live.SetNPCLive(npcLive)
 	dispatchStore := commands.NewStore(pool)
 	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
 		return errors.New("cannot recover interrupted commands")
@@ -117,6 +120,7 @@ func run() error {
 		Chat:         chatStore,
 		Mobs:         mobStore,
 		MobLive:      mobLive,
+		NPCLive:      npcLive,
 		MapAnalytics: mapAnalyticsStore,
 	})
 

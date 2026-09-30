@@ -864,6 +864,21 @@ map sightings are deduplicated across sessions by server, region, model/server n
 and an 8-unit position tolerance, while retaining same-session rows. The installed
 real phBot runtime has not yet been verified with 1.5.2 or a level field.
 
+### Live NPC and teleporter snapshots — 2026-10-01
+
+The official [NPC API](https://plugins.phbot.org/phbot-api/npc) documents
+`get_npcs()` as `None` or a dictionary keyed by a runtime NPC id. Each value has
+`name`, `servername`, `model`, `region`, `x`, and `y`. It does not document a type
+or Z. The published example uses `GATE_CH` for the Jangan teleporter and `NPC_*`
+server names for shops. Plugin 1.7.0 / protocol v9 samples this API about every two
+seconds, immediately after `teleported()` or a region change, and at least every 15
+seconds while the normalized snapshot is unchanged. A snapshot holds at most 128
+rows. A missing API, `None`, a non-dictionary, or an exception is `unavailable` and
+clears that character's markers. An empty dictionary is `observed` and clears them.
+`GATE_<name>` is presented as a teleporter; every other row is an NPC. The map
+stores these snapshots only in memory. Shop goods and teleport execution stay out
+of this frame. The installed phBot runtime has not yet been observed with 1.7.0.
+
 ### Current map marker polling trial — 2026-09-29
 
 The operator requested faster current monster snapshots because the previous

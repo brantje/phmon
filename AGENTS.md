@@ -4677,3 +4677,27 @@ Rewrote the map coordinate contract under "Map coordinate match — 2026-10-01".
 Agents use the current Leaflet → game coordinate → phBot conversion for non-cave
 maps and for every cave floor. The non-cave match and cave match is complete and has been
 formally tested. Caves are working.
+
+### Resume — 2026-10-01 Issue #24 live NPC and teleporter markers
+
+Implemented on `codex/issue-24-map-npcs`. Plugin 1.7.0 / protocol v9 samples
+`get_npcs()` every 2 seconds, publishes a coalesced `map.npcs` frame when the
+normalized snapshot changes and at least every 15 seconds, and forces a sample
+on teleport or region change. Missing or invalid API results clear the live
+rows. The Go store is in-memory only, replaces each session snapshot, and
+projects a server-scoped union. Cross-session duplicates match on server,
+region, servername, model, and position within 8 world units; same-session rows
+stay distinct. Cave placement uses the observer Z and fails closed when the
+floor is ambiguous. The map shows always-on name labels, an NPCs layer toggle,
+and a popup whose Navigate here action opens the existing map-point confirmation
+without posting a command. Role is presentation only: `GATE_*` server names are
+teleporters.
+
+Validation: plugin NPC observation tests, `go test ./internal/npcs ./internal/httpapi`,
+frontend unit tests including marker placement, Nuxt typecheck, and the map
+simulator's replace-then-clear NPC frames. An isolated fixture stack rendered
+Grocery and Jangan labels, the teleporter popup, layer off/on, and the
+navigation confirmation with zero command posts, with no horizontal overflow at
+1440×1000, 1280×800, and 390×844. That fixture is not real phBot `get_npcs()`
+evidence. Exact next action: operator installs plugin 1.7.0 and records a live
+NPC snapshot separately from the simulator.

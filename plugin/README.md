@@ -1,12 +1,17 @@
 # PhMon phBot plugin
 
-The current Issue #27 development release is **1.6.2** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v8 over the existing authenticated
+The current Issue #24 development release is **1.7.0** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v9 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
-transient route reports for generated-script navigation; the backend keeps accepting
-protocol v2–v7 and older plugins continue
+transient route reports for generated-script navigation. Protocol v9 adds ephemeral
+`map.npcs` snapshots from `get_npcs()`: at most 128 rows, sampled about every two
+seconds, immediately after a teleport or region change, and refreshed at least every
+15 seconds while the normalized view is unchanged. `GATE_<name>` server names are
+teleporters; other rows are NPCs. `unavailable` clears that character's markers.
+There is no NPC history. The backend keeps accepting
+protocol v2–v8 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime

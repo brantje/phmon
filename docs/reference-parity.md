@@ -77,6 +77,26 @@ disconnects and session replacement remove the old live contribution through the
 existing live-map invalidation path.
 
 This entry records implementation/test semantics, not a live phBot screenshot.
+
+## Live NPC and teleporter map layer — 2026-10-01
+
+Issue #24 adds a current-state **NPCs** layer to the Map screen. It uses
+`/game-assets/interface/minimap/mm_sign_npc.png` for both NPCs and teleporters.
+Names are always drawn under the marker. A row is a teleporter when its server
+name matches `GATE_<name>`; every other row is an NPC. The popup shows name, role,
+server name, model, region, coordinates, and the observing characters. Navigate
+here opens the existing navigation confirmation at the marker and does not submit
+a command by itself.
+
+The payload is the union of connected characters' latest `get_npcs()` snapshots.
+Different sessions collapse when server, region, server name, model, and position
+within 8 world units match. Same-session rows stay separate. Cave placement uses
+the observer's Z and omits a row when the floor cannot be proven. Disconnect,
+session replacement, and a 35-second TTL remove a snapshot. There is no NPC
+history, shop listing, or teleport execution.
+
+This entry records implementation and fixture semantics. A live phBot `get_npcs()`
+observation still requires plugin 1.7.0 on the operator's runtime.
 A same-viewport runtime check with a spawned party member, duplicate observers and
 a cave floor remains open.
 
