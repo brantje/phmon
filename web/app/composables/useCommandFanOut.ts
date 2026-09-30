@@ -18,7 +18,7 @@ let nextOwnerNumber = 0
 export interface UseCommandFanOutOptions {
   command: FanOutCommandDefinition
   scopeKey: string
-  scopeKeyForCharacter(character: CharacterView): string
+  scopeKeyForCharacter(character: CharacterView, scopeKey?: string): string
   currentScopeKey(characterID: string): string
   currentCharacter(characterID: string): CharacterView | undefined
 }
@@ -100,6 +100,8 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     selected: string[],
     scopeKey: string,
     operationID: string,
+    command: FanOutCommandDefinition = options.command,
+    operationScopeKey = scopeKey,
   ) {
     const snapshot = feed.value
     const targets: Record<string, FanOutTargetData> = {}
@@ -127,7 +129,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
         character,
         controls,
         scopeKey: character
-          ? options.scopeKeyForCharacter(character)
+          ? options.scopeKeyForCharacter(character, operationScopeKey)
           : scopeKey,
         unavailableReason:
           target?.unavailable_reason ||
@@ -138,7 +140,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     }
     return prepareCommandFanOut({
       operationID,
-      command: options.command,
+      command,
       characterIDs: selected,
       targets,
       scopeKey,
@@ -150,7 +152,11 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     })
   }
 
-  async function prepare(characterIDs: string[]) {
+  async function prepare(
+    characterIDs: string[],
+    command: FanOutCommandDefinition = options.command,
+    operationScopeKey = options.scopeKey,
+  ) {
     if (disposed || preparing.value || submitting.value) return null
     error.value = ''
     preparing.value = true
@@ -161,8 +167,10 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
       if (disposed) return null
       const operation = makePreparedOperation(
         selected,
-        options.scopeKey,
+        operationScopeKey,
         `${ownerID}-op-${Date.now().toString(36)}-${operations.value.length.toString(36)}`,
+        command,
+        operationScopeKey,
       )
       operations.value = [operation, ...operations.value]
       notify()
@@ -196,6 +204,8 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
         operation.children.map((child) => child.characterID),
         operation.scopeKey,
         operation.operationID,
+        operation.command,
+        options.scopeKey,
       )
       const changed = refreshPreparedCommandFanOut(operation, refreshed)
       notify()
@@ -263,7 +273,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
       changed: notify,
     }
     try {
-      await retryFanOutSubmission(child, dependencies)
+      await retryFanOutSubmission(child, dependencies, operation.command)
       operation.state =
         child.submission === 'accepted' ? 'tracking' : operation.state
     } finally {

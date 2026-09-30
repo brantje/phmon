@@ -61,6 +61,10 @@ func (s *Service) Result(ctx context.Context, id, agentID, sessionID string, gen
 func (s *Service) History(ctx context.Context, characterID, name, state string, limit int) ([]Command, error) {
 	return s.store.ListHistory(ctx, characterID, name, state, limit)
 }
+
+func (s *Service) GetByID(ctx context.Context, id string) (Command, error) {
+	return s.store.GetByID(ctx, id)
+}
 func (s *Service) CommandsByIdempotencyKeys(ctx context.Context, operatorIdentity string, keys []string) ([]Command, error) {
 	return s.store.ListByIdempotencyKeys(ctx, operatorIdentity, keys)
 }
@@ -89,7 +93,7 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	return controlSnapshot(target, state, s.commandCapabilities(target)), nil
+	return s.controlSnapshot(target, state), nil
 }
 
 func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string) ([]map[string]any, error) {
@@ -112,21 +116,28 @@ func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string)
 		if training != nil {
 			training.SessionID = target.SessionID
 		}
-		result = append(result, controlSnapshot(
+		result = append(result, s.controlSnapshot(
 			Target{CharacterID: target.CharacterID, SessionID: target.SessionID, AgentID: target.AgentID, Generation: target.Generation, Region: target.Region},
 			training,
-			s.commandCapabilities(Target{CharacterID: target.CharacterID, SessionID: target.SessionID, AgentID: target.AgentID, Generation: target.Generation, Region: target.Region}),
 		))
 	}
 	return result, nil
 }
 
 func emptyControlSnapshot(characterID string) map[string]any {
-	return map[string]any{"character_id": characterID, "session_id": "", "capabilities": map[string]Capability{}, "training": nil}
+	return map[string]any{"character_id": characterID, "session_id": "", "agent_protocol_version": 0,
+		"capabilities": map[string]Capability{}, "training": nil}
 }
 
-func controlSnapshot(target Target, state *ControlState, capabilities map[string]Capability) map[string]any {
-	return map[string]any{"character_id": target.CharacterID, "session_id": target.SessionID, "capabilities": capabilities, "training": state}
+func (s *Service) controlSnapshot(target Target, state *ControlState) map[string]any {
+	protocol := 0
+	if versioned, ok := s.capabilities.(interface {
+		ProtocolVersion(agentID string, generation uint64) int
+	}); ok {
+		protocol = versioned.ProtocolVersion(target.AgentID, target.Generation)
+	}
+	return map[string]any{"character_id": target.CharacterID, "session_id": target.SessionID,
+		"capabilities": s.commandCapabilities(target), "training": state, "agent_protocol_version": protocol}
 }
 
 func (s *Service) commandCapabilities(target Target) map[string]Capability {

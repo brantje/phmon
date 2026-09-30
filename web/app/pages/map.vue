@@ -49,6 +49,11 @@ import {
   selectAllMapActionTargets,
   toggleMapActionTarget,
 } from '~/utils/mapActionTargets'
+import {
+  mapNavigationRouteOverlays,
+  mapNavigationStatusLabel,
+} from '~/utils/mapNavigationRoutes'
+import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 
 const reviewActions = useReviewActionsPreference()
 const {
@@ -129,6 +134,7 @@ const selectedCharacterID = ref(
   typeof route.query.character_id === 'string' ? route.query.character_id : '',
 )
 const actionTargetIDs = ref(new Set<string>())
+const selectedNavigationRouteID = ref('')
 const actionTargetScopeKey = computed(() =>
   mapActionTargetScopeKey({
     server: server.value,
@@ -190,6 +196,27 @@ const heatmapWindow = computed(() =>
     heatmapCustomTo.value,
   ),
 )
+const navigationAction = useMapNavigationAction({
+  scope: () =>
+    mapProfile.value
+      ? {
+          server: server.value,
+          areaID: areaID.value,
+          floorID: floorID.value,
+          region: regionID.value,
+          datasetID: mapProfile.value.dataset_id,
+          datasetVersion: mapProfile.value.dataset_version,
+        }
+      : null,
+  profile: () => mapProfile.value,
+  selectedTargetIDs: () => [...actionTargetIDs.value],
+  characters: () => [...fleetCharacters.value],
+  mapSnapshot: () => mapSnapshot.value,
+  mapFeedCurrent: () =>
+    streamCurrent.value && mapSnapshotInFeedScope.value && !liveStale.value,
+  reviewActions: () => reviewActions.value,
+  now: () => freshnessNow.value,
+})
 const historicalCharacters = computed(() =>
   fleetCharacters.value
     .filter(
@@ -468,7 +495,7 @@ const selectedRegionAmbiguous = computed(() => {
     !floor.region_ids.includes(currentRegion.value ?? 0),
   )
 })
-function mapActionReason(name: string) {
+function mapActionReason() {
   if (!selectedTile.value) return 'Select a point on the map.'
   if (selectedRegionAmbiguous.value)
     return 'Choose a verified cave region or a character currently in that region.'
@@ -476,16 +503,33 @@ function mapActionReason(name: string) {
     return 'The selected point has no verified region and X/Y conversion.'
   if (!commandTargetReady.value)
     return 'Select an online character with a current session and capability report.'
-  const capability = characterControls.value?.capabilities[name]
+  const capability = characterControls.value?.capabilities['training.area.set']
   return capability?.supported
     ? ''
     : capability?.reason || 'The phBot action is unavailable in this session.'
 }
-async function submitMapAction(
-  name: 'training.area.set' | 'character.navigate',
-) {
+function openSelectedNavigation(event: MouseEvent) {
+  if (!selectedTile.value) return
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  void navigationAction.open(
+    selectedTile.value,
+    { x: rect.left, y: rect.bottom },
+    event.currentTarget as HTMLElement,
+  )
+}
+function openContextNavigation(action: {
+  point: RasterPosition
+  anchor: { x: number; y: number }
+}) {
+  void navigationAction.open(
+    action.point,
+    action.anchor,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
+}
+async function submitMapAction() {
   if (
-    mapActionReason(name) ||
+    mapActionReason() ||
     !selectedGamePosition.value ||
     !currentCharacter.value?.session_id
   )
@@ -497,13 +541,9 @@ async function submitMapAction(
   }
   const point = { ...selectedGamePosition.value }
   if (reviewActions.value) {
-    const label =
-      name === 'character.navigate'
-        ? 'start a generated path'
-        : 'set the training area'
     if (
       !window.confirm(
-        `Review ${label} for ${target.name} at ${point.x.toFixed(1)}, ${point.y.toFixed(1)}, Z ${point.z.toFixed(1)} in ${zoneNameForRegion(point.region)}?`,
+        `Review setting the training area for ${target.name} at ${point.x.toFixed(1)}, ${point.y.toFixed(1)}, Z ${point.z.toFixed(1)} in ${zoneNameForRegion(point.region)}?`,
       )
     )
       return
@@ -517,9 +557,8 @@ async function submitMapAction(
       body: {
         character_id: target.id,
         expected_session_id: target.session,
-        name,
-        args:
-          name === 'training.area.set' ? { mode: 'position', ...point } : point,
+        name: 'training.area.set',
+        args: { mode: 'position', ...point },
         idempotency_key: createIdempotencyKey(),
         confirmation: true,
       },
@@ -749,6 +788,23 @@ const mapMarkers = computed(() => {
     )
   }
   return markers.slice(0, 2000)
+})
+const mapNavigationRoutes = computed(() => {
+  const profile = mapProfile.value
+  if (!profile) return []
+  return mapNavigationRouteOverlays({
+    routes: mapSnapshot.value?.navigation,
+    characters: [...fleetCharacters.value],
+    profile,
+    server: server.value,
+    areaID: areaID.value,
+    floorID: floorID.value,
+    region: regionID.value,
+    streamCurrent: streamCurrent.value && mapSnapshotInFeedScope.value,
+    liveStale: liveStale.value,
+    freshnessNow: freshnessNow.value,
+    selectedRouteID: selectedNavigationRouteID.value,
+  })
 })
 const placedCharacterCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'character').length,
@@ -983,6 +1039,7 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
   selectedCharacterID.value = event.character_id
 })
 watch(selectedCharacterID, (characterID) => {
+  jumpSequence.value++
   if (characterID) selectedDestinationID.value = ''
   acceptedCommandID.value = ''
   actionMessage.value = ''
@@ -1340,14 +1397,18 @@ useHead({ title: 'Map · PhMon' })
           <ClientOnly>
             <MapCanvas
               v-if="canvasProfile?.tiles.status === 'available-for-inspection'"
-              :key="`${server}:${areaID}:${floorID}:${selectedCharacterID}:${jumpSequence}`"
+              :key="`${server}:${areaID}:${floorID}:${mapProfile?.dataset_id}:${mapProfile?.dataset_version}`"
               :profile="canvasProfile"
               :initial-position="mapInitialPosition"
+              :focus-request="jumpSequence"
               :initial-tile="mapInitialTile"
               :markers="mapMarkers"
               :heat-layers="renderedHeatLayers"
+              :navigation-routes="mapNavigationRoutes"
               @viewchange="mapView = $event"
               @pointselect="selectedTile = $event"
+              @contextaction="openContextNavigation"
+              @mapdrag="navigationAction.close(false)"
               @opencharacter="
                 (characterID) =>
                   router.push(`/characters/${encodeURIComponent(characterID)}`)
@@ -1359,6 +1420,154 @@ useHead({ title: 'Map · PhMon' })
               </div></template
             >
           </ClientOnly>
+          <div
+            v-if="navigationAction.menuOpen.value"
+            :ref="navigationAction.menuElement"
+            class="map-navigation-context"
+            role="dialog"
+            tabindex="-1"
+            aria-label="Navigate selected characters to map point"
+            :style="{
+              left: `${navigationAction.menuAnchor.value.x}px`,
+              top: `${navigationAction.menuAnchor.value.y}px`,
+            }"
+            @pointerdown.stop
+          >
+            <header class="map-navigation-context-header">
+              <div>
+                <strong>Navigate here</strong>
+                <span
+                  >{{ server }} · {{ profileArea?.label || 'World map' }} ·
+                  {{ floorID }}</span
+                >
+              </div>
+              <button
+                class="compact-button"
+                type="button"
+                aria-label="Close navigation menu"
+                @click="navigationAction.close()"
+              >
+                <UIcon name="i-lucide-x" />
+              </button>
+            </header>
+            <p
+              v-if="navigationAction.menuPoint.value"
+              class="map-navigation-raster"
+            >
+              Raster {{ navigationAction.menuPoint.value.tileX }} ×
+              {{ navigationAction.menuPoint.value.tileY }} · pixel
+              {{ Math.round(navigationAction.menuPoint.value.pixelX) }},
+              {{ Math.round(navigationAction.menuPoint.value.pixelY) }}
+            </p>
+            <div class="map-navigation-counts" role="status" aria-live="polite">
+              <span>{{ navigationAction.counts.value.selected }} selected</span>
+              <span>{{ navigationAction.counts.value.eligible }} eligible</span>
+              <span>{{ navigationAction.counts.value.skipped }} skipped</span>
+            </div>
+            <p
+              v-if="navigationAction.preparing.value"
+              class="map-navigation-loading"
+              role="status"
+            >
+              Checking each target's current session, capability and
+              coordinates…
+            </p>
+            <p
+              v-if="navigationAction.error.value"
+              class="form-error"
+              role="alert"
+            >
+              {{ navigationAction.error.value }}
+            </p>
+            <p
+              v-if="navigationAction.notice.value"
+              class="map-navigation-notice"
+              role="status"
+            >
+              {{ navigationAction.notice.value }}
+            </p>
+            <ol
+              v-if="navigationAction.menuOperation.value"
+              class="map-navigation-targets"
+            >
+              <li
+                v-for="child in navigationAction.menuOperation.value.children"
+                :key="child.characterID"
+              >
+                <div>
+                  <strong>{{ child.characterName }}</strong>
+                  <span
+                    :class="
+                      child.submission === 'skipped' ? 'skipped' : 'eligible'
+                    "
+                  >
+                    {{
+                      child.submission === 'skipped' ? 'Skipped' : 'Eligible'
+                    }}
+                  </span>
+                </div>
+                <small v-if="child.argsSummary">{{ child.argsSummary }}</small>
+                <small v-if="child.skipReason" class="map-navigation-skip">
+                  {{ child.skipReason.message }}
+                </small>
+              </li>
+            </ol>
+            <p
+              v-else-if="
+                !navigationAction.preparing.value &&
+                !navigationAction.targetIDs.value.length
+              "
+              class="map-navigation-notice"
+            >
+              Select action targets in the Characters panel first.
+            </p>
+            <div
+              v-if="!navigationAction.reviewOperation.value"
+              class="map-navigation-context-actions"
+            >
+              <button
+                class="compact-button primary"
+                type="button"
+                :disabled="
+                  navigationAction.preparing.value ||
+                  navigationAction.submitting.value ||
+                  navigationAction.counts.value.eligible === 0
+                "
+                :title="
+                  navigationAction.counts.value.eligible === 0
+                    ? 'Select eligible action targets.'
+                    : ''
+                "
+                @click="navigationAction.submit"
+              >
+                {{
+                  navigationAction.preparing.value
+                    ? 'Checking targets…'
+                    : navigationAction.submitting.value
+                      ? 'Submitting…'
+                      : navigationAction.targetLabel.value
+                }}
+              </button>
+              <button
+                class="compact-button"
+                type="button"
+                @click="navigationAction.close()"
+              >
+                Cancel
+              </button>
+            </div>
+            <CommandFanOutPreview
+              v-if="navigationAction.reviewOperation.value"
+              :operation="navigationAction.reviewOperation.value"
+              :busy="
+                navigationAction.preparing.value ||
+                navigationAction.submitting.value
+              "
+              :notice="navigationAction.notice.value"
+              @submit="navigationAction.submitReviewed"
+              @cancel="navigationAction.cancelReview"
+            />
+          </div>
           <div
             v-if="areaID !== 'world' && !canvasProfile"
             class="map-empty-view"
@@ -1407,12 +1616,13 @@ useHead({ title: 'Map · PhMon' })
             {{ selectedTile.tileY }}. Game coordinates are not inferred.</span
           >
           <span v-else
-            >Pan and zoom the exported tile grid. Click, touch or right-click
-            selects a raster tile.</span
+            >Pan and zoom the exported tile grid. Click or touch selects a
+            point; right-click opens navigation actions. Enter or Space selects
+            the map center for keyboard users.</span
           >
           <span
-            >Z for action:
-            {{ selectedGamePosition?.z.toFixed(1) ?? '—' }} (selected character
+            >Z for training-area placement:
+            {{ selectedGamePosition?.z.toFixed(1) ?? '—' }} (focused character
             or 0)</span
           >
         </div>
@@ -1420,27 +1630,24 @@ useHead({ title: 'Map · PhMon' })
           <button
             class="compact-button"
             type="button"
-            :disabled="
-              actionBusy || Boolean(mapActionReason('character.navigate'))
-            "
-            :title="mapActionReason('character.navigate')"
-            @click="submitMapAction('character.navigate')"
+            :disabled="!selectedTile"
+            :title="selectedTile ? '' : 'Select a point on the map.'"
+            @click="openSelectedNavigation"
           >
-            Generate path and navigate
+            {{ navigationAction.targetLabel.value }}
           </button>
           <button
             class="compact-button"
             type="button"
-            :disabled="
-              actionBusy || Boolean(mapActionReason('training.area.set'))
-            "
-            :title="mapActionReason('training.area.set')"
-            @click="submitMapAction('training.area.set')"
+            :disabled="actionBusy || Boolean(mapActionReason())"
+            :title="mapActionReason()"
+            @click="submitMapAction"
           >
             Set training area here
           </button>
           <span class="map-action-target-note" role="note">
-            These actions currently use the focused character.
+            Navigation uses selected action targets. Training area placement
+            uses the focused character.
           </span>
           <span v-if="selectedRegionAmbiguous" role="status"
             >This floor has two possible region IDs. Choose a region above or
@@ -1458,6 +1665,23 @@ useHead({ title: 'Map · PhMon' })
           <span v-else-if="actionMessage" role="status">{{
             actionMessage
           }}</span>
+          <CommandFanOutResults
+            v-for="operation in navigationAction.operations.value"
+            :key="operation.operationID"
+            :operation="operation"
+            :status-note="navigationAction.resultStatusNote(operation)"
+            :stale="
+              navigationAction.stale.value &&
+              operation.children.some((child) =>
+                ['accepted', 'uncertain'].includes(child.submission),
+              )
+            "
+            :on-retry="
+              (characterID: string) =>
+                navigationAction.retry(operation, characterID)
+            "
+            :on-dismiss="() => navigationAction.dismissResults(operation)"
+          />
         </div>
         <div class="map-validation-note" role="status">
           {{
@@ -1467,9 +1691,9 @@ useHead({ title: 'Map · PhMon' })
           Outdoor region IDs locate their root tile directly. Reported X/Y
           positions locate markers within that tile; outlined dots indicate a
           region-only position. Cave imagery uses a 2D X/Y anchor and
-          region/floor rules. Actions reuse the selected character's reported Z,
-          or 0 when unavailable. Older observations remain visible as last
-          observed positions.
+          region/floor rules. Navigation resolves coordinates and Z per target;
+          training-area placement uses the focused character. Older observations
+          remain visible as last observed positions.
         </div>
       </section>
 
@@ -1570,6 +1794,61 @@ useHead({ title: 'Map · PhMon' })
           </div>
           <p v-if="!scopedCharacters.length" class="map-empty-copy">
             No characters in this server and zone scope.
+          </p>
+        </section>
+        <section class="map-side-list map-navigation-route-list">
+          <div class="map-list-heading">
+            <h2>Navigation routes</h2>
+            <span>{{ mapNavigationRoutes.length }}</span>
+          </div>
+          <button
+            v-if="selectedNavigationRouteID"
+            class="compact-button map-route-clear-selection"
+            type="button"
+            @click="selectedNavigationRouteID = ''"
+          >
+            Show all routes
+          </button>
+          <button
+            v-for="routeOverlay in mapNavigationRoutes"
+            :key="routeOverlay.id"
+            class="map-navigation-route-row"
+            type="button"
+            :class="{
+              selected: selectedNavigationRouteID === routeOverlay.characterID,
+              dimmed:
+                selectedNavigationRouteID &&
+                selectedNavigationRouteID !== routeOverlay.characterID,
+            }"
+            :aria-pressed="
+              selectedNavigationRouteID === routeOverlay.characterID
+            "
+            @click="
+              selectedNavigationRouteID =
+                selectedNavigationRouteID === routeOverlay.characterID
+                  ? ''
+                  : routeOverlay.characterID
+            "
+          >
+            <strong>{{ routeOverlay.characterName }}</strong>
+            <span>{{
+              mapNavigationStatusLabel(
+                routeOverlay.status,
+                routeOverlay.blocks.length,
+              )
+            }}</span>
+            <small v-if="routeOverlay.reason">{{ routeOverlay.reason }}</small>
+          </button>
+          <p v-if="!mapNavigationRoutes.length" class="map-empty-copy">
+            No routes are reported for this server and active session.
+          </p>
+          <p
+            v-if="mapSnapshot?.navigation_omitted_count"
+            class="map-empty-copy"
+            role="status"
+          >
+            {{ mapSnapshot.navigation_omitted_count }} route record(s) were
+            omitted to keep the live map within its payload budget.
           </p>
         </section>
         <section>
@@ -1972,6 +2251,181 @@ useHead({ title: 'Map · PhMon' })
 </template>
 
 <style scoped>
+.map-navigation-context {
+  position: fixed;
+  z-index: 1400;
+  display: grid;
+  gap: 9px;
+  width: min(370px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #495b6f;
+  border-radius: 5px;
+  background: #0d131df5;
+  color: #eaf1ff;
+  box-shadow: 0 8px 28px #000b;
+}
+
+.map-navigation-context-header,
+.map-navigation-context-header > div,
+.map-navigation-targets li > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.map-navigation-context-header > div {
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.map-navigation-context-header strong {
+  color: var(--ph-primary);
+  font-size: 15px;
+}
+
+.map-navigation-context-header span,
+.map-navigation-raster,
+.map-navigation-loading,
+.map-navigation-notice {
+  margin: 0;
+  color: #9eacbd;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.map-navigation-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.map-navigation-counts span {
+  padding: 3px 7px;
+  border: 1px solid #36495d;
+  border-radius: 3px;
+  color: #d1dcec;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-navigation-targets {
+  display: grid;
+  gap: 5px;
+  max-height: min(220px, 30vh);
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.map-navigation-targets li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #293949;
+  border-radius: 3px;
+  background: #121b27;
+}
+
+.map-navigation-targets strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.map-navigation-targets span,
+.map-navigation-targets small {
+  color: #9eacbd;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.map-navigation-targets .eligible {
+  color: #88dcc0;
+}
+
+.map-navigation-targets .skipped,
+.map-navigation-targets .map-navigation-skip {
+  color: #f1b9ae;
+}
+
+.map-navigation-context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.map-navigation-context > :deep(.fanout-preview) {
+  padding: 9px;
+}
+
+.map-navigation-context :deep(.fanout-preview-targets) {
+  max-height: 180px;
+}
+
+.map-navigation-context :deep(.fanout-preview header p) {
+  display: none;
+}
+
+.map-navigation-route-list {
+  display: grid;
+  gap: 6px;
+}
+
+.map-navigation-route-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 7px;
+  border: 1px solid #334356;
+  border-radius: 4px;
+  background: #111923;
+  color: #eaf1ff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-navigation-route-row.selected {
+  border-color: #42cdd0;
+  background: #143039;
+}
+
+.map-navigation-route-row.dimmed {
+  opacity: 0.45;
+}
+
+.map-navigation-route-row strong {
+  font-size: 12px;
+}
+
+.map-navigation-route-row span,
+.map-navigation-route-row small {
+  color: #abb9c8;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.map-navigation-route-row:focus-visible,
+.map-route-clear-selection:focus-visible,
+.map-navigation-context button:focus-visible {
+  outline: 2px solid var(--ph-primary);
+  outline-offset: 2px;
+}
+
+.map-route-clear-selection {
+  justify-self: start;
+}
+
+.map-point-actions > :deep(.fanout-results) {
+  grid-column: 1 / -1;
+}
+
 .heatmap-controls {
   display: grid;
   gap: 10px;

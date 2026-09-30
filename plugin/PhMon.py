@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.5.6'
+pVersion = '1.6.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -179,6 +179,33 @@ def _result_json(value):
 
 def _number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and abs(value) != float('inf')
+
+def _parse_generated_navigation_script(generated):
+    """Validate once and return executable text plus script-free map geometry."""
+    if not isinstance(generated, (list, tuple)) or not generated or len(generated) > 256:
+        raise ValueError('invalid_path')
+    lines = []
+    instructions = []
+    for index, line in enumerate(generated):
+        if not isinstance(line, str) or len(line) > 256:
+            raise ValueError('invalid_path')
+        if re.fullmatch(r'walk,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?', line):
+            _, x_text, y_text, z_text = line.split(',')
+            x, y, z = float(x_text), float(y_text), float(z_text)
+            if not all(_number(value) and abs(value) <= 10000000 for value in (x, y, z)):
+                raise ValueError('invalid_path')
+            instructions.append({'index': index, 'kind': 'walk', 'x': x, 'y': y, 'z': z})
+        elif re.fullmatch(r'wait,\d{1,6}', line):
+            instructions.append({'index': index, 'kind': 'wait', 'duration_ms': int(line.split(',')[1])})
+        elif re.fullmatch(r'teleport,[A-Za-z0-9_]+,[A-Za-z0-9_]+', line):
+            instructions.append({'index': index, 'kind': 'teleport'})
+        else:
+            raise ValueError('invalid_path')
+        lines.append(line)
+    script = '\n'.join(lines)
+    if len(script.encode('utf-8')) > 32768:
+        raise ValueError('invalid_path')
+    return script, instructions
 
 def _valid_position_region(value):
     return (isinstance(value, int) and not isinstance(value, bool) and
@@ -1964,6 +1991,11 @@ class AgentWorker(object):
         self._dedup_order = []
         self._profile_epoch = 0
         self._active_walk = None
+        self._navigation_lock = threading.Lock()
+        self._navigation_sequence = 0
+        self._latest_navigation_route = None
+        self._navigation_route_sent_at = 0.0
+        self._last_navigation_evidence = None
         self._server_clock_offset = 0.0
         self._last_control_sample_session = None
         self._last_control_sample_at = 0.0
@@ -2030,6 +2062,7 @@ class AgentWorker(object):
             client.send_json({'type': 'map.monsters', 'protocol_version': PROTOCOL_VERSION,
                               'map_snapshot': snapshot})
             self._last_map_sent_at = observation['observed_at']
+        self._flush_navigation_route(client)
         now = _monotonic()
         for sample in self._mob_spool.pending():
             sample_id = sample.get('sample_id')
@@ -2346,6 +2379,13 @@ class AgentWorker(object):
         with self._socket_lock:
             self._socket = value
 
+    def _clear_navigation_route(self):
+        with self._navigation_lock:
+            self._navigation_sequence = 0
+            self._latest_navigation_route = None
+            self._navigation_route_sent_at = 0.0
+        self._last_navigation_evidence = None
+
     def _run(self):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
@@ -2373,6 +2413,7 @@ class AgentWorker(object):
                 self.status = 'Connected to PhMon backend.'
                 _log('connected to backend')
                 next_heartbeat = _monotonic() + interval
+                self._clear_navigation_route()
                 self.character_id = None
                 self._current_identity = None
                 self._rejected_identity = None
@@ -2397,6 +2438,7 @@ class AgentWorker(object):
                             self.character_id = None
                             self.session_id = None
                             self._current_identity = None
+                            self._clear_navigation_route()
                             self._latest_sample = None
                             self._latest_resources = None
                             self._latest_resources_identity = None
@@ -2516,6 +2558,7 @@ class AgentWorker(object):
                     client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
                     self.character_id = None
             self._profile_epoch += 1
+            self._clear_navigation_route()
             self._item_tracker.reset('character_or_profile_changed')
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_utc_now()})
             reply = self._wait_for_registration(client)
@@ -2535,6 +2578,56 @@ class AgentWorker(object):
             self._confirmed_resources = None
             snapshot = True
         client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'state':state,'sent_at':_utc_now()})
+
+    def _flush_navigation_route(self, client):
+        with self._navigation_lock:
+            route = self._latest_navigation_route
+            if (route is None or self.character_id != route.get('character_id') or
+                    self.session_id != route.get('session_id')):
+                return False
+            now = _monotonic()
+            if now - self._navigation_route_sent_at < 5.0:
+                return False
+            payload = dict(route)
+            self._navigation_route_sent_at = now
+        client.send_json({'type': 'navigation.route', 'protocol_version': PROTOCOL_VERSION, 'route': payload})
+        return True
+
+    def _publish_navigation_route(self, message):
+        evidence = self._last_navigation_evidence
+        self._last_navigation_evidence = None
+        if (not isinstance(evidence, dict) or not self.character_id or not self.session_id or
+                message.get('character_id') != self.character_id or message.get('session_id') != self.session_id):
+            return False
+        with self._navigation_lock:
+            sequence = self._navigation_sequence + 1
+            route = {
+                'schema_version': 1,
+                'command_id': message.get('command_id'),
+                'character_id': self.character_id,
+                'session_id': self.session_id,
+                'route_sequence': sequence,
+                'invoked_at': evidence['invoked_at'],
+                'instructions': evidence['instructions'],
+            }
+            if evidence.get('source') is not None:
+                source = evidence['source']
+                route['source'] = {
+                    'region': source['region'], 'x': source['x'], 'y': source['y'],
+                    'z': source['z'], 'observed_at': source['observed_at'],
+                }
+            try:
+                encoded_size = len(json.dumps({
+                    'type': 'navigation.route', 'protocol_version': PROTOCOL_VERSION, 'route': route,
+                }, separators=(',', ':'), allow_nan=False).encode('utf-8'))
+            except Exception:
+                return False
+            if encoded_size > 64 * 1024:
+                return False
+            self._navigation_sequence = sequence
+            self._latest_navigation_route = route
+            self._navigation_route_sent_at = 0.0
+        return True
 
     def _send_resource_snapshot(self, client, value):
         if not isinstance(value, dict) or self.character_id is None or self.session_id is None:
@@ -2624,6 +2717,7 @@ class AgentWorker(object):
         if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             raise WebSocketClosed('invalid character rejection')
         self._discard_pending_commands('session_superseded')
+        self._clear_navigation_route()
         self._rejected_identity = self._identity_key(self._current_identity)
         self.character_id = None
         self.session_id = None
@@ -2936,6 +3030,7 @@ class AgentWorker(object):
         if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             return
         self._discard_pending_commands('session_superseded')
+        self._clear_navigation_route()
 
     def _clear_pending_commands(self):
         while True:
@@ -2965,6 +3060,8 @@ class AgentWorker(object):
                 self._start_walk(message, args, current_region)
                 return True
             outcome, effective, observed, verification = self._invoke(name, args, current_region)
+            if name == 'character.navigate' and outcome is not False:
+                self._publish_navigation_route(message)
             status = 'failed' if outcome is False else 'completed'
             result = self._base_result(message, status, 'api_return_false' if outcome is False else '', verification)
             result['api_return'] = outcome
@@ -3142,6 +3239,7 @@ class AgentWorker(object):
             confirmed=isinstance(observed,dict) and observed.get('radius')==float(radius)
             return result,{'radius':float(radius)},self._safe_area(observed),'observed' if confirmed else ('api_confirmed' if isinstance(result,bool) else 'unverified')
         if name == 'character.navigate':
+            self._last_navigation_evidence = None
             exact(('region','x','y','z'))
             region=args.get('region')
             if (not isinstance(region,int) or isinstance(region,bool) or region==0 or region < -32768 or region > 65535 or
@@ -3150,17 +3248,23 @@ class AgentWorker(object):
             generated=self.api.call('generate_script',region,float(args['x']),float(args['y']),float(args['z']))
             if generated is False: raise ValueError('path_rate_limited_or_not_in_game')
             if generated is None: raise ValueError('path_not_found')
-            if not isinstance(generated,(list,tuple)) or not generated or len(generated)>256:
-                raise ValueError('invalid_path')
-            lines=[]
-            for line in generated:
-                if not isinstance(line,str) or len(line)>256 or not re.fullmatch(r'(?:walk,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?|wait,\d{1,6}|teleport,[A-Za-z0-9_]+,[A-Za-z0-9_]+)',line):
-                    raise ValueError('invalid_path')
-                lines.append(line)
-            script='\n'.join(lines)
-            if len(script.encode('utf-8'))>32768: raise ValueError('invalid_path')
+            script, instructions = _parse_generated_navigation_script(generated)
+            source = None
+            source_time = _utc_now()
+            try:
+                position = self.api.position()
+                if (isinstance(position, dict) and _valid_position_region(position.get('region')) and
+                        all(_number(position.get(axis)) and abs(position[axis]) <= 10000000 for axis in ('x', 'y', 'z'))):
+                    source = {'region': int(position['region']), 'x': float(position['x']),
+                              'y': float(position['y']), 'z': float(position['z']), 'observed_at': source_time}
+            except Exception:
+                source = None
+            invoked_at = _utc_now()
             result=self.api.call('start_script',script)
-            return result,{'region':region,'x':float(args['x']),'y':float(args['y']),'z':float(args['z']),'route_steps':len(lines)},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
+            if result is not False:
+                self._last_navigation_evidence = {'instructions': instructions, 'source': source,
+                                                  'invoked_at': invoked_at}
+            return result,{'region':region,'x':float(args['x']),'y':float(args['y']),'z':float(args['z']),'route_steps':len(instructions)},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
         if name == 'character.walk':
             raise ValueError('walk_requires_callback_path')
         raise ValueError('unsupported_command')
@@ -3691,9 +3795,17 @@ def _sample_character():
             state['zone'] = zone
     # Official Botting docs expose start/stop mutations but no state getter.
     state['botting'] = None
+    try:
+        active_profile = _get_profile() if callable(_get_profile) else None
+    except Exception:
+        active_profile = None
+    profile_key = _bounded_text(active_profile, 128)
     identity = {
         'server':str(data['server']).strip()[:100],
         'name':str(data['name']).strip()[:64],
+        # Local-only identity fence: a profile switch must clear a route even
+        # when phBot reports the same game server and character name.
+        'profile_key':profile_key,
         'guild':(
             str(data['guild']).strip()[:100]
             if isinstance(data.get('guild'), str)

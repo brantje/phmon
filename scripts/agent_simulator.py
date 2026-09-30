@@ -354,6 +354,67 @@ def run_map_observations(worker, stopping):
         PhMon._death_callback_active = previous["death_active"]
 
 
+def run_navigation(worker, stopping, api_calls, position):
+    """Fixture-only v8 generated-script flow using the production plugin worker."""
+    timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+    command_timeout = float(os.environ.get("PHMON_SIMULATOR_COMMAND_TIMEOUT", "60"))
+    wait_until(lambda: "Connected" in worker.status, timeout, "backend connection")
+    identity = {
+        "server": required("PHMON_SIMULATOR_SERVER"),
+        "name": required("PHMON_SIMULATOR_CHARACTER"),
+        "guild": "",
+        "profile_key": "navigation-fixture",
+    }
+    state = {
+        "level": 75,
+        "hp": 900,
+        "region": position["region"],
+        "zone": "Fixture Jangan",
+        "x": position["x"],
+        "y": position["y"],
+        "z": position["z"],
+        "botting": None,
+    }
+    worker.update_character(identity, state)
+    deadline = time.monotonic() + command_timeout
+    while time.monotonic() < deadline and not stopping[0]:
+        if worker.character_id and worker.session_id:
+            worker.process_one_command(identity, state["region"])
+        if any(call[0] == "start_script" for call in api_calls):
+            break
+        time.sleep(0.05)
+    if not any(call[0] == "start_script" for call in api_calls):
+        raise SystemExit("simulator timed out waiting for character.navigate")
+    route = worker._latest_navigation_route
+    if not route or route.get("command_id") is None or not route.get("instructions"):
+        raise SystemExit("production plugin worker did not publish normalized route evidence")
+    script_calls = [call for call in api_calls if call[0] == "start_script"]
+    if len(script_calls) != 1 or script_calls[0][1] != os.environ.get("PHMON_SIMULATOR_EXPECTED_SCRIPT"):
+        raise SystemExit("fake start_script did not receive the expected validated script exactly once")
+    print("NAVIGATION_ROUTE_READY", flush=True)
+    if sys.stdin.readline().strip() != "arrive":
+        raise SystemExit("smoke did not request the controlled arrival observation")
+    destination_x = float(os.environ.get("PHMON_SIMULATOR_DESTINATION_X", "6430"))
+    destination_y = float(os.environ.get("PHMON_SIMULATOR_DESTINATION_Y", "1090"))
+    position.update({"x": destination_x, "y": destination_y})
+    state.update({"x": destination_x, "y": destination_y})
+    worker.update_character(identity, state)
+    wait_until(
+        lambda: worker._latest_sample is not None
+        and worker._latest_sample.get("state", {}).get("x") == destination_x
+        and worker._latest_sample.get("state", {}).get("y") == destination_y,
+        command_timeout,
+        "controlled arrival position sample",
+    )
+    print("NAVIGATION_ARRIVAL_SAMPLE_SENT", flush=True)
+    sys.stdin.readline()
+    stopping[0] = True
+    worker.stop()
+    worker.join(3.0)
+    print("PASS fixture navigation command used one validated script, reported normalized route geometry, and kept arrival separate", flush=True)
+    return 0
+
+
 def main():
     scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
     spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario in ("death-events", "map-observations") else None
@@ -368,7 +429,21 @@ def main():
             config['mob_spool_path'] = os.path.join(spool_directory, "mob-samples.json")
     fake_calls = []
     bot_stop_result = os.environ.get('PHMON_SIMULATOR_BOT_STOP_RESULT', 'true').lower() != 'false'
-    api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or bot_stop_result}) if scenario == 'commands' else None
+    navigation_position = {"region": 25000, "x": 6400.0, "y": 1080.0, "z": 0.0}
+    if scenario == 'commands':
+        api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or bot_stop_result})
+    elif scenario == 'navigation':
+        expected_script = os.environ.get(
+            "PHMON_SIMULATOR_EXPECTED_SCRIPT",
+            "\n".join(("walk,6429,1088,0", "walk,6430,1090,0")),
+        )
+        api = PhMon.PhBotAdapter({
+            'generate_script': lambda *_args: ["walk,6429,1088,0", "walk,6430,1090,0"],
+            'start_script': lambda script: fake_calls.append(("start_script", script)) or True,
+            'get_position': lambda: dict(navigation_position),
+        })
+    else:
+        api = None
     worker = PhMon.AgentWorker(config, 'simulator-fixture', api_adapter=api)
     workers = [worker]
     stopping = [False]
@@ -397,6 +472,17 @@ def main():
         finally:
             if spool_directory and os.path.isdir(spool_directory):
                 shutil.rmtree(spool_directory, ignore_errors=True)
+
+    if scenario == "navigation":
+        try:
+            return run_navigation(worker, stopping, fake_calls, navigation_position)
+        finally:
+            # AgentWorker owns a private network thread rather than inheriting
+            # threading.Thread's is_alive() API. The fixture runner must clean
+            # up the worker without calling a method it does not provide.
+            if worker._thread is not None and worker._thread.is_alive():
+                worker.stop()
+                worker.join(3.0)
 
     if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "character-lifecycle":
         deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))

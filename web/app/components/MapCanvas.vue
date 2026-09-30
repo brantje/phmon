@@ -14,6 +14,7 @@ import type {
 import type { MapProfile } from '~~/shared/types/map'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
 import type { MapHeatLayer } from '~/utils/mapHeatmap'
+import type { MapRouteOverlay } from '~/utils/mapNavigationRoutes'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
 import {
   localMapAsset,
@@ -54,21 +55,32 @@ const props = defineProps<{
   profile: MapProfile
   compact?: boolean
   initialPosition?: RasterPosition | null
+  focusRequest?: number
   initialTile?: { x: number; y: number }
   markers?: MapCanvasMarker[]
   heatLayers?: MapHeatLayer[]
+  navigationRoutes?: MapRouteOverlay[]
 }>()
 const emit = defineEmits<{
   viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
   pointselect: [point: RasterPosition]
+  contextaction: [
+    action: { point: RasterPosition; anchor: { x: number; y: number } },
+  ]
+  mapdrag: []
   opencharacter: [characterID: string]
 }>()
 const element = ref<HTMLDivElement | null>(null)
 let map: LeafletMap | undefined
 let heatLayerGroup: LayerGroup | undefined
 let markerLayer: LayerGroup | undefined
+let navigationLayerGroup: LayerGroup | undefined
 let heatRenderer: L.Canvas | undefined
 let makeHeatCircle: typeof import('leaflet').circleMarker | undefined
+let makePolyline: typeof import('leaflet').polyline | undefined
+let makeRouteCircle: typeof import('leaflet').circleMarker | undefined
+let makeDivIcon: typeof import('leaflet').divIcon | undefined
+let makeRouteMarker: typeof import('leaflet').marker | undefined
 let createLatLng: ((latitude: number, longitude: number) => LatLng) | undefined
 let makeMarker:
   | ((
@@ -83,6 +95,7 @@ const markerAnimationFrames = new Map<string, number>()
 const MARKER_ANIMATION_DURATION_MS = 120
 let stopped = false
 let lastFocusedTile = ''
+let lastFocusRequest = 0
 
 function indexAt(position: LatLng) {
   return leafletToRasterPosition(
@@ -96,6 +109,7 @@ function setInitialView() {
   if (!map || !createLatLng) return
   if (props.initialPosition) {
     lastFocusedTile = `${props.initialPosition.tileX}:${props.initialPosition.tileY}`
+    lastFocusRequest = props.focusRequest || 0
     const column = props.initialPosition.tileX - props.profile.tiles.min_x
     const row = props.profile.tiles.max_y - props.initialPosition.tileY
     map.setView(
@@ -109,6 +123,7 @@ function setInitialView() {
   }
   const initial = props.initialTile || { x: 168, y: 97 }
   lastFocusedTile = `${initial.x}:${initial.y}`
+  lastFocusRequest = props.focusRequest || 0
   const center = rasterTileCenterToLeaflet(
     props.profile.tiles,
     initial.x,
@@ -292,6 +307,95 @@ function syncHeatLayers() {
         })
       }
       rendered.addTo(heatLayerGroup)
+    }
+  }
+}
+
+function syncNavigationRoutes() {
+  if (
+    !navigationLayerGroup ||
+    !makePolyline ||
+    !makeRouteCircle ||
+    !createLatLng
+  )
+    return
+  const toLatLng = createLatLng
+  navigationLayerGroup.clearLayers()
+  for (const route of props.navigationRoutes || []) {
+    const opacity = route.selected ? (route.stale ? 0.48 : 0.92) : 0.2
+    for (const [blockIndex, block] of route.blocks.entries()) {
+      const points = [...block]
+      if (blockIndex === 0 && route.currentAnchor)
+        points.unshift(route.currentAnchor)
+      const latLngs = points.map(({ tileX, tileY, pixelX, pixelY }) => {
+        const column = tileX - props.profile.tiles.min_x
+        const row = props.profile.tiles.max_y - tileY
+        return toLatLng(-(row * 256 + pixelY), column * 256 + pixelX)
+      })
+      if (latLngs.length > 1) {
+        const line = makePolyline(latLngs, {
+          color: '#37d6d1',
+          weight: 3,
+          opacity,
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: true,
+        })
+        line.bindTooltip(`${route.characterName} · remaining route`, {
+          sticky: true,
+          opacity: 0.95,
+        })
+        line.addTo(navigationLayerGroup)
+      }
+      for (const point of block) {
+        const column = point.tileX - props.profile.tiles.min_x
+        const row = props.profile.tiles.max_y - point.tileY
+        const dot = makeRouteCircle(
+          toLatLng(-(row * 256 + point.pixelY), column * 256 + point.pixelX),
+          {
+            radius: 3.5,
+            color: '#b8ffff',
+            weight: 1.5,
+            fillColor: '#23c9cc',
+            fillOpacity: opacity,
+            opacity,
+            interactive: true,
+          },
+        )
+        dot.bindTooltip(`${route.characterName} · route waypoint`, {
+          direction: 'top',
+          opacity: 0.95,
+        })
+        dot.addTo(navigationLayerGroup)
+      }
+    }
+    if (route.destination) {
+      const point = route.destination
+      const column = point.tileX - props.profile.tiles.min_x
+      const row = props.profile.tiles.max_y - point.tileY
+      const label = document.createElement('span')
+      label.className = 'phmon-map-route-destination'
+      label.textContent = `Destination · ${route.characterName}`
+      if (makeDivIcon && makeRouteMarker) {
+        const icon = makeDivIcon({
+          className: 'phmon-map-route-destination-marker',
+          html: label,
+          iconSize: [0, 0],
+          iconAnchor: [0, 12],
+        })
+        const marker = makeRouteMarker(
+          toLatLng(-(row * 256 + point.pixelY), column * 256 + point.pixelX),
+          {
+            icon,
+            interactive: true,
+            keyboard: false,
+          },
+        )
+        marker.setOpacity(opacity)
+        marker
+          .bindTooltip(`Destination · ${route.characterName}`)
+          .addTo(navigationLayerGroup)
+      }
     }
   }
 }
@@ -570,6 +674,10 @@ onMounted(async () => {
   if (stopped || !element.value) return
   createLatLng = L.latLng
   makeHeatCircle = L.circleMarker
+  makePolyline = L.polyline
+  makeRouteCircle = L.circleMarker
+  makeDivIcon = L.divIcon
+  makeRouteMarker = L.marker
   heatRenderer = L.canvas({ padding: 0.5 })
   const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
   const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
@@ -700,6 +808,7 @@ onMounted(async () => {
   })
   new tiles().addTo(map)
   heatLayerGroup = L.layerGroup().addTo(map)
+  navigationLayerGroup = L.layerGroup().addTo(map)
   markerLayer = L.layerGroup().addTo(map)
   makeMarker = (marker, point, existing) => {
     const markerKey = `${marker.kind}:${marker.id}`
@@ -803,11 +912,20 @@ onMounted(async () => {
   map.on('contextmenu', (event: L.LeafletMouseEvent) => {
     L.DomEvent.preventDefault(event.originalEvent)
     selectPoint(event.latlng)
+    emit('contextaction', {
+      point: indexAt(event.latlng),
+      anchor: {
+        x: event.originalEvent.clientX,
+        y: event.originalEvent.clientY,
+      },
+    })
   })
+  map.on('dragstart', () => emit('mapdrag'))
   map.on('zoomend', snapZoomToPercentStep)
   map.on('moveend zoomend', publishView)
   publishView()
   syncHeatLayers()
+  syncNavigationRoutes()
   syncMarkers()
   if (props.compact) {
     map.dragging.disable()
@@ -820,15 +938,25 @@ onMounted(async () => {
 })
 
 watch(
-  () => props.initialPosition,
-  (position) => {
-    if (position && `${position.tileX}:${position.tileY}` !== lastFocusedTile)
+  [() => props.initialPosition, () => props.focusRequest],
+  ([position, focusRequest]) => {
+    if (
+      (focusRequest || 0) !== lastFocusRequest ||
+      (position && `${position.tileX}:${position.tileY}` !== lastFocusedTile)
+    )
       setInitialView()
   },
   { deep: true },
 )
 watch(() => props.markers, syncMarkers, { deep: true })
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
+watch(() => props.navigationRoutes, syncNavigationRoutes, { deep: true })
+
+function focusCanvas() {
+  element.value?.focus()
+}
+
+defineExpose({ focus: focusCanvas })
 
 onBeforeUnmount(() => {
   stopped = true
@@ -839,8 +967,13 @@ onBeforeUnmount(() => {
   map = undefined
   heatLayerGroup = undefined
   markerLayer = undefined
+  navigationLayerGroup = undefined
   heatRenderer = undefined
   makeHeatCircle = undefined
+  makePolyline = undefined
+  makeRouteCircle = undefined
+  makeDivIcon = undefined
+  makeRouteMarker = undefined
   makeMarker = undefined
   renderedMarkers.clear()
   markerIconSignatures.clear()
@@ -855,7 +988,7 @@ onBeforeUnmount(() => {
     :aria-label="
       compact
         ? 'Map tile preview'
-        : 'Interactive raster map. Use arrow keys to pan, then Enter or Space to select the center tile.'
+        : 'Interactive raster map. Use arrow keys to pan, Enter or Space to select the center tile, or right-click to open map actions.'
     "
     role="application"
     tabindex="0"
@@ -884,6 +1017,27 @@ onBeforeUnmount(() => {
 :global(.phmon-map-marker) {
   border: 0;
   background: transparent;
+}
+
+:global(.phmon-map-route-destination-marker) {
+  border: 0;
+  background: transparent;
+}
+
+:global(.phmon-map-route-destination) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid #b8ffff;
+  border-radius: 3px;
+  background: #09232bf2;
+  color: #eaffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 1px 5px #000a;
 }
 
 :global(.phmon-map-character-pin) {

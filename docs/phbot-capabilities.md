@@ -911,3 +911,31 @@ of Qin-Shi, Donwhang Stone Cave and Job Temple. Historical heatmap queries for a
 area/floor without a usable transform return an unsupported state rather than
 projecting the coordinates through the outdoor transform. This preserves the same
 fail-closed coordinate boundary used by Slice 7.
+
+### Protocol v8 generated-script route reporting — 2026-09-30
+
+The official [Paths API](https://plugins.phbot.org/phbot-api/paths) documents
+`generate_script(region, x, y, z)` as generating route command strings and imposing
+a five-second rate limit. Its generated paths can include `walk`, `wait`, and
+teleport instructions. The official [Script API](https://plugins.phbot.org/phbot-api/script)
+documents `start_script(str)` as background execution and `stop_script()` as a
+stop operation; neither document exposes a script-progress getter or proves that
+the character arrived at the requested point.
+
+Plugin 1.6.0 parses the generated result once, bounds and normalizes the supported
+instruction grammar, and passes the exact validated text to `start_script`. An
+explicit `False` return means failed start; other existing return classifications
+remain unchanged. The plugin publishes bounded normalized route evidence only after
+the call does not explicitly fail. It does not include script source or teleporter
+identifiers. The Go server owns route admission against the completed durable
+`character.navigate` command and keeps progress transiently, separate from position
+history. Arrival is inferred only from a later accepted live position observation
+within 12 game units and compatible region/floor scope; that radius is a PhMon map
+presentation policy, not a phBot guarantee.
+
+This contract has deterministic fake-adapter and protocol tests, including exact
+script execution, invalid-route rejection, background acceptance versus observed
+arrival, and wait/teleport barriers. There is no supported Windows/phBot process in
+this environment, so plugin v1.6.0 has not been exercised against a real character;
+the simulator is fixture evidence only. Protocol v8 is additive and the backend
+continues accepting v2–v7 during rollout. Legacy agents cannot report route geometry.

@@ -5,6 +5,7 @@ import { fanOutCounts } from '~/utils/commandFanOut'
 const props = defineProps<{
   operation: FanOutOperation
   stale?: boolean
+  statusNote?: string
   onRetry?: (characterID: string) => void
   onDismiss?: () => void
 }>()
@@ -65,6 +66,10 @@ const counts = computed(() => fanOutCounts(props.operation))
         <span>{{ counts.unknown }} unknown</span>
       </div>
     </div>
+
+    <p v-if="props.statusNote" class="fanout-result-note" role="status">
+      {{ props.statusNote }}
+    </p>
 
     <ol class="fanout-targets">
       <li
@@ -152,6 +157,14 @@ Observed after: {{ JSON.stringify(child.observedAfter, null, 2) }}</pre>
   gap: 10px;
   min-width: 0;
   padding: 12px;
+}
+.fanout-result-note {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--ph-border-soft);
+  border-radius: 4px;
+  color: var(--ph-primary);
+  font-size: 12px;
 }
 .fanout-heading,
 .fanout-target-main {

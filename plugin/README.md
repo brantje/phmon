@@ -1,11 +1,12 @@
 # PhMon phBot plugin
 
-The current Slice 7–8 development release is **1.5.6** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v7 over the existing authenticated
+The current Issue #27 development release is **1.6.0** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v8 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
-monster snapshots and profile-scoped durable observation samples; the backend keeps
-accepting protocol v2–v6 and v5 plugins continue
+monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
+transient route reports for generated-script navigation; the backend keeps accepting
+protocol v2–v7 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime
@@ -60,6 +61,15 @@ integer `gold` value returned by `get_guild_storage()`. It removes the unnecessa
 0x3253 packet fallback; guild-storage gold now follows the same canonical phBot API
 resource path as the rest of guild storage. Agent protocol remains v7 because the
 existing resource payload already supported an optional guild-storage `gold` field.
+
+For `character.navigate`, the worker validates generated walk/wait/teleport script
+lines once, executes that exact validated script, and publishes only normalized
+route instructions after `start_script` does not explicitly fail. Script text and
+teleporter identifiers stay inside the plugin. Route snapshots are memory-only,
+repeated for recovery at five-second intervals, and cleared on session/profile
+replacement. Plugin acceptance means phBot accepted the background script; arrival
+is reported only after a later fresh position observation. Protocol v2–v7 agents
+still support their existing commands but cannot report remaining route geometry.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket

@@ -1486,6 +1486,35 @@ class CanonicalCallbackTests(unittest.TestCase):
 
 
 class CharacterCollectorTests(unittest.TestCase):
+    def test_profile_identity_fence_is_local_and_captured_for_session_replacement(self):
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        )
+        worker = Mock()
+        try:
+            plugin._worker = worker
+            plugin._character_joined = True
+            plugin._last_character_signature = None
+            plugin._last_character_sample_at = 0
+            plugin._last_resources_sample_at = time.monotonic()
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_character_data', return_value={
+                        'server': 'Greatest', 'name': 'nuker1',
+                    }), \
+                    patch.object(plugin, '_get_position', return_value=None), \
+                    patch.object(plugin, '_get_profile', return_value='Greatest_Farm'):
+                plugin._sample_character()
+            identity = worker.update_character.call_args.args[0]
+            self.assertEqual(identity['profile_key'], 'Greatest_Farm')
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at,
+             plugin._last_resources_sample_at) = previous
+
     def test_signed_cave_region_from_get_position_is_preserved(self):
         previous = (
             plugin._worker,
@@ -2075,6 +2104,15 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(result['verification'], 'api_confirmed')
         self.assertEqual(calls[0], ('generate', (-32767, -24272.5, -93.5, 0.0)))
         self.assertEqual(calls[1], ('start', 'walk,-24272.5,-93.5,0\nwait,500'))
+        route = worker._latest_navigation_route
+        self.assertEqual(route['schema_version'], 1)
+        self.assertEqual(route['command_id'], frame['command_id'])
+        self.assertEqual(route['route_sequence'], 1)
+        self.assertEqual(route['instructions'], [
+            {'index': 0, 'kind': 'walk', 'x': -24272.5, 'y': -93.5, 'z': 0.0},
+            {'index': 1, 'kind': 'wait', 'duration_ms': 500},
+        ])
+        self.assertNotIn('walk,-24272.5', json.dumps(route))
         self.assertEqual(worker._outgoing.get_nowait()['type'], 'character.control_state')
 
         frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000008'
@@ -2086,6 +2124,7 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(rejected['status'], 'failed')
         self.assertEqual(rejected['reason'], 'api_return_false')
         self.assertIs(rejected['api_return'], False)
+        self.assertEqual(worker._latest_navigation_route['route_sequence'], 1)
         self.assertEqual(worker._outgoing.get_nowait()['type'], 'character.control_state')
 
         frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000007'
@@ -2096,16 +2135,60 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(worker._outgoing.get_nowait()['reason'], 'invalid_arguments')
         self.assertEqual(len(calls), 4)
 
-        frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000009'
-        frame['args'] = {'region':-32767,'x':-24272.5,'y':-93.5,'z':0}
-        worker._accept_command(frame)
-        worker._outgoing.get_nowait()
-        worker.session_id = '33333333-4444-4555-8666-777777777777'
-        self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767))
-        stale = worker._outgoing.get_nowait()
-        self.assertEqual(stale['status'], 'failed')
-        self.assertEqual(stale['reason'], 'stale_session')
-        self.assertEqual(len(calls), 4)
+    def test_navigation_route_parser_rejects_unsafe_scripts_without_partial_output(self):
+        script, route = plugin._parse_generated_navigation_script([
+            'walk,-12.5,20,0', 'wait,500', 'teleport,GATE_ONE,GATE_TWO', 'walk,40,50,-2.25',
+        ])
+        self.assertIn('teleport,GATE_ONE,GATE_TWO', script)
+        self.assertEqual([item['kind'] for item in route], ['walk', 'wait', 'teleport', 'walk'])
+        self.assertEqual(route[2], {'index': 2, 'kind': 'teleport'})
+        oversized_frame = 'teleport,' + ('A' * 120) + ',' + ('B' * 120)
+        self.assertEqual(len(oversized_frame), 250)
+        for invalid in (
+            ['walk,nan,1,2'], ['walk,10000001,1,2'], ['walk,1,2,3', 'exec,unsafe'],
+            ['wait,1000000'], ['teleport,PRIVATE-NAME,TARGET'], [], ['walk,1,2,3'] * 257,
+            ['walk,' + ('1' * 257) + ',1,1'], [oversized_frame] * 256,
+        ):
+            with self.subTest(invalid=invalid[:1]):
+                with self.assertRaises(ValueError):
+                    plugin._parse_generated_navigation_script(invalid)
+
+    def test_navigation_route_is_cleared_on_profile_replacement_and_revocation(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=plugin.PhBotAdapter({}))
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {
+            'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileOne',
+        }
+        worker._navigation_sequence = 1
+        worker._latest_navigation_route = {'route_sequence': 1}
+        registered = {
+            'type': 'character.registered', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': '33333333-4444-4555-8666-777777777777',
+            'session_id': '44444444-5555-4666-8777-888888888888',
+        }
+        sent = []
+        client = type('Client', (), {'send_json': lambda _, frame: sent.append(frame)})()
+        with patch.object(worker, '_wait_for_registration', return_value=registered):
+            worker._publish_sample(client, {
+                'identity': {'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileTwo'},
+                'state': {'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 0.0},
+            }, False)
+        self.assertIsNone(worker._latest_navigation_route)
+        self.assertEqual(worker._navigation_sequence, 0)
+        self.assertEqual(worker.session_id, registered['session_id'])
+
+        worker._latest_navigation_route = {'route_sequence': 1}
+        worker._navigation_sequence = 1
+        worker._revoke_session({
+            'type': 'command.revoke', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': worker.character_id, 'session_id': worker.session_id,
+        })
+        self.assertIsNone(worker._latest_navigation_route)
+        self.assertEqual(worker._navigation_sequence, 0)
 
     def test_control_state_is_initial_session_scoped_and_rate_limited(self):
         adapter = plugin.PhBotAdapter({

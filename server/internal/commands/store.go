@@ -210,6 +210,17 @@ func (s *Store) ListByIdempotencyKeys(ctx context.Context, operatorIdentity stri
 	return items, rows.Err()
 }
 
+// GetByID includes terminal commands so agent evidence can be bound to the
+// original durable identity after execution has completed.
+func (s *Store) GetByID(ctx context.Context, id string) (Command, error) {
+	var command Command
+	err := scanCommand(s.pool.QueryRow(ctx, selectCommand+`WHERE command_id=$1`, id), &command, new([]byte))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Command{}, ErrNotFound
+	}
+	return command, err
+}
+
 // CurrentControlTargets takes one set-based snapshot of sessions and their
 // current control state. Offline and missing IDs are left for the caller to
 // classify against its requested list.

@@ -18,11 +18,12 @@ import (
 	"phmon/server/internal/events"
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
+	"phmon/server/internal/navigation"
 	"phmon/server/internal/resources"
 )
 
 const (
-	agentProtocolVersion    = 7
+	agentProtocolVersion    = 8
 	agentMinProtocolVersion = 2
 )
 
@@ -57,6 +58,7 @@ type agentHandler struct {
 	mobs       *mobs.Store
 	mobLive    *mobs.LiveStore
 	analytics  *mapanalytics.Store
+	navigation *navigation.Store
 }
 
 type agentMonsterSnapshot struct {
@@ -110,6 +112,7 @@ type agentMessage struct {
 	Events           []events.AgentEvent        `json:"events,omitempty"`
 	EventResults     []events.AppendResult      `json:"results,omitempty"`
 	MapSnapshot      *agentMonsterSnapshot      `json:"map_snapshot,omitempty"`
+	NavigationRoute  *navigation.Input          `json:"route,omitempty"`
 	MobSample        *mobs.Sample               `json:"sample,omitempty"`
 }
 
@@ -253,9 +256,15 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to close character sessions", "agent_id", hello.AgentID)
 			}
 		}
+		if h.navigation != nil {
+			h.navigation.RemoveAgentGeneration(hello.AgentID, generation)
+		}
 		if !stillConnected {
 			if h.mobLive != nil {
 				h.mobLive.RemoveAgent(hello.AgentID)
+			}
+			if h.navigation != nil {
+				h.navigation.RemoveAgent(hello.AgentID)
 			}
 			if disconnectFence.IsZero() {
 				disconnectFence = connectedAt
@@ -339,6 +348,40 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				Character: character.Name, Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
 				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Monsters: frame.Monsters})
 			h.live.Invalidate()
+		case "navigation.route":
+			frame := message.NavigationRoute
+			encoded, marshalErr := json.Marshal(message)
+			if hello.ProtocolVersion < 8 || frame == nil || marshalErr != nil || len(encoded) > navigation.MaxFrameBytes ||
+				h.navigation == nil || h.commands == nil || h.characters == nil || h.resources == nil || navigation.Valid(*frame) != nil {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid navigation route", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 3*time.Second)
+			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
+			command, commandErr := h.commands.GetByID(ctx, frame.CommandID)
+			cancel()
+			if characterErr != nil || commandErr != nil || !navigationRouteOwnerMatches(*frame, command, character, hello.AgentID, generation) {
+				continue
+			}
+			var destination struct {
+				Region int     `json:"region"`
+				X      float64 `json:"x"`
+				Y      float64 `json:"y"`
+				Z      float64 `json:"z"`
+			}
+			if json.Unmarshal(command.Args, &destination) != nil || destination.Region == 0 {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid navigation command evidence", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			dataset, known := h.resources.DatasetIDForServer(character.Server)
+			if !known {
+				continue
+			}
+			if h.navigation.Replace(*frame, hello.AgentID, generation, character.Server, dataset, navigation.Point{
+				Region: destination.Region, X: destination.X, Y: destination.Y, Z: destination.Z,
+			}, time.Now().UTC()) {
+				h.live.Invalidate()
+			}
 		case "mob.sample":
 			if hello.ProtocolVersion < 7 || h.mobs == nil || h.characters == nil || h.resources == nil || message.MobSample == nil {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid mob sample", hello.AgentID, hello.ProtocolVersion)
@@ -547,6 +590,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character identity", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
+			if h.navigation != nil && previous.SessionID != "" && previous.SessionID != sessionID {
+				h.navigation.RemoveSession(previous.SessionID)
+			}
 			if previous.SessionID != "" && (previous.AgentID != hello.AgentID || previous.Generation != generation) {
 				revokeCtx, revokeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
 				previousProtocol := h.registry.ProtocolVersion(previous.AgentID, previous.Generation)
@@ -599,6 +645,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				}
 				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
+			}
+			if h.navigation != nil && message.State.Region != nil && message.State.X != nil && message.State.Y != nil {
+				if observedAt, parseErr := time.Parse(time.RFC3339, message.SentAt); parseErr == nil {
+					h.navigation.Observe(message.CharacterID, message.SessionID, navigation.Position{
+						Region: *message.State.Region, X: *message.State.X, Y: *message.State.Y, Z: message.State.Z, At: observedAt.UTC(),
+					})
+				}
 			}
 			if hello.ProtocolVersion >= 3 && h.analytics != nil && h.resources != nil && message.State.Region != nil && message.State.X != nil && message.State.Y != nil {
 				if sampledAt, parseErr := time.Parse(time.RFC3339, message.SentAt); parseErr == nil {
@@ -685,6 +738,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if h.mobLive != nil && message.SessionID != "" {
 				h.mobLive.RemoveSession(message.SessionID)
 			}
+			if h.navigation != nil && message.SessionID != "" {
+				h.navigation.RemoveSession(message.SessionID)
+			}
 			h.live.Invalidate()
 		case "resource.snapshot", "resource.delta":
 			if hello.ProtocolVersion < 4 || h.resources == nil || h.characters == nil ||
@@ -758,6 +814,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func navigationRouteOwnerMatches(route navigation.Input, command commands.Command, character characters.Character, agentID string, generation uint64) bool {
+	return character.Online && character.SessionID != nil && *character.SessionID == route.SessionID &&
+		character.AgentID != nil && *character.AgentID == agentID &&
+		command.CharacterID == route.CharacterID && command.SessionID == route.SessionID && command.AgentID == agentID &&
+		command.ConnectionGeneration == generation && command.Name == "character.navigate" && command.State == commands.StateCompleted
 }
 
 func ackMobSample(ctx context.Context, writer *agentWriter, protocol int, sampleID, status, reason string) bool {

@@ -4344,3 +4344,47 @@ No blocker remains for this bug fix. The operator requested a PR and CI/CodeRabb
 monitoring. Exact next action: open the PR, require current-head CI green and a
 completed CodeRabbit review, address actionable findings and report without merging.
 No production restart or character command is required; broader roadmap gates remain.
+
+### Resume — 2026-09-30 Issue #27 map navigation and remaining routes
+
+Issue #27 is implemented on branch `codex/issue-27-map-navigation` in the existing
+checkout; no worktree was created. The Map page now prepares an immutable
+per-character navigation fan-out from right-click, selected-point, touch and
+keyboard-center actions. It shows eligibility/skips before submission, preserves
+the #30 session/idempotency/result semantics and applies a final map/capability/
+profile/coordinate admission guard. Exact uncertain retries keep the original
+body/key even when a character's current Z changes. Focus remains separate from
+action targets; training-area placement remains focused-character only.
+
+The plugin is version 1.6.0 / agent protocol v8. It validates generated scripts
+once, executes that exact validated text and publishes only bounded normalized
+walk/wait/teleport evidence. Authenticated route frames are checked against the
+exact durable navigation command and stored transiently in Go. The store scopes
+walk geometry through the active map profile and advances only on accepted fresh
+positions. Waits, teleports, ambiguous floors and unsafe transitions never create
+speculative connectors. Map live snapshots render independent remaining routes,
+stale/terminal status and per-character destination markers without position
+history persistence.
+
+Changed implementation and evidence: `plugin/PhMon.py`, `plugin/test_phmon.py`,
+`plugin/README.md`, `server/internal/navigation/`, `server/internal/{commands,
+httpapi}/`, `web/app/{components,composables,pages,utils}/`, `web/shared/types/live.ts`,
+`web/tests/`, `scripts/agent_simulator.py`, `scripts/navigation_smoke.py`,
+`docs/{protocol,phbot-capabilities,reference-parity}.md`, and this ledger.
+
+Validation passed: 103 Python plugin tests, 90 frontend unit tests, focused Go
+navigation/commands/mapprofile/httpapi suites, and full `bash scripts/check.sh`
+under Node 24.20.0 with a disposable PostgreSQL database. ESLint had zero errors
+and 42 style warnings. The authenticated simulator smoke verified command
+admission, plugin script invocation, transient route delivery, stale-to-fresh
+recovery, later observed arrival and no route-only position-history rows. Local
+browser checks covered the context menu, active route, keyboard center selection,
+mobile selected-point action and 1440×1000, 1280×800 and 390×844 layouts with no
+horizontal overflow or page errors. Screenshots are in `/tmp/phmon-issue27-*.png`.
+
+Blocker/limit: actual Windows/phBot execution and physical navigation remain
+unverified; the simulator uses the production worker with fixture API adapters.
+The public demo browser navigation timed out, so comparison used the preserved
+2026-09-26 screenshots and public issue description. No production deployment,
+merge or real-character command was performed. Exact next action: no further #27
+implementation is pending; stop here until the next scoped request.
