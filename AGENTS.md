@@ -4186,3 +4186,25 @@ the final current-head Validation workflow still needs to complete. No real phBo
 character action is required for this maintenance change. Exact next action: require
 the final PR #38 head to pass both `validate` and `stack`; fix only failures caused
 by this change, then report the draft PR ready for operator review without merging.
+
+### Resume — 2026-09-30 Issue #29 map action targets
+
+Implemented the Issue #29 map-only target-selection foundation in the current
+checkout. Focus (`selectedCharacterID`) remains independent from the session-local
+action-target ID set. The Characters sidebar now has individual target checkboxes,
+All/None, applicable saved-group tri-state controls, and independent focus buttons.
+Targets clear on server/area/floor/region changes and reconcile only against a
+confirmed matching live snapshot. The map's character marker layer no longer hides
+the target list. Shared group data is server-neutral; other screens retain their
+existing server filtering. No API, protocol, migration or command behavior changed.
+
+Changed `web/app/pages/map.vue`, `web/app/utils/mapActionTargets.ts`,
+`web/tests/mapActionTargets.test.ts`, `web/app/composables/useLiveData.ts`,
+`web/app/components/AppSidebar.vue`, `web/app/assets/css/main.css`, and this
+reference ledger. Validation: Nuxt unit tests, typecheck, lint, format check,
+production build, browser interaction checks at 1440×1000, 1280×800 and 390×844,
+and `git diff --check`. The page had no horizontal overflow; no command was sent.
+The browser fixture had no saved groups, so group states were exercised in pure
+unit tests. The local PhMon web container was restored and healthy after preview.
+Exact next action: open `/map` in the operator browser to review saved-group states
+with the operator's groups; issue #30 owns batch command fan-out.

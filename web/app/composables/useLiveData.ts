@@ -63,7 +63,6 @@ let watchdogTimer: number | undefined
 let reconnectAttempt = 0
 let lastMessageAt = 0
 let liveDataStarted = false
-let groupsServerScope: string | undefined
 
 const liveStale = computed(() => hasSnapshot.value && staleCycle.value)
 const liveLoading = computed(
@@ -255,16 +254,9 @@ function removeSubscription(id: string, clear?: () => void) {
 function ensureBaseSubscriptions() {
   ensureSubscription('agents', 'agents')
   ensureSubscription('fleet-characters', 'characters')
-  ensureSubscription('groups', 'groups', {
-    server: groupsServerScope || undefined,
-  })
-}
-
-function setGroupsServerScope(server?: string) {
-  groupsServerScope = server?.trim() || undefined
-  ensureSubscription('groups', 'groups', { server: groupsServerScope }, () => {
-    groups.value = []
-  })
+  // Keep the shared group snapshot server-neutral. Individual screens filter
+  // members to their own server scope; this also supports map route overrides.
+  ensureSubscription('groups', 'groups')
 }
 
 function clearCharacterListFilter() {
@@ -879,7 +871,6 @@ export function useLiveData() {
     startLiveData,
     stopLiveData,
     setCharacterListFilter,
-    setGroupsServerScope,
     clearCharacterListFilter,
     setCharacterDetail,
     setCharacterResources,

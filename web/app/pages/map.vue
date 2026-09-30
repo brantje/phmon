@@ -40,6 +40,15 @@ import {
   heatmapResultToLayer,
   historicalHeatmapWindow,
 } from '~/utils/mapHeatmap'
+import {
+  applyMapActionTargetGroup,
+  clearMapActionTargets,
+  mapActionTargetGroupState,
+  mapActionTargetScopeKey,
+  reconcileMapActionTargets,
+  selectAllMapActionTargets,
+  toggleMapActionTarget,
+} from '~/utils/mapActionTargets'
 
 const {
   mapFeeds,
@@ -118,6 +127,21 @@ const regionID = ref(
 const selectedCharacterID = ref(
   typeof route.query.character_id === 'string' ? route.query.character_id : '',
 )
+const actionTargetIDs = ref(new Set<string>())
+const actionTargetScopeKey = computed(() =>
+  mapActionTargetScopeKey({
+    server: server.value,
+    area: areaID.value,
+    floor: floorID.value,
+    region: regionID.value,
+  }),
+)
+const expectedMapFeedScope = computed(() => ({
+  server: server.value,
+  area: areaID.value,
+  floor: floorID.value,
+  region: mapFeedRegion(regionID.value, selectedCharacterID.value) || 0,
+}))
 const selectedDestinationID = ref('')
 const dateRange = ref('24h')
 const eventWindowNow = ref(Date.now())
@@ -148,6 +172,11 @@ const actionMessage = ref('')
 const acceptedCommandID = ref('')
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
+const mapSnapshotInFeedScope = computed(
+  () =>
+    Boolean(mapSnapshot.value) &&
+    mapSnapshotMatchesScope(mapSnapshot.value!, expectedMapFeedScope.value),
+)
 const heatmapWindow = computed(() =>
   historicalHeatmapWindow(
     heatmapRange.value,
@@ -514,11 +543,68 @@ async function submitMapAction(
   }
 }
 const scopedCharacters = computed(() => {
-  const items = mapSnapshot.value?.characters || []
+  const items = mapSnapshotInFeedScope.value
+    ? mapSnapshot.value?.characters || []
+    : []
   if (regionID.value !== 0)
     return items.filter((character) => character.region === regionID.value)
   return items
 })
+const applicableActionTargetIDs = computed(
+  () =>
+    new Set(scopedCharacters.value.map((character) => character.character_id)),
+)
+const mapTargetGroups = computed(() =>
+  groups.value
+    .filter((group) =>
+      group.members.some(
+        (member) =>
+          member.server.toLocaleLowerCase() ===
+            server.value.toLocaleLowerCase() &&
+          applicableActionTargetIDs.value.has(member.character_id),
+      ),
+    )
+    .map((group) => ({
+      group_id: group.group_id,
+      name: group.name,
+      memberIDs: [
+        ...new Set(
+          group.members
+            .filter(
+              (member) =>
+                member.server.toLocaleLowerCase() ===
+                  server.value.toLocaleLowerCase() &&
+                applicableActionTargetIDs.value.has(member.character_id),
+            )
+            .map((member) => member.character_id),
+        ),
+      ],
+    }))
+    .map((group) => ({
+      ...group,
+      state: mapActionTargetGroupState(actionTargetIDs.value, group.memberIDs),
+    })),
+)
+function toggleActionTarget(characterID: string) {
+  actionTargetIDs.value = toggleMapActionTarget(
+    actionTargetIDs.value,
+    characterID,
+  )
+}
+function selectAllActionTargets() {
+  actionTargetIDs.value = selectAllMapActionTargets(
+    applicableActionTargetIDs.value,
+  )
+}
+function clearActionTargets() {
+  actionTargetIDs.value = clearMapActionTargets()
+}
+function toggleActionTargetGroup(memberIDs: string[]) {
+  actionTargetIDs.value = applyMapActionTargetGroup(
+    actionTargetIDs.value,
+    memberIDs,
+  )
+}
 const currentMonsters = computed(() => {
   if (!layerMonsters.value) return []
   return dedupeCurrentMonsters(mapSnapshot.value?.monsters || [])
@@ -913,6 +999,29 @@ watch(currentCharacter, (character) => {
   if (character && regionID.value && regionID.value !== character.region)
     regionID.value = 0
 })
+watch(
+  actionTargetScopeKey,
+  (nextScope, previousScope) => {
+    if (previousScope && nextScope !== previousScope)
+      actionTargetIDs.value = clearMapActionTargets()
+  },
+  { flush: 'sync' },
+)
+watch(
+  [mapSnapshot, streamCurrent, expectedMapFeedScope],
+  ([currentSnapshot, isCurrent, feedScope]) => {
+    const reconciled = reconcileMapActionTargets(
+      actionTargetIDs.value,
+      applicableActionTargetIDs.value,
+      Boolean(
+        isCurrent &&
+        currentSnapshot &&
+        mapSnapshotMatchesScope(currentSnapshot, feedScope),
+      ),
+    )
+    if (reconciled !== actionTargetIDs.value) actionTargetIDs.value = reconciled
+  },
+)
 watch([server, areaID, floorID, regionID, selectedCharacterID], () => {
   selectedTile.value = null
 })
@@ -1329,6 +1438,9 @@ useHead({ title: 'Map · PhMon' })
           >
             Set training area here
           </button>
+          <span class="map-action-target-note" role="note">
+            These actions currently use the focused character.
+          </span>
           <span v-if="selectedRegionAmbiguous" role="status"
             >This floor has two possible region IDs. Choose a region above or
             select a character in that region.</span
@@ -1577,33 +1689,90 @@ useHead({ title: 'Map · PhMon' })
         <section class="map-side-list">
           <div class="map-list-heading">
             <h2>Characters</h2>
-            <span>{{ layerCharacters ? scopedCharacters.length : 0 }}</span>
+            <span>{{ scopedCharacters.length }}</span>
           </div>
-          <button
-            v-for="character in layerCharacters ? scopedCharacters : []"
+          <div class="map-target-toolbar">
+            <button
+              class="compact-button"
+              type="button"
+              :disabled="!scopedCharacters.length"
+              @click="selectAllActionTargets"
+            >
+              All
+            </button>
+            <button
+              class="compact-button"
+              type="button"
+              :disabled="!actionTargetIDs.size"
+              @click="clearActionTargets"
+            >
+              None
+            </button>
+            <span>Selected for actions: {{ actionTargetIDs.size }}</span>
+          </div>
+          <div v-if="mapTargetGroups.length" class="map-target-groups">
+            <label
+              v-for="group in mapTargetGroups"
+              :key="group.group_id"
+              class="map-target-group"
+            >
+              <input
+                type="checkbox"
+                :checked="group.state === 'checked'"
+                :indeterminate="group.state === 'indeterminate'"
+                :aria-checked="
+                  group.state === 'indeterminate'
+                    ? 'mixed'
+                    : group.state === 'checked'
+                      ? 'true'
+                      : 'false'
+                "
+                :aria-label="`Target group ${group.name} for actions`"
+                @change="toggleActionTargetGroup(group.memberIDs)"
+              />
+              <span>{{ group.name }}</span>
+              <small>{{ group.memberIDs.length }}</small>
+            </label>
+          </div>
+          <div
+            v-for="character in scopedCharacters"
             :key="character.character_id"
             class="map-character-row"
             :class="{
               selected: selectedCharacterID === character.character_id,
+              targeted: actionTargetIDs.has(character.character_id),
             }"
-            type="button"
-            @click="selectedCharacterID = character.character_id"
           >
-            <span
-              ><strong>{{ character.name }}</strong
-              ><small
-                >{{ character.server }} ·
-                {{ zoneNameText(character.zone) }}</small
-              ></span
+            <label class="map-character-target">
+              <input
+                type="checkbox"
+                :checked="actionTargetIDs.has(character.character_id)"
+                :aria-label="`Target ${character.name} for actions`"
+                @change="toggleActionTarget(character.character_id)"
+              />
+            </label>
+            <button
+              class="map-character-focus"
+              type="button"
+              :aria-pressed="selectedCharacterID === character.character_id"
+              @click="selectedCharacterID = character.character_id"
             >
-            <small>{{
-              character.online
-                ? positionIsFresh(character)
-                  ? 'Online'
-                  : 'Online · last observed position'
-                : 'Offline · last position'
-            }}</small>
-          </button>
+              <span>
+                <strong>{{ character.name }}</strong>
+                <small
+                  >{{ character.server }} ·
+                  {{ zoneNameText(character.zone) }}</small
+                >
+              </span>
+              <small>{{
+                character.online
+                  ? positionIsFresh(character)
+                    ? 'Online'
+                    : 'Online · last observed position'
+                  : 'Offline · last position'
+              }}</small>
+            </button>
+          </div>
           <p v-if="!scopedCharacters.length" class="map-empty-copy">
             No characters in this server and zone scope.
           </p>

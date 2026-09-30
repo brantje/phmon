@@ -1357,3 +1357,29 @@ a captured name show Unknown zone when coordinates exist; there is no historic
 backfill. Plugin fixtures, Go validation and persistence coverage, frontend
 location tests and Nuxt typecheck cover the flow. Database integration and live
 phBot runtime checks remain open.
+
+### Issue #29 — independent map action targets — 2026-09-30
+
+The map Characters section now separates focus from action-target selection.
+Character-row buttons still focus the character; adjacent checkboxes edit a
+session-local, deduplicated target set. All/None and existing group selectors
+operate on applicable characters in the active map server/area/floor/zone scope.
+Groups display unchecked, mixed, or checked state from their applicable member
+IDs. The character list remains available when character markers are hidden.
+Spatial scope changes clear targets; stale refreshes retain them, and a confirmed
+current snapshot prunes IDs that have left the same scope. Current map commands
+continue using the focused character and their existing single-character session
+fencing.
+
+The shared `useLiveData().groups` stream is now server-neutral so a map route
+override can resolve saved groups for its selected server. Sidebar and Stats
+continue filtering group members through the global server scope.
+
+Validation passed: 64 Nuxt unit tests, Nuxt typecheck, lint (0 errors; 41 style
+warnings), Prettier check, production build, and `git diff --check`. The local
+browser verified focus/target independence, All/None, and character-list
+availability with map markers hidden. At 1440×1000, 1280×800, and 390×844 the
+document had no horizontal overflow. No saved groups were present in the browser
+fixture, so live group checkbox rendering was covered by the pure selection tests
+for tri-state, overlap, and membership changes. No command was submitted. Screens
+contain live operator character data and were kept outside the repository.

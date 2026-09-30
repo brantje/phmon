@@ -8,15 +8,10 @@ defineProps<{
 }>()
 const route = useRoute()
 const { connectedAgents, fleetStatus } = useFleetSummary()
-const { liveStale, connectionState, setGroupsServerScope } = useLiveData()
+const { liveStale, connectionState } = useLiveData()
 const { serverScope, serverOptions, matchesServer, scopedGroups } =
   useServerScope()
 const { fleetCharacters, freshnessNow } = useLiveData()
-watch(
-  serverScope,
-  (server) => setGroupsServerScope(server === 'all' ? undefined : server),
-  { immediate: true },
-)
 const statsGroupID = computed(() =>
   typeof route.query.group_id === 'string' ? route.query.group_id : '',
 )
