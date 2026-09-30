@@ -140,7 +140,10 @@ const expectedMapFeedScope = computed(() => ({
   server: server.value,
   area: areaID.value,
   floor: floorID.value,
-  region: mapFeedRegion(regionID.value, selectedCharacterID.value) || 0,
+  region:
+    areaID.value === 'world'
+      ? mapFeedRegion(regionID.value, selectedCharacterID.value) || 0
+      : 0,
 }))
 const selectedDestinationID = ref('')
 const dateRange = ref('24h')
@@ -1708,7 +1711,9 @@ useHead({ title: 'Map · PhMon' })
             >
               None
             </button>
-            <span>Selected for actions: {{ actionTargetIDs.size }}</span>
+            <span role="status"
+              >Selected for actions: {{ actionTargetIDs.size }}</span
+            >
           </div>
           <div v-if="mapTargetGroups.length" class="map-target-groups">
             <label
