@@ -8,7 +8,7 @@ Working branch: `fix/map-monster-icons`.
 - Keep the existing live monster HP bubbles and their current HP/attacking/size behavior.
 - Add the appropriate monster rank icon to each live monster bubble.
 - For party monsters, compose the matching rank icon with the shared party badge exported by PR #44; do not treat the party badge as rank artwork.
-- Add an opt-in **Show nearby monster names** control under the **Current nearby monsters** layer entry.
+- Add an opt-in **Show nearby monsters names** control under the **Current nearby monsters** layer entry.
 - When that control is enabled, show the monster name next to/below the existing bubble. Default it off so the map remains uncluttered unless requested.
 - Do not show user-facing monster UI text labeled `Type` / `Mob type`. Present the normalized rank name directly.
 - Normalize the six supported values as:
@@ -40,7 +40,7 @@ Working branch: `fix/map-monster-icons`.
 
 3. **Add opt-in monster name labels**
    - Add `showNearbyMonsterNames = ref(false)` in `web/app/pages/map.vue`.
-   - Under the existing **Current nearby monsters** layer toggle, add a subordinate checkbox labeled **Show nearby monster names**.
+   - Under the existing **Current nearby monsters** layer toggle, add a subordinate checkbox labeled **Show nearby monsters names**.
    - Pass that presentation state into marker rendering without changing live-map payloads.
    - When enabled, render `monsterDisplayName(monster)` as a compact map label attached to the monster marker; when disabled, render no map name label.
    - The popup and side list continue showing the monster name regardless of the map-label toggle.
@@ -63,7 +63,7 @@ Working branch: `fix/map-monster-icons`.
    - Verify unknown values never claim a known icon/rank.
    - Add/extend map UI tests to verify:
      - name labels default off;
-     - **Show nearby monster names** enables them;
+     - **Show nearby monsters names** enables them;
      - the existing bubble remains present;
      - the correct icon(s) are rendered;
      - popup/list/filter text uses normalized rank names and no monster-facing `Type` wording.

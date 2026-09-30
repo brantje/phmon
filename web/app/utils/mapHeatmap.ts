@@ -26,7 +26,7 @@ export interface MapHeatLayer {
 const LABELS: Record<HeatmapLayerID, string> = {
   mob_density: 'Mob density',
   mob_observer_average: 'Observer-local mob average',
-  mob_types: 'Mob type sightings',
+  mob_types: 'Monster rank sightings',
   deaths: 'Deaths',
   drops: 'Drops',
   unique_sightings: 'Unique sightings',

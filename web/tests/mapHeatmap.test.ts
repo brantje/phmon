@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { HeatmapResult } from '../shared/types/mapAnalytics.ts'
 import type { MapProfile } from '../shared/types/map.ts'
 import {
+  heatmapLayerLabel,
   heatmapResultToLayer,
   historicalHeatmapWindow,
 } from '../app/utils/mapHeatmap.ts'
@@ -26,6 +27,10 @@ const profile = {
     },
   ],
 } as unknown as MapProfile
+
+test('monster history uses rank wording in the frontend', () => {
+  assert.equal(heatmapLayerLabel('mob_types'), 'Monster rank sightings')
+})
 
 test('historical heatmap windows support month and validated custom bounds', () => {
   const now = Date.parse('2026-09-29T12:00:00Z')

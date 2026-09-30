@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
   dedupeCurrentMonsters,
   localMapAsset,
   monsterDisplayName,
   monsterHPFraction,
+  monsterMapName,
   monsterTypePresentation,
 } from '../app/utils/mapMarkerPresentation.ts'
 
@@ -197,6 +199,19 @@ test('monster labels prefer names and prettify server names when name is numeric
     monsterDisplayName({ id: '1', model_id: 1933, region: 1, x: 0, y: 0 }),
     'Unknown monster',
   )
+})
+
+test('nearby monster map names are opt-in and use the resolved monster name', () => {
+  const monster = {
+    id: '1',
+    name: 'Eldimmu',
+    region: 1,
+    x: 0,
+    y: 0,
+  }
+  assert.equal(DEFAULT_SHOW_NEARBY_MONSTER_NAMES, false)
+  assert.equal(monsterMapName(monster, false), '')
+  assert.equal(monsterMapName(monster, true), 'Eldimmu')
 })
 
 test('map artwork accepts only local portrait and item assets', () => {

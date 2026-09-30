@@ -3,6 +3,8 @@ import type {
   MapMonsterObservation,
 } from '../../shared/types/live.ts'
 
+export const DEFAULT_SHOW_NEARBY_MONSTER_NAMES = false
+
 const MONSTER_TYPES: Record<
   number,
   {
@@ -175,6 +177,10 @@ export function monsterDisplayName(monster: MapMonster): string {
     if (readable) return readable
   }
   return 'Unknown monster'
+}
+
+export function monsterMapName(monster: MapMonster, visible: boolean): string {
+  return visible ? monsterDisplayName(monster) : ''
 }
 
 export function localMapAsset(

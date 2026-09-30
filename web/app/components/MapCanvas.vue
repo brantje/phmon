@@ -19,6 +19,7 @@ import {
   localMapAsset,
   monsterDisplayName,
   monsterHPFraction,
+  monsterMapName,
   monsterTypePresentation,
 } from '~/utils/mapMarkerPresentation'
 import {
@@ -45,6 +46,7 @@ interface MapCanvasMarker {
   character?: CharacterMarkerInput
   party?: MapPartyMember
   monster?: MapMonster
+  showLabel?: boolean
   itemName?: string
   itemIconUrl?: string
   event?: ActivityEvent
@@ -429,12 +431,11 @@ function markerPopup(marker: MapCanvasMarker) {
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
     title.textContent = monsterDisplayName(monster)
-    subtitle.textContent = `Position | ${positionText(monster.x, monster.y, monster.z)}`
+    subtitle.textContent = `${monsterTypePresentation(monster).label} · Position | ${positionText(monster.x, monster.y, monster.z)}`
     const dot = document.createElement('span')
     dot.className = 'phmon-map-detail-monster-dot'
     header.prepend(dot)
     details.append(
-      detailRow('Type', monsterTypePresentation(monster).label),
       detailRow(
         'Level',
         monster.level == null ? 'Unavailable' : String(monster.level),
@@ -539,6 +540,13 @@ function markerIconContent(marker: MapCanvasMarker) {
         partyBadge.alt = ''
         partyBadge.onerror = () => partyBadge.remove()
         content.append(partyBadge)
+      }
+      const mapName = monsterMapName(marker.monster, Boolean(marker.showLabel))
+      if (mapName) {
+        const name = document.createElement('span')
+        name.className = 'phmon-map-monster-name'
+        name.textContent = mapName
+        content.append(name)
       }
     }
   } else if (marker.kind === 'drop') {
@@ -750,6 +758,9 @@ onMounted(async () => {
       type?.iconUrl,
       type?.partyBadgeUrl,
       type?.unknown,
+      marker.monster
+        ? monsterMapName(marker.monster, Boolean(marker.showLabel))
+        : '',
       hp,
       marker.monster?.attacking,
       marker.itemIconUrl,
@@ -1105,6 +1116,27 @@ onBeforeUnmount(() => {
         #304661 1turn
       )
       border-box;
+}
+
+:global(.phmon-map-monster-name) {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  max-width: 120px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border-radius: 7px;
+  background: #0d1119ec;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px #000b;
+  pointer-events: none;
 }
 
 :global(.phmon-map-marker--hp-unavailable .phmon-map-monster-bubble) {
