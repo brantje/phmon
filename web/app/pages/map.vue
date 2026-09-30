@@ -1528,50 +1528,21 @@ useHead({ title: 'Map · PhMon' })
               <small>{{ group.memberIDs.length }}</small>
             </label>
           </div>
-          <div
+          <MapCharacterStatusRow
             v-for="character in scopedCharacters"
             :key="character.character_id"
-            class="map-character-row"
-            :class="{
-              selected: selectedCharacterID === character.character_id,
-              targeted: actionTargetIDs.has(character.character_id),
-            }"
-          >
-            <label class="map-character-target">
-              <input
-                type="checkbox"
-                :checked="actionTargetIDs.has(character.character_id)"
-                :aria-label="`Target ${character.name} for actions`"
-                @change="toggleActionTarget(character.character_id)"
-              />
-            </label>
-            <button
-              class="map-character-focus"
-              type="button"
-              :aria-pressed="selectedCharacterID === character.character_id"
-              @click="
-                selectedCharacterID =
-                  selectedCharacterID === character.character_id
-                    ? ''
-                    : character.character_id
-              "
-            >
-              <span>
-                <strong>{{ character.name }}</strong>
-                <small
-                  >{{ character.server }} ·
-                  {{ zoneNameText(character.zone) }}</small
-                >
-              </span>
-              <small>{{
-                character.online
-                  ? positionIsFresh(character)
-                    ? 'Online'
-                    : 'Online · last observed position'
-                  : 'Offline · last position'
-              }}</small>
-            </button>
-          </div>
+            :character="character"
+            :selected="selectedCharacterID === character.character_id"
+            :targeted="actionTargetIDs.has(character.character_id)"
+            :position-fresh="positionIsFresh(character)"
+            @toggle-target="toggleActionTarget(character.character_id)"
+            @focus="
+              selectedCharacterID =
+                selectedCharacterID === character.character_id
+                  ? ''
+                  : character.character_id
+            "
+          />
           <p v-if="!scopedCharacters.length" class="map-empty-copy">
             No characters in this server and zone scope.
           </p>
