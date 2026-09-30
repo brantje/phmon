@@ -1091,7 +1091,7 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-drop-icon img),
-:global(.phmon-map-death-icon img) {
+:global(.phmon-map-death-icon > img) {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -1126,6 +1126,14 @@ onBeforeUnmount(() => {
   background: #090909eb;
   overflow: hidden;
   box-shadow: 0 2px 6px #0008;
+}
+
+:global(.phmon-map-death-badge img) {
+  width: 16px;
+  height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+  object-fit: cover;
 }
 
 :global(.phmon-map-marker--event) {
