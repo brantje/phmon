@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Issue #27 development release is **1.6.1** (`vsro_1188_passive_r2`, API
+The current Issue #27 development release is **1.6.2** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v8 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -83,8 +83,14 @@ four slowest stages, including resource collection and command invocation. These
 logs contain stage names and durations only, never script text or API arguments.
 If phBot reports `event_loop has been running for 10 seconds`, retain the preceding
 `navigation ... started` line and subsequent duration/slow-callback lines. They
-identify the blocked stage; the watchdog warning alone does not. API invocation
-remains on the callback thread pending verified support for other threads.
+identify the blocked stage; the watchdog warning alone does not. Operator timing logs isolated `generate_script` as an 8-second callback stall.
+Version 1.6.2 dispatches only generation on one bounded daemon worker; validation,
+source readback and `start_script` remain on callbacks. Callback polling never
+joins or waits for that worker. Late results cannot start scripts after expiry,
+profile/session change, teleport, disconnect, revocation or plugin stop. An
+uninterruptible generator retains its slot until it returns, including across
+profile worker replacement. This threading change needs installed phBot runtime
+verification; fixture tests cannot establish native API thread behavior.
 
 ## Install
 

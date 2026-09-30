@@ -4552,3 +4552,30 @@ isolate generation, script start or sampling. Exact next action: push the timing
 build for operator installation, inspect a fresh warning and its stage logs,
 finish final-head CI/CodeRabbit and leave PR #50 unmerged. Do not change other
 services, production database or credentials.
+
+### Confirmed callback stall and bounded generation — 2026-09-30
+
+Operator-supplied 1.6.1 timing logs isolate `generate_script` on nuker1/nuker2
+at 8077/8124 ms. Validation and source readback took 0 ms; `start_script` took
+3/2 ms. Total callback times were 8086/8131 ms. nuker4 generation took 577 ms,
+script start 4 ms and callback total 589 ms. Thus synchronous path generation in
+our callback dispatch is the confirmed blocking stage. The generation latency
+itself remains native API behavior, not a diagnosed remote-service failure.
+
+Plugin 1.6.2 makes a narrow exception to the older callback-only API plan: only
+`generate_script` runs on a dedicated bounded daemon thread. One generation slot
+is shared across profile workers in a plugin instance. Transport stays separate,
+and all validation, position reads and script mutations remain callback-owned.
+Expiry, current identity/profile, session and generation epoch are checked again
+before invocation. Teleport, disconnect, revocation and stop discard late results;
+no callback joins or waits on a generator. Tests exercise a deliberately blocked
+generator, continued sampling/result flushes, API thread identity, duplicates,
+invalid results, lifecycle rejection and slot bounds across worker replacement.
+
+Official docs do not promise native generation thread safety or GIL behavior.
+The installed-phBot gate is therefore explicit: load 1.6.2, verify generation
+completes while fresh position sampling continues, verify script start/arrival,
+and check that no ten-second callback warning returns. Do not claim this runtime
+gate passed based only on Python fixture threads. Exact next action: push 1.6.2
+for operator installation and inspect its callback/position evidence, then finish
+final-head CI and CodeRabbit without merging PR #50.

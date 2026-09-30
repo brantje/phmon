@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.6.1'
+pVersion = '1.6.2'
 pUrl = ''
 
 PROTOCOL_VERSION = 8
@@ -91,6 +91,8 @@ _WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 MAX_WALK_WAYPOINTS = 256
 WALK_ARRIVAL_TOLERANCE = 12.0
 WALK_TIMEOUT_SECONDS = 300.0
+# One native path-generation call per plugin, even across profile worker replacement.
+_NAVIGATION_GENERATION_SLOT = threading.BoundedSemaphore(1)
 
 try:
     from phBot import get_config_dir as _get_config_dir
@@ -2029,6 +2031,8 @@ class AgentWorker(object):
         self._dedup_order = []
         self._profile_epoch = 0
         self._active_walk = None
+        self._navigation_job_lock = threading.Lock()
+        self._navigation_job = None
         self._navigation_lock = threading.Lock()
         self._navigation_sequence = 0
         self._latest_navigation_route = None
@@ -2407,6 +2411,7 @@ class AgentWorker(object):
 
     def stop(self):
         self.stop_event.set()
+        self._cancel_navigation_generation('plugin_stopped')
         with self._socket_lock:
             client = self._socket
         if client is not None:
@@ -2418,6 +2423,7 @@ class AgentWorker(object):
             self._socket = value
 
     def _clear_navigation_route(self):
+        self._cancel_navigation_generation('navigation_session_changed')
         with self._navigation_lock:
             self._navigation_sequence = 0
             self._latest_navigation_route = None
@@ -3079,6 +3085,7 @@ class AgentWorker(object):
             except _queue.Empty: break
 
     def _discard_pending_commands(self, reason):
+        self._cancel_navigation_generation(reason)
         while True:
             try: item=self._commands.get_nowait()
             except _queue.Empty: break
@@ -3086,6 +3093,10 @@ class AgentWorker(object):
 
     def process_one_command(self, current_identity=None, current_region=None):
         """Invoke at most one validated command from phBot's event_loop callback."""
+        if self._navigation_job is not None:
+            return self._process_navigation_generation(current_identity)
+        if self.stop_event.is_set():
+            return False
         try: item = self._commands.get_nowait()
         except _queue.Empty: return False
         message = item['message']; name = message['name']; args = message['args']
@@ -3097,6 +3108,9 @@ class AgentWorker(object):
         if current_identity is not None and self._identity_key(current_identity) != self._identity_key(expected_identity):
             self._queue_result(self._base_result(message, 'failed', 'character_changed', 'unverified')); return True
         try:
+            if name == 'character.navigate':
+                self._start_navigation_generation(item, current_identity)
+                return True
             if name == 'character.walk':
                 self._start_walk(message, args, current_region)
                 return True
@@ -3113,6 +3127,138 @@ class AgentWorker(object):
         except Exception as error:
             self._queue_result(self._base_result(message, 'failed', str(error)[:64] or 'api_error', 'unverified'))
         return True
+
+    @staticmethod
+    def _navigation_args(args):
+        if set(args) != set(('region', 'x', 'y', 'z')):
+            raise ValueError('invalid_arguments')
+        region = args.get('region')
+        if (not isinstance(region, int) or isinstance(region, bool) or region == 0 or
+                region < -32768 or region > 65535 or
+                not all(_number(args.get(axis)) and abs(args[axis]) <= 10000000 for axis in ('x', 'y', 'z'))):
+            raise ValueError('invalid_arguments')
+        return region
+
+    def _start_navigation_generation(self, item, current_identity):
+        args = dict(item['message']['args'])
+        region = self._navigation_args(args)
+        if not self.api.has('generate_script') or not self.api.has('start_script'):
+            raise ValueError('unsupported_runtime_primitive')
+        if not _NAVIGATION_GENERATION_SLOT.acquire(False):
+            raise ValueError('navigation_generation_busy')
+        job = {'item': item, 'identity': dict(current_identity or self._current_identity or {}),
+               'done': threading.Event(), 'generated': None, 'error': None, 'cancel_reason': None}
+
+        def generate():
+            try:
+                # This read-only native API is the sole off-callback phBot call.
+                # It must never run on the transport thread or invoke a script.
+                job['generated'] = _navigation_stage('generate_script', self.api.call, 'generate_script',
+                                                    region, float(args['x']), float(args['y']), float(args['z']))
+            except Exception:
+                job['error'] = 'path_generation_failed'
+            finally:
+                _NAVIGATION_GENERATION_SLOT.release()
+                job['done'].set()
+
+        job['thread'] = threading.Thread(target=generate, name='PhMon-navigation-generation')
+        job['thread'].daemon = True
+        with self._navigation_job_lock:
+            self._navigation_job = job
+        try:
+            job['thread'].start()
+        except Exception:
+            with self._navigation_job_lock:
+                self._navigation_job = None
+            _NAVIGATION_GENERATION_SLOT.release()
+            raise ValueError('path_generation_failed')
+
+    def _cancel_navigation_generation(self, reason):
+        with self._navigation_job_lock:
+            job = self._navigation_job
+            if job is None or job['cancel_reason'] is not None:
+                return
+            job['cancel_reason'] = reason
+        self._queue_result(self._base_result(job['item']['message'], 'failed', reason, 'unverified'))
+        # Native generation cannot be interrupted safely. Retain its occupied
+        # slot until it returns; never join, replay, or start an extra generator.
+
+    def _process_navigation_generation(self, current_identity):
+        with self._navigation_job_lock:
+            job = self._navigation_job
+        if job is None:
+            return False
+        item = job['item']
+        message = item['message']
+        expected = job['identity']
+        identity = current_identity if current_identity is not None else self._current_identity
+        reason = None
+        if self.stop_event.is_set():
+            reason = 'plugin_stopped'
+        elif (item['epoch'] != self._profile_epoch or message['character_id'] != self.character_id or
+              message['session_id'] != self.session_id):
+            reason = 'stale_session'
+        elif (self._identity_key(identity) != self._identity_key(expected) or
+              (identity or {}).get('profile_key') != expected.get('profile_key')):
+            reason = 'character_changed'
+        elif _monotonic() >= item['deadline']:
+            reason = 'command_expired'
+        if reason:
+            self._cancel_navigation_generation(reason)
+        if not job['done'].is_set():
+            return False
+        # Serialize cancellation against the final fence and script invocation.
+        # The native generator never needs this lock and callback never joins it.
+        with self._navigation_job_lock:
+            try:
+                if job['cancel_reason'] is not None:
+                    return True
+                if (item['epoch'] != self._profile_epoch or message['character_id'] != self.character_id or
+                        message['session_id'] != self.session_id or self.stop_event.is_set()):
+                    self._queue_result(self._base_result(message, 'failed', 'stale_session', 'unverified'))
+                    return True
+                if job['error']:
+                    raise ValueError(job['error'])
+                outcome, effective, observed, verification = self._finish_navigation(message['args'], job['generated'])
+                result = self._base_result(message, 'failed' if outcome is False else 'completed',
+                                           'api_return_false' if outcome is False else '', verification)
+                result['api_return'] = outcome
+                result['effective_args'] = effective
+                self._queue_result(result)
+                self._queue_control_state(message)
+                if outcome is not False:
+                    self._publish_navigation_route(message)
+            except Exception as error:
+                self._queue_result(self._base_result(message, 'failed', str(error)[:64] or 'api_error', 'unverified'))
+            finally:
+                self._navigation_job = None
+        return True
+
+    def _finish_navigation(self, args, generated):
+        self._last_navigation_evidence = None
+        region = self._navigation_args(args)
+        if generated is False: raise ValueError('path_rate_limited_or_not_in_game')
+        if generated is None: raise ValueError('path_not_found')
+        script, instructions = _navigation_stage('validate_script', _parse_generated_navigation_script, generated)
+        source = None
+        source_time = _utc_now()
+        try:
+            position = _navigation_stage('source_position', self.api.position)
+            if (isinstance(position, dict) and _valid_position_region(position.get('region')) and
+                    all(_number(position.get(axis)) and abs(position[axis]) <= 10000000 for axis in ('x', 'y', 'z'))):
+                source = {'region': int(position['region']), 'x': float(position['x']),
+                          'y': float(position['y']), 'z': float(position['z']), 'observed_at': source_time}
+        except Exception:
+            source = None
+        invoked_at = _utc_now()
+        try:
+            result=_navigation_stage('start_script', self.api.call, 'start_script', script)
+        except Exception:
+            raise ValueError('script_start_failed')
+        if result is not False:
+            self._last_navigation_evidence = {'instructions': instructions, 'source': source,
+                                              'invoked_at': invoked_at}
+        return result,{'region':region,'x':float(args['x']),'y':float(args['y']),'z':float(args['z']),'route_steps':len(instructions)},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
 
     def _start_walk(self, message, args, current_region):
         if set(args) != set(('region', 'x', 'y', 'z')):
@@ -3280,33 +3426,7 @@ class AgentWorker(object):
             confirmed=isinstance(observed,dict) and observed.get('radius')==float(radius)
             return result,{'radius':float(radius)},self._safe_area(observed),'observed' if confirmed else ('api_confirmed' if isinstance(result,bool) else 'unverified')
         if name == 'character.navigate':
-            self._last_navigation_evidence = None
-            exact(('region','x','y','z'))
-            region=args.get('region')
-            if (not isinstance(region,int) or isinstance(region,bool) or region==0 or region < -32768 or region > 65535 or
-                    not all(_number(args.get(axis)) and abs(args[axis])<=10000000 for axis in ('x','y','z'))):
-                raise ValueError('invalid_arguments')
-            generated=_navigation_stage('generate_script', self.api.call, 'generate_script',
-                                        region,float(args['x']),float(args['y']),float(args['z']))
-            if generated is False: raise ValueError('path_rate_limited_or_not_in_game')
-            if generated is None: raise ValueError('path_not_found')
-            script, instructions = _navigation_stage('validate_script', _parse_generated_navigation_script, generated)
-            source = None
-            source_time = _utc_now()
-            try:
-                position = _navigation_stage('source_position', self.api.position)
-                if (isinstance(position, dict) and _valid_position_region(position.get('region')) and
-                        all(_number(position.get(axis)) and abs(position[axis]) <= 10000000 for axis in ('x', 'y', 'z'))):
-                    source = {'region': int(position['region']), 'x': float(position['x']),
-                              'y': float(position['y']), 'z': float(position['z']), 'observed_at': source_time}
-            except Exception:
-                source = None
-            invoked_at = _utc_now()
-            result=_navigation_stage('start_script', self.api.call, 'start_script', script)
-            if result is not False:
-                self._last_navigation_evidence = {'instructions': instructions, 'source': source,
-                                                  'invoked_at': invoked_at}
-            return result,{'region':region,'x':float(args['x']),'y':float(args['y']),'z':float(args['z']),'route_steps':len(instructions)},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
+            raise ValueError('navigation_requires_callback_path')
         if name == 'character.walk':
             raise ValueError('walk_requires_callback_path')
         raise ValueError('unsupported_command')
@@ -3540,6 +3660,8 @@ def joined_game():
 
 
 def teleported():
+    if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
+        _worker._cancel_navigation_generation('character_teleported')
     _lifecycle_event('session.teleported', 'teleported', include_identity=True)
 
 

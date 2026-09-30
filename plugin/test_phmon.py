@@ -2098,6 +2098,9 @@ class BackoffTests(unittest.TestCase):
                  'ttl_ms':10000,'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
         worker._accept_command(frame)
         self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767))
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
         self.assertEqual(worker._outgoing.get_nowait()['type'], 'command.ack')
         result = worker._outgoing.get_nowait()
         self.assertEqual(result['status'], 'completed')
@@ -2119,6 +2122,9 @@ class BackoffTests(unittest.TestCase):
         reject_script.append(True)
         worker._accept_command(frame)
         worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767)
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
         worker._outgoing.get_nowait()
         rejected = worker._outgoing.get_nowait()
         self.assertEqual(rejected['status'], 'failed')
@@ -2131,6 +2137,9 @@ class BackoffTests(unittest.TestCase):
         frame['args']['region'] = 0
         worker._accept_command(frame)
         worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767)
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
         worker._outgoing.get_nowait()
         self.assertEqual(worker._outgoing.get_nowait()['reason'], 'invalid_arguments')
         self.assertEqual(len(calls), 4)
@@ -2158,6 +2167,9 @@ class BackoffTests(unittest.TestCase):
         }
         worker._accept_command(frame)
         self.assertTrue(worker.process_one_command(worker._current_identity, 25000))
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
 
         sent = []
 
@@ -2273,6 +2285,146 @@ class BackoffTests(unittest.TestCase):
         worker._restore_latest_sample(transport)
         self.assertEqual(transport.sent, [])
         self.assertIsNone(worker._latest_sample)
+
+
+class NavigationGenerationTests(unittest.TestCase):
+    def setUp(self):
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.calls = []
+        self.callback_thread = threading.get_ident()
+
+        def generate(*args):
+            self.calls.append(('generate', threading.get_ident()))
+            self.started.set()
+            if not self.release.wait(2):
+                raise RuntimeError('test generator was not released')
+            return ['walk,10,20,0']
+
+        self.worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID, 'agent_token': 'token',
+        }, 'fixture', api_adapter=plugin.PhBotAdapter({
+            'generate_script': generate,
+            'get_position': lambda: {'region': 25000, 'x': 1, 'y': 2, 'z': 0},
+            'start_script': lambda script: self.calls.append(('start', threading.get_ident(), script)) or True,
+        }))
+        self.worker.character_id = AGENT_ID
+        self.worker.session_id = '22222222-3333-4444-8555-666666666666'
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha', 'profile_key': 'One'}
+        self.worker._current_identity = dict(self.identity)
+        self.frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+            'character_id': AGENT_ID, 'session_id': self.worker.session_id,
+            'name': 'character.navigate', 'args': {'region': 25000, 'x': 10, 'y': 20, 'z': 0},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+
+    def tearDown(self):
+        self.release.set()
+        job = self.worker._navigation_job
+        if job is not None:
+            job['thread'].join(timeout=1)
+            self.assertFalse(job['thread'].is_alive())
+
+    def begin(self):
+        self.worker._accept_command(self.frame)
+        started_at = time.monotonic()
+        self.assertTrue(self.worker.process_one_command(self.identity, 25000))
+        self.assertLess(time.monotonic() - started_at, 0.2)
+        self.assertTrue(self.started.wait(1))
+        self.assertEqual(self.worker._outgoing.get_nowait()['type'], 'command.ack')
+
+    def finish(self):
+        self.release.set()
+        self.worker._navigation_job['thread'].join(timeout=1)
+        self.assertTrue(self.worker.process_one_command(self.identity, 25000))
+
+    def test_blocked_generation_keeps_callback_sampling_and_result_transport_responsive(self):
+        self.begin()
+        self.worker._accept_command(self.frame)  # Exact duplicate does not create a generator.
+        with patch.object(plugin, '_worker', self.worker), \
+                patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_character_joined', True), \
+                patch.object(plugin, '_get_character_data', return_value={'server': 'Silkroad', 'name': 'Alpha'}), \
+                patch.object(plugin, '_get_position', return_value={'region': 25000, 'x': 1, 'y': 2, 'z': 0}), \
+                patch.object(plugin, '_get_profile', return_value='One'), \
+                patch.object(plugin, '_get_zone_name', return_value='Fixture'), \
+                patch.object(plugin, '_last_resources_sample_at', plugin._monotonic()), \
+                patch.object(plugin, '_sample_monsters'), \
+                patch.object(plugin, '_last_character_signature', None):
+            started_at = time.monotonic()
+            plugin._sample_character()
+            self.assertLess(time.monotonic() - started_at, 0.2)
+            self.assertIsNotNone(self.worker._samples.get_nowait())
+        sent = []
+        self.worker._flush_results(type('Client', (), {'send_json': lambda _, frame: sent.append(frame)})())
+        self.assertEqual(len(self.calls), 1)
+        self.assertNotEqual(self.calls[0][1], self.callback_thread)
+        self.finish()
+        self.assertEqual(self.calls[1], ('start', self.callback_thread, 'walk,10,20,0'))
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(self.worker._latest_navigation_route['route_sequence'], 1)
+
+    def test_late_generation_never_invokes_after_lifecycle_or_expiry_change(self):
+        changes = {
+            'expiry': lambda: self.worker._navigation_job['item'].update(deadline=float('-inf')),
+            'session': lambda: setattr(self.worker, 'session_id', AGENT_ID),
+            'epoch': lambda: setattr(self.worker, '_profile_epoch', 1),
+            'profile': lambda: self.identity.update(profile_key='Two'),
+            'revoke': lambda: self.worker._revoke_session(self.frame),
+            'leave': lambda: self.worker.leave_character(),
+            'stop': lambda: self.worker.stop(),
+            'teleport': lambda: self.worker._cancel_navigation_generation('character_teleported'),
+        }
+        for label, change in changes.items():
+            with self.subTest(change=label):
+                self.setUp()
+                try:
+                    self.begin()
+                    change()
+                    self.assertFalse(self.worker.process_one_command(self.identity, 25000))
+                    result = self.worker._outgoing.get_nowait()
+                    self.assertEqual(result['status'], 'failed')
+                    self.finish()
+                    self.assertEqual(len(self.calls), 1)
+                    self.assertIsNone(self.worker._latest_navigation_route)
+                    self.assertTrue(self.worker._outgoing.empty())
+                finally:
+                    self.tearDown()
+
+    def test_profile_replacement_cannot_spawn_a_second_blocked_generator(self):
+        self.begin()
+        self.worker.stop()
+        replacement = plugin.AgentWorker(self.worker.config, 'fixture', api_adapter=self.worker.api)
+        replacement.character_id = self.frame['character_id']
+        replacement.session_id = self.frame['session_id']
+        replacement._current_identity = self.identity
+        replacement._accept_command(self.frame)
+        self.assertTrue(replacement.process_one_command(self.identity, 25000))
+        self.assertEqual(replacement._outgoing.get_nowait()['type'], 'command.ack')
+        self.assertEqual(replacement._outgoing.get_nowait()['reason'], 'navigation_generation_busy')
+        self.assertIsNone(replacement._navigation_job)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_generation_failure_or_invalid_route_never_starts_a_script(self):
+        for generated, reason in [(None, 'path_not_found'), (False, 'path_rate_limited_or_not_in_game'),
+                                  (['walk,nan,20,0'], 'invalid_path')]:
+            with self.subTest(generated=generated):
+                self.setUp()
+                try:
+                    self.worker.api.functions['generate_script'] = lambda *args: generated
+                    self.worker._accept_command(self.frame)
+                    self.worker.process_one_command(self.identity, 25000)
+                    self.finish()
+                    self.assertEqual(self.worker._outgoing.get_nowait()['type'], 'command.ack')
+                    result = self.worker._outgoing.get_nowait()
+                    self.assertEqual(result['status'], 'failed')
+                    self.assertEqual(result['reason'], reason)
+                    self.assertEqual(self.calls, [])
+                finally:
+                    self.tearDown()
 
 
 class CallbackTimingTests(unittest.TestCase):
