@@ -114,6 +114,20 @@ directory and without retaining `audit/`.
 
 ## Output contract
 
+Every normal `export` includes `catalogs/monsterTypes.json` and the available
+monster rank/party textures in the validated bundle. With `--asset-output`, the
+same command also writes ID-prefixed aliases under `game-assets/monster-types/`
+and indexes them in `asset-index.json`. No additional script is needed. The files
+are `0_general.png`, `1_champion.png`, `4_giant.png`, `16_party_general.png`,
+`17_party_champion.png` and `20_party_giant.png`. Party IDs 16, 17 and 20 share
+one badge; the catalog records the corresponding rank IDs separately. Missing
+textures remain explicit in catalog status and coverage; no substitute is generated.
+See [monster icon findings](../../docs/reference/monster-icon-investigation.md).
+
+The six PNGs are also committed under `web/public/game-assets/monster-types/` and
+registered in the public asset index, so they can be used immediately without
+running the exporter. Their browser URLs start with `/game-assets/monster-types/`.
+
 `manifest.json` fixes the dataset ID, schema/exporter versions, family status,
 supported display locale and safe catalog/asset paths. Each catalog carries its own
 version, family, dataset ID, explicit status and normalized records. Asset paths are

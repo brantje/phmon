@@ -171,7 +171,12 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
         source_path = _safe_relative(audit_row.get("sourceEntry"), label="audited source entry")
         if source_path.suffix.casefold() != ".ddj":
             raise ValueError("converted source entry does not have a DDJ extension")
-        public_path = source_path.with_suffix(".png")
+        public_path = (
+            _safe_relative(audit_row["publicAlias"], label="public asset alias")
+            if "publicAlias" in audit_row else source_path.with_suffix(".png")
+        )
+        if public_path.suffix.casefold() != ".png":
+            raise ValueError("public asset alias must have a PNG extension")
         public_relative = PurePosixPath(*(part.casefold() for part in public_path.parts)).as_posix()
         prior_path = key_paths.get(key)
         if prior_path is not None and prior_path != public_relative:
