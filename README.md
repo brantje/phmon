@@ -1,100 +1,142 @@
 # PhMon
 
-A self-hosted phBot monitoring and remote-control project. Slice 3 implementation is
-in progress through v3 transport, safe callback dispatch, durable command lifecycle,
-live command/control snapshots and reference-shaped controls. LAN HTTP operators can
-submit commands using secure random idempotency keys; one low-impact training-radius
-round trip has been validated on phBot 20.1.1/plugin 1.1.0 and its durable result was
-delivered over `/api/live`. Simulator evidence remains separate from that runtime
-result. Clientless, remaining action/runtime coverage and Slice 3 acceptance gates
-remain open. See [docs/phbot-capabilities.md](docs/phbot-capabilities.md).
-[AGENTS.md](AGENTS.md) is the canonical Slice 0–15 roadmap. The target is applicable
-feature, layout and style parity with [the phMonitor demo](https://phmonitor.com/demo).
-The active implementation scope is Slice 3 only; see the completion ledger in
-[AGENTS.md](AGENTS.md).
+PhMon is a self-hosted monitoring and remote-control dashboard for phBot / Silkroad Online.
+It consists of a Go backend, PostgreSQL, a Nuxt frontend and a phBot plugin. The project
+is independently implementing the applicable monitoring/control feature set and general
+information architecture of the phMonitor reference while keeping all data and control
+inside the operator's own infrastructure.
 
-## Start the local stack
+> **Project status:** active development. `main` now contains substantial implementation
+> through the Slice 7-9 map/mob/heatmap work, plus later map-control foundations. Some
+> earlier slices still have runtime/capability gaps, so the authoritative implementation
+> status remains [AGENTS.md](AGENTS.md), not the slice number alone.
 
-Requires Docker Engine and Docker Compose v2+ (with `--wait` support).
+Useful project references:
+
+- [AGENTS.md](AGENTS.md) — canonical architecture, slice roadmap and completion ledger.
+- [docs/phbot-capabilities.md](docs/phbot-capabilities.md) — verified phBot APIs/runtime limitations.
+- [docs/protocol.md](docs/protocol.md) — agent/backend/live protocol contracts.
+- [docs/reference-parity.md](docs/reference-parity.md) — reference UI/feature comparison evidence.
+
+## Current feature set
+
+Current `main` includes:
+
+- **Agent management and connectivity** — provisioned agent credentials, automatic reconnect,
+  concurrent phBot connections/profiles, plugin/phBot version reporting and capability-aware sessions.
+- **Live character monitoring** — server-scoped character identity, online/session state, level,
+  HP/MP, XP/SP, gold, zone/position, groups and character detail views.
+- **Resources and character data** — inventory/equipment plus supported storage, guild storage,
+  job pouch, pet, party and academy observations where the active phBot/runtime exposes them.
+- **Remote commands** — audited, idempotent, session-fenced controls for supported bot, trace,
+  training-area/radius, movement/navigation, return/disconnect/clientless and chat operations.
+  Unsupported runtime primitives stay disabled instead of being guessed.
+- **Multi-character control foundations** — shared character/group target selection, command fan-out
+  and per-character results for supported actions.
+- **Events and chat** — durable event ingestion for verified phBot events/state transitions, live/history
+  surfaces, inbound chat, channel/contact views and capability-gated outbound chat.
+- **Live map** — locally served exported game maps/assets, character markers, party-member markers,
+  recent death/drop overlays, nearby monster observations, cave/floor-aware projection and live layer state.
+- **Mob history and heatmaps** — bounded historical monster sampling, density/heatmap queries, facets,
+  filters and scoped reset controls. Live nearby monsters remain separate from historical density.
+
+The bundled phBot plugin is currently **1.5.6** and reports agent transport **protocol 7**.
+
+## Roadmap
+
+The README keeps this intentionally high level; [AGENTS.md](AGENTS.md) is the canonical source for
+acceptance criteria, blockers and exact completion state.
+
+| Slice | Area | README status |
+| --- | --- | --- |
+| 0-1 | Local stack, application shell, agent registration/connectivity | Core implemented |
+| 2 | Character identity, groups and live stats | Core implemented; parity/data gaps tracked in `AGENTS.md` |
+| 2.5 | Standalone game-data/asset exporter | Implemented; dataset/profile coverage continues |
+| 3 | Remote commands | Core implemented with capability/session fencing |
+| 4 | Inventory, equipment, pets, party and related resources | Substantial implementation; verified-runtime gaps remain |
+| 5 | Canonical event pipeline | Core implemented |
+| 6 | Chat | Core implemented |
+| 7-9 | Live map, mob observations and historical heatmaps | Core implemented; map/world-control work continues |
+| 10 | Conditions / automation | Planned |
+| 11 | Scheduling | Planned |
+| 12 | Analytics | Planned |
+| 13 | Economy and item analytics | Planned |
+| 14 | Hardening | Planned |
+| 15 | Demo-parity completion and final acceptance | Planned |
+
+### Active/open feature issues
+
+The current issue backlog is concentrated around richer map/world interaction:
+
+- [#24 — Show / use NPCs](https://github.com/brantje/phmon/issues/24)
+- [#25 — Show and edit training areas](https://github.com/brantje/phmon/issues/25)
+- [#27 — Right-click navigate](https://github.com/brantje/phmon/issues/27)
+- [#28 — Multi-character/group map control and live world interactions](https://github.com/brantje/phmon/issues/28)
+- [#31 — Inspect nearby shop goods on demand](https://github.com/brantje/phmon/issues/31)
+- [#32 — Investigate teleporter destinations, recall point and execution](https://github.com/brantje/phmon/issues/32)
+- [#33 — Multi-character teleporter/recall actions](https://github.com/brantje/phmon/issues/33)
+- [#34 — Reverse Return character/group actions](https://github.com/brantje/phmon/issues/34)
+- [#35 — Apply multi-character targeting to existing remote controls](https://github.com/brantje/phmon/issues/35)
+- [#36 — Show other nearby players](https://github.com/brantje/phmon/issues/36)
+
+Recent foundations for this program are already merged/closed: **#23 party members on the map**,
+**#29 map action target selection**, and **#30 multi-character command fan-out/result summaries**.
+
+## Install and run
+
+Requirements: Docker Engine and Docker Compose v2+ with `--wait` support.
 
 ```sh
+git clone https://github.com/brantje/phmon.git
+cd phmon
 cp .env.example .env
-# Set OPERATOR_ACCESS_SECRET in .env (for example, use: openssl rand -base64 48)
-# For plain HTTP on a trusted development/LAN network, also set OPERATOR_ALLOW_INSECURE_HTTP=true
+
+# Set OPERATOR_ACCESS_SECRET in .env to a unique high-entropy value.
+# For trusted-LAN plain HTTP, also configure the insecure-HTTP/origin settings in .env.
+
 docker compose up --build -d --wait --wait-timeout 180
 ```
 
-Open **http://127.0.0.1:3005** on the host, or **http://<host-LAN-IP>:3005** from
-another device on the same network. Set a unique `OPERATOR_ACCESS_SECRET` in `.env`
-before starting the stack, then sign in with that secret. Find the host address with `hostname -I` on
-Linux or `ipconfig` on Windows/macOS. If the page does not load, allow inbound TCP
-port 3005 through the host firewall for your private LAN. The dashboard shows
-character presence and current stats, with the agent connections and backend
-readiness available below. Live monitoring state arrives through one same-origin
-WebSocket connection and retains the last received snapshots with a stale indicator
-during reconnect or database outages. There is no HTTP live-data fallback.
+Open **http://127.0.0.1:3005** locally, or `http://<host-LAN-IP>:3005` from another
+device when the web binding/firewall permits it. The first build requires internet access for
+container images and dependencies; the running stack does not depend on phMonitor services.
+
+Useful checks:
 
 ```sh
 docker compose ps
 docker compose logs -f
 curl -fsS http://127.0.0.1:8081/healthz
-curl -fsS http://127.0.0.1:8081/readyz
 curl -fsS http://127.0.0.1:3005/api/health
-python3 scripts/smoke.py
-python3 scripts/live_smoke.py
-python3 scripts/command_smoke.py
-docker compose down
 ```
 
-`down` preserves the named database volume. `docker compose down -v` **deletes this
-project's local database**. Compose runs built images; run `up --build` after source
-changes, or use the host workflow below for frontend hot reload. Dependencies and
-container images require internet access during initial install/build; the running
-stack has no external-service dependency. UI fonts are system fonts.
+Stop the stack with `docker compose down`. The named PostgreSQL volume is preserved;
+`docker compose down -v` deletes the local PhMon database.
 
-## Connect a phBot agent
+## Add a phBot agent
 
-Provision one stable identity/token pair for each logical PhMon agent. The same
-agent ID/token may be intentionally reused by multiple concurrent phBot connections
-or profiles when they should belong to that logical agent. Create a different
-credential when they should appear as a separate logical agent. The dashboard's
-**Create credential** action generates the pair through Nuxt -> Go -> PostgreSQL and
-displays the plaintext token only in that one response. Save it immediately.
+1. In PhMon open **Settings -> Agents** and choose **Create credential**. Save the returned
+   agent ID and token immediately; the plaintext token is only shown in that response.
+2. Copy [`plugin/PhMon.py`](plugin/PhMon.py) into phBot's `Plugins` directory and reload the plugin.
+3. In phBot open **Plugins -> PhMon**, enter the backend WebSocket URL, agent ID and token, then
+   choose **Save & Connect**.
+4. The agent should appear online in **Settings -> Agents** after the authenticated hello succeeds.
 
-The CLI remains available for headless/operator workflows:
+For a same-host development setup the backend agent endpoint is normally
+`ws://127.0.0.1:8081/agent`. For phBot running on another machine, put TLS/reverse-proxy
+termination in front of the backend and use a reachable `wss://.../agent` endpoint; do not expose
+cleartext bearer credentials to an untrusted network.
+
+Credentials can also be created from the CLI:
 
 ```sh
 docker compose exec server phmonctl agent create
 ```
 
-Both paths use the same server-side credential generator and PostgreSQL stores only
-the token's SHA-256 hash. Copy `plugin/PhMon.py` into phBot's Plugins directory and
-reload the plugin. In the phBot **Plugins -> PhMon** tab, enter the backend WebSocket
-URL, provisioned agent ID and token, then click **Save & Connect**.
-
-PhMon can store these values separately for each active phBot player/profile under
-`Config/PhMon/<active-profile>.cfg`. The active player configuration returned by
-`get_config_path()` and the explicit profile name returned by `get_profile()` are
-both part of the storage key. PhMon never edits phBot's own player JSON. This lets
-multiple accounts/characters and named profiles can use distinct credentials when
-separate logical agents are desired, or intentionally share one credential when they
-should belong to the same logical agent. One credential is not required per profile.
-
-The token is persisted locally because reconnects must be unattended, but after a
-profile is loaded or saved the GUI token field is cleared instead of continuously
-displaying the secret. Keep the phBot Config directory private. Leaving the token
-field blank preserves the saved token only while the backend URL and agent ID are
-unchanged; changing either identity field requires pasting the token again.
-
-The agent should appear under **Settings -> Agents** after the authenticated hello succeeds. The
-plugin reconnects automatically after backend loss and never puts credentials in the
-URL. The default Compose binding keeps port 8081 on loopback. For a phBot host on
-another machine, terminate TLS in front of the Go backend and configure a reachable
-`wss://` URL; do not expose cleartext bearer authentication to an untrusted network.
-A deliberate trusted-LAN development setup may override `SERVER_BIND_ADDR`, but
-`ws://` is development-only.
-See [plugin/README.md](plugin/README.md) and
-[docs/phbot-capabilities.md](docs/phbot-capabilities.md).
+A credential represents a logical PhMon agent and may intentionally be reused by multiple
+phBot profiles/connections that should belong to that same logical agent. Use separate credentials
+when they should appear as separate agents. Per-profile plugin configuration is stored under
+`Config/PhMon/` without modifying phBot's own player JSON. See [plugin/README.md](plugin/README.md).
 
 ## Host development with frontend hot reload
 
@@ -224,22 +266,14 @@ python3 scripts/smoke.py
 CI runs validation plus complete Docker build/start, authenticated agent lifecycle,
 browser-facing live WebSocket coverage, database outage and recovery sequences. Live
 browser traffic must not perform GET reads against the diagnostic agent, character or
-group endpoints during startup, filtering, refresh, actions or recovery. The Slice 1 completion pass observed both
-hosted jobs green after the frame-safe transport regression tests were added. For
+group endpoints during startup, filtering, refresh, actions or recovery. CI includes frame-safe transport regression coverage in addition to the stack and protocol checks. For
 manual development without phBot, the same plugin transport can be exercised with
 `scripts/agent_simulator.py`; simulator success is fixture coverage and is never
 reported as real phBot runtime validation.
 
-Slice 3 acceptance status: CI run `36330451436` passed PostgreSQL-backed integration
-and Go race coverage, the production plugin worker command smoke with fake adapters,
-authenticated agent reconnect and database-outage recovery, plus `/api/live` browser
-checks and responsive assertions at 390×844 and 1440×1000. Manual LAN inspection also
-covered 1280×800 and 2560×1315; no post-fix screenshot artifact was saved. The live
-nuker1 runtime reports Clientless unsupported and keeps the control disabled; no
-Clientless command was submitted. Walk traversal was not tested per instruction and
-requires plugin 1.1.2. Execute Script remains outside the bounded command catalog.
-Slice 3 is not complete while these runtime gates and broad real-command coverage
-remain open.
+Real phBot runtime validation is tracked separately from simulator/fixture coverage.
+Runtime-gated or server-specific features must remain marked unsupported/unverified until
+they are exercised against the active phBot/private-server combination.
 
 To run its explicit fixture character lifecycle scenario against a local test stack:
 
@@ -258,53 +292,32 @@ WebSocket path.
 
 ## Architecture and references
 
-Go uses standard-library HTTP handlers, pgx and embedded transactional migrations.
-PostgreSQL stores durable agents, server-scoped characters, current state, character
-sessions, groups, membership, audited commands and Slice 4 resource observations.
-`/agent` accepts authenticated protocol-v2 monitoring, protocol-v3 control and
-protocol-v4 resource sockets.
-One agent may keep multiple authenticated sockets active; each socket receives its
-own connection generation and can only update the character sessions it owns. The
-agent remains connected until its last socket closes.
-Character identity is the case-folded character name within a case-folded server
-name; it assumes Silkroad character names are unique per game server and does not
-claim a universal game identifier. Startup ends stale sessions but retains identity
-and last state. `GET /api/characters?q=&group_id=` searches name, guild, server and
-zone; `/api/characters/{character_id}` is the stable detail route. Groups are
-operator-managed metadata under `/api/groups` and never affect identity/routing.
-`GET /api/agents` exposes safe presentation fields. Credential creation returns a
-new token once with no-store semantics; existing tokens cannot be retrieved.
+The Go service is the backend authority for authentication, agent sessions, character identity,
+commands, resource observations, events and historical map analytics. PostgreSQL stores durable
+state and history. The phBot plugin uses a versioned authenticated `/agent` WebSocket transport
+(currently protocol 7) and keeps backend I/O off phBot callbacks by dispatching through its worker/
+event-loop boundary.
 
-Nuxt keeps browser access same-origin. Current monitoring data uses one browser
-WebSocket to Nuxt `/api/live`, which relays to private Go `/api/live`; initial
-snapshots, filters, manual refresh, updates and reconnect synchronization never use
-HTTP/SSE. Dashboard values are derived from streamed character state. Existing HTTP
-agent/character/group reads remain diagnostic compatibility endpoints only. HTTP is
-still used for credential/group actions, readiness, static assets and non-live
-historical queries; action responses are never a live refresh path. Future map
-positions/live layers must use the same WebSocket contract.
-`plugin/PhMon.py` uses only Python standard-library networking, performs no backend
-I/O in phBot callbacks, and reconnects on a worker thread. It samples documented
-`get_character_data()`, `get_position()` and `get_zone_name(region)` APIs; botting
-state remains unknown because the official Botting API lists mutations but no
-read-only state getter. Slice 3 uses per-session commands over v3, durable audit and
-lifecycle records, a callback-only phBot adapter and the existing live WebSocket for
-history/results. Walk uses the official same-region path finder and callback-stepped
-waypoints; it does not execute generated teleport scripts. Clientless stays
-unsupported without a verified safe primitive.
-See [docs/protocol.md](docs/protocol.md) and
-[docs/phbot-capabilities.md](docs/phbot-capabilities.md). Inventory, events, analytics
-and later roadmap areas remain in their designated slices.
+One logical agent may have multiple authenticated phBot connections. Character/session ownership
+is generation-fenced so an old or disconnected socket cannot overwrite a newer live session.
+Current resource/map observations use replacement/freshness semantics; historical events and
+heatmap samples are stored separately where the relevant slice explicitly requires durability.
 
-Version/setup references: [Go releases](https://go.dev/dl/),
-[Nuxt installation](https://nuxt.com/docs/4.x/getting-started/installation),
-[Nuxt UI setup](https://ui.nuxt.com/docs/getting-started/installation/nuxt),
-[Nuxt runtime configuration](https://nuxt.com/docs/4.x/guide/going-further/runtime-config),
-and [PostgreSQL support](https://www.postgresql.org/support/versioning/).
+Nuxt is the browser-facing boundary. Live browser state uses one same-origin `/api/live` WebSocket
+relayed by Nuxt to Go; normal HTTP remains for authentication, configuration/mutations, readiness
+and historical queries. Reverse proxies must allow WebSocket upgrades on `/api/live`.
+
+Remote actions use a bounded command catalog with operator authentication, idempotency, current-
+session fencing, capability checks, durable audit/results and explicit confirmation for
+consequential actions. Multi-character operations fan out into ordinary per-character commands
+instead of creating a separate group execution identity.
+
+See [docs/protocol.md](docs/protocol.md), [docs/phbot-capabilities.md](docs/phbot-capabilities.md)
+and [AGENTS.md](AGENTS.md) for the detailed contracts and remaining capability gaps.
 
 ## Operator authentication
 
-Slice 3 adds a separate operator control-plane session. Set a high-entropy
+PhMon uses a separate operator control-plane session. Set a high-entropy
 `OPERATOR_ACCESS_SECRET`, list browser origins in `OPERATOR_ALLOWED_ORIGINS`, and
 keep the default `phmon_operator` cookie name unless the matching Nuxt private
 runtime setting is changed too. Plain HTTP origins are rejected by default. For an
