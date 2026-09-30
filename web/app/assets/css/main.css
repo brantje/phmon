@@ -3119,8 +3119,7 @@ select:focus-visible {
   color: #aebbd0;
   font-size: 0.72rem;
 }
-.map-page-status > span,
-.map-character-row::before {
+.map-page-status > span {
   width: 0.48rem;
   height: 0.48rem;
   flex: 0 0 auto;
@@ -3151,7 +3150,7 @@ select:focus-visible {
 .map-workspace {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(270px, 320px);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
   align-items: start;
   gap: 0.8rem;
 }
@@ -3321,7 +3320,6 @@ select:focus-visible {
   color: #8796aa;
   font-size: 0.68rem;
 }
-.map-character-row,
 .map-event-row,
 .map-observation-row {
   display: flex;
@@ -3335,36 +3333,6 @@ select:focus-visible {
   font-size: 0.7rem;
   text-align: left;
 }
-.map-character-row {
-  display: grid;
-  grid-template-columns: 1.1rem minmax(0, 1fr);
-  gap: 0.25rem;
-  padding: 0;
-}
-.map-character-row.selected {
-  background: rgba(86, 125, 171, 0.15);
-}
-.map-character-target {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.map-character-focus {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.4rem 0.3rem;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.map-character-focus > span,
 .map-event-row > span,
 .map-observation-row > span {
   display: flex;
@@ -3372,16 +3340,13 @@ select:focus-visible {
   flex-direction: column;
   gap: 0.15rem;
 }
-.map-character-row small,
 .map-event-row small,
 .map-observation-row small,
 .map-event-row time {
   color: #8f9db1;
   font-size: 0.64rem;
 }
-.map-event-row:hover,
-.map-character-row:hover,
-.map-character-focus:focus-visible {
+.map-event-row:hover {
   background: rgba(96, 132, 178, 0.12);
 }
 .map-target-toolbar {
