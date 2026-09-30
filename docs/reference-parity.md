@@ -1391,3 +1391,31 @@ right-side placement, 340 px character list at 1440×1000, 272 px at 1280×800,
 and 304 px at 390×844; the heatmap control started collapsed and toggled open
 with Space. The document had no horizontal overflow at those viewports. The
 production Nuxt container build passed after this layout change.
+
+### Map and mobile drawer scroll reachability — 2026-09-30
+
+Browser testing found that an expanded Historical heatmaps section created a
+second full-height scroll region inside the right map panel, in addition to
+document scrolling. Removed the panel height cap and its vertical scrollbar so
+the page scroll reaches Layers, heatmaps, monsters, and events in one flow. The
+Characters list stays independently bounded and is taller: 460 px at
+1440×1000, 368 px at 1280×800, and 371 px at 390×844. On 1280×800, scrolling
+over the map canvas brought the expanded heatmap range and reset controls into
+the viewport; the map panel itself had no scroll range.
+
+The 390×844 drawer also clipped lower navigation links behind a separately
+scrolling link list. The open drawer is now the single scroll surface, with the
+link list flowing naturally inside it. Browser navigation reached Settings
+after scrolling the drawer. Map was tested at 1440×1000, 1280×800 and 390×844;
+there was no horizontal overflow, the heatmap disclosure started collapsed,
+targets started empty on remount, and the whole right panel flowed with the
+document. Browser selection checks covered independent focus and targets,
+All/None, group mixed/checked states, keyboard Space, and keeping the Characters
+section available with character markers hidden. No character command was sent.
+
+Dashboard, Stats, Events, Chat, Alchemy and Guild Storage were also checked at
+1440×1000 and 390×844 with no document horizontal overflow. Settings was opened
+at mobile width. A repeated full-page browser-navigation sweep caused the Nuxt
+dev websocket to stop; the dev server was restarted, health returned HTTP 200,
+and subsequent in-app navigation checks remained stable. The LAN dev URL is
+`http://192.168.10.25:3006`.

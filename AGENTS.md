@@ -4215,7 +4215,29 @@ toggle. There was no horizontal overflow. The production Nuxt container build,
 64 unit tests, and format check passed. Screenshots are in `/tmp` and not
 committed because they contain operator data.
 
-The current PR #40 head `492c56f` passed both `validate` and `stack`; CodeRabbit
+The current PR #40 head `845fe0d` passed both `validate` and `stack`; CodeRabbit
 completed its review with no new comments on the visual refinement. Exact next
-action: operator review PR #40; do not merge without authorization. Issue #30
-owns batch command fan-out.
+action before the scroll follow-up: operator review PR #40; do not merge without
+authorization. Issue #30 owns batch command fan-out.
+
+### Resume — 2026-09-30 map and drawer scroll reachability
+
+Browser testing reproduced nested scrolling on the Map page and clipped lower
+mobile navigation links. Updated `web/app/assets/css/main.css`: the map side
+panel now follows document scrolling, Characters has a taller bounded list, and
+the open mobile drawer is one scroll surface. Updated
+`docs/reference-parity.md` with viewport and interaction evidence. The map right
+panel has no independent scroll range; browser checks at 1440×1000, 1280×800 and
+390×844 showed no horizontal overflow. Focus/target independence, group tri-state,
+All/None, keyboard Space, marker-layer independence, and heatmap reachability
+were exercised without submitting a character command. Dashboard, Stats, Events,
+Chat, Alchemy and Guild Storage were also checked at desktop and mobile widths;
+Settings was reached by scrolling the mobile drawer.
+
+Nuxt unit tests (64), typecheck, lint (0 errors; 42 existing style warnings),
+Prettier check and production build pass. Local dev health returned HTTP 200 at
+`http://192.168.10.25:3006` with the existing backend. A repeated full-page route
+sweep stopped the Nuxt dev websocket; it was restarted and subsequent in-app
+navigation remained stable. These CSS changes are not yet pushed. Exact next
+action: commit and push the scroll fix to PR #40, wait for `validate` and `stack`
+and CodeRabbit review, then report the PR status without merging.
