@@ -8,28 +8,79 @@ import {
   monsterTypePresentation,
 } from '../app/utils/mapMarkerPresentation.ts'
 
-test('reference monster types retain the documented normal/champion/giant scale', () => {
-  for (const [code, label, scale, party] of [
-    [0, 'General', 1, false],
-    [1, 'Champion', 1.2, false],
-    [4, 'Giant', 1.5, false],
-    [16, 'Party General', 1, true],
-    [17, 'Party Champion', 1.2, true],
-    [20, 'Party Giant', 1.5, true],
+test('reference monster ranks retain scale and resolve the committed icon artwork', () => {
+  for (const [code, label, scale, party, iconUrl, partyBadgeUrl] of [
+    [
+      0,
+      'General',
+      1,
+      false,
+      '/game-assets/monster-types/0_general.png',
+      '',
+    ],
+    [
+      1,
+      'Champion',
+      1.2,
+      false,
+      '/game-assets/monster-types/1_champion.png',
+      '',
+    ],
+    [
+      4,
+      'Giant',
+      1.5,
+      false,
+      '/game-assets/monster-types/4_giant.png',
+      '',
+    ],
+    [
+      16,
+      'General (Party)',
+      1,
+      true,
+      '/game-assets/monster-types/0_general.png',
+      '/game-assets/monster-types/16_party_general.png',
+    ],
+    [
+      17,
+      'Champion (Party)',
+      1.2,
+      true,
+      '/game-assets/monster-types/1_champion.png',
+      '/game-assets/monster-types/17_party_champion.png',
+    ],
+    [
+      20,
+      'Giant (Party)',
+      1.5,
+      true,
+      '/game-assets/monster-types/4_giant.png',
+      '/game-assets/monster-types/20_party_giant.png',
+    ],
   ] as const) {
     assert.deepEqual(monsterTypePresentation({ type_code: code }), {
       code,
       label,
       scale,
       party,
+      iconUrl,
+      partyBadgeUrl,
       unknown: false,
     })
   }
-  assert.equal(monsterTypePresentation({ type: '27' }).label, 'Unknown (27)')
+  assert.deepEqual(monsterTypePresentation({ type: '27' }), {
+    code: 27,
+    label: 'Unknown (27)',
+    scale: 1,
+    party: false,
+    iconUrl: '',
+    partyBadgeUrl: '',
+    unknown: true,
+  })
   assert.equal(monsterHPFraction({ hp: 7515, max_hp: 9000 }), 7515 / 9000)
   assert.equal(monsterHPFraction({}), null)
 })
-
 test('current monster observers collapse cross-character sightings without merging nearby mobs', () => {
   const common = {
     server: 'Greatest',
