@@ -16,8 +16,12 @@ const props = defineProps<{
 const reviewActions = useReviewActionsPreference()
 
 const fanOut = useCommandFanOut({
-  command: props.command,
-  scopeKey: props.scopeKey,
+  get command() {
+    return props.command
+  },
+  get scopeKey() {
+    return props.scopeKey
+  },
   scopeKeyForCharacter: props.scopeKeyForCharacter,
   currentScopeKey: props.currentScopeKey,
   currentCharacter: props.currentCharacter,

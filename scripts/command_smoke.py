@@ -116,16 +116,27 @@ def main():
         live.send_json({"type":"subscribe","protocol_version":1,"subscription_id":"fanout-controls","revision":1,"stream":"controls","filter":{"character_ids":[target["character_id"] for target in targets]}})
         controls = None
         deadline = time.monotonic() + 15
+        expected_by_id = {target["character_id"]: target for target in targets}
         while time.monotonic() < deadline:
             frame = receive_or_timeout(live, timeout=5)
             if frame is None or frame.get("subscription_id") != "fanout-controls":
                 continue
             rows = frame.get("data", {}).get("targets", [])
-            if len(rows) == len(targets) and all(
-                row.get("character", {}).get("session_id") == row.get("controls", {}).get("session_id")
-                and row.get("character_id") == row.get("character", {}).get("character_id")
-                for row in rows
-            ):
+            rows_by_id = {}
+            for row in rows:
+                character_id = row.get("character_id")
+                target = expected_by_id.get(character_id)
+                if target is None or character_id in rows_by_id:
+                    rows_by_id = {}
+                    break
+                if (
+                    row.get("character", {}).get("session_id") != target["session_id"]
+                    or row.get("controls", {}).get("session_id") != target["session_id"]
+                ):
+                    rows_by_id = {}
+                    break
+                rows_by_id[character_id] = row
+            if len(rows_by_id) == len(expected_by_id):
                 controls = rows
                 break
         if controls is None:

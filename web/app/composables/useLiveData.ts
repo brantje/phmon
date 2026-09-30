@@ -530,7 +530,11 @@ function setCommandFanOutTargets(ownerID: string, characterIDs: string[]) {
     removeSubscription(fanOutSubscriptionID(ownerID, 'controls'))
     return
   }
+  const id = fanOutSubscriptionID(ownerID, 'controls')
+  const previousRevision = subscriptions.get(id)?.revision
   subscribeFanOutChunk(ownerID, 'controls')
+  if (subscriptions.get(id)?.revision === previousRevision)
+    refreshLiveData([id])
 }
 
 function refreshCommandFanOutTargets(ownerID: string) {
@@ -635,7 +639,6 @@ function applyCommandFanOutSnapshot(subscription: Subscription, data: unknown) {
       commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
       subscribeFanOutChunk(ownerID, 'controls')
     } else {
-      owner.controlIndex = 0
       feed.controls_current = true
       feed.updated_at = Date.now()
       commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
