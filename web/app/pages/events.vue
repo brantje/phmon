@@ -3,6 +3,7 @@ import type { ActivityEvent } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 import { eventLocationText } from '~/utils/event-location'
+import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
 const { serverScope } = useServerScope()
@@ -286,39 +287,6 @@ function eventItemName(item: ActivityEvent) {
   const model = item.item_model ?? payload.model
   return model == null ? '' : `Model ${String(model)}`
 }
-const referenceStatLabels: Record<string, string> = {
-  phy_atk_pwr_min: 'Phy. atk. pwr min',
-  phy_atk_pwr_max: 'Phy. atk. pwr max',
-  mag_atk_pwr_min: 'Mag. atk. pwr min',
-  mag_atk_pwr_max: 'Mag. atk. pwr max',
-  phy_def_pwr: 'Phy. def. pwr',
-  mag_def_pwr: 'Mag. def. pwr',
-  phy_reinforce: 'Phy. reinforce',
-  mag_reinforce: 'Mag. reinforce',
-  parry_ratio: 'Parry ratio',
-  durability: 'Durability',
-  hit_ratio: 'Attack rating',
-  critical_ratio: 'Critical',
-}
-function referenceStats(item: ActivityEvent) {
-  const ranges = record(record(item.item_metadata).reference_stats)
-  return Object.entries(ranges).flatMap(([key, raw]) => {
-    const range = record(raw)
-    if (typeof range.min !== 'string' || typeof range.max !== 'string')
-      return []
-    const label = referenceStatLabels[key] || key.replaceAll('_', ' ')
-    const value =
-      range.min === range.max ? range.min : `${range.min}–${range.max}`
-    return [`${label}: ${value}`]
-  })
-}
-function eventItemIcon(item: ActivityEvent) {
-  const icon = record(item.item_metadata).icon_url
-  return typeof icon === 'string' &&
-    /^\/game-assets\/[a-zA-Z0-9/_-]+\.png$/.test(icon)
-    ? icon
-    : ''
-}
 function itemFilterKey(item: ActivityEvent) {
   const snapshot = record(record(item.payload).item)
   return (
@@ -327,21 +295,14 @@ function itemFilterKey(item: ActivityEvent) {
     String(item.item_model ?? record(item.payload).model ?? '')
   )
 }
-function itemDetail(item: ActivityEvent) {
-  const payload = record(item.payload)
-  const snapshot = record(payload.item)
-  return [
-    snapshot.plus != null ? `+${String(snapshot.plus)}` : '',
-    snapshot.quantity != null ? `Qty ${String(snapshot.quantity)}` : '',
-    typeof snapshot.servername === 'string'
-      ? snapshot.servername
-      : item.item_code || '',
-    typeof payload.acquisition_method === 'string'
-      ? `Method ${payload.acquisition_method}`
-      : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
+function eventItemTarget(item: ActivityEvent) {
+  return {
+    path: '/events',
+    query: {
+      kind: item.kind,
+      item: itemFilterKey(item) || undefined,
+    },
+  }
 }
 function dateInput(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
@@ -453,46 +414,12 @@ function localDateBoundary(value: string, addDays: number) {
                 <span v-else>{{ item.character || '—' }}</span>
               </td>
               <td>
-                <img
-                  v-if="eventItemIcon(item)"
-                  :src="eventItemIcon(item)"
-                  class="event-item-icon"
-                  alt=""
+                <ItemDetailPopup
+                  v-if="itemRecordFromActivityEvent(item)"
+                  :item="itemRecordFromActivityEvent(item)!"
+                  :to="eventItemTarget(item)"
                 />
-                <NuxtLink
-                  v-if="
-                    item.item_model != null ||
-                    item.item_code ||
-                    record(item.payload).item
-                  "
-                  class="event-item-link"
-                  :class="{ 'rare-drop-item': item.kind === 'drop.rare' }"
-                  :to="{
-                    path: '/events',
-                    query: {
-                      kind: item.kind,
-                      item: itemFilterKey(item) || undefined,
-                    },
-                  }"
-                  :title="itemDetail(item) || 'Show events for this item'"
-                  >{{ eventItemName(item) || 'Item details' }}</NuxtLink
-                >
                 <span v-else>—</span>
-                <small v-if="itemDetail(item)" class="event-item-detail">{{
-                  itemDetail(item)
-                }}</small>
-                <details
-                  v-if="referenceStats(item).length"
-                  class="event-item-stats"
-                >
-                  <summary>Reference stats</summary>
-                  <p>
-                    Catalog ranges; this drop's rolled values were not observed.
-                  </p>
-                  <span v-for="line in referenceStats(item)" :key="line">{{
-                    line
-                  }}</span>
-                </details>
               </td>
               <td>{{ eventLocationText(item) }}</td>
               <td>
