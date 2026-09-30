@@ -810,40 +810,42 @@ onBeforeUnmount(() => {
   padding: 9px 0;
 }
 .chat-tab {
+  --chat-channel-color: #aebbd0;
   min-height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   flex: 0 0 auto;
   border: 1px solid var(--ph-border-soft);
+  border-bottom-color: var(--chat-channel-color);
   border-radius: 4px;
   background: #0a111a;
-  color: #aebbd0;
+  color: var(--chat-channel-color);
   padding: 5px 11px;
   cursor: pointer;
 }
 .chat-tab.active {
-  color: var(--ph-primary);
-  border-color: #64708a;
+  color: var(--chat-channel-color);
+  border-color: var(--chat-channel-color);
   background: rgba(52, 103, 163, 0.22);
 }
 .channel-general {
-  border-bottom-color: #8caaa2;
+  --chat-channel-color: #ffffff;
 }
 .channel-private {
-  border-bottom-color: #a58ab9;
+  --chat-channel-color: #a58ab9;
 }
 .channel-party {
-  border-bottom-color: #69a1c7;
+  --chat-channel-color: #9affd0;
 }
 .channel-guild {
-  border-bottom-color: #87ad67;
+  --chat-channel-color: #ffb541;
 }
 .channel-union {
-  border-bottom-color: #b28b56;
+  --chat-channel-color: #c2f573;
 }
 .channel-global {
-  border-bottom-color: #b96565;
+  --chat-channel-color: #b96565;
 }
 .unread-badge {
   display: inline-grid;
