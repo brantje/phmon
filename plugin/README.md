@@ -1,11 +1,12 @@
 # PhMon phBot plugin
 
-The current Slice 7–8 development release is **1.5.6** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v7 over the existing authenticated
+The current Issue #27 development release is **1.6.2** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v8 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
-monster snapshots and profile-scoped durable observation samples; the backend keeps
-accepting protocol v2–v6 and v5 plugins continue
+monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
+transient route reports for generated-script navigation; the backend keeps accepting
+protocol v2–v7 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime
@@ -61,10 +62,35 @@ integer `gold` value returned by `get_guild_storage()`. It removes the unnecessa
 resource path as the rest of guild storage. Agent protocol remains v7 because the
 existing resource payload already supported an optional guild-storage `gold` field.
 
+For `character.navigate`, the worker validates generated walk/wait/teleport script
+lines once, executes that exact validated script, and publishes only normalized
+route instructions after `start_script` does not explicitly fail. Script text and
+teleporter identifiers stay inside the plugin. Route snapshots are memory-only,
+repeated for recovery at five-second intervals, and cleared on session/profile
+replacement. Plugin acceptance means phBot accepted the background script; arrival
+is reported only after a later fresh position observation. Protocol v2–v7 agents
+still support their existing commands but cannot report remaining route geometry.
+
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket
 connection. The plugin reports connectivity facts; durable identity, authentication,
 history and future command policy remain server-owned.
+
+Version 1.6.1 adds local callback timing diagnostics. Navigation logs the start
+and elapsed duration of generation, validation, source readback and script start,
+including failed calls. An `event_loop` taking at least 500 ms logs its total and
+four slowest stages, including resource collection and command invocation. These
+logs contain stage names and durations only, never script text or API arguments.
+If phBot reports `event_loop has been running for 10 seconds`, retain the preceding
+`navigation ... started` line and subsequent duration/slow-callback lines. They
+identify the blocked stage; the watchdog warning alone does not. Operator timing logs isolated `generate_script` as an 8-second callback stall.
+Version 1.6.2 dispatches only generation on one bounded daemon worker; validation,
+source readback and `start_script` remain on callbacks. Callback polling never
+joins or waits for that worker. Late results cannot start scripts after expiry,
+profile/session change, teleport, disconnect, revocation or plugin stop. An
+uninterruptible generator retains its slot until it returns, including across
+profile worker replacement. This threading change needs installed phBot runtime
+verification; fixture tests cannot establish native API thread behavior.
 
 ## Install
 

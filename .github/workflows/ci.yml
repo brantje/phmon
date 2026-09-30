@@ -59,6 +59,15 @@ jobs:
           OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
           PHMON_AGENT_URL: ws://127.0.0.1:8081/agent
         run: python3 scripts/command_smoke.py
+      - name: Verify transient navigation and observed arrival through production plugin worker
+        env:
+          OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
+          PHMON_AGENT_URL: ws://127.0.0.1:8081/agent
+          PHMON_SMOKE_COMPOSE_PROJECT: phmon
+          SMOKE_WEB_URL: http://127.0.0.1:3005
+        run: |
+          python3 scripts/navigation_smoke.py
+          PHMON_NAVIGATION_SMOKE_OUTDOOR_SEAM=1 python3 scripts/navigation_smoke.py
       - name: Verify authenticated agent connect, reconnect and disconnect
         shell: bash
         run: |
@@ -113,9 +122,10 @@ jobs:
           python3 scripts/character_smoke.py
           python3 scripts/live_smoke.py
 
-          rm -f /tmp/phmon-browser-ready /tmp/phmon-browser-audit.log
+          rm -f /tmp/phmon-browser-ready /tmp/phmon-browser-restart-ready /tmp/phmon-browser-audit.log
           BROWSER_AUDIT_REQUIRE_RECONNECT=1 \
             BROWSER_AUDIT_READY_FILE=/tmp/phmon-browser-ready \
+            BROWSER_AUDIT_RESTART_READY_FILE=/tmp/phmon-browser-restart-ready \
             node scripts/browser_live_audit.mjs >/tmp/phmon-browser-audit.log 2>&1 &
           browser_pid=$!
           cleanup() {
@@ -142,6 +152,7 @@ jobs:
 
           docker compose stop server
           docker compose up -d --wait --wait-timeout 120 server
+          touch /tmp/phmon-browser-restart-ready
           python3 scripts/agent_smoke.py
           python3 scripts/character_smoke.py
           wait "$browser_pid"

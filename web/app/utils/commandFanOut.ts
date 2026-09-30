@@ -39,10 +39,16 @@ export interface FanOutCommandDefinition {
   impact: FanOutImpact
   buildArgs(character: CharacterView): Record<string, unknown>
   summarizeArgs?(args: Record<string, unknown>): string
+  preEligibility?(character: CharacterView): FanOutSkipReason | null
   eligibility?(
     character: CharacterView,
     args: Record<string, unknown>,
   ): FanOutSkipReason | null
+  admissionGuard?(
+    child: FanOutChild,
+    request: FanOutCommandRequest,
+    context?: { exactRetry: boolean },
+  ): FanOutSkipReason | null | Promise<FanOutSkipReason | null>
 }
 
 export interface FanOutCommandRequest {
@@ -279,6 +285,12 @@ export function prepareCommandFanOut(
       continue
     }
 
+    const beforeArguments = command.preEligibility?.(character)
+    if (beforeArguments) {
+      reject(beforeArguments)
+      continue
+    }
+
     let args: Record<string, unknown>
     const invocationCharacter = Object.freeze({ ...character })
     try {
@@ -364,6 +376,7 @@ export function refreshPreparedCommandFanOut(
       child.characterID,
       child.characterName,
       child.sessionID,
+      child.scopeKey,
       child.submission,
       child.skipReason?.code,
       child.args,
@@ -380,6 +393,18 @@ export function refreshPreparedCommandFanOut(
       if (child.submission === 'ready' || child.submission === 'skipped') {
         child.submission = 'skipped'
         child.skipReason = sessionChangedReason
+      }
+      return child
+    }
+
+    if (child.scopeKey !== fresh.scopeKey) {
+      if (child.submission === 'ready' || child.submission === 'skipped') {
+        child.submission = 'skipped'
+        child.skipReason = {
+          code: 'scope_changed',
+          message:
+            'The map server, area, floor, region or dataset changed after preparation.',
+        }
       }
       return child
     }
@@ -421,6 +446,7 @@ export function refreshPreparedCommandFanOut(
       child.characterID,
       child.characterName,
       child.sessionID,
+      child.scopeKey,
       child.submission,
       child.skipReason?.code,
       child.args,
@@ -491,7 +517,6 @@ export interface FanOutSubmitDependencies {
   currentCharacter(characterID: string): CharacterView | undefined
   currentScopeKey(characterID: string): string
   changed(): void
-  concurrency?: number
 }
 
 function currentTargetReason(
@@ -512,6 +537,7 @@ function currentTargetReason(
 
 async function submitChild(
   child: FanOutChild,
+  command: FanOutCommandDefinition | undefined,
   dependencies: FanOutSubmitDependencies,
 ) {
   const changed = currentTargetReason(child, dependencies)
@@ -524,6 +550,29 @@ async function submitChild(
   if (!child.request) {
     child.submission = 'rejected'
     child.message = 'Frozen command request is unavailable.'
+    dependencies.changed()
+    return
+  }
+  let admissionReason: FanOutSkipReason | null | undefined
+  try {
+    admissionReason = await command?.admissionGuard?.(child, child.request, {
+      exactRetry: false,
+    })
+  } catch (error) {
+    child.submission = 'skipped'
+    child.skipReason = {
+      code: 'admission_check_failed',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Could not verify current action eligibility.',
+    }
+    dependencies.changed()
+    return
+  }
+  if (admissionReason) {
+    child.submission = 'skipped'
+    child.skipReason = admissionReason
     dependencies.changed()
     return
   }
@@ -585,18 +634,8 @@ export async function submitCommandFanOut(
   const ready = operation.children.filter(
     (child) => child.submission === 'ready',
   )
-  let next = 0
-  const concurrency = Math.max(
-    1,
-    Math.min(4, Math.floor(dependencies.concurrency || 4)),
-  )
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, ready.length) }, async () => {
-      while (next < ready.length) {
-        const child = ready[next++]!
-        await submitChild(child, dependencies)
-      }
-    }),
+    ready.map((child) => submitChild(child, operation.command, dependencies)),
   )
   operation.state = operation.children.some(
     (child) =>
@@ -610,6 +649,7 @@ export async function submitCommandFanOut(
 export async function retryFanOutSubmission(
   child: FanOutChild,
   dependencies: FanOutSubmitDependencies,
+  command?: FanOutCommandDefinition,
 ) {
   if (child.submission !== 'uncertain' || !child.request) return
   const changed = currentTargetReason(child, dependencies)
@@ -618,7 +658,22 @@ export async function retryFanOutSubmission(
     dependencies.changed()
     return
   }
-  await submitChild(child, dependencies)
+  let admissionReason: FanOutSkipReason | null | undefined
+  try {
+    admissionReason = command?.admissionGuard
+      ? await command.admissionGuard(child, child.request, { exactRetry: true })
+      : null
+  } catch (error) {
+    child.message = `Retry was not sent. ${error instanceof Error ? error.message : 'Current eligibility could not be checked.'} The original outcome is still being checked.`
+    dependencies.changed()
+    return
+  }
+  if (admissionReason) {
+    child.message = `Retry was not sent. ${admissionReason.message} The original outcome is still being checked.`
+    dependencies.changed()
+    return
+  }
+  await submitChild(child, undefined, dependencies)
 }
 
 export function cancelCommandFanOut(operation: FanOutOperation) {

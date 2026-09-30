@@ -70,11 +70,12 @@ function target(
 function prepare(
   ids: string[],
   targets: Record<string, FanOutTargetData>,
+  action: FanOutCommandDefinition = command,
 ): FanOutOperation {
   let key = 0
   return prepareCommandFanOut({
     operationID: 'operation-1',
-    command,
+    command: action,
     characterIDs: ids,
     targets,
     scopeKey: 'Greatest:world',
@@ -143,6 +144,64 @@ test('projection chunking keeps every target and exact key in ordered groups of 
   assert.deepEqual(chunks.flat(), values)
   assert.equal(chunkFanOutValues(values.slice(0, 1)).length, 1)
   assert.deepEqual(chunkFanOutValues([]), [])
+})
+
+test('fan-out runs a final per-child admission guard immediately before POST', async () => {
+  let posts = 0
+  const guarded: FanOutCommandDefinition = {
+    ...command,
+    admissionGuard: () => ({
+      code: 'stale_map_scope',
+      message: 'Map snapshot became stale.',
+    }),
+  }
+  const operation = prepareCommandFanOut({
+    operationID: 'guarded-op',
+    command: guarded,
+    characterIDs: ['one'],
+    targets: { one: target('one') },
+    scopeKey: 'Greatest:world',
+    liveCurrent: true,
+    idempotencyKey: () => 'guarded-key',
+  })
+  await submitCommandFanOut(operation, {
+    ...dependencies(
+      async () => {
+        posts++
+        return { command_id: 'should-not-exist' }
+      },
+      { one: character('one') },
+    ),
+  })
+  assert.equal(posts, 0)
+  assert.equal(operation.children[0]?.submission, 'skipped')
+  assert.equal(operation.children[0]?.skipReason?.code, 'stale_map_scope')
+})
+
+test('pre-eligibility rejects a target before attempting to build arguments', () => {
+  let built = false
+  const guarded: FanOutCommandDefinition = {
+    ...command,
+    preEligibility: () => ({
+      code: 'stale_position',
+      message: 'Character position is stale.',
+    }),
+    buildArgs: () => {
+      built = true
+      return {}
+    },
+  }
+  const operation = prepareCommandFanOut({
+    operationID: 'pre-eligibility-op',
+    command: guarded,
+    characterIDs: ['one'],
+    targets: { one: target('one') },
+    scopeKey: 'Greatest:world',
+    liveCurrent: true,
+    idempotencyKey: () => 'unused-key',
+  })
+  assert.equal(built, false)
+  assert.equal(operation.children[0]?.skipReason?.code, 'stale_position')
 })
 
 test('preparation gives explicit reasons for missing, stale, offline, unsupported and out-of-scope targets', () => {
@@ -298,25 +357,32 @@ test('a requested training mode requires that exact mode in current capabilities
   )
 })
 
-test('submission is bounded to four requests and rejection or uncertain siblings do not stop progress', async () => {
+test('every eligible request starts before any response and failures remain independent', async () => {
   const ids = Array.from({ length: 7 }, (_, index) => `c${index}`)
   const targets = Object.fromEntries(ids.map((id) => [id, target(id)]))
   const operation = prepare(ids, targets)
   const current = Object.fromEntries(ids.map((id) => [id, character(id)]))
-  let active = 0
-  let peak = 0
+  const started: string[] = []
+  let release!: () => void
+  const responses = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const deps = dependencies(async (request) => {
-    active++
-    peak = Math.max(peak, active)
-    await new Promise((resolve) => setTimeout(resolve, 2))
-    active--
+    started.push(request.character_id)
+    await responses
     if (request.character_id === 'c0')
       throw { status: 429, data: { message: 'rate limited' } }
     if (request.character_id === 'c1') throw new Error('connection lost')
     return { command_id: `cmd-${request.character_id}` }
   }, current)
-  await submitCommandFanOut(operation, deps)
-  assert.equal(peak, 4)
+  const submission = submitCommandFanOut(operation, deps)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(started, ids)
+  assert.ok(
+    operation.children.every((child) => child.submission === 'submitting'),
+  )
+  release()
+  await submission
   assert.equal(operation.children[0]?.submission, 'rejected')
   assert.equal(operation.children[1]?.submission, 'uncertain')
   assert.equal(
@@ -327,7 +393,15 @@ test('submission is bounded to four requests and rejection or uncertain siblings
 })
 
 test('uncertain retry reuses the exact frozen idempotency key and body', async () => {
-  const operation = prepare(['a'], { a: target('a') })
+  const guardModes: boolean[] = []
+  const retryAwareCommand: FanOutCommandDefinition = {
+    ...command,
+    admissionGuard: (_child, _request, context) => {
+      guardModes.push(context?.exactRetry === true)
+      return null
+    },
+  }
+  const operation = prepare(['a'], { a: target('a') }, retryAwareCommand)
   const child = operation.children[0]!
   const firstRequest = child.request!
   let calls = 0
@@ -347,12 +421,14 @@ test('uncertain retry reuses the exact frozen idempotency key and body', async (
       assert.equal(request, firstRequest)
       return { command_id: 'command-a' }
     }, current),
+    operation.command,
   )
   assert.equal(calls, 2)
   assert.equal(child.idempotencyKey, 'key-1')
   assert.equal(child.request, firstRequest)
   assert.equal(child.commandID, 'command-a')
   assert.equal(child.submission, 'accepted')
+  assert.deepEqual(guardModes, [false, true])
 })
 
 test('authoritative exact-key result arriving before a lost HTTP response is retained', async () => {

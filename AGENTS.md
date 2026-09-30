@@ -55,6 +55,13 @@ what was tried, the affected feature and the condition needed to finish it. Cont
 unblocked work, but do not claim full parity with unresolved required capabilities.
 Do not silently turn an unsupported requirement into a permanently decorative control.
 
+Multi-character mutations use the shared fan-out foundation. Launch all eligible
+frontend admissions concurrently; the previous four-request frontend cap is
+superseded. The Go dispatcher uses four concurrent delivery workers with a bounded
+queue. Never wait for another character's command result or arrival before sending
+an independent command, including in future slices. Preserve one active command
+per character, session/generation fencing, exact retries and socket write safety.
+
 Keep concise progress updates during work. At session/context boundaries, leave a
 resume entry here containing the active slice, completed increment, files affected,
 validation, blockers and exact next action. On resume, continue from that entry.
@@ -4404,3 +4411,210 @@ files are directly usable without extraction. Public-tree validation passes for
 Updated exporter documentation. Source archives/audits remain untracked. The
 active `/var/www/phmon` branch and other agents' changes remain untouched. Exact
 next action: use the files from PR #44; no local exporter run is required.
+
+### Resume — 2026-09-30 Issue #27 map navigation and remaining routes
+
+Issue #27 is implemented on branch `codex/issue-27-map-navigation` in the existing
+checkout; no worktree was created. The Map page now prepares an immutable
+per-character navigation fan-out from right-click, selected-point, touch and
+keyboard-center actions. It shows eligibility/skips before submission, preserves
+the #30 session/idempotency/result semantics and applies a final map/capability/
+profile/coordinate admission guard. Exact uncertain retries keep the original
+body/key even when a character's current Z changes. Focus remains separate from
+action targets; training-area placement remains focused-character only.
+
+The plugin is version 1.6.0 / agent protocol v8. It validates generated scripts
+once, executes that exact validated text and publishes only bounded normalized
+walk/wait/teleport evidence. Authenticated route frames are checked against the
+exact durable navigation command and stored transiently in Go. The store scopes
+walk geometry through the active map profile and advances only on accepted fresh
+positions. Waits, teleports, ambiguous floors and unsafe transitions never create
+speculative connectors. Map live snapshots render independent remaining routes,
+stale/terminal status and per-character destination markers without position
+history persistence.
+
+Changed implementation and evidence: `plugin/PhMon.py`, `plugin/test_phmon.py`,
+`plugin/README.md`, `server/internal/navigation/`, `server/internal/{commands,
+httpapi}/`, `web/app/{components,composables,pages,utils}/`, `web/shared/types/live.ts`,
+`web/tests/`, `scripts/agent_simulator.py`, `scripts/navigation_smoke.py`,
+`docs/{protocol,phbot-capabilities,reference-parity}.md`, and this ledger.
+
+Validation passed before review: 103 Python plugin tests, 90 frontend unit tests,
+focused Go navigation/commands/mapprofile/httpapi suites, and full
+`bash scripts/check.sh` under Node 24.20.0 with a disposable PostgreSQL database.
+ESLint had zero errors and 42 style warnings. The authenticated simulator smoke
+verified command admission, plugin script invocation, transient route delivery,
+stale-to-fresh recovery, later observed arrival and no route-only position-history
+rows. Local browser checks covered the context menu, active route, keyboard-center
+selection, mobile selected-point action and 1440×1000, 1280×800 and 390×844
+layouts with no horizontal overflow or page errors. Screenshots are in
+`/tmp/phmon-issue27-*.png`.
+
+PR #50 (`https://github.com/brantje/phmon/pull/50`) was pushed on 2026-09-30.
+Both required GitHub Actions jobs passed. CodeRabbit's completed review found
+that navigation route frames could precede command completion, repeated
+same-session identity could leave sequence-one routes blocked, server-name case
+matching was asymmetric, and the Job Temple test returned before its fail-closed
+branch. These findings are fixed: command results flush before route frames,
+same-session identify clears its old route, route insertion rechecks the current
+agent generation under the route-store lock, server comparison uses
+`strings.EqualFold`, and tests exercise these cases. Post-review validation: 104 Python plugin tests, 98 frontend unit tests,
+`go test -race ./...`, `go vet ./...`, the transport audit, Prettier, Nuxt
+typecheck/build and `git diff --check` pass. A follow-up CodeRabbit review then identified that the final generation
+fence also needed to re-read the durable character session and agent. Route
+ingestion now validates both again under a per-session lifecycle lock; in-flight
+routes are included in generation cleanup, while map snapshots use a separate
+lock. The navigation/HTTP API race suites pass after this change. No actual
+Windows/phBot runtime validation was added.
+
+PR #50 is open at `bfccbbd`; its `validate` and `stack` jobs pass. CodeRabbit's
+latest incremental review completed without additional findings. The review fixes
+and their focused tests are pushed. This ledger update is documentation-only and
+will need the resulting head's CI status checked.
+
+Blocker/limit: actual Windows/phBot execution and physical navigation remain
+unverified; the simulator uses the production worker with fixture API adapters.
+The public demo browser navigation timed out, so comparison used the preserved
+2026-09-26 screenshots and public issue description. No production deployment, merge or real-character command was performed. The AGENTS.md append conflict with the latest main was resolved by retaining
+both the Issue #27 and monster-icon entries. Full `bash scripts/check.sh` passes
+on Node 24.20.0 with a throwaway local Compose secret. Exact next action: push the
+merge commit, verify current-head CI and CodeRabbit, and report without merging.
+
+### Resume — 2026-09-30 Issue #27 compact navigation and concurrent delivery
+
+Operator follow-up supersedes the detailed-context-menu requirement: ordinary map
+navigation is one compact action with a frozen character name/count, plus a short
+exception explanation. Optional action review lives below the map. Detailed skips
+and results remain in the reusable panels. Frontend admission now starts every
+eligible target concurrently, without the four-request cap. The common Go
+scheduler has four persistent delivery workers, a bounded queue, pending-ID
+suppression and responsive reconciliation/shutdown. This applies to future slices.
+
+Remaining routes use connected cyan dashed walks with waypoint dots. Valid outdoor
+region seams no longer split snapshots, conversion or progress. Retained anchors
+connect the observed position to its next validated waypoint between samples;
+filtered/unmappable prefixes, waits, teleports and cave transitions remain separate.
+No synthetic destination segment is added.
+
+Changed files: command dispatcher/tests, navigation store/tests, map menu/composable,
+route renderer/adapter, fan-out helper/tests and route adapter tests. Focused Go
+race tests, 100 frontend tests, Nuxt typecheck and full `scripts/check.sh` pass
+under Node 24.20.0 with a disposable PostgreSQL database. Command, live and
+navigation smoke tests pass on an isolated Compose fixture stack. The operator explicitly authorized updating the supplied
+PhMon instance and short nearby live navigation tests on nuker4, then all four
+nukers. Preserve the database and credentials; no other service is in scope.
+The updated PhMon server/web are healthy. Browser checks verify compact menu,
+review below the map without admission, no-target explanation, keyboard/touch
+access, focus return, viewport clamping and stable map mounting at 1440×1000,
+1280×800 and 390×844. The authorized nuker4 and four-character attempts reached
+the plugin; all four frontend requests began within 1.6 ms, before any response,
+and sends finished within a 5.2 ms span. Each returned `start_script=false` with
+no movement or route publication. The operator identified the missing plugin
+upload and requested an immediate push to download it. Subsequent plugin upload was confirmed by fresh sessions and compatibility
+reports. Live Hotan tests then verified a 12-step outdoor seam route and observed
+arrival; group attempts verified independent results and simultaneous progress,
+with some `path_not_found` failures. See the sanitized runtime ledger below.
+Unrelated uncommitted mob-observation edits were reverted at operator request.
+Exact next action: push PR #50, wait for operator plugin upload, repeat the
+authorized nearby moves, record route/arrival evidence, and await final-head
+CI/CodeRabbit. Leave the PR unmerged.
+
+
+### Resume — 2026-09-30 Issue #27 final review and live evidence
+
+Navigation follow-up is implemented, pushed at 5470372 and conflict-free with
+current main. The operator uploaded the plugin; fresh sessions report protocol 8
+and navigation support, with PhMon 1.6.0/phBot 20.1.2 compatibility. A live nuker4
+route crossed an outdoor seam in one block, shrank to arrival after durable command
+completion. Four-target batches started all requests within 1.6 ms and delivered
+within 5.9 ms, with independent successes and `path_not_found` failures. Two
+characters had simultaneous advancing routes and fresh arrivals in the final
+batch. Initial tests overlapped operator movement and lacked deployment
+confirmation; API failure/delay causes remain unverified. No further real moves
+are needed for the operator's current continuation request. Evidence:
+`docs/reference/issue27-navigation-runtime.md` and its sanitized JSON companion.
+
+Review follow-up fixes stable budget allocation and drops authenticated duplicate
+route sequences before database lookups, retaining lifecycle/generation/session
+fences. The shared concurrency requirement remains unchanged. The deterministic
+seam fixture now checks skipped-waypoint progress and later arrival through the
+production worker, and runs in CI alongside the original navigation smoke. A CI
+browser-recovery race is corrected by signaling backend readiness before login.
+
+Full `scripts/check.sh` passes on a fresh disposable database under Node 24.20.0
+(104 plugin tests, 100 frontend tests, Go race suites, lint/typecheck/build).
+Command/live/navigation fixture smokes and browser menu/accessibility/responsive
+checks pass. The disposable browser recovery audit also passes. Plugin 1.6.1 now records
+local navigation stage timings and slow callback totals (109 plugin tests pass),
+without changing thread affinity or exposing script/arguments. The ten-second
+watchdog warning remains under investigation: command latency alone does not
+isolate generation, script start or sampling. Exact next action: push the timing
+build for operator installation, inspect a fresh warning and its stage logs,
+finish final-head CI/CodeRabbit and leave PR #50 unmerged. Do not change other
+services, production database or credentials.
+
+### Confirmed callback stall and bounded generation — 2026-09-30
+
+Operator-supplied 1.6.1 timing logs isolate `generate_script` on nuker1/nuker2
+at 8077/8124 ms. Validation and source readback took 0 ms; `start_script` took
+3/2 ms. Total callback times were 8086/8131 ms. nuker4 generation took 577 ms,
+script start 4 ms and callback total 589 ms. Thus synchronous path generation in
+our callback dispatch is the confirmed blocking stage. The generation latency
+itself remains native API behavior, not a diagnosed remote-service failure.
+
+Plugin 1.6.2 makes a narrow exception to the older callback-only API plan: only
+`generate_script` runs on a dedicated bounded daemon thread. One generation slot
+is shared across profile workers in a plugin instance. Transport stays separate,
+and all validation, position reads and script mutations remain callback-owned.
+Expiry, current identity/profile, session and generation epoch are checked again
+before invocation. Teleport, disconnect, revocation and stop discard late results;
+no callback joins or waits on a generator. Tests exercise a deliberately blocked
+generator, continued sampling/result flushes, API thread identity, duplicates,
+invalid results, lifecycle rejection and slot bounds across worker replacement.
+
+Official docs do not promise native generation thread safety or GIL behavior.
+The installed-phBot gate is therefore explicit: load 1.6.2, verify generation
+completes while fresh position sampling continues, verify script start/arrival,
+and check that no ten-second callback warning returns. Do not claim this runtime
+gate passed based only on Python fixture threads. Exact next action: push 1.6.2
+for operator installation and inspect its callback/position evidence, then finish
+final-head CI and CodeRabbit without merging PR #50.
+
+### Resume — 2026-09-30 confirmed path-generation callback stall
+
+Operator 1.6.1 timing evidence identifies synchronous `generate_script` as the
+8.1-second callback stall, while script start takes 2–4 ms. Plugin 1.6.2 is pushed
+at 8f9ca08 and loaded on nuker4. Its one generation slot runs on a dedicated daemon
+thread; script validation/mutation stays on callbacks. Expiry/profile/session/
+teleport/disconnect/revocation/stop fences reject late results without joining a
+worker or spawning more generators across profile replacement. A runtime attempt
+expired safely while fresh position observations continued; a closer road move
+completed with three instructions, remaining geometry and later fresh arrival.
+The installed native threading path works on this phBot 20.1.2 runtime; do not
+generalize that evidence to other versions.
+
+113 plugin tests and both navigation smokes pass; full Node 24.20.0 regression and
+final-head CI validation/stack checks pass. Backend review fixes are being applied
+to the supplied instance without database/credential changes. Exact next action:
+read the pending operator 1.6.2 watchdog/timing log, finish CodeRabbit review on
+8f9ca08, fix valid findings, commit final runtime evidence, then wait for checks
+on that final head and leave PR #50 unmerged. Do not issue more live movement
+commands unless a new finding needs a bounded check.
+
+### Resume — 2026-09-30 Issue #27 final code review complete
+
+CodeRabbit completed review of 5470372..8f9ca08 at 20:27:53 UTC with no actionable
+comments. CI validation/stack and plugin-version guard pass at 8f9ca08. The supplied
+backend was rebuilt with the review fixes and is healthy; browser recovery shows
+one current map, no page overflow and no console errors. Production database and
+credentials are unchanged. The extra verification WebSocket/timer were removed.
+
+Runtime root cause and fix are evidenced: operator stage logs isolate native
+generation at 8.1 seconds; 1.6.2 sampling continues during native generation and
+a subsequent short move produced script acceptance, remaining geometry and fresh
+arrival. A fresh Windows watchdog log remains requested as additional diagnostic
+evidence; absence of that log must not be reported as verified warning absence.
+No more live commands are pending. Final evidence is in the runtime Markdown/JSON
+ledger. Exact next action: push these evidence-only updates, wait for final-head
+CI and CodeRabbit, verify no conflicts or unresolved threads, remove only disposable
+test resources, and leave PR #50 unmerged.

@@ -14,6 +14,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/characters"
+	"phmon/server/internal/commands"
+	"phmon/server/internal/navigation"
 )
 
 const testAgentID = "11111111-2222-4333-8444-555555555555"
@@ -28,6 +31,57 @@ func TestValidCommandResultStatus(t *testing.T) {
 		if validCommandResultStatus(status) {
 			t.Errorf("non-result status %q was accepted", status)
 		}
+	}
+}
+
+func TestNavigationRouteRequiresExactCompletedCommandAndCurrentConnectionOwner(t *testing.T) {
+	sessionID := "22222222-3333-4444-8555-666666666666"
+	agentID := testAgentID
+	character := characters.Character{
+		ID: "33333333-4444-4555-8666-777777777777", Online: true,
+		SessionID: &sessionID, AgentID: &agentID,
+	}
+	route := navigation.Input{CharacterID: character.ID, SessionID: sessionID}
+	command := commands.Command{
+		CharacterID: character.ID, SessionID: sessionID, AgentID: testAgentID,
+		ConnectionGeneration: 7, Name: "character.navigate", State: commands.StateCompleted,
+	}
+	if !navigationRouteOwnerMatches(route, command, character, testAgentID, 7) {
+		t.Fatal("valid route ownership did not match")
+	}
+	cases := map[string]func(*navigation.Input, *commands.Command, *characters.Character){
+		"wrong character": func(route *navigation.Input, _ *commands.Command, _ *characters.Character) {
+			route.CharacterID = "44444444-5555-4666-8777-888888888888"
+		},
+		"wrong session": func(route *navigation.Input, _ *commands.Command, _ *characters.Character) {
+			route.SessionID = "55555555-6666-4777-8888-999999999999"
+		},
+		"wrong agent": func(_ *navigation.Input, _ *commands.Command, character *characters.Character) {
+			*character.AgentID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+		},
+		"wrong generation": func(_ *navigation.Input, command *commands.Command, _ *characters.Character) {
+			command.ConnectionGeneration++
+		},
+		"wrong command": func(_ *navigation.Input, command *commands.Command, _ *characters.Character) {
+			command.Name = "character.walk"
+		},
+		"incomplete command": func(_ *navigation.Input, command *commands.Command, _ *characters.Character) {
+			command.State = commands.StateAcknowledged
+		},
+		"offline": func(_ *navigation.Input, _ *commands.Command, character *characters.Character) {
+			character.Online = false
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			currentRoute, currentCommand, currentCharacter := route, command, character
+			currentAgentID := testAgentID
+			currentCharacter.AgentID = &currentAgentID
+			mutate(&currentRoute, &currentCommand, &currentCharacter)
+			if navigationRouteOwnerMatches(currentRoute, currentCommand, currentCharacter, testAgentID, 7) {
+				t.Fatal("mismatched route ownership was accepted")
+			}
+		})
 	}
 }
 

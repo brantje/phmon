@@ -14,6 +14,7 @@ import (
 	"phmon/server/internal/events"
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
+	"phmon/server/internal/navigation"
 	"phmon/server/internal/resources"
 )
 
@@ -83,6 +84,9 @@ func New(deps Dependencies) http.Handler {
 		}
 		live.SetMobObservations(deps.Mobs)
 		live.SetMobLive(mobLive)
+		if live.navigation == nil {
+			live.SetNavigation(navigation.NewStore())
+		}
 		handler := &agentHandler{
 			store:      deps.Agents,
 			registry:   deps.Registry,
@@ -95,6 +99,7 @@ func New(deps Dependencies) http.Handler {
 			mobs:       deps.Mobs,
 			mobLive:    mobLive,
 			analytics:  deps.MapAnalytics,
+			navigation: live.navigation,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		register("GET /api/live", true, live.connect)

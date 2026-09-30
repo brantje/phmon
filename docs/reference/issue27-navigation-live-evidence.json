@@ -1,0 +1,584 @@
+[
+  {
+    "requested_at": "2026-09-30T19:15:17.361Z",
+    "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+    "args": {
+      "region": 26244,
+      "x": -465.5327543610092,
+      "y": 1952.765625,
+      "z": -276
+    },
+    "command_id": "cmd_ff6cd931-180f-46de-8d40-f4eae5544864",
+    "request_start_ms": 39358.30000001192,
+    "response_ms": 39389.5,
+    "http_status": 202,
+    "state": "failed",
+    "result_code": "api_return_false",
+    "api_return": false,
+    "sent_at": "2026-09-30T19:15:17.373966Z",
+    "finished_at": "2026-09-30T19:15:27.202049Z",
+    "route_steps": 5,
+    "route_history": []
+  },
+  {
+    "requested_at": "2026-09-30T19:23:55.143Z",
+    "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+    "args": {
+      "region": 23686,
+      "x": -19.757685108932492,
+      "y": 42.96562499999891,
+      "z": 0
+    },
+    "command_id": "cmd_b9aa61c9-24e7-42a2-85e3-1d69781dbdbc",
+    "request_start_ms": 557140.4000000358,
+    "response_ms": 557151.7000000477,
+    "http_status": 202,
+    "state": "completed",
+    "result_code": "",
+    "api_return": true,
+    "sent_at": "2026-09-30T19:23:55.157744Z",
+    "finished_at": "2026-09-30T19:24:03.831955Z",
+    "route_steps": 12,
+    "route_history": [
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:24:03Z",
+        "route_sequence": 8,
+        "blocks": [
+          {
+            "points": 11,
+            "regions": [
+              23686,
+              23687
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:24:04Z",
+        "route_sequence": 8,
+        "blocks": [
+          {
+            "points": 10,
+            "regions": [
+              23686,
+              23687
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:24:05Z",
+        "route_sequence": 8,
+        "blocks": [
+          {
+            "points": 9,
+            "regions": [
+              23686,
+              23687
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:24:06Z",
+        "route_sequence": 8,
+        "blocks": [
+          {
+            "points": 7,
+            "regions": [
+              23686
+            ]
+          }
+        ]
+      },
+      {
+        "status": "arrived",
+        "updated_at": "2026-09-30T19:24:09Z",
+        "route_sequence": 8,
+        "blocks": []
+      }
+    ]
+  },
+  {
+    "requested_at": "2026-09-30T19:26:37.516Z",
+    "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+    "args": {
+      "region": 23431,
+      "x": 138.6672456389897,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_7a1fee22-661e-4ba5-85ed-b3b1a38a51ee",
+    "request_start_ms": 719513.3000000119,
+    "response_ms": 719538.2000000477,
+    "http_status": 202,
+    "state": "failed",
+    "result_code": "path_not_found",
+    "api_return": null,
+    "sent_at": "2026-09-30T19:26:37.542692Z",
+    "finished_at": "2026-09-30T19:26:48.024604Z",
+    "route_steps": null,
+    "route_history": []
+  },
+  {
+    "requested_at": "2026-09-30T19:26:37.517Z",
+    "character_id": "1b991933-1a46-44d4-80b9-6e07a2164da3",
+    "args": {
+      "region": 23431,
+      "x": 138.6672456389897,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_dd8b60f6-42f9-4d5c-bdfd-fc578ef72b7c",
+    "request_start_ms": 719514,
+    "response_ms": 719538,
+    "http_status": 202,
+    "state": "failed",
+    "result_code": "path_not_found",
+    "api_return": null,
+    "sent_at": "2026-09-30T19:26:37.544995Z",
+    "finished_at": "2026-09-30T19:26:48.953259Z",
+    "route_steps": null,
+    "route_history": []
+  },
+  {
+    "requested_at": "2026-09-30T19:26:37.517Z",
+    "character_id": "482022ad-97a9-4a18-ae2c-a6724241fc8c",
+    "args": {
+      "region": 23431,
+      "x": 138.6672456389897,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_a754673f-5883-4d3b-af21-f41d4c4ed607",
+    "request_start_ms": 719514.4000000358,
+    "response_ms": 719537.6000000238,
+    "http_status": 202,
+    "state": "completed",
+    "result_code": "",
+    "api_return": true,
+    "sent_at": "2026-09-30T19:26:37.544745Z",
+    "finished_at": "2026-09-30T19:26:43.974051Z",
+    "route_steps": 5,
+    "route_history": [
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:26:43Z",
+        "route_sequence": 9,
+        "blocks": [
+          {
+            "points": 4,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:26:44Z",
+        "route_sequence": 9,
+        "blocks": [
+          {
+            "points": 3,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:26:46Z",
+        "route_sequence": 9,
+        "blocks": [
+          {
+            "points": 2,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:26:47Z",
+        "route_sequence": 9,
+        "blocks": [
+          {
+            "points": 1,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "arrived",
+        "updated_at": "2026-09-30T19:26:48Z",
+        "route_sequence": 9,
+        "blocks": []
+      }
+    ]
+  },
+  {
+    "requested_at": "2026-09-30T19:26:37.518Z",
+    "character_id": "26211dcc-773d-4e33-875d-dfbe3fde3e38",
+    "args": {
+      "region": 23431,
+      "x": 138.6672456389897,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_d9280d92-fe53-4570-bcd8-9c91a90e5967",
+    "request_start_ms": 719514.7000000477,
+    "response_ms": 719537.1000000238,
+    "http_status": 202,
+    "state": "failed",
+    "result_code": "path_not_found",
+    "api_return": null,
+    "sent_at": "2026-09-30T19:26:37.540288Z",
+    "finished_at": "2026-09-30T19:26:48.069491Z",
+    "route_steps": null,
+    "route_history": []
+  },
+  {
+    "requested_at": "2026-09-30T19:29:36.620Z",
+    "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+    "args": {
+      "region": 23431,
+      "x": 69.65174814704187,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_55ffb01b-f569-4e64-a8e5-c7d3d0fb003e",
+    "request_start_ms": 898616.9000000358,
+    "response_ms": 898655.3000000119,
+    "http_status": 202,
+    "state": "completed",
+    "result_code": "",
+    "api_return": true,
+    "sent_at": "2026-09-30T19:29:36.634642Z",
+    "finished_at": "2026-09-30T19:29:46.197693Z",
+    "route_steps": 3,
+    "route_history": [
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:29:46Z",
+        "route_sequence": 10,
+        "blocks": [
+          {
+            "points": 1,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "arrived",
+        "updated_at": "2026-09-30T19:29:47Z",
+        "route_sequence": 10,
+        "blocks": []
+      }
+    ]
+  },
+  {
+    "requested_at": "2026-09-30T19:29:36.620Z",
+    "character_id": "1b991933-1a46-44d4-80b9-6e07a2164da3",
+    "args": {
+      "region": 23431,
+      "x": 69.65174814704187,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_95a2f68a-9c26-4617-8030-c008c0495f57",
+    "request_start_ms": 898617.7000000477,
+    "response_ms": 898655.4000000358,
+    "http_status": 202,
+    "state": "failed",
+    "result_code": "path_not_found",
+    "api_return": null,
+    "sent_at": "2026-09-30T19:29:36.640508Z",
+    "finished_at": "2026-09-30T19:29:49.164697Z",
+    "route_steps": null,
+    "route_history": []
+  },
+  {
+    "requested_at": "2026-09-30T19:29:36.621Z",
+    "character_id": "482022ad-97a9-4a18-ae2c-a6724241fc8c",
+    "args": {
+      "region": 23431,
+      "x": 69.65174814704187,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_1b758916-a4cd-428b-9338-2d3f9070d0e1",
+    "request_start_ms": 898618.1000000238,
+    "response_ms": 898655.8000000119,
+    "http_status": 202,
+    "state": "completed",
+    "result_code": "",
+    "api_return": true,
+    "sent_at": "2026-09-30T19:29:36.636782Z",
+    "finished_at": "2026-09-30T19:29:46.197693Z",
+    "route_steps": 6,
+    "route_history": [
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:29:46Z",
+        "route_sequence": 10,
+        "blocks": [
+          {
+            "points": 5,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:29:47Z",
+        "route_sequence": 10,
+        "blocks": [
+          {
+            "points": 4,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:29:49Z",
+        "route_sequence": 10,
+        "blocks": [
+          {
+            "points": 3,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:29:51Z",
+        "route_sequence": 10,
+        "blocks": [
+          {
+            "points": 2,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "moving",
+        "updated_at": "2026-09-30T19:29:52Z",
+        "route_sequence": 10,
+        "blocks": [
+          {
+            "points": 1,
+            "regions": [
+              23431
+            ]
+          }
+        ]
+      },
+      {
+        "status": "arrived",
+        "updated_at": "2026-09-30T19:29:53Z",
+        "route_sequence": 10,
+        "blocks": []
+      }
+    ]
+  },
+  {
+    "requested_at": "2026-09-30T19:29:36.621Z",
+    "character_id": "26211dcc-773d-4e33-875d-dfbe3fde3e38",
+    "args": {
+      "region": 23431,
+      "x": 69.65174814704187,
+      "y": -127.43437499999891,
+      "z": 0
+    },
+    "command_id": "cmd_e2d955fc-5e76-4c50-a9e4-0cdb00d6e1bc",
+    "request_start_ms": 898618.5,
+    "response_ms": 898655.6000000238,
+    "http_status": 202,
+    "state": "failed",
+    "result_code": "path_not_found",
+    "api_return": null,
+    "sent_at": "2026-09-30T19:29:36.636979Z",
+    "finished_at": "2026-09-30T19:29:48.290471Z",
+    "route_steps": null,
+    "route_history": []
+  },
+  {
+    "fixture": false,
+    "plugin_version": "1.6.2",
+    "name": "nuker4",
+    "command": {
+      "command_id": "cmd_cf369b16-eaa6-4ebc-bcfd-388540fa98d2",
+      "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+      "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+      "agent_id": "a8784568-3f6d-4023-a9a9-6e0ac8d60581",
+      "connection_generation": 19,
+      "name": "character.navigate",
+      "schema_version": 1,
+      "args": {
+        "x": 96.0448753462606,
+        "y": -163.4343749999989,
+        "z": 0,
+        "region": 23431
+      },
+      "state": "failed",
+      "created_at": "2026-09-30T20:19:03.664518Z",
+      "expires_at": "2026-09-30T20:19:13.664157Z",
+      "dispatch_started_at": "2026-09-30T20:19:03.66876Z",
+      "sent_at": "2026-09-30T20:19:03.6728Z",
+      "acknowledged_at": "2026-09-30T20:19:03.674067Z",
+      "finished_at": "2026-09-30T20:19:13.486662Z",
+      "result_code": "command_expired",
+      "message": "command_expired",
+      "verification": "unverified"
+    },
+    "first_remaining_route": null,
+    "first_observed_arrival": null,
+    "generation_position_samples": [
+      {
+        "received_at": "2026-09-30T20:19:05.123Z",
+        "observed_at": "2026-09-30T20:19:04.680547Z",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "x": 146.5,
+        "y": -147,
+        "region": 23431
+      },
+      {
+        "received_at": "2026-09-30T20:19:09.839Z",
+        "observed_at": "2026-09-30T20:19:09.409504Z",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "x": 146.5,
+        "y": -147,
+        "region": 23431
+      }
+    ]
+  },
+  {
+    "fixture": false,
+    "plugin_version": "1.6.2",
+    "name": "nuker4",
+    "command": {
+      "command_id": "cmd_d0c48d01-678b-4aa1-be02-f15e1d7012e7",
+      "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+      "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+      "agent_id": "a8784568-3f6d-4023-a9a9-6e0ac8d60581",
+      "connection_generation": 19,
+      "name": "character.navigate",
+      "schema_version": 1,
+      "args": {
+        "x": 146.4561952534259,
+        "y": -126.83437499999945,
+        "z": 0,
+        "region": 23431
+      },
+      "state": "completed",
+      "created_at": "2026-09-30T20:20:35.925506Z",
+      "expires_at": "2026-09-30T20:20:45.925272Z",
+      "dispatch_started_at": "2026-09-30T20:20:35.929654Z",
+      "sent_at": "2026-09-30T20:20:35.934361Z",
+      "acknowledged_at": "2026-09-30T20:20:35.935369Z",
+      "finished_at": "2026-09-30T20:20:37.952037Z",
+      "result_code": "",
+      "message": "",
+      "verification": "api_confirmed",
+      "api_return": true,
+      "effective_args": {
+        "x": 146.4561952534259,
+        "y": -126.83437499999945,
+        "z": 0,
+        "region": 23431,
+        "route_steps": 3
+      }
+    },
+    "first_remaining_route": {
+      "received_at": "2026-09-30T20:20:38.467Z",
+      "route": {
+        "command_id": "cmd_d0c48d01-678b-4aa1-be02-f15e1d7012e7",
+        "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "route_sequence": 1,
+        "server": "Greatest",
+        "dataset_id": "gamedata-17f8847c77edd7c7fadd",
+        "dataset_version": "gamedata-17f8847c77edd7c7fadd",
+        "area_id": "world",
+        "floor_id": "world",
+        "destination": {
+          "region": 23431,
+          "x": 146.4561952534259,
+          "y": -126.83437499999945,
+          "z": 0
+        },
+        "destination_area_id": "world",
+        "destination_floor_id": "world",
+        "current_anchor": {
+          "region": 23431,
+          "x": 146,
+          "y": -142.41671752929688,
+          "z": 0
+        },
+        "status": "moving",
+        "updated_at": "2026-09-30T20:20:37Z",
+        "blocks": [
+          {
+            "area_id": "world",
+            "floor_id": "world",
+            "points": [
+              {
+                "region": 23431,
+                "x": 146,
+                "y": -126,
+                "z": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "first_observed_arrival": {
+      "received_at": "2026-09-30T20:20:38.978Z",
+      "route": {
+        "command_id": "cmd_d0c48d01-678b-4aa1-be02-f15e1d7012e7",
+        "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "route_sequence": 1,
+        "server": "Greatest",
+        "dataset_id": "gamedata-17f8847c77edd7c7fadd",
+        "dataset_version": "gamedata-17f8847c77edd7c7fadd",
+        "area_id": "world",
+        "floor_id": "world",
+        "destination": {
+          "region": 23431,
+          "x": 146.4561952534259,
+          "y": -126.83437499999945,
+          "z": 0
+        },
+        "destination_area_id": "world",
+        "destination_floor_id": "world",
+        "status": "arrived",
+        "updated_at": "2026-09-30T20:20:38Z",
+        "blocks": [],
+        "arrived": true
+      }
+    },
+    "generation_position_samples": []
+  }
+]

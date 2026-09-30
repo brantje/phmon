@@ -21,6 +21,7 @@ import (
 	"phmon/server/internal/events"
 	"phmon/server/internal/mapprofile"
 	"phmon/server/internal/mobs"
+	"phmon/server/internal/navigation"
 	"phmon/server/internal/resources"
 )
 
@@ -107,6 +108,7 @@ type LiveHub struct {
 	chat       *chat.Store
 	mobs       *mobs.Store
 	mobLive    *mobs.LiveStore
+	navigation *navigation.Store
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -119,6 +121,11 @@ func (h *LiveHub) SetEvents(store *events.Store)         { h.events = store }
 func (h *LiveHub) SetChat(store *chat.Store)             { h.chat = store }
 func (h *LiveHub) SetMobObservations(store *mobs.Store)  { h.mobs = store }
 func (h *LiveHub) SetMobLive(store *mobs.LiveStore)      { h.mobLive = store }
+func (h *LiveHub) SetNavigation(store *navigation.Store) {
+	if store != nil {
+		h.navigation = store
+	}
+}
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
@@ -127,6 +134,7 @@ func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStor
 		characters: characterStore,
 		clients:    make(map[*liveClient]struct{}),
 		buildSlots: make(chan struct{}, liveMaxConcurrentBuilds),
+		navigation: navigation.NewStore(),
 	}
 }
 
@@ -798,12 +806,21 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 				}
 			}
 		}
-		return map[string]any{
+		mapData := map[string]any{
 			"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
 			"region": subscription.Filter.Region, "scope_status": "mapped",
 			"characters": charRows, "party": party, "monsters": monsterRows, "events": activity,
 			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
-		}, nil
+		}
+		basePayload, _ := json.Marshal(mapData)
+		remaining := liveMaxServerMessageBytes - len(basePayload) - 16*1024
+		if remaining < 0 {
+			remaining = 0
+		}
+		routes, omitted := h.navigation.SnapshotBudget(subscription.Filter.Server, profile, time.Now().UTC(), remaining)
+		mapData["navigation"] = routes
+		mapData["navigation_omitted_count"] = omitted
+		return mapData, nil
 	default:
 		return nil, errors.New("unsupported live stream")
 	}

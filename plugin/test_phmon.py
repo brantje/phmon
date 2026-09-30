@@ -1486,6 +1486,35 @@ class CanonicalCallbackTests(unittest.TestCase):
 
 
 class CharacterCollectorTests(unittest.TestCase):
+    def test_profile_identity_fence_is_local_and_captured_for_session_replacement(self):
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        )
+        worker = Mock()
+        try:
+            plugin._worker = worker
+            plugin._character_joined = True
+            plugin._last_character_signature = None
+            plugin._last_character_sample_at = 0
+            plugin._last_resources_sample_at = time.monotonic()
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_character_data', return_value={
+                        'server': 'Greatest', 'name': 'nuker1',
+                    }), \
+                    patch.object(plugin, '_get_position', return_value=None), \
+                    patch.object(plugin, '_get_profile', return_value='Greatest_Farm'):
+                plugin._sample_character()
+            identity = worker.update_character.call_args.args[0]
+            self.assertEqual(identity['profile_key'], 'Greatest_Farm')
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at,
+             plugin._last_resources_sample_at) = previous
+
     def test_signed_cave_region_from_get_position_is_preserved(self):
         previous = (
             plugin._worker,
@@ -2069,43 +2098,147 @@ class BackoffTests(unittest.TestCase):
                  'ttl_ms':10000,'expires_at':time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
         worker._accept_command(frame)
         self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767))
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
         self.assertEqual(worker._outgoing.get_nowait()['type'], 'command.ack')
         result = worker._outgoing.get_nowait()
         self.assertEqual(result['status'], 'completed')
         self.assertEqual(result['verification'], 'api_confirmed')
         self.assertEqual(calls[0], ('generate', (-32767, -24272.5, -93.5, 0.0)))
         self.assertEqual(calls[1], ('start', 'walk,-24272.5,-93.5,0\nwait,500'))
+        route = worker._latest_navigation_route
+        self.assertEqual(route['schema_version'], 1)
+        self.assertEqual(route['command_id'], frame['command_id'])
+        self.assertEqual(route['route_sequence'], 1)
+        self.assertEqual(route['instructions'], [
+            {'index': 0, 'kind': 'walk', 'x': -24272.5, 'y': -93.5, 'z': 0.0},
+            {'index': 1, 'kind': 'wait', 'duration_ms': 500},
+        ])
+        self.assertNotIn('walk,-24272.5', json.dumps(route))
         self.assertEqual(worker._outgoing.get_nowait()['type'], 'character.control_state')
 
         frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000008'
         reject_script.append(True)
         worker._accept_command(frame)
         worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767)
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
         worker._outgoing.get_nowait()
         rejected = worker._outgoing.get_nowait()
         self.assertEqual(rejected['status'], 'failed')
         self.assertEqual(rejected['reason'], 'api_return_false')
         self.assertIs(rejected['api_return'], False)
+        self.assertEqual(worker._latest_navigation_route['route_sequence'], 1)
         self.assertEqual(worker._outgoing.get_nowait()['type'], 'character.control_state')
 
         frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000007'
         frame['args']['region'] = 0
         worker._accept_command(frame)
         worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767)
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
         worker._outgoing.get_nowait()
         self.assertEqual(worker._outgoing.get_nowait()['reason'], 'invalid_arguments')
         self.assertEqual(len(calls), 4)
 
-        frame['command_id'] = 'cmd_00000000-0000-4000-8000-000000000009'
-        frame['args'] = {'region':-32767,'x':-24272.5,'y':-93.5,'z':0}
+    def test_navigation_command_result_is_flushed_before_route_frame(self):
+        adapter = plugin.PhBotAdapter({
+            'generate_script': lambda *args: ['walk,10,20,0'],
+            'start_script': lambda script: True,
+            'get_position': lambda: {'region': 25000, 'x': 1, 'y': 2, 'z': 0},
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000009',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.navigate', 'args': {'region': 25000, 'x': 10, 'y': 20, 'z': 0},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
         worker._accept_command(frame)
-        worker._outgoing.get_nowait()
-        worker.session_id = '33333333-4444-4555-8666-777777777777'
-        self.assertTrue(worker.process_one_command({'server':'Silkroad','name':'Alpha'}, -32767))
-        stale = worker._outgoing.get_nowait()
-        self.assertEqual(stale['status'], 'failed')
-        self.assertEqual(stale['reason'], 'stale_session')
-        self.assertEqual(len(calls), 4)
+        self.assertTrue(worker.process_one_command(worker._current_identity, 25000))
+        if worker._navigation_job is not None:
+            worker._navigation_job['thread'].join(timeout=1)
+            self.assertTrue(worker.process_one_command(worker._current_identity, -32767))
+
+        sent = []
+
+        class CaptureClient:
+            def send_json(self, value):
+                sent.append(value)
+
+        self.assertTrue(worker._flush_navigation_route(CaptureClient()))
+        frame_types = [item['type'] for item in sent]
+        self.assertEqual(frame_types, [
+            'command.ack', 'command.result', 'character.control_state', 'navigation.route',
+        ])
+        self.assertEqual(sent[1]['status'], 'completed')
+        self.assertEqual(sent[3]['route']['command_id'], frame['command_id'])
+
+    def test_navigation_route_parser_rejects_unsafe_scripts_without_partial_output(self):
+        script, route = plugin._parse_generated_navigation_script([
+            'walk,-12.5,20,0', 'wait,500', 'teleport,GATE_ONE,GATE_TWO', 'walk,40,50,-2.25',
+        ])
+        self.assertIn('teleport,GATE_ONE,GATE_TWO', script)
+        self.assertEqual([item['kind'] for item in route], ['walk', 'wait', 'teleport', 'walk'])
+        self.assertEqual(route[2], {'index': 2, 'kind': 'teleport'})
+        oversized_frame = 'teleport,' + ('A' * 120) + ',' + ('B' * 120)
+        self.assertEqual(len(oversized_frame), 250)
+        for invalid in (
+            ['walk,nan,1,2'], ['walk,10000001,1,2'], ['walk,1,2,3', 'exec,unsafe'],
+            ['wait,1000000'], ['teleport,PRIVATE-NAME,TARGET'], [], ['walk,1,2,3'] * 257,
+            ['walk,' + ('1' * 257) + ',1,1'], [oversized_frame] * 256,
+        ):
+            with self.subTest(invalid=invalid[:1]):
+                with self.assertRaises(ValueError):
+                    plugin._parse_generated_navigation_script(invalid)
+
+    def test_navigation_route_is_cleared_on_profile_replacement_and_revocation(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=plugin.PhBotAdapter({}))
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {
+            'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileOne',
+        }
+        worker._navigation_sequence = 1
+        worker._latest_navigation_route = {'route_sequence': 1}
+        registered = {
+            'type': 'character.registered', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': '33333333-4444-4555-8666-777777777777',
+            'session_id': '44444444-5555-4666-8777-888888888888',
+        }
+        sent = []
+        client = type('Client', (), {'send_json': lambda _, frame: sent.append(frame)})()
+        with patch.object(worker, '_wait_for_registration', return_value=registered):
+            worker._publish_sample(client, {
+                'identity': {'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileTwo'},
+                'state': {'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 0.0},
+            }, False)
+        self.assertIsNone(worker._latest_navigation_route)
+        self.assertEqual(worker._navigation_sequence, 0)
+        self.assertEqual(worker.session_id, registered['session_id'])
+
+        worker._latest_navigation_route = {'route_sequence': 1}
+        worker._navigation_sequence = 1
+        worker._revoke_session({
+            'type': 'command.revoke', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': worker.character_id, 'session_id': worker.session_id,
+        })
+        self.assertIsNone(worker._latest_navigation_route)
+        self.assertEqual(worker._navigation_sequence, 0)
 
     def test_control_state_is_initial_session_scoped_and_rate_limited(self):
         adapter = plugin.PhBotAdapter({
@@ -2152,6 +2285,206 @@ class BackoffTests(unittest.TestCase):
         worker._restore_latest_sample(transport)
         self.assertEqual(transport.sent, [])
         self.assertIsNone(worker._latest_sample)
+
+
+class NavigationGenerationTests(unittest.TestCase):
+    def setUp(self):
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.calls = []
+        self.callback_thread = threading.get_ident()
+
+        def generate(*args):
+            self.calls.append(('generate', threading.get_ident()))
+            self.started.set()
+            if not self.release.wait(2):
+                raise RuntimeError('test generator was not released')
+            return ['walk,10,20,0']
+
+        self.worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID, 'agent_token': 'token',
+        }, 'fixture', api_adapter=plugin.PhBotAdapter({
+            'generate_script': generate,
+            'get_position': lambda: {'region': 25000, 'x': 1, 'y': 2, 'z': 0},
+            'start_script': lambda script: self.calls.append(('start', threading.get_ident(), script)) or True,
+        }))
+        self.worker.character_id = AGENT_ID
+        self.worker.session_id = '22222222-3333-4444-8555-666666666666'
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha', 'profile_key': 'One'}
+        self.worker._current_identity = dict(self.identity)
+        self.frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+            'character_id': AGENT_ID, 'session_id': self.worker.session_id,
+            'name': 'character.navigate', 'args': {'region': 25000, 'x': 10, 'y': 20, 'z': 0},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+
+    def tearDown(self):
+        self.release.set()
+        job = self.worker._navigation_job
+        if job is not None:
+            job['thread'].join(timeout=1)
+            self.assertFalse(job['thread'].is_alive())
+
+    def begin(self):
+        self.worker._accept_command(self.frame)
+        started_at = time.monotonic()
+        self.assertTrue(self.worker.process_one_command(self.identity, 25000))
+        self.assertLess(time.monotonic() - started_at, 0.2)
+        self.assertTrue(self.started.wait(1))
+        self.assertEqual(self.worker._outgoing.get_nowait()['type'], 'command.ack')
+
+    def finish(self):
+        self.release.set()
+        self.worker._navigation_job['thread'].join(timeout=1)
+        self.assertTrue(self.worker.process_one_command(self.identity, 25000))
+
+    def test_blocked_generation_keeps_callback_sampling_and_result_transport_responsive(self):
+        self.begin()
+        self.worker._accept_command(self.frame)  # Exact duplicate does not create a generator.
+        with patch.object(plugin, '_worker', self.worker), \
+                patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_character_joined', True), \
+                patch.object(plugin, '_get_character_data', return_value={'server': 'Silkroad', 'name': 'Alpha'}), \
+                patch.object(plugin, '_get_position', return_value={'region': 25000, 'x': 1, 'y': 2, 'z': 0}), \
+                patch.object(plugin, '_get_profile', return_value='One'), \
+                patch.object(plugin, '_get_zone_name', return_value='Fixture'), \
+                patch.object(plugin, '_last_resources_sample_at', plugin._monotonic()), \
+                patch.object(plugin, '_sample_monsters'), \
+                patch.object(plugin, '_last_character_signature', None):
+            started_at = time.monotonic()
+            plugin._sample_character()
+            self.assertLess(time.monotonic() - started_at, 0.2)
+            self.assertIsNotNone(self.worker._samples.get_nowait())
+        sent = []
+        self.worker._flush_results(type('Client', (), {'send_json': lambda _, frame: sent.append(frame)})())
+        self.assertEqual(len(self.calls), 1)
+        self.assertNotEqual(self.calls[0][1], self.callback_thread)
+        self.finish()
+        self.assertEqual(self.calls[1], ('start', self.callback_thread, 'walk,10,20,0'))
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(self.worker._latest_navigation_route['route_sequence'], 1)
+
+    def test_late_generation_never_invokes_after_lifecycle_or_expiry_change(self):
+        changes = {
+            'expiry': lambda: self.worker._navigation_job['item'].update(deadline=float('-inf')),
+            'session': lambda: setattr(self.worker, 'session_id', AGENT_ID),
+            'epoch': lambda: setattr(self.worker, '_profile_epoch', 1),
+            'profile': lambda: self.identity.update(profile_key='Two'),
+            'revoke': lambda: self.worker._revoke_session(self.frame),
+            'leave': lambda: self.worker.leave_character(),
+            'stop': lambda: self.worker.stop(),
+            'teleport': lambda: self.worker._cancel_navigation_generation('character_teleported'),
+        }
+        for label, change in changes.items():
+            with self.subTest(change=label):
+                self.setUp()
+                try:
+                    self.begin()
+                    change()
+                    self.assertFalse(self.worker.process_one_command(self.identity, 25000))
+                    result = self.worker._outgoing.get_nowait()
+                    self.assertEqual(result['status'], 'failed')
+                    self.finish()
+                    self.assertEqual(len(self.calls), 1)
+                    self.assertIsNone(self.worker._latest_navigation_route)
+                    self.assertTrue(self.worker._outgoing.empty())
+                finally:
+                    self.tearDown()
+
+    def test_profile_replacement_cannot_spawn_a_second_blocked_generator(self):
+        self.begin()
+        self.worker.stop()
+        replacement = plugin.AgentWorker(self.worker.config, 'fixture', api_adapter=self.worker.api)
+        replacement.character_id = self.frame['character_id']
+        replacement.session_id = self.frame['session_id']
+        replacement._current_identity = self.identity
+        replacement._accept_command(self.frame)
+        self.assertTrue(replacement.process_one_command(self.identity, 25000))
+        self.assertEqual(replacement._outgoing.get_nowait()['type'], 'command.ack')
+        self.assertEqual(replacement._outgoing.get_nowait()['reason'], 'navigation_generation_busy')
+        self.assertIsNone(replacement._navigation_job)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_generation_failure_or_invalid_route_never_starts_a_script(self):
+        for generated, reason in [(None, 'path_not_found'), (False, 'path_rate_limited_or_not_in_game'),
+                                  (['walk,nan,20,0'], 'invalid_path')]:
+            with self.subTest(generated=generated):
+                self.setUp()
+                try:
+                    self.worker.api.functions['generate_script'] = lambda *args: generated
+                    self.worker._accept_command(self.frame)
+                    self.worker.process_one_command(self.identity, 25000)
+                    self.finish()
+                    self.assertEqual(self.worker._outgoing.get_nowait()['type'], 'command.ack')
+                    result = self.worker._outgoing.get_nowait()
+                    self.assertEqual(result['status'], 'failed')
+                    self.assertEqual(result['reason'], reason)
+                    self.assertEqual(self.calls, [])
+                finally:
+                    self.tearDown()
+
+
+class CallbackTimingTests(unittest.TestCase):
+    def test_navigation_stage_reports_elapsed_time_and_preserves_return(self):
+        for result in (False, None, True, ['walk,10,20,0', 'teleport,PRIVATE_GATE,PRIVATE_TARGET']):
+            with self.subTest(result=result), patch.object(plugin, '_log') as log, \
+                    patch.object(plugin, '_monotonic', side_effect=[1.0, 11.25]):
+                api = Mock(return_value=result)
+                self.assertIs(plugin._navigation_stage('generate_script', api, 'private argument'), result)
+                api.assert_called_once_with('private argument')
+                self.assertEqual([call.args[0] for call in log.call_args_list], [
+                    'navigation generate_script started',
+                    'navigation generate_script returned in 10250 ms',
+                ])
+
+    def test_navigation_stage_reports_failure_without_logging_exception_data(self):
+        with patch.object(plugin, '_log') as log, \
+                patch.object(plugin, '_monotonic', side_effect=[1.0, 9.0]):
+            with self.assertRaisesRegex(ValueError, 'private script'):
+                plugin._navigation_stage('start_script', Mock(side_effect=ValueError('private script')))
+            self.assertEqual([call.args[0] for call in log.call_args_list], [
+                'navigation start_script started', 'navigation start_script raised in 8000 ms',
+            ])
+
+    def test_callback_reports_slowest_stage_even_when_it_raises(self):
+        with patch.object(plugin, '_log') as log, \
+                patch.object(plugin, '_monotonic', side_effect=[0, 0, 0.2, 0.2, 10.2, 10.3]):
+            timing = plugin._CallbackTiming()
+            timing.run('resource_collect', lambda: None)
+            with self.assertRaises(ValueError):
+                timing.run('command', Mock(side_effect=ValueError('private value')))
+            timing.report()
+            log.assert_called_once_with('event_loop slow: 10300 ms; command=10000 ms, resource_collect=200 ms')
+
+    def test_fast_callback_is_silent(self):
+        with patch.object(plugin, '_log') as log, \
+                patch.object(plugin, '_monotonic', side_effect=[0, 0.499]):
+            plugin._CallbackTiming().report()
+            log.assert_not_called()
+
+    def test_event_loop_reports_sampling_delay_in_finally(self):
+        clock = [0.0]
+
+        def fail_sample(timing):
+            def fail():
+                clock[0] += 10
+                raise RuntimeError('private runtime details')
+            timing.run('resource_collect', fail)
+
+        with patch.object(plugin, '_worker', Mock()), \
+                patch.object(plugin, '_load_active_profile'), \
+                patch.object(plugin, '_drain_pending_callback_events'), \
+                patch.object(plugin, '_set_gui_status'), \
+                patch.object(plugin, '_sample_character', side_effect=fail_sample), \
+                patch.object(plugin, '_monotonic', side_effect=lambda: clock[0]), \
+                patch.object(plugin, '_log') as log:
+            with self.assertRaises(RuntimeError):
+                plugin.event_loop()
+            self.assertIn('resource_collect=10000 ms', log.call_args.args[0])
+            self.assertNotIn('private', log.call_args.args[0])
 
 
 class WorkerStopTests(unittest.TestCase):

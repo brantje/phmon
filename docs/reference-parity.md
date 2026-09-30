@@ -1494,3 +1494,87 @@ changes did not remount the map. No browser errors or character commands occurre
 All 64 frontend unit tests, Nuxt typecheck, focused ESLint (0 errors; 19 existing
 style warnings), Prettier, production build, and `git diff --check` passed using
 the project's supported Node 24 runtime.
+
+### Issue #27 — multi-character navigation and remaining routes — 2026-09-30
+
+The Map page now opens Vue-rendered navigation actions from right-click, selected
+point, touch, and keyboard-center actions. The menu resolves each ordered,
+deduplicated action target independently from its current session, fresh position,
+capability and active map profile. It shows eligibility and skip reasons before
+submission; existing optional action review remains in force. Prepared requests
+freeze target, session, destination and idempotency key. A final per-child admission
+guard refreshes map-feed freshness, session/capability match, profile version, and
+coordinate conversion immediately before each POST. The existing single-character
+training-area action remains explicitly focused-character only.
+
+The plugin now negotiates protocol v8 and version 1.6.0 parses generated scripts
+once, executes the exact bounded validated text, and publishes normalized route
+snapshots without script source or teleporter IDs. The Go service validates the
+route against the exact authenticated, completed durable command and stores route
+state only in memory. Fresh accepted positions advance its monotonic reducer. Waits,
+teleports, ambiguous scopes, unsupported transforms and unsafe crossings cannot
+create a connector or cross-block polyline. Arrival remains a position observation,
+not a command result. The browser renders each remaining route independently and
+keeps route-list selection separate from character focus/action targets.
+
+Issue #27 is implemented on top of the merged #29/#30 targeting and fan-out
+foundations. The public issue confirms that map actions use ordinary per-character
+`character.navigate` commands and that remaining route geometry is a transient,
+session-scoped map overlay. See [Issue #27](https://github.com/brantje/phmon/issues/27).
+
+The Vue context menu opens from map right-click and the selected-point action for
+touch/keyboard use. Local browser inspection showed selected targets, per-character
+offline skips and reasons, and a disabled Navigate action when no target was
+eligible. Enter selected the map center. At 390×844 the selected-point action opened
+the menu within the viewport. Active route overlays showed an independently labeled
+character route, destination and waiting/stale status at all three target viewports.
+The browser document had no horizontal overflow at 1440×1000, 1280×800 or 390×844;
+there were no page errors. No command was submitted from the browser UI because its
+fixture targets were offline.
+
+Screenshots were kept outside the repository: `/tmp/phmon-issue27-1440-menu.png`,
+`/tmp/phmon-issue27-route-active.png`, `/tmp/phmon-issue27-route-1280.png`,
+`/tmp/phmon-issue27-route-390.png` and `/tmp/phmon-issue27-390-menu.png`. These
+screenshots use deterministic fixture characters and local exported map assets.
+
+The authenticated protocol-v8 navigation smoke used the production plugin worker
+with a fake phBot API adapter. It verified admission → exact validated script start
+→ transient map route → a fresh post-invocation position marking arrival, and
+confirmed that route frames do not create position-history rows. A second run held
+the fixture beyond the 35-second presentation freshness window while continuing
+live heartbeat handling, then verified stale-to-fresh recovery and observed arrival.
+Fixture results do not establish Windows/phBot runtime behavior.
+
+Validation passed under Node 24.20.0 with a disposable PostgreSQL database:
+`bash scripts/check.sh` (race-enabled Go suites, 103 plugin tests, 90 frontend unit
+tests, format/lint/typecheck/build and Compose configuration), plus the authenticated
+navigation smoke. ESLint reported zero errors and 42 style warnings. Focused Go
+navigation/commands/mapprofile/httpapi suites also passed. The public demo browser
+navigation timed out in Chromium; the existing 2026-09-26 reference captures and
+the issue description supplied the reference baseline. No production deployment
+or real-character command was performed.
+
+### Issue #27 operator navigation follow-up — 2026-09-30
+
+The operator rejected the large right-click dialog and supplied a dashed connected
+route example. The ordinary menu is now one compact navigation action naming its
+frozen character or target count, with a short exception message when needed.
+Coordinates, badges, target cards and redundant dismiss buttons are removed;
+optional review and detailed independent results are below the map. The same
+selected-point action remains available to touch/keyboard users.
+
+The remaining-path renderer uses a 3 px cyan dashed polyline with waypoint dots.
+Validated outdoor region seams remain connected through snapshot, progress and
+browser conversion; genuine transitions and unavailable/filtered portions remain
+separate. All eligible browser admissions start concurrently. The shared Go
+scheduler dispatches on four independent workers, preserving session fencing,
+per-character admission constraints and exact retries.
+
+Automated and live evidence is recorded in
+[the navigation runtime ledger](reference/issue27-navigation-runtime.md). Browser
+checks cover the requested desktop/mobile sizes and stable map mounting. Live
+Hotan navigation verifies connected outdoor seams, decreasing remaining paths,
+simultaneous independent routes and fresh arrival after command completion.
+Independent `path_not_found` failures are retained in the ledger; their cause is
+unverified. The operator confirmed the plugin upload and later reported working
+behavior. Fixture arrival remains explicitly separate from Windows/phBot evidence.

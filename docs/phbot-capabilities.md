@@ -911,3 +911,100 @@ of Qin-Shi, Donwhang Stone Cave and Job Temple. Historical heatmap queries for a
 area/floor without a usable transform return an unsupported state rather than
 projecting the coordinates through the outdoor transform. This preserves the same
 fail-closed coordinate boundary used by Slice 7.
+
+### Protocol v8 generated-script route reporting — 2026-09-30
+
+The official [Paths API](https://plugins.phbot.org/phbot-api/paths) documents
+`generate_script(region, x, y, z)` as generating route command strings and imposing
+a five-second rate limit. Its generated paths can include `walk`, `wait`, and
+teleport instructions. The official [Script API](https://plugins.phbot.org/phbot-api/script)
+documents `start_script(str)` as background execution and `stop_script()` as a
+stop operation; neither document exposes a script-progress getter or proves that
+the character arrived at the requested point.
+
+Plugin 1.6.0 parses the generated result once, bounds and normalizes the supported
+instruction grammar, and passes the exact validated text to `start_script`. An
+explicit `False` return means failed start; other existing return classifications
+remain unchanged. The plugin publishes bounded normalized route evidence only after
+the call does not explicitly fail. It does not include script source or teleporter
+identifiers. The Go server owns route admission against the completed durable
+`character.navigate` command and keeps progress transiently, separate from position
+history. Arrival is inferred only from a later accepted live position observation
+within 12 game units and compatible region/floor scope; that radius is a PhMon map
+presentation policy, not a phBot guarantee.
+
+This contract has deterministic fake-adapter and protocol tests, including exact
+script execution, invalid-route rejection, background acceptance versus observed
+arrival, and wait/teleport barriers. There is no supported Windows/phBot process in
+this environment, so plugin v1.6.0 has not been exercised against a real character;
+the simulator is fixture evidence only. Protocol v8 is additive and the backend
+continues accepting v2–v7 during rollout. Legacy agents cannot report route geometry.
+
+
+### Issue #27 live follow-up — 2026-09-30
+
+The operator-authorized Hotan checks used fresh PhMon 1.6.0/protocol 8 sessions
+reported on phBot 20.1.2. Generated-script invocation returned true for a 12-step
+nuker4 path across outdoor regions 23687/23686. Remaining geometry advanced in
+one block, and a fresh compatible position established arrival after durable
+command completion. Group checks showed simultaneous advancing routes with
+independent completion/arrival and `path_not_found` results. The operator also
+reported a ten-second `event_loop` warning. Those API failures/delays have no
+isolated cause established here; early tests overlapped operator teleports and
+preceded deployment confirmation. Preserve them as runtime limitations, not
+proof of a particular defect.
+
+The official [Paths API](https://plugins.phbot.org/phbot-api/paths) documents a
+five-second generation limit and None/False failure meanings. The official
+[Script API](https://plugins.phbot.org/phbot-api/script) documents background
+execution but provides no arrival or progress getter. This verification adds
+observational evidence and does not invent another execution API. Details and
+sanitized timings: [runtime ledger](reference/issue27-navigation-runtime.md).
+
+## Callback watchdog investigation — 2026-09-30
+
+The operator explicitly requested investigation of the ten-second `event_loop`
+warning. Navigation currently invokes both path generation and script start on
+the callback thread; accepted-command timings do not separate those APIs from
+sampling or queue delay. Plugin 1.6.1 logs each navigation stage before/after its
+call and reports the total/four slowest callback stages whenever a callback takes
+at least 500 ms. Tests cover success, False/None returns, exceptions, redaction,
+fast-callback silence and timing-report execution after an exception. Logs contain
+no script text, API arguments or exception details.
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) says the
+callback runs every 500 ms. The [script command documentation](https://plugins.phbot.org/handling-script-commands)
+explains interpreter locking and why sleeping inside callbacks blocks other
+callbacks. The Paths/Script contracts do not document thread safety for
+`generate_script`/`start_script`. PhMon therefore retains callback invocation while
+collecting runtime evidence; moving those calls to a thread would require further
+verification. The warning is not resolved merely by these diagnostics. A fresh
+operator-installed 1.6.1 log is required to isolate the stage before a corrective
+change can be verified.
+
+### Confirmed callback stall and bounded generation — 2026-09-30
+
+Operator-supplied 1.6.1 timing logs isolate `generate_script` on nuker1/nuker2
+at 8077/8124 ms. Validation and source readback took 0 ms; `start_script` took
+3/2 ms. Total callback times were 8086/8131 ms. nuker4 generation took 577 ms,
+script start 4 ms and callback total 589 ms. Thus synchronous path generation in
+our callback dispatch is the confirmed blocking stage. The generation latency
+itself remains native API behavior, not a diagnosed remote-service failure.
+
+Plugin 1.6.2 makes a narrow exception to the older callback-only API plan: only
+`generate_script` runs on a dedicated bounded daemon thread. One generation slot
+is shared across profile workers in a plugin instance. Transport stays separate,
+and all validation, position reads and script mutations remain callback-owned.
+Expiry, current identity/profile, session and generation epoch are checked again
+before invocation. Teleport, disconnect, revocation and stop discard late results;
+no callback joins or waits on a generator. Tests exercise a deliberately blocked
+generator, continued sampling/result flushes, API thread identity, duplicates,
+invalid results, lifecycle rejection and slot bounds across worker replacement.
+
+Official docs do not promise native generation thread safety or GIL behavior.
+The installed-phBot gate is therefore explicit: load 1.6.2, verify generation
+completes while fresh position sampling continues, verify script start/arrival,
+and check that no ten-second callback warning returns. Do not claim this runtime
+gate passed based only on Python fixture threads. Exact next action: push 1.6.2
+for operator installation and inspect its callback/position evidence, then finish
+final-head CI and CodeRabbit without merging PR #50.

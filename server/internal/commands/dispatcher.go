@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
@@ -11,6 +12,8 @@ import (
 const (
 	commandResultWait = 30 * time.Second
 	walkResultWait    = 6 * time.Minute
+	dispatchWorkers   = 4
+	dispatchQueueSize = 32
 )
 
 type CommandSender interface {
@@ -21,8 +24,19 @@ type CommandProtocolVersion interface {
 }
 type CommandInvalidator interface{ Invalidate() }
 
+// dispatchStore keeps the scheduler testable without replacing durable claims.
+type dispatchStore interface {
+	Queued(context.Context, int) ([]string, error)
+	Reconcile(context.Context, time.Time, time.Duration, time.Duration) (bool, error)
+	ClaimDispatch(context.Context, string, time.Time) (Command, bool, error)
+	CurrentTargetMatches(context.Context, Command) (bool, error)
+	FailBeforeSend(context.Context, string, string, time.Time) error
+	MarkUnknown(context.Context, string, string, time.Time) error
+	MarkSent(context.Context, string, time.Time) error
+}
+
 type Dispatcher struct {
-	store  *Store
+	store  dispatchStore
 	sender CommandSender
 	live   CommandInvalidator
 	wake   chan struct{}
@@ -38,6 +52,32 @@ func (d *Dispatcher) Notify() {
 	}
 }
 func (d *Dispatcher) Run(ctx context.Context) {
+	jobs := make(chan string, dispatchQueueSize)
+	finished := make(chan string, dispatchWorkers)
+	var workers sync.WaitGroup
+	for i := 0; i < dispatchWorkers; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case id := <-jobs:
+					d.dispatch(ctx, id)
+					select {
+					case finished <- id:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}()
+	}
+	defer workers.Wait()
+	// Only the scheduler owns this set. A queued ID can be returned again
+	// before a worker claims it; never occupy multiple slots with that ID.
+	pending := make(map[string]bool)
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	reconcile := time.NewTicker(time.Second)
@@ -46,6 +86,8 @@ func (d *Dispatcher) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case id := <-finished:
+			delete(pending, id)
 		case <-d.wake:
 		case <-ticker.C:
 		case <-reconcile.C:
@@ -57,13 +99,22 @@ func (d *Dispatcher) Run(ctx context.Context) {
 			}
 		}
 		workCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		ids, err := d.store.Queued(workCtx, 32)
+		ids, err := d.store.Queued(workCtx, dispatchQueueSize)
 		cancel()
 		if err != nil {
 			continue
 		}
+	schedule:
 		for _, id := range ids {
-			d.dispatch(ctx, id)
+			if pending[id] {
+				continue
+			}
+			select {
+			case jobs <- id:
+				pending[id] = true
+			default:
+				break schedule
+			}
 		}
 	}
 }

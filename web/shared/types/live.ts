@@ -174,6 +174,41 @@ export interface MapPartySnapshot {
   members: MapPartyMember[]
 }
 
+export interface NavigationRoutePoint {
+  region: number
+  x: number
+  y: number
+  z: number
+}
+
+export interface NavigationRouteBlock {
+  area_id: string
+  floor_id: string
+  points: NavigationRoutePoint[]
+}
+
+export interface NavigationRoute {
+  command_id: string
+  character_id: string
+  session_id: string
+  route_sequence: number
+  server: string
+  dataset_id: string
+  dataset_version: string
+  area_id?: string
+  floor_id?: string
+  destination: NavigationRoutePoint
+  destination_area_id?: string
+  destination_floor_id?: string
+  current_anchor?: NavigationRoutePoint
+  status: string
+  reason?: string
+  updated_at: string
+  blocks: NavigationRouteBlock[]
+  arrived?: boolean
+  geometry_omitted?: boolean
+}
+
 export interface MapSnapshot {
   server: string
   area_id: string
@@ -184,6 +219,9 @@ export interface MapSnapshot {
   party: MapPartySnapshot
   monsters: MapMonsterObservation[]
   events: ActivityEvent[]
+  /** Optional for compatibility with backends predating navigation routes. */
+  navigation?: NavigationRoute[]
+  navigation_omitted_count?: number
   academy: {
     status: string
     members: unknown[]
@@ -350,6 +388,7 @@ export interface CommandFanOutLiveFeed {
 export interface ControlsSnapshot {
   character_id: string
   session_id: string
+  agent_protocol_version?: number
   capabilities: Record<
     string,
     { supported: boolean; reason?: string; modes?: string[] }

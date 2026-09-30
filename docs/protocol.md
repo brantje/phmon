@@ -1,13 +1,13 @@
-# Agent protocol versions 2–7
+# Agent protocol versions 2–8
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
 leave messages. Slice 3 adds v3 command delivery. Slice 4 adds v4 resource snapshots
 and deltas. Protocol v5 adds nullable live death state and the original death event
 frame. Protocol v6 adds canonical event batches. Protocol v7 adds live monster
-snapshots and durable observation samples. The backend continues accepting v2–v6
-agents; v2–v4 cannot submit events, and v5 retains its death frame and individual
-acknowledgement.
+snapshots and durable observation samples. Protocol v8 adds transient navigation
+route snapshots. The backend continues accepting v2–v7 agents; v2–v4 cannot submit
+events, and v5 retains its death frame and individual acknowledgement.
 Sections below retain the v2 baseline contract; later sections define version-specific
 extensions and limits.
 
@@ -32,9 +32,9 @@ extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: latest 7. Version 1 agents are rejected with an explicit
+Protocol version: latest 8. Version 1 agents are rejected with an explicit
 unsupported protocol close reason because the character identity/state contract is
-required. Versions 2–6 remain accepted for rolling deployment compatibility.
+required. Versions 2–7 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -1030,3 +1030,87 @@ cell returns `monster_observations`, `eligible_samples`,
 `average_observed_per_sample`, dataset and time range. Coverage is unverified, so
 no `density` field is returned. Historical heatmap rendering and reset remain
 Slice 9 work.
+
+## Issue #27 protocol v8: transient navigation routes
+
+Protocol v8 adds authenticated `navigation.route` frames for presentation of the
+remaining path from a successfully started `character.navigate` script. Protocol
+versions 2–7 remain accepted and retain their existing command behavior; they do not
+report route geometry, so the browser explains that an older plugin needs upgrading
+when a completed navigation command has no matching route report.
+
+The worker publishes a bounded route snapshot after `start_script` returns without
+explicit failure. It may repeat the same snapshot at most once every five seconds
+for recovery. A repeated `(session_id, route_sequence)` never resets progress. A
+successful newer invocation replaces the previous route; a generation or script
+start failure leaves a still-running older route intact. Route snapshots are held
+only in worker memory and the Go in-memory store: they are not spooled or replayed
+after reconnect. The server keeps the terminal route sequence until a newer route or
+session cleanup so a duplicate cannot resurrect an arrived or cleared route.
+
+    {
+      "type": "navigation.route",
+      "protocol_version": 8,
+      "route": {
+        "schema_version": 1,
+        "command_id": "<durable command UUID>",
+        "character_id": "<character UUID>",
+        "session_id": "<active session UUID>",
+        "route_sequence": 1,
+        "invoked_at": "<UTC RFC3339>",
+        "source": {"region":25000,"x":6428.2,"y":1086.7,"z":-32.6,
+                   "observed_at":"<UTC RFC3339>"},
+        "instructions": [
+          {"index":0,"kind":"walk","x":6430.0,"y":1090.0,"z":-32.6},
+          {"index":1,"kind":"wait","duration_ms":500},
+          {"index":2,"kind":"teleport"}
+        ]
+      }
+    }
+
+`source` is optional. Instructions contain only normalized walk X/Y/Z, wait duration,
+or a teleport barrier; generated script text and teleporter identifiers remain local
+to the plugin. The worker parses and validates the script once, then executes that
+exact validated text. The entire script is rejected if any line is malformed,
+oversized, non-finite, or outside the coordinate bounds. The generated route is
+limited to 256 instructions and its encoded route frame to 64 KiB.
+
+The server derives server and destination from the authenticated active character and
+the exact durable `character.navigate` command, including commands already completed.
+It rejects frames whose character/session/agent/connection generation or command do
+not match, and rejects older sequences. Route geometry and progress are in memory
+only; command admission and results remain in the durable audit store. No route frame
+creates position-history rows.
+
+Generated walks have no region field. The server scopes outdoor points through the
+active dataset's documented tile grid and applies existing cave region/floor rules.
+Waits and teleports break geometry. Geometry beyond a barrier is withheld until a
+fresh accepted position observation demonstrates movement into the next scoped walk
+block. Unknown transforms and ambiguous floors stay status-only or split geometry;
+X/Y alone never establishes a Tomb or manually selected Job Temple floor. Arrival is
+a separate position-observation status within the documented 12-game-unit presentation
+tolerance and compatible region/floor. Neither `start_script` acceptance nor durable
+command completion claims arrival.
+
+The browser live protocol v1 `map` snapshot adds optional navigation records. This
+does not add another socket. Navigation is limited to 128 KiB aggregate per live map
+frame and is reduced further to preserve the 512 KiB live-frame ceiling; when needed,
+complete geometry is omitted while status and omission counts remain available.
+
+### Independent command delivery and outdoor route continuity — 2026-09-30
+
+Frontend fan-out launches all eligible per-character admissions concurrently. The
+former four-request browser cap is removed. Four persistent Go dispatch workers
+share a bounded delivery queue; a slow character socket does not delay other
+workers or reconciliation. Durable claims, one active command per character and
+per-socket write serialization remain unchanged. No command result or arrival is
+an admission/delivery barrier for another character, including future fan-out tools.
+
+Consecutive validated outdoor walk points share one world coordinate space across
+region tile seams. Route snapshots, reducers and browser conversion preserve that
+continuity; observation regions must still agree with the documented grid. Waits,
+teleports, unresolved cave scopes, missing transforms and region filters break the
+line. The current observed anchor connects only to the actual next validated
+waypoint, including between distant waypoints after the consumed prefix is removed.
+The browser uses a dashed cyan stroke and waypoint dots. No protocol/schema,
+plugin-version or persistence change is required by this follow-up.
