@@ -828,19 +828,19 @@ onBeforeUnmount(() => {
   background: rgba(52, 103, 163, 0.22);
 }
 .channel-general {
-  border-bottom-color: #8caaa2;
+  border-bottom-color: #ffffff;
 }
 .channel-private {
   border-bottom-color: #a58ab9;
 }
 .channel-party {
-  border-bottom-color: #69a1c7;
+  border-bottom-color: #9affd0;
 }
 .channel-guild {
-  border-bottom-color: #87ad67;
+  border-bottom-color: #ffb541;
 }
 .channel-union {
-  border-bottom-color: #b28b56;
+  border-bottom-color: #c2f573;
 }
 .channel-global {
   border-bottom-color: #b96565;
