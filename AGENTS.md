@@ -4401,10 +4401,15 @@ routes are included in generation cleanup, while map snapshots use a separate
 lock. The navigation/HTTP API race suites pass after this change. No actual
 Windows/phBot runtime validation was added.
 
+PR #50 is open at `bfccbbd`; its `validate` and `stack` jobs pass. CodeRabbit's
+latest incremental review completed without additional findings. The review fixes
+and their focused tests are pushed. This ledger update is documentation-only and
+will need the resulting head's CI status checked.
+
 Blocker/limit: actual Windows/phBot execution and physical navigation remain
 unverified; the simulator uses the production worker with fixture API adapters.
 The public demo browser navigation timed out, so comparison used the preserved
 2026-09-26 screenshots and public issue description. No production deployment,
 merge or real-character command was performed. Exact next action: commit and push
-the final owner-fence fix, wait for new-head CI and CodeRabbit, and address any
-further findings without merging.
+this resume-entry update, confirm checks on the new head, then report PR #50
+without merging.
