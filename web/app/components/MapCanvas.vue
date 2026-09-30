@@ -587,7 +587,10 @@ function markerPopup(marker: MapCanvasMarker) {
   return panel
 }
 
-function markerIconContent(marker: MapCanvasMarker) {
+function markerIconContent(
+  marker: MapCanvasMarker,
+  openMonsterPopup?: () => void,
+) {
   const content = document.createElement('span')
   if (marker.kind === 'character') {
     content.className = 'phmon-map-character-pin'
@@ -625,6 +628,12 @@ function markerIconContent(marker: MapCanvasMarker) {
     content.append(name)
   } else if (marker.kind === 'monster') {
     content.className = 'phmon-map-monster-bubble'
+    if (openMonsterPopup) {
+      content.addEventListener('click', (event) => {
+        event.stopPropagation()
+        openMonsterPopup()
+      })
+    }
     const fraction = marker.monster && monsterHPFraction(marker.monster)
     content.style.setProperty('--phmon-monster-hp', String(fraction ?? 0))
     if (marker.monster) {
@@ -874,6 +883,7 @@ onMounted(async () => {
       marker.monster?.attacking,
       marker.itemIconUrl,
     ])
+    let popupMarker = existing
     const icon =
       !existing || markerIconSignatures.get(markerKey) !== signature
         ? L.divIcon({
@@ -892,7 +902,12 @@ onMounted(async () => {
               .join(' '),
             iconSize: [size, size],
             iconAnchor: [size / 2, size / 2],
-            html: markerIconContent(marker),
+            html: markerIconContent(
+              marker,
+              !props.compact && marker.kind === 'monster'
+                ? () => popupMarker?.openPopup()
+                : undefined,
+            ),
           })
         : undefined
     markerIconSignatures.set(markerKey, signature)
@@ -925,6 +940,7 @@ onMounted(async () => {
         autoPan: false,
       })
     rendered.addTo(markerLayer!)
+    popupMarker = rendered
     return rendered
   }
 
@@ -1202,6 +1218,8 @@ onBeforeUnmount(() => {
 :global(.phmon-map-monster-bubble) {
   display: block;
   position: relative;
+  pointer-events: auto;
+  cursor: pointer;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
