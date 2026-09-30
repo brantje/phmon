@@ -1590,10 +1590,10 @@ useHead({ title: 'Map · PhMon' })
             ><input v-model="layerMonsters" type="checkbox" /> Current nearby
             monsters <span>{{ currentMonsters.length }}</span></label
           >
-          <label class="map-layer-toggle map-layer-toggle-subordinate">
-            <input v-model="showNearbyMonsterNames" type="checkbox" />
-            Show nearby monsters names
-          </label>
+          <label class="map-layer-toggle map-layer-toggle-subordinate"
+            ><input v-model="showNearbyMonsterNames" type="checkbox" /> Show nearby
+            monsters names</label
+          >
           <label class="map-layer-toggle"
             ><input v-model="layerDeaths" type="checkbox" /> Recent
             deaths</label
