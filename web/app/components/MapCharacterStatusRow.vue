@@ -53,10 +53,7 @@ const statusLabel = computed(() => {
 </script>
 
 <template>
-  <div
-    class="map-character-status-row"
-    :class="{ selected, targeted }"
-  >
+  <div class="map-character-status-row" :class="{ selected, targeted }">
     <label class="map-character-status-target">
       <input
         type="checkbox"
