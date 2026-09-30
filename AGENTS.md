@@ -4238,6 +4238,9 @@ Nuxt unit tests (64), typecheck, lint (0 errors; 42 existing style warnings),
 Prettier check and production build pass. Local dev health returned HTTP 200 at
 `http://192.168.10.25:3006` with the existing backend. A repeated full-page route
 sweep stopped the Nuxt dev websocket; it was restarted and subsequent in-app
-navigation remained stable. These CSS changes are not yet pushed. Exact next
-action: commit and push the scroll fix to PR #40, wait for `validate` and `stack`
-and CodeRabbit review, then report the PR status without merging.
+navigation remained stable. Commit `5c6a607` is pushed to PR #40. Its `validate`
+and `stack` checks passed. CodeRabbit's latest status is rate limited, with its
+comment saying the next included review becomes available in 16 minutes; no
+fresh CodeRabbit review has completed for this scroll fix. Exact next action:
+after the review limit resets, request a CodeRabbit review for PR #40, fix any
+actionable finding, then report CI and review status without merging.
