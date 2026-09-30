@@ -114,3 +114,29 @@ and check that no ten-second callback warning returns. Do not claim this runtime
 gate passed based only on Python fixture threads. Exact next action: push 1.6.2
 for operator installation and inspect its callback/position evidence, then finish
 final-head CI and CodeRabbit without merging PR #50.
+
+### Installed 1.6.2 callback responsiveness and arrival
+
+After the operator confirmed nuker4 was loaded with 1.6.2, the nearby move admitted
+at 20:19:03 UTC exceeded its deadline and reported `command_expired`. Fresh
+position observations at 20:19:04.680547 and 20:19:09.409504 arrived while native
+generation was pending. The plugin started no late script. This establishes
+continued callback sampling, rather than relying on heartbeats or receipt time.
+
+A closer road point admitted at 20:20:35.925506 succeeded: `start_script=true`,
+three validated instructions, durable completion 20:20:37.952037. The browser
+received a moving remaining route at 20:20:38.467 and a fresh arrived record at
+20:20:38.978 with observation time 20:20:38. Arrival remained separate from command
+completion. These tests exercise the installed phBot 20.1.2 native API on the
+generation thread and callback script start. They do not establish thread behavior
+for other phBot versions. The follow-up native duration/watchdog log is pending.
+
+The full regression command passes with 113 plugin tests, 100 frontend tests,
+Go race suites, formatting/lint/typecheck/build and disposable PostgreSQL checks.
+Both navigation smoke modes pass with the asynchronous production worker. CI
+validation and stack checks pass for 8f9ca08. CodeRabbit completed its review of
+5470372..8f9ca08 at 20:27:53 UTC with no actionable comments. The supplied backend
+is updated and healthy; the recovered browser shows one map and no overflow or
+console errors. The separate verification socket/timer were removed. The operator
+has not yet supplied a post-fix watchdog log, so direct absence of that warning is
+not claimed independently of the observed sampling responsiveness.

@@ -4579,3 +4579,42 @@ and check that no ten-second callback warning returns. Do not claim this runtime
 gate passed based only on Python fixture threads. Exact next action: push 1.6.2
 for operator installation and inspect its callback/position evidence, then finish
 final-head CI and CodeRabbit without merging PR #50.
+
+### Resume — 2026-09-30 confirmed path-generation callback stall
+
+Operator 1.6.1 timing evidence identifies synchronous `generate_script` as the
+8.1-second callback stall, while script start takes 2–4 ms. Plugin 1.6.2 is pushed
+at 8f9ca08 and loaded on nuker4. Its one generation slot runs on a dedicated daemon
+thread; script validation/mutation stays on callbacks. Expiry/profile/session/
+teleport/disconnect/revocation/stop fences reject late results without joining a
+worker or spawning more generators across profile replacement. A runtime attempt
+expired safely while fresh position observations continued; a closer road move
+completed with three instructions, remaining geometry and later fresh arrival.
+The installed native threading path works on this phBot 20.1.2 runtime; do not
+generalize that evidence to other versions.
+
+113 plugin tests and both navigation smokes pass; full Node 24.20.0 regression and
+final-head CI validation/stack checks pass. Backend review fixes are being applied
+to the supplied instance without database/credential changes. Exact next action:
+read the pending operator 1.6.2 watchdog/timing log, finish CodeRabbit review on
+8f9ca08, fix valid findings, commit final runtime evidence, then wait for checks
+on that final head and leave PR #50 unmerged. Do not issue more live movement
+commands unless a new finding needs a bounded check.
+
+### Resume — 2026-09-30 Issue #27 final code review complete
+
+CodeRabbit completed review of 5470372..8f9ca08 at 20:27:53 UTC with no actionable
+comments. CI validation/stack and plugin-version guard pass at 8f9ca08. The supplied
+backend was rebuilt with the review fixes and is healthy; browser recovery shows
+one current map, no page overflow and no console errors. Production database and
+credentials are unchanged. The extra verification WebSocket/timer were removed.
+
+Runtime root cause and fix are evidenced: operator stage logs isolate native
+generation at 8.1 seconds; 1.6.2 sampling continues during native generation and
+a subsequent short move produced script acceptance, remaining geometry and fresh
+arrival. A fresh Windows watchdog log remains requested as additional diagnostic
+evidence; absence of that log must not be reported as verified warning absence.
+No more live commands are pending. Final evidence is in the runtime Markdown/JSON
+ledger. Exact next action: push these evidence-only updates, wait for final-head
+CI and CodeRabbit, verify no conflicts or unresolved threads, remove only disposable
+test resources, and leave PR #50 unmerged.

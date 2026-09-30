@@ -421,5 +421,164 @@
     "finished_at": "2026-09-30T19:29:48.290471Z",
     "route_steps": null,
     "route_history": []
+  },
+  {
+    "fixture": false,
+    "plugin_version": "1.6.2",
+    "name": "nuker4",
+    "command": {
+      "command_id": "cmd_cf369b16-eaa6-4ebc-bcfd-388540fa98d2",
+      "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+      "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+      "agent_id": "a8784568-3f6d-4023-a9a9-6e0ac8d60581",
+      "connection_generation": 19,
+      "name": "character.navigate",
+      "schema_version": 1,
+      "args": {
+        "x": 96.0448753462606,
+        "y": -163.4343749999989,
+        "z": 0,
+        "region": 23431
+      },
+      "state": "failed",
+      "created_at": "2026-09-30T20:19:03.664518Z",
+      "expires_at": "2026-09-30T20:19:13.664157Z",
+      "dispatch_started_at": "2026-09-30T20:19:03.66876Z",
+      "sent_at": "2026-09-30T20:19:03.6728Z",
+      "acknowledged_at": "2026-09-30T20:19:03.674067Z",
+      "finished_at": "2026-09-30T20:19:13.486662Z",
+      "result_code": "command_expired",
+      "message": "command_expired",
+      "verification": "unverified"
+    },
+    "first_remaining_route": null,
+    "first_observed_arrival": null,
+    "generation_position_samples": [
+      {
+        "received_at": "2026-09-30T20:19:05.123Z",
+        "observed_at": "2026-09-30T20:19:04.680547Z",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "x": 146.5,
+        "y": -147,
+        "region": 23431
+      },
+      {
+        "received_at": "2026-09-30T20:19:09.839Z",
+        "observed_at": "2026-09-30T20:19:09.409504Z",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "x": 146.5,
+        "y": -147,
+        "region": 23431
+      }
+    ]
+  },
+  {
+    "fixture": false,
+    "plugin_version": "1.6.2",
+    "name": "nuker4",
+    "command": {
+      "command_id": "cmd_d0c48d01-678b-4aa1-be02-f15e1d7012e7",
+      "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+      "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+      "agent_id": "a8784568-3f6d-4023-a9a9-6e0ac8d60581",
+      "connection_generation": 19,
+      "name": "character.navigate",
+      "schema_version": 1,
+      "args": {
+        "x": 146.4561952534259,
+        "y": -126.83437499999945,
+        "z": 0,
+        "region": 23431
+      },
+      "state": "completed",
+      "created_at": "2026-09-30T20:20:35.925506Z",
+      "expires_at": "2026-09-30T20:20:45.925272Z",
+      "dispatch_started_at": "2026-09-30T20:20:35.929654Z",
+      "sent_at": "2026-09-30T20:20:35.934361Z",
+      "acknowledged_at": "2026-09-30T20:20:35.935369Z",
+      "finished_at": "2026-09-30T20:20:37.952037Z",
+      "result_code": "",
+      "message": "",
+      "verification": "api_confirmed",
+      "api_return": true,
+      "effective_args": {
+        "x": 146.4561952534259,
+        "y": -126.83437499999945,
+        "z": 0,
+        "region": 23431,
+        "route_steps": 3
+      }
+    },
+    "first_remaining_route": {
+      "received_at": "2026-09-30T20:20:38.467Z",
+      "route": {
+        "command_id": "cmd_d0c48d01-678b-4aa1-be02-f15e1d7012e7",
+        "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "route_sequence": 1,
+        "server": "Greatest",
+        "dataset_id": "gamedata-17f8847c77edd7c7fadd",
+        "dataset_version": "gamedata-17f8847c77edd7c7fadd",
+        "area_id": "world",
+        "floor_id": "world",
+        "destination": {
+          "region": 23431,
+          "x": 146.4561952534259,
+          "y": -126.83437499999945,
+          "z": 0
+        },
+        "destination_area_id": "world",
+        "destination_floor_id": "world",
+        "current_anchor": {
+          "region": 23431,
+          "x": 146,
+          "y": -142.41671752929688,
+          "z": 0
+        },
+        "status": "moving",
+        "updated_at": "2026-09-30T20:20:37Z",
+        "blocks": [
+          {
+            "area_id": "world",
+            "floor_id": "world",
+            "points": [
+              {
+                "region": 23431,
+                "x": 146,
+                "y": -126,
+                "z": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "first_observed_arrival": {
+      "received_at": "2026-09-30T20:20:38.978Z",
+      "route": {
+        "command_id": "cmd_d0c48d01-678b-4aa1-be02-f15e1d7012e7",
+        "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+        "session_id": "122ddc61-3738-49eb-9533-b9cc12aca1c0",
+        "route_sequence": 1,
+        "server": "Greatest",
+        "dataset_id": "gamedata-17f8847c77edd7c7fadd",
+        "dataset_version": "gamedata-17f8847c77edd7c7fadd",
+        "area_id": "world",
+        "floor_id": "world",
+        "destination": {
+          "region": 23431,
+          "x": 146.4561952534259,
+          "y": -126.83437499999945,
+          "z": 0
+        },
+        "destination_area_id": "world",
+        "destination_floor_id": "world",
+        "status": "arrived",
+        "updated_at": "2026-09-30T20:20:38Z",
+        "blocks": [],
+        "arrived": true
+      }
+    },
+    "generation_position_samples": []
   }
 ]
