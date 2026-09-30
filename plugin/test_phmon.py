@@ -517,16 +517,31 @@ class ResourceCollectorTests(unittest.TestCase):
         })
         self.assertEqual(len(bounded['party']['members']), 32)
 
-    def test_guild_storage_getter_does_not_trust_undocumented_gold(self):
-        result = plugin.collect_resources(api={
-            'get_guild_storage': lambda: {
-                'size': 0,
-                'gold': 4567890123,
-                'items': [],
-            },
-        })
-        self.assertEqual(result['guild_storage']['availability'], 'observed')
-        self.assertNotIn('gold', result['guild_storage'])
+    def test_guild_storage_preserves_valid_api_gold(self):
+        for gold in (0, 4567890123):
+            with self.subTest(gold=gold):
+                result = plugin.collect_resources(api={
+                    'get_guild_storage': lambda gold=gold: {
+                        'size': 0,
+                        'gold': gold,
+                        'items': [],
+                    },
+                })
+                self.assertEqual(result['guild_storage']['availability'], 'observed')
+                self.assertEqual(result['guild_storage']['gold'], gold)
+
+    def test_guild_storage_rejects_invalid_api_gold(self):
+        for gold in (True, -1, 1.5, '123'):
+            with self.subTest(gold=gold):
+                result = plugin.collect_resources(api={
+                    'get_guild_storage': lambda gold=gold: {
+                        'size': 0,
+                        'gold': gold,
+                        'items': [],
+                    },
+                })
+                self.assertEqual(result['guild_storage']['availability'], 'observed')
+                self.assertNotIn('gold', result['guild_storage'])
 
     def test_callback_collection_keeps_raw_values_for_worker_normalization(self):
         inventory = {'size': 0, 'gold': 17, 'items': []}
@@ -668,61 +683,6 @@ class PassiveItemPacketTests(unittest.TestCase):
                     plugin.parse_item_stats_update(packet)
         with self.assertRaises(plugin.ItemPacketError):
             plugin.parse_item_stats_update(bytes([0, 0x20, 33]))
-
-    def test_guild_storage_gold_packet_is_exact_uint64_and_protocol_gated(self):
-        gold = 4567890123
-        packet = struct.pack('<Q', gold)
-        self.assertEqual(plugin.parse_guild_storage_gold(packet), gold)
-        for invalid in (b'', packet[:-1], packet + b'\x00'):
-            with self.subTest(packet=invalid):
-                with self.assertRaises(plugin.ItemPacketError):
-                    plugin.parse_guild_storage_gold(invalid)
-
-        tracker = plugin.PassiveItemTracker()
-        unknown = {'guild_storage': {'availability': 'observed', 'slots': []}}
-        tracker.enqueue(plugin.GUILD_STORAGE_GOLD_OPCODE, packet)
-        tracker.decorate(unknown, 'session-one')
-        self.assertNotIn('gold', unknown['guild_storage'])
-
-        tracker.set_protocol('vsro-1.188', 'v1.188_selected_by_phbot_flags')
-        tracker.enqueue(plugin.GUILD_STORAGE_GOLD_OPCODE, packet)
-        resources = {'guild_storage': {
-            'availability': 'observed',
-            'capacity': 2,
-            'used_slots': 1,
-            'slots': [None, {'source_slot': 1, 'item': {'model': 12, 'quantity': 3}}],
-        }}
-        tracker.decorate(resources, 'session-one')
-        self.assertEqual(resources['guild_storage']['gold'], gold)
-        self.assertEqual(
-            resources['guild_storage']['gold_source'],
-            'vsro_1188_packet_0x3253',
-        )
-        self.assertEqual(
-            resources['guild_storage']['gold_observation_sequence'],
-            '1',
-        )
-
-    def test_guild_storage_gold_packet_fails_closed_on_malformed_or_reset_state(self):
-        tracker = plugin.PassiveItemTracker()
-        tracker.set_protocol('vsro-1.188')
-        packet = struct.pack('<Q', 99)
-        tracker.enqueue(plugin.GUILD_STORAGE_GOLD_OPCODE, packet)
-        observed = {'guild_storage': {'availability': 'observed', 'slots': []}}
-        tracker.decorate(observed, 'session-one')
-        self.assertEqual(observed['guild_storage']['gold'], 99)
-
-        tracker.enqueue(plugin.GUILD_STORAGE_GOLD_OPCODE, b'\x01')
-        malformed = {'guild_storage': {'availability': 'observed', 'slots': []}}
-        tracker.decorate(malformed, 'session-one')
-        self.assertNotIn('gold', malformed['guild_storage'])
-
-        tracker.enqueue(plugin.GUILD_STORAGE_GOLD_OPCODE, packet)
-        tracker.decorate({'guild_storage': {'availability': 'observed', 'slots': []}}, 'session-one')
-        tracker.reset('session_changed')
-        reset = {'guild_storage': {'availability': 'observed', 'slots': []}}
-        tracker.decorate(reset, 'session-two')
-        self.assertNotIn('gold', reset['guild_storage'])
 
     def test_instance_is_session_and_model_bound_and_inventory_operation_invalidates(self):
         tracker = plugin.PassiveItemTracker()
