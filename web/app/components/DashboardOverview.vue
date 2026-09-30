@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '~~/shared/types/live'
 import { groupRecentEvents } from '~/utils/groupRecentEvents'
+import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 
 const {
   onlineCharacterCount,
@@ -70,13 +71,46 @@ function eventObservers(item: (typeof recentEvents.value)[number]) {
   return item.event.server || 'Agent event'
 }
 
-function rareItemFilter(item: (typeof recentRareDrops.value)[number]) {
+function rareItemFilter(item: ActivityEvent) {
   const snapshot = item.payload.item as Record<string, unknown> | undefined
   return (
     textField(item.item_code) ||
     textField(snapshot?.servername) ||
     String(item.item_model ?? item.payload.model ?? '')
   )
+}
+
+function itemEventLabel(event: ActivityEvent) {
+  switch (event.kind) {
+    case 'drop.rare':
+      return 'Rare drop'
+    case 'drop.item':
+      return 'Item drop'
+    case 'item.acquired':
+      return 'Item acquired'
+    case 'item.transferred':
+      return 'Item transferred'
+    case 'item.quantity_increased':
+      return 'Item quantity increased'
+    case 'item.quantity_decreased':
+      return 'Item quantity decreased'
+    case 'alchemy.attempt':
+      return 'Alchemy attempt'
+    case 'alchemy.finished':
+      return 'Alchemy finished'
+    default:
+      return 'Item'
+  }
+}
+
+function dashboardItemTarget(event: ActivityEvent) {
+  return {
+    path: '/events',
+    query: {
+      kind: event.kind,
+      item: rareItemFilter(event) || undefined,
+    },
+  }
 }
 
 function watchDashboardEvents(server: string) {
@@ -218,8 +252,33 @@ onBeforeUnmount(() => {
       <ul v-if="recentEvents.length" class="dashboard-recent-list">
         <li v-for="item in recentEvents" :key="item.event.event_id">
           <UIcon name="i-lucide-activity" />
+          <div
+            v-if="itemRecordFromActivityEvent(item.event)"
+            class="dashboard-event-row"
+          >
+            <NuxtLink
+              v-if="item.event.character_id"
+              :to="`/characters/${item.event.character_id}`"
+            >
+              <CharacterPortrait
+                :name="item.event.character"
+                :portrait-url="item.event.portrait_url"
+                size="small"
+              />
+            </NuxtLink>
+            <span class="dashboard-event-identity">
+              <span class="dashboard-event-item">
+                <strong>{{ itemEventLabel(item.event) }}</strong>
+                <ItemDetailPopup
+                  :item="itemRecordFromActivityEvent(item.event)!"
+                  :to="dashboardItemTarget(item.event)"
+                />
+              </span>
+              <span>{{ eventObservers(item) }}</span>
+            </span>
+          </div>
           <NuxtLink
-            v-if="item.event.character_id"
+            v-else-if="item.event.character_id"
             :to="`/characters/${item.event.character_id}`"
           >
             <CharacterPortrait
@@ -259,24 +318,28 @@ onBeforeUnmount(() => {
             >View all</NuxtLink
           >
         </div>
-        <NuxtLink
+        <div
           v-if="recentRareDrops[0]"
           class="later-content compact-later dashboard-rare-link"
-          :to="{
-            path: '/events',
-            query: {
-              kind: 'drop.rare',
-              item: rareItemFilter(recentRareDrops[0]) || undefined,
-            },
-          }"
         >
-          <UIcon name="i-lucide-gem" /><strong class="rare-drop-item">{{
+          <ItemDetailPopup
+            v-if="itemRecordFromActivityEvent(recentRareDrops[0])"
+            :item="itemRecordFromActivityEvent(recentRareDrops[0])!"
+            :to="{
+              path: '/events',
+              query: {
+                kind: 'drop.rare',
+                item: rareItemFilter(recentRareDrops[0]) || undefined,
+              },
+            }"
+          />
+          <strong v-else class="rare-drop-item">{{
             eventHeadline(recentRareDrops[0])
           }}</strong>
           <span>{{
             recentRareDrops[0].character || recentRareDrops[0].server
           }}</span>
-        </NuxtLink>
+        </div>
         <div v-else class="later-content compact-later">
           <UIcon name="i-lucide-gem" /><strong>No rare drops recorded</strong>
         </div>
