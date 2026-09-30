@@ -380,11 +380,17 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if h.navigation.ReplaceIf(*frame, hello.AgentID, generation, character.Server, dataset, navigation.Point{
 				Region: destination.Region, X: destination.X, Y: destination.Y, Z: destination.Z,
 			}, time.Now().UTC(), func() bool {
-				// Serialize this final owner check with route cleanup. If a newer
-				// agent generation won while the durable lookups were in flight,
-				// its cleanup either ran before this guard (which then fails) or
-				// waits for the store lock and removes the stale write afterward.
-				return h.registry.IsCurrent(hello.AgentID, generation)
+				// Revalidate both the agent generation and durable character session
+				// after the command lookup. ReplaceIf serializes this check with
+				// session/generation cleanup for the route being written.
+				if !h.registry.IsCurrent(hello.AgentID, generation) {
+					return false
+				}
+				ownerCtx, ownerCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				defer ownerCancel()
+				current, ownerErr := h.characters.GetScoped(ownerCtx, frame.CharacterID, "")
+				return ownerErr == nil && navigationCharacterOwnerMatches(current, frame.CharacterID, frame.SessionID, hello.AgentID) &&
+					h.registry.IsCurrent(hello.AgentID, generation)
 			}) {
 				h.live.Invalidate()
 			}
@@ -826,10 +832,14 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 }
 
 func navigationRouteOwnerMatches(route navigation.Input, command commands.Command, character characters.Character, agentID string, generation uint64) bool {
-	return character.Online && character.SessionID != nil && *character.SessionID == route.SessionID &&
-		character.AgentID != nil && *character.AgentID == agentID &&
+	return navigationCharacterOwnerMatches(character, route.CharacterID, route.SessionID, agentID) &&
 		command.CharacterID == route.CharacterID && command.SessionID == route.SessionID && command.AgentID == agentID &&
 		command.ConnectionGeneration == generation && command.Name == "character.navigate" && command.State == commands.StateCompleted
+}
+
+func navigationCharacterOwnerMatches(character characters.Character, characterID, sessionID, agentID string) bool {
+	return character.ID == characterID && character.Online && character.SessionID != nil &&
+		*character.SessionID == sessionID && character.AgentID != nil && *character.AgentID == agentID
 }
 
 func ackMobSample(ctx context.Context, writer *agentWriter, protocol int, sampleID, status, reason string) bool {

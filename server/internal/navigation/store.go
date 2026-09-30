@@ -102,12 +102,21 @@ type route struct {
 	anchor       *Position
 }
 
-type Store struct {
-	mu     sync.RWMutex
-	routes map[string]route // one latest route, including terminal sequence, per session
+type routeOwner struct {
+	agentID    string
+	generation uint64
 }
 
-func NewStore() *Store { return &Store{routes: make(map[string]route)} }
+type Store struct {
+	mu        sync.RWMutex
+	routes    map[string]route // one latest route, including terminal sequence, per session
+	pending   map[string]routeOwner
+	lifecycle [128]sync.Mutex
+}
+
+func NewStore() *Store {
+	return &Store{routes: make(map[string]route), pending: make(map[string]routeOwner)}
+}
 
 func Valid(input Input) error {
 	if input.CommandID == "" || input.CharacterID == "" || input.SessionID == "" || input.Sequence == 0 ||
@@ -149,20 +158,31 @@ func (s *Store) Replace(input Input, agentID string, generation uint64, server, 
 }
 
 // ReplaceIf stores a validated route only while its external owner fence is
-// still current. The callback runs under the store lock so session cleanup
-// cannot race between the final ownership check and the route write.
+// still current. The callback runs under that session's lifecycle lock so
+// cleanup cannot race between the final ownership check and the route write.
 func (s *Store) ReplaceIf(input Input, agentID string, generation uint64, server, dataset string, destination Point, now time.Time, ownerCurrent func() bool) bool {
 	if s == nil || Valid(input) != nil || server == "" || dataset == "" || !validRegion(destination.Region) ||
 		!coordinate(destination.X) || !coordinate(destination.Y) || !coordinate(destination.Z) {
+		return false
+	}
+	lifecycle := s.sessionLifecycleLock(input.SessionID)
+	lifecycle.Lock()
+	defer lifecycle.Unlock()
+	s.mu.Lock()
+	s.pending[input.SessionID] = routeOwner{agentID: agentID, generation: generation}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.pending, input.SessionID)
+		s.mu.Unlock()
+	}()
+	if ownerCurrent != nil && !ownerCurrent() {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, ok := s.routes[input.SessionID]
 	if ok && (input.Sequence <= current.Sequence || input.InvokedAt.Before(current.InvokedAt)) {
-		return false
-	}
-	if ownerCurrent != nil && !ownerCurrent() {
 		return false
 	}
 	stored := route{Input: input, agentID: agentID, generation: generation, server: server, datasetID: dataset, destination: destination,
@@ -241,8 +261,12 @@ func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 
 func (s *Store) RemoveSession(sessionID string) {
 	if s != nil {
+		lifecycle := s.sessionLifecycleLock(sessionID)
+		lifecycle.Lock()
+		defer lifecycle.Unlock()
 		s.mu.Lock()
 		delete(s.routes, sessionID)
+		delete(s.pending, sessionID)
 		s.mu.Unlock()
 	}
 }
@@ -253,13 +277,9 @@ func (s *Store) RemoveAgentSessions(sessionIDs []string) {
 }
 func (s *Store) RemoveAgent(agentID string) {
 	if s != nil {
-		s.mu.Lock()
-		for id, item := range s.routes {
-			if item.agentID == agentID {
-				delete(s.routes, id)
-			}
+		for _, id := range s.sessionsForOwner(agentID, nil) {
+			s.RemoveSession(id)
 		}
-		s.mu.Unlock()
 	}
 }
 
@@ -267,13 +287,41 @@ func (s *Store) RemoveAgentGeneration(agentID string, generation uint64) {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
+	for _, id := range s.sessionsForOwner(agentID, &generation) {
+		s.RemoveSession(id)
+	}
+}
+
+func (s *Store) sessionsForOwner(agentID string, generation *uint64) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	seen := make(map[string]struct{})
 	for id, item := range s.routes {
-		if item.agentID == agentID && item.generation == generation {
-			delete(s.routes, id)
+		if item.agentID == agentID && (generation == nil || item.generation == *generation) {
+			seen[id] = struct{}{}
 		}
 	}
-	s.mu.Unlock()
+	for id, owner := range s.pending {
+		if owner.agentID == agentID && (generation == nil || owner.generation == *generation) {
+			seen[id] = struct{}{}
+		}
+	}
+	ids := make([]string, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (s *Store) sessionLifecycleLock(sessionID string) *sync.Mutex {
+	// UUID session IDs distribute updates across fixed stripes so an ownership
+	// lookup for one character does not block other routes or map snapshots.
+	var hash uint64 = 1469598103934665603
+	for i := 0; i < len(sessionID); i++ {
+		hash ^= uint64(sessionID[i])
+		hash *= 1099511628211
+	}
+	return &s.lifecycle[hash%uint64(len(s.lifecycle))]
 }
 
 func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Time) []View {

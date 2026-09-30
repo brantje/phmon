@@ -108,26 +108,31 @@ func TestReplaceIfFencesOwnerAndSerializesSessionCleanup(t *testing.T) {
 		t.Fatalf("stale owner left a route: %#v", views)
 	}
 
-	var ownerMu sync.Mutex
-	ownerCurrent := true
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	generation := uint64(1)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		store.ReplaceIf(input, "agent-one", 1, "Greatest", profile.DatasetID, destination,
+		if !store.ReplaceIf(input, "agent-one", generation, "Greatest", profile.DatasetID, destination,
 			input.InvokedAt, func() bool {
-				ownerMu.Lock()
-				defer ownerMu.Unlock()
-				return ownerCurrent
-			})
+				close(entered)
+				<-release
+				return true // The generation changes after its final check.
+			}) {
+			t.Error("current owner route was rejected")
+		}
 	}()
+	<-entered
+	if sessions := store.sessionsForOwner("agent-one", &generation); len(sessions) != 1 || sessions[0] != input.SessionID {
+		t.Fatalf("in-flight route was not visible to generation cleanup: %v", sessions)
+	}
 	go func() {
 		defer wg.Done()
-		ownerMu.Lock()
-		ownerCurrent = false
-		ownerMu.Unlock()
-		store.RemoveSession(input.SessionID)
+		store.RemoveAgentGeneration("agent-one", generation)
 	}()
+	close(release)
 	wg.Wait()
 	if views := store.Snapshot("Greatest", profile, input.InvokedAt); len(views) != 0 {
 		t.Fatalf("session cleanup raced with a stale route write: %#v", views)

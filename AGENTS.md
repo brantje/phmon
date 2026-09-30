@@ -4394,12 +4394,17 @@ agent generation under the route-store lock, server comparison uses
 `strings.EqualFold`, and tests exercise these cases. Post-review validation:
 104 Python plugin tests, `go test ./internal/navigation ./internal/httpapi`,
 `go test -race ./internal/navigation ./internal/httpapi`, and `git diff --check`
-pass. No actual Windows/phBot runtime validation was added.
+pass. A follow-up CodeRabbit review then identified that the final generation
+fence also needed to re-read the durable character session and agent. Route
+ingestion now validates both again under a per-session lifecycle lock; in-flight
+routes are included in generation cleanup, while map snapshots use a separate
+lock. The navigation/HTTP API race suites pass after this change. No actual
+Windows/phBot runtime validation was added.
 
 Blocker/limit: actual Windows/phBot execution and physical navigation remain
 unverified; the simulator uses the production worker with fixture API adapters.
 The public demo browser navigation timed out, so comparison used the preserved
 2026-09-26 screenshots and public issue description. No production deployment,
 merge or real-character command was performed. Exact next action: commit and push
-the review fixes, update PR #50's validation summary, then wait for the new-head
-CI and CodeRabbit statuses and address any further findings without merging.
+the final owner-fence fix, wait for new-head CI and CodeRabbit, and address any
+further findings without merging.
