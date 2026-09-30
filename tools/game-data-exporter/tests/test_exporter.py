@@ -15,6 +15,7 @@ from phmon_game_exporter.portrait_mapping import portrait_for_model, portrait_so
 from phmon_game_exporter.pk2 import ArchiveInfo, Entry
 from phmon_game_exporter.preview import _map_sheet, _safe_bundle_file
 from phmon_game_exporter.public_assets import ensure_public_asset_destination, validate_public_assets
+from phmon_game_exporter.public_assets import materialize_public_assets
 from .helpers import ddj_rgba
 
 
@@ -179,6 +180,10 @@ def _make_sources(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "interface/loading/example.ddj": ddj_rgba((220, 190, 40, 255)),
         "interface/minimap/mm_sign_unique.ddj": ddj_rgba((210, 30, 200, 255)),
         "interface/character/char_ch_man1.ddj": ddj_rgba((180, 140, 110, 255)),
+        "interface/targetwindow/tw_icon_normal.ddj": ddj_rgba((170, 120, 80, 0)),
+        "interface/targetwindow/tw_icon_champion.ddj": ddj_rgba((230, 70, 60, 128)),
+        "interface/targetwindow/tw_icon_giant.ddj": ddj_rgba((230, 220, 40, 255)),
+        "icon/etc/europe_partymob.ddj": ddj_rgba((20, 130, 200, 255)),
     }
     entries = []
     payloads = {}
@@ -208,6 +213,7 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
     assert first["teleportLinkCount"] == 1
     assert first["portraitCandidateCount"] == 1
     assert first["interfaceSymbolCount"] == 1
+    assert first["monsterTypeIconCount"] == 6
     audit_tables = Path(first["auditPath"]) / "tables"
     assert (audit_tables / "entities-000001.json").is_file()
     assert (audit_tables / "entities-000002.json").is_file()
@@ -259,6 +265,25 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
     assert (public_assets / "minimap_d" / "donwhang" / "dh_a01_floor01_127x126.png").is_file()
     public_index = json.loads((public_assets / "asset-index.json").read_text(encoding="utf-8"))
     public_index_bytes = (public_assets / "asset-index.json").read_bytes()
+    monster_catalog = json.loads((bundle / "catalogs" / "monsterTypes.json").read_text())
+    assert monster_catalog["status"] == "parsed"
+    assert [row["typeCode"] for row in monster_catalog["records"]] == [0, 1, 4, 16, 17, 20]
+    monster_assets = {key: asset for asset in json.loads((bundle / "manifest.json").read_text())["assets"] for key in asset["semanticKeys"]}
+    party_hashes = set()
+    for row in monster_catalog["records"]:
+        public_file = public_assets / row["publicAlias"]
+        assert public_file.name.startswith(f'{row["typeCode"]}_')
+        assert public_file.read_bytes() == (bundle / monster_assets[row["assetKey"]]["path"]).read_bytes()
+        indexed = next(asset for asset in public_index["files"] if row["assetKey"] in asset["assetKeys"])
+        assert indexed["path"] == row["publicAlias"]
+        assert indexed["url"] == f'game-assets/{row["publicAlias"]}'
+        with Image.open(public_file) as image:
+            assert image.mode == "RGBA"
+        if row["typeCode"] >= 16:
+            assert row["role"] == "party_badge"
+            assert row["rankTypeCode"] in (0, 1, 4)
+            party_hashes.add(indexed["sha256"])
+    assert len(party_hashes) == 1
     assert public_index["format"] == "phmon-game-assets-index"
     assert all("sourceEntry" not in row and "archivePath" not in row for row in public_index["files"])
     assert any(row["url"] == "game-assets/icon/skill/test.png" for row in public_index["files"])
@@ -280,6 +305,40 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
     assert sheet.startswith(b"\x89PNG\r\n\x1a\n")
     with pytest.raises(ValueError, match="unsafe"):
         _safe_bundle_file(copied, "../outside.txt")
+
+
+def test_normal_export_reports_missing_monster_badge_without_fabricating_assets(tmp_path, monkeypatch):
+    source = _make_sources(tmp_path, monkeypatch)
+    _FakeArchive.media_entries = tuple(entry for entry in _FakeArchive.media_entries if entry.path != "icon/etc/europe_partymob.ddj")
+    public = tmp_path / "game-assets"
+    result = exporter.export_dataset(source, tmp_path / "out", "unused-test-key", public)
+    bundle = Path(result["bundlePath"])
+    catalog = json.loads((bundle / "catalogs" / "monsterTypes.json").read_text())
+    assert result["monsterTypeIconCount"] == 3
+    assert catalog["status"] == "partial"
+    missing = [row for row in catalog["records"] if row["assetKey"] is None]
+    assert [row["typeCode"] for row in missing] == [16, 17, 20]
+    assert all(row["assetReferenceStatus"] == "missing-source-asset" and row["publicAlias"] is None for row in missing)
+    unresolved = json.loads((Path(result["auditPath"]) / "unresolved.json").read_text())
+    assert next(row for row in unresolved if row["family"] == "monsterTypes")["typeCodes"] == [16, 17, 20]
+    assert len(list((public / "monster-types").glob("*.png"))) == 3
+    validate_bundle(bundle)
+    validate_public_assets(public)
+
+
+def test_unsafe_monster_public_alias_cannot_escape_or_replace_existing_export(tmp_path, monkeypatch):
+    source = _make_sources(tmp_path, monkeypatch)
+    public = tmp_path / "game-assets"
+    result = exporter.export_dataset(source, tmp_path / "out", "unused-test-key", public)
+    before = (public / "asset-index.json").read_bytes()
+    audit = Path(result["auditPath"])
+    rows = json.loads((audit / "assets.json").read_text())
+    next(row for row in rows if "publicAlias" in row)["publicAlias"] = "../escaped.png"
+    (audit / "assets.json").write_text(json.dumps(rows))
+    with pytest.raises(ValueError, match="safe relative"):
+        materialize_public_assets(Path(result["bundlePath"]), audit, public)
+    assert (public / "asset-index.json").read_bytes() == before
+    assert not (tmp_path / "escaped.png").exists()
 
 
 def test_uniform_black_map_raster_is_explicit_and_preview_hatched(tmp_path, monkeypatch):

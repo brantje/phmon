@@ -23,6 +23,7 @@ import {
 } from '~/utils/mapCharacterMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
+  DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
   dedupeCurrentMonsters,
   monsterDisplayName,
   monsterTypePresentation,
@@ -170,6 +171,7 @@ const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerParty = ref(true)
 const layerMonsters = ref(true)
+const showNearbyMonsterNames = ref(DEFAULT_SHOW_NEARBY_MONSTER_NAMES)
 const layerDeaths = ref(false)
 const layerDrops = ref(false)
 const mapProfile = ref<MapProfile | null>(null)
@@ -707,6 +709,7 @@ const mapMarkers = computed(() => {
     selected?: boolean
     party?: MapPartyMember
     monster?: MapMonster
+    showLabel?: boolean
     itemName?: string
     itemIconUrl?: string
     event?: ActivityEvent
@@ -721,6 +724,7 @@ const mapMarkers = computed(() => {
     z: number | undefined,
     details?: {
       monster?: MapMonster
+      showLabel?: boolean
       itemName?: string
       itemIconUrl?: string
       event?: ActivityEvent
@@ -761,7 +765,7 @@ const mapMarkers = computed(() => {
         entry.x,
         entry.y,
         entry.z ?? entry.observer.observer_z,
-        { monster: entry },
+        { monster: entry, showLabel: showNearbyMonsterNames.value },
       )
     }
   }
@@ -1865,6 +1869,10 @@ useHead({ title: 'Map · PhMon' })
             ><input v-model="layerMonsters" type="checkbox" /> Current nearby
             monsters <span>{{ currentMonsters.length }}</span></label
           >
+          <label class="map-layer-toggle map-layer-toggle-subordinate"
+            ><input v-model="showNearbyMonsterNames" type="checkbox" /> Show
+            nearby monsters names</label
+          >
           <label class="map-layer-toggle"
             ><input v-model="layerDeaths" type="checkbox" /> Recent
             deaths</label
@@ -1949,23 +1957,25 @@ useHead({ title: 'Map · PhMon' })
                 historicalLayers.mob_observer_average
               "
             >
-              Mob type
+              Monster rank
               <select
                 v-model="analyticsMobType"
-                aria-label="Historical mob type"
+                aria-label="Historical monster rank"
               >
-                <option value="">All observed types</option>
+                <option value="">All observed monster ranks</option>
                 <option
-                  v-for="type in historicalMobTypes"
-                  :key="type"
-                  :value="type"
+                  v-for="monsterRankValue in historicalMobTypes"
+                  :key="monsterRankValue"
+                  :value="monsterRankValue"
                 >
-                  {{ type }}
+                  {{
+                    monsterTypePresentation({ type: monsterRankValue }).label
+                  }}
                 </option>
               </select>
             </label>
             <p v-if="heatmapFacetsLoading" class="map-empty-copy">
-              Loading observed mob types…
+              Loading observed monster ranks…
             </p>
             <p v-else-if="heatmapFacetsError" class="map-empty-copy">
               {{ heatmapFacetsError }}
@@ -1994,7 +2004,7 @@ useHead({ title: 'Map · PhMon' })
             </label>
             <label class="map-layer-toggle">
               <input v-model="historicalLayers.mob_types" type="checkbox" /> Mob
-              types
+              ranks
               <span>{{ heatmapResults.mob_types?.points.length || 0 }}</span>
             </label>
             <label class="map-layer-toggle">
@@ -2103,7 +2113,7 @@ useHead({ title: 'Map · PhMon' })
             <span
               ><strong>{{ monsterDisplayName(entry) }}</strong
               ><small
-                >Lv. {{ entry.level ?? 'unavailable' }} · Type:
+                >Lv. {{ entry.level ?? 'unavailable' }} ·
                 {{ monsterTypePresentation(entry).label }} ·
                 {{ entry.observer.character }} ·
                 {{ zoneNameForRegion(entry.region) }}</small
@@ -2211,8 +2221,14 @@ useHead({ title: 'Map · PhMon' })
               resetLayer === 'mob_observer_average'
             "
           >
-            <dt>Mob type</dt>
-            <dd>{{ analyticsMobType || 'All observed types' }}</dd>
+            <dt>Monster rank</dt>
+            <dd>
+              {{
+                analyticsMobType
+                  ? monsterTypePresentation({ type: analyticsMobType }).label
+                  : 'All observed monster ranks'
+              }}
+            </dd>
           </div>
           <div>
             <dt>Time</dt>
@@ -2568,5 +2584,8 @@ useHead({ title: 'Map · PhMon' })
     grid-template-columns: 1fr;
     gap: 2px;
   }
+}
+.map-layer-toggle-subordinate {
+  padding-left: 1.15rem;
 }
 </style>

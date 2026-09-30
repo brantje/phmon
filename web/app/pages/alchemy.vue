@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '~~/shared/types/live'
+import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
@@ -85,13 +86,6 @@ function resetFilters() {
   toDate.value = dateInput(new Date())
   cursor.value = ''
   previousCursors.value = []
-}
-function itemName(event: ActivityEvent) {
-  const item = event.payload.item as Record<string, unknown> | undefined
-  if (typeof item?.name === 'string' && item.name) return item.name
-  if (event.item_code) return event.item_code
-  if (event.item_model != null) return `Model ${event.item_model}`
-  return 'Item unknown'
 }
 function outcome(event: ActivityEvent) {
   if (typeof event.payload.success !== 'boolean') return 'Unknown'
@@ -199,7 +193,13 @@ function localDateBoundary(value: string, addDays: number) {
                   >{{ event.character || 'Character' }}</NuxtLink
                 ><span v-else>—</span>
               </td>
-              <td>{{ itemName(event) }}</td>
+              <td>
+                <ItemDetailPopup
+                  v-if="itemRecordFromActivityEvent(event)"
+                  :item="itemRecordFromActivityEvent(event)!"
+                />
+                <span v-else>Item unknown</span>
+              </td>
               <td>{{ outcome(event) }}</td>
               <td>
                 {{

@@ -1,7 +1,7 @@
 {
-  "assetKeyCount": 32168,
+  "assetKeyCount": 32174,
   "datasetId": "gamedata-17f8847c77edd7c7fadd",
-  "fileCount": 12063,
+  "fileCount": 12069,
   "files": [
     {
       "assetKeys": [
@@ -164863,6 +164863,78 @@
       "sizeBytes": 855,
       "url": "game-assets/minimap_d/jinsi/qt_a01_floor06_132x132.png",
       "width": 256
+    },
+    {
+      "assetKeys": [
+        "monster-type-icon:gamedata-17f8847c77edd7c7fadd:0"
+      ],
+      "height": 16,
+      "mediaType": "image/png",
+      "path": "monster-types/0_general.png",
+      "sha256": "896ccd237bd10b932eb0405c7f793e972de9c1a030cd17b2346dde9205cf3b61",
+      "sizeBytes": 617,
+      "url": "game-assets/monster-types/0_general.png",
+      "width": 16
+    },
+    {
+      "assetKeys": [
+        "monster-type-icon:gamedata-17f8847c77edd7c7fadd:16"
+      ],
+      "height": 16,
+      "mediaType": "image/png",
+      "path": "monster-types/16_party_general.png",
+      "sha256": "b7ea1487a65654dfb3e5e47e4287e3bfea8fa19b8f7ebdc5d37be633977392e1",
+      "sizeBytes": 748,
+      "url": "game-assets/monster-types/16_party_general.png",
+      "width": 16
+    },
+    {
+      "assetKeys": [
+        "monster-type-icon:gamedata-17f8847c77edd7c7fadd:17"
+      ],
+      "height": 16,
+      "mediaType": "image/png",
+      "path": "monster-types/17_party_champion.png",
+      "sha256": "b7ea1487a65654dfb3e5e47e4287e3bfea8fa19b8f7ebdc5d37be633977392e1",
+      "sizeBytes": 748,
+      "url": "game-assets/monster-types/17_party_champion.png",
+      "width": 16
+    },
+    {
+      "assetKeys": [
+        "monster-type-icon:gamedata-17f8847c77edd7c7fadd:1"
+      ],
+      "height": 16,
+      "mediaType": "image/png",
+      "path": "monster-types/1_champion.png",
+      "sha256": "1c3fa140eeb4ee050fd50f5fbe8dcd5632f2ad965d9d8c2a396019e3c859192d",
+      "sizeBytes": 449,
+      "url": "game-assets/monster-types/1_champion.png",
+      "width": 16
+    },
+    {
+      "assetKeys": [
+        "monster-type-icon:gamedata-17f8847c77edd7c7fadd:20"
+      ],
+      "height": 16,
+      "mediaType": "image/png",
+      "path": "monster-types/20_party_giant.png",
+      "sha256": "b7ea1487a65654dfb3e5e47e4287e3bfea8fa19b8f7ebdc5d37be633977392e1",
+      "sizeBytes": 748,
+      "url": "game-assets/monster-types/20_party_giant.png",
+      "width": 16
+    },
+    {
+      "assetKeys": [
+        "monster-type-icon:gamedata-17f8847c77edd7c7fadd:4"
+      ],
+      "height": 16,
+      "mediaType": "image/png",
+      "path": "monster-types/4_giant.png",
+      "sha256": "4ef6a53c5b575b728ed0b14fddc5169846d0c75f0a0ffec3ffa0c5b3296f0152",
+      "sizeBytes": 586,
+      "url": "game-assets/monster-types/4_giant.png",
+      "width": 16
     }
   ],
   "format": "phmon-game-assets-index",

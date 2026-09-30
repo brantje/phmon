@@ -3,16 +3,60 @@ import type {
   MapMonsterObservation,
 } from '../../shared/types/live.ts'
 
+export const DEFAULT_SHOW_NEARBY_MONSTER_NAMES = false
+
 const MONSTER_TYPES: Record<
   number,
-  { label: string; scale: number; party: boolean }
+  {
+    label: string
+    scale: number
+    party: boolean
+    iconUrl: string
+    partyBadgeUrl: string
+  }
 > = {
-  0: { label: 'General', scale: 1, party: false },
-  1: { label: 'Champion', scale: 1.2, party: false },
-  4: { label: 'Giant', scale: 1.5, party: false },
-  16: { label: 'Party General', scale: 1, party: true },
-  17: { label: 'Party Champion', scale: 1.2, party: true },
-  20: { label: 'Party Giant', scale: 1.5, party: true },
+  0: {
+    label: 'General',
+    scale: 1,
+    party: false,
+    iconUrl: '/game-assets/monster-types/0_general.png',
+    partyBadgeUrl: '',
+  },
+  1: {
+    label: 'Champion',
+    scale: 1.2,
+    party: false,
+    iconUrl: '/game-assets/monster-types/1_champion.png',
+    partyBadgeUrl: '',
+  },
+  4: {
+    label: 'Giant',
+    scale: 1.5,
+    party: false,
+    iconUrl: '/game-assets/monster-types/4_giant.png',
+    partyBadgeUrl: '',
+  },
+  16: {
+    label: 'General (Party)',
+    scale: 1,
+    party: true,
+    iconUrl: '/game-assets/monster-types/0_general.png',
+    partyBadgeUrl: '/game-assets/monster-types/16_party_general.png',
+  },
+  17: {
+    label: 'Champion (Party)',
+    scale: 1.2,
+    party: true,
+    iconUrl: '/game-assets/monster-types/1_champion.png',
+    partyBadgeUrl: '/game-assets/monster-types/17_party_champion.png',
+  },
+  20: {
+    label: 'Giant (Party)',
+    scale: 1.5,
+    party: true,
+    iconUrl: '/game-assets/monster-types/4_giant.png',
+    partyBadgeUrl: '/game-assets/monster-types/20_party_giant.png',
+  },
 }
 
 export function monsterTypePresentation(
@@ -31,6 +75,8 @@ export function monsterTypePresentation(
       (code == null ? monster.type || 'Unknown' : `Unknown (${code})`),
     scale: known?.scale || 1,
     party: known?.party || false,
+    iconUrl: known?.iconUrl || '',
+    partyBadgeUrl: known?.partyBadgeUrl || '',
     unknown: !known,
   }
 }
@@ -131,6 +177,10 @@ export function monsterDisplayName(monster: MapMonster): string {
     if (readable) return readable
   }
   return 'Unknown monster'
+}
+
+export function monsterMapName(monster: MapMonster, visible: boolean): string {
+  return visible ? monsterDisplayName(monster) : ''
 }
 
 export function localMapAsset(
