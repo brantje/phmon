@@ -41,6 +41,7 @@ interface MapCanvasMarker {
   kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
   position: RasterPosition
   placement?: 'exact' | 'region-tile'
+  selected?: boolean
   character?: CharacterMarkerInput
   party?: MapPartyMember
   monster?: MapMonster
@@ -485,6 +486,8 @@ function markerIconContent(marker: MapCanvasMarker) {
   const content = document.createElement('span')
   if (marker.kind === 'character') {
     content.className = 'phmon-map-character-pin'
+    if (marker.selected)
+      content.classList.add('phmon-map-character-pin--selected')
     if (marker.character?.online === false)
       content.classList.add('phmon-map-character-pin--offline')
     if (marker.character?.position_stale)
@@ -717,6 +720,7 @@ onMounted(async () => {
       marker.character?.portrait_url,
       marker.character?.online,
       marker.character?.position_stale,
+      marker.selected,
       type?.code,
       type?.scale,
       type?.party,
@@ -884,7 +888,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  border: 2px solid #4db9ff;
+  border: 2px solid #58bd8a;
   border-radius: 50%;
   background: #111923;
   color: #fff;
@@ -896,8 +900,11 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+:global(.phmon-map-character-pin--selected) {
+  border-color: #4db9ff;
+}
+
 :global(.phmon-map-character-pin--offline) {
-  border-color: #a1a8a3;
   background: #343a37;
   color: #d6dad7;
   box-shadow:
@@ -906,7 +913,6 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-character-pin--stale) {
-  border-color: #d3b77c;
   background: #34332e;
   color: #e4d9bd;
 }
@@ -956,7 +962,6 @@ onBeforeUnmount(() => {
 
 :global(.phmon-map-marker--region-tile .phmon-map-character-pin) {
   border-style: dashed;
-  border-color: #fef6c3;
 }
 
 :global(.phmon-map-party-icon),

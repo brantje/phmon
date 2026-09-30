@@ -1413,6 +1413,11 @@ document. Browser selection checks covered independent focus and targets,
 All/None, group mixed/checked states, keyboard Space, and keeping the Characters
 section available with character markers hidden. No character command was sent.
 
+Focused character pins default to green borders (`#58bd8a`) and use blue
+(`#4db9ff`) for the focused `selectedCharacterID`. Browser checks showed one
+blue pin following the focus button, other pins remaining green, and changing
+action targets leaving the focused pin unchanged.
+
 Dashboard, Stats, Events, Chat, Alchemy and Guild Storage were also checked at
 1440×1000 and 390×844 with no document horizontal overflow. Settings was opened
 at mobile width. A repeated full-page browser-navigation sweep caused the Nuxt

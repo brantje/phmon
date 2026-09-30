@@ -661,7 +661,10 @@ const mapMarkers = computed(() => {
           group_name: groupByCharacter.value.get(character.character_id),
           position_stale: character.online && !positionIsFresh(character),
         })),
-      )
+      ).map((marker) => ({
+        ...marker,
+        selected: marker.character.character_id === selectedCharacterID.value,
+      }))
     : []
   const markers: Array<{
     id: string
@@ -669,6 +672,7 @@ const mapMarkers = computed(() => {
     kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
     position: RasterPosition
     placement?: 'exact' | 'region-tile'
+    selected?: boolean
     party?: MapPartyMember
     monster?: MapMonster
     itemName?: string

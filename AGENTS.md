@@ -4244,3 +4244,18 @@ comment saying the next included review becomes available in 16 minutes; no
 fresh CodeRabbit review has completed for this scroll fix. Exact next action:
 after the review limit resets, request a CodeRabbit review for PR #40, fix any
 actionable finding, then report CI and review status without merging.
+
+### Resume — 2026-09-30 focused map marker colors
+
+The operator specified green default and blue selected borders for
+`.phmon-map-character-pin`. Updated map character markers to receive a `selected`
+flag from `selectedCharacterID`; action-target membership does not affect it.
+Base pins use green `#58bd8a`, focused pins use blue `#4db9ff`; offline/stale
+fills and region-tile dashed borders remain. The browser verified that exactly
+one blue marker follows the focused Characters button and checkbox selection
+does not change it. Nuxt unit tests (64), typecheck, lint (0 errors; 42 style
+warnings), Prettier check and production build pass after this change. The pin
+changes, parity note and this resume update are not yet committed. CodeRabbit's
+previous response said the next included review becomes available around 07:50
+UTC. Exact next action: commit and push the pin styling to PR #40, wait for the
+new head CI, then request CodeRabbit review after its limit resets; do not merge.
