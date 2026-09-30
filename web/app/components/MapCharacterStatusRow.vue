@@ -25,11 +25,7 @@ function resourcePercent(current?: number, maximum?: number) {
   return Math.max(0, Math.min(100, (current / maximum) * 100))
 }
 
-function resourceLabel(
-  label: 'HP' | 'MP',
-  current?: number,
-  maximum?: number,
-) {
+function resourceLabel(label: 'HP' | 'MP', current?: number, maximum?: number) {
   if (
     current == null ||
     maximum == null ||
