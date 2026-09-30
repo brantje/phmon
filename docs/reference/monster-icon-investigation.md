@@ -64,3 +64,12 @@ textures are missing. All six aliases were compared byte-for-byte with the initi
 extraction and their public index checksums and 16 × 16 dimensions verified.
 The full dataset remains `incomplete` for nine other unresolved asset families;
 this change does not claim those gaps are closed.
+
+The operator subsequently requested versioning the exported files. All six PNGs
+are committed under `web/public/game-assets/monster-types/`, ready for direct use
+at `/game-assets/monster-types/<id>_<name>.png`. Their checksum/dimension entries
+extend the existing tracked public index and use that tree's current dataset
+namespace; all earlier entries remain unchanged. A future full export replaces
+the whole tree with its new dataset namespace through the usual exporter flow.
+Public-tree validation passed for 12,069 PNG aliases and 32,174 semantic keys.
+Source archives and exporter-only audit files are excluded from Git.

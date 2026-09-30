@@ -4391,3 +4391,16 @@ families keep overall dataset status incomplete. `git diff --check` passes.
 No blocker remains for this bounded request. No production/UI/character changes;
 unrelated concurrent plugin/server work was preserved. Exact next action for reuse:
 run the usual export command or `npm run export:assets`; no additional script.
+
+### Resume — 2026-09-30 versioned monster icon outputs
+
+The operator explicitly requested adding the exported files to Git and authorized
+a separate worktree while retaining the active checkout. In
+`/tmp/phmon-monster-icons-worktree` on `codex/export-monster-icons`, added all six
+exported PNGs under `web/public/game-assets/monster-types/` and their public index
+entries, preserving every existing entry and the current dataset namespace. The
+files are directly usable without extraction. Public-tree validation passes for
+12,069 aliases and 32,174 semantic keys; PNGs match the earlier verified export.
+Updated exporter documentation. Source archives/audits remain untracked. The
+active `/var/www/phmon` branch and other agents' changes remain untouched. Exact
+next action: use the files from PR #44; no local exporter run is required.

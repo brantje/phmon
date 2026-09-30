@@ -124,6 +124,10 @@ one badge; the catalog records the corresponding rank IDs separately. Missing
 textures remain explicit in catalog status and coverage; no substitute is generated.
 See [monster icon findings](../../docs/reference/monster-icon-investigation.md).
 
+The six PNGs are also committed under `web/public/game-assets/monster-types/` and
+registered in the public asset index, so they can be used immediately without
+running the exporter. Their browser URLs start with `/game-assets/monster-types/`.
+
 `manifest.json` fixes the dataset ID, schema/exporter versions, family status,
 supported display locale and safe catalog/asset paths. Each catalog carries its own
 version, family, dataset ID, explicit status and normalized records. Asset paths are
