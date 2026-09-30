@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Issue #27 development release is **1.6.0** (`vsro_1188_passive_r2`, API
+The current Issue #27 development release is **1.6.1** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v8 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -75,6 +75,16 @@ PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each run
 phBot instance owns one stable agent identity and makes its own outbound WebSocket
 connection. The plugin reports connectivity facts; durable identity, authentication,
 history and future command policy remain server-owned.
+
+Version 1.6.1 adds local callback timing diagnostics. Navigation logs the start
+and elapsed duration of generation, validation, source readback and script start,
+including failed calls. An `event_loop` taking at least 500 ms logs its total and
+four slowest stages, including resource collection and command invocation. These
+logs contain stage names and durations only, never script text or API arguments.
+If phBot reports `event_loop has been running for 10 seconds`, retain the preceding
+`navigation ... started` line and subsequent duration/slow-callback lines. They
+identify the blocked stage; the watchdog warning alone does not. API invocation
+remains on the callback thread pending verified support for other threads.
 
 ## Install
 

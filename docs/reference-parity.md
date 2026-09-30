@@ -1570,5 +1570,11 @@ separate. All eligible browser admissions start concurrently. The shared Go
 scheduler dispatches on four independent workers, preserving session fencing,
 per-character admission constraints and exact retries.
 
-Automated and live evidence for this follow-up is being collected. The authorized
-live cohort is nuker4 first, then all four nukers, at short nearby destinations.
+Automated and live evidence is recorded in
+[the navigation runtime ledger](reference/issue27-navigation-runtime.md). Browser
+checks cover the requested desktop/mobile sizes and stable map mounting. Live
+Hotan navigation verifies connected outdoor seams, decreasing remaining paths,
+simultaneous independent routes and fresh arrival after command completion.
+Independent `path_not_found` failures are retained in the ledger; their cause is
+unverified. The operator confirmed the plugin upload and later reported working
+behavior. Fixture arrival remains explicitly separate from Windows/phBot evidence.

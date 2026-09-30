@@ -20,7 +20,14 @@ from urllib.request import Request, build_opener
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_URL = os.environ.get("SMOKE_WEB_URL", "http://127.0.0.1:53005").rstrip("/")
 ORIGIN = os.environ.get("SMOKE_ORIGIN", WEB_URL)
-EXPECTED_SCRIPT = "\n".join(("walk,6429,1088,0", "walk,6430,1090,0"))
+OUTDOOR_SEAM = os.environ.get("PHMON_NAVIGATION_SMOKE_OUTDOOR_SEAM") == "1"
+EXPECTED_SCRIPT = "\n".join(
+    tuple("walk," + str(x) + ",1080,0" for x in (6410, 6450, 6500, 6540, 6580, 6650))
+    if OUTDOOR_SEAM else ("walk,6429,1088,0", "walk,6430,1090,0")
+)
+DESTINATION = {"region": 25001, "x": 6650, "y": 1080, "z": 0} if OUTDOOR_SEAM else {
+    "region": 25000, "x": 6430, "y": 1090, "z": 0,
+}
 LAST_NAVIGATION_ROUTES: list[dict] = []
 
 
@@ -149,8 +156,12 @@ def main():
             "PHMON_SIMULATOR_SERVER": server,
             "PHMON_SIMULATOR_CHARACTER": character_name,
             "PHMON_SIMULATOR_EXPECTED_SCRIPT": EXPECTED_SCRIPT,
-            "PHMON_SIMULATOR_DESTINATION_X": "6430",
-            "PHMON_SIMULATOR_DESTINATION_Y": "1090",
+            "PHMON_SIMULATOR_DESTINATION_REGION": str(DESTINATION["region"]),
+            "PHMON_SIMULATOR_DESTINATION_X": str(DESTINATION["x"]),
+            "PHMON_SIMULATOR_DESTINATION_Y": str(DESTINATION["y"]),
+            "PHMON_SIMULATOR_PROGRESS_REGION": "25001",
+            "PHMON_SIMULATOR_PROGRESS_X": "6540",
+            "PHMON_SIMULATOR_PROGRESS_Y": "1080",
             "PHMON_SIMULATOR_CONNECT_TIMEOUT": "30",
             "PHMON_SIMULATOR_COMMAND_TIMEOUT": "60",
         })
@@ -193,7 +204,7 @@ def main():
             "character_id": character["character_id"],
             "expected_session_id": character["session_id"],
             "name": "character.navigate",
-            "args": {"region": 25000, "x": 6430, "y": 1090, "z": 0},
+            "args": DESTINATION,
             "confirmation": False,
             "idempotency_key": key,
         }, cookie)
@@ -207,7 +218,7 @@ def main():
         live.send_json({
             "type": "subscribe", "protocol_version": 1, "subscription_id": "navigation-map",
             "revision": 1, "stream": "map", "filter": {
-                "server": server, "area": "world", "floor": "world", "region": 25000,
+                "server": server, "area": "world", "floor": "world", "region": 0,
             },
         })
         completed = wait_for_subscription(
@@ -226,7 +237,7 @@ def main():
         )
         if route_snapshot.get("status") == "arrived":
             raise RuntimeError("script acceptance was incorrectly presented as arrival")
-        if route_snapshot.get("destination", {}).get("x") != 6430:
+        if route_snapshot.get("destination", {}).get("x") != DESTINATION["x"]:
             raise RuntimeError("route destination was not derived from frozen command arguments")
         command_finished = completed["finished_at"]
         count_before_route_progress = position_history_count(project, character["character_id"])
@@ -236,6 +247,22 @@ def main():
 
         if simulator.stdin is None:
             raise RuntimeError("simulator input pipe is unavailable")
+        if OUTDOOR_SEAM:
+            blocks = route_snapshot.get("blocks", [])
+            if len(blocks) != 1 or len(blocks[0].get("points", [])) != 6:
+                raise RuntimeError("outdoor tile seam split the initial walk block")
+            simulator.stdin.write("progress\n")
+            simulator.stdin.flush()
+            remaining = wait_for_subscription(
+                live, "navigation-map",
+                lambda data: next((route for route in data.get("navigation", [])
+                                   if route.get("command_id") == accepted["command_id"]
+                                   and route.get("status") == "moving"), None),
+            )
+            blocks = remaining.get("blocks", [])
+            if (len(blocks) != 1 or [point["x"] for point in blocks[0]["points"]] != [6580, 6650]
+                    or remaining.get("current_anchor", {}).get("region") != 25001):
+                raise RuntimeError("outdoor seam progress or remaining connector is incorrect")
         if os.environ.get("PHMON_NAVIGATION_SMOKE_HOLD_FOR_ARRIVAL") == "1":
             wait_for_fixture_arrival(live)
         simulator.stdin.write("arrive\n")
@@ -269,7 +296,8 @@ def main():
         output, _ = simulator.communicate(timeout=10)
         if simulator.returncode != 0 or "PASS fixture navigation command" not in output:
             raise RuntimeError("production plugin fixture failed: " + output[-1200:])
-        print("PASS authenticated v8 admission -> production plugin worker -> transient route snapshot -> later observed arrival; no route-only position-history write")
+        print("PASS authenticated v8 admission -> production plugin worker -> transient route snapshot -> later observed arrival; no route-only position-history write"
+              + ("; continuous outdoor seam and skipped-waypoint progress" if OUTDOOR_SEAM else ""))
     finally:
         if live:
             live.close()

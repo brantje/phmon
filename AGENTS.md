@@ -4510,9 +4510,45 @@ access, focus return, viewport clamping and stable map mounting at 1440×1000,
 the plugin; all four frontend requests began within 1.6 ms, before any response,
 and sends finished within a 5.2 ms span. Each returned `start_script=false` with
 no movement or route publication. The operator identified the missing plugin
-upload and requested an immediate push to download it. Real observed arrival
-remains pending that upload, separate from passing fixture arrival tests.
+upload and requested an immediate push to download it. Subsequent plugin upload was confirmed by fresh sessions and compatibility
+reports. Live Hotan tests then verified a 12-step outdoor seam route and observed
+arrival; group attempts verified independent results and simultaneous progress,
+with some `path_not_found` failures. See the sanitized runtime ledger below.
 Unrelated uncommitted mob-observation edits were reverted at operator request.
 Exact next action: push PR #50, wait for operator plugin upload, repeat the
 authorized nearby moves, record route/arrival evidence, and await final-head
 CI/CodeRabbit. Leave the PR unmerged.
+
+
+### Resume — 2026-09-30 Issue #27 final review and live evidence
+
+Navigation follow-up is implemented, pushed at 5470372 and conflict-free with
+current main. The operator uploaded the plugin; fresh sessions report protocol 8
+and navigation support, with PhMon 1.6.0/phBot 20.1.2 compatibility. A live nuker4
+route crossed an outdoor seam in one block, shrank to arrival after durable command
+completion. Four-target batches started all requests within 1.6 ms and delivered
+within 5.9 ms, with independent successes and `path_not_found` failures. Two
+characters had simultaneous advancing routes and fresh arrivals in the final
+batch. Initial tests overlapped operator movement and lacked deployment
+confirmation; API failure/delay causes remain unverified. No further real moves
+are needed for the operator's current continuation request. Evidence:
+`docs/reference/issue27-navigation-runtime.md` and its sanitized JSON companion.
+
+Review follow-up fixes stable budget allocation and drops authenticated duplicate
+route sequences before database lookups, retaining lifecycle/generation/session
+fences. The shared concurrency requirement remains unchanged. The deterministic
+seam fixture now checks skipped-waypoint progress and later arrival through the
+production worker, and runs in CI alongside the original navigation smoke. A CI
+browser-recovery race is corrected by signaling backend readiness before login.
+
+Full `scripts/check.sh` passes on a fresh disposable database under Node 24.20.0
+(104 plugin tests, 100 frontend tests, Go race suites, lint/typecheck/build).
+Command/live/navigation fixture smokes and browser menu/accessibility/responsive
+checks pass. The disposable browser recovery audit also passes. Plugin 1.6.1 now records
+local navigation stage timings and slow callback totals (109 plugin tests pass),
+without changing thread affinity or exposing script/arguments. The ten-second
+watchdog warning remains under investigation: command latency alone does not
+isolate generation, script start or sampling. Exact next action: push the timing
+build for operator installation, inspect a fresh warning and its stage logs,
+finish final-head CI/CodeRabbit and leave PR #50 unmerged. Do not change other
+services, production database or credentials.

@@ -939,3 +939,45 @@ arrival, and wait/teleport barriers. There is no supported Windows/phBot process
 this environment, so plugin v1.6.0 has not been exercised against a real character;
 the simulator is fixture evidence only. Protocol v8 is additive and the backend
 continues accepting v2–v7 during rollout. Legacy agents cannot report route geometry.
+
+
+### Issue #27 live follow-up — 2026-09-30
+
+The operator-authorized Hotan checks used fresh PhMon 1.6.0/protocol 8 sessions
+reported on phBot 20.1.2. Generated-script invocation returned true for a 12-step
+nuker4 path across outdoor regions 23687/23686. Remaining geometry advanced in
+one block, and a fresh compatible position established arrival after durable
+command completion. Group checks showed simultaneous advancing routes with
+independent completion/arrival and `path_not_found` results. The operator also
+reported a ten-second `event_loop` warning. Those API failures/delays have no
+isolated cause established here; early tests overlapped operator teleports and
+preceded deployment confirmation. Preserve them as runtime limitations, not
+proof of a particular defect.
+
+The official [Paths API](https://plugins.phbot.org/phbot-api/paths) documents a
+five-second generation limit and None/False failure meanings. The official
+[Script API](https://plugins.phbot.org/phbot-api/script) documents background
+execution but provides no arrival or progress getter. This verification adds
+observational evidence and does not invent another execution API. Details and
+sanitized timings: [runtime ledger](reference/issue27-navigation-runtime.md).
+
+## Callback watchdog investigation — 2026-09-30
+
+The operator explicitly requested investigation of the ten-second `event_loop`
+warning. Navigation currently invokes both path generation and script start on
+the callback thread; accepted-command timings do not separate those APIs from
+sampling or queue delay. Plugin 1.6.1 logs each navigation stage before/after its
+call and reports the total/four slowest callback stages whenever a callback takes
+at least 500 ms. Tests cover success, False/None returns, exceptions, redaction,
+fast-callback silence and timing-report execution after an exception. Logs contain
+no script text, API arguments or exception details.
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) says the
+callback runs every 500 ms. The [script command documentation](https://plugins.phbot.org/handling-script-commands)
+explains interpreter locking and why sleeping inside callbacks blocks other
+callbacks. The Paths/Script contracts do not document thread safety for
+`generate_script`/`start_script`. PhMon therefore retains callback invocation while
+collecting runtime evidence; moving those calls to a thread would require further
+verification. The warning is not resolved merely by these diagnostics. A fresh
+operator-installed 1.6.1 log is required to isolate the stage before a corrective
+change can be verified.

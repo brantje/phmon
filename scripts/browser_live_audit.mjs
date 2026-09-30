@@ -8,6 +8,7 @@ import { join } from 'node:path'
 const WEB_URL = (process.env.SMOKE_WEB_URL || 'http://127.0.0.1:3005').replace(/\/$/, '')
 const OPERATOR_ACCESS_SECRET = process.env.OPERATOR_ACCESS_SECRET || ''
 const READY_FILE = process.env.BROWSER_AUDIT_READY_FILE || ''
+const RESTART_READY_FILE = process.env.BROWSER_AUDIT_RESTART_READY_FILE || ''
 const REQUIRE_RECONNECT = process.env.BROWSER_AUDIT_REQUIRE_RECONNECT === '1'
 const TIMEOUT_MS = Number(process.env.BROWSER_AUDIT_TIMEOUT_MS || 60000)
 
@@ -399,6 +400,15 @@ async function main() {
     if (READY_FILE) writeFileSync(READY_FILE, 'ready\n')
 
     if (REQUIRE_RECONNECT) {
+      // The controlling smoke must finish the restart before reauthenticating.
+      // Otherwise login can race the old backend and issue a soon-invalid cookie.
+      if (RESTART_READY_FILE) {
+        await waitFor(
+          () => existsSync(RESTART_READY_FILE),
+          'backend restart readiness signal',
+          TIMEOUT_MS,
+        )
+      }
       const login = await evaluate(
         cdp,
         `fetch(${JSON.stringify(WEB_URL + '/api/auth/login')}, {

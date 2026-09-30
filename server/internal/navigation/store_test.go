@@ -421,3 +421,63 @@ func TestOutdoorSeamRejectsInconsistentObservedRegionAndPreservesWait(t *testing
 		t.Fatalf("inconsistent outdoor region advanced progress: %#v", view)
 	}
 }
+
+func TestDuplicateRouteSkipsOwnerLookupAndDoesNotRefreshTerminalEvidence(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	input := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6430, Y: 1090})
+	destination := Point{Region: 25000, X: 6430, Y: 1090}
+	if !store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, destination, input.InvokedAt) {
+		t.Fatal("route not stored")
+	}
+	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25000, X: 6430, Y: 1090, At: input.InvokedAt.Add(time.Second)})
+	lookups := 0
+	if store.ReplaceIf(input, "agent-one", 1, "Greatest", profile.DatasetID, destination, input.InvokedAt.Add(time.Hour), func() bool {
+		lookups++
+		return true
+	}) || lookups != 0 {
+		t.Fatalf("duplicate called owner lookup or replaced terminal route: %d", lookups)
+	}
+	if !store.AlreadyApplied(input, "agent-one", 1) || store.AlreadyApplied(input, "another-agent", 1) || store.AlreadyApplied(input, "agent-one", 2) {
+		t.Fatal("duplicate precheck did not fence the authenticated owner")
+	}
+	view := store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Hour))[0]
+	if !view.Arrived || !view.UpdatedAt.Equal(input.InvokedAt.Add(time.Second)) {
+		t.Fatalf("duplicate changed terminal evidence: %#v", view)
+	}
+	newer := input
+	newer.Sequence++
+	if store.AlreadyApplied(newer, "agent-one", 1) {
+		t.Fatal("new sequence was skipped")
+	}
+}
+
+func TestSnapshotBudgetChoosesGeometryInStableSessionOrder(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	input := routeInput(1)
+	for i := 0; i < MaxInstructions; i++ {
+		input.Instructions = append(input.Instructions, Instruction{Index: i, Kind: "walk", X: 6420 + float64(i)/100, Y: 1080})
+	}
+	for _, session := range []string{"session-z", "session-a"} {
+		input.SessionID = session
+		input.CharacterID = session
+		if !store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25000, X: 6430, Y: 1090}, input.InvokedAt) {
+			t.Fatal("route not stored")
+		}
+	}
+	views := store.Snapshot("Greatest", profile, input.InvokedAt)
+	first, _ := json.Marshal(views[0])
+	status := views[1]
+	status.Blocks = []Block{}
+	status.CurrentAnchor = nil
+	status.GeometryOmitted = true
+	status.Reason = "navigation_geometry_payload_budget"
+	second, _ := json.Marshal(status)
+	for i := 0; i < 50; i++ {
+		views, omitted := store.SnapshotBudget("Greatest", profile, input.InvokedAt, len(first)+len(second))
+		if omitted != 0 || len(views) != 2 || views[0].SessionID != "session-a" || views[0].GeometryOmitted || views[1].SessionID != "session-z" || !views[1].GeometryOmitted {
+			t.Fatalf("geometry allocation changed: omitted=%d views=%#v", omitted, views)
+		}
+	}
+}

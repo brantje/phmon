@@ -2275,6 +2275,66 @@ class BackoffTests(unittest.TestCase):
         self.assertIsNone(worker._latest_sample)
 
 
+class CallbackTimingTests(unittest.TestCase):
+    def test_navigation_stage_reports_elapsed_time_and_preserves_return(self):
+        for result in (False, None, True, ['walk,10,20,0', 'teleport,PRIVATE_GATE,PRIVATE_TARGET']):
+            with self.subTest(result=result), patch.object(plugin, '_log') as log, \
+                    patch.object(plugin, '_monotonic', side_effect=[1.0, 11.25]):
+                api = Mock(return_value=result)
+                self.assertIs(plugin._navigation_stage('generate_script', api, 'private argument'), result)
+                api.assert_called_once_with('private argument')
+                self.assertEqual([call.args[0] for call in log.call_args_list], [
+                    'navigation generate_script started',
+                    'navigation generate_script returned in 10250 ms',
+                ])
+
+    def test_navigation_stage_reports_failure_without_logging_exception_data(self):
+        with patch.object(plugin, '_log') as log, \
+                patch.object(plugin, '_monotonic', side_effect=[1.0, 9.0]):
+            with self.assertRaisesRegex(ValueError, 'private script'):
+                plugin._navigation_stage('start_script', Mock(side_effect=ValueError('private script')))
+            self.assertEqual([call.args[0] for call in log.call_args_list], [
+                'navigation start_script started', 'navigation start_script raised in 8000 ms',
+            ])
+
+    def test_callback_reports_slowest_stage_even_when_it_raises(self):
+        with patch.object(plugin, '_log') as log, \
+                patch.object(plugin, '_monotonic', side_effect=[0, 0, 0.2, 0.2, 10.2, 10.3]):
+            timing = plugin._CallbackTiming()
+            timing.run('resource_collect', lambda: None)
+            with self.assertRaises(ValueError):
+                timing.run('command', Mock(side_effect=ValueError('private value')))
+            timing.report()
+            log.assert_called_once_with('event_loop slow: 10300 ms; command=10000 ms, resource_collect=200 ms')
+
+    def test_fast_callback_is_silent(self):
+        with patch.object(plugin, '_log') as log, \
+                patch.object(plugin, '_monotonic', side_effect=[0, 0.499]):
+            plugin._CallbackTiming().report()
+            log.assert_not_called()
+
+    def test_event_loop_reports_sampling_delay_in_finally(self):
+        clock = [0.0]
+
+        def fail_sample(timing):
+            def fail():
+                clock[0] += 10
+                raise RuntimeError('private runtime details')
+            timing.run('resource_collect', fail)
+
+        with patch.object(plugin, '_worker', Mock()), \
+                patch.object(plugin, '_load_active_profile'), \
+                patch.object(plugin, '_drain_pending_callback_events'), \
+                patch.object(plugin, '_set_gui_status'), \
+                patch.object(plugin, '_sample_character', side_effect=fail_sample), \
+                patch.object(plugin, '_monotonic', side_effect=lambda: clock[0]), \
+                patch.object(plugin, '_log') as log:
+            with self.assertRaises(RuntimeError):
+                plugin.event_loop()
+            self.assertIn('resource_collect=10000 ms', log.call_args.args[0])
+            self.assertNotIn('private', log.call_args.args[0])
+
+
 class WorkerStopTests(unittest.TestCase):
     def test_stop_worker_signals_without_joining_callback(self):
         worker = Mock()

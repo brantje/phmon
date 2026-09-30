@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.6.0'
+pVersion = '1.6.1'
 pUrl = ''
 
 PROTOCOL_VERSION = 8
@@ -1180,6 +1180,44 @@ def _log(message):
         _phbot_log(text)
     else:
         print(text)
+
+
+class _CallbackTiming:
+    """Local duration evidence only; never record arguments or API return data."""
+    def __init__(self):
+        self.started = _monotonic()
+        self.stages = []
+
+    def run(self, stage, function, *args):
+        started = _monotonic()
+        try:
+            return function(*args)
+        finally:
+            self.stages.append((stage, max(0.0, _monotonic() - started)))
+
+    def report(self):
+        elapsed = max(0.0, _monotonic() - self.started)
+        if elapsed < 0.5:
+            return
+        slowest = sorted(self.stages, key=lambda entry: entry[1], reverse=True)[:4]
+        _log('event_loop slow: %.0f ms; %s' % (
+            elapsed * 1000.0,
+            ', '.join('%s=%.0f ms' % (stage, duration * 1000.0) for stage, duration in slowest)))
+
+
+def _navigation_stage(stage, function, *args):
+    # A start line identifies an API that has not returned when phBot emits its
+    # callback watchdog warning. Keep script text, coordinates and errors local.
+    _log('navigation %s started' % stage)
+    started = _monotonic()
+    outcome = 'raised'
+    try:
+        result = function(*args)
+        outcome = 'returned'
+        return result
+    finally:
+        _log('navigation %s %s in %.0f ms' % (
+            stage, outcome, max(0.0, _monotonic() - started) * 1000.0))
 
 
 def _utc_now():
@@ -3248,14 +3286,15 @@ class AgentWorker(object):
             if (not isinstance(region,int) or isinstance(region,bool) or region==0 or region < -32768 or region > 65535 or
                     not all(_number(args.get(axis)) and abs(args[axis])<=10000000 for axis in ('x','y','z'))):
                 raise ValueError('invalid_arguments')
-            generated=self.api.call('generate_script',region,float(args['x']),float(args['y']),float(args['z']))
+            generated=_navigation_stage('generate_script', self.api.call, 'generate_script',
+                                        region,float(args['x']),float(args['y']),float(args['z']))
             if generated is False: raise ValueError('path_rate_limited_or_not_in_game')
             if generated is None: raise ValueError('path_not_found')
-            script, instructions = _parse_generated_navigation_script(generated)
+            script, instructions = _navigation_stage('validate_script', _parse_generated_navigation_script, generated)
             source = None
             source_time = _utc_now()
             try:
-                position = self.api.position()
+                position = _navigation_stage('source_position', self.api.position)
                 if (isinstance(position, dict) and _valid_position_region(position.get('region')) and
                         all(_number(position.get(axis)) and abs(position[axis]) <= 10000000 for axis in ('x', 'y', 'z'))):
                     source = {'region': int(position['region']), 'x': float(position['x']),
@@ -3263,7 +3302,7 @@ class AgentWorker(object):
             except Exception:
                 source = None
             invoked_at = _utc_now()
-            result=self.api.call('start_script',script)
+            result=_navigation_stage('start_script', self.api.call, 'start_script', script)
             if result is not False:
                 self._last_navigation_evidence = {'instructions': instructions, 'source': source,
                                                   'invoked_at': invoked_at}
@@ -3726,14 +3765,18 @@ def _item_snapshot_at_inventory_slot(resources, slot):
 def event_loop():
     # phBot calls this every 500 ms. Keep UI updates and profile detection here;
     # the worker owns backend I/O and only publishes its latest status string.
+    timing = _CallbackTiming()
     try:
-        _load_active_profile()
-    except Exception as error:
-        _log('profile sync failed (' + error.__class__.__name__ + ')')
-    if _worker is not None:
-        _drain_pending_callback_events()
-        _set_gui_status(_worker.status)
-        _sample_character()
+        try:
+            timing.run('profile_sync', _load_active_profile)
+        except Exception as error:
+            _log('profile sync failed (' + error.__class__.__name__ + ')')
+        if _worker is not None:
+            timing.run('callback_events', _drain_pending_callback_events)
+            timing.run('gui_status', _set_gui_status, _worker.status)
+            _sample_character(timing)
+    finally:
+        timing.report()
 
 
 def _drain_pending_callback_events():
@@ -3751,12 +3794,13 @@ def _drain_pending_callback_events():
         _pending_callback_overflow = False
 
 
-def _sample_character():
+def _sample_character(timing=None):
     global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined, _death_callback_active
     if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False:
         return
+    timing = timing or _CallbackTiming()
     try:
-        data = _get_character_data()
+        data = timing.run('character_data', _get_character_data)
     except Exception:
         data = None
     if not isinstance(data, dict) or not data.get('name') or not data.get('server'):
@@ -3781,7 +3825,7 @@ def _sample_character():
         if data['dead'] is False:
             _death_callback_active = False
     try:
-        position = _get_position()
+        position = timing.run('position', _get_position)
     except Exception:
         position = None
     if isinstance(position, dict):
@@ -3793,13 +3837,13 @@ def _sample_character():
         if _valid_position_region(region):
             state['region'] = int(region)
     if isinstance(state.get('region'),int):
-        zone = _zone_name_for_region(state['region'], 100)
+        zone = timing.run('zone_name', _zone_name_for_region, state['region'], 100)
         if zone:
             state['zone'] = zone
     # Official Botting docs expose start/stop mutations but no state getter.
     state['botting'] = None
     try:
-        active_profile = _get_profile() if callable(_get_profile) else None
+        active_profile = timing.run('profile', _get_profile) if callable(_get_profile) else None
     except Exception:
         active_profile = None
     profile_key = _bounded_text(active_profile, 128)
@@ -3821,34 +3865,35 @@ def _sample_character():
     now = _monotonic()
     if now - _last_resources_sample_at >= RESOURCE_SAMPLE_INTERVAL_SECONDS:
         try:
-            config_dir = _get_config_dir() if callable(_get_config_dir) else None
+            config_dir = timing.run('config_dir', _get_config_dir) if callable(_get_config_dir) else None
         except Exception:
             config_dir = None
         try:
             locale_getter = _optional_phbot_api('get_locale')
-            locale = locale_getter() if callable(locale_getter) else None
+            locale = timing.run('locale', locale_getter) if callable(locale_getter) else None
         except Exception:
             locale = None
         try:
-            _worker.update_resource_inputs(identity, collect_resource_inputs(), config_dir, locale, position)
+            inputs = timing.run('resource_collect', collect_resource_inputs)
+            timing.run('resource_publish', _worker.update_resource_inputs, identity, inputs, config_dir, locale, position)
             _last_resources_sample_at = now
         except Exception as error:
             _log('resource collection failed (' + error.__class__.__name__ + ')')
     if signature != _last_character_signature or now-_last_character_sample_at >= 5.0:
-        _worker.update_character(identity,state)
+        timing.run('character_publish', _worker.update_character, identity,state)
         _last_character_signature = signature
         _last_character_sample_at = now
-    _sample_monsters(identity, state, position, now)
+    timing.run('monsters', _sample_monsters, identity, state, position, now)
     if hasattr(_worker, 'report_control_state'):
-        try: _worker.report_control_state()
+        try: timing.run('controls', _worker.report_control_state)
         except Exception as error: _log('control-state sample failed (' + error.__class__.__name__ + ')')
     # Mutations run only on phBot's event_loop callback, after refreshing identity
     # and region. The network worker only validates/enqueues command frames.
     if hasattr(_worker, 'process_one_command'):
-        try: _worker.process_one_command(identity, state.get('region'))
+        try: timing.run('command', _worker.process_one_command, identity, state.get('region'))
         except Exception as error: _log('command callback failed (' + error.__class__.__name__ + ')')
     if hasattr(_worker, 'process_walk_step'):
-        try: _worker.process_walk_step(identity, state.get('region'))
+        try: timing.run('walk_progress', _worker.process_walk_step, identity, state.get('region'))
         except Exception as error: _log('walk callback failed (' + error.__class__.__name__ + ')')
 
 

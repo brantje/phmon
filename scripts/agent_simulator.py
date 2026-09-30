@@ -392,12 +392,22 @@ def run_navigation(worker, stopping, api_calls, position):
     if len(script_calls) != 1 or script_calls[0][1] != os.environ.get("PHMON_SIMULATOR_EXPECTED_SCRIPT"):
         raise SystemExit("fake start_script did not receive the expected validated script exactly once")
     print("NAVIGATION_ROUTE_READY", flush=True)
-    if sys.stdin.readline().strip() != "arrive":
+    instruction = sys.stdin.readline().strip()
+    if instruction == "progress":
+        position.update({"region": int(os.environ["PHMON_SIMULATOR_PROGRESS_REGION"]),
+                         "x": float(os.environ["PHMON_SIMULATOR_PROGRESS_X"]),
+                         "y": float(os.environ["PHMON_SIMULATOR_PROGRESS_Y"])})
+        state.update(position)
+        worker.update_character(identity, state)
+        print("NAVIGATION_PROGRESS_SAMPLE_SENT", flush=True)
+        instruction = sys.stdin.readline().strip()
+    if instruction != "arrive":
         raise SystemExit("smoke did not request the controlled arrival observation")
     destination_x = float(os.environ.get("PHMON_SIMULATOR_DESTINATION_X", "6430"))
     destination_y = float(os.environ.get("PHMON_SIMULATOR_DESTINATION_Y", "1090"))
-    position.update({"x": destination_x, "y": destination_y})
-    state.update({"x": destination_x, "y": destination_y})
+    position.update({"region": int(os.environ.get("PHMON_SIMULATOR_DESTINATION_REGION", "25000")),
+                     "x": destination_x, "y": destination_y})
+    state.update(position)
     worker.update_character(identity, state)
     wait_until(
         lambda: worker._latest_sample is not None
@@ -438,7 +448,7 @@ def main():
             "\n".join(("walk,6429,1088,0", "walk,6430,1090,0")),
         )
         api = PhMon.PhBotAdapter({
-            'generate_script': lambda *_args: ["walk,6429,1088,0", "walk,6430,1090,0"],
+            'generate_script': lambda *_args: expected_script.splitlines(),
             'start_script': lambda script: fake_calls.append(("start_script", script)) or True,
             'get_position': lambda: dict(navigation_position),
         })

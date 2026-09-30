@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -157,12 +158,29 @@ func (s *Store) Replace(input Input, agentID string, generation uint64, server, 
 	return s.ReplaceIf(input, agentID, generation, server, dataset, destination, now, nil)
 }
 
+// AlreadyApplied cheaply drops duplicate or obsolete presentation snapshots
+// from the same authenticated owner. It never admits a new route or refreshes
+// position freshness, and retains terminal sequences until session cleanup.
+func (s *Store) AlreadyApplied(input Input, agentID string, generation uint64) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	current, ok := s.routes[input.SessionID]
+	return ok && current.CharacterID == input.CharacterID && current.agentID == agentID &&
+		current.generation == generation && input.Sequence <= current.Sequence
+}
+
 // ReplaceIf stores a validated route only while its external owner fence is
 // still current. The callback runs under that session's lifecycle lock so
 // cleanup cannot race between the final ownership check and the route write.
 func (s *Store) ReplaceIf(input Input, agentID string, generation uint64, server, dataset string, destination Point, now time.Time, ownerCurrent func() bool) bool {
 	if s == nil || Valid(input) != nil || server == "" || dataset == "" || !validRegion(destination.Region) ||
 		!coordinate(destination.X) || !coordinate(destination.Y) || !coordinate(destination.Z) {
+		return false
+	}
+	if s.AlreadyApplied(input, agentID, generation) {
 		return false
 	}
 	lifecycle := s.sessionLifecycleLock(input.SessionID)
@@ -415,6 +433,7 @@ func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Tim
 		}
 		views = append(views, view)
 	}
+	sort.Slice(views, func(i, j int) bool { return views[i].SessionID < views[j].SessionID })
 	return views
 }
 

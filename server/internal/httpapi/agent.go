@@ -356,6 +356,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid navigation route", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
+			if h.navigation.AlreadyApplied(*frame, hello.AgentID, generation) {
+				continue
+			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 3*time.Second)
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
 			command, commandErr := h.commands.GetByID(ctx, frame.CommandID)
