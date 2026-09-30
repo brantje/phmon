@@ -1429,3 +1429,24 @@ Party map pins display each party member's name below the icon, positioned close
 to the marker and falling back to `Party member <player id>` when no name is
 reported. The Recent deaths and Recent drops map layers both start disabled;
 operators can enable either layer from the Layers controls when wanted.
+
+### Map multi-selection pin feedback — 2026-09-30
+
+Character pins now use the blue selected border for either the focused character
+or membership in the map action-target set. Individual checkboxes, saved groups,
+and All/None update existing pins immediately. Focus remains independent from
+action targets; clearing targets preserves the focused pin's blue border.
+This supersedes the earlier focus-only pin styling above.
+Clicking the focused character's row button again clears focus. Clicking a
+different row switches focus; checkbox and group targets remain independent.
+
+Authenticated local dev browser verification covered four managed characters and
+the existing nukers group: individual multi-selection/deselection, group
+selection/clearing, All/None, and independent focus/target changes all passed.
+Repeated row clicks cleared focus and restored green when no target was checked;
+clearing focus also preserved independently checked targets.
+Computed borders matched blue for selected pins and green for others; target
+changes did not remount the map. No browser errors or character commands occurred.
+All 64 frontend unit tests, Nuxt typecheck, focused ESLint (0 errors; 19 existing
+style warnings), Prettier, production build, and `git diff --check` passed using
+the project's supported Node 24 runtime.

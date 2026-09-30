@@ -663,7 +663,9 @@ const mapMarkers = computed(() => {
         })),
       ).map((marker) => ({
         ...marker,
-        selected: marker.character.character_id === selectedCharacterID.value,
+        selected:
+          marker.character.character_id === selectedCharacterID.value ||
+          actionTargetIDs.value.has(marker.character.character_id),
       }))
     : []
   const markers: Array<{
@@ -1552,7 +1554,12 @@ useHead({ title: 'Map · PhMon' })
               class="map-character-focus"
               type="button"
               :aria-pressed="selectedCharacterID === character.character_id"
-              @click="selectedCharacterID = character.character_id"
+              @click="
+                selectedCharacterID =
+                  selectedCharacterID === character.character_id
+                    ? ''
+                    : character.character_id
+              "
             >
               <span>
                 <strong>{{ character.name }}</strong>
