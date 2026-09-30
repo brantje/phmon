@@ -4186,3 +4186,90 @@ the final current-head Validation workflow still needs to complete. No real phBo
 character action is required for this maintenance change. Exact next action: require
 the final PR #38 head to pass both `validate` and `stack`; fix only failures caused
 by this change, then report the draft PR ready for operator review without merging.
+
+### Resume — 2026-09-30 Issue #29 map action targets
+
+Implemented the Issue #29 map-only target-selection foundation in the current
+checkout. Focus (`selectedCharacterID`) remains independent from the session-local
+action-target ID set. The Characters sidebar now has individual target checkboxes,
+All/None, applicable saved-group tri-state controls, and independent focus buttons.
+Targets clear on server/area/floor/region changes and reconcile only against a
+confirmed matching live snapshot. The map's character marker layer no longer hides
+the target list. Shared group data is server-neutral; other screens retain their
+existing server filtering. No API, protocol, migration or command behavior changed.
+
+Changed `web/app/pages/map.vue`, `web/app/utils/mapActionTargets.ts`,
+`web/tests/mapActionTargets.test.ts`, `web/app/composables/useLiveData.ts`,
+`web/app/components/AppSidebar.vue`, `web/app/assets/css/main.css`, and this
+reference ledger. The feature is in PR #40 on `codex/issue-29-map-action-targets`.
+Its CI passed before the latest visual refinements. CodeRabbit's two findings were
+fixed in `da24aac`; its subsequent review was rate limited. The browser fixture
+had no saved groups, so group states were exercised in pure unit tests. No
+character command was submitted.
+
+Follow-up visual refinement keeps Characters on the right, above Layers, with a
+taller scroll area. Historical heatmaps are keyboard accessible and collapsed by
+default. Browser checks confirmed the right-side placement, a taller Characters
+area at 1440×1000, 1280×800, and 390×844, collapsed default state, and Space-key
+toggle. There was no horizontal overflow. The production Nuxt container build,
+64 unit tests, and format check passed. Screenshots are in `/tmp` and not
+committed because they contain operator data.
+
+The current PR #40 head `845fe0d` passed both `validate` and `stack`; CodeRabbit
+completed its review with no new comments on the visual refinement. Exact next
+action before the scroll follow-up: operator review PR #40; do not merge without
+authorization. Issue #30 owns batch command fan-out.
+
+### Resume — 2026-09-30 map and drawer scroll reachability
+
+Browser testing reproduced nested scrolling on the Map page and clipped lower
+mobile navigation links. Updated `web/app/assets/css/main.css`: the map side
+panel now follows document scrolling, Characters has a taller bounded list, and
+the open mobile drawer is one scroll surface. Updated
+`docs/reference-parity.md` with viewport and interaction evidence. The map right
+panel has no independent scroll range; browser checks at 1440×1000, 1280×800 and
+390×844 showed no horizontal overflow. Focus/target independence, group tri-state,
+All/None, keyboard Space, marker-layer independence, and heatmap reachability
+were exercised without submitting a character command. Dashboard, Stats, Events,
+Chat, Alchemy and Guild Storage were also checked at desktop and mobile widths;
+Settings was reached by scrolling the mobile drawer.
+
+Nuxt unit tests (64), typecheck, lint (0 errors; 42 existing style warnings),
+Prettier check and production build pass. Local dev health returned HTTP 200 at
+`http://192.168.10.25:3006` with the existing backend. A repeated full-page route
+sweep stopped the Nuxt dev websocket; it was restarted and subsequent in-app
+navigation remained stable. Commit `5c6a607` is pushed to PR #40. Its `validate`
+and `stack` checks passed. CodeRabbit's latest status is rate limited, with its
+comment saying the next included review becomes available in 16 minutes; no
+fresh CodeRabbit review has completed for this scroll fix. Exact next action:
+after the review limit resets, request a CodeRabbit review for PR #40, fix any
+actionable finding, then report CI and review status without merging.
+
+### Resume — 2026-09-30 focused map marker colors
+
+The operator specified green default and blue selected borders for
+`.phmon-map-character-pin`. Updated map character markers to receive a `selected`
+flag from `selectedCharacterID`; action-target membership does not affect it.
+Base pins use green `#58bd8a`, focused pins use blue `#4db9ff`; offline/stale
+fills and region-tile dashed borders remain. The browser verified that exactly
+one blue marker follows the focused Characters button and checkbox selection
+does not change it. Nuxt unit tests (64), typecheck, lint (0 errors; 42 style
+warnings), Prettier check and production build pass after this change. Commit
+`4b661b9` with the pin styling and parity note is pushed to PR #40; both
+`validate` and `stack` pass for that head. CodeRabbit's latest status is still
+rate limited; its comment said the next included review becomes available around
+07:50 UTC. Exact next action: after the limit resets, request a fresh CodeRabbit
+review for PR #40, address any actionable finding, then report the status without
+merging.
+
+### Resume — 2026-09-30 party names and map layer defaults
+
+The operator requested visible names below party map markers and Recent deaths
+and Recent drops disabled by default. Updated party marker DOM/CSS to show each
+name with a `Party member <player id>` fallback; initialized both recent-event
+layer controls to `false`. Added a party marker label/fallback unit assertion
+and parity evidence. Browser verified names render below markers and both layers
+are unchecked. Local unit tests, typecheck, lint, format check and production
+build pass. Current changes are ready to commit and push to PR #40. Exact next
+action: push, wait for CI and CodeRabbit on the new head, address any findings,
+and report without merging.

@@ -1357,3 +1357,75 @@ a captured name show Unknown zone when coordinates exist; there is no historic
 backfill. Plugin fixtures, Go validation and persistence coverage, frontend
 location tests and Nuxt typecheck cover the flow. Database integration and live
 phBot runtime checks remain open.
+
+### Issue #29 — independent map action targets — 2026-09-30
+
+The map Characters section now separates focus from action-target selection.
+Character-row buttons still focus the character; adjacent checkboxes edit a
+session-local, deduplicated target set. All/None and existing group selectors
+operate on applicable characters in the active map server/area/floor/zone scope.
+Groups display unchecked, mixed, or checked state from their applicable member
+IDs. The character list remains available when character markers are hidden.
+Spatial scope changes clear targets; stale refreshes retain them, and a confirmed
+current snapshot prunes IDs that have left the same scope. Current map commands
+continue using the focused character and their existing single-character session
+fencing.
+
+The shared `useLiveData().groups` stream is now server-neutral so a map route
+override can resolve saved groups for its selected server. Sidebar and Stats
+continue filtering group members through the global server scope.
+
+Validation passed: 64 Nuxt unit tests, Nuxt typecheck, lint (0 errors; 41 style
+warnings), Prettier check, production build, and `git diff --check`. The local
+browser verified focus/target independence, All/None, and character-list
+availability with map markers hidden. At 1440×1000, 1280×800, and 390×844 the
+document had no horizontal overflow. No saved groups were present in the browser
+fixture, so live group checkbox rendering was covered by the pure selection tests
+for tri-state, overlap, and membership changes. No command was submitted. Screens
+contain live operator character data and were kept outside the repository.
+
+The follow-up layout keeps Characters in the right map panel, at its top, and
+gives its list a taller scroll area. Historical heatmaps now use a keyboard
+accessible disclosure button and start collapsed. Browser checks confirmed the
+right-side placement, 340 px character list at 1440×1000, 272 px at 1280×800,
+and 304 px at 390×844; the heatmap control started collapsed and toggled open
+with Space. The document had no horizontal overflow at those viewports. The
+production Nuxt container build passed after this layout change.
+
+### Map and mobile drawer scroll reachability — 2026-09-30
+
+Browser testing found that an expanded Historical heatmaps section created a
+second full-height scroll region inside the right map panel, in addition to
+document scrolling. Removed the panel height cap and its vertical scrollbar so
+the page scroll reaches Layers, heatmaps, monsters, and events in one flow. The
+Characters list stays independently bounded and is taller: 460 px at
+1440×1000, 368 px at 1280×800, and 371 px at 390×844. On 1280×800, scrolling
+over the map canvas brought the expanded heatmap range and reset controls into
+the viewport; the map panel itself had no scroll range.
+
+The 390×844 drawer also clipped lower navigation links behind a separately
+scrolling link list. The open drawer is now the single scroll surface, with the
+link list flowing naturally inside it. Browser navigation reached Settings
+after scrolling the drawer. Map was tested at 1440×1000, 1280×800 and 390×844;
+there was no horizontal overflow, the heatmap disclosure started collapsed,
+targets started empty on remount, and the whole right panel flowed with the
+document. Browser selection checks covered independent focus and targets,
+All/None, group mixed/checked states, keyboard Space, and keeping the Characters
+section available with character markers hidden. No character command was sent.
+
+Focused character pins default to green borders (`#58bd8a`) and use blue
+(`#4db9ff`) for the focused `selectedCharacterID`. Browser checks showed one
+blue pin following the focus button, other pins remaining green, and changing
+action targets leaving the focused pin unchanged.
+
+Dashboard, Stats, Events, Chat, Alchemy and Guild Storage were also checked at
+1440×1000 and 390×844 with no document horizontal overflow. Settings was opened
+at mobile width. A repeated full-page browser-navigation sweep caused the Nuxt
+dev websocket to stop; the dev server was restarted, health returned HTTP 200,
+and subsequent in-app navigation checks remained stable. The LAN dev URL is
+`http://192.168.10.25:3006`.
+
+Party map pins display each party member's name below the icon, positioned close
+to the marker and falling back to `Party member <player id>` when no name is
+reported. The Recent deaths and Recent drops map layers both start disabled;
+operators can enable either layer from the Layers controls when wanted.
