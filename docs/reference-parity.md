@@ -1457,6 +1457,14 @@ document. Browser selection checks covered independent focus and targets,
 All/None, group mixed/checked states, keyboard Space, and keeping the Characters
 section available with character markers hidden. No character command was sent.
 
+A user-supplied Characters-sidebar reference on 2026-09-30 further establishes
+the compact per-character treatment: character name with level, right-aligned
+presence state, red HP and blue MP bars, then server/location beneath them. The
+map implementation now renders that presentation through the reusable
+`MapCharacterStatusRow` component while preserving independent action targeting
+and focused-character behavior. Browser screenshot verification for this styling
+remains pending.
+
 Focused character pins default to green borders (`#58bd8a`) and use blue
 (`#4db9ff`) for the focused `selectedCharacterID`. Browser checks showed one
 blue pin following the focus button, other pins remaining green, and changing
