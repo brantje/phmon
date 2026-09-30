@@ -514,6 +514,10 @@ function markerIconContent(marker: MapCanvasMarker) {
     img.src = PARTY_MEMBER_ICON
     img.alt = ''
     content.append(img)
+    const name = document.createElement('span')
+    name.className = 'phmon-map-party-name'
+    name.textContent = marker.party?.name?.trim() || marker.label
+    content.append(name)
   } else if (marker.kind === 'monster') {
     content.className = 'phmon-map-monster-bubble'
     const fraction = marker.monster && monsterHPFraction(marker.monster)
@@ -971,9 +975,30 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-party-icon) {
+  position: relative;
   width: 100%;
   height: 100%;
   filter: drop-shadow(0 1px 3px #000c);
+}
+
+:global(.phmon-map-party-name) {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 112px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border-radius: 7px;
+  background: #0d1119ec;
+  color: #eaf1ff;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px #000b;
+  pointer-events: none;
 }
 
 :global(.phmon-map-party-icon img),

@@ -122,6 +122,10 @@ test('party markers reuse exact world transform and fail closed on bad scope', (
   const validMembers = [member()]
   const valid = partyMapMarkers(map, 'world', 'world', validMembers)
   assert.equal(valid.length, 1)
+  assert.equal(valid[0]?.label, 'Ally')
+
+  const unnamed = partyMapMarkers(map, 'world', 'world', [member({ name: '' })])
+  assert.equal(unnamed[0]?.label, 'Party member 500')
 
   const wrongRegion = [member({ observer_region: 25274 })]
   const rejectedRegion = partyMapMarkers(map, 'world', 'world', wrongRegion)

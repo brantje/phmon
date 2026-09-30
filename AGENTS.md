@@ -4261,3 +4261,15 @@ rate limited; its comment said the next included review becomes available around
 07:50 UTC. Exact next action: after the limit resets, request a fresh CodeRabbit
 review for PR #40, address any actionable finding, then report the status without
 merging.
+
+### Resume — 2026-09-30 party names and map layer defaults
+
+The operator requested visible names below party map markers and Recent deaths
+and Recent drops disabled by default. Updated party marker DOM/CSS to show each
+name with a `Party member <player id>` fallback; initialized both recent-event
+layer controls to `false`. Added a party marker label/fallback unit assertion
+and parity evidence. Browser verified names render below markers and both layers
+are unchecked. Local unit tests, typecheck, lint, format check and production
+build pass. Current changes are ready to commit and push to PR #40. Exact next
+action: push, wait for CI and CodeRabbit on the new head, address any findings,
+and report without merging.

@@ -1424,3 +1424,8 @@ at mobile width. A repeated full-page browser-navigation sweep caused the Nuxt
 dev websocket to stop; the dev server was restarted, health returned HTTP 200,
 and subsequent in-app navigation checks remained stable. The LAN dev URL is
 `http://192.168.10.25:3006`.
+
+Party map pins display each party member's name below the icon, positioned close
+to the marker and falling back to `Party member <player id>` when no name is
+reported. The Recent deaths and Recent drops map layers both start disabled;
+operators can enable either layer from the Layers controls when wanted.
