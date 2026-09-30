@@ -4344,3 +4344,50 @@ No blocker remains for this bug fix. The operator requested a PR and CI/CodeRabb
 monitoring. Exact next action: open the PR, require current-head CI green and a
 completed CodeRabbit review, address actionable findings and report without merging.
 No production restart or character command is required; broader roadmap gates remain.
+
+### Resume — 2026-09-30 focused monster icon extraction
+
+Completed the operator's bounded request to find PK2 monster type icons and prefix
+filenames with IDs. The existing read-only archive reader and DDJ converter found
+general/champion/giant rank textures plus a separate party mob badge. Added
+`tools/game-data-exporter/export_monster_icons.py` and documented findings in
+`docs/reference/monster-icon-investigation.md` and the exporter README. Local
+ignored output is `exports/monster-icons/icons/`: IDs 0, 1 and 4 are distinct rank
+icons; IDs 16, 17 and 20 are identical aliases of the shared party badge, with
+corresponding rank IDs in the manifest. No distinct party rank artwork is claimed.
+Source offsets and hashes remain in the separate ignored audit directory.
+
+Validation: all six PNGs decode at 16 × 16; rank transparency and the party badge's
+opaque source alpha are preserved; ID prefixes, manifest checksums and identical
+party aliases verified. Repeated extraction produced identical PNGs. No UI,
+production or game character changes. This request does not start a roadmap run;
+broader slice gates remain. Exact next action for reuse: run the focused exporter
+with the desired local source/output directories; UI integration requires its own
+scoped follow-up.
+
+### Resume — 2026-09-30 monster icons in the generic exporter
+
+Completed the operator's follow-up to include monster icons automatically in the
+normal exporter. Exporter 0.4.4 writes `catalogs/monsterTypes.json`, content-addressed
+bundle images and, with the existing `--asset-output` option, six ID-prefixed PNG
+aliases under `monster-types/`, indexed with semantic keys and checksums. The npm
+asset-export wrapper already invokes this normal command. Party IDs 16/17/20 retain
+one shared badge and separate rank relationships; missing textures produce explicit
+catalog/coverage gaps. Removed the standalone `export_monster_icons.py`; this
+supersedes the preceding resume entry's separate-script instruction.
+
+Changed files: exporter `monster_icons.py`, `exporter.py`, `public_assets.py`,
+version metadata, exporter tests/README and
+`docs/reference/monster-icon-investigation.md`. Validation: 52 exporter tests pass,
+including repeat/copied-output validation, missing badge handling and unsafe alias
+rejection preserving valid output. Full normal CLI export from local GreatestSRO
+archives passed bundle/public-tree validation: dataset
+`gamedata-0cfdb5ba711c7363570c`, 20 catalogs, 10,039 unique bundle images, 12,068
+public aliases and six monster icons. Compared all six against the original
+extraction; bytes, index checksums and 16 × 16 dimensions match. Output remains
+ignored under `exports/monster-export-integration/`; nine preexisting unresolved
+families keep overall dataset status incomplete. `git diff --check` passes.
+
+No blocker remains for this bounded request. No production/UI/character changes;
+unrelated concurrent plugin/server work was preserved. Exact next action for reuse:
+run the usual export command or `npm run export:assets`; no additional script.

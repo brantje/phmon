@@ -18,6 +18,7 @@ from PIL import Image
 from . import __version__
 from .cli import ARCHIVES, _json_write
 from .mapgrid import infer_tile_grid_orientation
+from .monster_icons import MONSTER_ICONS
 from .item_metadata import item_metadata, magic_option_definitions
 from .portrait_mapping import PORTRAIT_MODEL_RANGES, portrait_for_model, portrait_source_path
 from .pk2 import Entry, PK2Archive, PK2Error, sha256_file
@@ -266,6 +267,7 @@ def _write_asset(
     assets_by_hash: dict[str, dict[str, Any]],
     converted_by_source: dict[str, tuple[bytes, int, int, str, str, str]],
     source_audit: list[dict[str, Any]],
+    public_alias: str | None = None,
 ) -> tuple[str, int, int]:
     if len(entry.path) > 512:
         raise ExportError("source asset path is too long")
@@ -306,6 +308,7 @@ def _write_asset(
         "wrapperFieldStatus": wrapper_field_status,
         "wrapperFieldHex": wrapper_field_hex,
         "embeddedFormat": embedded_format,
+        **({"publicAlias": public_alias} if public_alias else {}),
     })
     return digest, width, height
 
@@ -921,6 +924,44 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 "joinCount": verified_portrait_joins,
             })
 
+            # Monster type icons are included on every normal export. Party
+            # variants share the observed badge rather than invented rank art.
+            monster_icon_records = []
+            missing_monster_icons = []
+            for type_code, name, source_path, role, rank_code in MONSTER_ICONS:
+                entry = media_index.get(source_path)
+                asset_key = None
+                width = height = None
+                public_alias = f"monster-types/{type_code}_{name}.png"
+                if entry is None:
+                    missing_monster_icons.append(type_code)
+                else:
+                    asset_key = f"monster-type-icon:{dataset_id}:{type_code}"
+                    _, width, height = _write_asset(
+                        staging_bundle=bundle, category="images", entry=entry,
+                        archive=media, semantic_key=asset_key,
+                        assets_by_hash=assets_by_hash,
+                        converted_by_source=converted_by_source,
+                        source_audit=asset_refs, public_alias=public_alias,
+                    )
+                monster_icon_records.append({
+                    "id": f"monster-type:{dataset_id}:{type_code}",
+                    "typeCode": type_code, "name": name, "role": role,
+                    "rankTypeCode": rank_code, "assetKey": asset_key,
+                    "publicAlias": public_alias if asset_key else None,
+                    "width": width, "height": height,
+                    "assetReferenceStatus": "verified-reference" if asset_key else "missing-source-asset",
+                })
+            monster_icon_count = sum(row["assetKey"] is not None for row in monster_icon_records)
+            monster_icon_status = "parsed" if not missing_monster_icons else ("partial" if monster_icon_count else "unresolved")
+            _json_write(bundle / "catalogs" / "monsterTypes.json", _catalog(
+                dataset_id, "monsterTypes", monster_icon_status, monster_icon_records,
+                recordCount=len(monster_icon_records), iconCount=monster_icon_count,
+                sharedPartyBadgeTypeCodes=[16, 17, 20],
+            ))
+            if missing_monster_icons:
+                unresolved.append({"family": "monsterTypes", "reason": "required monster textures are missing", "typeCodes": missing_monster_icons})
+
             # Small, curated non-control symbol families. Pressed/focused/button
             # states and complete control atlases are excluded by filename allowlists.
             interface_records = []
@@ -1268,6 +1309,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "portraits": {"candidateImages": len(portrait_records), "entityMappings": verified_portrait_joins},
                     "pets": {"verifiedRoleMappings": 0, "status": "unresolved"},
                     "interfaceSymbols": {"candidateImages": len(interface_records), "buttonStatesIncluded": False},
+                    "monsterTypes": {"icons": monster_icon_count, "missingTypeCodes": missing_monster_icons, "sharedPartyBadgeTypeCodes": [16, 17, 20]},
                     "maps": {"tiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "gridOrientations": {row["tileSetId"]: row["status"] for row in tile_set_orientations}, "worldTransformsValidated": False},
                     "regions": {"records": len(region_records)},
                     "teleports": {"records": len(teleport_records), "namesResolved": len(teleport_records) - missing_teleport_names, "regionJoinsResolved": len(teleport_records) - missing_teleport_regions, "links": len(teleport_links), "unresolvedLinks": bad_teleport_links},
@@ -1294,6 +1336,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "portraits": {"candidateImagesConverted": len(portrait_records), "entityMappings": verified_portrait_joins},
                     "pets": {"verifiedRoleMappings": 0, "status": "unresolved"},
                     "interfaceSymbols": {"candidateImagesConverted": len(interface_records), "groups": dict(sorted(Counter(row["symbolGroup"] for row in interface_records).items()))},
+                    "monsterTypes": {"iconsConverted": monster_icon_count, "missingTypeCodes": missing_monster_icons},
                     "maps": {"minimapTiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "tileSetOrientations": tile_set_orientations, "MapPk2Tile2dMetadataEntries": map_metadata_count, "rootTileSetId": root_tile_set_id, "regionGridMatchedRecords": matched_region_tile_count, "regionRecordsWithoutExactRootTile": len(missing_region_tile_rows), "worldCoordinateTransforms": "unvalidated"},
                     "regions": {"parsed": len(region_records), "encoding": region_encoding},
                     "teleports": {"parsed": len(teleport_records), "namesResolved": len(teleport_records) - missing_teleport_names, "regionReferencesResolved": len(teleport_records) - missing_teleport_regions, "linksParsed": len(teleport_links), "linksUnresolved": bad_teleport_links, "status": teleport_status},
@@ -1350,6 +1393,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             "portraitCandidateCount": len(portrait_records),
             "portraitModelJoinCount": verified_portrait_joins,
             "interfaceSymbolCount": len(interface_records),
+            "monsterTypeIconCount": monster_icon_count,
             "unresolvedFamilyCount": len(unresolved),
             "sourceKnowledgeRequired": False,
             "identicalBundleReused": bundle_reused,
