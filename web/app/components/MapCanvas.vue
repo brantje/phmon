@@ -522,6 +522,25 @@ function markerIconContent(marker: MapCanvasMarker) {
     content.className = 'phmon-map-monster-bubble'
     const fraction = marker.monster && monsterHPFraction(marker.monster)
     content.style.setProperty('--phmon-monster-hp', String(fraction ?? 0))
+    if (marker.monster) {
+      const presentation = monsterTypePresentation(marker.monster)
+      if (presentation.iconUrl) {
+        const rankIcon = document.createElement('img')
+        rankIcon.className = 'phmon-map-monster-rank-icon'
+        rankIcon.src = presentation.iconUrl
+        rankIcon.alt = ''
+        rankIcon.onerror = () => rankIcon.remove()
+        content.append(rankIcon)
+      }
+      if (presentation.partyBadgeUrl) {
+        const partyBadge = document.createElement('img')
+        partyBadge.className = 'phmon-map-monster-party-badge'
+        partyBadge.src = presentation.partyBadgeUrl
+        partyBadge.alt = ''
+        partyBadge.onerror = () => partyBadge.remove()
+        content.append(partyBadge)
+      }
+    }
   } else if (marker.kind === 'drop') {
     content.className = 'phmon-map-drop-icon'
     const icon = localMapAsset(marker.itemIconUrl, 'item')
@@ -728,6 +747,8 @@ onMounted(async () => {
       type?.code,
       type?.scale,
       type?.party,
+      type?.iconUrl,
+      type?.partyBadgeUrl,
       type?.unknown,
       hp,
       marker.monster?.attacking,
@@ -1015,6 +1036,7 @@ onBeforeUnmount(() => {
 
 :global(.phmon-map-monster-bubble) {
   display: block;
+  position: relative;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -1040,6 +1062,29 @@ onBeforeUnmount(() => {
   box-shadow:
     0 0 0 1px #101723ad,
     0 1px 4px #000a;
+}
+
+:global(.phmon-map-monster-rank-icon) {
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px #000c);
+}
+
+:global(.phmon-map-monster-party-badge) {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px #000c);
 }
 
 :global(.phmon-map-marker--party .phmon-map-monster-bubble) {
