@@ -92,6 +92,25 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	if len(controlTargets) != 1 || controlTargets[characterID].SessionID != target.SessionID || controlTargets[characterID].Training.TrainingZone == nil || *controlTargets[characterID].Training.TrainingZone != trainingZone {
 		t.Fatalf("batched controls = %+v", controlTargets)
 	}
+	incomplete, err := store.CurrentTrainingAreas(ctx, "SLICE3-TEST", 10)
+	if err != nil || len(incomplete) != 0 {
+		t.Fatalf("training area without coordinates = %+v, err=%v", incomplete, err)
+	}
+	trainingX, trainingY, trainingRadius := 100.5, 1559.0, 25.0
+	if err := service.SaveControlState(ctx, characterID, target.SessionID, credential.AgentID, 77, ControlState{
+		TrainingAvailable: true, TrainingRegion: &trainingRegion, TrainingZone: &trainingZone,
+		TrainingX: &trainingX, TrainingY: &trainingY, TrainingRadius: &trainingRadius,
+	}); err != nil {
+		t.Fatalf("save complete training area state: %v", err)
+	}
+	areas, err := store.CurrentTrainingAreas(ctx, "SLICE3-TEST", 10)
+	if err != nil || len(areas) != 1 || areas[0].CharacterID != characterID || areas[0].State.SessionID != target.SessionID ||
+		areas[0].CharacterName != credential.AgentID[:8] || *areas[0].State.TrainingRadius != trainingRadius {
+		t.Fatalf("server training areas = %+v, err=%v", areas, err)
+	}
+	if other, err := store.CurrentTrainingAreas(ctx, "another-server", 10); err != nil || len(other) != 0 {
+		t.Fatalf("other server training areas = %+v, err=%v", other, err)
+	}
 	input := SubmitInput{
 		CharacterID:       characterID,
 		ExpectedSessionID: target.SessionID,

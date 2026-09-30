@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  Circle as LeafletCircle,
   LayerGroup,
   Map as LeafletMap,
   LatLng,
@@ -15,6 +16,7 @@ import type { MapProfile } from '~~/shared/types/map'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
 import type { MapHeatLayer } from '~/utils/mapHeatmap'
 import type { MapRouteOverlay } from '~/utils/mapNavigationRoutes'
+import type { TrainingAreaOverlay } from '~/utils/mapTrainingAreas'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
 import {
   localMapAsset,
@@ -62,9 +64,14 @@ const props = defineProps<{
   markers?: MapCanvasMarker[]
   heatLayers?: MapHeatLayer[]
   navigationRoutes?: MapRouteOverlay[]
+  trainingAreas?: TrainingAreaOverlay[]
+  trainingEditable?: boolean
 }>()
 const emit = defineEmits<{
   viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
+  trainingselect: [characterID: string]
+  trainingmove: [characterID: string, point: RasterPosition]
+  trainingresize: [characterID: string, radiusPixels: number]
   pointselect: [point: RasterPosition]
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
@@ -77,6 +84,16 @@ let map: LeafletMap | undefined
 let heatLayerGroup: LayerGroup | undefined
 let markerLayer: LayerGroup | undefined
 let navigationLayerGroup: LayerGroup | undefined
+let trainingLayerGroup: LayerGroup | undefined
+let leaflet: typeof import('leaflet') | undefined
+interface RenderedTrainingArea {
+  circle: LeafletCircle
+  label: LeafletMarker
+  centerHandle?: LeafletMarker
+  edgeHandle?: LeafletMarker
+}
+const renderedTraining = new Map<string, RenderedTrainingArea>()
+let trainingDragging = ''
 let heatRenderer: L.Canvas | undefined
 let makeHeatCircle: typeof import('leaflet').circleMarker | undefined
 let makePolyline: typeof import('leaflet').polyline | undefined
@@ -403,6 +420,190 @@ function syncNavigationRoutes() {
   }
 }
 
+function rasterToLatLng(position: RasterPosition) {
+  const column = position.tileX - props.profile.tiles.min_x
+  const row = props.profile.tiles.max_y - position.tileY
+  return createLatLng!(
+    -(row * 256 + position.pixelY),
+    column * 256 + position.pixelX,
+  )
+}
+
+const trainingLabelPoint = (center: LatLng, radius: number) =>
+  createLatLng!(center.lat + radius, center.lng)
+const trainingEdgePoint = (center: LatLng, radius: number) =>
+  createLatLng!(center.lat, center.lng + radius)
+
+function trainingHandleIcon(kind: 'center' | 'edge') {
+  return leaflet!.divIcon({
+    className: `phmon-map-training-handle phmon-map-training-handle--${kind}`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  })
+}
+
+function removeTrainingHandles(rendered: RenderedTrainingArea) {
+  if (rendered.centerHandle)
+    trainingLayerGroup?.removeLayer(rendered.centerHandle)
+  if (rendered.edgeHandle) trainingLayerGroup?.removeLayer(rendered.edgeHandle)
+  rendered.centerHandle = undefined
+  rendered.edgeHandle = undefined
+}
+
+function finishTrainingDrag() {
+  trainingDragging = ''
+  // The parent may reject or clamp the drop; resync to its accepted draft.
+  void nextTick(syncTrainingAreas)
+}
+
+function ensureTrainingHandles(id: string, rendered: RenderedTrainingArea) {
+  const L = leaflet!
+  const center = rendered.circle.getLatLng()
+  const radius = rendered.circle.getRadius()
+  if (!rendered.centerHandle) {
+    const handle = L.marker(center, {
+      icon: trainingHandleIcon('center'),
+      draggable: true,
+      keyboard: false,
+      title: 'Drag to move the training center',
+      zIndexOffset: 1400,
+    })
+    handle.on('dragstart', () => (trainingDragging = id))
+    handle.on('drag', () => {
+      const next = handle.getLatLng()
+      const size = rendered.circle.getRadius()
+      rendered.circle.setLatLng(next)
+      rendered.label.setLatLng(trainingLabelPoint(next, size))
+      rendered.edgeHandle?.setLatLng(trainingEdgePoint(next, size))
+    })
+    handle.on('dragend', () => {
+      emit('trainingmove', id, indexAt(handle.getLatLng()))
+      finishTrainingDrag()
+    })
+    handle.addTo(trainingLayerGroup!)
+    rendered.centerHandle = handle
+  }
+  if (!rendered.edgeHandle) {
+    const handle = L.marker(trainingEdgePoint(center, radius), {
+      icon: trainingHandleIcon('edge'),
+      draggable: true,
+      keyboard: false,
+      title: 'Drag to resize the training radius',
+      zIndexOffset: 1400,
+    })
+    handle.on('dragstart', () => (trainingDragging = id))
+    handle.on('drag', () => {
+      const origin = rendered.circle.getLatLng()
+      const edge = handle.getLatLng()
+      const size = Math.max(
+        0.5,
+        Math.hypot(edge.lat - origin.lat, edge.lng - origin.lng),
+      )
+      rendered.circle.setRadius(size)
+      rendered.label.setLatLng(trainingLabelPoint(origin, size))
+    })
+    handle.on('dragend', () => {
+      emit('trainingresize', id, rendered.circle.getRadius())
+      finishTrainingDrag()
+    })
+    handle.addTo(trainingLayerGroup!)
+    rendered.edgeHandle = handle
+  }
+}
+
+function updateTrainingLabel(
+  rendered: RenderedTrainingArea,
+  area: TrainingAreaOverlay,
+) {
+  const element = rendered.label.getElement()
+  const label = element?.querySelector('.phmon-map-training-label')
+  if (!element || !label) return
+  label.textContent = area.label
+  label.classList.toggle('phmon-map-training-label--selected', area.selected)
+  label.classList.toggle('phmon-map-training-label--draft', area.draft)
+  element.setAttribute(
+    'aria-label',
+    `Training area for ${area.label}${area.draft ? ', unsaved changes' : ''}${area.selected ? ', selected' : ''}`,
+  )
+  element.setAttribute('aria-pressed', String(area.selected))
+}
+
+function syncTrainingAreas() {
+  if (!leaflet || !trainingLayerGroup || !createLatLng) return
+  const L = leaflet
+  const current = new Set<string>()
+  for (const area of (props.trainingAreas || []).slice(0, 256)) {
+    if (
+      !Number.isFinite(area.center.pixelX) ||
+      !Number.isFinite(area.center.pixelY) ||
+      !Number.isFinite(area.radiusPixels)
+    )
+      continue
+    current.add(area.id)
+    const center = rasterToLatLng(area.center)
+    let rendered = renderedTraining.get(area.id)
+    if (!rendered) {
+      const circle = L.circle(center, {
+        radius: area.radiusPixels,
+        color: '#4db9ff',
+        fillColor: '#4db9ff',
+        interactive: false,
+      })
+      const labelContent = document.createElement('span')
+      labelContent.className = 'phmon-map-training-label'
+      const label = L.marker(trainingLabelPoint(center, area.radiusPixels), {
+        icon: L.divIcon({
+          className: 'phmon-map-training-label-marker',
+          html: labelContent,
+          // Leaflet sizes the icon from CSS when iconSize is null; its typings omit null.
+          iconSize: null as unknown as L.PointExpression,
+        }),
+        keyboard: !props.compact,
+        interactive: !props.compact,
+        zIndexOffset: 1300,
+      })
+      label.on('click', () => emit('trainingselect', area.id))
+      circle.addTo(trainingLayerGroup)
+      label.addTo(trainingLayerGroup)
+      label.getElement()?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        emit('trainingselect', area.id)
+      })
+      rendered = { circle, label }
+      renderedTraining.set(area.id, rendered)
+    } else if (trainingDragging !== area.id) {
+      rendered.circle.setLatLng(center)
+      rendered.circle.setRadius(area.radiusPixels)
+      rendered.label.setLatLng(trainingLabelPoint(center, area.radiusPixels))
+    }
+    rendered.circle.setStyle({
+      weight: area.selected ? 3 : 2,
+      opacity: area.selected ? 0.95 : 0.7,
+      fillOpacity: area.selected ? 0.14 : 0.06,
+      dashArray: area.draft ? [6, 5] : [],
+    })
+    updateTrainingLabel(rendered, area)
+    if (area.selected && props.trainingEditable && !props.compact) {
+      ensureTrainingHandles(area.id, rendered)
+      if (trainingDragging !== area.id) {
+        rendered.centerHandle?.setLatLng(center)
+        rendered.edgeHandle?.setLatLng(
+          trainingEdgePoint(center, area.radiusPixels),
+        )
+      }
+    } else removeTrainingHandles(rendered)
+  }
+  for (const [id, rendered] of renderedTraining) {
+    if (current.has(id)) continue
+    removeTrainingHandles(rendered)
+    trainingLayerGroup.removeLayer(rendered.circle)
+    trainingLayerGroup.removeLayer(rendered.label)
+    renderedTraining.delete(id)
+    if (trainingDragging === id) trainingDragging = ''
+  }
+}
+
 const integer = (value: number | undefined) =>
   value == null || !Number.isFinite(value)
     ? '—'
@@ -709,6 +910,7 @@ onMounted(async () => {
     return
   const L = (await import('leaflet')).default
   if (stopped || !element.value) return
+  leaflet = L
   createLatLng = L.latLng
   makeHeatCircle = L.circleMarker
   makePolyline = L.polyline
@@ -845,6 +1047,7 @@ onMounted(async () => {
   })
   new tiles().addTo(map)
   heatLayerGroup = L.layerGroup().addTo(map)
+  trainingLayerGroup = L.layerGroup().addTo(map)
   navigationLayerGroup = L.layerGroup().addTo(map)
   markerLayer = L.layerGroup().addTo(map)
   makeMarker = (marker, point, existing) => {
@@ -950,6 +1153,7 @@ onMounted(async () => {
     emit('pointselect', indexAt(position))
   const onKeydown = (event: KeyboardEvent) => {
     if (event.key !== 'Enter' && event.key !== ' ') return
+    if (event.target !== element.value) return
     event.preventDefault()
     if (map) selectPoint(map.getCenter())
   }
@@ -974,6 +1178,7 @@ onMounted(async () => {
   map.on('moveend zoomend', publishView)
   publishView()
   syncHeatLayers()
+  syncTrainingAreas()
   syncNavigationRoutes()
   syncMarkers()
   if (props.compact) {
@@ -1000,6 +1205,11 @@ watch(
 watch(() => props.markers, syncMarkers, { deep: true })
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
 watch(() => props.navigationRoutes, syncNavigationRoutes, { deep: true })
+watch(
+  [() => props.trainingAreas, () => props.trainingEditable],
+  syncTrainingAreas,
+  { deep: true },
+)
 
 function focusCanvas() {
   element.value?.focus()
@@ -1017,6 +1227,10 @@ onBeforeUnmount(() => {
   heatLayerGroup = undefined
   markerLayer = undefined
   navigationLayerGroup = undefined
+  trainingLayerGroup = undefined
+  leaflet = undefined
+  renderedTraining.clear()
+  trainingDragging = ''
   heatRenderer = undefined
   makeHeatCircle = undefined
   makePolyline = undefined
@@ -1071,6 +1285,63 @@ onBeforeUnmount(() => {
 :global(.phmon-map-route-destination-marker) {
   border: 0;
   background: transparent;
+}
+
+/* Leaflet positions the marker with `transform`; `translate` composes with it. */
+:global(.phmon-map-training-label-marker) {
+  width: max-content;
+  border: 0;
+  background: transparent;
+  outline: none;
+  translate: -50% calc(-100% - 3px);
+}
+
+:global(.phmon-map-training-label) {
+  display: block;
+  padding: 1px 6px;
+  border: 1px solid #4db9ffb3;
+  border-radius: 3px;
+  background: #0b1a29e6;
+  color: #d8eeff;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 1px 4px #0009;
+}
+
+:global(.phmon-map-training-label--selected) {
+  border-color: #9fdcff;
+  background: #123a5ce6;
+  color: #ffffff;
+}
+
+:global(.phmon-map-training-label--draft::after) {
+  content: ' · unsaved';
+  color: #fef6c3;
+  font-weight: 500;
+}
+
+:global(
+  .phmon-map-training-label-marker:focus-visible .phmon-map-training-label
+) {
+  box-shadow: 0 0 0 2px #9bc8ff;
+}
+
+:global(.phmon-map-training-handle) {
+  box-sizing: border-box;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #4db9ff;
+  box-shadow:
+    0 0 0 1px #0b1a29,
+    0 1px 4px #000a;
+  cursor: grab;
+}
+
+:global(.phmon-map-training-handle--edge) {
+  border-radius: 2px;
+  cursor: ew-resize;
 }
 
 :global(.phmon-map-route-destination) {

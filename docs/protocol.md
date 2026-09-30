@@ -1114,3 +1114,46 @@ line. The current observed anchor connects only to the actual next validated
 waypoint, including between distant waypoints after the consumed prefix is removed.
 The browser uses a dashed cyan stroke and waypoint dots. No protocol/schema,
 plugin-version or persistence change is required by this follow-up.
+
+### Map training areas — 2026-09-30
+
+The browser live protocol v1 `map` snapshot adds an optional `training_areas`
+projection built server-side from the latest `character_control_state` readback of
+each current character session on the selected server. No socket, plugin version,
+agent protocol version or migration is added.
+
+```json
+"training_areas": {
+  "status": "observed",
+  "areas": [
+    {
+      "character_id": "…",
+      "session_id": "…",
+      "name": "nuker1",
+      "region": 25735,
+      "zone": "Hotan",
+      "x": 100,
+      "y": 1559,
+      "z": 0,
+      "radius": 20,
+      "observed_at": "2026-09-30T12:00:00Z"
+    }
+  ]
+}
+```
+
+`status` is `observed`, `unavailable` or `truncated`. Only sessions whose readback
+reports an active area with a nonzero region, finite X/Y and a radius from 1 to
+10,000 are included. Areas are scoped by their own region and Z, never by the
+character's current position: cave areas render only on the floor that the profile
+classifies from that region/Z, outdoor views omit every region claimed by a cave
+floor, and the optional region filter applies to the area region. At most 256 areas
+are returned; any excess sets `truncated: true`. An invalid or missing projection
+is treated by the browser as unavailable.
+
+Map edits reuse the existing commands without new names or arguments. Moving a
+center sends `training.area.set` with `mode: "position"` and explicit
+`{region, x, y, z}`; resizing sends `training.radius.set`. A dirty center and radius
+are applied in that order for one character. The multi-target point action fans out
+only `training.area.set`, so each target keeps its own radius. Success is shown only
+after the durable command result; the circle moves when the next readback arrives.

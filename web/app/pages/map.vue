@@ -55,6 +55,12 @@ import {
   mapNavigationStatusLabel,
 } from '~/utils/mapNavigationRoutes'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
+import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
+import {
+  TRAINING_RADIUS_MAX,
+  TRAINING_RADIUS_MIN,
+  trainingAreaOverlays,
+} from '~/utils/mapTrainingAreas'
 
 const reviewActions = useReviewActionsPreference()
 const {
@@ -66,12 +72,7 @@ const {
   freshnessNow,
   setMapFeed,
   clearMapFeed,
-  characterControls,
-  commandHistory,
   liveStale,
-  setCharacterControls,
-  setCharacterCommands,
-  clearCharacterCommandSubscriptions,
 } = useLiveData()
 const {
   enabled: historicalLayers,
@@ -170,6 +171,7 @@ const resetError = ref('')
 const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerParty = ref(true)
+const layerTraining = ref(true)
 const layerMonsters = ref(true)
 const showNearbyMonsterNames = ref(DEFAULT_SHOW_NEARBY_MONSTER_NAMES)
 const layerDeaths = ref(false)
@@ -180,9 +182,6 @@ const profileError = ref('')
 const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
 const selectedTile = ref<RasterPosition | null>(null)
 const jumpSequence = ref(0)
-const actionBusy = ref(false)
-const actionMessage = ref('')
-const acceptedCommandID = ref('')
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
 const mapSnapshotInFeedScope = computed(
@@ -219,6 +218,73 @@ const navigationAction = useMapNavigationAction({
   reviewActions: () => reviewActions.value,
   now: () => freshnessNow.value,
 })
+const trainingAreas = computed(() =>
+  mapSnapshotInFeedScope.value
+    ? mapSnapshot.value?.training_areas?.areas || []
+    : [],
+)
+const trainingEditor = useMapTrainingEditor({
+  scope: () =>
+    mapProfile.value
+      ? { server: server.value, areaID: areaID.value, floorID: floorID.value }
+      : null,
+  profile: () => mapProfile.value,
+  areas: () => trainingAreas.value,
+  characters: () => [...fleetCharacters.value],
+  reviewActions: () => reviewActions.value,
+})
+const renderedTrainingAreas = computed(() =>
+  layerTraining.value && mapProfile.value
+    ? trainingAreaOverlays({
+        profile: mapProfile.value,
+        areaID: areaID.value,
+        floorID: floorID.value,
+        areas: trainingAreas.value,
+        regionFilter: regionID.value,
+        selectedID: trainingEditor.selectedID.value,
+        draft: trainingEditor.draft.value,
+      })
+    : [],
+)
+function selectTrainingArea(characterID: string) {
+  trainingEditor.select(
+    trainingEditor.selectedID.value === characterID ? '' : characterID,
+  )
+}
+function trainingAreaSummary(characterID: string) {
+  const area = trainingAreas.value.find(
+    (item) => item.character_id === characterID,
+  )
+  if (!area) return ''
+  return `${area.zone || zoneNameForRegion(area.region)} · radius ${area.radius}`
+}
+const trainingEmptyCopy = computed(() => {
+  if (!layerTraining.value) return 'The training area layer is hidden.'
+  if (mapSnapshot.value && !mapSnapshot.value.training_areas)
+    return 'This backend does not report training areas.'
+  return 'No active training areas are reported for this floor.'
+})
+const trainingOutcomeLabel = (outcome: string) =>
+  ({
+    completed: 'applied',
+    failed: 'failed',
+    expired: 'expired',
+    unknown: 'result unknown',
+    skipped: 'skipped',
+    rejected: 'rejected',
+    uncertain: 'outcome unknown',
+    not_sent: 'not sent',
+  })[outcome] || outcome
+watch(layerTraining, (visible) => {
+  if (!visible) trainingEditor.clear()
+})
+function selectMapPoint(point: RasterPosition) {
+  if (trainingEditor.moveArmed.value) {
+    trainingEditor.moveCenter(trainingEditor.selectedID.value, point)
+    return
+  }
+  selectedTile.value = point
+}
 const historicalCharacters = computed(() =>
   fleetCharacters.value
     .filter(
@@ -470,22 +536,6 @@ const jumpAvailable = computed(() =>
     mapProfile.value,
   ),
 )
-const commandTargetReady = computed(() =>
-  Boolean(
-    currentCharacter.value?.online &&
-    currentCharacter.value.session_id &&
-    !liveStale.value &&
-    streamCurrent.value &&
-    characterControls.value?.character_id ===
-      currentCharacter.value.character_id &&
-    characterControls.value.session_id === currentCharacter.value.session_id,
-  ),
-)
-const acceptedCommand = computed(() =>
-  commandHistory.value.find(
-    (command) => command.command_id === acceptedCommandID.value,
-  ),
-)
 const selectedRegionAmbiguous = computed(() => {
   const floor = profileArea.value?.floors.find(
     (item) => item.id === floorID.value,
@@ -497,27 +547,34 @@ const selectedRegionAmbiguous = computed(() => {
     !floor.region_ids.includes(currentRegion.value ?? 0),
   )
 })
-function mapActionReason() {
-  if (!selectedTile.value) return 'Select a point on the map.'
-  if (selectedRegionAmbiguous.value)
-    return 'Choose a verified cave region or a character currently in that region.'
-  if (!selectedGamePosition.value)
-    return 'The selected point has no verified region and X/Y conversion.'
-  if (!commandTargetReady.value)
-    return 'Select an online character with a current session and capability report.'
-  const capability = characterControls.value?.capabilities['training.area.set']
-  return capability?.supported
-    ? ''
-    : capability?.reason || 'The phBot action is unavailable in this session.'
-}
-function openSelectedNavigation(event: MouseEvent) {
+function openSelectedNavigation(
+  event: MouseEvent,
+  focusAction: 'navigate' | 'training' = 'navigate',
+) {
   if (!selectedTile.value) return
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   void navigationAction.open(
     selectedTile.value,
     { x: rect.left, y: rect.bottom },
     event.currentTarget as HTMLElement,
+    focusAction,
   )
+}
+function moveMenuFocus(step: number) {
+  const items = [
+    ...(navigationAction.menuElement.value?.querySelectorAll<HTMLButtonElement>(
+      'button[role="menuitem"]:not(:disabled)',
+    ) || []),
+  ]
+  if (!items.length) return
+  const index = items.indexOf(document.activeElement as HTMLButtonElement)
+  const next =
+    index < 0
+      ? step > 0
+        ? 0
+        : items.length - 1
+      : (index + step + items.length) % items.length
+  items[next]?.focus()
 }
 function openContextNavigation(action: {
   point: RasterPosition
@@ -528,55 +585,6 @@ function openContextNavigation(action: {
     action.anchor,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
-}
-async function submitMapAction() {
-  if (
-    mapActionReason() ||
-    !selectedGamePosition.value ||
-    !currentCharacter.value?.session_id
-  )
-    return
-  const target = {
-    id: currentCharacter.value.character_id,
-    session: currentCharacter.value.session_id,
-    name: currentCharacter.value.name,
-  }
-  const point = { ...selectedGamePosition.value }
-  if (reviewActions.value) {
-    if (
-      !window.confirm(
-        `Review setting the training area for ${target.name} at ${point.x.toFixed(1)}, ${point.y.toFixed(1)}, Z ${point.z.toFixed(1)} in ${zoneNameForRegion(point.region)}?`,
-      )
-    )
-      return
-  }
-  if (currentCharacter.value?.session_id !== target.session) return
-  actionBusy.value = true
-  actionMessage.value = ''
-  try {
-    const accepted = await $fetch<{ command_id: string }>('/api/commands', {
-      method: 'POST',
-      body: {
-        character_id: target.id,
-        expected_session_id: target.session,
-        name: 'training.area.set',
-        args: { mode: 'position', ...point },
-        idempotency_key: createIdempotencyKey(),
-        confirmation: true,
-      },
-    })
-    acceptedCommandID.value = accepted.command_id
-    actionMessage.value = `Command ${accepted.command_id} accepted; waiting for phBot's result.`
-    setCharacterCommands(target.id)
-  } catch (error) {
-    const failure = error as { data?: { message?: string; error?: string } }
-    actionMessage.value =
-      failure.data?.message ||
-      failure.data?.error ||
-      'The command was rejected.'
-  } finally {
-    actionBusy.value = false
-  }
 }
 const scopedCharacters = computed(() => {
   const items = mapSnapshotInFeedScope.value
@@ -1045,12 +1053,6 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
 watch(selectedCharacterID, (characterID) => {
   jumpSequence.value++
   if (characterID) selectedDestinationID.value = ''
-  acceptedCommandID.value = ''
-  actionMessage.value = ''
-  if (characterID) {
-    setCharacterControls(characterID)
-    setCharacterCommands(characterID)
-  }
   const selected = mapSnapshot.value?.characters.find(
     (character) => character.character_id === characterID,
   )
@@ -1191,7 +1193,6 @@ onBeforeUnmount(() => {
   if (eventWindowTimer) clearInterval(eventWindowTimer)
   profileRequestID++
   clearMapFeed(subscriptionID)
-  clearCharacterCommandSubscriptions()
 })
 
 useHead({ title: 'Map · PhMon' })
@@ -1409,8 +1410,13 @@ useHead({ title: 'Map · PhMon' })
               :markers="mapMarkers"
               :heat-layers="renderedHeatLayers"
               :navigation-routes="mapNavigationRoutes"
+              :training-areas="renderedTrainingAreas"
+              :training-editable="trainingEditor.editable.value"
               @viewchange="mapView = $event"
-              @pointselect="selectedTile = $event"
+              @pointselect="selectMapPoint"
+              @trainingselect="selectTrainingArea"
+              @trainingmove="trainingEditor.moveCenter"
+              @trainingresize="trainingEditor.resizeFromPixels"
               @contextaction="openContextNavigation"
               @mapdrag="navigationAction.close(false)"
               @opencharacter="
@@ -1430,16 +1436,19 @@ useHead({ title: 'Map · PhMon' })
             class="map-navigation-context"
             role="menu"
             tabindex="-1"
-            aria-label="Navigate selected characters to map point"
+            aria-label="Map point actions for selected characters"
             :style="{
               left: `${navigationAction.menuAnchor.value.x}px`,
               top: `${navigationAction.menuAnchor.value.y}px`,
             }"
             @pointerdown.stop
+            @keydown.down.prevent="moveMenuFocus(1)"
+            @keydown.up.prevent="moveMenuFocus(-1)"
           >
             <button
               class="map-navigation-menu-action"
               role="menuitem"
+              data-map-action="navigate"
               type="button"
               :disabled="
                 navigationAction.preparing.value ||
@@ -1469,6 +1478,40 @@ useHead({ title: 'Map · PhMon' })
               role="status"
             >
               {{ navigationAction.menuSummary.value }}
+            </p>
+            <button
+              class="map-navigation-menu-action"
+              role="menuitem"
+              data-map-action="training"
+              type="button"
+              :disabled="
+                navigationAction.trainingPreparing.value ||
+                navigationAction.trainingSubmitting.value ||
+                navigationAction.trainingCounts.value.eligible === 0
+              "
+              :aria-describedby="
+                navigationAction.trainingSummary.value
+                  ? 'map-training-menu-summary'
+                  : undefined
+              "
+              @click="navigationAction.submitTraining"
+            >
+              <UIcon name="i-lucide-crosshair" />
+              {{
+                navigationAction.trainingPreparing.value
+                  ? 'Checking targets…'
+                  : navigationAction.trainingSubmitting.value
+                    ? 'Submitting…'
+                    : navigationAction.trainingLabel.value
+              }}
+            </button>
+            <p
+              v-if="navigationAction.trainingSummary.value"
+              id="map-training-menu-summary"
+              class="map-navigation-menu-summary"
+              role="status"
+            >
+              {{ navigationAction.trainingSummary.value }}
             </p>
           </div>
           <div
@@ -1520,13 +1563,12 @@ useHead({ title: 'Map · PhMon' })
           >
           <span v-else
             >Pan and zoom the exported tile grid. Click or touch selects a
-            point; right-click opens navigation actions. Enter or Space selects
+            point; right-click opens map point actions. Enter or Space selects
             the map center for keyboard users.</span
           >
           <span
-            >Z for training-area placement:
-            {{ selectedGamePosition?.z.toFixed(1) ?? '—' }} (focused character
-            or 0)</span
+            >Map point actions reuse each target's current Z, or 0 when it is
+            unknown.</span
           >
         </div>
         <div class="map-point-actions" aria-label="Selected map point actions">
@@ -1542,32 +1584,19 @@ useHead({ title: 'Map · PhMon' })
           <button
             class="compact-button"
             type="button"
-            :disabled="actionBusy || Boolean(mapActionReason())"
-            :title="mapActionReason()"
-            @click="submitMapAction"
+            :disabled="!selectedTile"
+            :title="selectedTile ? '' : 'Select a point on the map.'"
+            @click="openSelectedNavigation($event, 'training')"
           >
-            Set training area here
+            {{ navigationAction.trainingLabel.value }}
           </button>
           <span class="map-action-target-note" role="note">
-            Navigation uses selected action targets. Training area placement
-            uses the focused character.
+            Map point actions use the selected action targets.
           </span>
           <span v-if="selectedRegionAmbiguous" role="status"
             >This floor has two possible region IDs. Choose a region above or
             select a character in that region.</span
           >
-          <span v-if="acceptedCommand" role="status"
-            >{{ acceptedCommand.name }}: {{ acceptedCommand.state
-            }}{{ acceptedCommand.message ? ` · ${acceptedCommand.message}` : ''
-            }}{{
-              acceptedCommand.verification
-                ? ` · ${acceptedCommand.verification}`
-                : ''
-            }}</span
-          >
-          <span v-else-if="actionMessage" role="status">{{
-            actionMessage
-          }}</span>
           <div
             :ref="navigationAction.resultsElement"
             class="map-navigation-feedback"
@@ -1578,7 +1607,9 @@ useHead({ title: 'Map · PhMon' })
               :operation="navigationAction.reviewOperation.value"
               :busy="
                 navigationAction.preparing.value ||
-                navigationAction.submitting.value
+                navigationAction.submitting.value ||
+                navigationAction.trainingPreparing.value ||
+                navigationAction.trainingSubmitting.value
               "
               :notice="navigationAction.notice.value"
               @submit="navigationAction.submitReviewed"
@@ -1604,6 +1635,28 @@ useHead({ title: 'Map · PhMon' })
               "
               :on-dismiss="() => navigationAction.dismissResults(operation)"
             />
+            <CommandFanOutResults
+              v-for="operation in navigationAction.trainingOperations.value.filter(
+                (item) =>
+                  item.state !== 'prepared' && item.state !== 'cancelled',
+              )"
+              :key="operation.operationID"
+              :operation="operation"
+              :status-note="
+                navigationAction.trainingResultStatusNote(operation)
+              "
+              :stale="
+                navigationAction.trainingStale.value &&
+                operation.children.some((child) =>
+                  ['accepted', 'uncertain'].includes(child.submission),
+                )
+              "
+              :on-retry="
+                (characterID: string) =>
+                  navigationAction.retry(operation, characterID)
+              "
+              :on-dismiss="() => navigationAction.dismissResults(operation)"
+            />
           </div>
         </div>
         <div class="map-validation-note" role="status">
@@ -1614,9 +1667,9 @@ useHead({ title: 'Map · PhMon' })
           Outdoor region IDs locate their root tile directly. Reported X/Y
           positions locate markers within that tile; outlined dots indicate a
           region-only position. Cave imagery uses a 2D X/Y anchor and
-          region/floor rules. Navigation resolves coordinates and Z per target;
-          training-area placement uses the focused character. Older observations
-          remain visible as last observed positions.
+          region/floor rules. Navigation and training position resolve
+          coordinates and Z per target. Older observations remain visible as
+          last observed positions.
         </div>
       </section>
 
@@ -1745,6 +1798,156 @@ useHead({ title: 'Map · PhMon' })
             omitted to keep the live map within its payload budget.
           </p>
         </section>
+        <section class="map-training-list">
+          <div class="map-list-heading">
+            <h2>Training areas</h2>
+            <span>{{ renderedTrainingAreas.length }}</span>
+          </div>
+          <div v-if="renderedTrainingAreas.length" class="map-training-rows">
+            <button
+              v-for="overlay in renderedTrainingAreas"
+              :key="overlay.id"
+              class="map-navigation-route-row"
+              type="button"
+              :class="{ selected: overlay.selected }"
+              :aria-pressed="overlay.selected"
+              @click="selectTrainingArea(overlay.id)"
+            >
+              <strong>{{ overlay.label }}</strong>
+              <span>{{ trainingAreaSummary(overlay.id) }}</span>
+              <small v-if="overlay.draft">Unsaved changes</small>
+            </button>
+          </div>
+          <p v-if="!renderedTrainingAreas.length" class="map-empty-copy">
+            {{ trainingEmptyCopy }}
+          </p>
+          <p
+            v-if="mapSnapshot?.training_areas?.truncated"
+            class="map-empty-copy"
+            role="status"
+          >
+            Only the first training areas are shown to keep the live map within
+            its payload budget.
+          </p>
+          <div
+            v-if="trainingEditor.selectedArea.value"
+            class="map-training-editor"
+            role="group"
+            :aria-label="`Edit training area for ${trainingEditor.selectedArea.value.name}`"
+          >
+            <p class="map-training-readback">
+              Observed center
+              {{ trainingEditor.selectedArea.value.x.toFixed(1) }},
+              {{ trainingEditor.selectedArea.value.y.toFixed(1) }} · radius
+              {{ trainingEditor.selectedArea.value.radius }}
+            </p>
+            <p
+              v-if="trainingEditor.draft.value?.center"
+              class="map-training-draft"
+            >
+              New center
+              {{ trainingEditor.draft.value.center.x.toFixed(1) }},
+              {{ trainingEditor.draft.value.center.y.toFixed(1) }} in
+              {{ zoneNameForRegion(trainingEditor.draft.value.center.region) }}
+            </p>
+            <p
+              v-if="trainingEditor.editReason.value"
+              class="map-empty-copy"
+              role="note"
+            >
+              {{ trainingEditor.editReason.value }}
+            </p>
+            <div class="map-training-editor-controls">
+              <button
+                class="compact-button"
+                :class="{ selected: trainingEditor.moveArmed.value }"
+                type="button"
+                :aria-pressed="trainingEditor.moveArmed.value"
+                :disabled="!trainingEditor.editable.value"
+                @click="
+                  trainingEditor.moveArmed.value =
+                    !trainingEditor.moveArmed.value
+                "
+              >
+                {{
+                  trainingEditor.moveArmed.value
+                    ? 'Cancel moving'
+                    : 'Move center'
+                }}
+              </button>
+              <label class="map-training-radius">
+                Radius
+                <input
+                  type="number"
+                  inputmode="numeric"
+                  :min="TRAINING_RADIUS_MIN"
+                  :max="TRAINING_RADIUS_MAX"
+                  step="1"
+                  :value="trainingEditor.displayedRadius.value"
+                  :disabled="!trainingEditor.editable.value"
+                  @change="
+                    trainingEditor.setRadius(
+                      Number(($event.target as HTMLInputElement).value),
+                    )
+                  "
+                />
+              </label>
+            </div>
+            <p
+              v-if="trainingEditor.moveArmed.value"
+              class="map-empty-copy"
+              role="status"
+            >
+              Click the map, or press Enter with the map focused, to place the
+              new center. Dragging the center handle also works.
+            </p>
+            <div class="map-training-editor-actions">
+              <button
+                class="compact-button primary"
+                type="button"
+                :disabled="Boolean(trainingEditor.applyReason.value)"
+                :title="trainingEditor.applyReason.value"
+                @click="trainingEditor.apply"
+              >
+                {{ trainingEditor.applying.value ? 'Applying…' : 'Apply' }}
+              </button>
+              <button
+                class="compact-button"
+                type="button"
+                :disabled="
+                  !trainingEditor.dirty.value || trainingEditor.applying.value
+                "
+                @click="trainingEditor.reset"
+              >
+                Reset
+              </button>
+            </div>
+            <ul
+              v-if="trainingEditor.results.value.length"
+              class="map-training-results"
+              role="status"
+            >
+              <li
+                v-for="(result, index) in trainingEditor.results.value"
+                :key="index"
+                :class="`outcome-${result.outcome}`"
+              >
+                <strong>{{
+                  result.step.name === 'training.area.set' ? 'Center' : 'Radius'
+                }}</strong>
+                {{ trainingOutcomeLabel(result.outcome)
+                }}{{ result.message ? ` · ${result.message}` : '' }}
+              </li>
+            </ul>
+            <p
+              v-if="trainingEditor.message.value"
+              class="map-empty-copy"
+              role="status"
+            >
+              {{ trainingEditor.message.value }}
+            </p>
+          </div>
+        </section>
         <section>
           <h2>Layers</h2>
           <label class="map-layer-toggle"
@@ -1754,6 +1957,10 @@ useHead({ title: 'Map · PhMon' })
           <label class="map-layer-toggle"
             ><input v-model="layerParty" type="checkbox" /> Party members
             <span>{{ placedPartyCount }} shown</span></label
+          >
+          <label class="map-layer-toggle"
+            ><input v-model="layerTraining" type="checkbox" /> Training areas
+            <span>{{ renderedTrainingAreas.length }} shown</span></label
           >
           <label class="map-layer-toggle"
             ><input v-model="layerMonsters" type="checkbox" /> Current nearby
@@ -2260,6 +2467,91 @@ useHead({ title: 'Map · PhMon' })
 
 .map-route-clear-selection {
   justify-self: start;
+}
+
+.map-training-list,
+.map-training-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.map-training-rows {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.map-training-list .map-navigation-route-row.selected {
+  border-color: #4db9ff;
+  background: #122a40;
+}
+
+.map-training-list .map-navigation-route-row small {
+  color: var(--ph-primary);
+}
+
+.map-training-editor {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #2c4a66;
+  border-radius: 4px;
+  background: #0d1a28;
+}
+
+.map-training-editor p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.map-training-readback {
+  color: #abb9c8;
+}
+
+.map-training-draft {
+  color: var(--ph-primary);
+}
+
+.map-training-editor-controls,
+.map-training-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-training-radius {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.map-training-radius input {
+  width: 84px;
+  min-height: 28px;
+  padding: 2px 6px;
+  border: 1px solid #334356;
+  border-radius: 4px;
+  background: #0b121b;
+  color: #eaf1ff;
+}
+
+.map-training-results {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  color: #abb9c8;
+}
+
+.map-training-results .outcome-completed strong {
+  color: #58bd8a;
+}
+
+.map-training-results li:not(.outcome-completed) strong {
+  color: #e7a15b;
 }
 
 .map-navigation-feedback > :deep(.fanout-results) {

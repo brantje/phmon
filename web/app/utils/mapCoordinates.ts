@@ -323,6 +323,44 @@ export function worldPositionToRaster(
   }
 }
 
+function unitsPerTile(
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+  region: number | undefined,
+) {
+  if (region == null || !Number.isInteger(region)) return null
+  const transform = usableTransform(profile, areaID, floorID, region)
+  return transform
+    ? (transform.units_per_tile_x + transform.units_per_tile_y) / 2
+    : null
+}
+
+/** Converts a game-unit distance to raster pixels, which equal Leaflet units. */
+export function worldRadiusToRasterPixels(
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+  region: number | undefined,
+  radius: number,
+) {
+  const units = unitsPerTile(profile, areaID, floorID, region)
+  if (!units || !Number.isFinite(radius) || radius <= 0) return null
+  return (radius / units) * TILE_SIZE
+}
+
+export function rasterPixelsToWorldRadius(
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+  region: number | undefined,
+  pixels: number,
+) {
+  const units = unitsPerTile(profile, areaID, floorID, region)
+  if (!units || !Number.isFinite(pixels) || pixels <= 0) return null
+  return (pixels / TILE_SIZE) * units
+}
+
 export function rasterPositionToGame(
   profile: MapProfile,
   areaID: string,

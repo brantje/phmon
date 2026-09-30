@@ -4,6 +4,7 @@
 This is fixture tooling, not a production monitoring source and not proof that the
 same plugin has been validated inside a real phBot process.
 """
+import json
 import os
 import signal
 import shutil
@@ -425,6 +426,40 @@ def run_navigation(worker, stopping, api_calls, position):
     return 0
 
 
+def run_training_areas(worker, stopping, api_calls, area, position):
+    """Fixture-only training-area readback and edit flow using the production plugin worker."""
+    timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+    wait_until(lambda: "Connected" in worker.status, timeout, "backend connection")
+    identity = {
+        "server": required("PHMON_SIMULATOR_SERVER"),
+        "name": required("PHMON_SIMULATOR_CHARACTER"),
+        "guild": "",
+        "profile_key": "training-fixture",
+    }
+    state = {"level": 75, "hp": 900, "zone": "Fixture training", "botting": None}
+    state.update(position)
+    worker.update_character(identity, state)
+    run_seconds = float(os.environ.get("PHMON_SIMULATOR_RUN_SECONDS", "0"))
+    deadline = time.monotonic() + run_seconds if run_seconds > 0 else None
+    last_state = time.monotonic()
+    while not stopping[0] and (deadline is None or time.monotonic() < deadline):
+        if worker.character_id and worker.session_id:
+            worker.report_control_state()
+            before = len(api_calls)
+            worker.process_one_command(identity, position["region"])
+            if len(api_calls) != before:
+                print("TRAINING_CALL", json.dumps(api_calls[-1]), json.dumps(area), flush=True)
+                worker.report_control_state(force=True)
+        if time.monotonic() - last_state >= 5.0:
+            worker.update_character(identity, state)
+            last_state = time.monotonic()
+        time.sleep(0.1)
+    stopping[0] = True
+    worker.stop()
+    worker.join(3.0)
+    return 0
+
+
 def main():
     scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
     spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario in ("death-events", "map-observations") else None
@@ -451,6 +486,37 @@ def main():
             'generate_script': lambda *_args: expected_script.splitlines(),
             'start_script': lambda script: fake_calls.append(("start_script", script)) or True,
             'get_position': lambda: dict(navigation_position),
+        })
+    elif scenario == 'training-areas':
+        training_position = {
+            "region": int(os.environ.get("PHMON_SIMULATOR_REGION", "25000")),
+            "x": float(os.environ.get("PHMON_SIMULATOR_X", "6400")),
+            "y": float(os.environ.get("PHMON_SIMULATOR_Y", "1080")),
+            "z": 0.0,
+        }
+        training_area = {
+            "region": training_position["region"],
+            "x": float(os.environ.get("PHMON_SIMULATOR_TRAINING_X", str(training_position["x"]))),
+            "y": float(os.environ.get("PHMON_SIMULATOR_TRAINING_Y", str(training_position["y"]))),
+            "z": 0.0,
+            "radius": float(os.environ.get("PHMON_SIMULATOR_TRAINING_RADIUS", "50")),
+        }
+
+        def set_training_position(region, x, y, z):
+            fake_calls.append(["set_training_position", region, x, y, z])
+            training_area.update({"region": region, "x": x, "y": y, "z": z})
+            return True
+
+        def set_training_radius(radius):
+            fake_calls.append(["set_training_radius", radius])
+            training_area["radius"] = radius
+            return True
+
+        api = PhMon.PhBotAdapter({
+            'get_training_area': lambda: dict(training_area),
+            'set_training_position': set_training_position,
+            'set_training_radius': set_training_radius,
+            'get_position': lambda: dict(training_position),
         })
     else:
         api = None
@@ -493,6 +559,9 @@ def main():
             if worker._thread is not None and worker._thread.is_alive():
                 worker.stop()
                 worker.join(3.0)
+
+    if scenario == "training-areas":
+        return run_training_areas(worker, stopping, fake_calls, training_area, training_position)
 
     if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "character-lifecycle":
         deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))

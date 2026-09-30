@@ -121,6 +121,14 @@ type ControlState struct {
 	ObservedAt        *time.Time `json:"observed_at,omitempty"`
 }
 
+// TrainingAreaObservation is one active session's current observed training
+// area, joined with the character identity used by the map projection.
+type TrainingAreaObservation struct {
+	CharacterID   string
+	CharacterName string
+	State         ControlState
+}
+
 func (s ControlState) ZoneNameValid() bool {
 	if s.TrainingZone == nil {
 		return true
