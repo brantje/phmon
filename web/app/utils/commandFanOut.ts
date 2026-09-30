@@ -517,7 +517,6 @@ export interface FanOutSubmitDependencies {
   currentCharacter(characterID: string): CharacterView | undefined
   currentScopeKey(characterID: string): string
   changed(): void
-  concurrency?: number
 }
 
 function currentTargetReason(
@@ -635,18 +634,8 @@ export async function submitCommandFanOut(
   const ready = operation.children.filter(
     (child) => child.submission === 'ready',
   )
-  let next = 0
-  const concurrency = Math.max(
-    1,
-    Math.min(4, Math.floor(dependencies.concurrency || 4)),
-  )
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, ready.length) }, async () => {
-      while (next < ready.length) {
-        const child = ready[next++]!
-        await submitChild(child, operation.command, dependencies)
-      }
-    }),
+    ready.map((child) => submitChild(child, operation.command, dependencies)),
   )
   operation.state = operation.children.some(
     (child) =>

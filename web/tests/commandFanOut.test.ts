@@ -357,25 +357,32 @@ test('a requested training mode requires that exact mode in current capabilities
   )
 })
 
-test('submission is bounded to four requests and rejection or uncertain siblings do not stop progress', async () => {
+test('every eligible request starts before any response and failures remain independent', async () => {
   const ids = Array.from({ length: 7 }, (_, index) => `c${index}`)
   const targets = Object.fromEntries(ids.map((id) => [id, target(id)]))
   const operation = prepare(ids, targets)
   const current = Object.fromEntries(ids.map((id) => [id, character(id)]))
-  let active = 0
-  let peak = 0
+  const started: string[] = []
+  let release!: () => void
+  const responses = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const deps = dependencies(async (request) => {
-    active++
-    peak = Math.max(peak, active)
-    await new Promise((resolve) => setTimeout(resolve, 2))
-    active--
+    started.push(request.character_id)
+    await responses
     if (request.character_id === 'c0')
       throw { status: 429, data: { message: 'rate limited' } }
     if (request.character_id === 'c1') throw new Error('connection lost')
     return { command_id: `cmd-${request.character_id}` }
   }, current)
-  await submitCommandFanOut(operation, deps)
-  assert.equal(peak, 4)
+  const submission = submitCommandFanOut(operation, deps)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(started, ids)
+  assert.ok(
+    operation.children.every((child) => child.submission === 'submitting'),
+  )
+  release()
+  await submission
   assert.equal(operation.children[0]?.submission, 'rejected')
   assert.equal(operation.children[1]?.submission, 'uncertain')
   assert.equal(

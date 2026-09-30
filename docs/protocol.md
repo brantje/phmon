@@ -1096,3 +1096,21 @@ The browser live protocol v1 `map` snapshot adds optional navigation records. Th
 does not add another socket. Navigation is limited to 128 KiB aggregate per live map
 frame and is reduced further to preserve the 512 KiB live-frame ceiling; when needed,
 complete geometry is omitted while status and omission counts remain available.
+
+### Independent command delivery and outdoor route continuity — 2026-09-30
+
+Frontend fan-out launches all eligible per-character admissions concurrently. The
+former four-request browser cap is removed. Four persistent Go dispatch workers
+share a bounded delivery queue; a slow character socket does not delay other
+workers or reconciliation. Durable claims, one active command per character and
+per-socket write serialization remain unchanged. No command result or arrival is
+an admission/delivery barrier for another character, including future fan-out tools.
+
+Consecutive validated outdoor walk points share one world coordinate space across
+region tile seams. Route snapshots, reducers and browser conversion preserve that
+continuity; observation regions must still agree with the documented grid. Waits,
+teleports, unresolved cave scopes, missing transforms and region filters break the
+line. The current observed anchor connects only to the actual next validated
+waypoint, including between distant waypoints after the consumed prefix is removed.
+The browser uses a dashed cyan stroke and waypoint dots. No protocol/schema,
+plugin-version or persistence change is required by this follow-up.

@@ -44,7 +44,9 @@ function segmentsForBlock(
             )
       if (
         !position ||
-        (previousRegion !== 0 && point.region !== previousRegion)
+        (areaID !== 'world' &&
+          previousRegion !== 0 &&
+          point.region !== previousRegion)
       ) {
         if (current.length) segments.push(current)
         current = []
@@ -106,7 +108,8 @@ export function mapNavigationRouteOverlays(input: {
     const destination =
       route.dataset_version === input.profile.dataset_version &&
       route.destination_area_id === input.areaID &&
-      route.destination_floor_id === input.floorID
+      route.destination_floor_id === input.floorID &&
+      (!input.region || route.destination.region === input.region)
         ? worldPositionToRaster(
             input.profile,
             input.areaID,
@@ -117,13 +120,39 @@ export function mapNavigationRouteOverlays(input: {
             route.destination.z,
           ) || undefined
         : undefined
+    const firstPoint = route.blocks[0]?.points[0]
+    const firstRaster =
+      firstPoint && (!input.region || firstPoint.region === input.region)
+        ? worldPositionToRaster(
+            input.profile,
+            input.areaID,
+            input.floorID,
+            firstPoint.region,
+            firstPoint.x,
+            firstPoint.y,
+            firstPoint.z,
+          )
+        : null
+    const firstVisible = blocks[0]?.[0]
+    // A filtered or unmappable prefix must never turn a later visible segment
+    // into the next waypoint for the current-position connector.
+    const keepsFirstWaypoint =
+      firstRaster &&
+      firstVisible &&
+      firstRaster.tileX === firstVisible.tileX &&
+      firstRaster.tileY === firstVisible.tileY &&
+      firstRaster.pixelX === firstVisible.pixelX &&
+      firstRaster.pixelY === firstVisible.pixelY
     const anchor =
       !stale &&
       route.status === 'moving' &&
       route.current_anchor &&
+      keepsFirstWaypoint &&
+      (!input.region || route.current_anchor.region === input.region) &&
       route.blocks[0]?.area_id === input.areaID &&
       route.blocks[0]?.floor_id === input.floorID &&
-      route.current_anchor.region === route.blocks[0]?.points[0]?.region &&
+      (input.areaID === 'world' ||
+        route.current_anchor.region === firstPoint?.region) &&
       route.dataset_version === input.profile.dataset_version
         ? worldPositionToRaster(
             input.profile,

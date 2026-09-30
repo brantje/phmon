@@ -338,6 +338,7 @@ function syncNavigationRoutes() {
         const line = makePolyline(latLngs, {
           color: '#37d6d1',
           weight: 3,
+          dashArray: '6 4',
           opacity,
           lineCap: 'round',
           lineJoin: 'round',

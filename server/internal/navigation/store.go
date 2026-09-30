@@ -382,8 +382,7 @@ func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Tim
 					// previously ambiguous scope resolvable.
 					continue
 				}
-				if len(active.Points) > 0 && (active.Points[len(active.Points)-1].Region != point.Region ||
-					active.AreaID != area || active.FloorID != floor) {
+				if len(active.Points) > 0 && (!sameWalkScope(active.Points[len(active.Points)-1], active.AreaID, active.FloorID, point, area, floor)) {
 					blocks = append(blocks, active)
 					active = Block{}
 				}
@@ -399,7 +398,7 @@ func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Tim
 				lastArea, lastFloor, lastScopeOK = classify(profile, route.lastPosition.Region, route.lastPosition.Z)
 			}
 			if route.lastPosition != nil && lastScopeOK && route.status == "moving" && route.cursor < len(route.Instructions) &&
-				len(blocks) > 0 && blocks[0].Points[0].Region == route.lastPosition.Region &&
+				len(blocks) > 0 && (lastArea == "world" || blocks[0].Points[0].Region == route.lastPosition.Region) &&
 				blocks[0].AreaID == lastArea && blocks[0].FloorID == lastFloor &&
 				nearWalkBlock(&route, *route.lastPosition, route.cursor) {
 				view.CurrentAnchor = &Point{Region: route.lastPosition.Region, X: route.lastPosition.X, Y: route.lastPosition.Y}
@@ -478,7 +477,7 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 	vertices := make([]vertex, 0, end-start+1)
 	if current.anchor != nil {
 		first, area, floor, ok := scopeStep(*current, current.Instructions[start])
-		if ok && closeScope(current, current.anchor.Region, current.anchor.Z, first.Region, area, floor) {
+		if ok && closeScope(current, *current.anchor, first.Region, area, floor) {
 			vertices = append(vertices, vertex{instruction: start - 1,
 				point: Point{Region: current.anchor.Region, X: current.anchor.X, Y: current.anchor.Y, Z: positionZ(*current.anchor, first.Z)},
 				area:  area, floor: floor})
@@ -489,8 +488,7 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 		if !ok {
 			break
 		}
-		if len(vertices) > 0 && (vertices[len(vertices)-1].point.Region != point.Region ||
-			vertices[len(vertices)-1].area != area || vertices[len(vertices)-1].floor != floor) {
+		if len(vertices) > 0 && (!sameWalkScope(vertices[len(vertices)-1].point, vertices[len(vertices)-1].area, vertices[len(vertices)-1].floor, point, area, floor)) {
 			break
 		}
 		vertices = append(vertices, vertex{instruction: index, point: point, area: area, floor: floor})
@@ -499,12 +497,12 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 		return false, true
 	}
 	if len(vertices) == 1 {
-		if position.Region == vertices[0].point.Region && closeXY(position.X, position.Y, vertices[0].point.X, vertices[0].point.Y) {
+		if closeToMapped(position, vertices[0].point, vertices[0].area, vertices[0].floor, current.datasetID, current.server) {
 			current.cursor = vertices[0].instruction + 1
 			current.anchor = positionAnchor(position)
 			return true, false
 		}
-		return false, !closeToPoint(position, vertices[0].point)
+		return false, true
 	}
 	type match struct {
 		segment int
@@ -517,7 +515,8 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 	matches := make([]match, 0, len(vertices))
 	for i := 0; i < len(vertices)-1; i++ {
 		left, right := vertices[i].point, vertices[i+1].point
-		if position.Region != left.Region || left.Region != right.Region {
+		if !sameWalkScope(left, vertices[i].area, vertices[i].floor, right, vertices[i+1].area, vertices[i+1].floor) ||
+			!closeScope(current, position, left.Region, vertices[i].area, vertices[i].floor) {
 			continue
 		}
 		t, x, y, distance := project(position.X, position.Y, left.X, left.Y, right.X, right.Y)
@@ -545,7 +544,19 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 	}
 	left := vertices[best.segment].point
 	right := vertices[best.segment+1]
-	current.anchor = &Position{Region: left.Region, X: best.x, Y: best.y, Z: floatPointer(positionZ(position, left.Z)), At: position.At}
+	anchorRegion := left.Region
+	if vertices[best.segment].area == "world" {
+		profile, err := mapprofile.ForServer(current.server, current.datasetID)
+		if err != nil {
+			return false, true
+		}
+		var ok bool
+		anchorRegion, ok = outdoorRegion(profile, best.x, best.y)
+		if !ok {
+			return false, true
+		}
+	}
+	current.anchor = &Position{Region: anchorRegion, X: best.x, Y: best.y, Z: floatPointer(positionZ(position, left.Z)), At: position.At}
 	if best.t >= 0.98 || math.Hypot(position.X-right.point.X, position.Y-right.point.Y) <= ArrivalRadius {
 		current.cursor = right.instruction + 1
 		current.anchor = &Position{Region: right.point.Region, X: right.point.X, Y: right.point.Y, Z: floatPointer(right.point.Z), At: position.At}
@@ -584,6 +595,16 @@ func crossBarrier(current *route, position Position, previous *Position) bool {
 }
 
 func nearWalkBlock(current *route, position Position, from int) bool {
+	// The consumed prefix leaves a validated anchor on the segment leading to
+	// the next waypoint. Keep that connector while between distant waypoints,
+	// but never borrow an anchor from the other side of a transition barrier.
+	if current.anchor != nil && from == current.cursor && from < len(current.Instructions) && current.Instructions[from].Kind == "walk" {
+		first, area, floor, ok := scopeStep(*current, current.Instructions[from])
+		anchor := Point{Region: current.anchor.Region, X: current.anchor.X, Y: current.anchor.Y, Z: positionZ(*current.anchor, first.Z)}
+		if ok && closeToSegment(position, anchor, first, area, floor, area, floor, current) {
+			return true
+		}
+	}
 	for index := from; index < len(current.Instructions) && current.Instructions[index].Kind == "walk"; index++ {
 		point, area, floor, ok := scopeStep(*current, current.Instructions[index])
 		if !ok {
@@ -594,7 +615,7 @@ func nearWalkBlock(current *route, position Position, from int) bool {
 		}
 		if index+1 < len(current.Instructions) && current.Instructions[index+1].Kind == "walk" {
 			next, nextArea, nextFloor, valid := scopeStep(*current, current.Instructions[index+1])
-			if valid && next.Region == point.Region && closeToSegment(position, point, next, area, floor, nextArea, nextFloor, current) {
+			if valid && closeToSegment(position, point, next, area, floor, nextArea, nextFloor, current) {
 				return true
 			}
 		}
@@ -603,7 +624,7 @@ func nearWalkBlock(current *route, position Position, from int) bool {
 }
 
 func closeToSegment(position Position, left, right Point, area, floor, nextArea, nextFloor string, current *route) bool {
-	if area != nextArea || floor != nextFloor || left.Region != right.Region || position.Region != left.Region {
+	if !sameWalkScope(left, area, floor, right, nextArea, nextFloor) || !closeScope(current, position, left.Region, area, floor) {
 		return false
 	}
 	_, _, _, distance := project(position.X, position.Y, left.X, left.Y, right.X, right.Y)
@@ -612,7 +633,12 @@ func closeToSegment(position Position, left, right Point, area, floor, nextArea,
 
 func sameScopePosition(current *route, position Position, area, floor string) bool {
 	if area == "world" {
-		return true
+		profile, err := mapprofile.ForServer(current.server, current.datasetID)
+		if err != nil {
+			return false
+		}
+		region, ok := outdoorRegion(profile, position.X, position.Y)
+		return ok && region == position.Region && !knownCaveRegion(profile, position.Region)
 	}
 	if position.Z == nil {
 		return false
@@ -625,12 +651,14 @@ func sameScopePosition(current *route, position Position, area, floor string) bo
 	return ok && gotArea == area && gotFloor == floor
 }
 
-func closeScope(current *route, region int, z *float64, expectedRegion int, area, floor string) bool {
-	if region != expectedRegion {
-		return false
-	}
-	position := Position{Region: region, Z: z}
-	return sameScopePosition(current, position, area, floor)
+// Outdoor region seams are coordinates in the same validated world grid.
+// Cave regions remain separate until their transition has observed evidence.
+func sameWalkScope(left Point, area, floor string, right Point, nextArea, nextFloor string) bool {
+	return area == nextArea && floor == nextFloor && (area == "world" || left.Region == right.Region)
+}
+
+func closeScope(current *route, position Position, expectedRegion int, area, floor string) bool {
+	return (area == "world" || position.Region == expectedRegion) && sameScopePosition(current, position, area, floor)
 }
 
 func positionAnchor(position Position) *Position {
@@ -696,14 +724,22 @@ func scopeStep(route route, step Instruction) (Point, string, string, bool) {
 	if context != nil && knownCaveRegion(profile, context.Region) {
 		return Point{}, "", "", false
 	}
-	region := 0
-	tileX := int(math.Floor(step.X/192.0)) + 135
-	tileY := int(math.Floor(step.Y/192.0)) + 92
-	if tileX >= profile.TileCatalog.MinX && tileX <= profile.TileCatalog.MaxX && tileY >= profile.TileCatalog.MinY && tileY <= profile.TileCatalog.MaxY {
-		region = tileY*256 + tileX
+	if region, ok := outdoorRegion(profile, step.X, step.Y); ok {
 		return Point{Region: region, X: step.X, Y: step.Y, Z: step.Z}, "world", "world", true
 	}
 	return Point{}, "", "", false
+}
+
+func outdoorRegion(profile mapprofile.Profile, x, y float64) (int, bool) {
+	if !coordinate(x) || !coordinate(y) || profile.CoordinateTransform != "outdoor-region-grid" {
+		return 0, false
+	}
+	tileX := int(math.Floor(x/192.0)) + 135
+	tileY := int(math.Floor(y/192.0)) + 92
+	if tileX < profile.TileCatalog.MinX || tileX > profile.TileCatalog.MaxX || tileY < profile.TileCatalog.MinY || tileY > profile.TileCatalog.MaxY {
+		return 0, false
+	}
+	return tileY*256 + tileX, true
 }
 
 func knownCaveRegion(profile mapprofile.Profile, region int) bool {
@@ -735,14 +771,19 @@ func classify(profile mapprofile.Profile, region int, z *float64) (string, strin
 	return "", "", false
 }
 func closeToMapped(pos Position, point Point, area, floor, dataset, server string) bool {
-	if pos.Region != point.Region || dataset == "" || server == "" {
+	if (area != "world" && pos.Region != point.Region) || dataset == "" || server == "" {
 		return false
 	}
 	profile, err := mapprofile.ForServer(server, dataset)
 	if err != nil {
 		return false
 	}
-	if area != "world" {
+	if area == "world" {
+		region, ok := outdoorRegion(profile, pos.X, pos.Y)
+		if !ok || region != pos.Region || knownCaveRegion(profile, pos.Region) {
+			return false
+		}
+	} else {
 		if pos.Z == nil {
 			return false
 		}

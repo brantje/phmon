@@ -55,6 +55,13 @@ what was tried, the affected feature and the condition needed to finish it. Cont
 unblocked work, but do not claim full parity with unresolved required capabilities.
 Do not silently turn an unsupported requirement into a permanently decorative control.
 
+Multi-character mutations use the shared fan-out foundation. Launch all eligible
+frontend admissions concurrently; the previous four-request frontend cap is
+superseded. The Go dispatcher uses four concurrent delivery workers with a bounded
+queue. Never wait for another character's command result or arrival before sending
+an independent command, including in future slices. Preserve one active command
+per character, session/generation fencing, exact retries and socket write safety.
+
 Keep concise progress updates during work. At session/context boundaries, leave a
 resume entry here containing the active slice, completed increment, files affected,
 validation, blockers and exact next action. On resume, continue from that entry.
@@ -4472,3 +4479,40 @@ The public demo browser navigation timed out, so comparison used the preserved
 both the Issue #27 and monster-icon entries. Full `bash scripts/check.sh` passes
 on Node 24.20.0 with a throwaway local Compose secret. Exact next action: push the
 merge commit, verify current-head CI and CodeRabbit, and report without merging.
+
+### Resume — 2026-09-30 Issue #27 compact navigation and concurrent delivery
+
+Operator follow-up supersedes the detailed-context-menu requirement: ordinary map
+navigation is one compact action with a frozen character name/count, plus a short
+exception explanation. Optional action review lives below the map. Detailed skips
+and results remain in the reusable panels. Frontend admission now starts every
+eligible target concurrently, without the four-request cap. The common Go
+scheduler has four persistent delivery workers, a bounded queue, pending-ID
+suppression and responsive reconciliation/shutdown. This applies to future slices.
+
+Remaining routes use connected cyan dashed walks with waypoint dots. Valid outdoor
+region seams no longer split snapshots, conversion or progress. Retained anchors
+connect the observed position to its next validated waypoint between samples;
+filtered/unmappable prefixes, waits, teleports and cave transitions remain separate.
+No synthetic destination segment is added.
+
+Changed files: command dispatcher/tests, navigation store/tests, map menu/composable,
+route renderer/adapter, fan-out helper/tests and route adapter tests. Focused Go
+race tests, 100 frontend tests, Nuxt typecheck and full `scripts/check.sh` pass
+under Node 24.20.0 with a disposable PostgreSQL database. Command, live and
+navigation smoke tests pass on an isolated Compose fixture stack. The operator explicitly authorized updating the supplied
+PhMon instance and short nearby live navigation tests on nuker4, then all four
+nukers. Preserve the database and credentials; no other service is in scope.
+The updated PhMon server/web are healthy. Browser checks verify compact menu,
+review below the map without admission, no-target explanation, keyboard/touch
+access, focus return, viewport clamping and stable map mounting at 1440×1000,
+1280×800 and 390×844. The authorized nuker4 and four-character attempts reached
+the plugin; all four frontend requests began within 1.6 ms, before any response,
+and sends finished within a 5.2 ms span. Each returned `start_script=false` with
+no movement or route publication. The operator identified the missing plugin
+upload and requested an immediate push to download it. Real observed arrival
+remains pending that upload, separate from passing fixture arrival tests.
+Unrelated uncommitted mob-observation edits were reverted at operator request.
+Exact next action: push PR #50, wait for operator plugin upload, repeat the
+authorized nearby moves, record route/arrival evidence, and await final-head
+CI/CodeRabbit. Leave the PR unmerged.

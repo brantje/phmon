@@ -48,6 +48,8 @@ export function useMapNavigationAction(options: {
   const menuOpen = ref(false)
   const menuAnchor = ref({ x: 0, y: 0 })
   const menuPoint = ref<RasterPosition | null>(null)
+  const preparedTargetIDs = ref<readonly string[] | null>(null)
+  const preparedScopeKey = ref('')
   const activeOperationID = ref('')
   const reviewingOperationID = ref('')
   const notice = ref('')
@@ -107,14 +109,15 @@ export function useMapNavigationAction(options: {
   const targetIDs = computed(
     () =>
       menuOperation.value?.children.map((child) => child.characterID) ||
+      preparedTargetIDs.value ||
       options.selectedTargetIDs(),
   )
   const targetLabel = computed(() => {
-    const ids =
-      menuOperation.value?.children.map((child) => child.characterID) ||
-      options.selectedTargetIDs()
+    const ids = targetIDs.value
     if (ids.length === 1) {
-      const name = getCharacter(ids[0]!)?.name
+      const name =
+        menuOperation.value?.children[0]?.characterName ||
+        getCharacter(ids[0]!)?.name
       return name ? `Navigate ${name} here` : 'Navigate here'
     }
     if (ids.length > 1) return `Navigate ${ids.length} characters here`
@@ -125,6 +128,20 @@ export function useMapNavigationAction(options: {
       ? fanout.counts(menuOperation.value)
       : { selected: 0, eligible: 0, skipped: 0 },
   )
+  const menuSummary = computed(() => {
+    if (notice.value || fanout.error.value)
+      return notice.value || fanout.error.value
+    if (fanout.preparing.value) return ''
+    if (!targetIDs.value.length) return 'Select characters first.'
+    if (!counts.value.eligible)
+      return targetIDs.value.length === 1
+        ? menuOperation.value?.children[0]?.skipReason?.message ||
+            'Character is unavailable.'
+        : 'Selected characters are unavailable.'
+    return counts.value.skipped
+      ? `${counts.value.skipped} of ${counts.value.selected} characters unavailable.`
+      : ''
+  })
 
   function resultStatusNote(operation: FanOutOperation) {
     const completed = operation.children.filter(
@@ -226,6 +243,8 @@ export function useMapNavigationAction(options: {
       datasetVersion: scope.datasetVersion,
       targetIDs: options.selectedTargetIDs(),
     })
+    preparedTargetIDs.value = intent.targetIDs
+    preparedScopeKey.value = mapNavigationScopeKey(scope)
     const operation = await fanout.prepare(
       [...intent.targetIDs],
       definitionForIntent(intent),
@@ -238,7 +257,10 @@ export function useMapNavigationAction(options: {
     if (operation) activeOperationID.value = operation.operationID
     await nextTick()
     updateAnchor()
-    menuElement.value?.focus()
+    const action = menuElement.value?.querySelector<HTMLButtonElement>(
+      'button:not(:disabled)',
+    )
+    ;(action || menuElement.value)?.focus()
   }
 
   function close(restoreFocus = true) {
@@ -247,6 +269,8 @@ export function useMapNavigationAction(options: {
     const operation = menuOperation.value
     if (operation?.state === 'prepared') fanout.dismiss(operation)
     activeOperationID.value = ''
+    preparedTargetIDs.value = null
+    preparedScopeKey.value = ''
     notice.value = ''
     openSequence.value++
     if (restoreFocus) {
@@ -261,10 +285,21 @@ export function useMapNavigationAction(options: {
 
   async function submit() {
     const operation = menuOperation.value
-    if (!operation || fanout.preparing.value || fanout.submitting.value) return
+    if (
+      !operation ||
+      fanout.preparing.value ||
+      fanout.submitting.value ||
+      !counts.value.eligible
+    )
+      return
     if (options.reviewActions()) {
       reviewingOperationID.value = operation.operationID
       notice.value = ''
+      menuOpen.value = false
+      openSequence.value++
+      await nextTick()
+      resultsElement.value?.scrollIntoView({ block: 'nearest' })
+      resultsElement.value?.focus()
       return
     }
     const changed = await fanout.refreshPreview(operation)
@@ -275,6 +310,8 @@ export function useMapNavigationAction(options: {
     }
     void fanout.submit(operation)
     close(false)
+    await nextTick()
+    resultsElement.value?.focus({ preventScroll: true })
   }
 
   async function submitReviewed() {
@@ -289,6 +326,8 @@ export function useMapNavigationAction(options: {
     reviewingOperationID.value = ''
     void fanout.submit(operation)
     close(false)
+    await nextTick()
+    resultsElement.value?.focus({ preventScroll: true })
   }
 
   function cancelReview() {
@@ -311,7 +350,7 @@ export function useMapNavigationAction(options: {
       close(false)
   }
   function escape(event: KeyboardEvent) {
-    if (event.key === 'Escape' && menuOpen.value) {
+    if (event.key === 'Escape' && (menuOpen.value || reviewOperation.value)) {
       event.preventDefault()
       close()
     }
@@ -333,9 +372,8 @@ export function useMapNavigationAction(options: {
     () => options.scope(),
     (scope) => {
       if (
-        menuOpen.value &&
-        (!scope ||
-          mapNavigationScopeKey(scope) !== menuOperation.value?.scopeKey)
+        (menuOpen.value || reviewOperation.value) &&
+        (!scope || mapNavigationScopeKey(scope) !== preparedScopeKey.value)
       )
         close(false)
     },
@@ -354,6 +392,7 @@ export function useMapNavigationAction(options: {
     targetLabel,
     targetIDs,
     counts,
+    menuSummary,
     resultStatusNote,
     notice: readonly(notice),
     preparing: fanout.preparing,

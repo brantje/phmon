@@ -1553,3 +1553,22 @@ navigation/commands/mapprofile/httpapi suites also passed. The public demo brows
 navigation timed out in Chromium; the existing 2026-09-26 reference captures and
 the issue description supplied the reference baseline. No production deployment
 or real-character command was performed.
+
+### Issue #27 operator navigation follow-up — 2026-09-30
+
+The operator rejected the large right-click dialog and supplied a dashed connected
+route example. The ordinary menu is now one compact navigation action naming its
+frozen character or target count, with a short exception message when needed.
+Coordinates, badges, target cards and redundant dismiss buttons are removed;
+optional review and detailed independent results are below the map. The same
+selected-point action remains available to touch/keyboard users.
+
+The remaining-path renderer uses a 3 px cyan dashed polyline with waypoint dots.
+Validated outdoor region seams remain connected through snapshot, progress and
+browser conversion; genuine transitions and unavailable/filtered portions remain
+separate. All eligible browser admissions start concurrently. The shared Go
+scheduler dispatches on four independent workers, preserving session fencing,
+per-character admission constraints and exact retries.
+
+Automated and live evidence for this follow-up is being collected. The authorized
+live cohort is nuker4 first, then all four nukers, at short nearby destinations.

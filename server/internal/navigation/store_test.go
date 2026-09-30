@@ -375,3 +375,49 @@ func TestCaveScopePreservesSignedRegionsAndRefusesUnverifiedJobTempleFloors(t *t
 		t.Fatalf("unverified Job Temple floor was projected as %s/%s", area, floor)
 	}
 }
+
+func TestOutdoorSeamKeepsConnectedGeometryAndAdvancesAcrossSkippedSamples(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	input := routeInput(1,
+		Instruction{Index: 0, Kind: "walk", X: 6450, Y: 1080},
+		Instruction{Index: 1, Kind: "walk", X: 6500, Y: 1080},
+		Instruction{Index: 2, Kind: "walk", X: 6580, Y: 1080},
+		Instruction{Index: 3, Kind: "walk", X: 6650, Y: 1080})
+	store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25001, X: 6650, Y: 1080}, input.InvokedAt)
+	view := store.Snapshot("Greatest", profile, input.InvokedAt)[0]
+	if len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 4 || view.Blocks[0].Points[2].Region != 25001 {
+		t.Fatalf("outdoor seam split valid walk geometry: %#v", view)
+	}
+	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25001, X: 6540, Y: 1080, At: input.InvokedAt.Add(time.Second)})
+	view = store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))[0]
+	if view.Status != "moving" || len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 2 || view.Blocks[0].Points[0].X != 6580 || view.CurrentAnchor == nil || view.CurrentAnchor.Region != 25001 {
+		t.Fatalf("cross-seam progress/connector failed: %#v", view)
+	}
+	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25000, X: 6500, Y: 1080, At: input.InvokedAt.Add(500 * time.Millisecond)})
+	view = store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))[0]
+	if len(view.Blocks[0].Points) != 2 {
+		t.Fatal("older sample rewound progress")
+	}
+	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25001, X: 6650, Y: 1080, At: input.InvokedAt.Add(2 * time.Second)})
+	if !store.Snapshot("Greatest", profile, input.InvokedAt.Add(2*time.Second))[0].Arrived {
+		t.Fatal("seam route never arrived")
+	}
+}
+
+func TestOutdoorSeamRejectsInconsistentObservedRegionAndPreservesWait(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	input := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6500, Y: 1080},
+		Instruction{Index: 1, Kind: "wait", DurationMS: 500}, Instruction{Index: 2, Kind: "walk", X: 6580, Y: 1080})
+	store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25001, X: 6700, Y: 1080}, input.InvokedAt)
+	view := store.Snapshot("Greatest", profile, input.InvokedAt)[0]
+	if len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 1 {
+		t.Fatal("geometry crossed the wait")
+	}
+	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25000, X: 6540, Y: 1080, At: input.InvokedAt.Add(time.Second)})
+	view = store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))[0]
+	if view.Status != "progress_uncertain" || view.CurrentAnchor != nil || view.Blocks[0].Points[0].X != 6500 {
+		t.Fatalf("inconsistent outdoor region advanced progress: %#v", view)
+	}
+}

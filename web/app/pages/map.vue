@@ -1428,7 +1428,7 @@ useHead({ title: 'Map · PhMon' })
             v-if="navigationAction.menuOpen.value"
             :ref="navigationAction.menuElement"
             class="map-navigation-context"
-            role="dialog"
+            role="menu"
             tabindex="-1"
             aria-label="Navigate selected characters to map point"
             :style="{
@@ -1437,140 +1437,39 @@ useHead({ title: 'Map · PhMon' })
             }"
             @pointerdown.stop
           >
-            <header class="map-navigation-context-header">
-              <div>
-                <strong>Navigate here</strong>
-                <span
-                  >{{ server }} · {{ profileArea?.label || 'World map' }} ·
-                  {{ floorID }}</span
-                >
-              </div>
-              <button
-                class="compact-button"
-                type="button"
-                aria-label="Close navigation menu"
-                @click="navigationAction.close()"
-              >
-                <UIcon name="i-lucide-x" />
-              </button>
-            </header>
-            <p
-              v-if="navigationAction.menuPoint.value"
-              class="map-navigation-raster"
-            >
-              Raster {{ navigationAction.menuPoint.value.tileX }} ×
-              {{ navigationAction.menuPoint.value.tileY }} · pixel
-              {{ Math.round(navigationAction.menuPoint.value.pixelX) }},
-              {{ Math.round(navigationAction.menuPoint.value.pixelY) }}
-            </p>
-            <div class="map-navigation-counts" role="status" aria-live="polite">
-              <span>{{ navigationAction.counts.value.selected }} selected</span>
-              <span>{{ navigationAction.counts.value.eligible }} eligible</span>
-              <span>{{ navigationAction.counts.value.skipped }} skipped</span>
-            </div>
-            <p
-              v-if="navigationAction.preparing.value"
-              class="map-navigation-loading"
-              role="status"
-            >
-              Checking each target's current session, capability and
-              coordinates…
-            </p>
-            <p
-              v-if="navigationAction.error.value"
-              class="form-error"
-              role="alert"
-            >
-              {{ navigationAction.error.value }}
-            </p>
-            <p
-              v-if="navigationAction.notice.value"
-              class="map-navigation-notice"
-              role="status"
-            >
-              {{ navigationAction.notice.value }}
-            </p>
-            <ol
-              v-if="navigationAction.menuOperation.value"
-              class="map-navigation-targets"
-            >
-              <li
-                v-for="child in navigationAction.menuOperation.value.children"
-                :key="child.characterID"
-              >
-                <div>
-                  <strong>{{ child.characterName }}</strong>
-                  <span
-                    :class="
-                      child.submission === 'skipped' ? 'skipped' : 'eligible'
-                    "
-                  >
-                    {{
-                      child.submission === 'skipped' ? 'Skipped' : 'Eligible'
-                    }}
-                  </span>
-                </div>
-                <small v-if="child.argsSummary">{{ child.argsSummary }}</small>
-                <small v-if="child.skipReason" class="map-navigation-skip">
-                  {{ child.skipReason.message }}
-                </small>
-              </li>
-            </ol>
-            <p
-              v-else-if="
-                !navigationAction.preparing.value &&
-                !navigationAction.targetIDs.value.length
-              "
-              class="map-navigation-notice"
-            >
-              Select action targets in the Characters panel first.
-            </p>
-            <div
-              v-if="!navigationAction.reviewOperation.value"
-              class="map-navigation-context-actions"
-            >
-              <button
-                class="compact-button primary"
-                type="button"
-                :disabled="
-                  navigationAction.preparing.value ||
-                  navigationAction.submitting.value ||
-                  navigationAction.counts.value.eligible === 0
-                "
-                :title="
-                  navigationAction.counts.value.eligible === 0
-                    ? 'Select eligible action targets.'
-                    : ''
-                "
-                @click="navigationAction.submit"
-              >
-                {{
-                  navigationAction.preparing.value
-                    ? 'Checking targets…'
-                    : navigationAction.submitting.value
-                      ? 'Submitting…'
-                      : navigationAction.targetLabel.value
-                }}
-              </button>
-              <button
-                class="compact-button"
-                type="button"
-                @click="navigationAction.close()"
-              >
-                Cancel
-              </button>
-            </div>
-            <CommandFanOutPreview
-              v-if="navigationAction.reviewOperation.value"
-              :operation="navigationAction.reviewOperation.value"
-              :busy="
+            <button
+              class="map-navigation-menu-action"
+              role="menuitem"
+              type="button"
+              :disabled="
                 navigationAction.preparing.value ||
-                navigationAction.submitting.value
+                navigationAction.submitting.value ||
+                navigationAction.counts.value.eligible === 0
               "
-              :notice="navigationAction.notice.value"
-              @submit="navigationAction.submitReviewed"
-              @cancel="navigationAction.cancelReview"
-            />
+              :aria-describedby="
+                navigationAction.menuSummary.value
+                  ? 'map-navigation-menu-summary'
+                  : undefined
+              "
+              @click="navigationAction.submit"
+            >
+              <UIcon name="i-lucide-navigation" />
+              {{
+                navigationAction.preparing.value
+                  ? 'Checking targets…'
+                  : navigationAction.submitting.value
+                    ? 'Submitting…'
+                    : navigationAction.targetLabel.value
+              }}
+            </button>
+            <p
+              v-if="navigationAction.menuSummary.value"
+              id="map-navigation-menu-summary"
+              class="map-navigation-menu-summary"
+              role="status"
+            >
+              {{ navigationAction.menuSummary.value }}
+            </p>
           </div>
           <div
             v-if="areaID !== 'world' && !canvasProfile"
@@ -1669,23 +1568,43 @@ useHead({ title: 'Map · PhMon' })
           <span v-else-if="actionMessage" role="status">{{
             actionMessage
           }}</span>
-          <CommandFanOutResults
-            v-for="operation in navigationAction.operations.value"
-            :key="operation.operationID"
-            :operation="operation"
-            :status-note="navigationAction.resultStatusNote(operation)"
-            :stale="
-              navigationAction.stale.value &&
-              operation.children.some((child) =>
-                ['accepted', 'uncertain'].includes(child.submission),
-              )
-            "
-            :on-retry="
-              (characterID: string) =>
-                navigationAction.retry(operation, characterID)
-            "
-            :on-dismiss="() => navigationAction.dismissResults(operation)"
-          />
+          <div
+            :ref="navigationAction.resultsElement"
+            class="map-navigation-feedback"
+            tabindex="-1"
+          >
+            <CommandFanOutPreview
+              v-if="navigationAction.reviewOperation.value"
+              :operation="navigationAction.reviewOperation.value"
+              :busy="
+                navigationAction.preparing.value ||
+                navigationAction.submitting.value
+              "
+              :notice="navigationAction.notice.value"
+              @submit="navigationAction.submitReviewed"
+              @cancel="navigationAction.cancelReview"
+            />
+            <CommandFanOutResults
+              v-for="operation in navigationAction.operations.value.filter(
+                (item) =>
+                  item.state !== 'prepared' && item.state !== 'cancelled',
+              )"
+              :key="operation.operationID"
+              :operation="operation"
+              :status-note="navigationAction.resultStatusNote(operation)"
+              :stale="
+                navigationAction.stale.value &&
+                operation.children.some((child) =>
+                  ['accepted', 'uncertain'].includes(child.submission),
+                )
+              "
+              :on-retry="
+                (characterID: string) =>
+                  navigationAction.retry(operation, characterID)
+              "
+              :on-dismiss="() => navigationAction.dismissResults(operation)"
+            />
+          </div>
         </div>
         <div class="map-validation-note" role="status">
           {{
@@ -2270,12 +2189,12 @@ useHead({ title: 'Map · PhMon' })
 .map-navigation-context {
   position: fixed;
   z-index: 1400;
-  display: grid;
-  gap: 9px;
-  width: min(370px, calc(100vw - 16px));
+  width: max-content;
+  min-width: 200px;
+  max-width: min(280px, calc(100vw - 16px));
   max-height: calc(100vh - 16px);
   overflow: auto;
-  padding: 12px;
+  padding: 5px;
   border: 1px solid #495b6f;
   border-radius: 5px;
   background: #0d131df5;
@@ -2283,110 +2202,44 @@ useHead({ title: 'Map · PhMon' })
   box-shadow: 0 8px 28px #000b;
 }
 
-.map-navigation-context-header,
-.map-navigation-context-header > div,
-.map-navigation-targets li > div {
+.map-navigation-menu-action {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 9px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ph-text);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.map-navigation-context-header > div {
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
+.map-navigation-menu-action:hover:not(:disabled) {
+  background: #28394d;
 }
 
-.map-navigation-context-header strong {
-  color: var(--ph-primary);
-  font-size: 15px;
+.map-navigation-menu-action:disabled {
+  color: var(--ph-muted);
+  cursor: default;
 }
 
-.map-navigation-context-header span,
-.map-navigation-raster,
-.map-navigation-loading,
-.map-navigation-notice {
+.map-navigation-menu-summary {
   margin: 0;
-  color: #9eacbd;
+  padding: 3px 9px 6px;
+  color: var(--ph-muted);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
-.map-navigation-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.map-navigation-counts span {
-  padding: 3px 7px;
-  border: 1px solid #36495d;
-  border-radius: 3px;
-  color: #d1dcec;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.map-navigation-targets {
+.map-navigation-feedback {
   display: grid;
-  gap: 5px;
-  max-height: min(220px, 30vh);
-  overflow: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.map-navigation-targets li {
-  display: grid;
-  gap: 3px;
+  gap: 8px;
+  width: 100%;
   min-width: 0;
-  padding: 7px;
-  border: 1px solid #293949;
-  border-radius: 3px;
-  background: #121b27;
-}
-
-.map-navigation-targets strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 12px;
-}
-
-.map-navigation-targets span,
-.map-navigation-targets small {
-  color: #9eacbd;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.map-navigation-targets .eligible {
-  color: #88dcc0;
-}
-
-.map-navigation-targets .skipped,
-.map-navigation-targets .map-navigation-skip {
-  color: #f1b9ae;
-}
-
-.map-navigation-context-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 7px;
-}
-
-.map-navigation-context > :deep(.fanout-preview) {
-  padding: 9px;
-}
-
-.map-navigation-context :deep(.fanout-preview-targets) {
-  max-height: 180px;
-}
-
-.map-navigation-context :deep(.fanout-preview header p) {
-  display: none;
 }
 
 .map-navigation-route-list {
@@ -2438,7 +2291,7 @@ useHead({ title: 'Map · PhMon' })
   justify-self: start;
 }
 
-.map-point-actions > :deep(.fanout-results) {
+.map-navigation-feedback > :deep(.fanout-results) {
   grid-column: 1 / -1;
 }
 

@@ -59,6 +59,13 @@ jobs:
           OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
           PHMON_AGENT_URL: ws://127.0.0.1:8081/agent
         run: python3 scripts/command_smoke.py
+      - name: Verify transient navigation and observed arrival through production plugin worker
+        env:
+          OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
+          PHMON_AGENT_URL: ws://127.0.0.1:8081/agent
+          PHMON_SMOKE_COMPOSE_PROJECT: phmon
+          SMOKE_WEB_URL: http://127.0.0.1:3005
+        run: python3 scripts/navigation_smoke.py
       - name: Verify authenticated agent connect, reconnect and disconnect
         shell: bash
         run: |

@@ -288,3 +288,56 @@ test('job temple route evidence scoped to 1F never renders on manually selected 
   assert.equal(upper[0]?.blocks.length, 0)
   assert.equal(upper[0]?.destination, undefined)
 })
+
+test('outdoor tile seams remain one connected walk and allow its current connector', () => {
+  const acrossSeam = route({
+    current_anchor: { region: 25000, x: 6515, y: 1080, z: 0 },
+    blocks: [
+      {
+        area_id: 'world',
+        floor_id: 'world',
+        points: [
+          { region: 25001, x: 6540, y: 1080, z: 0 },
+          { region: 25001, x: 6590, y: 1080, z: 0 },
+          { region: 25002, x: 6740, y: 1080, z: 0 },
+        ],
+      },
+    ],
+  })
+  const overlay = project([acrossSeam])[0]!
+  assert.equal(overlay.blocks.length, 1)
+  assert.equal(overlay.blocks[0]?.length, 3)
+  assert.ok(overlay.currentAnchor)
+})
+
+test('a filtered prefix cannot attach the character to a later visible section', () => {
+  const filtered = route({
+    current_anchor: { region: 25001, x: 6540, y: 1080, z: 0 },
+    blocks: [
+      {
+        area_id: 'world',
+        floor_id: 'world',
+        points: [
+          { region: 25000, x: 6500, y: 1080, z: 0 },
+          { region: 25001, x: 6580, y: 1080, z: 0 },
+        ],
+      },
+    ],
+  })
+  const overlay = mapNavigationRouteOverlays({
+    routes: [filtered],
+    characters: [character],
+    profile,
+    server: 'Greatest',
+    areaID: 'world',
+    floorID: 'world',
+    region: 25001,
+    streamCurrent: true,
+    liveStale: false,
+    freshnessNow: Date.parse('2026-09-30T12:00:02.000Z'),
+    selectedRouteID: '',
+  })[0]!
+  assert.equal(overlay.blocks[0]?.length, 1)
+  assert.equal(overlay.currentAnchor, undefined)
+  assert.equal(overlay.destination, undefined)
+})
