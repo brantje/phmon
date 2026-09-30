@@ -3,6 +3,7 @@ package navigation
 import (
 	"encoding/json"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -51,13 +52,13 @@ func TestStoreFencesSequenceAndReturnsOnlyRemainingTransientRoute(t *testing.T) 
 	}
 	destination := Point{Region: 25000, X: 6430, Y: 1090, Z: 0}
 	input := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0}, Instruction{Index: 1, Kind: "walk", X: 6430, Y: 1090, Z: 0})
-	if !store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, destination, input.InvokedAt) {
+	if !store.Replace(input, "agent-one", 1, "greatest", profile.DatasetID, destination, input.InvokedAt) {
 		t.Fatal("route not stored")
 	}
 	if store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, destination, input.InvokedAt) {
 		t.Fatal("duplicate sequence replaced route")
 	}
-	views := store.Snapshot("greatest", profile, input.InvokedAt.Add(time.Second))
+	views := store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))
 	if len(views) != 1 || views[0].Status != "waiting_for_movement" || len(views[0].Blocks) != 1 || len(views[0].Blocks[0].Points) != 2 {
 		t.Fatalf("unexpected initial view: %#v", views)
 	}
@@ -84,6 +85,52 @@ func TestStoreFencesSequenceAndReturnsOnlyRemainingTransientRoute(t *testing.T) 
 	store.RemoveSession(input.SessionID)
 	if views = store.Snapshot("Greatest", profile, input.InvokedAt); len(views) != 0 {
 		t.Fatalf("session route remained: %#v", views)
+	}
+	// Re-identification can restart the worker's sequence within the same
+	// claimed session. Clearing the old route must allow its next sequence one.
+	restarted := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6440, Y: 1100})
+	restarted.CommandID = "cmd-navigation-restarted"
+	if !store.Replace(restarted, "agent-one", 1, "Greatest", profile.DatasetID, destination, restarted.InvokedAt) {
+		t.Fatal("route after session cleanup was rejected")
+	}
+}
+
+func TestReplaceIfFencesOwnerAndSerializesSessionCleanup(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	destination := Point{Region: 25000, X: 6430, Y: 1090}
+	input := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6420, Y: 1080})
+	if store.ReplaceIf(input, "agent-one", 1, "Greatest", profile.DatasetID, destination,
+		input.InvokedAt, func() bool { return false }) {
+		t.Fatal("stale owner was allowed to install a route")
+	}
+	if views := store.Snapshot("Greatest", profile, input.InvokedAt); len(views) != 0 {
+		t.Fatalf("stale owner left a route: %#v", views)
+	}
+
+	var ownerMu sync.Mutex
+	ownerCurrent := true
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		store.ReplaceIf(input, "agent-one", 1, "Greatest", profile.DatasetID, destination,
+			input.InvokedAt, func() bool {
+				ownerMu.Lock()
+				defer ownerMu.Unlock()
+				return ownerCurrent
+			})
+	}()
+	go func() {
+		defer wg.Done()
+		ownerMu.Lock()
+		ownerCurrent = false
+		ownerMu.Unlock()
+		store.RemoveSession(input.SessionID)
+	}()
+	wg.Wait()
+	if views := store.Snapshot("Greatest", profile, input.InvokedAt); len(views) != 0 {
+		t.Fatalf("session cleanup raced with a stale route write: %#v", views)
 	}
 }
 
@@ -314,7 +361,10 @@ func TestCaveScopePreservesSignedRegionsAndRefusesUnverifiedJobTempleFloors(t *t
 	if !ok || point.Region != -32767 || area != "donwhang-stone-cave" || floor != "3F" {
 		t.Fatalf("signed Donwhang 3F scope = %#v %q/%q %v", point, area, floor, ok)
 	}
+	// The shared Job Temple region does not establish one of its manually
+	// selected upper or annex floors without an observed Z/floor classification.
 	temple := route{server: "Greatest", datasetID: profile.DatasetID,
+		Source:      &Position{Region: -32752, X: 500, Y: 500, At: time.Now().UTC()},
 		destination: Point{Region: -32752, X: 500, Y: 500, Z: 16}}
 	if _, area, floor, ok := scopeStep(temple, Instruction{Kind: "walk", X: 500, Y: 500, Z: 16}); ok {
 		t.Fatalf("unverified Job Temple floor was projected as %s/%s", area, floor)

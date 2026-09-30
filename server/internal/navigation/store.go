@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -144,6 +145,13 @@ func Valid(input Input) error {
 }
 
 func (s *Store) Replace(input Input, agentID string, generation uint64, server, dataset string, destination Point, now time.Time) bool {
+	return s.ReplaceIf(input, agentID, generation, server, dataset, destination, now, nil)
+}
+
+// ReplaceIf stores a validated route only while its external owner fence is
+// still current. The callback runs under the store lock so session cleanup
+// cannot race between the final ownership check and the route write.
+func (s *Store) ReplaceIf(input Input, agentID string, generation uint64, server, dataset string, destination Point, now time.Time, ownerCurrent func() bool) bool {
 	if s == nil || Valid(input) != nil || server == "" || dataset == "" || !validRegion(destination.Region) ||
 		!coordinate(destination.X) || !coordinate(destination.Y) || !coordinate(destination.Z) {
 		return false
@@ -152,6 +160,9 @@ func (s *Store) Replace(input Input, agentID string, generation uint64, server, 
 	defer s.mu.Unlock()
 	current, ok := s.routes[input.SessionID]
 	if ok && (input.Sequence <= current.Sequence || input.InvokedAt.Before(current.InvokedAt)) {
+		return false
+	}
+	if ownerCurrent != nil && !ownerCurrent() {
 		return false
 	}
 	stored := route{Input: input, agentID: agentID, generation: generation, server: server, datasetID: dataset, destination: destination,
@@ -745,18 +756,4 @@ func validRegion(value int) bool      { return value != 0 && value >= -32768 && 
 func coordinate(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && math.Abs(value) <= 10_000_000
 }
-func equalFold(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] >= 'A' && a[i] <= 'Z' {
-			if a[i]+32 != b[i] && b[i] != a[i] {
-				return false
-			}
-		} else if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
+func equalFold(a, b string) bool { return strings.EqualFold(a, b) }

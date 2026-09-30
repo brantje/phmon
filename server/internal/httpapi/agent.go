@@ -377,9 +377,15 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if !known {
 				continue
 			}
-			if h.navigation.Replace(*frame, hello.AgentID, generation, character.Server, dataset, navigation.Point{
+			if h.navigation.ReplaceIf(*frame, hello.AgentID, generation, character.Server, dataset, navigation.Point{
 				Region: destination.Region, X: destination.X, Y: destination.Y, Z: destination.Z,
-			}, time.Now().UTC()) {
+			}, time.Now().UTC(), func() bool {
+				// Serialize this final owner check with route cleanup. If a newer
+				// agent generation won while the durable lookups were in flight,
+				// its cleanup either ran before this guard (which then fails) or
+				// waits for the store lock and removes the stale write afterward.
+				return h.registry.IsCurrent(hello.AgentID, generation)
+			}) {
 				h.live.Invalidate()
 			}
 		case "mob.sample":
@@ -590,7 +596,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character identity", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
-			if h.navigation != nil && previous.SessionID != "" && previous.SessionID != sessionID {
+			if h.navigation != nil && previous.SessionID != "" {
+				// A worker can re-identify within the same claimed session after a
+				// profile change and reset its route sequence to one. Clear the old
+				// snapshot in either case so that the new route can be admitted.
 				h.navigation.RemoveSession(previous.SessionID)
 			}
 			if previous.SessionID != "" && (previous.AgentID != hello.AgentID || previous.Generation != generation) {

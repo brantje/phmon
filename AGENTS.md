@@ -4372,19 +4372,34 @@ httpapi}/`, `web/app/{components,composables,pages,utils}/`, `web/shared/types/l
 `web/tests/`, `scripts/agent_simulator.py`, `scripts/navigation_smoke.py`,
 `docs/{protocol,phbot-capabilities,reference-parity}.md`, and this ledger.
 
-Validation passed: 103 Python plugin tests, 90 frontend unit tests, focused Go
-navigation/commands/mapprofile/httpapi suites, and full `bash scripts/check.sh`
-under Node 24.20.0 with a disposable PostgreSQL database. ESLint had zero errors
-and 42 style warnings. The authenticated simulator smoke verified command
-admission, plugin script invocation, transient route delivery, stale-to-fresh
-recovery, later observed arrival and no route-only position-history rows. Local
-browser checks covered the context menu, active route, keyboard center selection,
-mobile selected-point action and 1440×1000, 1280×800 and 390×844 layouts with no
-horizontal overflow or page errors. Screenshots are in `/tmp/phmon-issue27-*.png`.
+Validation passed before review: 103 Python plugin tests, 90 frontend unit tests,
+focused Go navigation/commands/mapprofile/httpapi suites, and full
+`bash scripts/check.sh` under Node 24.20.0 with a disposable PostgreSQL database.
+ESLint had zero errors and 42 style warnings. The authenticated simulator smoke
+verified command admission, plugin script invocation, transient route delivery,
+stale-to-fresh recovery, later observed arrival and no route-only position-history
+rows. Local browser checks covered the context menu, active route, keyboard-center
+selection, mobile selected-point action and 1440×1000, 1280×800 and 390×844
+layouts with no horizontal overflow or page errors. Screenshots are in
+`/tmp/phmon-issue27-*.png`.
+
+PR #50 (`https://github.com/brantje/phmon/pull/50`) was pushed on 2026-09-30.
+Both required GitHub Actions jobs passed. CodeRabbit's completed review found
+that navigation route frames could precede command completion, repeated
+same-session identity could leave sequence-one routes blocked, server-name case
+matching was asymmetric, and the Job Temple test returned before its fail-closed
+branch. These findings are fixed: command results flush before route frames,
+same-session identify clears its old route, route insertion rechecks the current
+agent generation under the route-store lock, server comparison uses
+`strings.EqualFold`, and tests exercise these cases. Post-review validation:
+104 Python plugin tests, `go test ./internal/navigation ./internal/httpapi`,
+`go test -race ./internal/navigation ./internal/httpapi`, and `git diff --check`
+pass. No actual Windows/phBot runtime validation was added.
 
 Blocker/limit: actual Windows/phBot execution and physical navigation remain
 unverified; the simulator uses the production worker with fixture API adapters.
 The public demo browser navigation timed out, so comparison used the preserved
 2026-09-26 screenshots and public issue description. No production deployment,
-merge or real-character command was performed. Exact next action: no further #27
-implementation is pending; stop here until the next scoped request.
+merge or real-character command was performed. Exact next action: commit and push
+the review fixes, update PR #50's validation summary, then wait for the new-head
+CI and CodeRabbit statuses and address any further findings without merging.

@@ -2135,6 +2135,44 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(worker._outgoing.get_nowait()['reason'], 'invalid_arguments')
         self.assertEqual(len(calls), 4)
 
+    def test_navigation_command_result_is_flushed_before_route_frame(self):
+        adapter = plugin.PhBotAdapter({
+            'generate_script': lambda *args: ['walk,10,20,0'],
+            'start_script': lambda script: True,
+            'get_position': lambda: {'region': 25000, 'x': 1, 'y': 2, 'z': 0},
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000009',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.navigate', 'args': {'region': 25000, 'x': 10, 'y': 20, 'z': 0},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        worker._accept_command(frame)
+        self.assertTrue(worker.process_one_command(worker._current_identity, 25000))
+
+        sent = []
+
+        class CaptureClient:
+            def send_json(self, value):
+                sent.append(value)
+
+        self.assertTrue(worker._flush_navigation_route(CaptureClient()))
+        frame_types = [item['type'] for item in sent]
+        self.assertEqual(frame_types, [
+            'command.ack', 'command.result', 'character.control_state', 'navigation.route',
+        ])
+        self.assertEqual(sent[1]['status'], 'completed')
+        self.assertEqual(sent[3]['route']['command_id'], frame['command_id'])
+
     def test_navigation_route_parser_rejects_unsafe_scripts_without_partial_output(self):
         script, route = plugin._parse_generated_navigation_script([
             'walk,-12.5,20,0', 'wait,500', 'teleport,GATE_ONE,GATE_TWO', 'walk,40,50,-2.25',

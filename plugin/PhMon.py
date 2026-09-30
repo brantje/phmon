@@ -2590,6 +2590,9 @@ class AgentWorker(object):
                 return False
             payload = dict(route)
             self._navigation_route_sent_at = now
+        # The server accepts route evidence only after it has completed the
+        # matching command. Preserve frame order on this socket.
+        self._flush_results(client)
         client.send_json({'type': 'navigation.route', 'protocol_version': PROTOCOL_VERSION, 'route': payload})
         return True
 
@@ -3060,8 +3063,6 @@ class AgentWorker(object):
                 self._start_walk(message, args, current_region)
                 return True
             outcome, effective, observed, verification = self._invoke(name, args, current_region)
-            if name == 'character.navigate' and outcome is not False:
-                self._publish_navigation_route(message)
             status = 'failed' if outcome is False else 'completed'
             result = self._base_result(message, status, 'api_return_false' if outcome is False else '', verification)
             result['api_return'] = outcome
@@ -3069,6 +3070,8 @@ class AgentWorker(object):
             if observed is not None: result['observed_after'] = observed
             self._queue_result(result)
             self._queue_control_state(message)
+            if name == 'character.navigate' and outcome is not False:
+                self._publish_navigation_route(message)
         except Exception as error:
             self._queue_result(self._base_result(message, 'failed', str(error)[:64] or 'api_error', 'unverified'))
         return True
