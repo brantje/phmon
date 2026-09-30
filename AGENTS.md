@@ -4273,3 +4273,24 @@ are unchecked. Local unit tests, typecheck, lint, format check and production
 build pass. Current changes are ready to commit and push to PR #40. Exact next
 action: push, wait for CI and CodeRabbit on the new head, address any findings,
 and report without merging.
+
+### Resume — 2026-09-30 map multi-selection pin feedback
+
+Scoped bug fix on `codex/map-selection-pin-feedback` in the existing checkout:
+`web/app/pages/map.vue` now marks
+character pins selected when focused or included in `actionTargetIDs`. This
+supersedes the earlier focus-only pin decision. Individual, group, All/None and
+focus selections remain independent and update Leaflet icons through the existing
+reactive marker/signature path. Recorded evidence in `docs/reference-parity.md`.
+The follow-up also makes the character focus button toggle off on a repeated
+click while preserving independent action targets; browser checks passed for
+repeated clicks, switching focus, and retaining checked targets after unfocusing.
+Authenticated local dev browser checks passed for four managed characters and the
+existing nukers group, including computed blue/green borders, deselection and
+preserving the mounted map during target changes. No character command was sent.
+Validation: 64 frontend unit tests, Node 24 Nuxt typecheck, focused ESLint (0 errors;
+19 existing warnings), Prettier, production build and `git diff --check` passed.
+No blocker remains for this bug fix. The operator requested a PR and CI/CodeRabbit
+monitoring. Exact next action: open the PR, require current-head CI green and a
+completed CodeRabbit review, address actionable findings and report without merging.
+No production restart or character command is required; broader roadmap gates remain.
