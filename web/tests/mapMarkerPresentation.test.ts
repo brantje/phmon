@@ -13,7 +13,14 @@ import {
 test('reference monster ranks retain scale and resolve the committed icon artwork', () => {
   for (const [code, label, scale, party, iconUrl, partyBadgeUrl] of [
     [0, 'General', 1, false, '/game-assets/monster-types/0_general.png', ''],
-    [1, 'Champion', 1.2, false, '/game-assets/monster-types/1_champion.png', ''],
+    [
+      1,
+      'Champion',
+      1.2,
+      false,
+      '/game-assets/monster-types/1_champion.png',
+      '',
+    ],
     [4, 'Giant', 1.5, false, '/game-assets/monster-types/4_giant.png', ''],
     [
       16,

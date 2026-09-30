@@ -15,12 +15,7 @@ cd "$(dirname "$0")/.."
 )
 python3 -m unittest discover -s plugin -p 'test_*.py'
 python3 scripts/live_transport_audit.py
-(
-  cd web
-  npx prettier --write app/pages/map.vue tests/mapMarkerPresentation.test.ts
-  git diff -- app/pages/map.vue tests/mapMarkerPresentation.test.ts
-  exit 1
-)
+npm --prefix web run format:check
 npm --prefix web run test:unit
 npm --prefix web run lint
 npm --prefix web run typecheck

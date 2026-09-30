@@ -1591,8 +1591,8 @@ useHead({ title: 'Map · PhMon' })
             monsters <span>{{ currentMonsters.length }}</span></label
           >
           <label class="map-layer-toggle map-layer-toggle-subordinate"
-            ><input v-model="showNearbyMonsterNames" type="checkbox" /> Show nearby
-            monsters names</label
+            ><input v-model="showNearbyMonsterNames" type="checkbox" /> Show
+            nearby monsters names</label
           >
           <label class="map-layer-toggle"
             ><input v-model="layerDeaths" type="checkbox" /> Recent
@@ -2134,5 +2134,4 @@ useHead({ title: 'Map · PhMon' })
 .map-layer-toggle-subordinate {
   padding-left: 1.15rem;
 }
-
 </style>
