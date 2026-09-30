@@ -30,7 +30,13 @@ function resourceLabel(
   current?: number,
   maximum?: number,
 ) {
-  if (current == null || maximum == null) return `${label} — / —`
+  if (
+    current == null ||
+    maximum == null ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(maximum)
+  )
+    return `${label} — / —`
   return `${label} ${current.toLocaleString()} / ${maximum.toLocaleString()}`
 }
 
@@ -76,7 +82,14 @@ const statusLabel = computed(() => {
         <small class="map-character-presence">{{ statusLabel }}</small>
       </span>
 
-      <span class="map-character-resource hp">
+      <span
+        class="map-character-resource hp"
+        role="progressbar"
+        aria-label="Character health"
+        :aria-valuemin="0"
+        :aria-valuemax="character.hp_max ?? undefined"
+        :aria-valuenow="character.hp ?? undefined"
+      >
         <span
           class="map-character-resource-fill"
           :style="{ width: `${hpPercent ?? 0}%` }"
@@ -86,7 +99,14 @@ const statusLabel = computed(() => {
         </span>
       </span>
 
-      <span class="map-character-resource mp">
+      <span
+        class="map-character-resource mp"
+        role="progressbar"
+        aria-label="Character mana"
+        :aria-valuemin="0"
+        :aria-valuemax="character.mp_max ?? undefined"
+        :aria-valuenow="character.mp ?? undefined"
+      >
         <span
           class="map-character-resource-fill"
           :style="{ width: `${mpPercent ?? 0}%` }"
@@ -97,7 +117,7 @@ const statusLabel = computed(() => {
       </span>
 
       <small class="map-character-location">
-        {{ character.server }} · {{ character.zone || 'Unknown zone' }}
+        {{ character.server }} - {{ character.zone || 'Unknown zone' }}
       </small>
     </button>
   </div>
@@ -108,7 +128,7 @@ const statusLabel = computed(() => {
   display: grid;
   grid-template-columns: 1.35rem minmax(0, 1fr);
   gap: 0.35rem;
-  padding: 0.5rem 0.3rem;
+  padding: 0.62rem 0.3rem;
   border-top: 1px solid rgba(50, 66, 87, 0.7);
   color: #e0e8f4;
 }
@@ -199,7 +219,7 @@ const statusLabel = computed(() => {
 .map-character-resource {
   position: relative;
   display: block;
-  height: 0.72rem;
+  height: 0.78rem;
   overflow: hidden;
   border: 1px solid rgba(14, 21, 31, 0.85);
   border-radius: 3px;
