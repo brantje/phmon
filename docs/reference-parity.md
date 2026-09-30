@@ -1383,3 +1383,11 @@ document had no horizontal overflow. No saved groups were present in the browser
 fixture, so live group checkbox rendering was covered by the pure selection tests
 for tri-state, overlap, and membership changes. No command was submitted. Screens
 contain live operator character data and were kept outside the repository.
+
+The follow-up layout keeps Characters in the right map panel, at its top, and
+gives its list a taller scroll area. Historical heatmaps now use a keyboard
+accessible disclosure button and start collapsed. Browser checks confirmed the
+right-side placement, 340 px character list at 1440×1000, 272 px at 1280×800,
+and 304 px at 390×844; the heatmap control started collapsed and toggled open
+with Space. The document had no horizontal overflow at those viewports. The
+production Nuxt container build passed after this layout change.

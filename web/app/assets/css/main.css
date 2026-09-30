@@ -3210,6 +3210,7 @@ select:focus-visible {
 }
 .map-side-panel {
   display: flex;
+  overflow-y: auto;
   max-height: min(82vh, 880px);
   flex-direction: column;
   gap: 0.55rem;
@@ -3245,6 +3246,11 @@ select:focus-visible {
 .map-side-list {
   max-height: 260px;
   overflow: auto;
+}
+.map-side-list.map-character-list {
+  max-height: min(52vh, 560px);
+  min-height: min(34vh, 340px);
+  flex-shrink: 0;
 }
 .map-list-heading {
   position: sticky;
@@ -3405,6 +3411,10 @@ select:focus-visible {
   }
   .map-side-panel {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .map-side-list.map-character-list {
+    max-height: min(60vh, 500px);
+    min-height: min(36vh, 320px);
   }
   .map-side-panel section:nth-child(odd) {
     border-right: 0;

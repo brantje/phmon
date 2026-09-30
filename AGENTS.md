@@ -4201,10 +4201,20 @@ existing server filtering. No API, protocol, migration or command behavior chang
 Changed `web/app/pages/map.vue`, `web/app/utils/mapActionTargets.ts`,
 `web/tests/mapActionTargets.test.ts`, `web/app/composables/useLiveData.ts`,
 `web/app/components/AppSidebar.vue`, `web/app/assets/css/main.css`, and this
-reference ledger. Validation: Nuxt unit tests, typecheck, lint, format check,
-production build, browser interaction checks at 1440×1000, 1280×800 and 390×844,
-and `git diff --check`. The page had no horizontal overflow; no command was sent.
-The browser fixture had no saved groups, so group states were exercised in pure
-unit tests. The local PhMon web container was restored and healthy after preview.
-Exact next action: open `/map` in the operator browser to review saved-group states
-with the operator's groups; issue #30 owns batch command fan-out.
+reference ledger. The feature is in PR #40 on `codex/issue-29-map-action-targets`.
+Its CI passed before the latest visual refinements. CodeRabbit's two findings were
+fixed in `da24aac`; its subsequent review was rate limited. The browser fixture
+had no saved groups, so group states were exercised in pure unit tests. No
+character command was submitted.
+
+Follow-up visual refinement keeps Characters on the right, above Layers, with a
+taller scroll area. Historical heatmaps are keyboard accessible and collapsed by
+default. Browser checks confirmed the right-side placement, a taller Characters
+area at 1440×1000, 1280×800, and 390×844, collapsed default state, and Space-key
+toggle. There was no horizontal overflow. The production Nuxt container build,
+64 unit tests, and format check passed. Screenshots are in `/tmp` and not
+committed because they contain operator data.
+
+Exact next action: finish `git diff --check`, commit and push the visual
+refinement to PR #40, then wait for current-head CI and review; do not merge.
+Issue #30 owns batch command fan-out.
