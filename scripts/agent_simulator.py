@@ -367,7 +367,8 @@ def main():
         if scenario == "map-observations":
             config['mob_spool_path'] = os.path.join(spool_directory, "mob-samples.json")
     fake_calls = []
-    api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or True}) if scenario == 'commands' else None
+    bot_stop_result = os.environ.get('PHMON_SIMULATOR_BOT_STOP_RESULT', 'true').lower() != 'false'
+    api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or bot_stop_result}) if scenario == 'commands' else None
     worker = PhMon.AgentWorker(config, 'simulator-fixture', api_adapter=api)
     workers = [worker]
     stopping = [False]

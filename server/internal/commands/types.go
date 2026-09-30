@@ -39,6 +39,15 @@ type Target struct {
 	Region      *int
 }
 
+type TargetControl struct {
+	CharacterID string
+	SessionID   string
+	AgentID     string
+	Generation  uint64
+	Region      *int
+	Training    *ControlState
+}
+
 type Capability struct {
 	Supported bool     `json:"supported"`
 	Reason    string   `json:"reason,omitempty"`

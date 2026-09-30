@@ -85,6 +85,13 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	if err != nil || training == nil || training.TrainingZone == nil || *training.TrainingZone != trainingZone {
 		t.Fatalf("training zone readback = %+v, err=%v", training, err)
 	}
+	controlTargets, err := store.CurrentControlTargets(ctx, []string{characterID, "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"})
+	if err != nil {
+		t.Fatalf("read batched control targets: %v", err)
+	}
+	if len(controlTargets) != 1 || controlTargets[characterID].SessionID != target.SessionID || controlTargets[characterID].Training.TrainingZone == nil || *controlTargets[characterID].Training.TrainingZone != trainingZone {
+		t.Fatalf("batched controls = %+v", controlTargets)
+	}
 	input := SubmitInput{
 		CharacterID:       characterID,
 		ExpectedSessionID: target.SessionID,
@@ -95,6 +102,14 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	first, duplicate, _, err := service.Submit(ctx, "operator", input)
 	if err != nil || duplicate || first.State != StateQueued {
 		t.Fatalf("first submit = %+v duplicate=%v err=%v", first, duplicate, err)
+	}
+	exact, err := store.ListByIdempotencyKeys(ctx, "operator", []string{"same-request", "not-admitted"})
+	if err != nil || len(exact) != 1 || exact[0].ID != first.ID || exact[0].IdempotencyKey != "same-request" {
+		t.Fatalf("exact command lookup = %+v, err=%v", exact, err)
+	}
+	wrongOperator, err := store.ListByIdempotencyKeys(ctx, "another-operator", []string{"same-request"})
+	if err != nil || len(wrongOperator) != 0 {
+		t.Fatalf("operator-scoped exact command lookup = %+v, err=%v", wrongOperator, err)
 	}
 
 	var wg sync.WaitGroup

@@ -243,6 +243,56 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-09-30 Issue #30 multi-character command orchestration
+
+Implemented the reusable command fan-out foundation for Issue #30. The frontend
+prepares ordered, deduplicated per-character requests only from current, matching
+session controls/capabilities; freezes arguments, target identity, idempotency key
+and request body; rechecks session/scope before each admission; submits at most four
+children concurrently; and retains independent rejection, uncertainty, execution
+and verification results. Exact-key retries retain the original body. `chat.send`
+is excluded from the supported typed command union.
+
+The browser live v1 `controls.character_ids` and `commands.idempotency_keys`
+selectors are additive and bounded to 1–100 unique values. Control reads resolve
+characters and current controls in sets; exact command reads use the admission
+operator identity and bypass the recent-history limit. `useLiveData()` reserves two
+optional slots per fan-out owner, chunks at 100, retains results between command
+rotations, and keeps those feed freshness states separate from base-stream health.
+No plugin protocol, migration, batch endpoint or backend execution rule changed.
+
+The Settings page now has the browser-local `Review actions before submitting`
+cookie preference, default off. When on, reusable fan-out actions show an inline
+preview and refresh eligibility before admission. Changed sessions are skipped
+without adopting their replacement; changed arguments hold the old frozen command
+and require a new explicit action. Existing Return Scroll, Disconnect, Clientless,
+map navigation and training-area prompts follow the same preference. Required
+`confirmation: true` intent fields remain. This follows the operator's direction
+that review is optional and requires no approval checkpoint.
+
+Changed files: `server/internal/{characters,commands,httpapi}`, `web/app` live-data,
+fan-out components/composables/utilities, Settings and single-character prompt
+callers, `web/shared/types/live.ts`, `web/tests/commandFanOut.test.ts`,
+`scripts/agent_simulator.py`, `scripts/command_smoke.py`, `docs/protocol.md`,
+`docs/reference-parity.md`, and this resume record.
+
+Validation: full `scripts/check.sh` passed with Node 24.20.0 and a disposable
+PostgreSQL database (Go race suite, 101 plugin tests, live transport audit, format,
+76 frontend tests, lint with zero errors and 42 existing style warnings, Nuxt
+typecheck/build, Compose config). The final chunking coverage addition then passed
+format, all 77 frontend tests, lint (zero errors) and typecheck. The three-worker
+command smoke passed with independent success and fake execution failure outcomes.
+An isolated browser consumer verified browser-cookie default off and persistence,
+keyboard cancel with zero command POSTs, a reviewed three-command submission with
+three completed simulator results, and preview layout at 1440×1000, 1280×800 and
+390×844 without horizontal overflow. The temporary consumer/database were removed.
+No real phBot command was run; simulator evidence is fixture-only.
+
+Exact next action: connect this reusable fan-out action in its owning Issue #28
+Map/phBot-tools child work when that slice begins; record actual Windows/phBot
+runtime validation separately. Do not present simulator coverage as real runtime
+validation.
+
 ### Map cave evidence and 2D point decision — 2026-09-29
 
 The approved phMonitor v0.5.0 static investigation and GreatestSRO `Media.pk2`

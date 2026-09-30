@@ -13,6 +13,7 @@ import (
 )
 
 const commandRequestMaxBytes = 16 * 1024
+const commandOperatorIdentity = "operator"
 
 type commandHandler struct {
 	service *commands.Service
@@ -45,7 +46,7 @@ func (h *commandHandler) submit(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
-	command, duplicate, unsupportedReason, err := h.service.Submit(ctx, "operator", commands.SubmitInput{
+	command, duplicate, unsupportedReason, err := h.service.Submit(ctx, commandOperatorIdentity, commands.SubmitInput{
 		CharacterID:       request.CharacterID,
 		ExpectedSessionID: request.ExpectedSessionID,
 		Name:              request.Name,

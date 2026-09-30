@@ -9,6 +9,8 @@ import {
   type CharactersSnapshot,
   type CharacterView,
   type CommandsSnapshot,
+  type CommandFanOutLiveFeed,
+  type ControlsTargetsSnapshot,
   type ChatSnapshot,
   type ControlsSnapshot,
   type RemoteCommand,
@@ -21,6 +23,7 @@ import {
   type LiveStream,
 } from '~~/shared/types/live'
 import { mapSnapshotMatchesScope } from '~/utils/mapRefresh'
+import { chunkFanOutValues } from '~/utils/commandFanOut'
 
 type Subscription = {
   id: string
@@ -29,6 +32,15 @@ type Subscription = {
   filter: LiveFilter
   current: boolean
   unavailable: boolean
+  countsForConnection: boolean
+}
+type CommandFanOutOwner = {
+  controlChunks: string[][]
+  controlIndex: number
+  commandChunks: string[][]
+  commandIndex: number
+  commandFreshChunks: Set<number>
+  commandRotationTimer?: number
 }
 type CachedDeathState = {
   session_id: string
@@ -50,6 +62,7 @@ const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const chatFeedCurrent = ref<Record<string, boolean>>({})
 const mapFeeds = ref<Record<string, MapSnapshot>>({})
 const mapFeedCurrent = ref<Record<string, boolean>>({})
+const commandFanOutFeeds = ref<Record<string, CommandFanOutLiveFeed>>({})
 const connectionState = ref<LiveConnectionState>('idle')
 const freshnessNow = ref(Date.now())
 const hasSnapshot = ref(false)
@@ -57,6 +70,7 @@ const staleCycle = ref(false)
 
 const subscriptions = new Map<string, Subscription>()
 const subscriptionRevisions = new Map<string, number>()
+const commandFanOutOwners = new Map<string, CommandFanOutOwner>()
 let socket: WebSocket | null = null
 let reconnectTimer: number | undefined
 let watchdogTimer: number | undefined
@@ -94,6 +108,10 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.floor || '') === (right.floor || '') &&
     (left.region || 0) === (right.region || 0) &&
     (left.event_id || '') === (right.event_id || '') &&
+    (left.character_ids || []).join('\u0000') ===
+      (right.character_ids || []).join('\u0000') &&
+    (left.idempotency_keys || []).join('\u0000') ===
+      (right.idempotency_keys || []).join('\u0000') &&
     (left.cursor || '') === (right.cursor || '')
   )
 }
@@ -198,13 +216,15 @@ function ensureSubscription(
   stream: LiveStream,
   filter: LiveFilter = {},
   clear?: () => void,
+  countsForConnection = true,
 ) {
   if (!import.meta.client) return
   const current = subscriptions.get(id)
   if (
     current &&
     current.stream === stream &&
-    sameFilter(current.filter, filter)
+    sameFilter(current.filter, filter) &&
+    current.countsForConnection === countsForConnection
   ) {
     return
   }
@@ -215,10 +235,12 @@ function ensureSubscription(
     revision: nextSubscriptionRevision(id, current),
     current: false,
     unavailable: false,
+    countsForConnection,
   }
   subscriptions.set(id, subscription)
   clear?.()
-  if (hasSnapshot.value && stream !== 'chat') connectionState.value = 'syncing'
+  if (hasSnapshot.value && stream !== 'chat' && countsForConnection)
+    connectionState.value = 'syncing'
   if (
     !send({
       type: 'subscribe',
@@ -463,6 +485,230 @@ function clearCharacterCommandSubscriptions() {
   })
 }
 
+function fanOutSubscriptionID(ownerID: string, kind: 'controls' | 'commands') {
+  return `fanout-${ownerID}-${kind}`
+}
+
+function fanOutOwner(ownerID: string) {
+  let owner = commandFanOutOwners.get(ownerID)
+  if (!owner) {
+    owner = {
+      controlChunks: [],
+      controlIndex: 0,
+      commandChunks: [],
+      commandIndex: 0,
+      commandFreshChunks: new Set(),
+    }
+    commandFanOutOwners.set(ownerID, owner)
+  }
+  if (!commandFanOutFeeds.value[ownerID]) {
+    commandFanOutFeeds.value = {
+      ...commandFanOutFeeds.value,
+      [ownerID]: {
+        targets: {},
+        controls_current: false,
+        controls_unavailable: false,
+        commands: {},
+        commands_current: false,
+        commands_unavailable: false,
+      },
+    }
+  }
+  return owner
+}
+
+function setCommandFanOutTargets(ownerID: string, characterIDs: string[]) {
+  const owner = fanOutOwner(ownerID)
+  owner.controlChunks = chunkFanOutValues([...new Set(characterIDs)])
+  owner.controlIndex = 0
+  const feed = commandFanOutFeeds.value[ownerID]!
+  feed.targets = {}
+  feed.controls_current = owner.controlChunks.length === 0
+  feed.controls_unavailable = false
+  commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+  if (!owner.controlChunks.length) {
+    removeSubscription(fanOutSubscriptionID(ownerID, 'controls'))
+    return
+  }
+  subscribeFanOutChunk(ownerID, 'controls')
+}
+
+function refreshCommandFanOutTargets(ownerID: string) {
+  const owner = commandFanOutOwners.get(ownerID)
+  const feed = commandFanOutFeeds.value[ownerID]
+  if (!owner || !feed) return
+  owner.controlIndex = 0
+  feed.controls_current = owner.controlChunks.length === 0
+  feed.controls_unavailable = false
+  commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+  if (!owner.controlChunks.length) return
+  const id = fanOutSubscriptionID(ownerID, 'controls')
+  subscribeFanOutChunk(ownerID, 'controls')
+  refreshLiveData([id])
+}
+
+function trackCommandFanOut(ownerID: string, keys: string[]) {
+  const owner = fanOutOwner(ownerID)
+  const feed = commandFanOutFeeds.value[ownerID]!
+  const allKeys = [...new Set(keys)]
+  const keySet = new Set(allKeys)
+  feed.commands = Object.fromEntries(
+    Object.entries(feed.commands).filter(([key]) => keySet.has(key)),
+  )
+  owner.commandChunks = chunkFanOutValues(allKeys)
+  owner.commandIndex = 0
+  owner.commandFreshChunks.clear()
+  feed.commands_current = owner.commandChunks.length === 0
+  feed.commands_unavailable = false
+  commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+  if (!owner.commandChunks.length) {
+    removeSubscription(fanOutSubscriptionID(ownerID, 'commands'))
+    return
+  }
+  subscribeFanOutChunk(ownerID, 'commands')
+}
+
+function subscribeFanOutChunk(ownerID: string, kind: 'controls' | 'commands') {
+  const owner = commandFanOutOwners.get(ownerID)
+  if (!owner) return
+  const chunks = kind === 'controls' ? owner.controlChunks : owner.commandChunks
+  const index = kind === 'controls' ? owner.controlIndex : owner.commandIndex
+  const values = chunks[index]
+  if (!values) return
+  const id = fanOutSubscriptionID(ownerID, kind)
+  const stream: LiveStream = kind
+  const filter: LiveFilter =
+    kind === 'controls'
+      ? { character_ids: values }
+      : { idempotency_keys: values }
+  ensureSubscription(id, stream, filter, undefined, false)
+}
+
+function commandStateRank(state: RemoteCommand['state']) {
+  switch (state) {
+    case 'queued':
+      return 0
+    case 'dispatching':
+      return 1
+    case 'sent':
+      return 2
+    case 'acknowledged':
+      return 3
+    case 'unknown':
+      return 4
+    case 'completed':
+    case 'failed':
+    case 'expired':
+      return 5
+  }
+}
+
+function applyCommandFanOutSnapshot(subscription: Subscription, data: unknown) {
+  const suffix = subscription.stream === 'controls' ? '-controls' : '-commands'
+  const ownerID =
+    subscription.id.startsWith('fanout-') && subscription.id.endsWith(suffix)
+      ? subscription.id.slice('fanout-'.length, -suffix.length)
+      : ''
+  const owner = commandFanOutOwners.get(ownerID)
+  const feed = commandFanOutFeeds.value[ownerID]
+  if (!owner || !feed) return false
+
+  if (subscription.stream === 'controls') {
+    const snapshot = data as ControlsTargetsSnapshot
+    const expected = owner.controlChunks[owner.controlIndex] || []
+    if (
+      !Array.isArray(snapshot.targets) ||
+      snapshot.targets.length !== expected.length
+    )
+      return false
+    const targets = { ...feed.targets }
+    for (let index = 0; index < expected.length; index++) {
+      const item = snapshot.targets[index]
+      if (!item || item.character_id !== expected[index]) return false
+      targets[item.character_id] = item
+    }
+    feed.targets = targets
+    feed.controls_unavailable = false
+    if (owner.controlIndex + 1 < owner.controlChunks.length) {
+      owner.controlIndex++
+      feed.controls_current = false
+      commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+      subscribeFanOutChunk(ownerID, 'controls')
+    } else {
+      owner.controlIndex = 0
+      feed.controls_current = true
+      feed.updated_at = Date.now()
+      commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+    }
+    return true
+  }
+
+  const snapshot = data as CommandsSnapshot
+  const expected = owner.commandChunks[owner.commandIndex] || []
+  if (!Array.isArray(snapshot.commands)) return false
+  const commands = { ...feed.commands }
+  for (const command of snapshot.commands) {
+    if (
+      !command?.command_id ||
+      !command.idempotency_key ||
+      !expected.includes(command.idempotency_key)
+    )
+      return false
+    const previous = commands[command.idempotency_key]
+    if (
+      !previous ||
+      commandStateRank(command.state) > commandStateRank(previous.state)
+    )
+      commands[command.idempotency_key] = command
+  }
+  feed.commands = commands
+  owner.commandFreshChunks.add(owner.commandIndex)
+  feed.commands_current =
+    owner.commandFreshChunks.size === owner.commandChunks.length
+  feed.commands_unavailable = false
+  feed.updated_at = Date.now()
+  commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+  if (owner.commandChunks.length > 1 && !owner.commandRotationTimer) {
+    owner.commandRotationTimer = window.setTimeout(() => {
+      owner.commandRotationTimer = undefined
+      owner.commandIndex = (owner.commandIndex + 1) % owner.commandChunks.length
+      if (owner.commandIndex === 0) owner.commandFreshChunks.clear()
+      feed.commands_current = false
+      commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+      subscribeFanOutChunk(ownerID, 'commands')
+    }, 1000)
+  }
+  return true
+}
+
+function markCommandFanOutUnavailable(subscriptionID: string) {
+  const suffix = subscriptionID.endsWith('-controls')
+    ? '-controls'
+    : '-commands'
+  const ownerID = subscriptionID.slice('fanout-'.length, -suffix.length)
+  const feed = commandFanOutFeeds.value[ownerID]
+  if (!feed) return
+  if (suffix === '-controls') {
+    feed.controls_current = false
+    feed.controls_unavailable = true
+  } else {
+    feed.commands_current = false
+    feed.commands_unavailable = true
+  }
+  commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+}
+
+function clearCommandFanOutOwner(ownerID: string) {
+  const owner = commandFanOutOwners.get(ownerID)
+  if (import.meta.client && owner?.commandRotationTimer)
+    window.clearTimeout(owner.commandRotationTimer)
+  removeSubscription(fanOutSubscriptionID(ownerID, 'controls'))
+  removeSubscription(fanOutSubscriptionID(ownerID, 'commands'))
+  commandFanOutOwners.delete(ownerID)
+  const { [ownerID]: _removed, ...remaining } = commandFanOutFeeds.value
+  commandFanOutFeeds.value = remaining
+}
+
 function refreshLiveData(ids?: string[]) {
   if (!import.meta.client) return
   const wanted = ids ? new Set(ids) : null
@@ -471,7 +717,24 @@ function refreshLiveData(ids?: string[]) {
     if (wanted && !wanted.has(subscription.id)) continue
     subscription.current = false
     subscription.unavailable = false
-    requested = true
+    requested ||= subscription.countsForConnection
+    if (subscription.id.startsWith('fanout-')) {
+      const suffix = subscription.id.endsWith('-controls')
+        ? '-controls'
+        : '-commands'
+      const ownerID = subscription.id.slice('fanout-'.length, -suffix.length)
+      const feed = commandFanOutFeeds.value[ownerID]
+      if (feed) {
+        if (suffix === '-controls') {
+          feed.controls_current = false
+          feed.controls_unavailable = false
+        } else {
+          feed.commands_current = false
+          feed.commands_unavailable = false
+        }
+        commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
+      }
+    }
     send({
       type: 'refresh',
       protocol_version: LIVE_PROTOCOL_VERSION,
@@ -512,6 +775,21 @@ function ensureConnection() {
       subscription.unavailable = false
       subscribe(subscription)
     }
+    for (const [ownerID, owner] of commandFanOutOwners) {
+      owner.controlIndex = 0
+      owner.commandIndex = 0
+      owner.commandFreshChunks.clear()
+      const feed = commandFanOutFeeds.value[ownerID]
+      if (feed) {
+        feed.controls_current = owner.controlChunks.length === 0
+        feed.commands_current = owner.commandChunks.length === 0
+        feed.controls_unavailable = false
+        feed.commands_unavailable = false
+      }
+      subscribeFanOutChunk(ownerID, 'controls')
+      subscribeFanOutChunk(ownerID, 'commands')
+    }
+    commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
     startWatchdog()
   })
 
@@ -569,8 +847,12 @@ function handleFrame(frame: LiveServerFrame) {
   if (frame.type === 'subscription.unavailable') {
     subscription.current = false
     subscription.unavailable = true
-    staleCycle.value = true
-    connectionState.value = 'stale'
+    if (subscription.id.startsWith('fanout-')) {
+      markCommandFanOutUnavailable(subscription.id)
+    } else {
+      staleCycle.value = true
+      connectionState.value = 'stale'
+    }
     if (subscription.stream === 'map') {
       mapFeedCurrent.value = {
         ...mapFeedCurrent.value,
@@ -583,8 +865,12 @@ function handleFrame(frame: LiveServerFrame) {
     subscription.current = false
     if (frame.reason !== 'obsolete_revision') {
       subscription.unavailable = true
-      staleCycle.value = true
-      connectionState.value = 'stale'
+      if (subscription.id.startsWith('fanout-')) {
+        markCommandFanOutUnavailable(subscription.id)
+      } else {
+        staleCycle.value = true
+        connectionState.value = 'stale'
+      }
     }
     if (subscription.stream === 'map') {
       mapFeedCurrent.value = {
@@ -608,6 +894,8 @@ function handleFrame(frame: LiveServerFrame) {
 
 function applySnapshot(subscription: Subscription, data: unknown) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+  if (subscription.id.startsWith('fanout-'))
+    return applyCommandFanOutSnapshot(subscription, data)
   switch (subscription.id) {
     case 'agents': {
       const snapshot = data as AgentsSnapshot
@@ -765,7 +1053,8 @@ function updateCurrentState() {
     return
   }
   const connectionSubscriptions = [...subscriptions.values()].filter(
-    (subscription) => subscription.stream !== 'chat',
+    (subscription) =>
+      subscription.stream !== 'chat' && subscription.countsForConnection,
   )
   const allCurrent = connectionSubscriptions.every(
     (subscription) => subscription.current,
@@ -794,6 +1083,19 @@ function markSubscriptionsStale() {
       }
     }
   }
+  for (const owner of commandFanOutOwners.values()) {
+    if (owner.commandRotationTimer)
+      window.clearTimeout(owner.commandRotationTimer)
+    owner.commandRotationTimer = undefined
+    owner.controlIndex = 0
+    owner.commandIndex = 0
+    owner.commandFreshChunks.clear()
+  }
+  for (const feed of Object.values(commandFanOutFeeds.value)) {
+    feed.controls_current = false
+    feed.commands_current = false
+  }
+  commandFanOutFeeds.value = { ...commandFanOutFeeds.value }
   staleCycle.value = true
   connectionState.value = hasSnapshot.value ? 'stale' : 'reconnecting'
 }
@@ -864,6 +1166,7 @@ export function useLiveData() {
     chatFeedCurrent: readonly(chatFeedCurrent),
     mapFeeds: readonly(mapFeeds),
     mapFeedCurrent: readonly(mapFeedCurrent),
+    commandFanOutFeeds: readonly(commandFanOutFeeds),
     connectionState: readonly(connectionState),
     freshnessNow: readonly(freshnessNow),
     liveStale,
@@ -885,6 +1188,10 @@ export function useLiveData() {
     clearChatFeed,
     applyChatReadState,
     clearCharacterCommandSubscriptions,
+    setCommandFanOutTargets,
+    refreshCommandFanOutTargets,
+    trackCommandFanOut,
+    clearCommandFanOutOwner,
     refreshLiveData,
   }
 }

@@ -39,26 +39,28 @@ const (
 )
 
 type liveFilter struct {
-	Query        string   `json:"q,omitempty"`
-	GroupID      string   `json:"group_id,omitempty"`
-	CharacterID  string   `json:"character_id,omitempty"`
-	CommandName  string   `json:"command_name,omitempty"`
-	CommandState string   `json:"command_state,omitempty"`
-	Limit        int      `json:"limit,omitempty"`
-	ResourceKeys []string `json:"resource_keys,omitempty"`
-	Server       string   `json:"server,omitempty"`
-	Kind         string   `json:"kind,omitempty"`
-	Category     string   `json:"category,omitempty"`
-	Item         string   `json:"item,omitempty"`
-	EventID      string   `json:"event_id,omitempty"`
-	From         string   `json:"from,omitempty"`
-	To           string   `json:"to,omitempty"`
-	Cursor       string   `json:"cursor,omitempty"`
-	Channel      string   `json:"channel,omitempty"`
-	Peer         string   `json:"peer,omitempty"`
-	Area         string   `json:"area,omitempty"`
-	Floor        string   `json:"floor,omitempty"`
-	Region       int      `json:"region,omitempty"`
+	Query           string   `json:"q,omitempty"`
+	GroupID         string   `json:"group_id,omitempty"`
+	CharacterID     string   `json:"character_id,omitempty"`
+	CharacterIDs    []string `json:"character_ids,omitempty"`
+	IdempotencyKeys []string `json:"idempotency_keys,omitempty"`
+	CommandName     string   `json:"command_name,omitempty"`
+	CommandState    string   `json:"command_state,omitempty"`
+	Limit           int      `json:"limit,omitempty"`
+	ResourceKeys    []string `json:"resource_keys,omitempty"`
+	Server          string   `json:"server,omitempty"`
+	Kind            string   `json:"kind,omitempty"`
+	Category        string   `json:"category,omitempty"`
+	Item            string   `json:"item,omitempty"`
+	EventID         string   `json:"event_id,omitempty"`
+	From            string   `json:"from,omitempty"`
+	To              string   `json:"to,omitempty"`
+	Cursor          string   `json:"cursor,omitempty"`
+	Channel         string   `json:"channel,omitempty"`
+	Peer            string   `json:"peer,omitempty"`
+	Area            string   `json:"area,omitempty"`
+	Floor           string   `json:"floor,omitempty"`
+	Region          int      `json:"region,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -86,6 +88,13 @@ type liveServerMessage struct {
 	Reason          string `json:"reason,omitempty"`
 	SentAt          string `json:"sent_at,omitempty"`
 	Data            any    `json:"data,omitempty"`
+}
+
+type liveControlTarget struct {
+	CharacterID       string                `json:"character_id"`
+	Character         *characters.Character `json:"character"`
+	Controls          map[string]any        `json:"controls"`
+	UnavailableReason string                `json:"unavailable_reason,omitempty"`
 }
 
 type LiveHub struct {
@@ -563,6 +572,13 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if h.commands == nil {
 			return nil, errors.New("command history unavailable")
 		}
+		if len(subscription.Filter.IdempotencyKeys) > 0 {
+			items, err := h.commands.CommandsByIdempotencyKeys(ctx, commandOperatorIdentity, subscription.Filter.IdempotencyKeys)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"commands": items}, nil
+		}
 		limit := subscription.Filter.Limit
 		if limit == 0 {
 			limit = 25
@@ -575,6 +591,43 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 	case "controls":
 		if h.commands == nil {
 			return nil, errors.New("character controls unavailable")
+		}
+		if len(subscription.Filter.CharacterIDs) > 0 {
+			if h.characters == nil {
+				return nil, errors.New("character store unavailable")
+			}
+			charactersByID, err := h.characters.GetMany(ctx, subscription.Filter.CharacterIDs)
+			if err != nil {
+				return nil, err
+			}
+			controls, err := h.commands.ControlsForTargets(ctx, subscription.Filter.CharacterIDs)
+			if err != nil {
+				return nil, err
+			}
+			targets := make([]liveControlTarget, 0, len(subscription.Filter.CharacterIDs))
+			for index, id := range subscription.Filter.CharacterIDs {
+				item := liveControlTarget{CharacterID: id}
+				if character, ok := charactersByID[id]; ok {
+					character = characterWithPortrait(character, h.resources)
+					item.Character = &character
+				} else {
+					item.UnavailableReason = "not_found"
+				}
+				if index < len(controls) {
+					controlSession, _ := controls[index]["session_id"].(string)
+					switch {
+					case item.Character == nil:
+					case !item.Character.Online:
+						item.UnavailableReason = "offline"
+					case item.Character.SessionID == nil || controlSession != *item.Character.SessionID:
+						item.UnavailableReason = "session_changed"
+					default:
+						item.Controls = controls[index]
+					}
+				}
+				targets = append(targets, item)
+			}
+			return map[string]any{"targets": targets}, nil
 		}
 		return h.commands.Controls(ctx, subscription.Filter.CharacterID)
 	case "resources":
@@ -788,14 +841,16 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		Revision: message.Revision,
 		Stream:   message.Stream,
 		Filter: liveFilter{
-			Query:        strings.TrimSpace(message.Filter.Query),
-			GroupID:      message.Filter.GroupID,
-			CharacterID:  message.Filter.CharacterID,
-			CommandName:  message.Filter.CommandName,
-			CommandState: message.Filter.CommandState,
-			Limit:        message.Filter.Limit,
-			ResourceKeys: append([]string(nil), message.Filter.ResourceKeys...),
-			Server:       strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
+			Query:           strings.TrimSpace(message.Filter.Query),
+			GroupID:         message.Filter.GroupID,
+			CharacterID:     message.Filter.CharacterID,
+			CharacterIDs:    cloneOptionalStringSlice(message.Filter.CharacterIDs),
+			IdempotencyKeys: cloneOptionalStringSlice(message.Filter.IdempotencyKeys),
+			CommandName:     message.Filter.CommandName,
+			CommandState:    message.Filter.CommandState,
+			Limit:           message.Filter.Limit,
+			ResourceKeys:    append([]string(nil), message.Filter.ResourceKeys...),
+			Server:          strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
 			EventID: message.Filter.EventID,
 			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 			Channel: message.Filter.Channel, Peer: message.Filter.Peer,
@@ -803,6 +858,12 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
+		return liveSubscription{}, false
+	}
+	if subscription.Stream != "controls" && subscription.Filter.CharacterIDs != nil {
+		return liveSubscription{}, false
+	}
+	if subscription.Stream != "commands" && subscription.Filter.IdempotencyKeys != nil {
 		return liveSubscription{}, false
 	}
 	switch subscription.Stream {
@@ -829,7 +890,38 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			!validServerFilter(subscription.Filter.Server) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 || hasEventSpecificFilters(subscription.Filter) {
 			return liveSubscription{}, false
 		}
-	case "commands", "controls", "resources":
+	case "commands":
+		filter := subscription.Filter
+		if filter.Query != "" || filter.GroupID != "" || hasEventFilters(filter) || len(filter.ResourceKeys) != 0 || len(filter.CommandName) > 64 {
+			return liveSubscription{}, false
+		}
+		if filter.IdempotencyKeys != nil {
+			if filter.CharacterID != "" || filter.CommandName != "" || filter.CommandState != "" || filter.Limit != 0 || !validIdempotencyKeyBatch(filter.IdempotencyKeys) {
+				return liveSubscription{}, false
+			}
+		} else {
+			if !agentdomain.ValidAgentID(filter.CharacterID) || (filter.Limit != 0 && (filter.Limit < 1 || filter.Limit > 100)) {
+				return liveSubscription{}, false
+			}
+			switch filter.CommandState {
+			case "", "queued", "dispatching", "sent", "acknowledged", "completed", "failed", "expired", "unknown":
+			default:
+				return liveSubscription{}, false
+			}
+		}
+	case "controls":
+		filter := subscription.Filter
+		if filter.Query != "" || filter.GroupID != "" || filter.CommandName != "" || filter.CommandState != "" || filter.Limit != 0 || len(filter.ResourceKeys) != 0 || hasEventFilters(filter) {
+			return liveSubscription{}, false
+		}
+		if filter.CharacterIDs != nil {
+			if filter.CharacterID != "" || !validCharacterIDBatch(filter.CharacterIDs) {
+				return liveSubscription{}, false
+			}
+		} else if !agentdomain.ValidAgentID(filter.CharacterID) {
+			return liveSubscription{}, false
+		}
+	case "resources":
 		if !agentdomain.ValidAgentID(subscription.Filter.CharacterID) || subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || hasEventFilters(subscription.Filter) {
 			return liveSubscription{}, false
 		}
@@ -849,21 +941,6 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 					return liveSubscription{}, false
 				}
 				seen[key] = struct{}{}
-			}
-		} else if subscription.Stream == "controls" && subscription.Filter.Limit != 0 {
-			return liveSubscription{}, false
-		}
-		if subscription.Stream != "commands" && (subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "") {
-			return liveSubscription{}, false
-		}
-		if subscription.Stream == "commands" {
-			if len(subscription.Filter.CommandName) > 64 || (subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > 100)) || len(subscription.Filter.ResourceKeys) != 0 {
-				return liveSubscription{}, false
-			}
-			switch subscription.Filter.CommandState {
-			case "", "queued", "dispatching", "sent", "acknowledged", "completed", "failed", "expired", "unknown":
-			default:
-				return liveSubscription{}, false
 			}
 		}
 	case "events":
@@ -1034,6 +1111,47 @@ func collectMapActivity(
 
 func validServerFilter(server string) bool {
 	return len(server) <= 100 && !strings.ContainsRune(server, 0)
+}
+
+func cloneOptionalStringSlice(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	return append(make([]string, 0, len(values)), values...)
+}
+
+func validCharacterIDBatch(ids []string) bool {
+	if len(ids) == 0 || len(ids) > 100 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if !agentdomain.ValidAgentID(id) {
+			return false
+		}
+		if _, exists := seen[id]; exists {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
+}
+
+func validIdempotencyKeyBatch(keys []string) bool {
+	if len(keys) == 0 || len(keys) > 100 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		if len(key) == 0 || len(key) > 128 || strings.TrimSpace(key) != key || strings.ContainsRune(key, 0) {
+			return false
+		}
+		if _, exists := seen[key]; exists {
+			return false
+		}
+		seen[key] = struct{}{}
+	}
+	return true
 }
 
 func validSubscriptionID(value string) bool {
