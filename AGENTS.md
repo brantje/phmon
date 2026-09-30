@@ -4254,8 +4254,10 @@ Base pins use green `#58bd8a`, focused pins use blue `#4db9ff`; offline/stale
 fills and region-tile dashed borders remain. The browser verified that exactly
 one blue marker follows the focused Characters button and checkbox selection
 does not change it. Nuxt unit tests (64), typecheck, lint (0 errors; 42 style
-warnings), Prettier check and production build pass after this change. The pin
-changes, parity note and this resume update are not yet committed. CodeRabbit's
-previous response said the next included review becomes available around 07:50
-UTC. Exact next action: commit and push the pin styling to PR #40, wait for the
-new head CI, then request CodeRabbit review after its limit resets; do not merge.
+warnings), Prettier check and production build pass after this change. Commit
+`4b661b9` with the pin styling and parity note is pushed to PR #40; both
+`validate` and `stack` pass for that head. CodeRabbit's latest status is still
+rate limited; its comment said the next included review becomes available around
+07:50 UTC. Exact next action: after the limit resets, request a fresh CodeRabbit
+review for PR #40, address any actionable finding, then report the status without
+merging.
