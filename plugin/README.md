@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Slice 7–8 development release is **1.5.5** (`vsro_1188_passive_r2`, API
+The current Slice 7–8 development release is **1.5.6** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v7 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -54,6 +54,12 @@ Plugin 1.5.5 hardens the existing documented party resource collection for the l
 map layer: party X/Y values are emitted only when finite and within the same bounded
 coordinate envelope used by the backend projection. It does not add a second party
 poller, packet fallback, or protocol-version change.
+
+Plugin 1.5.6 fixes guild-storage gold collection by preserving the valid non-negative
+integer `gold` value returned by `get_guild_storage()`. It removes the unnecessary
+0x3253 packet fallback; guild-storage gold now follows the same canonical phBot API
+resource path as the rest of guild storage. Agent protocol remains v7 because the
+existing resource payload already supported an optional guild-storage `gold` field.
 
 PhMon.py is the phBot-side connector for the self-hosted PhMon backend. Each running
 phBot instance owns one stable agent identity and makes its own outbound WebSocket
