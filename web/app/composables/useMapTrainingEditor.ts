@@ -263,6 +263,7 @@ export function useMapTrainingEditor(options: UseMapTrainingEditorOptions) {
   async function runStep(
     area: MapTrainingArea,
     step: TrainingApplyStep,
+    operationScopeKey: string,
   ): Promise<{ outcome: TrainingStepOutcome; message?: string }> {
     const command: FanOutCommandDefinition = {
       name: step.name,
@@ -281,7 +282,7 @@ export function useMapTrainingEditor(options: UseMapTrainingEditorOptions) {
     const operation = await fanOut.prepare(
       [area.character_id],
       command,
-      scopeKey(),
+      operationScopeKey,
     )
     const child = operation?.children[0]
     if (!operation || !child)
@@ -315,6 +316,7 @@ export function useMapTrainingEditor(options: UseMapTrainingEditorOptions) {
   async function apply() {
     const area = selectedArea.value
     if (!area || applyReason.value) return
+    const applyScopeKey = scopeKey()
     const steps = trainingApplySteps(draft.value, area)
     if (!steps.length) return
     if (options.reviewActions()) {
@@ -332,7 +334,7 @@ export function useMapTrainingEditor(options: UseMapTrainingEditorOptions) {
     results.value = []
     try {
       results.value = await runTrainingApplySteps(steps, async (step) => {
-        const result = await runStep(area, step)
+        const result = await runStep(area, step, applyScopeKey)
         results.value = [...results.value, { step, ...result }]
         return result
       })
