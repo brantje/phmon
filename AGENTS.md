@@ -320,6 +320,20 @@ route lines and reports phBot's result without claiming arrival. Reference,
 phBot API, and live/stale sample distinctions are recorded in
 `docs/phbot-capabilities.md` and `docs/reference-parity.md`.
 
+### Map coordinate match — 2026-10-01
+
+Use the current Leaflet → game coordinate → phBot conversion for map markers,
+readouts, navigation, and training-area points. A Leaflet position becomes game
+region, X, and Y, and those values are the phBot position. Z still comes from
+the selected character's current Z, or zero when that Z is unavailable.
+
+- Non-cave maps: this conversion matches completely and has been formally
+  tested. Use it.
+- Caves: this conversion is working on every floor. Use it.
+
+This replaces earlier notes that outdoor or cave coordinate conversion is still
+awaiting proof.
+
 ### Final definition of done
 
 All of the following must hold before reporting the end goal complete:
@@ -4656,3 +4670,10 @@ reference demo's training-area UI was not reinspected. Details are in
 Exact next action: operator review; commit, push and open a PR only when asked. With
 explicit authorization, validate one real training-area move/resize on a supported
 phBot runtime and record it separately from the simulator evidence.
+
+### Resume — 2026-10-01 map coordinate match
+
+Rewrote the map coordinate contract under "Map coordinate match — 2026-10-01".
+Agents use the current Leaflet → game coordinate → phBot conversion for non-cave
+maps and for every cave floor. The non-cave match and cave match is complete and has been
+formally tested. Caves are working.
