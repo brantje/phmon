@@ -1012,6 +1012,12 @@ function applySnapshot(subscription: Subscription, data: unknown) {
           !Array.isArray(snapshot.academy.members)
         )
           return false
+        if (
+          snapshot.training_areas &&
+          (typeof snapshot.training_areas.status !== 'string' ||
+            !Array.isArray(snapshot.training_areas.areas))
+        )
+          snapshot.training_areas = undefined
         mapFeeds.value = { ...mapFeeds.value, [subscription.id]: snapshot }
         mapFeedCurrent.value = {
           ...mapFeedCurrent.value,

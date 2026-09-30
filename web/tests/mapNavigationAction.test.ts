@@ -5,7 +5,9 @@ import type { MapProfile } from '../shared/types/map.ts'
 import {
   createMapNavigationIntent,
   mapNavigationCommand,
+  mapTrainingPositionCommand,
   resolveMapNavigationDestination,
+  resolveMapTrainingPosition,
 } from '../app/utils/mapNavigationAction.ts'
 import type {
   FanOutChild,
@@ -285,4 +287,95 @@ test('exact uncertain retries keep the frozen destination after the character mo
     null,
   )
   assert.deepEqual(request.args, original)
+})
+
+test('training position allows stale positions and reuses current Z or zero', () => {
+  const mapProfile = baseProfile()
+  const stale = character('one', 25000, 71)
+  stale.state_updated_at = new Date(0).toISOString()
+  const resolved = resolveMapTrainingPosition(intent(), mapProfile, stale)
+  assert.equal(resolved.destination?.region, 25000)
+  assert.equal(resolved.destination?.z, 71)
+
+  const noZ = { ...character('two'), z: undefined }
+  assert.equal(
+    resolveMapTrainingPosition(intent(), mapProfile, noZ).destination?.z,
+    0,
+  )
+  const offline = { ...character('three'), online: false }
+  assert.equal(
+    resolveMapTrainingPosition(intent(), mapProfile, offline).reason?.code,
+    'offline',
+  )
+  const otherDataset = resolveMapTrainingPosition(
+    intent({ datasetVersion: 'fixture-v2' }),
+    mapProfile,
+    character('four'),
+  )
+  assert.equal(otherDataset.reason?.code, 'unsupported_profile')
+})
+
+test('training position command builds position mode and guards admission', () => {
+  const mapProfile = baseProfile()
+  const captured = intent({ targetIDs: ['one'] })
+  const current = character('one', 25000, 40)
+  let controls = {
+    character_id: 'one',
+    session_id: 'one-session',
+    capabilities: {
+      'training.area.set': { supported: true, modes: ['position', 'named'] },
+    },
+    training: { session_id: 'one-session', training_available: true },
+  } as ControlsSnapshot
+  const definition = mapTrainingPositionCommand({
+    getIntent: () => captured,
+    getProfile: () => mapProfile,
+    getCharacter: () => current,
+    getControls: () => controls,
+    mapFeedCurrent: () => true,
+  })
+  assert.equal(definition.name, 'training.area.set')
+  assert.equal(definition.preEligibility?.(current), null)
+  const args = definition.buildArgs(current)
+  assert.equal(args.mode, 'position')
+  assert.equal(args.region, 25000)
+  assert.equal(args.z, 40)
+
+  const child = { characterID: 'one', sessionID: 'one-session' } as FanOutChild
+  const request = {
+    character_id: 'one',
+    expected_session_id: 'one-session',
+    name: 'training.area.set',
+    args,
+    idempotency_key: 'training-key',
+    confirmation: false,
+  } satisfies FanOutCommandRequest
+  assert.equal(definition.admissionGuard?.(child, request), null)
+
+  current.z = 55
+  assert.equal(
+    definition.admissionGuard?.(child, request, { exactRetry: false })?.code,
+    'arguments_changed',
+  )
+  assert.equal(
+    definition.admissionGuard?.(child, request, { exactRetry: true }),
+    null,
+  )
+
+  controls = {
+    ...controls,
+    capabilities: {
+      'training.area.set': { supported: true, modes: ['named'] },
+    },
+  }
+  assert.equal(
+    definition.admissionGuard?.(child, request, { exactRetry: true })?.code,
+    'unsupported',
+  )
+
+  controls = {
+    ...controls,
+    training: { session_id: 'one-session', training_available: false },
+  }
+  assert.equal(definition.preEligibility?.(current)?.code, 'no_training_area')
 })

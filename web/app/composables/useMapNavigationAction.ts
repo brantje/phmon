@@ -9,6 +9,7 @@ import { useCommandFanOut } from '~/composables/useCommandFanOut'
 import {
   createMapNavigationIntent,
   mapNavigationCommand,
+  mapTrainingPositionCommand,
 } from '~/utils/mapNavigationAction'
 import type {
   FanOutCommandDefinition,
@@ -76,15 +77,13 @@ export function useMapNavigationAction(options: {
     impact: 'movement' as const,
     buildArgs: () => ({}),
   }
-  const fanout = useCommandFanOut({
-    get command() {
-      return command
-    },
+  const fanOutOptions = (definition: FanOutCommandDefinition) => ({
+    command: definition,
     get scopeKey() {
       const scope = options.scope()
       return scope ? mapNavigationScopeKey(scope) : 'unavailable'
     },
-    scopeKeyForCharacter(character, scopeKey) {
+    scopeKeyForCharacter(character: CharacterView, scopeKey?: string) {
       const scope = options.scope()
       return scope &&
         character.server.toLowerCase() === scope.server.toLowerCase()
@@ -94,18 +93,40 @@ export function useMapNavigationAction(options: {
     currentScopeKey,
     currentCharacter: getCharacter,
   })
+  const fanout = useCommandFanOut(fanOutOptions(command))
+  const trainingFanout = useCommandFanOut(
+    fanOutOptions({
+      name: 'training.area.set',
+      label: 'Set training position',
+      impact: 'routine',
+      buildArgs: () => ({}),
+    }),
+  )
+  const activeTrainingOperationID = ref('')
 
   const operations = computed(() => fanout.operations.value)
+  const trainingOperations = computed(() => trainingFanout.operations.value)
   const menuOperation = computed(() =>
     operations.value.find(
       (item) => item.operationID === activeOperationID.value,
     ),
   )
-  const reviewOperation = computed(() =>
-    operations.value.find(
-      (item) => item.operationID === reviewingOperationID.value,
+  const trainingMenuOperation = computed(() =>
+    trainingOperations.value.find(
+      (item) => item.operationID === activeTrainingOperationID.value,
     ),
   )
+  const reviewOperation = computed(
+    () =>
+      operations.value.find(
+        (item) => item.operationID === reviewingOperationID.value,
+      ) ||
+      trainingOperations.value.find(
+        (item) => item.operationID === reviewingOperationID.value,
+      ),
+  )
+  const fanoutFor = (operation: FanOutOperation) =>
+    trainingOperations.value.includes(operation) ? trainingFanout : fanout
   const targetIDs = computed(
     () =>
       menuOperation.value?.children.map((child) => child.characterID) ||
@@ -142,6 +163,49 @@ export function useMapNavigationAction(options: {
       ? `${counts.value.skipped} of ${counts.value.selected} characters unavailable.`
       : ''
   })
+
+  const trainingLabel = computed(() => {
+    const operation = trainingMenuOperation.value
+    const ids =
+      operation?.children.map((child) => child.characterID) ||
+      preparedTargetIDs.value ||
+      options.selectedTargetIDs()
+    if (ids.length === 1) {
+      const name =
+        operation?.children[0]?.characterName || getCharacter(ids[0]!)?.name
+      return name
+        ? `Set training position for ${name}`
+        : 'Set training position'
+    }
+    if (ids.length > 1)
+      return `Set training position for ${ids.length} characters`
+    return 'Set training position'
+  })
+  const trainingCounts = computed(() =>
+    trainingMenuOperation.value
+      ? trainingFanout.counts(trainingMenuOperation.value)
+      : { selected: 0, eligible: 0, skipped: 0 },
+  )
+  const trainingSummary = computed(() => {
+    if (trainingFanout.error.value) return trainingFanout.error.value
+    if (trainingFanout.preparing.value || !targetIDs.value.length) return ''
+    if (!trainingCounts.value.eligible)
+      return targetIDs.value.length === 1
+        ? trainingMenuOperation.value?.children[0]?.skipReason?.message ||
+            'Character is unavailable.'
+        : 'Selected characters cannot set a training position.'
+    return trainingCounts.value.skipped
+      ? `${trainingCounts.value.skipped} of ${trainingCounts.value.selected} characters cannot set a training position.`
+      : ''
+  })
+
+  function trainingResultStatusNote(operation: FanOutOperation) {
+    return operation.children.some(
+      (child) => child.executionState === 'completed',
+    )
+      ? 'phBot accepted the new center; the training circle follows the next readback.'
+      : undefined
+  }
 
   function resultStatusNote(operation: FanOutOperation) {
     const completed = operation.children.filter(
@@ -214,21 +278,42 @@ export function useMapNavigationAction(options: {
     }
   }
 
+  function trainingDefinitionForIntent(
+    intent: ReturnType<typeof createMapNavigationIntent>,
+  ) {
+    return mapTrainingPositionCommand({
+      getIntent: () => intent,
+      getProfile: options.profile,
+      getCharacter,
+      getControls(characterID) {
+        const controls =
+          trainingFanout.feed.value?.targets[characterID]?.controls
+        return controls ? (controls as ControlsSnapshot) : null
+      },
+      mapFeedCurrent: options.mapFeedCurrent,
+    })
+  }
+
   async function open(
     point: RasterPosition,
     anchor: { x: number; y: number },
     focusTarget?: HTMLElement | null,
+    focusAction: 'navigate' | 'training' = 'navigate',
   ) {
     const scope = options.scope()
     const profile = options.profile()
     if (!scope || !profile) return
     const previous = menuOperation.value
     if (previous && previous.state === 'prepared') fanout.dismiss(previous)
+    const previousTraining = trainingMenuOperation.value
+    if (previousTraining?.state === 'prepared')
+      trainingFanout.dismiss(previousTraining)
     menuPoint.value = Object.freeze({ ...point })
     returnFocusElement =
       focusTarget ?? document.querySelector<HTMLElement>('.map-canvas')
     menuAnchor.value = { x: anchor.x, y: anchor.y }
     activeOperationID.value = ''
+    activeTrainingOperationID.value = ''
     reviewingOperationID.value = ''
     notice.value = ''
     menuOpen.value = true
@@ -245,21 +330,37 @@ export function useMapNavigationAction(options: {
     })
     preparedTargetIDs.value = intent.targetIDs
     preparedScopeKey.value = mapNavigationScopeKey(scope)
-    const operation = await fanout.prepare(
-      [...intent.targetIDs],
-      definitionForIntent(intent),
-      mapNavigationScopeKey(scope),
-    )
+    const [operation, trainingOperation] = await Promise.all([
+      fanout.prepare(
+        [...intent.targetIDs],
+        definitionForIntent(intent),
+        mapNavigationScopeKey(scope),
+      ),
+      trainingFanout.prepare(
+        [...intent.targetIDs],
+        trainingDefinitionForIntent(intent),
+        mapNavigationScopeKey(scope),
+      ),
+    ])
     if (sequence !== openSequence.value || !menuOpen.value) {
       if (operation?.state === 'prepared') fanout.dismiss(operation)
+      if (trainingOperation?.state === 'prepared')
+        trainingFanout.dismiss(trainingOperation)
       return
     }
     if (operation) activeOperationID.value = operation.operationID
+    if (trainingOperation)
+      activeTrainingOperationID.value = trainingOperation.operationID
     await nextTick()
     updateAnchor()
-    const action = menuElement.value?.querySelector<HTMLButtonElement>(
-      'button:not(:disabled)',
+    const preferred = menuElement.value?.querySelector<HTMLButtonElement>(
+      `button[data-map-action="${focusAction}"]:not(:disabled)`,
     )
+    const action =
+      preferred ||
+      menuElement.value?.querySelector<HTMLButtonElement>(
+        'button:not(:disabled)',
+      )
     ;(action || menuElement.value)?.focus()
   }
 
@@ -268,7 +369,11 @@ export function useMapNavigationAction(options: {
     reviewingOperationID.value = ''
     const operation = menuOperation.value
     if (operation?.state === 'prepared') fanout.dismiss(operation)
+    const trainingOperation = trainingMenuOperation.value
+    if (trainingOperation?.state === 'prepared')
+      trainingFanout.dismiss(trainingOperation)
     activeOperationID.value = ''
+    activeTrainingOperationID.value = ''
     preparedTargetIDs.value = null
     preparedScopeKey.value = ''
     notice.value = ''
@@ -284,12 +389,20 @@ export function useMapNavigationAction(options: {
   }
 
   async function submit() {
-    const operation = menuOperation.value
+    await submitOperation(menuOperation.value)
+  }
+
+  async function submitTraining() {
+    await submitOperation(trainingMenuOperation.value)
+  }
+
+  async function submitOperation(operation: FanOutOperation | undefined) {
+    if (!operation) return
+    const owner = fanoutFor(operation)
     if (
-      !operation ||
-      fanout.preparing.value ||
-      fanout.submitting.value ||
-      !counts.value.eligible
+      owner.preparing.value ||
+      owner.submitting.value ||
+      !owner.counts(operation).eligible
     )
       return
     if (options.reviewActions()) {
@@ -302,13 +415,13 @@ export function useMapNavigationAction(options: {
       resultsElement.value?.focus()
       return
     }
-    const changed = await fanout.refreshPreview(operation)
+    const changed = await owner.refreshPreview(operation)
     if (changed) {
       notice.value =
         'Eligibility or destination changed. Close and reopen this menu to prepare a new action.'
       return
     }
-    void fanout.submit(operation)
+    void owner.submit(operation)
     close(false)
     await nextTick()
     resultsElement.value?.focus({ preventScroll: true })
@@ -316,15 +429,17 @@ export function useMapNavigationAction(options: {
 
   async function submitReviewed() {
     const operation = reviewOperation.value
-    if (!operation || fanout.preparing.value || fanout.submitting.value) return
-    const changed = await fanout.refreshPreview(operation)
+    if (!operation) return
+    const owner = fanoutFor(operation)
+    if (owner.preparing.value || owner.submitting.value) return
+    const changed = await owner.refreshPreview(operation)
     if (changed) {
       notice.value =
         'Eligibility or destination changed. Close and reopen this menu to prepare a new action.'
       return
     }
     reviewingOperationID.value = ''
-    void fanout.submit(operation)
+    void owner.submit(operation)
     close(false)
     await nextTick()
     resultsElement.value?.focus({ preventScroll: true })
@@ -332,16 +447,16 @@ export function useMapNavigationAction(options: {
 
   function cancelReview() {
     const operation = reviewOperation.value
-    if (operation?.state === 'prepared') fanout.dismiss(operation)
+    if (operation?.state === 'prepared') fanoutFor(operation).dismiss(operation)
     close()
   }
 
   function dismissResults(operation: FanOutOperation) {
-    fanout.dismiss(operation)
+    fanoutFor(operation).dismiss(operation)
   }
 
   function retry(operation: FanOutOperation, characterID: string) {
-    return fanout.retrySubmission(operation, characterID)
+    return fanoutFor(operation).retrySubmission(operation, characterID)
   }
 
   function outsidePointer(event: PointerEvent) {
@@ -366,6 +481,7 @@ export function useMapNavigationAction(options: {
     window.removeEventListener('keydown', escape)
     window.removeEventListener('resize', updateAnchor)
     fanout.dispose()
+    trainingFanout.dispose()
   })
 
   watch(
@@ -394,6 +510,15 @@ export function useMapNavigationAction(options: {
     counts,
     menuSummary,
     resultStatusNote,
+    trainingMenuOperation,
+    trainingOperations,
+    trainingLabel,
+    trainingCounts,
+    trainingSummary,
+    trainingResultStatusNote,
+    trainingPreparing: trainingFanout.preparing,
+    trainingSubmitting: trainingFanout.submitting,
+    trainingStale: trainingFanout.stale,
     notice: readonly(notice),
     preparing: fanout.preparing,
     submitting: fanout.submitting,
@@ -402,6 +527,7 @@ export function useMapNavigationAction(options: {
     open,
     close,
     submit,
+    submitTraining,
     submitReviewed,
     cancelReview,
     dismissResults,

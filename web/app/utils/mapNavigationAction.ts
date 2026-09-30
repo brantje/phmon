@@ -122,7 +122,19 @@ export function resolveMapNavigationDestination(
     return { reason: reasons.profile }
   if (intent.areaID === 'job-temple' && intent.floorID !== '1F')
     return { reason: reasons.temple }
+  return resolveMapPointForCharacter(intent, profile, character)
+}
 
+/**
+ * Converts the intent's raster point to game coordinates for one character.
+ * The region comes from the outdoor tile or the cave floor profile; Z reuses
+ * the character's current Z, or zero when it is unknown.
+ */
+export function resolveMapPointForCharacter(
+  intent: MapNavigationIntent,
+  profile: MapProfile,
+  character: CharacterView,
+): MapNavigationResolution {
   const floor = profile.areas
     .find((area) => area.id === intent.areaID)
     ?.floors.find((item) => item.id === intent.floorID)
@@ -162,6 +174,136 @@ export function resolveMapNavigationDestination(
     Number.isFinite(character.z) ? character.z : 0,
   )
   return destination ? { destination } : { reason: reasons.point }
+}
+
+export function resolveMapTrainingPosition(
+  intent: MapNavigationIntent,
+  profile: MapProfile,
+  character: CharacterView,
+): MapNavigationResolution {
+  if (!character.online || !character.session_id)
+    return { reason: reasons.offline }
+  if (character.server.toLowerCase() !== intent.server.toLowerCase())
+    return { reason: reasons.session }
+  if (
+    profile.dataset_id !== intent.datasetID ||
+    profile.dataset_version !== intent.datasetVersion
+  )
+    return { reason: reasons.profile }
+  return resolveMapPointForCharacter(intent, profile, character)
+}
+
+const noTrainingArea: FanOutSkipReason = {
+  code: 'no_training_area',
+  message:
+    'This session reports no active training area. Create one in phBot first.',
+}
+
+interface MapActionControls {
+  character_id: string
+  session_id: string
+  capabilities: Record<string, { supported: boolean; modes?: string[] }>
+  training?: { session_id: string; training_available: boolean }
+}
+
+/**
+ * Moves each target's active training-area center to the map point. Unlike
+ * navigation, a stale position does not block it: only region and Z derive
+ * from the character, and Z falls back to zero.
+ */
+export function mapTrainingPositionCommand(state: {
+  getIntent(): MapNavigationIntent | null
+  getProfile(): MapProfile | null
+  getCharacter(characterID: string): CharacterView | undefined
+  getControls(characterID: string): MapActionControls | null
+  mapFeedCurrent(): boolean
+}): FanOutCommandDefinition {
+  const resolve = (character: CharacterView) => {
+    const intent = state.getIntent()
+    const profile = state.getProfile()
+    if (!intent || !profile)
+      return { reason: reasons.profile } as MapNavigationResolution
+    return resolveMapTrainingPosition(intent, profile, character)
+  }
+  const trainingReason = (characterID: string, sessionID: string) => {
+    const training = state.getControls(characterID)?.training
+    return training?.session_id === sessionID && !training.training_available
+      ? noTrainingArea
+      : null
+  }
+  return {
+    name: 'training.area.set',
+    label: 'Set training position',
+    impact: 'routine',
+    preEligibility(character) {
+      if (!state.mapFeedCurrent())
+        return {
+          code: 'stale_map_scope',
+          message: 'The current server/area/floor map snapshot is stale.',
+        }
+      return (
+        trainingReason(character.character_id, character.session_id || '') ||
+        resolve(character).reason ||
+        null
+      )
+    },
+    buildArgs(character) {
+      const result = resolve(character)
+      if (!result.destination)
+        throw new Error(result.reason?.message || reasons.point.message)
+      return { mode: 'position', ...result.destination }
+    },
+    summarizeArgs(args) {
+      const intent = state.getIntent()
+      return `Training center ${args.x}, ${args.y}, Z ${args.z} · ${intent?.server || 'server'} · ${intent?.areaID || 'map'} / ${intent?.floorID || 'floor'}`
+    },
+    admissionGuard(child, request, context) {
+      const intent = state.getIntent()
+      const profile = state.getProfile()
+      if (!intent || !profile) return reasons.profile
+      if (
+        intent.targetIDs.indexOf(child.characterID) < 0 ||
+        request.character_id !== child.characterID ||
+        request.expected_session_id !== child.sessionID
+      )
+        return reasons.session
+      const controls = state.getControls(child.characterID)
+      const capability = controls?.capabilities['training.area.set']
+      if (
+        !controls ||
+        controls.character_id !== child.characterID ||
+        controls.session_id !== child.sessionID ||
+        !capability?.supported ||
+        !capability.modes?.includes('position')
+      )
+        return {
+          code: 'unsupported',
+          message:
+            'The current session no longer reports training position support.',
+        }
+      const current = state.getCharacter(child.characterID)
+      if (!current || current.session_id !== child.sessionID)
+        return reasons.session
+      const resolved = resolveMapTrainingPosition(intent, profile, current)
+      if (!resolved.destination) return resolved.reason || reasons.point
+      if (
+        !context?.exactRetry &&
+        JSON.stringify({ mode: 'position', ...resolved.destination }) !==
+          JSON.stringify(request.args)
+      )
+        return {
+          code: 'arguments_changed',
+          message:
+            'Region, Z or scope changed after preparation. Reopen the map action to prepare a new command.',
+        }
+      if (!state.mapFeedCurrent())
+        return {
+          code: 'stale_map_scope',
+          message: 'The current server/area/floor map snapshot is stale.',
+        }
+      return null
+    },
+  }
 }
 
 export function mapNavigationCommand(state: {

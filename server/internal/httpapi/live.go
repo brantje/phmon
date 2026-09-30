@@ -738,6 +738,18 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, err
 		}
 		party := projectPartyMembers(profile, partyObservations, partySourceTruncated, subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, time.Now().UTC())
+		training := mapTrainingAreasSnapshot{Status: "unavailable", Areas: []mapTrainingArea{}}
+		if h.commands != nil {
+			trainingRows, err := h.commands.CurrentTrainingAreas(ctx, subscription.Filter.Server, maxMapTrainingAreas+1)
+			if err != nil {
+				return nil, err
+			}
+			sourceTruncated := len(trainingRows) > maxMapTrainingAreas
+			if sourceTruncated {
+				trainingRows = trainingRows[:maxMapTrainingAreas]
+			}
+			training = projectTrainingAreas(profile, trainingRows, sourceTruncated, subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region)
+		}
 		monsterRows := []mobs.LiveSnapshot{}
 		if h.mobLive != nil {
 			monsterRows = h.mobLive.Snapshot(subscription.Filter.Server, time.Now().UTC())
@@ -809,7 +821,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		mapData := map[string]any{
 			"server": subscription.Filter.Server, "area_id": subscription.Filter.Area, "floor_id": subscription.Filter.Floor,
 			"region": subscription.Filter.Region, "scope_status": "mapped",
-			"characters": charRows, "party": party, "monsters": monsterRows, "events": activity,
+			"characters": charRows, "party": party, "training_areas": training, "monsters": monsterRows, "events": activity,
 			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
 		}
 		basePayload, _ := json.Marshal(mapData)

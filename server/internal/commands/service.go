@@ -81,6 +81,9 @@ func (s *Service) SaveControlState(ctx context.Context, characterID, sessionID, 
 	}
 	return s.store.SaveControlState(ctx, characterID, sessionID, state)
 }
+func (s *Service) CurrentTrainingAreas(ctx context.Context, server string, limit int) ([]TrainingAreaObservation, error) {
+	return s.store.CurrentTrainingAreas(ctx, server, limit)
+}
 func (s *Service) Controls(ctx context.Context, characterID string) (map[string]any, error) {
 	target, err := s.store.ResolveTarget(ctx, characterID)
 	if errors.Is(err, ErrStaleSession) || errors.Is(err, ErrNotFound) {

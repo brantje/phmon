@@ -320,6 +320,20 @@ route lines and reports phBot's result without claiming arrival. Reference,
 phBot API, and live/stale sample distinctions are recorded in
 `docs/phbot-capabilities.md` and `docs/reference-parity.md`.
 
+### Map coordinate match — 2026-10-01
+
+Use the current Leaflet → game coordinate → phBot conversion for map markers,
+readouts, navigation, and training-area points. A Leaflet position becomes game
+region, X, and Y, and those values are the phBot position. Z still comes from
+the selected character's current Z, or zero when that Z is unavailable.
+
+- Non-cave maps: this conversion matches completely and has been formally
+  tested. Use it.
+- Caves: this conversion is working on every floor. Use it.
+
+This replaces earlier notes that outdoor or cave coordinate conversion is still
+awaiting proof.
+
 ### Final definition of done
 
 All of the following must hold before reporting the end goal complete:
@@ -4618,3 +4632,48 @@ No more live commands are pending. Final evidence is in the runtime Markdown/JSO
 ledger. Exact next action: push these evidence-only updates, wait for final-head
 CI and CodeRabbit, verify no conflicts or unresolved threads, remove only disposable
 test resources, and leave PR #50 unmerged.
+
+### Resume — 2026-09-30 Issue #25 map training areas
+
+Implemented on branch `codex/issue-25-training-areas` in the existing checkout,
+from main `e366c42`; uncommitted at this point. The Go live map snapshot adds a
+server-scoped `training_areas` projection from each current session's
+`character_control_state` readback (`commands.Store.CurrentTrainingAreas`,
+`httpapi/map_training.go`). Areas are scoped by their own region/Z, cave floors are
+classified through the map profile, outdoor views drop cave-claimed regions, and
+the result is capped at 256 areas with radius 1–10,000. No plugin change, protocol
+version bump or migration.
+
+The Map page renders scale-correct circles with focusable name labels, a Training
+areas side list, and an editor with Move center, radius input, center/edge drag
+handles, Apply and Reset (`useMapTrainingEditor.ts`, `utils/mapTrainingAreas.ts`,
+`MapCanvas.vue`, `map.vue`). Apply sends dirty center then radius through the
+existing `training.area.set` (mode `position`) and `training.radius.set` commands
+and waits for durable results. The context menu and selected-point bar add a
+separate training fan-out owner in `useMapNavigationAction.ts`, setting only the
+center for all action targets with each target's current Z or 0. Both flows honor
+the Review actions preference. Map-container Enter now ignores marker targets.
+`scripts/agent_simulator.py` gains a `training-areas` fixture scenario.
+
+Validation: Go race tests for `internal/commands` and `internal/httpapi` against a
+disposable PostgreSQL database; 108 frontend unit tests; Nuxt typecheck; Prettier
+check; lint with 0 errors (two new self-closing input warnings match the existing
+file convention); production build; simulator `py_compile`. Browser checks on an
+isolated fixture stack covered rendering, keyboard label selection, editor Apply
+with fake-adapter calls and readback, drag drafts and Reset, context-menu and
+mobile fan-out to two targets, review preview with zero admissions, layer toggle,
+and 1440×1000, 1280×800 and 390×844 without horizontal overflow. Evidence is
+fixture-only; no real phBot character received a training command and the
+reference demo's training-area UI was not reinspected. Details are in
+`docs/reference-parity.md` and `docs/protocol.md`.
+
+Exact next action: operator review; commit, push and open a PR only when asked. With
+explicit authorization, validate one real training-area move/resize on a supported
+phBot runtime and record it separately from the simulator evidence.
+
+### Resume — 2026-10-01 map coordinate match
+
+Rewrote the map coordinate contract under "Map coordinate match — 2026-10-01".
+Agents use the current Leaflet → game coordinate → phBot conversion for non-cave
+maps and for every cave floor. The non-cave match and cave match is complete and has been
+formally tested. Caves are working.

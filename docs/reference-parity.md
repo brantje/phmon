@@ -4,6 +4,59 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Map training areas — 2026-09-30
+
+[Issue #25](https://github.com/brantje/phmon/issues/25) adds a **Training areas**
+layer to the Map screen. Each current session's observed training readback draws a
+scale-correct circle (192 world units per 256-pixel outdoor tile) with a name label
+at its top edge. Selecting a label or its side-list row opens a compact
+editor with the observed center/radius, Move center, a Radius input, Apply and
+Reset. The center and edge handles drag a local draft; the label gains an
+`· unsaved` suffix and the observed circle stays visible until readback arrives.
+Apply sends only the dirty parts, center before radius, through the existing
+audited commands and reports each step's durable result. Reset discards the draft.
+Hiding the layer removes circles, handles and the editor.
+
+The map context menu and selected-point bar now offer **Set training position for
+N characters** next to navigation. It reuses the shared per-character fan-out,
+freezes each target's explicit region/X/Y with its current Z (or 0), and changes only
+the center, so each target keeps its own radius. Navigate and training items have
+independent eligibility and exception text. The Review actions preference shows the
+existing preview before any admission; Cancel leaves no command.
+
+Keyboard: labels are focusable buttons and Enter/Space select them. Map-container
+Enter now ignores keys whose target is a marker, so Enter on any marker no longer
+also selects the map center. When one menu item is disabled, ArrowUp/ArrowDown
+keep focus on the enabled item.
+
+Selection follow-up (2026-10-01): a left-click or tap inside a circle selects that
+area and still picks the map point for the selected-point bar. Overlaps resolve to
+the smallest containing radius, then the closest center, then name order, and
+circles paint largest first so the visible fill matches. A second click on the
+selected area, or a left-click outside every circle, deselects it like the
+side-list toggle. Right-click, keyboard map-center Enter and Move center keep the
+current selection. Name chips select their own character even over another circle.
+Chips for areas with nearly shared centers spread around the circumference
+(2: NNW/NNE, 3: N/SE/SW, 4+: even steps), and colliding chips rotate to a free
+slot; layout reruns on zoom. Fixture browser checks with four overlapping areas
+covered nested, half-overlap, lens, outside, chip, keyboard, right-click and
+zoom-out cases, with no chip overlap or horizontal overflow at 1440×1000,
+1280×800 and 390×844.
+
+Evidence (**simulator fixtures only**, isolated stack and database; production
+plugin worker transport with fake phBot adapters): three fixture characters
+rendered three circles; editor Apply on one fixture produced fake
+`set_training_position` then `set_training_radius` calls, two completed commands
+and an updated readback. Handle drags produced the expected draft center/radius
+and Reset cleared it. Context-menu and mobile selected-point submissions to two
+targets each produced one completed `training.area.set` per target with its prior
+radius retained; the non-target character received nothing. With review enabled,
+zero commands were admitted until submit. 1440×1000, 1280×800 and 390×844 had no
+page-level horizontal overflow; the editor stays within the side panel on mobile.
+No real phBot character received a training command, and the reference demo's
+training-area interaction was not reinspected, so runtime and reference-visual
+parity remain open.
+
 ## Live party map layer — 2026-09-30
 
 Issue #23 adds a current-state **Party members** layer to the existing Map screen.

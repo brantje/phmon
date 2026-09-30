@@ -174,6 +174,25 @@ export interface MapPartySnapshot {
   members: MapPartyMember[]
 }
 
+export interface MapTrainingArea {
+  character_id: string
+  session_id: string
+  name: string
+  region: number
+  zone?: string
+  x: number
+  y: number
+  z?: number
+  radius: number
+  observed_at?: string
+}
+
+export interface MapTrainingAreasSnapshot {
+  status: 'observed' | 'unavailable' | 'truncated'
+  truncated?: boolean
+  areas: MapTrainingArea[]
+}
+
 export interface NavigationRoutePoint {
   region: number
   x: number
@@ -217,6 +236,8 @@ export interface MapSnapshot {
   scope_status?: string
   characters: CharacterView[]
   party: MapPartySnapshot
+  /** Optional for compatibility with backends predating training areas. */
+  training_areas?: MapTrainingAreasSnapshot
   monsters: MapMonsterObservation[]
   events: ActivityEvent[]
   /** Optional for compatibility with backends predating navigation routes. */

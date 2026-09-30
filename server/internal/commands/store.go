@@ -269,6 +269,41 @@ ORDER BY c.character_id`, characterIDs)
 	return targets, rows.Err()
 }
 
+// CurrentTrainingAreas reads the observed training areas of every active
+// session on one server in a single query. It returns at most limit rows.
+func (s *Store) CurrentTrainingAreas(ctx context.Context, server string, limit int) ([]TrainingAreaObservation, error) {
+	rows, err := s.pool.Query(ctx, `
+SELECT c.character_id::text, c.character_name, cs.session_id::text,
+       cc.training_region, cc.training_zone, cc.training_x, cc.training_y,
+       cc.training_z, cc.training_radius, cc.observed_at
+FROM characters c
+JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL
+JOIN character_control_state cc ON cc.session_id=cs.session_id
+WHERE c.server_key=lower($1) AND cc.training_available
+  AND cc.training_region IS NOT NULL AND cc.training_x IS NOT NULL
+  AND cc.training_y IS NOT NULL AND cc.training_radius IS NOT NULL
+ORDER BY lower(c.character_name), c.character_id
+LIMIT $2`, server, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	areas := make([]TrainingAreaObservation, 0)
+	for rows.Next() {
+		var area TrainingAreaObservation
+		area.State.TrainingAvailable = true
+		if err := rows.Scan(
+			&area.CharacterID, &area.CharacterName, &area.State.SessionID,
+			&area.State.TrainingRegion, &area.State.TrainingZone, &area.State.TrainingX, &area.State.TrainingY,
+			&area.State.TrainingZ, &area.State.TrainingRadius, &area.State.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		areas = append(areas, area)
+	}
+	return areas, rows.Err()
+}
+
 func (s *Store) Queued(ctx context.Context, limit int) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `SELECT command_id FROM commands WHERE state='queued' ORDER BY created_at,command_id LIMIT $1`, limit)
 	if err != nil {
