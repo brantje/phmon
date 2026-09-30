@@ -61,6 +61,9 @@ func (s *Service) Result(ctx context.Context, id, agentID, sessionID string, gen
 func (s *Service) History(ctx context.Context, characterID, name, state string, limit int) ([]Command, error) {
 	return s.store.ListHistory(ctx, characterID, name, state, limit)
 }
+func (s *Service) CommandsByIdempotencyKeys(ctx context.Context, operatorIdentity string, keys []string) ([]Command, error) {
+	return s.store.ListByIdempotencyKeys(ctx, operatorIdentity, keys)
+}
 func (s *Service) ResolveTarget(ctx context.Context, characterID string) (Target, error) {
 	return s.store.ResolveTarget(ctx, characterID)
 }
@@ -86,6 +89,47 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 	if err != nil {
 		return nil, err
 	}
+	return controlSnapshot(target, state, s.commandCapabilities(target)), nil
+}
+
+func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string) ([]map[string]any, error) {
+	targets, err := s.store.CurrentControlTargets(ctx, characterIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]map[string]any, 0, len(characterIDs))
+	for _, characterID := range characterIDs {
+		target, ok := targets[characterID]
+		if !ok {
+			result = append(result, emptyControlSnapshot(characterID))
+			continue
+		}
+		if target.SessionID == "" || target.AgentID == "" || target.Generation == 0 {
+			result = append(result, emptyControlSnapshot(characterID))
+			continue
+		}
+		training := target.Training
+		if training != nil {
+			training.SessionID = target.SessionID
+		}
+		result = append(result, controlSnapshot(
+			Target{CharacterID: target.CharacterID, SessionID: target.SessionID, AgentID: target.AgentID, Generation: target.Generation, Region: target.Region},
+			training,
+			s.commandCapabilities(Target{CharacterID: target.CharacterID, SessionID: target.SessionID, AgentID: target.AgentID, Generation: target.Generation, Region: target.Region}),
+		))
+	}
+	return result, nil
+}
+
+func emptyControlSnapshot(characterID string) map[string]any {
+	return map[string]any{"character_id": characterID, "session_id": "", "capabilities": map[string]Capability{}, "training": nil}
+}
+
+func controlSnapshot(target Target, state *ControlState, capabilities map[string]Capability) map[string]any {
+	return map[string]any{"character_id": target.CharacterID, "session_id": target.SessionID, "capabilities": capabilities, "training": state}
+}
+
+func (s *Service) commandCapabilities(target Target) map[string]Capability {
 	capabilities := make(map[string]Capability)
 	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
 		ok, reason := false, "plugin_upgrade_required"
@@ -119,7 +163,7 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 		}
 		capabilities[name] = capability
 	}
-	return map[string]any{"character_id": target.CharacterID, "session_id": target.SessionID, "capabilities": capabilities, "training": state}, nil
+	return capabilities
 }
 
 func NewService(store *Store, capabilities CapabilityChecker) *Service {

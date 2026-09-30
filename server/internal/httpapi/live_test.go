@@ -519,6 +519,54 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 		"character controls": {
 			message: liveClientMessage{SubscriptionID: "controls", Revision: 1, Stream: "controls", Filter: liveFilter{CharacterID: validCharacterID}}, valid: true,
 		},
+		"multi character controls": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterIDs: []string{validCharacterID, "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"}}}, valid: true,
+		},
+		"duplicate multi character controls": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterIDs: []string{validCharacterID, validCharacterID}}}, valid: false,
+		},
+		"multi controls cannot mix selectors": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterID: validCharacterID, CharacterIDs: []string{validCharacterID}}}, valid: false,
+		},
+		"empty multi controls selector": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterID: validCharacterID, CharacterIDs: []string{}}}, valid: false,
+		},
+		"multi controls maximum": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterIDs: make([]string, 101)}}, valid: false,
+		},
+		"character IDs only apply to controls": {
+			message: liveClientMessage{SubscriptionID: "characters", Revision: 2, Stream: "characters", Filter: liveFilter{CharacterIDs: []string{validCharacterID}}}, valid: false,
+		},
+		"control IDs validate each ID": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterIDs: []string{"not-a-character-id"}}}, valid: false,
+		},
+		"exact idempotency command results": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{IdempotencyKeys: []string{"web-abc", "web-def"}}}, valid: true,
+		},
+		"exact command keys maximum": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{IdempotencyKeys: make([]string, 101)}}, valid: false,
+		},
+		"exact command keys validate each key": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{IdempotencyKeys: []string{" web-abc"}}}, valid: false,
+		},
+		"duplicate exact command keys": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{IdempotencyKeys: []string{"same", "same"}}}, valid: false,
+		},
+		"exact command keys cannot mix selectors": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{CharacterID: validCharacterID, IdempotencyKeys: []string{"web-abc"}}}, valid: false,
+		},
+		"exact command keys cannot mix history filters": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{CommandState: "completed", Limit: 25, IdempotencyKeys: []string{"web-abc"}}}, valid: false,
+		},
+		"empty exact command keys": {
+			message: liveClientMessage{SubscriptionID: "commands", Revision: 2, Stream: "commands", Filter: liveFilter{IdempotencyKeys: []string{}}}, valid: false,
+		},
+		"controls reject exact command keys": {
+			message: liveClientMessage{SubscriptionID: "controls", Revision: 2, Stream: "controls", Filter: liveFilter{CharacterID: validCharacterID, IdempotencyKeys: []string{"web-abc"}}}, valid: false,
+		},
+		"exact command keys only apply to commands": {
+			message: liveClientMessage{SubscriptionID: "character-detail", Revision: 2, Stream: "character", Filter: liveFilter{CharacterID: validCharacterID, IdempotencyKeys: []string{"web-abc"}}}, valid: false,
+		},
 		"invalid command limit": {
 			message: liveClientMessage{SubscriptionID: "commands", Revision: 1, Stream: "commands", Filter: liveFilter{CharacterID: validCharacterID, Limit: 101}}, valid: false,
 		},

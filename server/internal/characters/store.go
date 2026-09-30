@@ -360,6 +360,23 @@ func (s *Store) GetScoped(ctx context.Context, id, server string) (Character, er
 	}
 	return c, err
 }
+
+func (s *Store) GetMany(ctx context.Context, ids []string) (map[string]Character, error) {
+	rows, err := s.pool.Query(ctx, selectCharacters+` WHERE c.character_id::text=ANY($1::text[]) ORDER BY c.server_name,c.character_name`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make(map[string]Character, len(ids))
+	for rows.Next() {
+		character, err := scanCharacter(rows)
+		if err != nil {
+			return nil, err
+		}
+		items[character.ID] = character
+	}
+	return items, rows.Err()
+}
 func (s *Store) Groups(ctx context.Context) ([]Group, error) {
 	return s.GroupsScoped(ctx, "")
 }

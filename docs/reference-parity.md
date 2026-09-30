@@ -545,7 +545,6 @@ On the selected nuker1 session, `/api/live` delivered capability reason
 and no command was submitted. This is real-runtime capability reporting evidence,
 not a Clientless action test.
 
-
 ### Evidence — 2026-09-27 Slice 4 item correction
 
 Scope remains Slice 4 only; Dashboard table preserved. Added explicit Greatest
@@ -569,7 +568,6 @@ transfers 1.2.1: inspect actual api_fields; if getter lacks instance data, finis
 generic vSRO 1.188 decoder against captured item-only fixtures. No guessed stats.
 
 Follow-up deployment recovered after pruning 3.528 GB of unused Docker build cache. Final web image built and restarted; backend and PostgreSQL remained running. Browser checked 1440x1000, 1280x800 and 390x844; mobile pinned tooltip fits, Escape dismisses, no page-wide horizontal overflow at 1280.
-
 
 ### Evidence — 2026-09-27 rolled item detail implementation
 
@@ -653,7 +651,6 @@ with matching SHA-256. The live plugin still requires operator transfer. No UI o
 backend calculator changed in this increment. Reference formula discrepancies and
 the precise next gate are documented in
 [item-tooltip-investigation.md](reference/item-tooltip-investigation.md).
-
 
 ## 2026-09-27 live API tooltip verification
 
@@ -768,7 +765,6 @@ and `/api/health` on port 3005 both report `status=ok,database=ok`, and a local
 game icon returned HTTP 200. PostgreSQL stayed healthy and was not restarted. The
 available browser is unauthenticated, so visual confirmation on a live character's
 Servar inventory remains open.
-
 
 ## Slice 6 — Chat implementation evidence (2026-09-28)
 
@@ -1357,6 +1353,54 @@ a captured name show Unknown zone when coordinates exist; there is no historic
 backfill. Plugin fixtures, Go validation and persistence coverage, frontend
 location tests and Nuxt typecheck cover the flow. Database integration and live
 phBot runtime checks remain open.
+
+### Issue #30 — multi-character command orchestration — 2026-09-30
+
+Added a reusable frontend fan-out contract with typed catalog command names,
+deduplicated ordered targets, current capability/session/scope checks, frozen
+per-target arguments and request bodies, independent submissions capped at four,
+per-child idempotency keys, uncertain-outcome retry using the original request,
+and session-matched exact-result merging. The reusable action/result components show
+individual skipped, rejected, accepted and execution outcomes, separate submission
+and execution counts, verification details, and stale-feed status. They are not yet
+wired into broad map, training-area or phBot-tool flows; those remain in their owning
+child issues.
+
+The browser live protocol v1 adds bounded `controls.character_ids` and
+`commands.idempotency_keys` projections. Batch controls return target-specific rows
+from set-based character/session/control reads; exact result reads are scoped to the
+same `operator` identity as command admission and bypass the normal history limit.
+`useLiveData()` owns two optional slots per fan-out owner and chunks requests at 100;
+it keeps batch cache freshness separate from base live-stream health and retains
+observed results across chunk rotation and temporary outages. Agent/plugin protocol
+versions and backend execution, rate-limit, expiry and one-in-flight rules are
+unchanged.
+
+The `Review actions before submitting` preference is stored in a browser-local
+cookie and defaults to off. With it off, the explicit action click prepares and
+submits without a prompt. With it on, multi-character actions show the selected
+and eligible counts, planned command count, arguments and skip reasons; the action
+refreshes its controls projection before submission and requires another review
+click if the plan changed. A target whose session changes remains skipped under
+its original frozen identity. The setting also governs the existing single-character
+Return Scroll, Disconnect, Clientless, map navigation and training-area prompts.
+Required schema intent fields remain `true` for return, disconnect and clientless
+commands; preparation itself never posts a command. Chat's separate global-message
+confirmation and record-deletion confirms are outside the character-command flow.
+
+Pure utility tests cover selection deduplication, unsupported and unavailable
+targets, argument-mode checks, all-ineligible zero submissions, session replacement,
+four-request concurrency, partial rejection/uncertain outcomes, original-body retry,
+HTTP-response loss after an authoritative result, and session-safe result merging.
+`scripts/command_smoke.py` now starts three disposable simulator workers and exercises
+the multi-character controls projection, independent session-fenced command rows,
+and exact-key recovery with execution evidence. It verifies independent successful
+and failed child outcomes. Browser acceptance used the isolated consumer at
+1440×1000, 1280×800 and 390×844. Settings showed the preference off by default
+and persisted its browser-local cookie when enabled. Keyboard cancellation of the
+preview made no `/api/commands` request; a reviewed submit produced three accepted,
+completed simulator rows with API verification evidence. The consumer and worker
+data are fixture-only and are not evidence of real phBot runtime validation.
 
 ### Issue #29 — independent map action targets — 2026-09-30
 
