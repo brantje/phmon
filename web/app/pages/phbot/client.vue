@@ -1,4 +1,5 @@
 <script setup lang="ts">
+const reviewActions = useReviewActionsPreference()
 const {
   fleetCharacters,
   characterControls,
@@ -75,8 +76,9 @@ async function goClientless() {
   const target = selectedCharacter.value
   if (!target?.session_id || disabledReason.value) return
   if (
+    reviewActions.value &&
     !window.confirm(
-      `Go clientless for ${target.name} on ${target.server}? This uses only the selected character's documented runtime capability.`,
+      `Review going clientless for ${target.name} on ${target.server}? This uses only the selected character's documented runtime capability.`,
     )
   )
     return

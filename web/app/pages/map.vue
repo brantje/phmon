@@ -50,6 +50,7 @@ import {
   toggleMapActionTarget,
 } from '~/utils/mapActionTargets'
 
+const reviewActions = useReviewActionsPreference()
 const {
   mapFeeds,
   mapFeedCurrent,
@@ -495,28 +496,18 @@ async function submitMapAction(
     name: currentCharacter.value.name,
   }
   const point = { ...selectedGamePosition.value }
-  const label =
-    name === 'character.navigate'
-      ? 'start a generated path'
-      : 'set the training area'
-  if (
-    !window.confirm(
-      'Confirm ' +
-        label +
-        ' for ' +
-        target.name +
-        ' at ' +
-        point.x.toFixed(1) +
-        ', ' +
-        point.y.toFixed(1) +
-        ', Z ' +
-        point.z.toFixed(1) +
-        ' in ' +
-        zoneNameForRegion(point.region) +
-        '?',
+  if (reviewActions.value) {
+    const label =
+      name === 'character.navigate'
+        ? 'start a generated path'
+        : 'set the training area'
+    if (
+      !window.confirm(
+        `Review ${label} for ${target.name} at ${point.x.toFixed(1)}, ${point.y.toFixed(1)}, Z ${point.z.toFixed(1)} in ${zoneNameForRegion(point.region)}?`,
+      )
     )
-  )
-    return
+      return
+  }
   if (currentCharacter.value?.session_id !== target.session) return
   actionBusy.value = true
   actionMessage.value = ''

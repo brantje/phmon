@@ -219,6 +219,8 @@ export interface LiveFilter {
   q?: string
   group_id?: string
   character_id?: string
+  character_ids?: string[]
+  idempotency_keys?: string[]
   command_name?: string
   command_state?: string
   limit?: number
@@ -310,6 +312,9 @@ export interface RemoteCommand {
     | 'unknown'
   created_at: string
   expires_at: string
+  idempotency_key?: string
+  result_code?: string
+  finished_at?: string
   message?: string
   verification?: 'api_confirmed' | 'observed' | 'unverified'
   api_return?: unknown
@@ -318,8 +323,29 @@ export interface RemoteCommand {
 }
 
 export interface CommandsSnapshot {
-  character_id: string
+  character_id?: string
   commands: RemoteCommand[]
+}
+
+export interface ControlTargetSnapshot {
+  character_id: string
+  character: CharacterView | null
+  controls: ControlsSnapshot | null
+  unavailable_reason?: string
+}
+
+export interface ControlsTargetsSnapshot {
+  targets: ControlTargetSnapshot[]
+}
+
+export interface CommandFanOutLiveFeed {
+  targets: Record<string, ControlTargetSnapshot>
+  controls_current: boolean
+  controls_unavailable: boolean
+  commands: Record<string, RemoteCommand>
+  commands_current: boolean
+  commands_unavailable: boolean
+  updated_at?: number
 }
 export interface ControlsSnapshot {
   character_id: string

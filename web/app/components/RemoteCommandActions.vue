@@ -2,6 +2,7 @@
 import type { CharacterView } from '~~/shared/types/live'
 
 const props = defineProps<{ character: CharacterView }>()
+const reviewActions = useReviewActionsPreference()
 const {
   commandHistory,
   characterControls,
@@ -227,12 +228,15 @@ async function submit(name: string) {
     errorText.value = 'Enter valid values for this action.'
     return
   }
-  if (['character.return', 'character.disconnect'].includes(name)) {
+  if (
+    reviewActions.value &&
+    ['character.return', 'character.disconnect'].includes(name)
+  ) {
     const action =
       name === 'character.return' ? 'use a Return Scroll' : 'disconnect'
     if (
       !window.confirm(
-        `Confirm ${action} for ${props.character.name} on ${props.character.server}?`,
+        `Review ${action} for ${props.character.name} on ${props.character.server}?`,
       )
     )
       return

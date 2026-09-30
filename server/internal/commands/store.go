@@ -190,6 +190,74 @@ func (s *Store) ListHistory(ctx context.Context, characterID, name, state string
 	return items, rows.Err()
 }
 
+// ListByIdempotencyKeys resolves exact submissions for one operator. Unlike
+// history, this lookup has no recent-row limit and can recover a submission
+// whose HTTP response was lost.
+func (s *Store) ListByIdempotencyKeys(ctx context.Context, operatorIdentity string, keys []string) ([]Command, error) {
+	rows, err := s.pool.Query(ctx, selectCommand+`WHERE operator_identity=$1 AND idempotency_key=ANY($2::text[]) ORDER BY created_at,command_id`, operatorIdentity, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]Command, 0, len(keys))
+	for rows.Next() {
+		var command Command
+		if err := scanCommand(rows, &command, new([]byte)); err != nil {
+			return nil, err
+		}
+		items = append(items, command)
+	}
+	return items, rows.Err()
+}
+
+// CurrentControlTargets takes one set-based snapshot of sessions and their
+// current control state. Offline and missing IDs are left for the caller to
+// classify against its requested list.
+func (s *Store) CurrentControlTargets(ctx context.Context, characterIDs []string) (map[string]TargetControl, error) {
+	rows, err := s.pool.Query(ctx, `
+SELECT c.character_id::text, cs.session_id::text, cs.agent_id::text,
+       cs.connection_generation, c.region,
+       COALESCE(cc.training_available,false), cc.training_region, cc.training_zone,
+       cc.training_x, cc.training_y, cc.training_z, cc.training_radius, cc.observed_at
+FROM characters c
+LEFT JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL
+LEFT JOIN character_control_state cc ON cc.session_id=cs.session_id
+WHERE c.character_id::text=ANY($1::text[])
+ORDER BY c.character_id`, characterIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	targets := make(map[string]TargetControl, len(characterIDs))
+	for rows.Next() {
+		var target TargetControl
+		var sessionID, agentID *string
+		var generation *uint64
+		var training ControlState
+		if err := rows.Scan(
+			&target.CharacterID, &sessionID, &agentID, &generation, &target.Region,
+			&training.TrainingAvailable, &training.TrainingRegion, &training.TrainingZone,
+			&training.TrainingX, &training.TrainingY, &training.TrainingZ,
+			&training.TrainingRadius, &training.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		target.Training = &training
+		if sessionID != nil {
+			target.SessionID = *sessionID
+			training.SessionID = *sessionID
+		}
+		if agentID != nil {
+			target.AgentID = *agentID
+		}
+		if generation != nil {
+			target.Generation = *generation
+		}
+		targets[target.CharacterID] = target
+	}
+	return targets, rows.Err()
+}
+
 func (s *Store) Queued(ctx context.Context, limit int) ([]string, error) {
 	rows, err := s.pool.Query(ctx, `SELECT command_id FROM commands WHERE state='queued' ORDER BY created_at,command_id LIMIT $1`, limit)
 	if err != nil {

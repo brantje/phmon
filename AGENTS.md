@@ -243,6 +243,56 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-09-30 Issue #30 multi-character command orchestration
+
+Implemented the reusable command fan-out foundation for Issue #30. The frontend
+prepares ordered, deduplicated per-character requests only from current, matching
+session controls/capabilities; freezes arguments, target identity, idempotency key
+and request body; rechecks session/scope before each admission; submits at most four
+children concurrently; and retains independent rejection, uncertainty, execution
+and verification results. Exact-key retries retain the original body. `chat.send`
+is excluded from the supported typed command union.
+
+The browser live v1 `controls.character_ids` and `commands.idempotency_keys`
+selectors are additive and bounded to 1–100 unique values. Control reads resolve
+characters and current controls in sets; exact command reads use the admission
+operator identity and bypass the recent-history limit. `useLiveData()` reserves two
+optional slots per fan-out owner, chunks at 100, retains results between command
+rotations, and keeps those feed freshness states separate from base-stream health.
+No plugin protocol, migration, batch endpoint or backend execution rule changed.
+
+The Settings page now has the browser-local `Review actions before submitting`
+cookie preference, default off. When on, reusable fan-out actions show an inline
+preview and refresh eligibility before admission. Changed sessions are skipped
+without adopting their replacement; changed arguments hold the old frozen command
+and require a new explicit action. Existing Return Scroll, Disconnect, Clientless,
+map navigation and training-area prompts follow the same preference. Required
+`confirmation: true` intent fields remain. This follows the operator's direction
+that review is optional and requires no approval checkpoint.
+
+Changed files: `server/internal/{characters,commands,httpapi}`, `web/app` live-data,
+fan-out components/composables/utilities, Settings and single-character prompt
+callers, `web/shared/types/live.ts`, `web/tests/commandFanOut.test.ts`,
+`scripts/agent_simulator.py`, `scripts/command_smoke.py`, `docs/protocol.md`,
+`docs/reference-parity.md`, and this resume record.
+
+Validation: full `scripts/check.sh` passed with Node 24.20.0 and a disposable
+PostgreSQL database (Go race suite, 101 plugin tests, live transport audit, format,
+76 frontend tests, lint with zero errors and 42 existing style warnings, Nuxt
+typecheck/build, Compose config). The final chunking coverage addition then passed
+format, all 77 frontend tests, lint (zero errors) and typecheck. The three-worker
+command smoke passed with independent success and fake execution failure outcomes.
+An isolated browser consumer verified browser-cookie default off and persistence,
+keyboard cancel with zero command POSTs, a reviewed three-command submission with
+three completed simulator results, and preview layout at 1440×1000, 1280×800 and
+390×844 without horizontal overflow. The temporary consumer/database were removed.
+No real phBot command was run; simulator evidence is fixture-only.
+
+Exact next action: connect this reusable fan-out action in its owning Issue #28
+Map/phBot-tools child work when that slice begins; record actual Windows/phBot
+runtime validation separately. Do not present simulator coverage as real runtime
+validation.
+
 ### Map cave evidence and 2D point decision — 2026-09-29
 
 The approved phMonitor v0.5.0 static investigation and GreatestSRO `Media.pk2`
@@ -4294,3 +4344,63 @@ No blocker remains for this bug fix. The operator requested a PR and CI/CodeRabb
 monitoring. Exact next action: open the PR, require current-head CI green and a
 completed CodeRabbit review, address actionable findings and report without merging.
 No production restart or character command is required; broader roadmap gates remain.
+
+### Resume — 2026-09-30 focused monster icon extraction
+
+Completed the operator's bounded request to find PK2 monster type icons and prefix
+filenames with IDs. The existing read-only archive reader and DDJ converter found
+general/champion/giant rank textures plus a separate party mob badge. Added
+`tools/game-data-exporter/export_monster_icons.py` and documented findings in
+`docs/reference/monster-icon-investigation.md` and the exporter README. Local
+ignored output is `exports/monster-icons/icons/`: IDs 0, 1 and 4 are distinct rank
+icons; IDs 16, 17 and 20 are identical aliases of the shared party badge, with
+corresponding rank IDs in the manifest. No distinct party rank artwork is claimed.
+Source offsets and hashes remain in the separate ignored audit directory.
+
+Validation: all six PNGs decode at 16 × 16; rank transparency and the party badge's
+opaque source alpha are preserved; ID prefixes, manifest checksums and identical
+party aliases verified. Repeated extraction produced identical PNGs. No UI,
+production or game character changes. This request does not start a roadmap run;
+broader slice gates remain. Exact next action for reuse: run the focused exporter
+with the desired local source/output directories; UI integration requires its own
+scoped follow-up.
+
+### Resume — 2026-09-30 monster icons in the generic exporter
+
+Completed the operator's follow-up to include monster icons automatically in the
+normal exporter. Exporter 0.4.4 writes `catalogs/monsterTypes.json`, content-addressed
+bundle images and, with the existing `--asset-output` option, six ID-prefixed PNG
+aliases under `monster-types/`, indexed with semantic keys and checksums. The npm
+asset-export wrapper already invokes this normal command. Party IDs 16/17/20 retain
+one shared badge and separate rank relationships; missing textures produce explicit
+catalog/coverage gaps. Removed the standalone `export_monster_icons.py`; this
+supersedes the preceding resume entry's separate-script instruction.
+
+Changed files: exporter `monster_icons.py`, `exporter.py`, `public_assets.py`,
+version metadata, exporter tests/README and
+`docs/reference/monster-icon-investigation.md`. Validation: 52 exporter tests pass,
+including repeat/copied-output validation, missing badge handling and unsafe alias
+rejection preserving valid output. Full normal CLI export from local GreatestSRO
+archives passed bundle/public-tree validation: dataset
+`gamedata-0cfdb5ba711c7363570c`, 20 catalogs, 10,039 unique bundle images, 12,068
+public aliases and six monster icons. Compared all six against the original
+extraction; bytes, index checksums and 16 × 16 dimensions match. Output remains
+ignored under `exports/monster-export-integration/`; nine preexisting unresolved
+families keep overall dataset status incomplete. `git diff --check` passes.
+
+No blocker remains for this bounded request. No production/UI/character changes;
+unrelated concurrent plugin/server work was preserved. Exact next action for reuse:
+run the usual export command or `npm run export:assets`; no additional script.
+
+### Resume — 2026-09-30 versioned monster icon outputs
+
+The operator explicitly requested adding the exported files to Git and authorized
+a separate worktree while retaining the active checkout. In
+`/tmp/phmon-monster-icons-worktree` on `codex/export-monster-icons`, added all six
+exported PNGs under `web/public/game-assets/monster-types/` and their public index
+entries, preserving every existing entry and the current dataset namespace. The
+files are directly usable without extraction. Public-tree validation passes for
+12,069 aliases and 32,174 semantic keys; PNGs match the earlier verified export.
+Updated exporter documentation. Source archives/audits remain untracked. The
+active `/var/www/phmon` branch and other agents' changes remain untouched. Exact
+next action: use the files from PR #44; no local exporter run is required.

@@ -11,6 +11,7 @@ const permission = ref<'default' | 'granted' | 'denied' | 'unsupported'>(
 )
 const localSound = ref(false)
 const savingNotice = ref(false)
+const reviewActions = useReviewActionsPreference()
 
 watch(
   preferences,
@@ -54,6 +55,35 @@ async function enableNotifications() {
       icon="i-lucide-settings"
       description="Operator preferences and agent access management."
     />
+    <section class="panel preferences-panel review-actions-preference">
+      <div class="panel-heading">
+        <div>
+          <h2>Command review</h2>
+          <p>
+            This preference is stored in a browser-local cookie on this device.
+          </p>
+        </div>
+      </div>
+      <div class="preference-row">
+        <div>
+          <strong id="review-actions-label"
+            >Review actions before submitting</strong
+          >
+          <p>
+            Show the selected characters, eligibility and planned commands
+            before multi-character or disruptive single-character actions.
+          </p>
+        </div>
+        <label class="switch-label">
+          <input
+            v-model="reviewActions"
+            type="checkbox"
+            aria-labelledby="review-actions-label"
+          />
+          <span>{{ reviewActions ? 'Enabled' : 'Disabled' }}</span>
+        </label>
+      </div>
+    </section>
     <nav class="settings-tabs" aria-label="Settings sections">
       <NuxtLink
         :to="{ path: '/settings' }"

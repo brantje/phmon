@@ -272,6 +272,38 @@ WebSocket snapshot. PostgreSQL outage detection invalidates live subscriptions o
 connected browsers become stale; recovery invalidates them again so they synchronize
 even when no new agent event occurs.
 
+Browser protocol v1 also supports two additive bounded selectors for command
+orchestration. `controls` accepts either the existing `character_id` selector or
+`character_ids`, an ordered list of 1–100 unique character IDs. The batch response
+keeps one entry for every requested ID, with `character` and `controls` set to an
+object or `null`; `unavailable_reason` identifies missing, offline or stale-session
+targets. Character and current-control reads are set-based. A target-specific absence
+does not discard healthy entries, while a shared database failure produces the usual
+`subscription.unavailable` frame.
+
+    {"type":"subscribe","protocol_version":1,
+     "subscription_id":"fanout-owner-controls","revision":1,"stream":"controls",
+     "filter":{"character_ids":["<character-uuid-1>","<character-uuid-2>"]}}
+
+`commands` accepts `idempotency_keys`, an ordered list of 1–100 unique exact keys, as
+an alternative to its existing character history selector. It returns ordinary
+command rows for keys admitted by the browser operator identity, without the recent
+history limit. Rows include their command ID, character/session identity, idempotency
+key, result code and finish timestamp so a client can recover admission after losing
+the HTTP response.
+
+    {"type":"subscribe","protocol_version":1,
+     "subscription_id":"fanout-owner-results","revision":1,"stream":"commands",
+     "filter":{"idempotency_keys":["<child-key-1>","<child-key-2>"]}}
+
+Selectors must be nonempty, bounded and unique, and cannot be combined with their
+legacy selector or unrelated filters. Each orchestration owner uses one controls and
+one exact-results subscription slot; larger input sets rotate through 100-item
+chunks. Result caches retain rows observed from earlier chunks and are separate from
+single-character controls/history stores. These are additive browser-only protocol
+v1 fields; agent/plugin protocol versions and command admission semantics are
+unchanged.
+
 Relevant committed changes invalidate active subscriptions: agent connect/disconnect
 and heartbeat metadata, character identify/snapshot/state/leave, group create/rename/
 delete/member mutations and session reconciliation. Invalidations are coalesced for
@@ -671,7 +703,6 @@ large integers remain decimal strings. `api_field_types` contains only field nam
 types, collection sizes and sampled key types, not unknown field values. Existing
 v4 JSON persistence accepts these additive fields without a service change. Typed
 API-backed `instance` conversion is still gated on actual runtime field semantics.
-
 
 ### API-backed item presentation (phBot 20.1.1)
 
