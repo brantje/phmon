@@ -11,9 +11,12 @@ import {
   reconcileTrainingDraft,
   runTrainingApplySteps,
   trainingApplySteps,
+  placeTrainingAreaLabels,
+  trainingAreaAtPoint,
   trainingAreaOverlays,
   trainingDraftDirty,
   type TrainingAreaDraft,
+  type TrainingAreaOverlay,
 } from '../app/utils/mapTrainingAreas.ts'
 
 const transform = (
@@ -282,4 +285,105 @@ test('an uncertain step blocks the rest while known failures continue', async ()
     continued.map((result) => result.outcome),
     ['failed', 'completed'],
   )
+})
+
+const overlay = (
+  id: string,
+  x: number,
+  y: number,
+  radiusPixels: number,
+  label = id,
+): TrainingAreaOverlay => ({
+  id,
+  label,
+  center: { tileX: 30, tileY: 40, pixelX: x, pixelY: y },
+  radiusPixels,
+  selected: false,
+  draft: false,
+})
+const at = (x: number, y: number) => ({
+  tileX: 30,
+  tileY: 40,
+  pixelX: x,
+  pixelY: y,
+})
+
+test('a nested small area wins inside its disk and the large one owns the ring', () => {
+  const areas = [
+    overlay('large', 128, 128, 100),
+    overlay('small', 128, 128, 20),
+  ]
+  assert.equal(trainingAreaAtPoint(areas, at(130, 130)), 'small')
+  assert.equal(trainingAreaAtPoint(areas, at(128, 60)), 'large')
+  assert.equal(trainingAreaAtPoint(areas, at(128, 250)), null)
+})
+
+test('half-overlapping areas keep their own caps and the lens prefers the smaller', () => {
+  const areas = [overlay('left', 80, 128, 60), overlay('right', 150, 128, 40)]
+  assert.equal(trainingAreaAtPoint(areas, at(30, 128)), 'left')
+  assert.equal(trainingAreaAtPoint(areas, at(185, 128)), 'right')
+  assert.equal(trainingAreaAtPoint(areas, at(125, 128)), 'right')
+
+  const equal = [overlay('west', 100, 128, 50), overlay('east', 150, 128, 50)]
+  assert.equal(trainingAreaAtPoint(equal, at(120, 128)), 'west')
+  assert.equal(trainingAreaAtPoint(equal, at(130, 128)), 'east')
+  assert.equal(trainingAreaAtPoint(equal, at(125, 128)), 'east')
+})
+
+test('hit-testing spans tile boundaries in rendered orientation', () => {
+  const area = overlay('edge', 250, 250, 20)
+  assert.equal(
+    trainingAreaAtPoint([area], { tileX: 31, tileY: 39, pixelX: 4, pixelY: 4 }),
+    'edge',
+  )
+  assert.equal(
+    trainingAreaAtPoint([area], { tileX: 31, tileY: 41, pixelX: 4, pixelY: 4 }),
+    null,
+  )
+})
+
+test('labels spread for areas sharing a center and stay north when isolated', () => {
+  const lone = placeTrainingAreaLabels([overlay('solo', 128, 128, 40)], 1)
+  assert.equal(lone.get('solo'), 0)
+
+  const pair = placeTrainingAreaLabels(
+    [overlay('b', 128, 128, 40, 'Beta'), overlay('a', 130, 128, 40, 'Alpha')],
+    1,
+  )
+  assert.deepEqual([pair.get('a'), pair.get('b')], [330, 30])
+
+  const trio = placeTrainingAreaLabels(
+    ['A', 'B', 'C'].map((name) => overlay(name, 128, 128, 40, name)),
+    1,
+  )
+  assert.deepEqual(
+    ['A', 'B', 'C'].map((name) => trio.get(name)),
+    [0, 120, 240],
+  )
+
+  const many = placeTrainingAreaLabels(
+    ['A', 'B', 'C', 'D', 'E'].map((name) => overlay(name, 128, 128, 40, name)),
+    1,
+  )
+  assert.equal(new Set(many.values()).size, 5)
+})
+
+test('colliding labels on different centers rotate to a free slot', () => {
+  const areas = [
+    overlay('left', 100, 128, 60, 'Left'),
+    overlay('right', 160, 128, 60, 'Right'),
+  ]
+  const zoomedOut = placeTrainingAreaLabels(areas, 0.5)
+  assert.equal(zoomedOut.get('left'), 0)
+  assert.notEqual(zoomedOut.get('right'), 0)
+  assert.deepEqual([...placeTrainingAreaLabels(areas, 4).values()], [0, 0])
+
+  const far = placeTrainingAreaLabels(
+    [
+      overlay('left', 20, 128, 10, 'Left'),
+      overlay('right', 240, 128, 10, 'Right'),
+    ],
+    1,
+  )
+  assert.deepEqual([far.get('left'), far.get('right')], [0, 0])
 })

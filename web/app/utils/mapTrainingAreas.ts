@@ -188,6 +188,192 @@ export async function runTrainingApplySteps(
   return results
 }
 
+const TILE_PIXELS = 256
+
+/** Continuous raster pixels; Y grows downward like the rendered map. */
+function planarPoint(position: RasterPosition) {
+  return {
+    x: position.tileX * TILE_PIXELS + position.pixelX,
+    y: -position.tileY * TILE_PIXELS + position.pixelY,
+  }
+}
+
+const stableOrder = (
+  left: Pick<TrainingAreaOverlay, 'id' | 'label'>,
+  right: Pick<TrainingAreaOverlay, 'id' | 'label'>,
+) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id)
+
+/**
+ * Picks the training area under a map point. Nested and partly overlapping
+ * circles resolve to the smallest radius, then the closest center, so every
+ * visible area keeps a clickable region.
+ */
+export function trainingAreaAtPoint(
+  areas: readonly TrainingAreaOverlay[],
+  point: RasterPosition,
+): string | null {
+  const target = planarPoint(point)
+  let best: { area: TrainingAreaOverlay; distance: number } | null = null
+  for (const area of areas) {
+    if (!Number.isFinite(area.radiusPixels) || area.radiusPixels <= 0) continue
+    const center = planarPoint(area.center)
+    const distance = Math.hypot(target.x - center.x, target.y - center.y)
+    if (!(distance <= area.radiusPixels)) continue
+    if (
+      !best ||
+      area.radiusPixels < best.area.radiusPixels ||
+      (area.radiusPixels === best.area.radiusPixels &&
+        (distance < best.distance ||
+          (distance === best.distance && stableOrder(area, best.area) < 0)))
+    )
+      best = { area, distance }
+  }
+  return best?.area.id ?? null
+}
+
+export interface TrainingLabelSize {
+  width: number
+  height: number
+}
+
+const LABEL_GAP = 3
+const LABEL_SLOTS = 16
+const DEFAULT_LABEL_HEIGHT = 18
+
+export function estimateTrainingLabelSize(
+  area: Pick<TrainingAreaOverlay, 'label' | 'draft'>,
+): TrainingLabelSize {
+  const text = area.label.length + (area.draft ? 10 : 0)
+  return { width: Math.round(text * 6.6 + 14), height: DEFAULT_LABEL_HEIGHT }
+}
+
+function clusterAngles(count: number) {
+  if (count <= 1) return [0]
+  if (count === 2) return [-30, 30]
+  if (count === 3) return [0, 120, 240]
+  return Array.from({ length: count }, (_, index) => (index * 360) / count)
+}
+
+/**
+ * Screen-space box of a label whose anchor sits on the circle at `angle`
+ * (degrees clockwise from north) and which extends outward from the circle.
+ */
+function labelBox(
+  center: { x: number; y: number },
+  radius: number,
+  angle: number,
+  size: TrainingLabelSize,
+) {
+  const radians = (angle * Math.PI) / 180
+  const sin = Math.sin(radians)
+  const cos = Math.cos(radians)
+  const anchorX = center.x + radius * sin
+  const anchorY = center.y - radius * cos
+  const middleX = anchorX + (size.width / 2 + LABEL_GAP) * sin
+  const middleY = anchorY - (size.height / 2 + LABEL_GAP) * cos
+  return {
+    left: middleX - size.width / 2,
+    right: middleX + size.width / 2,
+    top: middleY - size.height / 2,
+    bottom: middleY + size.height / 2,
+  }
+}
+
+type LabelBox = ReturnType<typeof labelBox>
+const boxesOverlap = (left: LabelBox, right: LabelBox) =>
+  left.left < right.right &&
+  right.left < left.right &&
+  left.top < right.bottom &&
+  right.top < left.bottom
+
+const normalizeAngle = (angle: number) => ((angle % 360) + 360) % 360
+
+/**
+ * Assigns each training label an angle on its own circle. Areas sharing
+ * roughly the same center spread around that circumference; a greedy pass
+ * then rotates any label still colliding with an earlier one.
+ * `scale` converts raster pixels to screen pixels at the current zoom.
+ */
+export function placeTrainingAreaLabels(
+  areas: readonly TrainingAreaOverlay[],
+  scale: number,
+  sizeOf: (
+    area: TrainingAreaOverlay,
+  ) => TrainingLabelSize = estimateTrainingLabelSize,
+): Map<string, number> {
+  const ordered = [...areas]
+    .filter(
+      (area) => Number.isFinite(area.radiusPixels) && area.radiusPixels > 0,
+    )
+    .sort(stableOrder)
+  const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1
+  const geometry = ordered.map((area) => {
+    const center = planarPoint(area.center)
+    return {
+      area,
+      center: { x: center.x * safeScale, y: center.y * safeScale },
+      radius: area.radiusPixels * safeScale,
+      size: sizeOf(area),
+    }
+  })
+
+  const parent = geometry.map((_, index) => index)
+  const root = (index: number): number => {
+    while (parent[index] !== index) {
+      parent[index] = parent[parent[index]!]!
+      index = parent[index]!
+    }
+    return index
+  }
+  for (let left = 0; left < geometry.length; left++) {
+    for (let right = left + 1; right < geometry.length; right++) {
+      const a = geometry[left]!
+      const b = geometry[right]!
+      const threshold = Math.max(24, 0.35 * Math.min(a.radius, b.radius))
+      if (
+        Math.hypot(a.center.x - b.center.x, a.center.y - b.center.y) <=
+        threshold
+      )
+        parent[root(right)] = root(left)
+    }
+  }
+  const clusters = new Map<number, number[]>()
+  geometry.forEach((_, index) => {
+    const key = root(index)
+    clusters.set(key, [...(clusters.get(key) || []), index])
+  })
+  const preferred = new Array<number>(geometry.length).fill(0)
+  for (const members of clusters.values()) {
+    const angles = clusterAngles(members.length)
+    members.forEach((index, position) => {
+      preferred[index] = angles[position]!
+    })
+  }
+
+  const placed: LabelBox[] = []
+  const result = new Map<string, number>()
+  geometry.forEach((item, index) => {
+    const start = preferred[index]!
+    let chosen = start
+    let box = labelBox(item.center, item.radius, start, item.size)
+    if (placed.some((other) => boxesOverlap(box, other))) {
+      for (let step = 1; step < LABEL_SLOTS; step++) {
+        const offset = Math.ceil(step / 2) * (360 / LABEL_SLOTS)
+        const angle = start + (step % 2 ? offset : -offset)
+        const candidate = labelBox(item.center, item.radius, angle, item.size)
+        if (!placed.some((other) => boxesOverlap(candidate, other))) {
+          chosen = angle
+          box = candidate
+          break
+        }
+      }
+    }
+    placed.push(box)
+    result.set(item.area.id, normalizeAngle(chosen))
+  })
+  return result
+}
+
 export function trainingAreaOverlays(input: {
   profile: MapProfile
   areaID: string

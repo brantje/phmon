@@ -278,11 +278,14 @@ const trainingOutcomeLabel = (outcome: string) =>
 watch(layerTraining, (visible) => {
   if (!visible) trainingEditor.clear()
 })
-function selectMapPoint(point: RasterPosition) {
+function selectMapPoint(point: RasterPosition, trainingAreaID?: string | null) {
   if (trainingEditor.moveArmed.value) {
     trainingEditor.moveCenter(trainingEditor.selectedID.value, point)
     return
   }
+  if (trainingAreaID) selectTrainingArea(trainingAreaID)
+  else if (trainingAreaID === null && trainingEditor.selectedID.value)
+    trainingEditor.select('')
   selectedTile.value = point
 }
 const historicalCharacters = computed(() =>

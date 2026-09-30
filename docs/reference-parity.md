@@ -29,6 +29,20 @@ Enter now ignores keys whose target is a marker, so Enter on any marker no longe
 also selects the map center. When one menu item is disabled, ArrowUp/ArrowDown
 keep focus on the enabled item.
 
+Selection follow-up (2026-10-01): a left-click or tap inside a circle selects that
+area and still picks the map point for the selected-point bar. Overlaps resolve to
+the smallest containing radius, then the closest center, then name order, and
+circles paint largest first so the visible fill matches. A second click on the
+selected area, or a left-click outside every circle, deselects it like the
+side-list toggle. Right-click, keyboard map-center Enter and Move center keep the
+current selection. Name chips select their own character even over another circle.
+Chips for areas with nearly shared centers spread around the circumference
+(2: NNW/NNE, 3: N/SE/SW, 4+: even steps), and colliding chips rotate to a free
+slot; layout reruns on zoom. Fixture browser checks with four overlapping areas
+covered nested, half-overlap, lens, outside, chip, keyboard, right-click and
+zoom-out cases, with no chip overlap or horizontal overflow at 1440×1000,
+1280×800 and 390×844.
+
 Evidence (**simulator fixtures only**, isolated stack and database; production
 plugin worker transport with fake phBot adapters): three fixture characters
 rendered three circles; editor Apply on one fixture produced fake

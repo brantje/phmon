@@ -16,7 +16,12 @@ import type { MapProfile } from '~~/shared/types/map'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
 import type { MapHeatLayer } from '~/utils/mapHeatmap'
 import type { MapRouteOverlay } from '~/utils/mapNavigationRoutes'
-import type { TrainingAreaOverlay } from '~/utils/mapTrainingAreas'
+import {
+  estimateTrainingLabelSize,
+  placeTrainingAreaLabels,
+  trainingAreaAtPoint,
+  type TrainingAreaOverlay,
+} from '~/utils/mapTrainingAreas'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
 import {
   localMapAsset,
@@ -72,7 +77,7 @@ const emit = defineEmits<{
   trainingselect: [characterID: string]
   trainingmove: [characterID: string, point: RasterPosition]
   trainingresize: [characterID: string, radiusPixels: number]
-  pointselect: [point: RasterPosition]
+  pointselect: [point: RasterPosition, trainingAreaID?: string | null]
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
@@ -89,10 +94,12 @@ let leaflet: typeof import('leaflet') | undefined
 interface RenderedTrainingArea {
   circle: LeafletCircle
   label: LeafletMarker
+  angle: number
   centerHandle?: LeafletMarker
   edgeHandle?: LeafletMarker
 }
 const renderedTraining = new Map<string, RenderedTrainingArea>()
+let visibleTrainingAreas: TrainingAreaOverlay[] = []
 let trainingDragging = ''
 let heatRenderer: L.Canvas | undefined
 let makeHeatCircle: typeof import('leaflet').circleMarker | undefined
@@ -429,8 +436,24 @@ function rasterToLatLng(position: RasterPosition) {
   )
 }
 
-const trainingLabelPoint = (center: LatLng, radius: number) =>
-  createLatLng!(center.lat + radius, center.lng)
+/** `angle` is degrees clockwise from north on the circle's edge. */
+function trainingLabelPoint(center: LatLng, radius: number, angle = 0) {
+  const radians = (angle * Math.PI) / 180
+  return createLatLng!(
+    center.lat + radius * Math.cos(radians),
+    center.lng + radius * Math.sin(radians),
+  )
+}
+
+/** Pushes the chip outward from the circle so it never covers its own edge. */
+function applyTrainingLabelAngle(rendered: RenderedTrainingArea) {
+  const element = rendered.label.getElement()
+  if (!element) return
+  const radians = (rendered.angle * Math.PI) / 180
+  const sin = Math.sin(radians)
+  const cos = Math.cos(radians)
+  element.style.translate = `calc(${-50 + 50 * sin}% + ${3 * sin}px) calc(${-50 - 50 * cos}% - ${3 * cos}px)`
+}
 const trainingEdgePoint = (center: LatLng, radius: number) =>
   createLatLng!(center.lat, center.lng + radius)
 
@@ -473,7 +496,7 @@ function ensureTrainingHandles(id: string, rendered: RenderedTrainingArea) {
       const next = handle.getLatLng()
       const size = rendered.circle.getRadius()
       rendered.circle.setLatLng(next)
-      rendered.label.setLatLng(trainingLabelPoint(next, size))
+      rendered.label.setLatLng(trainingLabelPoint(next, size, rendered.angle))
       rendered.edgeHandle?.setLatLng(trainingEdgePoint(next, size))
     })
     handle.on('dragend', () => {
@@ -500,7 +523,7 @@ function ensureTrainingHandles(id: string, rendered: RenderedTrainingArea) {
         Math.hypot(edge.lat - origin.lat, edge.lng - origin.lng),
       )
       rendered.circle.setRadius(size)
-      rendered.label.setLatLng(trainingLabelPoint(origin, size))
+      rendered.label.setLatLng(trainingLabelPoint(origin, size, rendered.angle))
     })
     handle.on('dragend', () => {
       emit('trainingresize', id, rendered.circle.getRadius())
@@ -532,13 +555,15 @@ function syncTrainingAreas() {
   if (!leaflet || !trainingLayerGroup || !createLatLng) return
   const L = leaflet
   const current = new Set<string>()
-  for (const area of (props.trainingAreas || []).slice(0, 256)) {
-    if (
-      !Number.isFinite(area.center.pixelX) ||
-      !Number.isFinite(area.center.pixelY) ||
-      !Number.isFinite(area.radiusPixels)
+  visibleTrainingAreas = (props.trainingAreas || [])
+    .slice(0, 256)
+    .filter(
+      (area) =>
+        Number.isFinite(area.center.pixelX) &&
+        Number.isFinite(area.center.pixelY) &&
+        Number.isFinite(area.radiusPixels),
     )
-      continue
+  for (const area of visibleTrainingAreas) {
     current.add(area.id)
     const center = rasterToLatLng(area.center)
     let rendered = renderedTraining.get(area.id)
@@ -570,13 +595,13 @@ function syncTrainingAreas() {
         event.preventDefault()
         emit('trainingselect', area.id)
       })
-      rendered = { circle, label }
+      rendered = { circle, label, angle: 0 }
       renderedTraining.set(area.id, rendered)
     } else if (trainingDragging !== area.id) {
       rendered.circle.setLatLng(center)
       rendered.circle.setRadius(area.radiusPixels)
-      rendered.label.setLatLng(trainingLabelPoint(center, area.radiusPixels))
     }
+    rendered.label.setZIndexOffset(area.selected ? 1350 : 1300)
     rendered.circle.setStyle({
       weight: area.selected ? 3 : 2,
       opacity: area.selected ? 0.95 : 0.7,
@@ -601,6 +626,41 @@ function syncTrainingAreas() {
     trainingLayerGroup.removeLayer(rendered.label)
     renderedTraining.delete(id)
     if (trainingDragging === id) trainingDragging = ''
+  }
+  // Smaller circles paint over larger ones, matching trainingAreaAtPoint.
+  for (const area of [...visibleTrainingAreas].sort(
+    (left, right) => right.radiusPixels - left.radiusPixels,
+  ))
+    renderedTraining.get(area.id)?.circle.bringToFront()
+  layoutTrainingLabels()
+}
+
+function layoutTrainingLabels() {
+  if (!map) return
+  const angles = placeTrainingAreaLabels(
+    visibleTrainingAreas,
+    2 ** map.getZoom(),
+    (area) => {
+      const chip = renderedTraining
+        .get(area.id)
+        ?.label.getElement()
+        ?.querySelector<HTMLElement>('.phmon-map-training-label')
+      return chip?.offsetWidth
+        ? { width: chip.offsetWidth, height: chip.offsetHeight }
+        : estimateTrainingLabelSize(area)
+    },
+  )
+  for (const [id, rendered] of renderedTraining) {
+    if (trainingDragging === id) continue
+    rendered.angle = angles.get(id) ?? 0
+    rendered.label.setLatLng(
+      trainingLabelPoint(
+        rendered.circle.getLatLng(),
+        rendered.circle.getRadius(),
+        rendered.angle,
+      ),
+    )
+    applyTrainingLabelAngle(rendered)
   }
 }
 
@@ -1161,7 +1221,13 @@ onMounted(async () => {
   map.once('unload', () =>
     element.value?.removeEventListener('keydown', onKeydown),
   )
-  map.on('click', (event: L.LeafletMouseEvent) => selectPoint(event.latlng))
+  map.on('click', (event: L.LeafletMouseEvent) => {
+    const point = indexAt(event.latlng)
+    const trainingAreaID = props.compact
+      ? undefined
+      : trainingAreaAtPoint(visibleTrainingAreas, point)
+    emit('pointselect', point, trainingAreaID)
+  })
   map.on('contextmenu', (event: L.LeafletMouseEvent) => {
     L.DomEvent.preventDefault(event.originalEvent)
     selectPoint(event.latlng)
@@ -1175,6 +1241,7 @@ onMounted(async () => {
   })
   map.on('dragstart', () => emit('mapdrag'))
   map.on('zoomend', snapZoomToPercentStep)
+  map.on('zoomend', layoutTrainingLabels)
   map.on('moveend zoomend', publishView)
   publishView()
   syncHeatLayers()
