@@ -277,6 +277,12 @@ empty, malformed/partial and truncated results. Equipment stays in local diagnos
 logs, with three players / 32 items / 8 KiB equipment evidence per player. The
 normal player probe continues to omit equipment. No guessed getter, slot mapping,
 packet request, player transport/history or bot action is introduced.
+Operator logs at 21:29:23 / 21:31:16 UTC then established observed-empty discovery
+followed by ten valid entries in 18 ms and one successful equipment target match.
+That matched record has exactly eight fields (name/guild/grant/level/dead/region/
+X/Y), with complete field-type evidence and no `items` or alternate equipment
+field. Armor/weapon inspection is source-blocked for this observed clientless
+record. This is not a parser failure and does not establish all-version support.
 
 Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
 `docs/phbot-capabilities.md`, `docs/reference-parity.md`, and this guide.
@@ -285,11 +291,11 @@ live transport audit and `git diff --check` pass. The generated monitor output
 contract matches the base; the version guard passes 1.7.3 → 1.7.4 with protocol 9
 unchanged.
 
-Exact next action: download/install plugin 1.7.4 from the same branch and use
-**Inspect player equipment** for a nearby player (or leave target blank). Record
-its local equipment summary/sample logs in `docs/phbot-capabilities.md`. Actual
-equipment availability remains unverified: the prior first entry omitted `items`.
-Only after observed fields are verified should further equipment behavior be added.
+The requested runtime/armor investigation is complete for the supplied results.
+Exact next action if further equipment work is requested: establish a documented/
+observed source with actual item data, or compare additional players/client-running
+state using the existing probe. Keep unavailable equipment explicit; do not infer
+item model/code/plus from the eight-field player record or add a packet fallback.
 Map placement and cross-observer identity remain separate issue #36 gates.
 No real bot action or deployment was performed; unrelated untracked map HTML is
 untouched. This diagnostic does not claim issue #36 feature completion.

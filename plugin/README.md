@@ -103,10 +103,15 @@ blues, credentials and client paths are excluded. At most 32 item entries are
 inspected per sampled player, with an 8 KiB equipment evidence bound. Results
 are split into one local log line per player.
 
-The first entry in the operator's 1.7.3 log omitted `items`, so actual equipment
-availability remains unverified. Field-type evidence helps identify an alternate
-runtime shape without guessing what undocumented values mean. This diagnostic
-adds no player equipment transport, database records, packet requests or bot action.
+The operator's 1.7.4 client-closed test matched a nearby player and exposed the
+complete eight-field record: name/guild/grant/level/dead/region/X/Y. It had no
+`items` or alternate equipment field, so that observation cannot reveal armor or
+weapons. This is a runtime source limitation for that sample. The probe can compare
+other players/client-running state if needed. Field-type evidence identifies actual
+runtime shape without guessing undocumented values. See
+[the recorded result](../docs/phbot-capabilities.md#equipment-runtime-result-field-absent-2026-10-01).
+This diagnostic adds no player equipment transport, database records, packet
+requests or bot action.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

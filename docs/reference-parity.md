@@ -24,8 +24,11 @@ unverified; [runtime evidence](phbot-capabilities.md) distinguishes these gates.
 The operator next authorized armor/weapon inspection: plugin 1.7.4 adds a
 separate manual equipment probe with optional player name/ID targeting, bounded
 field-type evidence and documented item fields. All 138 plugin tests pass.
-Runtime equipment availability remains pending; the previous first entry omitted
-`items`. This explicit diagnostic does not enable a nearby-player equipment UI.
+The operator's 1.7.4 test first returned an empty dictionary in region 25733, then
+ten valid players in 18 ms in region 26244. A successful target match yielded a
+complete eight-field record with no `items` or alternate equipment field. Armor/
+weapon inspection is source-blocked for this observed clientless player record.
+This explicit diagnostic does not enable a nearby-player equipment UI.
 Backend and map UI are unchanged, and no Other players layer, player history or
 packet fallback is claimed. No visual comparison is needed for this diagnostic.
 

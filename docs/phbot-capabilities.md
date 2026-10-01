@@ -103,9 +103,40 @@ One summary and one local log line per player keep results easy to copy.
 
 Validation: **138 plugin tests** pass, including five new equipment tests for
 availability distinctions, field preservation, target selection, unknown-value
-exclusion, item/byte bounds and the backend-independent Qt callback. Native armor/
-weapon results still await the operator's 1.7.4 logs. Map placement and identity
-rules remain separate gates before issue #36 transport/UI implementation.
+exclusion, item/byte bounds and the backend-independent Qt callback. Subsequent
+native results are recorded below. Map placement and identity rules remain
+separate gates before issue #36 transport/UI implementation.
+
+### Equipment runtime result: field absent (2026-10-01)
+
+Operator-provided phBot **20.1.2** / plugin **1.7.4** logs establish two distinct
+results with the client closed and the character joined:
+
+- **21:29:23 UTC / 23:29:23 Amsterdam**, observer region 25733: `get_players()`
+  returned `{}` in 0 ms, with zero entries/samples. Target matching occurs after
+  the native call, so the requested target did not cause the empty dictionary.
+  This response tests observed-empty player discovery, not equipment availability.
+- **21:31:16 UTC / 23:31:16 Amsterdam**, observer region 26244: the getter returned
+  ten valid entries in 18 ms. Name targeting matched one player and produced one
+  sample, with no truncation. The sample's complete field evidence has exactly
+  eight fields: `name`, `guild`, `grant`, `level`, `dead`, `region`, `x`, `y`.
+  `field_types_truncated: false` establishes that the absence of equipment fields
+  is not a structural logging limit. `items` is absent, and equipment reports
+  `availability: unavailable`, `reason: items_missing`.
+
+The sampled runtime record cannot supply that player's armor or weapon. There is
+no alternate equipment field in this complete eight-field shape. This is a verified
+source limitation for the observed player/clientless session, not proof about every
+player, game mode or other phBot version. Integer `level` is now observed as a field
+type; its value was not copied by this diagnostic. No item model/code/plus can be
+derived from the supplied player record. Later XP/SP and gold log messages are
+unrelated to this capability result.
+
+The requested investigation is complete for this response. Equipment inspection
+remains blocked on a documented/observed source exposing item data. The existing
+probe can compare additional players/client-running state without a plugin update.
+No guessed API or packet fallback is added. This document retains capability
+metadata only, not player identities, equipment records or sighting history.
 
 ## Sources checked on 2026-09-26
 
