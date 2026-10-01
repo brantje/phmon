@@ -91,7 +91,7 @@ const staleLabel = computed(() => {
       "
       @click="emit('focus')"
     >
-      Focus
+      <UIcon name="i-lucide-crosshair" />
     </button>
   </div>
 </template>
