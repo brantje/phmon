@@ -6,6 +6,8 @@ const props = defineProps<{
   selected: boolean
   targeted: boolean
   positionFresh: boolean
+  now: number
+  activity?: string
 }>()
 
 const emit = defineEmits<{
@@ -13,47 +15,33 @@ const emit = defineEmits<{
   toggleTarget: []
 }>()
 
-function resourcePercent(current?: number, maximum?: number) {
-  if (
-    current == null ||
-    maximum == null ||
-    !Number.isFinite(current) ||
-    !Number.isFinite(maximum) ||
-    maximum <= 0
-  )
-    return null
-  return Math.max(0, Math.min(100, (current / maximum) * 100))
-}
-
-function resourceLabel(label: 'HP' | 'MP', current?: number, maximum?: number) {
-  if (
-    current == null ||
-    maximum == null ||
-    !Number.isFinite(current) ||
-    !Number.isFinite(maximum)
-  )
-    return `${label} — / —`
-  return `${label} ${current.toLocaleString()} / ${maximum.toLocaleString()}`
-}
-
-const hpPercent = computed(() =>
-  resourcePercent(props.character.hp, props.character.hp_max),
+const statusLabel = computed(() =>
+  !props.character.online
+    ? 'Offline'
+    : props.character.botting === true
+      ? 'Bot on'
+      : props.character.botting === false
+        ? 'Bot off'
+        : 'Bot unknown',
 )
-const mpPercent = computed(() =>
-  resourcePercent(props.character.mp, props.character.mp_max),
-)
-const statusLabel = computed(() => {
-  if (!props.character.online) return 'Offline · last position'
-  return props.positionFresh ? 'Online' : 'Online · last observed position'
+const staleLabel = computed(() => {
+  const at = Date.parse(props.character.state_updated_at || '')
+  return Number.isFinite(at)
+    ? `Stale ${Math.max(0, Math.floor((props.now - at) / 1000))}s`
+    : 'Stale'
 })
 </script>
 
 <template>
-  <div class="map-character-status-row" :class="{ selected, targeted }">
+  <div
+    class="map-character-status-row"
+    :class="{ selected, targeted, offline: !character.online }"
+  >
     <label class="map-character-status-target">
       <input
         type="checkbox"
         :checked="targeted"
+        :disabled="!character.online"
         :aria-label="`Target ${character.name} for actions`"
         @change="emit('toggleTarget')"
       />
@@ -72,45 +60,20 @@ const statusLabel = computed(() => {
             Lv. {{ character.level }}
           </small>
         </span>
-        <small class="map-character-presence">{{ statusLabel }}</small>
+        <small class="map-character-presence"
+          ><span v-if="character.dead === true">Dead · </span
+          ><span v-else-if="character.online && !positionFresh"
+            >{{ staleLabel }} · </span
+          >{{ statusLabel }}</small
+        >
       </span>
 
-      <span
-        class="map-character-resource hp"
-        role="progressbar"
-        aria-label="Character health"
-        :aria-valuemin="0"
-        :aria-valuemax="character.hp_max ?? undefined"
-        :aria-valuenow="character.hp ?? undefined"
-      >
-        <span
-          class="map-character-resource-fill"
-          :style="{ width: `${hpPercent ?? 0}%` }"
-        />
-        <span class="map-character-resource-label">
-          {{ resourceLabel('HP', character.hp, character.hp_max) }}
-        </span>
-      </span>
-
-      <span
-        class="map-character-resource mp"
-        role="progressbar"
-        aria-label="Character mana"
-        :aria-valuemin="0"
-        :aria-valuemax="character.mp_max ?? undefined"
-        :aria-valuenow="character.mp ?? undefined"
-      >
-        <span
-          class="map-character-resource-fill"
-          :style="{ width: `${mpPercent ?? 0}%` }"
-        />
-        <span class="map-character-resource-label">
-          {{ resourceLabel('MP', character.mp, character.mp_max) }}
-        </span>
-      </span>
+      <MapCharacterResources v-if="character.online" :character="character" />
 
       <small class="map-character-location">
-        {{ character.server }} - {{ character.zone || 'Unknown zone' }}
+        {{ character.online ? character.server : 'Last seen' }} ·
+        {{ character.zone || 'Unknown zone'
+        }}{{ activity ? ` · ${activity}` : '' }}
       </small>
     </button>
   </div>
@@ -208,46 +171,6 @@ const statusLabel = computed(() => {
   text-align: right;
 }
 
-.map-character-resource {
-  position: relative;
-  display: block;
-  height: 1rem;
-  overflow: hidden;
-  border: 1px solid rgba(14, 21, 31, 0.85);
-  border-radius: 3px;
-  background: rgba(5, 9, 15, 0.8);
-}
-
-.map-character-resource-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  min-width: 0;
-  transition: width 180ms ease-out;
-}
-
-.map-character-resource.hp .map-character-resource-fill {
-  background: #d92332;
-}
-
-.map-character-resource.mp .map-character-resource-fill {
-  background: #3159cb;
-}
-
-.map-character-resource-label {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-  padding: 0 0.2rem;
-  color: #e9eff8;
-  font-size: 0.8rem;
-  line-height: 1;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.95);
-  white-space: nowrap;
-}
-
 .map-character-location {
   overflow: hidden;
   margin-top: 0.05rem;
@@ -255,5 +178,58 @@ const statusLabel = computed(() => {
   font-size: 0.64rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.map-character-status-row {
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  padding: 12px 2px;
+  border-top: 0;
+}
+.map-character-status-row.offline {
+  opacity: 0.5;
+}
+.map-character-status-target input {
+  width: 16px;
+  height: 16px;
+}
+.map-character-status-focus {
+  gap: 4px;
+}
+.map-character-status-identity strong {
+  font-size: 13px;
+}
+.map-character-level,
+.map-character-presence,
+.map-character-location {
+  font-size: 11px;
+}
+.map-character-status-heading {
+  gap: 4px;
+}
+.map-character-presence {
+  white-space: nowrap;
+}
+
+.map-character-status-target input {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ph-border);
+  border-radius: 4px;
+  background: var(--ph-panel);
+}
+.map-character-status-target input:checked {
+  border-color: var(--ph-blue);
+  background: var(--ph-active);
+}
+.map-character-status-target input:checked::after {
+  content: '✓';
+  color: var(--ph-blue);
+  font-size: 12px;
+  line-height: 1;
+}
+.map-character-status-target input:disabled {
+  opacity: 0.5;
 }
 </style>

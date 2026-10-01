@@ -1758,3 +1758,77 @@ icons, plus the shared party badge for party ranks, render in front of the
 opt-in name label. They do not replace or cover the bubble. Names remain off
 until **Show nearby monsters names** is enabled, so the icons appear only with
 that label.
+
+
+### Issue #55 map workspace redesign — 2026-10-01
+
+The operator-supplied `PhMon Map Redesign.html` and screenshots provide the layout
+and interaction reference. The supplied mock records are illustrative. The public
+demo was reachable, but its Map navigation remained on Dashboard during this
+inspection after dismissing the recurring connection overlay. That capture is not
+claimed as a verified Map comparison.
+
+All seven phases preserve the existing theme, controls, query synchronization and
+live subscription. The map-only layout uses the default authentication gate. Tabs
+stay mounted, retaining action owners and training drafts. Search includes current
+server characters, validated destinations and every exported cave floor. Targeting
+is separate from focus; offline characters cannot enter group/All selections.
+
+The operator's subsequent comparison corrected all three side panels. Tabs now use
+an underline and counts; trace controls fit one horizontal row; groups are chips;
+character rows retain numeric HP/MP bars; Activity uses aligned unboxed rows; Layers
+uses right-aligned switches and muted uppercase headings. The obsolete nested list
+height limits are removed. PhMon's current colors and resource-bar colors are used.
+NPCs and the existing additional controls remain reachable.
+
+The inspector keeps the existing training editor's readback, drafts, radius limits,
+Apply/Reset and step outcomes. Empty-map clicks hide it without clearing the URL
+character scope. Reported positions remain unchanged when portraits overlap; the
+cluster picker is keyboard reachable. The route tray joins submissions to reported
+routes by command/session/character identity, preserves independent outcomes and
+dismisses exact route records. A completed command never fabricates arrival.
+
+Historical heatmaps retain six layer switches, custom windows, character/rank
+filters, source/status messages, legends and the existing scoped reset dialog.
+Activity remains available with the corresponding marker layers hidden. Context
+actions/copy, cave floors/Back to world, legend and corner readouts replace the old
+under-map explanations. The operator subsequently removed the left-click point
+chip and click-point marker; background clicks close the inspector without
+displaying a popup or point indicator. Right-click and
+Shift+F10/Menu-key context actions retain navigation and training access. Canvas resize uses `invalidateSize`, without
+remounting for tabs or tray changes. Compact previews retain their behavior.
+
+Validation: `bash scripts/check.sh` passed for phases 1–7 and final corrections
+(Go formatting/vet/race/integration tests and builds, Python tests, live-transport
+audit, frontend format/unit/lint/typecheck/build and Compose validation). The new
+tray tests cover exact joining, replacement sessions/routes and command completion
+without arrival; cluster tests cover the screen-pixel threshold. The existing
+`remote_controls_smoke.py` passed against disposable ports 53055/58055, verifying
+capabilities, concurrent outcomes, execution-time positions, training readback,
+confirmation, void Disconnect and unsupported Clientless.
+
+Browser verification uses the production plugin protocol with explicitly named
+local fixtures, never production records or real bots. Desktop captures and mobile
+layout checks are saved in [the issue #55 verification ledger](reference/issue55/README.md).
+The navigation fixture verified waiting-for-movement, reported arrival and Clear
+finished; training drafts survived tabs/live updates and Reset restored readback.
+These demonstrate UI and
+protocol behavior, not real Windows/phBot runtime validation. The full missing
+behavior plan is [Issue #57](https://github.com/brantje/phmon/issues/57); Stop,
+progress/ETA, observed trace state and nearby-player trace discovery are not claimed
+as implemented by this UI-only redesign.
+
+
+#### Historical heatmap panel correction — 2026-10-01
+
+The operator's comparison requires Range and Character on one row, framed selects,
+compact layer spacing, the short Mob ranks label, and Reset… beside the unavailable
+layers note. The section now uses these placements with PhMon's existing theme.
+The six layers, custom dates, rank and character filtering, per-layer status and
+reset scope/confirmation retain their existing behavior.
+
+`bash scripts/check.sh` passed. Browser comparison verified two 133 px dropdowns
+on one row, six 36 px rows, 26 × 14 px switches and the compact Reset footer.
+Custom dates, rank filter and scoped reset/Cancel remain reachable. Mobile at
+390 × 844 keeps paired filters and fits custom dates without horizontal overflow.
+[Updated historical heatmaps panel](reference/issue55/historical-heatmaps-panel.png).

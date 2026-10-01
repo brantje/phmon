@@ -250,6 +250,64 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-01 Issue #55 map redesign
+
+Implemented the seven UI reorganization phases on `codex/issue-55-map-redesign`.
+The map-specific layout delegates to the authenticated default shell; sidebar,
+topbar and Easy/Advanced behavior are unchanged. Header go-to search, mounted
+Characters/Activity/Layers tabs, compact shared remote actions, group targeting,
+resource bars, floating inspector/training editor, route tray, layer switches,
+grouped activity and map overlays reuse the existing live and command contracts.
+No plugin, Go, database or command-type changes were introduced.
+
+The operator's screenshot correction applies to all three panels: underline tabs
+with counts, horizontal trace controls, group chips, readable HP/MP rows, unboxed
+activity rows and switches on the right. Existing theme tokens and resource colors
+are retained. Old nested list height limits and the trace grid override were removed.
+
+`bash scripts/check.sh` passed after each of phases 1–7 and the presentation
+corrections. An isolated PostgreSQL/backend/web stack passed the existing Issue #35
+remote-control smoke flow. Browser checks cover keyboard go-to, group/All targeting,
+mandatory Disconnect review/cancel, retained tabs/drafts, inspector and overlapping
+portrait selection, point actions, layer controls and responsive sizing. Evidence
+and final verification details are in `docs/reference-parity.md` and
+`docs/reference/issue55/README.md`. The route fixture verified waiting-for-movement,
+reported arrival and Clear finished. Final captures cover 2560 × 1287, 1440 × 1000,
+1280 × 800 and 390 × 844 without horizontal overflow. Implementation and verification
+are complete for #55. The operator requested a PR, a full CodeRabbit review, fixes
+and commit-linked replies; next action is publish the branch and complete that loop.
+No deployment or real-character operation was performed.
+
+Operator correction — 2026-10-01: remove the left-click coordinate/action popup.
+Background clicks now close the inspector without displaying a popup or click-point
+marker, including clicks inside a training circle. Training labels/handles and character markers remain
+explicit inspection/editing controls. Right-click/touch context actions remain;
+Shift+F10 and the Menu key expose the same actions from the map keyboard focus.
+The ordinary click chip, click-point renderer and their selection/anchor plumbing
+are removed. This supersedes #55's selected-point chip requirement. `bash scripts/check.sh` passed. Browser verification
+confirmed no popup or click-point marker with three targets selected, including
+background clicks inside training circles,
+right-click and Shift+F10 context actions, character-marker inspection and the
+explicit training-label/Move center/Reset flow. Evidence:
+`docs/reference/issue55/map-click-no-popup.png`. No production restart occurred.
+
+Operator correction — 2026-10-01: Historical heatmaps now uses two equal filter
+columns (Range / Character), framed existing-theme dropdowns, contiguous 36 px
+layer rows, the short Mob ranks label, and one footer containing the unavailable
+layers note and compact Reset… button. The header status sits beside its chevron.
+Custom dates, character/rank filters, per-layer status messages and scoped reset
+confirmation keep their existing bindings and behavior. `bash scripts/check.sh`
+passed; browser checks confirmed equal-width dropdowns, 26 × 14 px switches,
+36 px rows, the compact footer, custom dates, rank filter and scoped reset Cancel.
+Mobile at 390 × 844 has no horizontal overflow. Evidence:
+`docs/reference/issue55/historical-heatmaps-panel.png`.
+
+Missing navigation Stop, numeric progress/ETA, trace readback and nearby-player
+trace discovery are tracked in [Issue #57](https://github.com/brantje/phmon/issues/57).
+They remain explicitly unavailable where the existing contracts lack them. Return
+Scroll uses real command outcomes without fabricated routes. Simulator checks do
+not establish real Windows/phBot runtime validation. No real character was operated.
+
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
 Implemented the reusable command fan-out foundation for Issue #30. The frontend

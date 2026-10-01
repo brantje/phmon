@@ -17,9 +17,13 @@ const props = withDefaults(
     scopeKeyForCharacter(character: CharacterView, scopeKey: string): string
     currentScopeKey(characterID: string): string
     currentCharacter(characterID: string): CharacterView | undefined
+    variant?: 'default' | 'map'
+    traceCandidates?: CharacterView[]
     mapSnapshotCurrent?: boolean
   }>(),
   {
+    variant: 'default',
+    traceCandidates: () => [],
     mapSnapshotCurrent: true,
   },
 )
@@ -39,6 +43,8 @@ const trainingAreaName = ref('')
 const trainingRadius = ref('')
 const formError = ref('')
 const notice = ref('')
+const mapActionTrigger = ref<HTMLButtonElement | null>(null)
+const mapMoreOpen = ref(false)
 const runButtonRef = ref<HTMLButtonElement | null>(null)
 const activePreviewID = ref('')
 const activePreviewSignature = ref('')
@@ -229,6 +235,71 @@ watch(selectedAction, (name) => {
   }
 })
 
+const mapActions = [
+  { name: 'bot.start' as const, label: 'Start bot', icon: 'i-lucide-play' },
+  { name: 'bot.stop' as const, label: 'Stop bot', icon: 'i-lucide-square' },
+  {
+    name: 'character.return' as const,
+    label: 'Return scroll',
+    icon: 'i-lucide-scroll',
+  },
+  {
+    name: 'character.disconnect' as const,
+    label: 'Disconnect',
+    icon: 'i-lucide-unplug',
+  },
+]
+const mapMoreActions = [
+  'training.area.set',
+  'training.radius.set',
+  'client.clientless',
+]
+function mapActionReason(name: RemoteControlActionName) {
+  if (!props.selectedIds.length) return 'Select characters below.'
+  if (actions.preparing.value || actions.submitting.value)
+    return 'Another action is being submitted.'
+  if (!actions.controlsCurrent.value)
+    return 'Current session capabilities are unavailable.'
+  const args = validateRemoteControlArgs(
+    name,
+    name === 'trace.start' ? { traceName: traceName.value } : {},
+  )
+  if (!args) return 'Enter a player name.'
+  const plan = actions.preview(props.selectedIds, name, args, props.scopeKey)
+  return plan?.eligibleCount
+    ? ''
+    : plan?.children
+        .map((child) => child.skipReason?.message)
+        .filter(Boolean)
+        .join(' · ') || 'No eligible targets.'
+}
+async function runMapAction(name: RemoteControlActionName, event: MouseEvent) {
+  mapActionTrigger.value = event.currentTarget as HTMLButtonElement
+  if (mapActionReason(name)) return
+  chooseAction(name)
+  await nextTick()
+  await runAction()
+}
+const mapResultSummary = computed(() => {
+  const operation = actions.operations.value
+    .filter((item) => item.state !== 'prepared' && item.state !== 'cancelled')
+    .at(-1)
+  if (!operation) return ''
+  const completed = operation.children.filter(
+    (child) => child.executionState === 'completed',
+  ).length
+  const skipped = operation.children.filter(
+    (child) => child.submission === 'skipped',
+  ).length
+  const failed = operation.children.filter(
+    (child) =>
+      child.submission === 'rejected' ||
+      child.executionState === 'failed' ||
+      child.executionState === 'expired',
+  ).length
+  const pending = operation.children.length - completed - skipped - failed
+  return `${operation.command.label}: ${completed} completed${skipped ? ` · ${skipped} skipped` : ''}${failed ? ` · ${failed} failed` : ''}${pending ? ` · ${pending} pending or unknown` : ''}`
+})
 function chooseAction(name: RemoteControlActionName) {
   selectedAction.value = name
   notice.value = ''
@@ -294,25 +365,41 @@ function cancelReview(operation: FanOutOperation) {
   activePreviewID.value = ''
   activePreviewSignature.value = ''
   reviewNotice.value = ''
-  void nextTick(() => runButtonRef.value?.focus())
+  void nextTick(() =>
+    (props.variant === 'map'
+      ? mapActionTrigger.value
+      : runButtonRef.value
+    )?.focus(),
+  )
 }
 </script>
 
 <template>
   <section
     class="panel remote-control-panel"
+    :class="{ 'map-remote-panel': variant === 'map' }"
     aria-labelledby="remote-control-title"
   >
     <header class="remote-control-heading">
       <div>
-        <h2 id="remote-control-title">Character actions</h2>
-        <p>
+        <h2 id="remote-control-title">
+          {{ variant === 'map' ? 'Actions' : 'Character actions' }}
+        </h2>
+        <p v-if="variant === 'map'">
+          {{
+            props.selectedIds.length
+              ? `${props.selectedIds.length} selected`
+              : 'Select characters below'
+          }}
+        </p>
+        <p v-else>
           {{ props.selectedIds.length }} selected ·
           {{ previewCounts.eligible }} eligible ·
           {{ previewCounts.skipped }} skipped
         </p>
       </div>
       <span
+        v-if="variant === 'default'"
         class="status-chip"
         :class="actions.controlsCurrent.value ? 'online' : 'stale'"
       >
@@ -340,14 +427,103 @@ function cancelReview(operation: FanOutOperation) {
       actions.
     </p>
     <p
-      v-else-if="!props.selectedIds.length"
+      v-else-if="variant === 'default' && !props.selectedIds.length"
       class="remote-control-state"
       role="status"
     >
       Select one or more characters to prepare an action.
     </p>
 
-    <div class="remote-control-groups">
+    <div v-if="variant === 'map'" class="map-remote-actions">
+      <button
+        v-for="action in mapActions"
+        :key="action.name"
+        class="compact-button"
+        type="button"
+        :disabled="Boolean(mapActionReason(action.name))"
+        :title="mapActionReason(action.name)"
+        @click="runMapAction(action.name, $event)"
+      >
+        <UIcon :name="action.icon" />{{ action.label }}
+      </button>
+      <div class="map-trace-row remote-control-form">
+        <select v-model="traceName" aria-label="Trace leader">
+          <option value="">Trace player…</option>
+          <option
+            v-for="character in traceCandidates"
+            :key="character.character_id"
+            :value="character.name"
+          >
+            Trace {{ character.name }}
+          </option>
+          <option
+            v-if="
+              traceName &&
+              !traceCandidates.some((item) => item.name === traceName)
+            "
+            :value="traceName"
+          >
+            Trace {{ traceName }}
+          </option>
+        </select>
+        <button
+          class="compact-button"
+          type="button"
+          :disabled="Boolean(mapActionReason('trace.start'))"
+          :title="mapActionReason('trace.start')"
+          @click="runMapAction('trace.start', $event)"
+        >
+          Start
+        </button>
+        <button
+          class="compact-button"
+          type="button"
+          :disabled="Boolean(mapActionReason('trace.stop'))"
+          :title="mapActionReason('trace.stop')"
+          @click="runMapAction('trace.stop', $event)"
+        >
+          Stop
+        </button>
+        <button
+          class="compact-button"
+          type="button"
+          disabled
+          title="Nearby-player discovery is unavailable; tracked in issue #57."
+          aria-label="Refresh nearby players"
+        >
+          <UIcon name="i-lucide-refresh-cw" />
+        </button>
+      </div>
+    </div>
+    <details
+      v-if="variant === 'map'"
+      class="remote-control-eligibility map-more-controls"
+      @toggle="mapMoreOpen = ($event.target as HTMLDetailsElement).open"
+    >
+      <summary>More controls</summary>
+      <label class="remote-control-form map-manual-trace"
+        >Player name<input
+          v-model="traceName"
+          maxlength="64"
+          autocomplete="off"
+          aria-label="Manual trace player name"
+      /></label>
+      <div class="remote-control-choices">
+        <button
+          v-for="action in actionGroups
+            .flatMap((group) => group.actions)
+            .filter((action) => mapMoreActions.includes(action.name))"
+          :key="action.name"
+          class="remote-control-choice"
+          :class="{ 'is-selected': selectedAction === action.name }"
+          type="button"
+          @click="chooseAction(action.name)"
+        >
+          {{ action.label }}
+        </button>
+      </div>
+    </details>
+    <div v-if="variant === 'default'" class="remote-control-groups">
       <section
         v-for="group in actionGroups"
         :key="group.title"
@@ -376,7 +552,10 @@ function cancelReview(operation: FanOutOperation) {
       </section>
     </div>
 
-    <div v-if="selectedAction === 'trace.start'" class="remote-control-form">
+    <div
+      v-if="variant === 'default' && selectedAction === 'trace.start'"
+      class="remote-control-form"
+    >
       <label>
         Player name
         <input v-model="traceName" maxlength="64" autocomplete="off" />
@@ -436,7 +615,11 @@ function cancelReview(operation: FanOutOperation) {
       {{ reviewNotice }}
     </p>
 
-    <details v-if="preview" class="remote-control-eligibility" open>
+    <details
+      v-if="preview && (variant === 'default' || mapMoreOpen)"
+      class="remote-control-eligibility"
+      :open="variant === 'default'"
+    >
       <summary>
         {{ preview.eligibleCount }} eligible ·
         {{ preview.skippedCount }} skipped for {{ selectedLabel }}
@@ -459,6 +642,7 @@ function cancelReview(operation: FanOutOperation) {
     </details>
 
     <button
+      v-if="variant === 'default' || mapMoreActions.includes(selectedAction)"
       ref="runButtonRef"
       type="button"
       class="compact-button remote-control-run"
@@ -508,22 +692,66 @@ function cancelReview(operation: FanOutOperation) {
       @submit="submitReviewed(selectedOperation)"
       @cancel="cancelReview(selectedOperation)"
     />
-    <CommandFanOutResults
-      v-for="operation in actions.operations.value.filter(
-        (item) => item.operationID !== activePreviewID,
-      )"
-      :key="operation.operationID"
-      :operation="operation"
-      :stale="actions.stale.value"
-      :on-retry="
-        (characterID: string) => actions.retrySubmission(operation, characterID)
+    <p
+      v-if="variant === 'map' && mapResultSummary"
+      class="remote-control-state"
+      role="status"
+    >
+      {{ mapResultSummary }}
+    </p>
+    <details
+      v-if="
+        variant === 'default' ||
+        actions.operations.value.some(
+          (item) => !['prepared', 'cancelled'].includes(item.state),
+        )
       "
-      :on-dismiss="() => actions.dismiss(operation)"
-    />
+      :open="variant === 'default'"
+      class="remote-control-results"
+    >
+      <summary v-if="variant === 'map' && actions.operations.value.length">
+        Action results
+      </summary>
+      <CommandFanOutResults
+        v-for="operation in actions.operations.value.filter(
+          (item) => item.operationID !== activePreviewID,
+        )"
+        :key="operation.operationID"
+        :operation="operation"
+        :stale="actions.stale.value"
+        :on-retry="
+          (characterID: string) =>
+            actions.retrySubmission(operation, characterID)
+        "
+        :on-dismiss="() => actions.dismiss(operation)"
+      />
+    </details>
   </section>
 </template>
 
 <style scoped>
+.map-remote-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.map-trace-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.map-trace-row select {
+  min-width: 0;
+  flex: 1;
+}
+.map-manual-trace {
+  grid-column: 1 / -1;
+}
+.remote-control-results {
+  min-width: 0;
+}
+
 .remote-control-panel {
   display: grid;
   min-width: 0;
@@ -690,5 +918,66 @@ function cancelReview(operation: FanOutOperation) {
 .remote-control-eligibility summary:focus-visible {
   outline: 2px solid var(--ph-primary);
   outline-offset: 2px;
+}
+
+.map-remote-panel {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  gap: 6px;
+}
+.map-remote-panel .remote-control-heading > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 6px;
+}
+.map-remote-panel .remote-control-heading h2 {
+  color: var(--ph-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.map-remote-panel .remote-control-heading p {
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.map-remote-actions .compact-button {
+  justify-content: flex-start;
+  min-height: 28px;
+  font-size: 12px;
+  padding: 3px 7px;
+}
+.map-remote-actions .map-trace-row {
+  display: flex;
+  flex-direction: row;
+  grid-template-columns: none;
+  gap: 5px;
+}
+.map-remote-actions .map-trace-row select {
+  width: 0;
+  min-height: 30px;
+  padding: 3px 6px;
+}
+.map-trace-row .compact-button {
+  flex: none;
+  justify-content: center;
+}
+.map-remote-panel .map-more-controls {
+  border: 0;
+  background: transparent;
+}
+.map-remote-panel .map-more-controls summary {
+  padding: 2px 0;
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.map-remote-panel .remote-control-results summary {
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.map-remote-panel .remote-control-state {
+  font-size: 11px;
 }
 </style>
