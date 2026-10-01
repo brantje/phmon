@@ -1351,10 +1351,18 @@ onMounted(async () => {
     event.preventDefault()
     if (map) selectPoint(map.getCenter())
   }
+  const onMiddleButton = (event: MouseEvent) => {
+    if (event.button !== 1) return
+    event.preventDefault()
+  }
   element.value.addEventListener('keydown', onKeydown)
-  map.once('unload', () =>
-    element.value?.removeEventListener('keydown', onKeydown),
-  )
+  element.value.addEventListener('mousedown', onMiddleButton, true)
+  element.value.addEventListener('auxclick', onMiddleButton, true)
+  map.once('unload', () => {
+    element.value?.removeEventListener('keydown', onKeydown)
+    element.value?.removeEventListener('mousedown', onMiddleButton, true)
+    element.value?.removeEventListener('auxclick', onMiddleButton, true)
+  })
   map.on('click', (event: L.LeafletMouseEvent) => {
     const point = indexAt(event.latlng)
     const trainingAreaID = props.compact
