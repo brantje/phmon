@@ -324,9 +324,15 @@ Validation: all 132 frontend tests pass, including unassigned-command tray cases
 Isolated browser component checks passed for eight missing/valid/out-of-range
 resource bars and partial search selection with Enter/mouse plus Escape. The full
 post-review `bash scripts/check.sh` passed (Go, Python, transport audit, formatting,
-132 frontend tests, lint, typecheck/build and Compose validation). Exact next action:
-push these fixes, reply to the inline finding and review-body nitpicks with the
-commit SHA, and verify the new-head CI/review status. Leave PR #58 unmerged.
+132 frontend tests, lint, typecheck/build and Compose validation). Fix commit
+`7b13c1661f7f9212ba30862c6973c220aec4e9b8` is pushed; the inline finding and all
+three review-body nitpicks have replies identifying that SHA and each fix. The
+validated inline thread is resolved. CodeRabbit's automatic follow-up is rate
+limited; its 19:11:53 UTC comment reports the next included review in 49 minutes
+(approximately 20:01 UTC / 22:01 Europe/Amsterdam). The requested full review and
+fix/reply loop are complete; a fresh post-fix review has not run. Exact next action:
+verify final-head CI, leave PR #58 open, and retry an incremental review when the
+external allowance permits. Do not merge or deploy.
 
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
