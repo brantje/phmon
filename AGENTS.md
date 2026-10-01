@@ -275,8 +275,8 @@ and final verification details are in `docs/reference-parity.md` and
 reported arrival and Clear finished. Final captures cover 2560 × 1287, 1440 × 1000,
 1280 × 800 and 390 × 844 without horizontal overflow. Implementation and verification
 are complete for #55. PR #58 is open; the initial CodeRabbit review and fix/reply
-loop are complete. The operator subsequently instructed us to ignore CodeRabbit;
-do not wait for or act on its pending follow-up review.
+loop are complete. The operator initially instructed us to ignore CodeRabbit,
+then requested the two posted follow-up findings be fixed; see the correction below.
 No deployment or real-character operation was performed.
 
 Operator correction — 2026-10-01: remove the left-click coordinate/action popup.
@@ -391,6 +391,27 @@ The operator then instructed us to ignore CodeRabbit. Its pending review is no
 longer a completion requirement. Implementation, browser verification and CI for
 the current code are complete. Leave PR #58 open; do not merge, deploy or operate
 real characters.
+
+Review correction — 2026-10-01: the operator resumed the fix/reply workflow for
+CodeRabbit's two findings posted at 22:36 Europe/Amsterdam on PR #58. Both were
+reproduced in a browser running the compiled production `MapCanvas.vue` with Vue,
+Leaflet and explicitly labeled fixture data: converging markers lacked a chooser
+after animation, and unchanged snapshots replaced a keyboard-focused chooser.
+
+`web/app/components/MapCanvas.vue` now recalculates character labels once after
+the last pending marker animation finishes, in addition to the immediate layout.
+Chooser buttons retain their DOM identity for the same sorted member IDs and are
+replaced or removed only when their cluster changes. Current props still supply
+the chooser's character names on activation.
+
+Full `bash scripts/check.sh` passes with 137 frontend tests, formatting, lint,
+typecheck/build, Go/Python regression checks, transport audit and Compose validation.
+Focused browser checks verify one completion layout after both moving markers,
+12 unchanged updates plus further movement retaining the same focused button,
+Enter activation, membership changes, separation, focused-character label updates,
+removal during animation and unmount cleanup. Browser error collection is empty.
+No production service or real bot was operated. Review replies and final-head CI
+are tracked on PR #58; leave it open and do not merge or deploy.
 
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 

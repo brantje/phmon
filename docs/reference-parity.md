@@ -1855,3 +1855,14 @@ Focus/cave/Go-to/event-link behavior, zoom bounds/steps, mobile sizing, command
 notifications and the Disconnect first-click/expiry/confirm/target-change flow.
 Database evidence verifies zero admissions before confirmation and three completed
 Disconnect commands afterwards. [Flow and screenshot evidence](reference/issue55/README.md).
+
+#### Character cluster review corrections — 2026-10-01
+
+Both review findings were reproduced with the production MapCanvas component in
+a Vue/Leaflet browser fixture. Character clusters now recalculate once all pending
+marker animations finish; unchanged clusters retain the same chooser button and
+keyboard focus across live updates and movement. Enter opens the current member
+choices; changed membership replaces the button and separated markers remove it.
+The browser also verifies removal/unmount during animation without errors. Full
+`bash scripts/check.sh` passes with 137 frontend tests. No real bot or production
+service was operated.

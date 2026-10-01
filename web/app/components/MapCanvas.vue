@@ -241,6 +241,7 @@ function moveMarker(markerKey: string, marker: LeafletMarker, target: LatLng) {
     marker.setLatLng(createLatLng!(position.lat, position.lng))
     if (progress >= 1) {
       markerAnimationFrames.delete(markerKey)
+      if (!markerAnimationFrames.size) layoutCharacterLabels()
       return
     }
     markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
@@ -308,11 +309,20 @@ function layoutCharacterLabels() {
         'phmon-map-name-collapsed',
         Boolean(cluster && props.focusedCharacterID !== point.id),
       )
-    element.querySelector('.phmon-map-character-cluster')?.remove()
+    let button = element.querySelector<HTMLButtonElement>(
+      '.phmon-map-character-cluster',
+    )
     if (cluster?.[0] === point.id) {
-      const button = document.createElement('button')
+      const membership = JSON.stringify(cluster)
+      if (button?.dataset.characterIds === membership) {
+        button.textContent = `${cluster.length} characters`
+        continue
+      }
+      button?.remove()
+      button = document.createElement('button')
       button.className = 'compact-button phmon-map-character-cluster'
       button.type = 'button'
+      button.dataset.characterIds = membership
       button.textContent = `${cluster.length} characters`
       button.addEventListener('pointerdown', (event) => event.stopPropagation())
       button.addEventListener('click', (event) => {
@@ -326,7 +336,7 @@ function layoutCharacterLabels() {
         }))
       })
       element.append(button)
-    }
+    } else button?.remove()
   }
 }
 function heatLayerColor(id: MapHeatLayer['id']) {
