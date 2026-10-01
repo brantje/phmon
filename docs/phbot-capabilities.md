@@ -267,8 +267,10 @@ not clear stored metadata.
 Remaining Slice 2 runtime checks: record embedded Python version; verify repeated
 disconnect callbacks, character switch, teleport/region change, and reconnect
 snapshot behavior. The collector recovery after loading post-join is implemented
-and unit-tested, but not isolated as a manual runtime scenario. Botting state remains
-unavailable until an authoritative documented/read-only API is verified.
+and unit-tested, but not isolated as a manual runtime scenario. Issue #35 later
+added guarded botting-state readback from a boolean character-data field or a
+narrowly recognized optional status value. `stopped` and `None` remain unknown
+until their meaning is verified on a supported phBot runtime.
 
 The real-runtime gate requires installing PhMon.py in a supported phBot build,
 configuring at least two distinct bot profiles through the PhMon QtBind tab, and

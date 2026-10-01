@@ -80,13 +80,14 @@ live-browser verification later confirmed both Return Scroll and Disconnect coun
 prompts with review off; both were cancelled without submission. The live radius
 result capture is `/tmp/phmon-issue35-live-radius-results.png`.
 
-Final verification passed `bash scripts/check.sh` on Node 24.20.0 against a fresh
-isolated disposable PostgreSQL test database: Go race tests, 118 plugin tests,
-126 frontend unit tests, live transport audit, Prettier, typecheck, lint,
-production build and Compose configuration. ESLint reported 0 errors and 51 style
-warnings. `scripts/command_smoke.py` and `scripts/remote_controls_smoke.py` both
-passed on the isolated fixture stack. This validates the production worker against
-local fake APIs; Windows/phBot runtime behavior remains unverified. Following the
+Final verification on 2026-10-01 passed `bash scripts/check.sh` on Node 24.20.0
+against a fresh isolated disposable PostgreSQL test database: Go race tests,
+122 plugin tests, 128 frontend unit tests, live transport audit, Prettier,
+typecheck, lint, production build and Compose configuration. ESLint reported 0
+errors and 51 style warnings. `scripts/command_smoke.py` and
+`scripts/remote_controls_smoke.py` both passed on the isolated fixture stack. This
+validates the production worker against local fake APIs; Windows/phBot runtime
+behavior remains unverified. Following the
 focus-return accessibility adjustment for review cancellation, the frontend unit
 suite, formatting, lint, typecheck and production build passed again.
 
