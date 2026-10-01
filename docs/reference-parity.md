@@ -1832,3 +1832,26 @@ on one row, six 36 px rows, 26 × 14 px switches and the compact Reset footer.
 Custom dates, rank filter and scoped reset/Cancel remain reachable. Mobile at
 390 × 844 keeps paired filters and fits custom dates without horizontal overflow.
 [Updated historical heatmaps panel](reference/issue55/historical-heatmaps-panel.png).
+
+#### Explicit Focus, action notifications and Disconnect — 2026-10-01
+
+The operator's later instruction replaces automatic interactive-map tile following
+with a Focus button beside each character. Row/marker selection inspects; Focus
+uses the old Jump behavior and cave-floor detection, always centering even when
+the character was already selected. Position updates preserve manual pan/zoom.
+Compact Stats previews still follow tile changes. The supplied zoom edit is 25%
+minimum with 5-point steps, 125% initial and 2000% maximum.
+
+The previously omitted map notifications now match the supplied placement and
+action messages, using completed command outcomes and explicit partial/unknown
+results. They last five seconds, never replay unchanged snapshots and never
+reopen feedback. Disconnect first becomes Confirm (N), resets after 3.5 seconds
+or changed targets/scope/action, and sends only after a second confirmation with
+fresh eligibility. Tracing counts followers rather than the selected leader.
+
+Full `bash scripts/check.sh` passes with 137 frontend tests. Disposable browser/
+protocol fixtures verify cross-tile movement without viewport reset, explicit
+Focus/cave/Go-to/event-link behavior, zoom bounds/steps, mobile sizing, command
+notifications and the Disconnect first-click/expiry/confirm/target-change flow.
+Database evidence verifies zero admissions before confirmation and three completed
+Disconnect commands afterwards. [Flow and screenshot evidence](reference/issue55/README.md).

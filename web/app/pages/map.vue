@@ -59,6 +59,7 @@ import {
 import { mapNavigationTrayRows } from '~/utils/mapNavigationTray'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
+import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import {
   TRAINING_RADIUS_MAX,
   TRAINING_RADIUS_MIN,
@@ -287,6 +288,23 @@ const navigationAction = useMapNavigationAction({
   reviewActions: () => reviewActions.value,
   now: () => freshnessNow.value,
 })
+const actionNotification = ref<MapActionNotification | null>(null)
+let actionNotificationTimer: ReturnType<typeof setTimeout> | undefined
+function showMapActionNotification(notification: MapActionNotification) {
+  if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
+  actionNotification.value = notification
+  actionNotificationTimer = setTimeout(() => {
+    actionNotification.value = null
+    actionNotificationTimer = undefined
+  }, 5_000)
+}
+useMapActionNotifications(
+  () => [
+    ...navigationAction.operations.value,
+    ...navigationAction.trainingOperations.value,
+  ],
+  showMapActionNotification,
+)
 const trainingAreas = computed(() =>
   mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.training_areas?.areas || []
@@ -765,11 +783,39 @@ const goToOptions = computed(() => [
       })),
     ),
 ])
-function focusMapCharacter(id: string) {
+function selectMapCharacter(id: string) {
   inspectorOpen.value = true
   trainingEditor.select('')
   selectedCharacterID.value = selectedCharacterID.value === id ? '' : id
-  if (selectedCharacterID.value) nextTick(jumpToCharacter)
+}
+function canFocusCharacter(character: CharacterView) {
+  const profile = mapProfile.value
+  if (!profile || !positionCanBeDisplayed(character)) return false
+  const cave = caveFloorForPosition(profile, character.region, character.z)
+  const area = cave?.areaID || (character.region! > 0 ? 'world' : areaID.value)
+  const floor = cave?.floorID || (area === 'world' ? 'world' : floorID.value)
+  return Boolean(
+    worldPositionToRaster(
+      profile,
+      area,
+      floor,
+      character.region,
+      character.x,
+      character.y,
+      character.z,
+    ) || regionTileCenter(profile, area, floor, character.region),
+  )
+}
+async function focusMapCharacter(id: string) {
+  const character = fleetCharacters.value.find(
+    (item) => item.character_id === id,
+  )
+  if (!character || !canFocusCharacter(character)) return
+  inspectorOpen.value = true
+  trainingEditor.select('')
+  selectedCharacterID.value = id
+  await nextTick()
+  await jumpToCharacter()
 }
 const outsideZoneCount = computed(() =>
   regionID.value
@@ -780,10 +826,7 @@ const outsideZoneCount = computed(() =>
 )
 function chooseGoTo(id: string) {
   if (id.startsWith('character:')) {
-    inspectorOpen.value = true
-    trainingEditor.select('')
-    selectedCharacterID.value = id.slice('character:'.length)
-    nextTick(jumpToCharacter)
+    void focusMapCharacter(id.slice('character:'.length))
   } else selectQuickDestination(id)
 }
 const applicableActionTargetIDs = computed(
@@ -1249,7 +1292,7 @@ async function loadProfile(selectedServer: string) {
   }
 }
 
-function updateRouteQuery() {
+function currentMapRouteQuery() {
   const query = {
     ...route.query,
     server: server.value,
@@ -1260,7 +1303,11 @@ function updateRouteQuery() {
   else delete query.region
   if (selectedCharacterID.value) query.character_id = selectedCharacterID.value
   else delete query.character_id
-  void router.replace({ path: '/map', query })
+  return query
+}
+
+function updateRouteQuery() {
+  void router.replace({ path: '/map', query: currentMapRouteQuery() })
 }
 
 function selectArea(area: MapAreaProfile) {
@@ -1276,10 +1323,15 @@ function returnToWorld() {
   if (world) selectArea(world)
 }
 
-function jumpToCharacter() {
+async function jumpToCharacter() {
   const character = currentCharacter.value
   const profile = mapProfile.value
   if (!character || !profile) return
+  if (linkedEventID.value) {
+    const query = currentMapRouteQuery()
+    delete query.event_id
+    await router.replace({ path: '/map', query })
+  }
   const cave = caveFloorForPosition(profile, character.region, character.z)
   if (
     cave &&
@@ -1299,9 +1351,8 @@ function jumpToCharacter() {
     regionID.value = 0
     updateRouteQuery()
   }
-  nextTick(() => {
-    jumpSequence.value++
-  })
+  await nextTick()
+  jumpSequence.value++
 }
 
 function selectQuickDestination(destinationID: string) {
@@ -1318,6 +1369,7 @@ function selectQuickDestination(destinationID: string) {
     regionID.value = 0
     selectedDestinationID.value = destinationID
     updateRouteQuery()
+    jumpSequence.value++
     return
   }
   const destination = mapProfile.value?.quick_destinations.find(
@@ -1330,6 +1382,7 @@ function selectQuickDestination(destinationID: string) {
   selectedCharacterID.value = ''
   selectedDestinationID.value = destination.id
   updateRouteQuery()
+  jumpSequence.value++
 }
 
 async function refreshHeatmaps() {
@@ -1401,7 +1454,6 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
   selectedCharacterID.value = event.character_id
 })
 watch(selectedCharacterID, (characterID) => {
-  jumpSequence.value++
   if (characterID) selectedDestinationID.value = ''
   const selected = mapSnapshot.value?.characters.find(
     (character) => character.character_id === characterID,
@@ -1539,6 +1591,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   if (eventWindowTimer) clearInterval(eventWindowTimer)
+  if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
   profileRequestID++
   clearMapFeed(subscriptionID)
 })
@@ -1656,6 +1709,7 @@ useHead({ title: 'Map · PhMon' })
         aria-label="Game world raster map"
       >
         <div class="map-canvas-frame">
+          <MapActionToast :notification="actionNotification" />
           <ClientOnly>
             <MapCanvas
               ref="mapCanvas"
@@ -2344,6 +2398,7 @@ useHead({ title: 'Map · PhMon' })
               :map-snapshot-current="
                 streamCurrent && mapSnapshotInFeedScope && !liveStale
               "
+              @action-notification="showMapActionNotification"
             />
             <section class="map-side-list map-character-list">
               <div class="map-target-toolbar">
@@ -2396,6 +2451,7 @@ useHead({ title: 'Map · PhMon' })
                 :selected="selectedCharacterID === character.character_id"
                 :targeted="actionTargetIDs.has(character.character_id)"
                 :position-fresh="positionIsFresh(character)"
+                :focus-disabled="!canFocusCharacter(character)"
                 :now="freshnessNow"
                 :activity="
                   mapNavigationRoutes.some(
@@ -2413,6 +2469,7 @@ useHead({ title: 'Map · PhMon' })
                     : undefined
                 "
                 @toggle-target="toggleActionTarget(character.character_id)"
+                @select="selectMapCharacter(character.character_id)"
                 @focus="focusMapCharacter(character.character_id)"
               />
               <p v-if="!scopedCharacters.length" class="map-empty-copy">

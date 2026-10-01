@@ -8,9 +8,11 @@ const props = defineProps<{
   positionFresh: boolean
   now: number
   activity?: string
+  focusDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
+  select: []
   focus: []
   toggleTarget: []
 }>()
@@ -48,10 +50,11 @@ const staleLabel = computed(() => {
     </label>
 
     <button
-      class="map-character-status-focus"
+      class="map-character-status-select"
       type="button"
       :aria-pressed="selected"
-      @click="emit('focus')"
+      :aria-label="`Inspect ${character.name}`"
+      @click="emit('select')"
     >
       <span class="map-character-status-heading">
         <span class="map-character-status-identity">
@@ -75,6 +78,20 @@ const staleLabel = computed(() => {
         {{ character.zone || 'Unknown zone'
         }}{{ activity ? ` · ${activity}` : '' }}
       </small>
+    </button>
+    <button
+      class="compact-button map-character-jump"
+      type="button"
+      :disabled="focusDisabled"
+      :aria-label="`Focus ${character.name} on the map`"
+      :title="
+        focusDisabled
+          ? 'Map position unavailable.'
+          : `Jump to ${character.name}.`
+      "
+      @click="emit('focus')"
+    >
+      Focus
     </button>
   </div>
 </template>
@@ -117,7 +134,7 @@ const staleLabel = computed(() => {
   accent-color: #2d75c7;
 }
 
-.map-character-status-focus {
+.map-character-status-select {
   display: grid;
   width: 100%;
   min-width: 0;
@@ -131,7 +148,7 @@ const staleLabel = computed(() => {
   cursor: pointer;
 }
 
-.map-character-status-focus:focus-visible {
+.map-character-status-select:focus-visible {
   outline: 1px solid #6f9bce;
   outline-offset: 2px;
 }
@@ -181,10 +198,16 @@ const staleLabel = computed(() => {
 }
 
 .map-character-status-row {
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   gap: 8px;
   padding: 12px 2px;
   border-top: 0;
+}
+.map-character-jump {
+  align-self: start;
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 11px;
 }
 .map-character-status-row.offline {
   opacity: 0.5;
@@ -193,7 +216,7 @@ const staleLabel = computed(() => {
   width: 16px;
   height: 16px;
 }
-.map-character-status-focus {
+.map-character-status-select {
   gap: 4px;
 }
 .map-character-status-identity strong {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CharacterView } from '~~/shared/types/live'
 import type { FanOutOperation } from '~/utils/commandFanOut'
+import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import { useRemoteControlActions } from '~/composables/useRemoteControlActions'
 import {
   requiresRemoteControlConfirmation,
@@ -28,6 +29,9 @@ const props = withDefaults(
   },
 )
 const reviewActions = useReviewActionsPreference()
+const emit = defineEmits<{
+  actionNotification: [notification: MapActionNotification]
+}>()
 const actions = useRemoteControlActions({
   scopeKey: () => props.scopeKey,
   scopeKeyForCharacter: props.scopeKeyForCharacter,
@@ -35,6 +39,10 @@ const actions = useRemoteControlActions({
   currentCharacter: props.currentCharacter,
   mapSnapshotCurrent: () => props.mapSnapshotCurrent,
 })
+useMapActionNotifications(
+  () => (props.variant === 'map' ? actions.operations.value : []),
+  (notification) => emit('actionNotification', notification),
+)
 
 const selectedAction = ref<RemoteControlActionName>('bot.start')
 const traceName = ref('')
@@ -115,10 +123,18 @@ const selectedArgs = computed<RemoteControlArgs>(() => {
 const validatedArgs = computed(() =>
   validateRemoteControlArgs(selectedAction.value, selectedArgs.value),
 )
+function targetsForAction(name: RemoteControlActionName) {
+  if (props.variant !== 'map' || name !== 'trace.start')
+    return props.selectedIds
+  const leader = traceName.value.trim().toLowerCase()
+  return props.selectedIds.filter(
+    (id) => props.currentCharacter(id)?.name.toLowerCase() !== leader,
+  )
+}
 const preview = computed(() =>
   validatedArgs.value
     ? actions.preview(
-        props.selectedIds,
+        targetsForAction(selectedAction.value),
         selectedAction.value,
         validatedArgs.value,
         props.scopeKey,
@@ -130,6 +146,32 @@ const selectedOperation = computed(() =>
     (operation) => operation.operationID === activePreviewID.value,
   ),
 )
+const mapDisconnectOperation = computed(() => {
+  const operation = selectedOperation.value
+  return props.variant === 'map' &&
+    operation?.state === 'prepared' &&
+    operation.command.name === 'character.disconnect'
+    ? operation
+    : undefined
+})
+const mapDisconnectTargets = computed(
+  () =>
+    mapDisconnectOperation.value?.children.filter(
+      (child) => child.submission === 'ready',
+    ) || [],
+)
+let mapDisconnectTimer: ReturnType<typeof setTimeout> | undefined
+watch(mapDisconnectOperation, (operation) => {
+  if (mapDisconnectTimer) clearTimeout(mapDisconnectTimer)
+  mapDisconnectTimer = undefined
+  if (operation)
+    mapDisconnectTimer = setTimeout(() => {
+      if (mapDisconnectOperation.value === operation) cancelReview(operation)
+    }, 3_500)
+})
+onBeforeUnmount(() => {
+  if (mapDisconnectTimer) clearTimeout(mapDisconnectTimer)
+})
 const livePreviewSignature = computed(() =>
   remoteControlSignature(
     selectedAction.value,
@@ -265,7 +307,12 @@ function computeMapActionReason(name: RemoteControlActionName) {
     name === 'trace.start' ? { traceName: traceName.value } : {},
   )
   if (!args) return 'Enter a player name.'
-  const plan = actions.preview(props.selectedIds, name, args, props.scopeKey)
+  const plan = actions.preview(
+    targetsForAction(name),
+    name,
+    args,
+    props.scopeKey,
+  )
   return plan?.eligibleCount
     ? ''
     : plan?.children
@@ -287,6 +334,10 @@ const mapActionReasons = computed(() =>
 async function runMapAction(name: RemoteControlActionName, event: MouseEvent) {
   mapActionTrigger.value = event.currentTarget as HTMLButtonElement
   if (computeMapActionReason(name)) return
+  if (name === 'character.disconnect' && mapDisconnectOperation.value) {
+    await submitReviewed(mapDisconnectOperation.value)
+    return
+  }
   chooseAction(name)
   await nextTick()
   await runAction()
@@ -294,10 +345,11 @@ async function runMapAction(name: RemoteControlActionName, event: MouseEvent) {
 const mapResultSummary = computed(() => {
   const operation = actions.operations.value
     .filter((item) => item.state !== 'prepared' && item.state !== 'cancelled')
-    .at(-1)
+    .at(0)
   if (!operation) return ''
   const completed = operation.children.filter(
-    (child) => child.executionState === 'completed',
+    (child) =>
+      child.executionState === 'completed' && child.apiReturn !== false,
   ).length
   const skipped = operation.children.filter(
     (child) => child.submission === 'skipped',
@@ -324,7 +376,7 @@ async function runAction() {
   reviewNotice.value = ''
   const signature = livePreviewSignature.value
   const operation = await actions.run(
-    [...props.selectedIds],
+    [...targetsForAction(selectedAction.value)],
     selectedAction.value,
     validatedArgs.value,
     props.scopeKey,
@@ -450,12 +502,24 @@ function cancelReview(operation: FanOutOperation) {
         v-for="action in mapActions"
         :key="action.name"
         class="compact-button"
+        :class="{
+          primary:
+            action.name === 'character.disconnect' && mapDisconnectOperation,
+        }"
         type="button"
         :disabled="Boolean(mapActionReasons[action.name])"
-        :title="mapActionReasons[action.name]"
+        :title="
+          action.name === 'character.disconnect' && mapDisconnectOperation
+            ? `Confirm disconnect for ${mapDisconnectTargets.map((child) => child.characterName).join(', ')}`
+            : mapActionReasons[action.name]
+        "
         @click="runMapAction(action.name, $event)"
       >
-        <UIcon :name="action.icon" />{{ action.label }}
+        <UIcon :name="action.icon" />{{
+          action.name === 'character.disconnect' && mapDisconnectOperation
+            ? `Confirm (${mapDisconnectTargets.length})`
+            : action.label
+        }}
       </button>
       <div class="map-trace-row remote-control-form">
         <select v-model="traceName" aria-label="Trace leader">
@@ -681,7 +745,10 @@ function cancelReview(operation: FanOutOperation) {
             : actionButtonLabel
       }}
     </button>
-    <p v-if="confirmationRequired" class="remote-control-impact">
+    <p
+      v-if="confirmationRequired && !mapDisconnectOperation"
+      class="remote-control-impact"
+    >
       Explicit confirmation is required before sending
       {{ selectedLabel }} to {{ previewCounts.eligible }} eligible character{{
         previewCounts.eligible === 1 ? '' : 's'
@@ -695,7 +762,7 @@ function cancelReview(operation: FanOutOperation) {
     </p>
 
     <CommandFanOutPreview
-      v-if="selectedOperation"
+      v-if="selectedOperation && !mapDisconnectOperation"
       :operation="selectedOperation"
       :confirmation-required="confirmationRequired"
       :busy="actions.preparing.value || actions.submitting.value"

@@ -110,3 +110,59 @@ one-second updates plus new operations/submission/review changes preserved the
 closed state and active tab. Click-open and click-close both retained the operator's
 choice during updates. Browser errors were empty, and the full
 `bash scripts/check.sh` passed with all 132 frontend tests.
+
+
+## Explicit Focus and manual viewport
+
+Each character row has a separate Focus button. Inspection/targeting remain
+independent. Focus always jumps to the latest known mapped position at the old
+Jump action's 125% zoom, including repeated clicks and detected cave floors.
+Go-to still jumps to characters/places. Live movement no longer recenters the
+interactive map; compact Stats previews retain their tile-following behavior.
+Leaving a linked historical event retains the requested character in the URL.
+The operator's zoom edit lowers the minimum to 25% and uses 5-point steps for both
+buttons; the 2000% maximum and 125% initial zoom remain.
+
+The disposable plugin worker changed the focused character's position across
+several tiles. Its inspector updated while the manually panned Leaflet pane/tile
+transforms and 130% readout remained identical. Repeated Focus centered its new
+tile at 125%; row inspection changed character without moving the map. Checks
+also cover cave B3 detection, character search, clearing a linked event, the 25%
+clamp/30% next step and a physical mobile Focus click after scrolling. No horizontal
+overflow at 390 × 844. [Desktop](focus-desktop.png), [mobile](focus-mobile.png).
+
+
+## Action notifications and Disconnect confirmation
+
+Compact notifications sit at the bottom center of the viewport, using the existing
+theme and a status icon. Success wording comes from completed command results;
+navigation success does not claim arrival. Failures, skips and uncertain admission
+outcomes remain explicit. Disconnect lists successful targets; tracing names the
+leader frozen in the request. The map trace action excludes that leader from its
+follower targets. Notifications expire after five seconds and unchanged live
+snapshots cannot replay them or open Action feedback.
+
+Disconnect first changes to Confirm (N). It sends no command until the second
+click refreshes eligibility and explicitly confirms that frozen operation. It
+resets after 3.5 seconds or target/scope/action changes. Other consequential-action
+review and default-panel confirmation retain their existing behavior.
+
+Browser fixtures verify [bot start](toast-start.png), [bot stop](toast-stop.png),
+[Return Scroll](toast-return.png), [inline Confirm](disconnect-confirm.png),
+[Disconnect names](toast-disconnect.png), [navigation](toast-navigation.png) and
+[singular trace](toast-trace.png). The isolated PostgreSQL command table contained
+zero Disconnect admissions after first click and after expiry, then three
+completed commands after the second click. Target changes canceled confirmation
+without another admission. A MutationObserver saw no notification replay during
+live updates after its five-second expiry; Action feedback stayed closed.
+
+Full `bash scripts/check.sh` passes with 137 frontend tests, including five new
+notification checks for singular/plural success wording, pending/cancelled
+operations, partial/false/void results, uncertainty and unchanged snapshot
+deduplication. Browser error collection is empty. All commands used fixture
+adapters and the production plugin/backend contracts; no real bot was operated.
+
+The final trace flow selected all three fixtures with Alpha as leader. Only Bravo
+and Charlie received completed trace commands, confirmed in the command table;
+the message read “2 characters tracing FixtureAlpha.” The final mobile toast fits
+inside the viewport without horizontal overflow. [Mobile notification](toast-mobile.png).

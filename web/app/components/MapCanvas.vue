@@ -43,6 +43,7 @@ import {
 import {
   INITIAL_MAP_ZOOM,
   MAP_ZOOM_OPTIONS,
+  MAP_ZOOM_PERCENT_STEP,
   mapZoomLevelForPercent,
   mapZoomPercentForLevel,
   snapMapZoomPercent,
@@ -140,6 +141,8 @@ const clusterChoices = ref<{ id: string; name: string }[]>([])
 let stopped = false
 let lastFocusedTile = ''
 let lastFocusRequest = 0
+let initialPositionApplied = false
+let viewAdjusted = false
 
 function indexAt(position: LatLng) {
   return leafletToRasterPosition(
@@ -152,6 +155,7 @@ function indexAt(position: LatLng) {
 function setInitialView() {
   if (!map || !createLatLng) return
   if (props.initialPosition) {
+    initialPositionApplied = true
     lastFocusedTile = `${props.initialPosition.tileX}:${props.initialPosition.tileY}`
     lastFocusRequest = props.focusRequest || 0
     const column = props.initialPosition.tileX - props.profile.tiles.min_x
@@ -1461,6 +1465,9 @@ onMounted(async () => {
     })
   })
   map.on('dragstart', () => emit('mapdrag'))
+  map.on('movestart zoomstart', () => {
+    viewAdjusted = true
+  })
   map.on('zoomend', snapZoomToPercentStep)
   map.on('zoomend', layoutTrainingLabels)
   map.on('moveend zoomend', publishView)
@@ -1490,7 +1497,10 @@ watch(
   ([position, focusRequest]) => {
     if (
       (focusRequest || 0) !== lastFocusRequest ||
-      (position && `${position.tileX}:${position.tileY}` !== lastFocusedTile)
+      (position &&
+        ((props.compact &&
+          `${position.tileX}:${position.tileY}` !== lastFocusedTile) ||
+          (!initialPositionApplied && !viewAdjusted)))
     )
       setInitialView()
   },
@@ -1523,7 +1533,9 @@ function zoomBy(step: number) {
   if (map)
     map.setZoom(
       mapZoomLevelForPercent(
-        snapMapZoomPercent(mapZoomPercentForLevel(map.getZoom()) + step * 25),
+        snapMapZoomPercent(
+          mapZoomPercentForLevel(map.getZoom()) + step * MAP_ZOOM_PERCENT_STEP,
+        ),
       ),
     )
 }

@@ -345,9 +345,45 @@ one-second update in an isolated Vue browser harness. The corrected production
 markup/state remained closed through nine live updates, including new operations,
 submission and review changes; clicking opened it, clicking again kept it closed,
 and the active tab was preserved. Browser error collection was empty. Full
-`bash scripts/check.sh` passed with all 132 frontend tests. Next action: push this
-correction to PR #58 and verify its CI; CodeRabbit's post-fix review allowance is
-still unavailable until approximately 20:01 UTC. Leave the PR open/unmerged.
+`bash scripts/check.sh` passed with all 132 frontend tests. Correction commit
+`8515d43f0070c53f31b0dc3a4f70138dd31b0319` is pushed to PR #58; its validation and
+stack CI jobs passed. Leave the PR open/unmerged.
+
+Operator follow-up — 2026-10-01: each map character row now has a separate Focus
+button using the old Jump to character behavior, including repeat clicks and
+detected cave-floor/world switching. Row/marker inspection no longer centers the
+interactive viewport. Live position/tile updates preserve manual pan and zoom;
+compact Stats map previews retain their tile-following behavior. Go-to places and
+characters remain explicit focus actions. Focus clears a linked event using the
+current selection/scope rather than restoring its old character from the URL.
+The operator's zoom edit is included: minimum 25%, steps of 5 percentage points,
+initial 125% and maximum 2000%; both zoom buttons use the shared step constant.
+
+The previously omitted notifications now appear at the map's bottom center for
+navigation, bot start/stop, Return Scroll, Disconnect, trace start/stop and training
+commands. They count actual completed results, expose failed/skipped/unknown
+outcomes, expire after five seconds and do not replay on unchanged live snapshots
+or open Action feedback. Trace notifications use the frozen leader name; map
+tracing excludes the leader from follower targets. Disconnect's map button changes
+to Confirm (N) on its first click; a second click rechecks the frozen operation
+before sending. The confirmation expires after 3.5 seconds, cancels on
+target/scope/action changes and leaves default-panel review behavior intact.
+
+Validation: full `bash scripts/check.sh` passes with 137 frontend tests. Disposable
+protocol/browser fixtures verify cross-tile movement preserving pan/130% zoom,
+repeat Focus at the latest coordinates/125%, inspector selection without movement,
+cave B3 detection, Go-to, event-link clearing, 25% minimum/5-point zoom and mobile
+Focus without horizontal overflow. Browser notifications are verified for bot
+start/stop, Return Scroll, Disconnect, navigation and tracing; expired toasts do
+not replay. The disposable database had zero Disconnect admissions after first
+click/expiry and three completed commands after confirmation; changing targets
+canceled confirmation without another admission. Evidence is in
+`docs/reference/issue55/README.md`. The final browser check selected all three
+fixtures and dispatched trace only to Bravo/Charlie, confirmed by the database;
+Alpha was the leader. Mobile notification bounds stay within the viewport.
+Exact next action: commit these changes together including the zoom edit, push to
+PR #58, request CodeRabbit review and verify final-head CI. Do not merge, deploy
+or operate real characters.
 
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
