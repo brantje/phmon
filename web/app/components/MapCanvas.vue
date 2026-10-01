@@ -20,7 +20,6 @@ import type { MapRouteOverlay } from '~/utils/mapNavigationRoutes'
 import {
   estimateTrainingLabelSize,
   placeTrainingAreaLabels,
-  trainingAreaAtPoint,
   type TrainingAreaOverlay,
 } from '~/utils/mapTrainingAreas'
 import {
@@ -44,10 +43,12 @@ import {
 import {
   INITIAL_MAP_ZOOM,
   MAP_ZOOM_OPTIONS,
+  MAP_ZOOM_PERCENT_STEP,
   mapZoomLevelForPercent,
   mapZoomPercentForLevel,
   snapMapZoomPercent,
 } from '~/utils/mapZoom'
+import { mapCharacterClusters } from '~/utils/mapCharacterClusters'
 import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 
 interface MapCanvasMarker {
@@ -62,6 +63,8 @@ interface MapCanvasMarker {
   npc?: MapNpc
   monster?: MapMonster
   showLabel?: boolean
+  observerName?: string
+  zoneLabel?: string
   itemName?: string
   itemIconUrl?: string
   event?: ActivityEvent
@@ -70,6 +73,8 @@ interface MapCanvasMarker {
 const props = defineProps<{
   profile: MapProfile
   compact?: boolean
+  externalControls?: boolean
+  focusedCharacterID?: string
   initialPosition?: RasterPosition | null
   focusRequest?: number
   initialTile?: { x: number; y: number }
@@ -89,13 +94,14 @@ const emit = defineEmits<{
   trainingresize: [characterID: string, radiusPixels: number]
   trainingaccept: [characterID: string]
   trainingdiscard: [characterID: string]
-  pointselect: [point: RasterPosition, trainingAreaID?: string | null]
+  pointselect: [point: RasterPosition]
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
   navigateto: [point: RasterPosition, anchor: { x: number; y: number }]
   mapdrag: []
   opencharacter: [characterID: string]
+  inspectcharacter: [characterID: string]
 }>()
 const element = ref<HTMLDivElement | null>(null)
 let map: LeafletMap | undefined
@@ -130,9 +136,13 @@ const renderedMarkers = new Map<string, LeafletMarker>()
 const markerIconSignatures = new Map<string, string>()
 const markerAnimationFrames = new Map<string, number>()
 const MARKER_ANIMATION_DURATION_MS = 120
+let canvasResizeObserver: ResizeObserver | undefined
+const clusterChoices = ref<{ id: string; name: string }[]>([])
 let stopped = false
 let lastFocusedTile = ''
 let lastFocusRequest = 0
+let initialPositionApplied = false
+let viewAdjusted = false
 
 function indexAt(position: LatLng) {
   return leafletToRasterPosition(
@@ -145,6 +155,7 @@ function indexAt(position: LatLng) {
 function setInitialView() {
   if (!map || !createLatLng) return
   if (props.initialPosition) {
+    initialPositionApplied = true
     lastFocusedTile = `${props.initialPosition.tileX}:${props.initialPosition.tileY}`
     lastFocusRequest = props.focusRequest || 0
     const column = props.initialPosition.tileX - props.profile.tiles.min_x
@@ -230,6 +241,7 @@ function moveMarker(markerKey: string, marker: LeafletMarker, target: LatLng) {
     marker.setLatLng(createLatLng!(position.lat, position.lng))
     if (progress >= 1) {
       markerAnimationFrames.delete(markerKey)
+      if (!markerAnimationFrames.size) layoutCharacterLabels()
       return
     }
     markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
@@ -275,8 +287,58 @@ function syncMarkers() {
     if (animationFrame != null) cancelAnimationFrame(animationFrame)
     markerAnimationFrames.delete(key)
   }
+  layoutCharacterLabels()
 }
 
+function layoutCharacterLabels() {
+  if (!map || props.compact) return
+  const points = [...renderedMarkers.entries()]
+    .filter(([key]) => key.startsWith('character:'))
+    .map(([key, marker]) => {
+      const point = map!.latLngToContainerPoint(marker.getLatLng())
+      return { id: key.slice('character:'.length), x: point.x, y: point.y }
+    })
+  const clusters = mapCharacterClusters(points)
+  for (const point of points) {
+    const element = renderedMarkers.get(`character:${point.id}`)?.getElement()
+    if (!element) continue
+    const cluster = clusters.find((group) => group.includes(point.id))
+    element
+      .querySelector('.phmon-map-character-name')
+      ?.classList.toggle(
+        'phmon-map-name-collapsed',
+        Boolean(cluster && props.focusedCharacterID !== point.id),
+      )
+    let button = element.querySelector<HTMLButtonElement>(
+      '.phmon-map-character-cluster',
+    )
+    if (cluster?.[0] === point.id) {
+      const membership = JSON.stringify(cluster)
+      if (button?.dataset.characterIds === membership) {
+        button.textContent = `${cluster.length} characters`
+        continue
+      }
+      button?.remove()
+      button = document.createElement('button')
+      button.className = 'compact-button phmon-map-character-cluster'
+      button.type = 'button'
+      button.dataset.characterIds = membership
+      button.textContent = `${cluster.length} characters`
+      button.addEventListener('pointerdown', (event) => event.stopPropagation())
+      button.addEventListener('click', (event) => {
+        event.stopPropagation()
+        clusterChoices.value = cluster.map((id) => ({
+          id,
+          name:
+            props.markers?.find(
+              (marker) => marker.kind === 'character' && marker.id === id,
+            )?.character?.name || id,
+        }))
+      })
+      element.append(button)
+    } else button?.remove()
+  }
+}
 function heatLayerColor(id: MapHeatLayer['id']) {
   switch (id) {
     case 'deaths':
@@ -716,7 +778,7 @@ function syncTrainingAreas() {
     renderedTraining.delete(id)
     if (trainingDragging === id) trainingDragging = ''
   }
-  // Smaller circles paint over larger ones, matching trainingAreaAtPoint.
+  // Smaller circles paint over larger ones.
   for (const area of [...visibleTrainingAreas].sort(
     (left, right) => right.radiusPixels - left.radiusPixels,
   ))
@@ -918,7 +980,7 @@ function markerPopup(marker: MapCanvasMarker) {
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
     title.textContent = monsterDisplayName(monster)
-    subtitle.textContent = `${monsterTypePresentation(monster).label} · Position | ${positionText(monster.x, monster.y, monster.z)}`
+    subtitle.textContent = `${monsterTypePresentation(monster).label} · ${marker.zoneLabel || 'Unknown zone'}`
     const dot = document.createElement('span')
     dot.className = 'phmon-map-detail-monster-dot'
     header.prepend(dot)
@@ -927,7 +989,8 @@ function markerPopup(marker: MapCanvasMarker) {
         'Level',
         monster.level == null ? 'Unavailable' : String(monster.level),
       ),
-      detailRow('HP', `${integer(monster.hp)} / ${integer(monster.max_hp)}`),
+      detailRow('Position', positionText(monster.x, monster.y, monster.z)),
+      detailRow('Seen by', marker.observerName || 'Unavailable'),
     )
     panel.append(header, details)
     const fraction = monsterHPFraction(monster)
@@ -936,7 +999,10 @@ function markerPopup(marker: MapCanvasMarker) {
       track.className = 'phmon-map-detail-hp-track'
       const fill = document.createElement('span')
       fill.style.width = `${(fraction * 100).toFixed(1)}%`
-      track.append(fill)
+      const label = document.createElement('strong')
+      label.className = 'phmon-map-detail-hp-label'
+      label.textContent = `HP ${integer(monster.hp)} / ${integer(monster.max_hp)}`
+      track.append(fill, label)
       panel.append(track)
     }
   } else {
@@ -955,10 +1021,18 @@ function markerPopup(marker: MapCanvasMarker) {
             marker.event?.character || 'Event',
             'portrait',
           )
+    if (marker.event) {
+      const age = Math.max(
+        0,
+        Math.floor((Date.now() - Date.parse(marker.event.occurred_at)) / 60000),
+      )
+      subtitle.textContent += Number.isFinite(age) ? ` · ${age}m ago` : ''
+    }
     header.prepend(icon)
     if (marker.event) {
       details.append(
         detailRow('Character', marker.event.character || '—'),
+        detailRow('Zone', marker.zoneLabel || marker.event.zone || '—'),
         detailRow(
           'Position',
           positionText(marker.event.x, marker.event.y, marker.event.z),
@@ -1122,7 +1196,7 @@ onMounted(async () => {
     maxBounds: bounds,
     maxBoundsViscosity: 0.8,
     keyboard: true,
-    zoomControl: !props.compact,
+    zoomControl: !props.compact && !props.externalControls,
     attributionControl: false,
     preferCanvas: true,
   })
@@ -1311,7 +1385,8 @@ onMounted(async () => {
     if (existing) {
       moveMarker(markerKey, existing, point)
       if (icon) existing.setIcon(icon)
-      if (!props.compact) existing.setPopupContent(markerPopup(marker))
+      if (!props.compact && marker.kind !== 'character')
+        existing.setPopupContent(markerPopup(marker))
       return existing
     }
     const rendered = L.marker(point, {
@@ -1319,6 +1394,7 @@ onMounted(async () => {
       title: marker.label,
       keyboard: true,
       riseOnHover: true,
+      bubblingMouseEvents: false,
       zIndexOffset:
         marker.kind === 'character'
           ? 1000
@@ -1330,7 +1406,9 @@ onMounted(async () => {
                 ? 400
                 : 0,
     })
-    if (!props.compact)
+    if (!props.compact && marker.kind === 'character')
+      rendered.on('click', () => emit('inspectcharacter', marker.id))
+    if (!props.compact && marker.kind !== 'character')
       rendered.bindPopup(markerPopup(marker), {
         className: 'phmon-map-popup',
         closeButton: false,
@@ -1347,8 +1425,26 @@ onMounted(async () => {
   const selectPoint = (position: LatLng) =>
     emit('pointselect', indexAt(position))
   const onKeydown = (event: KeyboardEvent) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
     if (event.target !== element.value) return
+    if (
+      event.key === 'ContextMenu' ||
+      (event.shiftKey && event.key === 'F10')
+    ) {
+      event.preventDefault()
+      if (!map || props.compact) return
+      const rect = element.value!.getBoundingClientRect()
+      const point = indexAt(map.getCenter())
+      emit('pointselect', point)
+      emit('contextaction', {
+        point,
+        anchor: {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        },
+      })
+      return
+    }
+    if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     if (map) selectPoint(map.getCenter())
   }
@@ -1365,11 +1461,7 @@ onMounted(async () => {
     element.value?.removeEventListener('auxclick', onMiddleButton, true)
   })
   map.on('click', (event: L.LeafletMouseEvent) => {
-    const point = indexAt(event.latlng)
-    const trainingAreaID = props.compact
-      ? undefined
-      : trainingAreaAtPoint(visibleTrainingAreas, point)
-    emit('pointselect', point, trainingAreaID)
+    selectPoint(event.latlng)
   })
   map.on('contextmenu', (event: L.LeafletMouseEvent) => {
     L.DomEvent.preventDefault(event.originalEvent)
@@ -1383,14 +1475,23 @@ onMounted(async () => {
     })
   })
   map.on('dragstart', () => emit('mapdrag'))
+  map.on('movestart zoomstart', () => {
+    viewAdjusted = true
+  })
   map.on('zoomend', snapZoomToPercentStep)
   map.on('zoomend', layoutTrainingLabels)
   map.on('moveend zoomend', publishView)
+  map.on('moveend zoomend', layoutCharacterLabels)
   publishView()
   syncHeatLayers()
   syncTrainingAreas()
   syncNavigationRoutes()
   syncMarkers()
+  canvasResizeObserver = new ResizeObserver(() => {
+    map?.invalidateSize({ pan: false })
+    layoutCharacterLabels()
+  })
+  canvasResizeObserver.observe(element.value)
   if (props.compact) {
     map.dragging.disable()
     map.scrollWheelZoom.disable()
@@ -1406,7 +1507,10 @@ watch(
   ([position, focusRequest]) => {
     if (
       (focusRequest || 0) !== lastFocusRequest ||
-      (position && `${position.tileX}:${position.tileY}` !== lastFocusedTile)
+      (position &&
+        ((props.compact &&
+          `${position.tileX}:${position.tileY}` !== lastFocusedTile) ||
+          (!initialPositionApplied && !viewAdjusted)))
     )
       setInitialView()
   },
@@ -1427,14 +1531,44 @@ watch(
   { deep: true },
 )
 
+function chooseClusterCharacter(id: string) {
+  emit('inspectcharacter', id)
+  clusterChoices.value = []
+}
 function focusCanvas() {
   element.value?.focus()
 }
 
-defineExpose({ focus: focusCanvas })
+function zoomBy(step: number) {
+  if (map)
+    map.setZoom(
+      mapZoomLevelForPercent(
+        snapMapZoomPercent(
+          mapZoomPercentForLevel(map.getZoom()) + step * MAP_ZOOM_PERCENT_STEP,
+        ),
+      ),
+    )
+}
+function focusAt(point: RasterPosition) {
+  if (map && createLatLng)
+    map.panTo(
+      createLatLng(
+        -((props.profile.tiles.max_y - point.tileY) * 256 + point.pixelY),
+        (point.tileX - props.profile.tiles.min_x) * 256 + point.pixelX,
+      ),
+    )
+}
+watch(() => props.focusedCharacterID, layoutCharacterLabels)
+defineExpose({
+  focus: focusCanvas,
+  zoomIn: () => zoomBy(1),
+  zoomOut: () => zoomBy(-1),
+  focusAt,
+})
 
 onBeforeUnmount(() => {
   stopped = true
+  canvasResizeObserver?.disconnect()
   for (const frame of markerAnimationFrames.values())
     cancelAnimationFrame(frame)
   markerAnimationFrames.clear()
@@ -1465,11 +1599,41 @@ onBeforeUnmount(() => {
     :aria-label="
       compact
         ? 'Map tile preview'
-        : 'Interactive raster map. Use arrow keys to pan, Enter or Space to select the center tile, or right-click to open map actions.'
+        : 'Interactive raster map. Use arrow keys to pan and Shift+F10 or right-click to open map actions.'
     "
     role="application"
     tabindex="0"
-  />
+  >
+    <section
+      v-if="clusterChoices.length"
+      class="panel map-cluster-choices"
+      aria-label="Overlapping characters"
+      @pointerdown.stop
+      @click.stop
+      @keydown.esc.stop="clusterChoices = []"
+    >
+      <div>
+        Choose character
+        <button
+          class="compact-button"
+          type="button"
+          aria-label="Close overlapping characters"
+          @click="clusterChoices = []"
+        >
+          ×
+        </button>
+      </div>
+      <button
+        v-for="choice in clusterChoices"
+        :key="choice.id"
+        class="compact-button"
+        type="button"
+        @click="chooseClusterCharacter(choice.id)"
+      >
+        {{ choice.name }}
+      </button>
+    </section>
+  </div>
 </template>
 
 <style scoped>
@@ -2025,7 +2189,8 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-detail-hp-track) {
-  height: 8px;
+  position: relative;
+  height: 16px;
   margin: 9px 1px 1px;
   border-radius: 5px;
   background: #532c32;
@@ -2054,5 +2219,39 @@ onBeforeUnmount(() => {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+}
+
+:global(.phmon-map-name-collapsed) {
+  display: none;
+}
+:global(.phmon-map-character-pin:hover .phmon-map-name-collapsed),
+:global(.phmon-map-marker:focus .phmon-map-name-collapsed) {
+  display: block;
+}
+:global(.phmon-map-character-cluster) {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.map-cluster-choices {
+  position: absolute;
+  top: 60px;
+  left: 12px;
+  z-index: 1100;
+  display: grid;
+  max-width: calc(100% - 24px);
+  gap: 6px;
+  padding: 10px;
+}
+:global(.phmon-map-detail-hp-label) {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--ph-text);
 }
 </style>

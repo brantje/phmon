@@ -1,7 +1,7 @@
-export const MIN_MAP_ZOOM_PERCENT = 50
+export const MIN_MAP_ZOOM_PERCENT = 25
 export const MAX_MAP_ZOOM_PERCENT = 2000
 export const INITIAL_MAP_ZOOM_PERCENT = 125
-export const MAP_ZOOM_PERCENT_STEP = 25
+export const MAP_ZOOM_PERCENT_STEP = 5
 
 export function mapZoomLevelForPercent(percent: number) {
   return Math.log2(percent / 100)

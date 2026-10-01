@@ -250,6 +250,169 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-01 Issue #55 map redesign
+
+Implemented the seven UI reorganization phases on `codex/issue-55-map-redesign`.
+The map-specific layout delegates to the authenticated default shell; sidebar,
+topbar and Easy/Advanced behavior are unchanged. Header go-to search, mounted
+Characters/Activity/Layers tabs, compact shared remote actions, group targeting,
+resource bars, floating inspector/training editor, route tray, layer switches,
+grouped activity and map overlays reuse the existing live and command contracts.
+No plugin, Go, database or command-type changes were introduced.
+
+The operator's screenshot correction applies to all three panels: underline tabs
+with counts, horizontal trace controls, group chips, readable HP/MP rows, unboxed
+activity rows and switches on the right. Existing theme tokens and resource colors
+are retained. Old nested list height limits and the trace grid override were removed.
+
+`bash scripts/check.sh` passed after each of phases 1–7 and the presentation
+corrections. An isolated PostgreSQL/backend/web stack passed the existing Issue #35
+remote-control smoke flow. Browser checks cover keyboard go-to, group/All targeting,
+mandatory Disconnect review/cancel, retained tabs/drafts, inspector and overlapping
+portrait selection, point actions, layer controls and responsive sizing. Evidence
+and final verification details are in `docs/reference-parity.md` and
+`docs/reference/issue55/README.md`. The route fixture verified waiting-for-movement,
+reported arrival and Clear finished. Final captures cover 2560 × 1287, 1440 × 1000,
+1280 × 800 and 390 × 844 without horizontal overflow. Implementation and verification
+are complete for #55. PR #58 is open; the initial CodeRabbit review and fix/reply
+loop are complete. The operator initially instructed us to ignore CodeRabbit,
+then requested the two posted follow-up findings be fixed; see the correction below.
+No deployment or real-character operation was performed.
+
+Operator correction — 2026-10-01: remove the left-click coordinate/action popup.
+Background clicks now close the inspector without displaying a popup or click-point
+marker, including clicks inside a training circle. Training labels/handles and character markers remain
+explicit inspection/editing controls. Right-click/touch context actions remain;
+Shift+F10 and the Menu key expose the same actions from the map keyboard focus.
+The ordinary click chip, click-point renderer and their selection/anchor plumbing
+are removed. This supersedes #55's selected-point chip requirement. `bash scripts/check.sh` passed. Browser verification
+confirmed no popup or click-point marker with three targets selected, including
+background clicks inside training circles,
+right-click and Shift+F10 context actions, character-marker inspection and the
+explicit training-label/Move center/Reset flow. Evidence:
+`docs/reference/issue55/map-click-no-popup.png`. No production restart occurred.
+
+Operator correction — 2026-10-01: Historical heatmaps now uses two equal filter
+columns (Range / Character), framed existing-theme dropdowns, contiguous 36 px
+layer rows, the short Mob ranks label, and one footer containing the unavailable
+layers note and compact Reset… button. The header status sits beside its chevron.
+Custom dates, character/rank filters, per-layer status messages and scoped reset
+confirmation keep their existing bindings and behavior. `bash scripts/check.sh`
+passed; browser checks confirmed equal-width dropdowns, 26 × 14 px switches,
+36 px rows, the compact footer, custom dates, rank filter and scoped reset Cancel.
+Mobile at 390 × 844 has no horizontal overflow. Evidence:
+`docs/reference/issue55/historical-heatmaps-panel.png`.
+
+Missing navigation Stop, numeric progress/ETA, trace readback and nearby-player
+trace discovery are tracked in [Issue #57](https://github.com/brantje/phmon/issues/57).
+They remain explicitly unavailable where the existing contracts lack them. Return
+Scroll uses real command outcomes without fabricated routes. Simulator checks do
+not establish real Windows/phBot runtime validation. No real character was operated.
+
+PR [#58](https://github.com/brantje/phmon/pull/58) is open against `main`, with the
+merged #35 dependency included in its ancestry. CodeRabbit's requested full review
+of `a098ed4` completed on 2026-10-01 at 19:05:54 UTC: one actionable accessibility
+finding and three nitpicks. All initial CI validation/stack jobs passed.
+
+Review fixes make HP/MP accessible text match the visible values, omit numeric ARIA
+values for missing/invalid ranges and clamp out-of-range values; require a real
+command ID before suppressing a submission tray row; consolidate the monster HP
+track style; and cache per-action map eligibility reasons while retaining an
+immediate click-time eligibility check. A separate browser reproduction found and
+fixed Go-to result selection reopening the dropdown after partial search.
+
+Validation: all 132 frontend tests pass, including unassigned-command tray cases.
+Isolated browser component checks passed for eight missing/valid/out-of-range
+resource bars and partial search selection with Enter/mouse plus Escape. The full
+post-review `bash scripts/check.sh` passed (Go, Python, transport audit, formatting,
+132 frontend tests, lint, typecheck/build and Compose validation). Fix commit
+`7b13c1661f7f9212ba30862c6973c220aec4e9b8` is pushed; the inline finding and all
+three review-body nitpicks have replies identifying that SHA and each fix. The
+validated inline thread is resolved. CodeRabbit's automatic follow-up is rate
+limited; its 19:11:53 UTC comment reports the next included review in 49 minutes
+(approximately 20:01 UTC / 22:01 Europe/Amsterdam). The requested full review and
+fix/reply loop are complete; a fresh post-fix review has not run. Exact next action:
+verify final-head CI, leave PR #58 open, and retry an incremental review when the
+external allowance permits. Do not merge or deploy.
+
+Operator bug correction — 2026-10-01: Action feedback starts collapsed and changes
+only through its button. Removed the three map-page watchers that forced feedback
+open for submitting/review/operation updates and switched the active tab. The
+operation-array replacement watcher could rerun with unchanged lengths on live
+updates. Command review/results remain mounted behind the manual disclosure.
+
+Validation: the pre-fix feedback markup/watchers reproduced opening after one
+one-second update in an isolated Vue browser harness. The corrected production
+markup/state remained closed through nine live updates, including new operations,
+submission and review changes; clicking opened it, clicking again kept it closed,
+and the active tab was preserved. Browser error collection was empty. Full
+`bash scripts/check.sh` passed with all 132 frontend tests. Correction commit
+`8515d43f0070c53f31b0dc3a4f70138dd31b0319` is pushed to PR #58; its validation and
+stack CI jobs passed. Leave the PR open/unmerged.
+
+Operator follow-up — 2026-10-01: each map character row now has a separate Focus
+button using the old Jump to character behavior, including repeat clicks and
+detected cave-floor/world switching. Row/marker inspection no longer centers the
+interactive viewport. Live position/tile updates preserve manual pan and zoom;
+compact Stats map previews retain their tile-following behavior. Go-to places and
+characters remain explicit focus actions. Focus clears a linked event using the
+current selection/scope rather than restoring its old character from the URL.
+The operator's zoom edit is included: minimum 25%, steps of 5 percentage points,
+initial 125% and maximum 2000%; both zoom buttons use the shared step constant.
+
+The previously omitted notifications now appear at the map's bottom center for
+navigation, bot start/stop, Return Scroll, Disconnect, trace start/stop and training
+commands. They count actual completed results, expose failed/skipped/unknown
+outcomes, expire after five seconds and do not replay on unchanged live snapshots
+or open Action feedback. Trace notifications use the frozen leader name; map
+tracing excludes the leader from follower targets. Disconnect's map button changes
+to Confirm (N) on its first click; a second click rechecks the frozen operation
+before sending. The confirmation expires after 3.5 seconds, cancels on
+target/scope/action changes and leaves default-panel review behavior intact.
+
+Validation: full `bash scripts/check.sh` passes with 137 frontend tests. Disposable
+protocol/browser fixtures verify cross-tile movement preserving pan/130% zoom,
+repeat Focus at the latest coordinates/125%, inspector selection without movement,
+cave B3 detection, Go-to, event-link clearing, 25% minimum/5-point zoom and mobile
+Focus without horizontal overflow. Browser notifications are verified for bot
+start/stop, Return Scroll, Disconnect, navigation and tracing; expired toasts do
+not replay. The disposable database had zero Disconnect admissions after first
+click/expiry and three completed commands after confirmation; changing targets
+canceled confirmation without another admission. Evidence is in
+`docs/reference/issue55/README.md`. The final browser check selected all three
+fixtures and dispatched trace only to Bravo/Charlie, confirmed by the database;
+Alpha was the leader. Mobile notification bounds stay within the viewport.
+These changes, including the zoom edit, are pushed in `19183c7`. The operator's
+subsequent crosshair icon edit is pushed in `e2ad3e9`; its accessible Focus label
+remains intact and Prettier passed. All validation and stack CI jobs passed for
+both commits. CodeRabbit accepted the requested full review at 20:11 UTC and
+updated its review range through `e2ad3e9` at 20:21 UTC.
+The operator then instructed us to ignore CodeRabbit. Its pending review is no
+longer a completion requirement. Implementation, browser verification and CI for
+the current code are complete. Leave PR #58 open; do not merge, deploy or operate
+real characters.
+
+Review correction — 2026-10-01: the operator resumed the fix/reply workflow for
+CodeRabbit's two findings posted at 22:36 Europe/Amsterdam on PR #58. Both were
+reproduced in a browser running the compiled production `MapCanvas.vue` with Vue,
+Leaflet and explicitly labeled fixture data: converging markers lacked a chooser
+after animation, and unchanged snapshots replaced a keyboard-focused chooser.
+
+`web/app/components/MapCanvas.vue` now recalculates character labels once after
+the last pending marker animation finishes, in addition to the immediate layout.
+Chooser buttons retain their DOM identity for the same sorted member IDs and are
+replaced or removed only when their cluster changes. Current props still supply
+the chooser's character names on activation.
+
+Full `bash scripts/check.sh` passes with 137 frontend tests, formatting, lint,
+typecheck/build, Go/Python regression checks, transport audit and Compose validation.
+Focused browser checks verify one completion layout after both moving markers,
+12 unchanged updates plus further movement retaining the same focused button,
+Enter activation, membership changes, separation, focused-character label updates,
+removal during animation and unmount cleanup. Browser error collection is empty.
+No production service or real bot was operated. Review replies and final-head CI
+are tracked on PR #58; leave it open and do not merge or deploy.
+
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
 Implemented the reusable command fan-out foundation for Issue #30. The frontend

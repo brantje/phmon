@@ -56,13 +56,17 @@ import {
   mapNavigationRouteOverlays,
   mapNavigationStatusLabel,
 } from '~/utils/mapNavigationRoutes'
+import { mapNavigationTrayRows } from '~/utils/mapNavigationTray'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
+import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import {
   TRAINING_RADIUS_MAX,
   TRAINING_RADIUS_MIN,
   trainingAreaOverlays,
 } from '~/utils/mapTrainingAreas'
+
+definePageMeta({ layout: 'map' })
 
 const reviewActions = useReviewActionsPreference()
 const {
@@ -138,7 +142,23 @@ const selectedCharacterID = ref(
   typeof route.query.character_id === 'string' ? route.query.character_id : '',
 )
 const actionTargetIDs = ref(new Set<string>())
+const dismissedNavigationRows = ref(new Set<string>())
+const navigationTrayOpen = ref(true)
+const navigationTrayCompact = ref(false)
+const mapWorkspaceElement = ref<HTMLElement | null>(null)
+let workspaceObserver: ResizeObserver | undefined
+// User-controlled disclosure: live action updates must not change this state.
+const actionFeedbackOpen = ref(false)
 const selectedNavigationRouteID = ref('')
+const inspectorOpen = ref(true)
+const legendOpen = ref(false)
+const linkedNoticeDismissed = ref('')
+const mapCanvas = ref<{
+  zoomIn(): void
+  zoomOut(): void
+  focusAt(point: RasterPosition): void
+} | null>(null)
+const copyNotice = ref('')
 const actionTargetScopeKey = computed(() =>
   mapActionTargetScopeKey({
     server: server.value,
@@ -192,6 +212,25 @@ const heatmapRange = ref('24h')
 const heatmapCustomFrom = ref('')
 const heatmapCustomTo = ref('')
 const historicalHeatmapsOpen = ref(false)
+const sideTab = ref<'characters' | 'activity' | 'layers'>('characters')
+const sideTabs = ['characters', 'activity', 'layers'] as const
+function moveSideTab(event: KeyboardEvent) {
+  const index = sideTabs.indexOf(sideTab.value)
+  const next =
+    event.key === 'ArrowRight'
+      ? (index + 1) % 3
+      : event.key === 'ArrowLeft'
+        ? (index + 2) % 3
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? 2
+            : -1
+  if (next < 0) return
+  event.preventDefault()
+  sideTab.value = sideTabs[next]!
+  nextTick(() => document.getElementById(`map-tab-${sideTab.value}`)?.focus())
+}
 const analyticsCharacterID = ref('')
 const analyticsMobType = ref('')
 const resetLayer = ref<HeatmapLayerID>('deaths')
@@ -212,7 +251,6 @@ const mapProfile = ref<MapProfile | null>(null)
 const profileLoading = ref(false)
 const profileError = ref('')
 const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
-const selectedTile = ref<RasterPosition | null>(null)
 const jumpSequence = ref(0)
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
@@ -250,6 +288,23 @@ const navigationAction = useMapNavigationAction({
   reviewActions: () => reviewActions.value,
   now: () => freshnessNow.value,
 })
+const actionNotification = ref<MapActionNotification | null>(null)
+let actionNotificationTimer: ReturnType<typeof setTimeout> | undefined
+function showMapActionNotification(notification: MapActionNotification) {
+  if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
+  actionNotification.value = notification
+  actionNotificationTimer = setTimeout(() => {
+    actionNotification.value = null
+    actionNotificationTimer = undefined
+  }, 5_000)
+}
+useMapActionNotifications(
+  () => [
+    ...navigationAction.operations.value,
+    ...navigationAction.trainingOperations.value,
+  ],
+  showMapActionNotification,
+)
 const trainingAreas = computed(() =>
   mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.training_areas?.areas || []
@@ -279,6 +334,7 @@ const renderedTrainingAreas = computed(() =>
     : [],
 )
 function selectTrainingArea(characterID: string) {
+  inspectorOpen.value = true
   trainingEditor.select(
     trainingEditor.selectedID.value === characterID ? '' : characterID,
   )
@@ -318,15 +374,13 @@ const trainingOutcomeLabel = (outcome: string) =>
 watch(layerTraining, (visible) => {
   if (!visible) trainingEditor.clear()
 })
-function selectMapPoint(point: RasterPosition, trainingAreaID?: string | null) {
+function selectMapPoint(point: RasterPosition) {
   if (trainingEditor.moveArmed.value) {
     trainingEditor.moveCenter(trainingEditor.selectedID.value, point)
     return
   }
-  if (trainingAreaID) selectTrainingArea(trainingAreaID)
-  else if (trainingAreaID === null && trainingEditor.selectedID.value)
-    trainingEditor.select('')
-  selectedTile.value = point
+  inspectorOpen.value = false
+  if (trainingEditor.selectedID.value) trainingEditor.select('')
 }
 const historicalCharacters = computed(() =>
   fleetCharacters.value
@@ -453,9 +507,6 @@ function positionCanBeDisplayed(character?: CharacterView) {
     characterHasDisplayableMapPosition(character, freshnessNow.value),
   )
 }
-const currentCharacterPositionFresh = computed(() => {
-  return positionIsFresh(currentCharacter.value)
-})
 const exactCharacterRasterPosition = computed(() => {
   const character = currentCharacter.value
   if (!mapProfile.value || !character || !positionCanBeDisplayed(character))
@@ -483,13 +534,42 @@ const characterRasterPosition = computed(() => {
     character.region,
   )
 })
-const characterPlacement = computed(() =>
-  exactCharacterRasterPosition.value
-    ? 'exact'
-    : characterRasterPosition.value
-      ? 'region-tile'
-      : null,
-)
+const inspectorCharacter = computed(() => {
+  if (!inspectorOpen.value) return undefined
+  const trainingOwner = trainingEditor.selectedArea.value?.character_id
+  if (trainingOwner)
+    return fleetCharacters.value.find(
+      (item) => item.character_id === trainingOwner,
+    )
+  return characterRasterPosition.value ? currentCharacter.value : undefined
+})
+const inspectorAge = computed(() => {
+  const at = Date.parse(inspectorCharacter.value?.state_updated_at || '')
+  return Number.isFinite(at)
+    ? `${Math.max(0, Math.floor((freshnessNow.value - at) / 1000))}s ago`
+    : 'unknown'
+})
+function inspectCharacter(id: string) {
+  inspectorOpen.value = true
+  selectedCharacterID.value = id
+  trainingEditor.select(
+    layerTraining.value &&
+      trainingAreas.value.some((area) => area.character_id === id)
+      ? id
+      : '',
+  )
+}
+watch(inspectorCharacter, (character) => {
+  if (
+    character &&
+    !trainingEditor.selectedID.value &&
+    layerTraining.value &&
+    trainingAreas.value.some(
+      (area) => area.character_id === character.character_id,
+    )
+  )
+    trainingEditor.select(character.character_id)
+})
 const selectedDestination = computed(() =>
   mapProfile.value?.quick_destinations.find(
     (destination) => destination.id === selectedDestinationID.value,
@@ -561,48 +641,56 @@ const mapInitialTile = computed(() => {
   )
   return preset ? { x: preset.tile_x, y: preset.tile_y } : { x: 168, y: 97 }
 })
-const selectedGamePosition = computed(() => {
-  if (!mapProfile.value || !selectedTile.value) return null
-  return rasterPositionToGame(
-    mapProfile.value,
-    areaID.value,
-    floorID.value,
-    currentRegion.value,
-    selectedTile.value,
-    currentCharacter.value?.z ?? 0,
-  )
-})
-const jumpAvailable = computed(() =>
-  Boolean(
-    currentCharacter.value &&
-    positionCanBeDisplayed(currentCharacter.value) &&
-    mapProfile.value,
-  ),
+const menuSkipNote = computed(() =>
+  [
+    ...new Set(
+      [
+        ...(navigationAction.menuOperation.value?.children || []),
+        ...(navigationAction.trainingMenuOperation.value?.children || []),
+      ]
+        .filter((child) => child.skipReason)
+        .map((child) => `${child.characterName}: ${child.skipReason!.message}`),
+    ),
+  ].join(' · '),
 )
-const selectedRegionAmbiguous = computed(() => {
+const contextGamePosition = computed(() =>
+  mapProfile.value && navigationAction.menuPoint.value
+    ? rasterPositionToGame(
+        mapProfile.value,
+        areaID.value,
+        floorID.value,
+        currentRegion.value,
+        navigationAction.menuPoint.value,
+        currentCharacter.value?.z ?? 0,
+      )
+    : null,
+)
+async function copyMapCoordinates() {
+  const point = contextGamePosition.value
+  if (!point) return
+  try {
+    await navigator.clipboard.writeText(
+      `${point.x.toFixed(1)}, ${point.y.toFixed(1)}`,
+    )
+    copyNotice.value = 'Coordinates copied'
+  } catch {
+    copyNotice.value = 'Could not copy coordinates'
+  }
+}
+watch(navigationAction.menuPoint, () => {
+  copyNotice.value = ''
+})
+const contextRegionAmbiguous = computed(() => {
   const floor = profileArea.value?.floors.find(
     (item) => item.id === floorID.value,
   )
   return Boolean(
-    selectedTile.value &&
+    navigationAction.menuPoint.value &&
     floor?.region_ids &&
     floor.region_ids.length > 1 &&
     !floor.region_ids.includes(currentRegion.value ?? 0),
   )
 })
-function openSelectedNavigation(
-  event: MouseEvent,
-  focusAction: 'navigate' | 'training' = 'navigate',
-) {
-  if (!selectedTile.value) return
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  void navigationAction.open(
-    selectedTile.value,
-    { x: rect.left, y: rect.bottom },
-    event.currentTarget as HTMLElement,
-    focusAction,
-  )
-}
 function moveMenuFocus(step: number) {
   const items = [
     ...(navigationAction.menuElement.value?.querySelectorAll<HTMLButtonElement>(
@@ -647,9 +735,107 @@ const scopedCharacters = computed(() => {
     return items.filter((character) => character.region === regionID.value)
   return items
 })
+function characterGoToMeta(character: CharacterView) {
+  const profile = mapProfile.value
+  if (!profile) return zoneNameText(character.zone)
+  const cave = caveFloorForPosition(profile, character.region, character.z)
+  const area = cave?.areaID || 'world'
+  const floor = cave?.floorID || 'world'
+  const exact = worldPositionToRaster(
+    profile,
+    area,
+    floor,
+    character.region,
+    character.x,
+    character.y,
+    character.z,
+  )
+  const tileOnly =
+    !exact && regionTileCenter(profile, area, floor, character.region)
+  return `${zoneNameText(character.zone)}${tileOnly ? ' · region tile' : ''}`
+}
+const goToOptions = computed(() => [
+  ...fleetCharacters.value
+    .filter((item) => item.server.toLowerCase() === server.value.toLowerCase())
+    .map((character) => ({
+      id: `character:${character.character_id}`,
+      label: character.name,
+      meta: characterGoToMeta(character),
+      group: 'Characters' as const,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+  ...(mapProfile.value?.quick_destinations || [])
+    .filter((item) => item.status === 'validated')
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      meta: 'Verified destination',
+      group: 'Places' as const,
+    })),
+  ...(mapProfile.value?.areas || [])
+    .filter((item) => item.kind === 'cave')
+    .flatMap((area) =>
+      area.floors.map((floor) => ({
+        id: `floor:${area.id}:${floor.id}`,
+        label: `${area.label} · ${floor.label}`,
+        meta: 'Cave floor',
+        group: 'Places' as const,
+      })),
+    ),
+])
+function selectMapCharacter(id: string) {
+  inspectorOpen.value = true
+  trainingEditor.select('')
+  selectedCharacterID.value = selectedCharacterID.value === id ? '' : id
+}
+function canFocusCharacter(character: CharacterView) {
+  const profile = mapProfile.value
+  if (!profile || !positionCanBeDisplayed(character)) return false
+  const cave = caveFloorForPosition(profile, character.region, character.z)
+  const area = cave?.areaID || (character.region! > 0 ? 'world' : areaID.value)
+  const floor = cave?.floorID || (area === 'world' ? 'world' : floorID.value)
+  return Boolean(
+    worldPositionToRaster(
+      profile,
+      area,
+      floor,
+      character.region,
+      character.x,
+      character.y,
+      character.z,
+    ) || regionTileCenter(profile, area, floor, character.region),
+  )
+}
+async function focusMapCharacter(id: string) {
+  const character = fleetCharacters.value.find(
+    (item) => item.character_id === id,
+  )
+  if (!character || !canFocusCharacter(character)) return
+  inspectorOpen.value = true
+  trainingEditor.select('')
+  selectedCharacterID.value = id
+  await nextTick()
+  await jumpToCharacter()
+}
+const outsideZoneCount = computed(() =>
+  regionID.value
+    ? (mapSnapshot.value?.characters || []).filter(
+        (item) => item.online && item.region !== regionID.value,
+      ).length
+    : 0,
+)
+function chooseGoTo(id: string) {
+  if (id.startsWith('character:')) {
+    void focusMapCharacter(id.slice('character:'.length))
+  } else selectQuickDestination(id)
+}
 const applicableActionTargetIDs = computed(
   () =>
-    new Set(scopedCharacters.value.map((character) => character.character_id)),
+    new Set(
+      scopedCharacters.value
+        .filter((character) => character.online)
+        .map((character) => character.character_id),
+    ),
 )
 const mapTargetGroups = computed(() =>
   groups.value
@@ -683,6 +869,7 @@ const mapTargetGroups = computed(() =>
     })),
 )
 function toggleActionTarget(characterID: string) {
+  if (!applicableActionTargetIDs.value.has(characterID)) return
   actionTargetIDs.value = toggleMapActionTarget(
     actionTargetIDs.value,
     characterID,
@@ -703,9 +890,83 @@ function toggleActionTargetGroup(memberIDs: string[]) {
   )
 }
 const currentMonsters = computed(() => {
-  if (!layerMonsters.value) return []
-  return dedupeCurrentMonsters(mapSnapshot.value?.monsters || [])
+  return dedupeCurrentMonsters(
+    mapSnapshotInFeedScope.value ? mapSnapshot.value?.monsters || [] : [],
+  )
 })
+const groupedMonsters = computed(() => {
+  const groups = new Map<
+    string,
+    { name: string; type: string; level: number | undefined; count: number }
+  >()
+  for (const monster of currentMonsters.value) {
+    const name = monsterDisplayName(monster),
+      type = monsterTypePresentation(monster).label
+    const key = `${name}\0${type}`
+    const group = groups.get(key) || {
+      name,
+      type,
+      level: monster.level,
+      count: 0,
+    }
+    group.count++
+    groups.set(key, group)
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      Number(b.type.toLowerCase().includes('unique')) -
+        Number(a.type.toLowerCase().includes('unique')) ||
+      a.name.localeCompare(b.name),
+  )
+})
+const activityEvents = computed(() =>
+  (mapSnapshotInFeedScope.value ? mapSnapshot.value?.events || [] : []).filter(
+    (event) => event.kind === 'character.died' || event.category === 'drop',
+  ),
+)
+const historicalLayerIDs: HeatmapLayerID[] = [
+  'mob_observer_average',
+  'mob_types',
+  'deaths',
+  'drops',
+  'unique_sightings',
+  'player_movement',
+]
+function eventAge(at: string) {
+  const seconds = Math.max(
+    0,
+    Math.floor((freshnessNow.value - Date.parse(at)) / 1000),
+  )
+  return Number.isFinite(seconds)
+    ? seconds < 60
+      ? `${seconds}s ago`
+      : seconds < 3600
+        ? `${Math.floor(seconds / 60)}m ago`
+        : `${Math.floor(seconds / 3600)}h ago`
+    : 'Unknown time'
+}
+function focusMapEvent(event: ActivityEvent) {
+  if (!mapProfile.value) return
+  const location = mapEventLocation(mapProfile.value, event)
+  areaID.value = location.areaID
+  floorID.value = location.floorID
+  regionID.value = location.areaID === 'world' ? event.region || 0 : 0
+  selectedCharacterID.value = event.character_id
+  inspectorOpen.value = false
+  void router.replace({
+    path: '/map',
+    query: {
+      ...route.query,
+      event_id: event.event_id,
+      server: server.value,
+      area: areaID.value,
+      floor: floorID.value,
+      region: regionID.value ? String(regionID.value) : undefined,
+      character_id: event.character_id,
+    },
+  })
+  jumpSequence.value++
+}
 const currentPartyMembers = computed(
   () => mapSnapshot.value?.party.members || [],
 )
@@ -787,6 +1048,8 @@ const mapMarkers = computed(() => {
     details?: {
       monster?: MapMonster
       showLabel?: boolean
+      observerName?: string
+      zoneLabel?: string
       itemName?: string
       itemIconUrl?: string
       event?: ActivityEvent
@@ -836,7 +1099,12 @@ const mapMarkers = computed(() => {
         entry.x,
         entry.y,
         entry.z ?? entry.observer.observer_z,
-        { monster: entry, showLabel: showNearbyMonsterNames.value },
+        {
+          monster: entry,
+          showLabel: showNearbyMonsterNames.value,
+          observerName: entry.observer.character,
+          zoneLabel: zoneNameForRegion(entry.region),
+        },
       )
     }
   }
@@ -859,7 +1127,12 @@ const mapMarkers = computed(() => {
       event.x,
       event.y,
       event.z,
-      { itemName: event.item_name, itemIconUrl: event.item_icon_url, event },
+      {
+        itemName: event.item_name,
+        itemIconUrl: event.item_icon_url,
+        event,
+        zoneLabel: zoneNameText(event.zone),
+      },
     )
   }
   return markers.slice(0, 2000)
@@ -904,6 +1177,60 @@ const zoneNameForRegion = (region?: number | null) => {
 const zoneOptionLabels = computed(() =>
   uniqueRegionOptionLabels(regionOptions.value, zoneNameForRegion),
 )
+const navigationTrayRows = computed(() =>
+  mapNavigationTrayRows(
+    mapNavigationRoutes.value,
+    navigationAction.operations.value,
+    server.value,
+    dismissedNavigationRows.value,
+  ).map((row) => {
+    const route = mapSnapshot.value?.navigation?.find(
+      (item) =>
+        `${item.character_id}:${item.session_id}:${item.route_sequence}` ===
+        row.id,
+    )
+    return {
+      ...row,
+      detail:
+        row.detail ||
+        (route
+          ? `${zoneNameForRegion(route.destination.region)} · ${route.destination.x.toFixed(1)}, ${route.destination.y.toFixed(1)}`
+          : ''),
+    }
+  }),
+)
+function dismissNavigationRow(id: string) {
+  dismissedNavigationRows.value = new Set([
+    ...dismissedNavigationRows.value,
+    id,
+  ])
+}
+function clearFinishedNavigation() {
+  dismissedNavigationRows.value = new Set([
+    ...dismissedNavigationRows.value,
+    ...navigationTrayRows.value
+      .filter((row) => row.group === 'done' || row.status === 'skipped')
+      .map((row) => row.id),
+  ])
+}
+function showNavigationOnMap(id: string) {
+  selectedNavigationRouteID.value = id
+  const overlay = mapNavigationRoutes.value.find(
+    (item) => item.characterID === id,
+  )
+  const point = overlay?.currentAnchor || overlay?.blocks[0]?.[0]
+  if (point) mapCanvas.value?.focusAt(point)
+}
+onMounted(() => {
+  if (!mapWorkspaceElement.value) return
+  workspaceObserver = new ResizeObserver(([entry]) => {
+    navigationTrayCompact.value = Boolean(
+      entry && entry.contentRect.height < 470,
+    )
+  })
+  workspaceObserver.observe(mapWorkspaceElement.value)
+})
+onBeforeUnmount(() => workspaceObserver?.disconnect())
 const characterLocation = (character?: CharacterView) => {
   if (
     !character ||
@@ -965,7 +1292,7 @@ async function loadProfile(selectedServer: string) {
   }
 }
 
-function updateRouteQuery() {
+function currentMapRouteQuery() {
   const query = {
     ...route.query,
     server: server.value,
@@ -976,7 +1303,11 @@ function updateRouteQuery() {
   else delete query.region
   if (selectedCharacterID.value) query.character_id = selectedCharacterID.value
   else delete query.character_id
-  void router.replace({ path: '/map', query })
+  return query
+}
+
+function updateRouteQuery() {
+  void router.replace({ path: '/map', query: currentMapRouteQuery() })
 }
 
 function selectArea(area: MapAreaProfile) {
@@ -992,10 +1323,15 @@ function returnToWorld() {
   if (world) selectArea(world)
 }
 
-function jumpToCharacter() {
+async function jumpToCharacter() {
   const character = currentCharacter.value
   const profile = mapProfile.value
   if (!character || !profile) return
+  if (linkedEventID.value) {
+    const query = currentMapRouteQuery()
+    delete query.event_id
+    await router.replace({ path: '/map', query })
+  }
   const cave = caveFloorForPosition(profile, character.region, character.z)
   if (
     cave &&
@@ -1015,9 +1351,8 @@ function jumpToCharacter() {
     regionID.value = 0
     updateRouteQuery()
   }
-  nextTick(() => {
-    jumpSequence.value++
-  })
+  await nextTick()
+  jumpSequence.value++
 }
 
 function selectQuickDestination(destinationID: string) {
@@ -1034,6 +1369,7 @@ function selectQuickDestination(destinationID: string) {
     regionID.value = 0
     selectedDestinationID.value = destinationID
     updateRouteQuery()
+    jumpSequence.value++
     return
   }
   const destination = mapProfile.value?.quick_destinations.find(
@@ -1046,6 +1382,7 @@ function selectQuickDestination(destinationID: string) {
   selectedCharacterID.value = ''
   selectedDestinationID.value = destination.id
   updateRouteQuery()
+  jumpSequence.value++
 }
 
 async function refreshHeatmaps() {
@@ -1117,7 +1454,6 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
   selectedCharacterID.value = event.character_id
 })
 watch(selectedCharacterID, (characterID) => {
-  jumpSequence.value++
   if (characterID) selectedDestinationID.value = ''
   const selected = mapSnapshot.value?.characters.find(
     (character) => character.character_id === characterID,
@@ -1152,9 +1488,7 @@ watch(
     if (reconciled !== actionTargetIDs.value) actionTargetIDs.value = reconciled
   },
 )
-watch([server, areaID, floorID, regionID, selectedCharacterID], () => {
-  selectedTile.value = null
-})
+watch([server, areaID, floorID, regionID, selectedCharacterID], () => {})
 watch(mapProfile, (profile) => {
   if (!profile) return
   const selectedArea = profile.areas.find((area) => area.id === areaID.value)
@@ -1257,6 +1591,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   if (eventWindowTimer) clearInterval(eventWindowTimer)
+  if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
   profileRequestID++
   clearMapFeed(subscriptionID)
 })
@@ -1266,27 +1601,13 @@ useHead({ title: 'Map · PhMon' })
 
 <template>
   <section class="map-page">
-    <header class="page-header map-page-header">
-      <div>
-        <h1><UIcon name="i-lucide-map" /> Map</h1>
-        <p>
-          Live positions, nearby monster observations and recent event
-          locations.
-        </p>
-      </div>
-      <div class="map-page-status" :class="streamCurrent ? 'current' : 'stale'">
-        <span />{{
-          streamCurrent
-            ? 'Live scope current'
-            : connectionState === 'stale'
-              ? 'Showing stale map data'
-              : 'Syncing map data'
-        }}
-      </div>
-    </header>
+    <header
+      class="page-header map-page-header map-header-row character-filters"
+    >
+      <h1><UIcon name="i-lucide-map" /> Map</h1>
 
-    <div class="map-toolbar panel">
-      <label>
+      <span v-if="serverScope !== 'all'">{{ server }}</span>
+      <label v-if="serverScope === 'all'">
         Server
         <select
           :value="server"
@@ -1330,19 +1651,26 @@ useHead({ title: 'Map · PhMon' })
           </option>
         </select>
       </label>
-      <label v-if="profileArea?.kind === 'cave'">
-        Floor
-        <select v-model="floorID" aria-label="Cave map floor">
-          <option
-            v-for="floor in profileArea.floors"
-            :key="floor.id"
-            :value="floor.id"
-          >
-            {{ floor.label }}
-          </option>
-        </select>
-      </label>
-      <label>
+      <div
+        v-if="profileArea?.kind === 'cave'"
+        class="map-header-floors"
+        role="group"
+        aria-label="Cave map floor"
+      >
+        <button
+          v-for="floor in profileArea.floors"
+          :key="floor.id"
+          class="compact-button"
+          :class="{ selected: floorID === floor.id }"
+          type="button"
+          :aria-pressed="floorID === floor.id"
+          @click="floorID = floor.id"
+        >
+          {{ floor.label }}
+        </button>
+      </div>
+
+      <label v-if="areaID === 'world'">
         Zone
         <select v-model.number="regionID" aria-label="Filter map data by zone">
           <option :value="0">All zones</option>
@@ -1351,122 +1679,42 @@ useHead({ title: 'Map · PhMon' })
           </option>
         </select>
       </label>
-      <label>
-        Quick destination
-        <select
-          :value="selectedDestinationID"
-          aria-label="Quick destination"
-          :disabled="!mapProfile"
-          @change="
-            selectQuickDestination(($event.target as HTMLSelectElement).value)
-          "
-        >
-          <option value="">
-            {{
-              mapProfile?.quick_destinations.length
-                ? 'Select destination'
-                : 'No verified destinations'
-            }}
-          </option>
-          <option
-            v-for="destination in mapProfile?.quick_destinations.filter(
-              (item) => item.status === 'validated',
-            ) || []"
-            :key="destination.id"
-            :value="destination.id"
-          >
-            {{ destination.label }}
-          </option>
-          <optgroup
-            v-for="area in mapProfile?.areas.filter(
-              (item) => item.kind === 'cave',
-            ) || []"
-            :key="area.id"
-            :label="area.label"
-          >
-            <option
-              v-for="floor in area.floors"
-              :key="floor.id"
-              :value="`floor:${area.id}:${floor.id}`"
-            >
-              {{ area.label }} · {{ floor.label }}
-            </option>
-          </optgroup>
-        </select>
-      </label>
-      <label>
-        Event range
-        <select v-model="dateRange" aria-label="Recent event time range">
-          <option value="1h">Last hour</option>
-          <option value="24h">Last 24 hours</option>
-          <option value="7d">Last 7 days</option>
-        </select>
-      </label>
-      <label>
-        Character
-        <select v-model="selectedCharacterID" aria-label="Select character">
-          <option value="">Choose character</option>
-          <option
-            v-for="character in fleetCharacters.filter(
-              (item) => item.server.toLowerCase() === server.toLowerCase(),
-            )"
-            :key="character.character_id"
-            :value="character.character_id"
-          >
-            {{ character.name }} · {{ character.server }}
-          </option>
-        </select>
-      </label>
-      <button
-        class="compact-button"
-        type="button"
-        :disabled="!jumpAvailable"
-        :title="
-          characterPlacement === 'exact'
-            ? 'Jump to the selected character position.'
-            : characterPlacement === 'region-tile'
-              ? 'Jump to the character’s encoded outdoor region tile.'
-              : 'No outdoor tile is available for this character.'
-        "
-        @click="jumpToCharacter"
-      >
-        {{
-          characterPlacement === 'region-tile'
-            ? 'Jump to region tile'
-            : 'Jump to character'
-        }}
-      </button>
-    </div>
+      <MapGoToSearch :options="goToOptions" @choose="chooseGoTo" />
 
-    <div class="map-workspace">
+      <div
+        class="map-page-status"
+        :class="streamCurrent ? 'current' : 'stale'"
+        :title="
+          streamCurrent
+            ? 'Live scope current'
+            : connectionState === 'stale'
+              ? 'Showing stale map data'
+              : 'Syncing map data'
+        "
+        role="status"
+      >
+        <span />{{
+          streamCurrent
+            ? 'Live'
+            : connectionState === 'stale'
+              ? 'Stale'
+              : 'Syncing'
+        }}
+      </div>
+    </header>
+
+    <div ref="mapWorkspaceElement" class="map-workspace">
       <section
         class="map-viewport-panel panel"
         aria-label="Game world raster map"
       >
-        <div class="map-viewport-header">
-          <div>
-            <strong>{{ profileArea?.label || 'World map' }}</strong>
-            <span>{{
-              mapProfile?.dataset_id ||
-              (profileLoading ? 'Loading profile…' : 'Profile unavailable')
-            }}</span>
-          </div>
-          <div class="map-readouts" aria-live="polite">
-            <span>Tile {{ mapView.tileX }} × {{ mapView.tileY }}</span>
-            <span>Zoom {{ mapView.zoomPercent }}%</span>
-            <span>{{
-              selectedCharacterID
-                ? `${currentCharacterPositionFresh ? '' : 'Stale · '}${characterLocation(currentCharacter)}`
-                : 'Select a character for coordinates'
-            }}</span>
-          </div>
-        </div>
-        <div v-if="linkedEventMessage" class="map-link-status" role="status">
-          {{ linkedEventMessage }}
-        </div>
         <div class="map-canvas-frame">
+          <MapActionToast :notification="actionNotification" />
           <ClientOnly>
             <MapCanvas
+              ref="mapCanvas"
+              :external-controls="true"
+              :focusedCharacterID="selectedCharacterID"
               v-if="canvasProfile?.tiles.status === 'available-for-inspection'"
               :key="`${server}:${areaID}:${floorID}:${mapProfile?.dataset_id}:${mapProfile?.dataset_version}`"
               :profile="canvasProfile"
@@ -1483,6 +1731,7 @@ useHead({ title: 'Map · PhMon' })
               "
               :training-discard-disabled="trainingEditor.applying.value"
               :training-accept-title="trainingEditor.applyReason.value"
+              @inspectcharacter="inspectCharacter"
               @viewchange="mapView = $event"
               @pointselect="selectMapPoint"
               @trainingselect="selectTrainingArea"
@@ -1505,6 +1754,314 @@ useHead({ title: 'Map · PhMon' })
             >
           </ClientOnly>
           <div
+            v-if="actionTargetIDs.size"
+            class="panel map-target-bar"
+            @pointerdown.stop
+            @click.stop
+          >
+            <strong>{{ actionTargetIDs.size }} targeted</strong
+            ><span>Right-click the map to send them</span
+            ><button
+              class="map-text-action"
+              type="button"
+              @click="clearActionTargets"
+            >
+              Clear
+            </button>
+          </div>
+          <div class="map-floating-controls" @pointerdown.stop @click.stop>
+            <button
+              class="compact-button"
+              type="button"
+              aria-label="Zoom in"
+              @click="mapCanvas?.zoomIn()"
+            >
+              <UIcon name="i-lucide-plus" /></button
+            ><button
+              class="compact-button"
+              type="button"
+              aria-label="Zoom out"
+              @click="mapCanvas?.zoomOut()"
+            >
+              <UIcon name="i-lucide-minus" /></button
+            ><button
+              class="compact-button"
+              type="button"
+              aria-label="Center on selected character"
+              :disabled="
+                !currentCharacter || !positionCanBeDisplayed(currentCharacter)
+              "
+              @click="jumpToCharacter"
+            >
+              <UIcon name="i-lucide-crosshair" /></button
+            ><button
+              class="compact-button"
+              type="button"
+              :aria-expanded="legendOpen"
+              aria-controls="map-legend"
+              aria-label="Map legend"
+              @click="legendOpen = !legendOpen"
+            >
+              <UIcon name="i-lucide-info" />
+            </button>
+          </div>
+          <section
+            v-if="legendOpen"
+            id="map-legend"
+            class="panel map-floating-legend"
+            aria-label="Map legend"
+            @pointerdown.stop
+            @click.stop
+          >
+            <div class="map-list-heading">
+              <strong>Legend</strong
+              ><button
+                class="compact-button"
+                type="button"
+                aria-label="Close map legend"
+                @click="legendOpen = false"
+              >
+                ×
+              </button>
+            </div>
+            <p>
+              Characters · Party members · NPCs · Nearby monsters · Deaths ·
+              Drops · Training areas · Navigation routes
+            </p>
+            <details>
+              <summary>How positions are placed</summary>
+              <p>
+                {{
+                  mapProfile?.tiles.semantics ||
+                  'Tile and coordinate evidence is unavailable.'
+                }}
+                Outdoor region IDs locate their root tile directly. Reported X/Y
+                positions locate markers within that tile; outlined dots
+                indicate a region-only position. Cave imagery uses a 2D X/Y
+                anchor and region/floor rules. Navigation and training position
+                resolve coordinates and Z per target. Older observations remain
+                visible as last observed positions.
+              </p>
+              <p>
+                Dataset {{ mapProfile?.dataset_id || 'unavailable' }} ·
+                {{ mapProfile?.dataset_version }}
+              </p>
+            </details>
+          </section>
+          <div class="map-corner-readouts map-empty-copy" @pointerdown.stop>
+            Tile {{ mapView.tileX }} × {{ mapView.tileY }} ·
+            {{ mapView.zoomPercent }}%
+          </div>
+          <div
+            v-if="linkedEventMessage && linkedNoticeDismissed !== linkedEventID"
+            class="panel map-floating-notice"
+            role="status"
+            @pointerdown.stop
+            @click.stop
+          >
+            {{ linkedEventMessage
+            }}<button
+              class="compact-button"
+              type="button"
+              aria-label="Dismiss linked event notice"
+              @click="linkedNoticeDismissed = linkedEventID"
+            >
+              ×
+            </button>
+          </div>
+          <section
+            v-if="inspectorCharacter"
+            class="panel map-inspector"
+            aria-label="Character inspector"
+            @pointerdown.stop
+            @click.stop
+          >
+            <div class="map-list-heading">
+              <small
+                >Lv {{ inspectorCharacter.level ?? '—'
+                }}{{
+                  groupByCharacter.get(inspectorCharacter.character_id)
+                    ? ` · ${groupByCharacter.get(inspectorCharacter.character_id)}`
+                    : ''
+                }}</small
+              ><button
+                class="compact-button"
+                type="button"
+                aria-label="Close character inspector"
+                @click="inspectorOpen = false"
+              >
+                <UIcon name="i-lucide-x" />
+              </button>
+            </div>
+            <h2>{{ inspectorCharacter.name }}</h2>
+            <p class="map-empty-copy">
+              {{ characterLocation(inspectorCharacter) }} · updated
+              {{ inspectorAge }}
+            </p>
+            <MapCharacterResources :character="inspectorCharacter" />
+            <p v-if="inspectorCharacter.dead === true" class="map-empty-copy">
+              Character is dead.
+            </p>
+            <p
+              v-if="!positionIsFresh(inspectorCharacter)"
+              class="map-empty-copy"
+            >
+              Position is stale; last report {{ inspectorAge }}.
+            </p>
+            <div
+              v-if="trainingEditor.selectedArea.value"
+              class="map-training-editor"
+              role="group"
+              :aria-label="`Edit training area for ${trainingEditor.selectedArea.value.name}`"
+            >
+              <p class="map-training-readback">
+                Observed center
+                {{ trainingEditor.selectedArea.value.x.toFixed(1) }},
+                {{ trainingEditor.selectedArea.value.y.toFixed(1) }} · radius
+                {{ trainingEditor.selectedArea.value.radius }}
+              </p>
+              <p
+                v-if="trainingEditor.draft.value?.center"
+                class="map-training-draft"
+              >
+                New center
+                {{ trainingEditor.draft.value.center.x.toFixed(1) }},
+                {{ trainingEditor.draft.value.center.y.toFixed(1) }} in
+                {{
+                  zoneNameForRegion(trainingEditor.draft.value.center.region)
+                }}
+              </p>
+              <p
+                v-if="trainingEditor.editReason.value"
+                class="map-empty-copy"
+                role="note"
+              >
+                {{ trainingEditor.editReason.value }}
+              </p>
+              <div class="map-training-editor-controls">
+                <button
+                  class="compact-button"
+                  :class="{ selected: trainingEditor.moveArmed.value }"
+                  type="button"
+                  :aria-pressed="trainingEditor.moveArmed.value"
+                  :disabled="!trainingEditor.editable.value"
+                  @click="
+                    trainingEditor.moveArmed.value =
+                      !trainingEditor.moveArmed.value
+                  "
+                >
+                  {{
+                    trainingEditor.moveArmed.value
+                      ? 'Cancel moving'
+                      : 'Move center'
+                  }}
+                </button>
+                <label class="map-training-radius">
+                  Radius
+                  <input
+                    type="number"
+                    inputmode="numeric"
+                    :min="TRAINING_RADIUS_MIN"
+                    :max="TRAINING_RADIUS_MAX"
+                    step="1"
+                    :value="trainingEditor.displayedRadius.value"
+                    :disabled="!trainingEditor.editable.value"
+                    @change="
+                      trainingEditor.setRadius(
+                        Number(($event.target as HTMLInputElement).value),
+                      )
+                    "
+                  />
+                </label>
+              </div>
+              <p
+                v-if="trainingEditor.moveArmed.value"
+                class="map-empty-copy"
+                role="status"
+              >
+                Click the map, or press Enter with the map focused, to place the
+                new center. Dragging the center handle also works.
+              </p>
+              <div
+                v-if="trainingEditor.dirty.value"
+                class="map-training-editor-actions"
+              >
+                <button
+                  class="compact-button primary"
+                  type="button"
+                  :disabled="Boolean(trainingEditor.applyReason.value)"
+                  :title="trainingEditor.applyReason.value"
+                  @click="trainingEditor.apply"
+                >
+                  {{ trainingEditor.applying.value ? 'Applying…' : 'Apply' }}
+                </button>
+                <button
+                  class="compact-button"
+                  type="button"
+                  :disabled="
+                    !trainingEditor.dirty.value || trainingEditor.applying.value
+                  "
+                  @click="trainingEditor.reset"
+                >
+                  Reset
+                </button>
+              </div>
+              <ul
+                v-if="trainingEditor.results.value.length"
+                class="map-training-results"
+                role="status"
+              >
+                <li
+                  v-for="(result, index) in trainingEditor.results.value"
+                  :key="index"
+                  :class="`outcome-${result.outcome}`"
+                >
+                  <strong>{{
+                    result.step.name === 'training.area.set'
+                      ? 'Center'
+                      : 'Radius'
+                  }}</strong>
+                  {{ trainingOutcomeLabel(result.outcome)
+                  }}{{ result.message ? ` · ${result.message}` : '' }}
+                </li>
+              </ul>
+              <p
+                v-if="trainingEditor.message.value"
+                class="map-empty-copy"
+                role="status"
+              >
+                {{ trainingEditor.message.value }}
+              </p>
+            </div>
+
+            <div class="map-training-editor-actions">
+              <button
+                class="compact-button"
+                type="button"
+                :disabled="
+                  !applicableActionTargetIDs.has(
+                    inspectorCharacter.character_id,
+                  )
+                "
+                :aria-pressed="
+                  actionTargetIDs.has(inspectorCharacter.character_id)
+                "
+                @click="toggleActionTarget(inspectorCharacter.character_id)"
+              >
+                {{
+                  actionTargetIDs.has(inspectorCharacter.character_id)
+                    ? 'Targeted'
+                    : 'Target'
+                }}
+              </button>
+              <NuxtLink
+                class="compact-button"
+                :to="`/characters/${encodeURIComponent(inspectorCharacter.character_id)}`"
+                >Open Stats</NuxtLink
+              >
+            </div>
+          </section>
+          <div
             v-if="navigationAction.menuOpen.value"
             :ref="navigationAction.menuElement"
             class="map-navigation-context"
@@ -1519,6 +2076,27 @@ useHead({ title: 'Map · PhMon' })
             @keydown.down.prevent="moveMenuFocus(1)"
             @keydown.up.prevent="moveMenuFocus(-1)"
           >
+            <div class="map-context-heading">
+              <strong>{{
+                contextGamePosition
+                  ? zoneNameForRegion(contextGamePosition.region)
+                  : profileArea?.label
+              }}</strong
+              ><small v-if="contextGamePosition"
+                >{{ contextGamePosition.x.toFixed(1) }},
+                {{ contextGamePosition.y.toFixed(1) }}</small
+              >
+            </div>
+            <p
+              v-if="contextRegionAmbiguous"
+              class="map-navigation-menu-summary"
+            >
+              This floor has two possible region IDs. Choose a region or a
+              character in that region.
+            </p>
+            <p v-if="!actionTargetIDs.size" class="map-navigation-menu-summary">
+              Tick characters in the panel to act on them.
+            </p>
             <button
               class="map-navigation-menu-action"
               role="menuitem"
@@ -1551,7 +2129,7 @@ useHead({ title: 'Map · PhMon' })
               class="map-navigation-menu-summary"
               role="status"
             >
-              {{ navigationAction.menuSummary.value }}
+              {{ menuSkipNote || navigationAction.menuSummary.value }}
             </p>
             <button
               class="map-navigation-menu-action"
@@ -1587,6 +2165,22 @@ useHead({ title: 'Map · PhMon' })
             >
               {{ navigationAction.trainingSummary.value }}
             </p>
+            <button
+              class="map-navigation-menu-action"
+              role="menuitem"
+              type="button"
+              :disabled="!contextGamePosition"
+              @click="copyMapCoordinates"
+            >
+              <UIcon name="i-lucide-copy" />Copy coordinates
+            </button>
+            <p
+              v-if="copyNotice"
+              class="map-navigation-menu-summary"
+              role="status"
+            >
+              {{ copyNotice }}
+            </p>
           </div>
           <div
             v-if="areaID !== 'world' && !canvasProfile"
@@ -1609,746 +2203,795 @@ useHead({ title: 'Map · PhMon' })
             <button class="compact-button" type="button" @click="returnToWorld">
               Back to world map
             </button>
-            <strong>{{ profileArea.label }}</strong>
-            <div>
-              <button
-                v-for="floor in profileArea.floors"
-                :key="floor.id"
-                class="compact-button"
-                :class="{ selected: floorID === floor.id }"
-                type="button"
-                :aria-pressed="floorID === floor.id"
-                @click="floorID = floor.id"
-              >
-                {{ floor.label }}
-              </button>
-            </div>
           </div>
         </div>
-        <div class="map-viewport-footer">
-          <span v-if="selectedTile && selectedGamePosition"
-            >Selected {{ selectedGamePosition.x.toFixed(1) }},
-            {{ selectedGamePosition.y.toFixed(1) }} in
-            {{ zoneNameForRegion(selectedGamePosition.region) }}.</span
-          >
-          <span v-else-if="selectedTile"
-            >Selected raster tile {{ selectedTile.tileX }} ×
-            {{ selectedTile.tileY }}. Game coordinates are not inferred.</span
-          >
-          <span v-else
-            >Pan and zoom the exported tile grid. Click or touch selects a
-            point; right-click opens map point actions. Enter or Space selects
-            the map center for keyboard users.</span
-          >
-          <span
-            >Map point actions reuse each target's current Z, or 0 when it is
-            unknown.</span
-          >
-        </div>
-        <div class="map-point-actions" aria-label="Selected map point actions">
-          <button
-            class="compact-button"
-            type="button"
-            :disabled="!selectedTile"
-            :title="selectedTile ? '' : 'Select a point on the map.'"
-            @click="openSelectedNavigation"
-          >
-            {{ navigationAction.targetLabel.value }}
-          </button>
-          <button
-            class="compact-button"
-            type="button"
-            :disabled="!selectedTile"
-            :title="selectedTile ? '' : 'Select a point on the map.'"
-            @click="openSelectedNavigation($event, 'training')"
-          >
-            {{ navigationAction.trainingLabel.value }}
-          </button>
-          <span class="map-action-target-note" role="note">
-            Map point actions use the selected action targets.
-          </span>
-          <span v-if="selectedRegionAmbiguous" role="status"
-            >This floor has two possible region IDs. Choose a region above or
-            select a character in that region.</span
-          >
-          <div
-            :ref="navigationAction.resultsElement"
-            class="map-navigation-feedback"
-            tabindex="-1"
-          >
-            <CommandFanOutPreview
-              v-if="navigationAction.reviewOperation.value"
-              :operation="navigationAction.reviewOperation.value"
-              :busy="
-                navigationAction.preparing.value ||
-                navigationAction.submitting.value ||
-                navigationAction.trainingPreparing.value ||
-                navigationAction.trainingSubmitting.value
-              "
-              :notice="navigationAction.notice.value"
-              @submit="navigationAction.submitReviewed"
-              @cancel="navigationAction.cancelReview"
-            />
-            <CommandFanOutResults
-              v-for="operation in navigationAction.operations.value.filter(
-                (item) =>
-                  item.state !== 'prepared' && item.state !== 'cancelled',
-              )"
-              :key="operation.operationID"
-              :operation="operation"
-              :status-note="navigationAction.resultStatusNote(operation)"
-              :stale="
-                navigationAction.stale.value &&
-                operation.children.some((child) =>
-                  ['accepted', 'uncertain'].includes(child.submission),
-                )
-              "
-              :on-retry="
-                (characterID: string) =>
-                  navigationAction.retry(operation, characterID)
-              "
-              :on-dismiss="() => navigationAction.dismissResults(operation)"
-            />
-            <CommandFanOutResults
-              v-for="operation in navigationAction.trainingOperations.value.filter(
-                (item) =>
-                  item.state !== 'prepared' && item.state !== 'cancelled',
-              )"
-              :key="operation.operationID"
-              :operation="operation"
-              :status-note="
-                navigationAction.trainingResultStatusNote(operation)
-              "
-              :stale="
-                navigationAction.trainingStale.value &&
-                operation.children.some((child) =>
-                  ['accepted', 'uncertain'].includes(child.submission),
-                )
-              "
-              :on-retry="
-                (characterID: string) =>
-                  navigationAction.retry(operation, characterID)
-              "
-              :on-dismiss="() => navigationAction.dismissResults(operation)"
-            />
-          </div>
-        </div>
-        <div class="map-validation-note" role="status">
-          {{
-            mapProfile?.tiles.semantics ||
-            'Tile and coordinate evidence is unavailable.'
-          }}
-          Outdoor region IDs locate their root tile directly. Reported X/Y
-          positions locate markers within that tile; outlined dots indicate a
-          region-only position. Cave imagery uses a 2D X/Y anchor and
-          region/floor rules. Navigation and training position resolve
-          coordinates and Z per target. Older observations remain visible as
-          last observed positions.
-        </div>
-      </section>
-
-      <aside class="map-side-panel panel">
-        <RemoteControlPanel
-          :selected-ids="[...actionTargetIDs]"
-          :scope-key="remoteActionScopeKey"
-          :scope-key-for-character="mapControlScopeKeyForCharacter"
-          :current-scope-key="mapControlCurrentScopeKey"
-          :current-character="mapControlCurrentCharacter"
-          :map-snapshot-current="
-            streamCurrent && mapSnapshotInFeedScope && !liveStale
-          "
-        />
-        <section class="map-side-list map-character-list">
-          <div class="map-list-heading">
-            <h2>Characters</h2>
-            <span>{{ scopedCharacters.length }}</span>
-          </div>
-          <div class="map-target-toolbar">
+        <section
+          v-if="navigationTrayRows.length"
+          class="panel map-navigation-tray"
+          aria-label="Navigation tray"
+        >
+          <div class="map-list-heading map-tray-heading">
             <button
               class="compact-button"
               type="button"
-              :disabled="!scopedCharacters.length"
-              @click="selectAllActionTargets"
+              :aria-expanded="navigationTrayOpen && !navigationTrayCompact"
+              aria-controls="map-tray-rows"
+              @click="navigationTrayOpen = !navigationTrayOpen"
             >
-              All
+              <UIcon name="i-lucide-chevron-down" />Navigation
+              {{ navigationTrayRows.length }}
             </button>
+            <span
+              v-for="group in ['active', 'done', 'attention'] as const"
+              v-show="navigationTrayRows.some((row) => row.group === group)"
+              :key="group"
+              >{{
+                navigationTrayRows.filter((row) => row.group === group).length
+              }}
+              {{
+                group === 'active'
+                  ? 'en route'
+                  : group === 'done'
+                    ? 'arrived'
+                    : 'need attention'
+              }}</span
+            >
             <button
               class="compact-button"
               type="button"
-              :disabled="!actionTargetIDs.size"
-              @click="clearActionTargets"
+              @click="clearFinishedNavigation"
             >
-              None
-            </button>
-            <span role="status"
-              >Selected for actions: {{ actionTargetIDs.size }}</span
-            >
-          </div>
-          <div v-if="mapTargetGroups.length" class="map-target-groups">
-            <label
-              v-for="group in mapTargetGroups"
-              :key="group.group_id"
-              class="map-target-group"
-            >
-              <input
-                type="checkbox"
-                :checked="group.state === 'checked'"
-                :indeterminate="group.state === 'indeterminate'"
-                :aria-checked="
-                  group.state === 'indeterminate'
-                    ? 'mixed'
-                    : group.state === 'checked'
-                      ? 'true'
-                      : 'false'
-                "
-                :aria-label="`Target group ${group.name} for actions`"
-                @change="toggleActionTargetGroup(group.memberIDs)"
-              />
-              <span>{{ group.name }}</span>
-              <small>{{ group.memberIDs.length }}</small>
-            </label>
-          </div>
-          <MapCharacterStatusRow
-            v-for="character in scopedCharacters"
-            :key="character.character_id"
-            :character="character"
-            :selected="selectedCharacterID === character.character_id"
-            :targeted="actionTargetIDs.has(character.character_id)"
-            :position-fresh="positionIsFresh(character)"
-            @toggle-target="toggleActionTarget(character.character_id)"
-            @focus="
-              selectedCharacterID =
-                selectedCharacterID === character.character_id
-                  ? ''
-                  : character.character_id
-            "
-          />
-          <p v-if="!scopedCharacters.length" class="map-empty-copy">
-            No characters in this server and zone scope.
-          </p>
-        </section>
-        <section class="map-side-list map-navigation-route-list">
-          <div class="map-list-heading">
-            <h2>Navigation routes</h2>
-            <span>{{ mapNavigationRoutes.length }}</span>
-          </div>
-          <button
-            v-if="selectedNavigationRouteID"
-            class="compact-button map-route-clear-selection"
-            type="button"
-            @click="selectedNavigationRouteID = ''"
-          >
-            Show all routes
-          </button>
-          <button
-            v-for="routeOverlay in mapNavigationRoutes"
-            :key="routeOverlay.id"
-            class="map-navigation-route-row"
-            type="button"
-            :class="{
-              selected: selectedNavigationRouteID === routeOverlay.characterID,
-              dimmed:
-                selectedNavigationRouteID &&
-                selectedNavigationRouteID !== routeOverlay.characterID,
-            }"
-            :aria-pressed="
-              selectedNavigationRouteID === routeOverlay.characterID
-            "
-            @click="
-              selectedNavigationRouteID =
-                selectedNavigationRouteID === routeOverlay.characterID
-                  ? ''
-                  : routeOverlay.characterID
-            "
-          >
-            <strong>{{ routeOverlay.characterName }}</strong>
-            <span>{{
-              mapNavigationStatusLabel(
-                routeOverlay.status,
-                routeOverlay.blocks.length,
-              )
-            }}</span>
-            <small v-if="routeOverlay.reason">{{ routeOverlay.reason }}</small>
-          </button>
-          <p v-if="!mapNavigationRoutes.length" class="map-empty-copy">
-            No routes are reported for this server and active session.
-          </p>
-          <p
-            v-if="mapSnapshot?.navigation_omitted_count"
-            class="map-empty-copy"
-            role="status"
-          >
-            {{ mapSnapshot.navigation_omitted_count }} route record(s) were
-            omitted to keep the live map within its payload budget.
-          </p>
-        </section>
-        <section class="map-training-list">
-          <div class="map-list-heading">
-            <h2>Training areas</h2>
-            <span>{{ renderedTrainingAreas.length }}</span>
-          </div>
-          <div v-if="renderedTrainingAreas.length" class="map-training-rows">
-            <button
-              v-for="overlay in renderedTrainingAreas"
-              :key="overlay.id"
-              class="map-navigation-route-row"
-              type="button"
-              :class="{ selected: overlay.selected }"
-              :aria-pressed="overlay.selected"
-              @click="selectTrainingArea(overlay.id)"
-            >
-              <strong>{{ overlay.label }}</strong>
-              <span>{{ trainingAreaSummary(overlay.id) }}</span>
-              <small v-if="overlay.draft">Unsaved changes</small>
+              Clear finished
             </button>
           </div>
-          <p v-if="!renderedTrainingAreas.length" class="map-empty-copy">
-            {{ trainingEmptyCopy }}
-          </p>
-          <p
-            v-if="mapSnapshot?.training_areas?.truncated"
-            class="map-empty-copy"
-            role="status"
-          >
-            Only the first training areas are shown to keep the live map within
-            its payload budget.
-          </p>
           <div
-            v-if="trainingEditor.selectedArea.value"
-            class="map-training-editor"
-            role="group"
-            :aria-label="`Edit training area for ${trainingEditor.selectedArea.value.name}`"
+            id="map-tray-rows"
+            v-show="navigationTrayOpen && !navigationTrayCompact"
+            class="map-tray-rows"
           >
-            <p class="map-training-readback">
-              Observed center
-              {{ trainingEditor.selectedArea.value.x.toFixed(1) }},
-              {{ trainingEditor.selectedArea.value.y.toFixed(1) }} · radius
-              {{ trainingEditor.selectedArea.value.radius }}
-            </p>
-            <p
-              v-if="trainingEditor.draft.value?.center"
-              class="map-training-draft"
+            <div
+              v-for="row in navigationTrayRows"
+              :key="row.id"
+              class="map-tray-row"
+              :class="{
+                selected: selectedNavigationRouteID === row.characterID,
+              }"
             >
-              New center
-              {{ trainingEditor.draft.value.center.x.toFixed(1) }},
-              {{ trainingEditor.draft.value.center.y.toFixed(1) }} in
-              {{ zoneNameForRegion(trainingEditor.draft.value.center.region) }}
-            </p>
-            <p
-              v-if="trainingEditor.editReason.value"
-              class="map-empty-copy"
-              role="note"
-            >
-              {{ trainingEditor.editReason.value }}
-            </p>
-            <div class="map-training-editor-controls">
               <button
-                class="compact-button"
-                :class="{ selected: trainingEditor.moveArmed.value }"
+                class="compact-button map-tray-select"
                 type="button"
-                :aria-pressed="trainingEditor.moveArmed.value"
-                :disabled="!trainingEditor.editable.value"
+                :aria-pressed="selectedNavigationRouteID === row.characterID"
                 @click="
-                  trainingEditor.moveArmed.value =
-                    !trainingEditor.moveArmed.value
+                  selectedNavigationRouteID =
+                    selectedNavigationRouteID === row.characterID
+                      ? ''
+                      : row.characterID
                 "
               >
-                {{
-                  trainingEditor.moveArmed.value
-                    ? 'Cancel moving'
-                    : 'Move center'
-                }}
-              </button>
-              <label class="map-training-radius">
-                Radius
-                <input
-                  type="number"
-                  inputmode="numeric"
-                  :min="TRAINING_RADIUS_MIN"
-                  :max="TRAINING_RADIUS_MAX"
-                  step="1"
-                  :value="trainingEditor.displayedRadius.value"
-                  :disabled="!trainingEditor.editable.value"
-                  @change="
-                    trainingEditor.setRadius(
-                      Number(($event.target as HTMLInputElement).value),
-                    )
+                <strong>{{ row.name }}</strong
+                ><span
+                  :title="
+                    mapNavigationStatusLabel(row.status, row.geometryCount)
                   "
-                />
-              </label>
-            </div>
-            <p
-              v-if="trainingEditor.moveArmed.value"
-              class="map-empty-copy"
-              role="status"
-            >
-              Click the map, or press Enter with the map focused, to place the
-              new center. Dragging the center handle also works.
-            </p>
-            <div class="map-training-editor-actions">
-              <button
-                class="compact-button primary"
-                type="button"
-                :disabled="Boolean(trainingEditor.applyReason.value)"
-                :title="trainingEditor.applyReason.value"
-                @click="trainingEditor.apply"
-              >
-                {{ trainingEditor.applying.value ? 'Applying…' : 'Apply' }}
+                  >{{
+                    row.status === 'submitting'
+                      ? 'Submitting'
+                      : [
+                            'rejected',
+                            'skipped',
+                            'failed',
+                            'expired',
+                            'uncertain',
+                            'unknown',
+                          ].includes(row.status)
+                        ? row.status
+                        : mapNavigationStatusLabel(
+                            row.status,
+                            row.geometryCount,
+                          ).split(' · ')[0]
+                  }}</span
+                ><small>{{ row.detail }}</small>
               </button>
               <button
                 class="compact-button"
                 type="button"
                 :disabled="
-                  !trainingEditor.dirty.value || trainingEditor.applying.value
+                  !mapNavigationRoutes.some(
+                    (route) =>
+                      route.characterID === row.characterID &&
+                      route.blocks.length,
+                  )
                 "
-                @click="trainingEditor.reset"
+                @click="showNavigationOnMap(row.characterID)"
               >
-                Reset
+                Show on map
+              </button>
+              <button
+                v-if="row.group === 'active'"
+                class="compact-button"
+                type="button"
+                disabled
+                title="Stopping a navigation route is not yet supported; tracked in issue #57."
+              >
+                Stop
+              </button>
+              <button
+                v-else
+                class="compact-button"
+                type="button"
+                @click="dismissNavigationRow(row.id)"
+              >
+                Dismiss
               </button>
             </div>
-            <ul
-              v-if="trainingEditor.results.value.length"
-              class="map-training-results"
-              role="status"
-            >
-              <li
-                v-for="(result, index) in trainingEditor.results.value"
-                :key="index"
-                :class="`outcome-${result.outcome}`"
-              >
-                <strong>{{
-                  result.step.name === 'training.area.set' ? 'Center' : 'Radius'
-                }}</strong>
-                {{ trainingOutcomeLabel(result.outcome)
-                }}{{ result.message ? ` · ${result.message}` : '' }}
-              </li>
-            </ul>
             <p
-              v-if="trainingEditor.message.value"
+              v-if="mapSnapshot?.navigation_omitted_count"
               class="map-empty-copy"
-              role="status"
             >
-              {{ trainingEditor.message.value }}
+              {{ mapSnapshot.navigation_omitted_count }} route record(s) omitted
+              to keep the live map within its payload budget.
             </p>
           </div>
         </section>
-        <section>
-          <h2>Layers</h2>
-          <label class="map-layer-toggle"
-            ><input v-model="layerCharacters" type="checkbox" /> Characters
-            <span>{{ placedCharacterCount }} shown</span></label
-          >
-          <label class="map-layer-toggle"
-            ><input v-model="layerParty" type="checkbox" /> Party members
-            <span>{{ placedPartyCount }} shown</span></label
-          >
-          <label class="map-layer-toggle"
-            ><input v-model="layerNPCs" type="checkbox" /> NPCs
-            <span>{{ placedNpcCount }} shown</span></label
-          >
-          <label class="map-layer-toggle"
-            ><input v-model="layerTraining" type="checkbox" /> Training areas
-            <span>{{ renderedTrainingAreas.length }} shown</span></label
-          >
-          <label class="map-layer-toggle"
-            ><input v-model="layerMonsters" type="checkbox" /> Current nearby
-            monsters <span>{{ currentMonsters.length }}</span></label
-          >
-          <label class="map-layer-toggle map-layer-toggle-subordinate"
-            ><input v-model="showNearbyMonsterNames" type="checkbox" /> Show
-            nearby monsters names</label
-          >
-          <label class="map-layer-toggle"
-            ><input v-model="layerDeaths" type="checkbox" /> Recent
-            deaths</label
-          >
-          <label class="map-layer-toggle"
-            ><input v-model="layerDrops" type="checkbox" /> Recent drops</label
-          >
-          <label
-            class="map-layer-toggle disabled"
-            title="Academy member region and floor are unavailable from the documented API"
-            ><input type="checkbox" disabled /> Academy members
-            <span>Unavailable</span></label
-          >
-        </section>
-        <section class="heatmap-controls">
+      </section>
+
+      <aside class="map-side-panel panel">
+        <div
+          class="map-panel-tabs"
+          role="tablist"
+          aria-label="Map panels"
+          @keydown="moveSideTab"
+        >
           <button
-            class="map-list-heading map-section-toggle"
+            v-for="tab in sideTabs"
+            :id="`map-tab-${tab}`"
+            :key="tab"
+            class="map-panel-tab"
+            :class="{ selected: sideTab === tab }"
             type="button"
-            :aria-expanded="historicalHeatmapsOpen"
-            aria-controls="historical-heatmap-controls"
-            @click="historicalHeatmapsOpen = !historicalHeatmapsOpen"
+            role="tab"
+            :aria-selected="sideTab === tab"
+            :aria-controls="`map-panel-${tab}`"
+            :tabindex="sideTab === tab ? 0 : -1"
+            @click="sideTab = tab"
           >
-            <h2>Historical heatmaps</h2>
-            <span>{{ renderedHeatLayers.length }} active</span>
-            <UIcon
-              name="i-lucide-chevron-down"
-              :class="{ expanded: historicalHeatmapsOpen }"
-              aria-hidden="true"
-            />
+            {{
+              tab === 'characters'
+                ? 'Characters'
+                : tab === 'activity'
+                  ? 'Activity'
+                  : 'Layers'
+            }}
+            <small>{{
+              tab === 'characters'
+                ? scopedCharacters.length
+                : tab === 'activity'
+                  ? activityEvents.length
+                  : [
+                      layerCharacters,
+                      layerParty,
+                      layerNPCs,
+                      layerTraining,
+                      layerMonsters,
+                      layerDeaths,
+                      layerDrops,
+                    ].filter(Boolean).length + activeHistoricalLayers().length
+            }}</small>
           </button>
+        </div>
+        <div class="map-panel-scroll">
           <div
-            id="historical-heatmap-controls"
-            v-show="historicalHeatmapsOpen"
-            class="heatmap-control-content"
+            id="map-panel-characters"
+            v-show="sideTab === 'characters'"
+            class="map-tab-content"
+            role="tabpanel"
+            aria-labelledby="map-tab-characters"
           >
-            <label>
-              Range
-              <select
-                v-model="heatmapRange"
-                aria-label="Historical heatmap time range"
-              >
-                <option value="1h">Last hour</option>
-                <option value="24h">Last 24 hours</option>
-                <option value="7d">Last 7 days</option>
-                <option value="30d">Last 30 days</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
-            <div v-if="heatmapRange === 'custom'" class="heatmap-custom-range">
-              <label
-                >From<input
-                  v-model="heatmapCustomFrom"
-                  type="datetime-local"
-                  aria-label="Historical heatmap start"
-              /></label>
-              <label
-                >To<input
-                  v-model="heatmapCustomTo"
-                  type="datetime-local"
-                  aria-label="Historical heatmap end"
-              /></label>
-            </div>
-            <label>
-              Historical character
-              <select
-                v-model="analyticsCharacterID"
-                aria-label="Historical heatmap character"
-              >
-                <option value="">All characters</option>
-                <option
-                  v-for="character in historicalCharacters"
-                  :key="character.character_id"
-                  :value="character.character_id"
-                >
-                  {{ character.name }}
-                </option>
-              </select>
-            </label>
-            <label
-              v-if="
-                historicalLayers.mob_types ||
-                historicalLayers.mob_observer_average
+            <RemoteControlPanel
+              variant="map"
+              :trace-candidates="historicalCharacters"
+              :selected-ids="[...actionTargetIDs]"
+              :scope-key="remoteActionScopeKey"
+              :scope-key-for-character="mapControlScopeKeyForCharacter"
+              :current-scope-key="mapControlCurrentScopeKey"
+              :current-character="mapControlCurrentCharacter"
+              :map-snapshot-current="
+                streamCurrent && mapSnapshotInFeedScope && !liveStale
               "
-            >
-              Monster rank
-              <select
-                v-model="analyticsMobType"
-                aria-label="Historical monster rank"
-              >
-                <option value="">All observed monster ranks</option>
-                <option
-                  v-for="monsterRankValue in historicalMobTypes"
-                  :key="monsterRankValue"
-                  :value="monsterRankValue"
+              @action-notification="showMapActionNotification"
+            />
+            <section class="map-side-list map-character-list">
+              <div class="map-target-toolbar">
+                <button
+                  v-for="group in mapTargetGroups"
+                  :key="group.group_id"
+                  class="compact-button map-group-chip"
+                  :class="{ selected: group.state !== 'unchecked' }"
+                  type="button"
+                  role="checkbox"
+                  :aria-checked="
+                    group.state === 'indeterminate'
+                      ? 'mixed'
+                      : group.state === 'checked'
+                  "
+                  :aria-label="`Target group ${group.name} for actions`"
+                  @click="toggleActionTargetGroup(group.memberIDs)"
                 >
-                  {{
-                    monsterTypePresentation({ type: monsterRankValue }).label
-                  }}
-                </option>
-              </select>
-            </label>
-            <p v-if="heatmapFacetsLoading" class="map-empty-copy">
-              Loading observed monster ranks…
-            </p>
-            <p v-else-if="heatmapFacetsError" class="map-empty-copy">
-              {{ heatmapFacetsError }}
-            </p>
-
-            <label
-              class="map-layer-toggle disabled"
-              title="Observation coverage is not verified"
-            >
-              <input type="checkbox" disabled /> Mob density
-              <span>Unavailable</span>
-            </label>
-            <p class="heatmap-warning">
-              Spatial mob density is unavailable until observation coverage is
-              verified.
-            </p>
-            <label class="map-layer-toggle">
-              <input
-                v-model="historicalLayers.mob_observer_average"
-                type="checkbox"
-              />
-              Observer-local mob average
-              <span>{{
-                heatmapResults.mob_observer_average?.points.length || 0
-              }}</span>
-            </label>
-            <label class="map-layer-toggle">
-              <input v-model="historicalLayers.mob_types" type="checkbox" /> Mob
-              ranks
-              <span>{{ heatmapResults.mob_types?.points.length || 0 }}</span>
-            </label>
-            <label class="map-layer-toggle">
-              <input v-model="historicalLayers.deaths" type="checkbox" /> Deaths
-              <span>{{ heatmapResults.deaths?.points.length || 0 }}</span>
-            </label>
-            <label class="map-layer-toggle">
-              <input v-model="historicalLayers.drops" type="checkbox" /> Drops
-              <span>{{ heatmapResults.drops?.points.length || 0 }}</span>
-            </label>
-            <label class="map-layer-toggle">
-              <input
-                v-model="historicalLayers.unique_sightings"
-                type="checkbox"
-              />
-              Unique sightings
-              <span>{{
-                heatmapResults.unique_sightings?.points.length || 0
-              }}</span>
-            </label>
-            <label class="map-layer-toggle">
-              <input
-                v-model="historicalLayers.player_movement"
-                type="checkbox"
-              />
-              Player movement
-              <span>{{
-                heatmapResults.player_movement?.points.length || 0
-              }}</span>
-            </label>
-
-            <template
-              v-for="layer in activeHistoricalLayers()"
-              :key="`heat-status-${layer}`"
-            >
-              <p v-if="heatmapLoading[layer]" class="map-empty-copy">
-                Refreshing {{ heatmapLayerLabel(layer) }}…
-              </p>
-              <p v-else-if="heatmapErrors[layer]" class="heatmap-warning">
-                {{ heatmapLayerLabel(layer) }}: {{ heatmapErrors[layer] }}
-              </p>
-              <p
-                v-else-if="heatmapResults[layer]?.status === 'unsupported'"
-                class="heatmap-warning"
-              >
-                {{ heatmapLayerLabel(layer) }}:
-                {{ heatmapResults[layer]?.interpretation }}
-              </p>
-              <p
-                v-else-if="heatmapResults[layer]?.status === 'limited'"
-                class="heatmap-warning"
-              >
-                {{ heatmapResults[layer]?.interpretation }}
-              </p>
-              <p
-                v-else-if="
-                  heatmapResults[layer] &&
-                  heatmapResults[layer]?.points.length === 0
-                "
-                class="map-empty-copy"
-              >
-                No {{ heatmapLayerLabel(layer).toLowerCase() }} data in this
-                scope.
-              </p>
-              <p
-                v-if="heatmapResults[layer]?.truncated"
-                class="heatmap-warning"
-              >
-                {{ heatmapLayerLabel(layer) }} reached the bounded result limit.
-              </p>
-            </template>
-
-            <div
-              v-if="renderedHeatLayers.length"
-              class="heatmap-legend"
-              aria-label="Heatmap legend"
-            >
-              <div
-                v-for="layer in renderedHeatLayers"
-                :key="`legend-${layer.id}`"
-              >
-                <strong>{{ layer.label }}</strong>
-                <span>{{ layer.metric }} · low → high</span>
+                  <UIcon
+                    v-if="group.state !== 'unchecked'"
+                    :name="
+                      group.state === 'indeterminate'
+                        ? 'i-lucide-minus'
+                        : 'i-lucide-check'
+                    "
+                  />{{ group.name }} <small>{{ group.memberIDs.length }}</small>
+                </button>
+                <span class="map-target-quick"
+                  ><button
+                    type="button"
+                    class="map-text-action"
+                    :disabled="!applicableActionTargetIDs.size"
+                    @click="selectAllActionTargets"
+                  >
+                    All</button
+                  ><button
+                    type="button"
+                    class="map-text-action"
+                    :disabled="!actionTargetIDs.size"
+                    @click="clearActionTargets"
+                  >
+                    None
+                  </button></span
+                >
               </div>
-            </div>
+              <MapCharacterStatusRow
+                v-for="character in scopedCharacters"
+                :key="character.character_id"
+                :character="character"
+                :selected="selectedCharacterID === character.character_id"
+                :targeted="actionTargetIDs.has(character.character_id)"
+                :position-fresh="positionIsFresh(character)"
+                :focus-disabled="!canFocusCharacter(character)"
+                :now="freshnessNow"
+                :activity="
+                  mapNavigationRoutes.some(
+                    (item) =>
+                      item.characterID === character.character_id &&
+                      !item.stale &&
+                      [
+                        'moving',
+                        'waiting_for_movement',
+                        'waiting_for_arrival',
+                        'transition_awaiting_evidence',
+                      ].includes(item.status),
+                  )
+                    ? 'navigating'
+                    : undefined
+                "
+                @toggle-target="toggleActionTarget(character.character_id)"
+                @select="selectMapCharacter(character.character_id)"
+                @focus="focusMapCharacter(character.character_id)"
+              />
+              <p v-if="!scopedCharacters.length" class="map-empty-copy">
+                No characters in this server and zone scope.
+              </p>
+            </section>
+            <p v-if="outsideZoneCount" class="map-empty-copy">
+              {{ outsideZoneCount }} online characters are outside
+              {{ zoneNameForRegion(regionID) }}.
+            </p>
+            <details class="map-training-list">
+              <summary>Training areas</summary>
+              <div class="map-list-heading">
+                <h2>Training areas</h2>
+                <span>{{ renderedTrainingAreas.length }}</span>
+              </div>
+              <div
+                v-if="renderedTrainingAreas.length"
+                class="map-training-rows"
+              >
+                <button
+                  v-for="overlay in renderedTrainingAreas"
+                  :key="overlay.id"
+                  class="map-navigation-route-row"
+                  type="button"
+                  :class="{ selected: overlay.selected }"
+                  :aria-pressed="overlay.selected"
+                  @click="selectTrainingArea(overlay.id)"
+                >
+                  <strong>{{ overlay.label }}</strong>
+                  <span>{{ trainingAreaSummary(overlay.id) }}</span>
+                  <small v-if="overlay.draft">Unsaved changes</small>
+                </button>
+              </div>
+              <p v-if="!renderedTrainingAreas.length" class="map-empty-copy">
+                {{ trainingEmptyCopy }}
+              </p>
+              <p
+                v-if="mapSnapshot?.training_areas?.truncated"
+                class="map-empty-copy"
+                role="status"
+              >
+                Only the first training areas are shown to keep the live map
+                within its payload budget.
+              </p>
+            </details>
             <button
+              v-if="
+                navigationAction.reviewOperation.value ||
+                navigationAction.operations.value.length ||
+                navigationAction.trainingOperations.value.length
+              "
               class="compact-button"
               type="button"
-              :disabled="!resettableLayers.length"
-              @click="openHeatmapReset"
+              :aria-expanded="actionFeedbackOpen"
+              @click="actionFeedbackOpen = !actionFeedbackOpen"
             >
-              Reset selected heatmap…
+              Action feedback
             </button>
-          </div>
-        </section>
-        <section class="map-side-list">
-          <div class="map-list-heading">
-            <h2>Nearby monsters</h2>
-            <span>{{ currentMonsters.length }}</span>
+            <div
+              :ref="navigationAction.resultsElement"
+              class="map-navigation-feedback"
+              v-show="actionFeedbackOpen"
+              tabindex="-1"
+            >
+              <CommandFanOutPreview
+                v-if="navigationAction.reviewOperation.value"
+                :operation="navigationAction.reviewOperation.value"
+                :busy="
+                  navigationAction.preparing.value ||
+                  navigationAction.submitting.value ||
+                  navigationAction.trainingPreparing.value ||
+                  navigationAction.trainingSubmitting.value
+                "
+                :notice="navigationAction.notice.value"
+                @submit="navigationAction.submitReviewed"
+                @cancel="navigationAction.cancelReview"
+              />
+              <CommandFanOutResults
+                v-for="operation in navigationAction.operations.value.filter(
+                  (item) =>
+                    item.state !== 'prepared' && item.state !== 'cancelled',
+                )"
+                :key="operation.operationID"
+                :operation="operation"
+                :status-note="navigationAction.resultStatusNote(operation)"
+                :stale="
+                  navigationAction.stale.value &&
+                  operation.children.some((child) =>
+                    ['accepted', 'uncertain'].includes(child.submission),
+                  )
+                "
+                :on-retry="
+                  (characterID: string) =>
+                    navigationAction.retry(operation, characterID)
+                "
+                :on-dismiss="() => navigationAction.dismissResults(operation)"
+              />
+              <CommandFanOutResults
+                v-for="operation in navigationAction.trainingOperations.value.filter(
+                  (item) =>
+                    item.state !== 'prepared' && item.state !== 'cancelled',
+                )"
+                :key="operation.operationID"
+                :operation="operation"
+                :status-note="
+                  navigationAction.trainingResultStatusNote(operation)
+                "
+                :stale="
+                  navigationAction.trainingStale.value &&
+                  operation.children.some((child) =>
+                    ['accepted', 'uncertain'].includes(child.submission),
+                  )
+                "
+                :on-retry="
+                  (characterID: string) =>
+                    navigationAction.retry(operation, characterID)
+                "
+                :on-dismiss="() => navigationAction.dismissResults(operation)"
+              />
+            </div>
           </div>
           <div
-            v-for="entry in currentMonsters.slice(0, 30)"
-            :key="`${entry.observer.session_id}:${entry.id}`"
-            class="map-observation-row"
+            id="map-panel-activity"
+            v-show="sideTab === 'activity'"
+            class="map-tab-content"
+            role="tabpanel"
+            aria-labelledby="map-tab-activity"
           >
-            <span
-              ><strong>{{ monsterDisplayName(entry) }}</strong
-              ><small
-                >Lv. {{ entry.level ?? 'unavailable' }} ·
-                {{ monsterTypePresentation(entry).label }} ·
-                {{ entry.observer.character }} ·
-                {{ zoneNameForRegion(entry.region) }}</small
-              ></span
-            >
-            <small>{{ entry.x.toFixed(0) }}, {{ entry.y.toFixed(0) }}</small>
+            <section class="map-side-list">
+              <div class="map-list-heading">
+                <h2>Nearby monsters</h2>
+                <span>{{ currentMonsters.length }} seen now</span>
+              </div>
+              <div
+                v-for="entry in groupedMonsters.slice(0, 30)"
+                :key="`${entry.name}:${entry.type}`"
+                class="map-observation-row"
+              >
+                <UIcon
+                  :name="
+                    entry.type.toLowerCase().includes('unique')
+                      ? 'i-lucide-diamond'
+                      : 'i-lucide-circle-small'
+                  "
+                /><span class="map-monster-name"
+                  >{{ entry.name }} <small>×{{ entry.count }}</small></span
+                ><small>Lv {{ entry.level ?? '—' }} · {{ entry.type }}</small>
+              </div>
+              <p v-if="!currentMonsters.length" class="map-empty-copy">
+                {{
+                  monsterSnapshots.length === 0
+                    ? 'No current monster snapshot has arrived.'
+                    : monsterSnapshotUnavailable
+                      ? 'phBot monster data is unavailable; current monster markers are cleared.'
+                      : monsterSnapshotTruncated
+                        ? 'The current monster snapshot was truncated; its bounded observations are incomplete.'
+                        : 'The current snapshot is observed empty. Historical density is a separate layer.'
+                }}
+              </p>
+            </section>
+            <section class="map-side-list">
+              <div class="map-list-heading">
+                <h2>Deaths &amp; drops</h2>
+                <div
+                  class="map-event-range"
+                  role="group"
+                  aria-label="Recent event time range"
+                >
+                  <button
+                    v-for="range in ['1h', '24h', '7d']"
+                    :key="range"
+                    class="map-text-action"
+                    :class="{ selected: dateRange === range }"
+                    :aria-pressed="dateRange === range"
+                    type="button"
+                    @click="dateRange = range"
+                  >
+                    {{ range }}
+                  </button>
+                </div>
+              </div>
+              <div
+                v-for="event in activityEvents.slice(0, 12)"
+                :key="event.event_id"
+                class="map-event-row"
+              >
+                <button
+                  class="map-event-focus"
+                  type="button"
+                  @click="focusMapEvent(event)"
+                >
+                  <UIcon
+                    :name="
+                      event.kind === 'character.died'
+                        ? 'i-lucide-skull'
+                        : 'i-lucide-package'
+                    "
+                  /><span
+                    ><strong>{{
+                      event.kind === 'character.died'
+                        ? `${event.character} died`
+                        : `${event.kind === 'drop.rare' ? 'Rare drop' : 'Drop'}${event.item_name ? ` · ${event.item_name}` : ''}`
+                    }}</strong
+                    ><small
+                      >{{ event.character }} ·
+                      {{ zoneNameText(event.zone) }}</small
+                    ></span
+                  ><time
+                    :datetime="event.occurred_at"
+                    :title="formatTimestamp(event.occurred_at)"
+                    >{{ eventAge(event.occurred_at) }}</time
+                  >
+                </button>
+                <NuxtLink
+                  :to="{ path: '/events', query: { kind: event.kind } }"
+                  :aria-label="`Open ${event.kind} events`"
+                  title="Open event history"
+                  ><UIcon name="i-lucide-external-link"
+                /></NuxtLink>
+              </div>
+              <p v-if="!activityEvents.length" class="map-empty-copy">
+                No matching death or drop events in the selected time range.
+              </p>
+            </section>
           </div>
-          <p v-if="!currentMonsters.length" class="map-empty-copy">
-            {{
-              monsterSnapshots.length === 0
-                ? 'No current monster snapshot has arrived.'
-                : monsterSnapshotUnavailable
-                  ? 'phBot monster data is unavailable; current monster markers are cleared.'
-                  : monsterSnapshotTruncated
-                    ? 'The current monster snapshot was truncated; its bounded observations are incomplete.'
-                    : 'The current snapshot is observed empty. Historical density is a separate layer.'
-            }}
-          </p>
-        </section>
-        <section class="map-side-list">
-          <div class="map-list-heading">
-            <h2>Recent deaths and drops</h2>
-            <span>{{ visibleEvents.length }}</span>
-          </div>
-          <NuxtLink
-            v-for="event in visibleEvents.slice(0, 12)"
-            :key="event.event_id"
-            class="map-event-row"
-            :to="{ path: '/events', query: { kind: event.kind } }"
+          <div
+            id="map-panel-layers"
+            v-show="sideTab === 'layers'"
+            class="map-tab-content"
+            role="tabpanel"
+            aria-labelledby="map-tab-layers"
           >
-            <span
-              ><strong>{{
-                event.kind === 'character.died'
-                  ? 'Death'
-                  : event.kind === 'drop.rare'
-                    ? 'Rare drop'
-                    : 'Drop'
-              }}</strong
-              ><small
-                >{{ event.character }} · {{ zoneNameText(event.zone) }}</small
-              ></span
-            >
-            <time :datetime="event.occurred_at">{{
-              formatTimestamp(event.occurred_at)
-            }}</time>
-          </NuxtLink>
-          <p v-if="!visibleEvents.length" class="map-empty-copy">
-            No matching death or drop events in the selected time range.
-          </p>
-        </section>
+            <section>
+              <h2>On the map now</h2>
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerCharacters"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerCharacters"
+                />
+                Characters <span>{{ placedCharacterCount }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerParty"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerParty"
+                />
+                Party members <span>{{ placedPartyCount }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerNPCs"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerNPCs"
+                />
+                NPCs <span>{{ placedNpcCount }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerTraining"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerTraining"
+                />
+                Training areas
+                <span>{{ renderedTrainingAreas.length }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerMonsters"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerMonsters"
+                />
+                Nearby monsters
+                <span>{{ currentMonsters.length }}</span></label
+              >
+              <label class="map-layer-toggle map-layer-toggle-subordinate"
+                ><input
+                  v-model="showNearbyMonsterNames"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="showNearbyMonsterNames"
+                  :disabled="!layerMonsters"
+                />
+                Monster names</label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerDeaths"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerDeaths"
+                />
+                Recent deaths
+                <span>{{
+                  activityEvents.filter(
+                    (event) => event.kind === 'character.died',
+                  ).length
+                }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerDrops"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerDrops"
+                />
+                Recent drops
+                <span>{{
+                  activityEvents.filter((event) => event.category === 'drop')
+                    .length
+                }}</span></label
+              >
+            </section>
+            <section class="heatmap-controls">
+              <button
+                class="map-list-heading map-section-toggle map-heat-heading"
+                type="button"
+                :aria-expanded="historicalHeatmapsOpen"
+                aria-controls="historical-heatmap-controls"
+                @click="historicalHeatmapsOpen = !historicalHeatmapsOpen"
+              >
+                <h2>Historical heatmaps</h2>
+                <span class="map-heat-state">{{
+                  activeHistoricalLayers().length
+                    ? `${activeHistoricalLayers().length} on`
+                    : 'Off'
+                }}</span>
+                <UIcon
+                  name="i-lucide-chevron-down"
+                  :class="{ expanded: historicalHeatmapsOpen }"
+                  aria-hidden="true"
+                />
+              </button>
+              <div
+                id="historical-heatmap-controls"
+                v-show="historicalHeatmapsOpen"
+                class="heatmap-control-content"
+              >
+                <div class="heatmap-filter-row character-filters">
+                  <label>
+                    Range
+                    <select
+                      v-model="heatmapRange"
+                      aria-label="Historical heatmap time range"
+                    >
+                      <option value="1h">Last hour</option>
+                      <option value="24h">Last 24 hours</option>
+                      <option value="7d">Last 7 days</option>
+                      <option value="30d">Last 30 days</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </label>
+                  <label>
+                    Character
+                    <select
+                      v-model="analyticsCharacterID"
+                      aria-label="Historical heatmap character"
+                    >
+                      <option value="">All characters</option>
+                      <option
+                        v-for="character in historicalCharacters"
+                        :key="character.character_id"
+                        :value="character.character_id"
+                      >
+                        {{ character.name }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <div
+                  v-if="heatmapRange === 'custom'"
+                  class="heatmap-custom-range character-filters"
+                >
+                  <label
+                    >From<input
+                      v-model="heatmapCustomFrom"
+                      type="datetime-local"
+                      aria-label="Historical heatmap start"
+                  /></label>
+                  <label
+                    >To<input
+                      v-model="heatmapCustomTo"
+                      type="datetime-local"
+                      aria-label="Historical heatmap end"
+                  /></label>
+                </div>
+                <label
+                  class="character-filters"
+                  v-if="
+                    historicalLayers.mob_types ||
+                    historicalLayers.mob_observer_average
+                  "
+                >
+                  Monster rank
+                  <select
+                    v-model="analyticsMobType"
+                    aria-label="Historical monster rank"
+                  >
+                    <option value="">All observed monster ranks</option>
+                    <option
+                      v-for="monsterRankValue in historicalMobTypes"
+                      :key="monsterRankValue"
+                      :value="monsterRankValue"
+                    >
+                      {{
+                        monsterTypePresentation({ type: monsterRankValue })
+                          .label
+                      }}
+                    </option>
+                  </select>
+                </label>
+                <p v-if="heatmapFacetsLoading" class="map-empty-copy">
+                  Loading observed monster ranks…
+                </p>
+                <p v-else-if="heatmapFacetsError" class="map-empty-copy">
+                  {{ heatmapFacetsError }}
+                </p>
+
+                <div class="heatmap-layer-list">
+                  <div v-for="layer in historicalLayerIDs" :key="layer">
+                    <label class="map-layer-toggle"
+                      ><input
+                        v-model="historicalLayers[layer]"
+                        type="checkbox"
+                        role="switch"
+                        :aria-checked="historicalLayers[layer]"
+                      />{{
+                        layer === 'mob_types'
+                          ? 'Mob ranks'
+                          : heatmapLayerLabel(layer)
+                      }}<span>{{
+                        heatmapResults[layer]?.points.length || 0
+                      }}</span></label
+                    >
+                    <div v-if="historicalLayers[layer]">
+                      <p v-if="heatmapLoading[layer]" class="map-empty-copy">
+                        Refreshing {{ heatmapLayerLabel(layer) }}…
+                      </p>
+                      <p
+                        v-else-if="heatmapErrors[layer]"
+                        class="heatmap-warning"
+                      >
+                        {{ heatmapLayerLabel(layer) }}:
+                        {{ heatmapErrors[layer] }}
+                      </p>
+                      <p
+                        v-else-if="
+                          heatmapResults[layer]?.status === 'unsupported'
+                        "
+                        class="heatmap-warning"
+                      >
+                        {{ heatmapLayerLabel(layer) }}:
+                        {{ heatmapResults[layer]?.interpretation }}
+                      </p>
+                      <p
+                        v-else-if="heatmapResults[layer]?.status === 'limited'"
+                        class="heatmap-warning"
+                      >
+                        {{ heatmapResults[layer]?.interpretation }}
+                      </p>
+                      <p
+                        v-else-if="
+                          heatmapResults[layer] &&
+                          heatmapResults[layer]?.points.length === 0
+                        "
+                        class="map-empty-copy"
+                      >
+                        No {{ heatmapLayerLabel(layer).toLowerCase() }} data in
+                        this scope.
+                      </p>
+                      <p
+                        v-if="heatmapResults[layer]?.truncated"
+                        class="heatmap-warning"
+                      >
+                        {{ heatmapLayerLabel(layer) }} reached the bounded
+                        result limit.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  v-if="renderedHeatLayers.length"
+                  class="heatmap-legend"
+                  aria-label="Heatmap legend"
+                >
+                  <div
+                    v-for="layer in renderedHeatLayers"
+                    :key="`legend-${layer.id}`"
+                  >
+                    <strong>{{ layer.label }}</strong>
+                    <span>{{ layer.metric }} · low → high</span>
+                  </div>
+                </div>
+              </div>
+              <div class="heatmap-footer">
+                <p
+                  class="map-empty-copy map-unavailable-layers"
+                  title="Mob density: observation coverage is not verified. Academy members: region and floor are unavailable from the documented API."
+                >
+                  <UIcon name="i-lucide-info" />2 layers unavailable
+                </p>
+                <button
+                  class="compact-button map-heatmap-reset"
+                  type="button"
+                  aria-label="Reset selected historical heatmap"
+                  title="Reset selected historical heatmap"
+                  :disabled="!resettableLayers.length"
+                  @click="openHeatmapReset"
+                >
+                  Reset…
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
       </aside>
     </div>
 
@@ -2452,6 +3095,167 @@ useHead({ title: 'Map · PhMon' })
 </template>
 
 <style scoped>
+.map-event-range {
+  display: flex;
+  gap: 4px;
+}
+.map-event-focus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.map-event-focus > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.map-event-focus time {
+  margin-left: auto;
+}
+
+.map-navigation-tray {
+  flex: none;
+  padding: 8px;
+}
+.map-tray-heading,
+.map-tray-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.map-tray-rows {
+  max-height: 120px;
+  overflow: auto;
+}
+.map-tray-select {
+  display: flex;
+  flex: 1;
+  min-width: 160px;
+  flex-wrap: wrap;
+  gap: 6px;
+  text-align: left;
+}
+.map-tray-select small {
+  flex-basis: 100%;
+}
+
+.map-inspector {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 900;
+  width: min(320px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.map-inspector h2,
+.map-inspector p {
+  margin: 0;
+}
+
+.map-page {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+}
+.map-header-row {
+  flex: none;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.map-header-row h1 {
+  margin: 0;
+}
+.map-header-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.map-header-row select {
+  max-width: 170px;
+  min-width: 0;
+}
+.map-header-floors,
+.map-panel-tabs {
+  display: flex;
+  gap: 4px;
+}
+.map-workspace {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: stretch;
+}
+.map-viewport-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.map-canvas-frame {
+  flex: 1;
+  height: auto;
+  min-height: 300px;
+}
+.map-side-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+  padding: 8px;
+}
+.map-panel-tabs {
+  flex: none;
+}
+.map-panel-tabs button {
+  flex: 1;
+  min-width: 0;
+}
+.map-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.map-tab-content {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+.map-header-row .map-go-to {
+  margin-left: auto;
+}
+.map-header-row .map-page-status {
+  margin-left: 0;
+}
+@media (max-width: 899px) {
+  .map-page {
+    height: auto;
+  }
+  .map-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .map-canvas-frame {
+    height: 55dvh;
+    min-height: 300px;
+    flex: none;
+  }
+  .map-panel-scroll {
+    max-height: 60dvh;
+  }
+  .map-header-row .map-go-to {
+    margin-left: 0;
+  }
+}
+
 .map-navigation-context {
   position: fixed;
   z-index: 1400;
@@ -2693,9 +3497,55 @@ useHead({ title: 'Map · PhMon' })
 }
 
 .heatmap-control-content > label:not(.map-layer-toggle),
+.heatmap-filter-row label,
 .heatmap-custom-range label {
   display: grid;
+  min-width: 0;
   gap: 4px;
+  color: var(--ph-muted);
+  font-size: 12px;
+}
+
+.heatmap-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.heatmap-control-content select,
+.heatmap-control-content input:not([role='switch']) {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  font-size: 12px;
+}
+
+.heatmap-layer-list {
+  display: grid;
+}
+
+.heatmap-layer-list .map-layer-toggle {
+  min-height: 36px;
+}
+
+.heatmap-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.heatmap-footer .map-unavailable-layers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.map-heatmap-reset {
+  flex: none;
+  min-height: 24px;
+  padding: 0 8px;
 }
 
 .heatmap-custom-range {
@@ -2791,5 +3641,320 @@ useHead({ title: 'Map · PhMon' })
 }
 .map-layer-toggle-subordinate {
   padding-left: 1.15rem;
+}
+
+.map-page {
+  gap: 0;
+}
+.map-side-panel {
+  max-height: none;
+  overflow: hidden;
+  padding: 0 12px 12px;
+  gap: 0;
+}
+.map-panel-tabs {
+  gap: 0;
+}
+.map-panel-tab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  height: 42px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ph-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.map-panel-tab.selected {
+  border-bottom-color: var(--ph-blue);
+  color: var(--ph-text);
+}
+.map-panel-tab small {
+  font-size: 10px;
+  color: var(--ph-muted);
+}
+.map-tab-content {
+  gap: 24px;
+  padding-top: 14px;
+}
+.map-side-panel .map-side-list {
+  max-height: none;
+  min-height: 0;
+  overflow: visible;
+}
+.map-side-panel section {
+  border: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+}
+.map-side-panel h2 {
+  margin: 0;
+  color: var(--ph-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.map-side-panel .map-list-heading {
+  position: static;
+  margin-bottom: 10px;
+  background: transparent;
+}
+.map-list-heading span {
+  font-size: 11px;
+}
+.map-layer-toggle {
+  gap: 9px;
+  min-height: 32px;
+  font-size: 13px;
+}
+.map-layer-toggle > span {
+  order: 2;
+  font-size: 11px;
+}
+.map-layer-toggle > input[role='switch'] {
+  order: 3;
+  appearance: none;
+  position: relative;
+  width: 26px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  border: 1px solid var(--ph-border);
+  border-radius: 8px;
+  background: var(--ph-panel);
+  cursor: pointer;
+}
+.map-layer-toggle > input[role='switch']::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ph-muted);
+  transition: transform 120ms ease;
+}
+.map-layer-toggle > input[role='switch']:checked {
+  background: var(--ph-active);
+  border-color: var(--ph-blue);
+}
+.map-layer-toggle > input[role='switch']:checked::after {
+  transform: translateX(12px);
+  background: var(--ph-blue);
+}
+.map-layer-toggle > input[role='switch']:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.map-layer-toggle-subordinate {
+  padding-left: 16px;
+}
+.map-layer-toggle-subordinate input {
+  margin-left: auto !important;
+}
+.map-heat-heading {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.heatmap-controls .map-heat-heading {
+  margin-bottom: 0;
+}
+.map-heat-heading > :last-child {
+  flex: none;
+  margin-left: 0;
+}
+.map-unavailable-layers {
+  margin-top: 16px;
+  font-size: 11px;
+}
+.map-target-toolbar {
+  gap: 6px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ph-border);
+}
+.map-target-quick {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+.map-group-chip {
+  font-size: 12px;
+}
+.map-group-chip small {
+  color: var(--ph-muted);
+  font-size: 10px;
+}
+.map-text-action {
+  border: 0;
+  padding: 3px 5px;
+  background: transparent;
+  color: var(--ph-blue);
+  font-size: 12px;
+  cursor: pointer;
+}
+.map-text-action:disabled {
+  color: var(--ph-muted);
+  cursor: default;
+}
+.map-event-range {
+  margin-left: auto;
+  gap: 2px;
+}
+.map-event-range .map-text-action {
+  font-size: 11px;
+  color: var(--ph-muted);
+}
+.map-event-range .selected {
+  background: var(--ph-active);
+  color: var(--ph-text);
+}
+.map-event-row,
+.map-observation-row {
+  border: 0;
+  padding: 8px 2px;
+  font-size: 13px;
+}
+.map-observation-row {
+  gap: 8px;
+}
+.map-observation-row .map-monster-name {
+  display: block;
+  flex: 1;
+}
+.map-observation-row small {
+  font-size: 11px;
+}
+.map-event-focus {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ph-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.map-event-focus strong {
+  font-weight: 400;
+}
+.map-event-focus > .iconify {
+  flex: none;
+}
+.map-event-focus small,
+.map-event-focus time {
+  font-size: 11px;
+}
+.map-event-focus time {
+  flex: none;
+}
+.map-event-row > a {
+  flex: none;
+  color: var(--ph-muted);
+}
+.map-training-list {
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.map-target-bar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 850;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 5px 10px;
+  max-width: calc(100% - 100px);
+  font-size: 12px;
+}
+.map-floating-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 900;
+  display: grid;
+  gap: 4px;
+}
+.map-floating-controls .compact-button {
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+.map-floating-legend {
+  position: absolute;
+  top: 150px;
+  right: 10px;
+  z-index: 1000;
+  width: min(300px, calc(100% - 24px));
+  padding: 12px;
+  font-size: 12px;
+  max-height: calc(100% - 170px);
+  overflow: auto;
+}
+.map-corner-readouts {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  z-index: 800;
+}
+.map-floating-notice {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 850;
+  max-width: calc(100% - 70px);
+  padding: 8px;
+  font-size: 12px;
+}
+.map-context-heading {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+}
+.map-context-heading small {
+  color: var(--ph-muted);
+}
+.map-floor-bar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 850;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.map-canvas-frame {
+  min-height: 300px;
+}
+.map-panel-scroll {
+  overflow-x: hidden;
+}
+@media (max-width: 899px) {
+  .map-side-panel {
+    min-height: 360px;
+    max-height: none;
+  }
+  .map-target-bar {
+    left: 10px;
+    transform: none;
+  }
+}
+
+.map-corner-readouts {
+  padding: 2px 5px;
+  background: var(--ph-panel-soft);
+  font-size: 11px;
 }
 </style>
