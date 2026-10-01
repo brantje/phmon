@@ -1716,6 +1716,12 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 
+:global(.phmon-map-marker--party.leaflet-div-icon),
+:global(.phmon-map-marker--player.leaflet-div-icon),
+:global(.phmon-map-marker--npc.leaflet-div-icon) {
+  overflow: visible;
+}
+
 /* Leaflet positions the marker with `transform`; `translate` composes with it. */
 :global(.phmon-map-training-label-marker) {
   width: max-content;
@@ -1903,23 +1909,22 @@ onBeforeUnmount(() => {
   border-style: dashed;
 }
 
-:global(.phmon-map-party-icon),
 :global(.phmon-map-detail-party-icon) {
   display: grid;
   place-items: center;
 }
 
-:global(.phmon-map-party-icon) {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 1px 3px #000c);
-}
-
+:global(.phmon-map-party-icon),
+:global(.phmon-map-player-icon),
 :global(.phmon-map-npc-icon) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   position: relative;
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   filter: drop-shadow(0 1px 3px #000c);
 }
 
@@ -1936,11 +1941,13 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-npc-name),
-:global(.phmon-map-party-name) {
+:global(.phmon-map-party-name),
+:global(.phmon-map-player-name) {
   position: absolute;
-  top: calc(100% - 2px);
+  top: calc(100% + 2px);
   left: 50%;
   transform: translateX(-50%);
+  width: max-content;
   max-width: 112px;
   overflow: hidden;
   padding: 2px 5px;
@@ -1950,6 +1957,7 @@ onBeforeUnmount(() => {
   font-size: 10px;
   font-weight: 500;
   line-height: 1.1;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 4px #000b;
@@ -1957,10 +1965,16 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-party-icon img),
+:global(.phmon-map-player-icon img),
+:global(.phmon-map-npc-icon img),
 :global(.phmon-map-detail-party-icon img) {
+  display: block;
+  width: 20px;
+  height: 20px;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  flex: none;
 }
 
 :global(.phmon-map-detail-party-icon) {
