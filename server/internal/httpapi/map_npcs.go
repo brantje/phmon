@@ -184,5 +184,5 @@ func npcMarkerID(server string, npc npcs.NPC) string {
 	if npc.Model != nil {
 		model = fmt.Sprintf("%d", *npc.Model)
 	}
-	return fmt.Sprintf("npc:%s:%d:%s:%s:%.1f:%.1f", strings.ToLower(strings.TrimSpace(server)), npc.Region, npc.ServerName, model, npc.X, npc.Y)
+	return fmt.Sprintf("npc:%s:%d:%s:%s:%s:%.1f:%.1f", strings.ToLower(strings.TrimSpace(server)), npc.Region, npc.ServerName, model, npc.ID, npc.X, npc.Y)
 }

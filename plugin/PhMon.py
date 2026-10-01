@@ -346,11 +346,15 @@ def collect_npc_observation(api=None):
             truncated = True
             continue
         servername = _bounded_text(value.get('servername'), 64)
+        while servername and len(servername.encode('utf-8')) > 64:
+            servername = servername[:-1]
         npc = {
             'id': identifier, 'role': _npc_role(servername), 'region': region,
             'x': float(x), 'y': float(y),
         }
         name = _bounded_text(value.get('name'), 64)
+        while name and len(name.encode('utf-8')) > 64:
+            name = name[:-1]
         if name is not None:
             npc['name'] = name
         if servername is not None:

@@ -43,6 +43,45 @@ func TestProjectNPCsDedupesAcrossSessionsAndKeepsSameSessionRows(t *testing.T) {
 	if merged.Name != "Jangan" || len(merged.Observers) != 2 || merged.X != 104 {
 		t.Fatalf("freshest cross-session npc was not kept: %+v", got.NPCs)
 	}
+	if merged.ID != "npc:greatest:25000:GATE_CH:2094:10:100.0:200.0" {
+		t.Fatalf("cross-session merge replaced the cluster id: %s", merged.ID)
+	}
+}
+
+func TestProjectNPCsKeepsDistinctSameSessionMarkerIDs(t *testing.T) {
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := int64(2094)
+	now := time.Now().UTC()
+	snapshot := npcs.LiveSnapshot{
+		Server: "Greatest", CharacterID: "00000000-0000-4000-8000-000000000001", SessionID: "00000000-0000-4000-8000-000000000011",
+		Character: "Alpha", Status: "observed", Region: 25000, ObservedAt: now,
+		NPCs: []npcs.NPC{
+			{ID: "10", Name: "Gate A", ServerName: "GATE_CH", Model: &model, Role: "teleporter", Region: 25000, X: 100.04, Y: 200.04},
+			{ID: "11", Name: "Gate B", ServerName: "GATE_CH", Model: &model, Role: "teleporter", Region: 25000, X: 100.01, Y: 200.01},
+		},
+	}
+	got := projectNPCs(profile, []npcs.LiveSnapshot{snapshot}, "world", "world", 0)
+	if len(got.NPCs) != 2 {
+		t.Fatalf("same-session npcs = %+v", got.NPCs)
+	}
+	want := map[string]bool{
+		"npc:greatest:25000:GATE_CH:2094:10:100.0:200.0": false,
+		"npc:greatest:25000:GATE_CH:2094:11:100.0:200.0": false,
+	}
+	for _, npc := range got.NPCs {
+		if _, ok := want[npc.ID]; !ok {
+			t.Fatalf("unexpected marker id %s in %+v", npc.ID, got.NPCs)
+		}
+		want[npc.ID] = true
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Fatalf("missing marker id %s in %+v", id, got.NPCs)
+		}
+	}
 }
 
 func TestProjectNPCsFailsClosedWithoutCaveZ(t *testing.T) {

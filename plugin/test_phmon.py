@@ -317,8 +317,10 @@ class NPCObservationTests(unittest.TestCase):
             'get_npcs': lambda: {7: {'name': long_name, 'servername': 'S' * 80,
                                      'region': 25000, 'x': 1, 'y': 2}},
         })
-        self.assertEqual(len(bounded[0]['name']), 64)
+        self.assertLessEqual(len(bounded[0]['name'].encode('utf-8')), 64)
+        self.assertLess(len(bounded[0]['name']), 64)
         self.assertEqual(len(bounded[0]['servername']), 64)
+        self.assertLessEqual(len(bounded[0]['servername'].encode('utf-8')), 64)
         self.assertEqual(bounded[0]['role'], 'npc')
 
     def test_sampler_filters_region_suppresses_unchanged_and_refreshes(self):
