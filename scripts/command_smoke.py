@@ -75,6 +75,20 @@ def main():
         code, _, credential = request_json(opener, WEB_URL + "/api/agents/credentials", "POST", {}, cookie)
         if code != 201 or not credential.get("agent_id") or not credential.get("agent_token"):
             raise RuntimeError("simulator credential creation failed: HTTP " + str(code))
+        live = live_smoke.WebSocketClient(
+            WEB_URL.replace("http://", "ws://", 1).replace("https://", "wss://", 1) + "/api/live",
+            ORIGIN,
+            cookie,
+        ).connect()
+        live.send_json({
+            "type": "subscribe",
+            "protocol_version": 1,
+            "subscription_id": "command-targets",
+            "revision": 1,
+            "stream": "characters",
+            "filter": {"q": character_prefix},
+        })
+
         for index, character_name in enumerate(character_names):
             env = dict(os.environ)
             env.update({
@@ -93,10 +107,8 @@ def main():
                 cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             ))
 
-        live = live_smoke.WebSocketClient(WEB_URL.replace("http://", "ws://", 1).replace("https://", "wss://", 1) + "/api/live", ORIGIN, cookie).connect()
-        live.send_json({"type":"subscribe","protocol_version":1,"subscription_id":"command-targets","revision":1,"stream":"characters","filter":{"q":character_prefix}})
         targets_by_name = {}
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + 45
         while time.monotonic() < deadline and len(targets_by_name) < len(character_names):
             frame = receive_or_timeout(live, timeout=5)
             if frame is None:
