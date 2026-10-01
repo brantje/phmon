@@ -165,8 +165,11 @@ Separate **API outcome** from **observed state**. A bool success can complete th
 documented API operation. Void-return calls can report “API call returned; arrival/
 disconnect not yet verified,” not “reached destination.” Use result evidence such as
 `api_return`, `effective_args`, `observed_after`, and `verification` (`api_confirmed`,
-`observed`, `unverified`). Never set `botting=true/false` from the last command:
-there is still no documented read-only botting getter in the checked sources.
+`observed`, `unverified`). Botting has no documented standalone getter; Issue #35
+uses an actual boolean from `get_character_data()['botting']` first, then the narrow
+optional `get_status()` normalization (`botting`/`training` true, `tracing` false).
+Unknown values remain unknown, and the browser never derives botting state from the
+last command.
 
 ## 5. Freeze these architecture decisions before coding transport
 

@@ -260,6 +260,10 @@ test('radius rejects blanks, non-finite values and values outside the documented
     { trainingRadius: '1' },
   )
   assert.deepEqual(
+    validateRemoteControlArgs('training.radius.set', { trainingRadius: 34 }),
+    { trainingRadius: '34' },
+  )
+  assert.deepEqual(
     validateRemoteControlArgs('training.radius.set', {
       trainingRadius: '10000',
     }),

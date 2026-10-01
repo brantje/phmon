@@ -1079,3 +1079,20 @@ Unknown state remains eligible under normal session/capability rules, and the UI
 waits for the next observed state instead of updating optimistically. Verify
 `stopped` and `None` against a supported phBot runtime before mapping either to
 false.
+
+An operator-authorized live check on 2026-10-01 observed four online Greatest
+sessions with matching control/readback session IDs, `botting: true`, an available
+active training area and radius 34. Two Zerkroad character records were offline.
+The Client All selection previewed Start as 0 eligible/6 skipped and Stop as
+4 eligible/2 skipped. A reviewed `training.radius.set` request using each target's
+already-observed value 34 completed on all four online sessions with `observed`
+verification; subsequent readback remained 34. Return Scroll and Disconnect
+confirmation previews each showed four eligible targets and two offline skips and
+were cancelled without submission. Clientless remained capability-blocked. The
+view does not expose plugin version, and no Return Scroll, Disconnect, trace or
+`training.area.set` mutation was submitted during this check.
+
+The live numeric-radius form exposed a frontend-only type issue: Vue provided the
+number input model as a number while validation assumed a string. Validation now
+normalizes either representation before trimming/parsing; the added regression
+test covers numeric input. This does not change the protocol or plugin contract.

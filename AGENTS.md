@@ -4761,23 +4761,45 @@ Compose-only `OPERATOR_ACCESS_SECRET`: Go race tests, 122 Python plugin tests,
 live transport audit, Prettier, 128 frontend unit tests, Nuxt typecheck, production
 build and Compose config. ESLint reported zero errors and 51 existing warnings.
 The first run stopped only at Compose interpolation because the local secret was
-unset; the throwaway-value rerun passed. `git diff --check` also passes. Existing
-simulator smoke and screenshot evidence above predates this final correction and
-does not establish real phBot behavior or the updated confirmation prompt.
+unset; the throwaway-value rerun passed. `git diff --check` also passes.
 
-Browser verification of the final prompt is incomplete. The long-lived local web
-service served an older bundle without mandatory confirmation. During the check,
-two Disconnect admissions were accepted and remained in progress with no execution
-result at the last read. The operator has been notified; the target/runtime nature
-and final outcome are unknown. Do not use that service for further action testing.
-Continue with code/docs/Git/PR work only unless the operator authorizes otherwise.
+Operator-authorized live verification on 2026-10-01 found and fixed a radius-form
+runtime bug: Vue supplied the `type=number` model as a number while validation
+called `.trim()` directly. `validateRemoteControlArgs()` now normalizes string or
+number input, and its regression test covers numeric 34. The web container alone
+was rebuilt/restarted from this checkout; Go, PostgreSQL and agent sessions were
+left running. The deployed projection showed four online Greatest characters with
+matching control sessions, `botting: true`, and active training radius 34; two
+Zerkroad records were offline. All six targets selected in Client yielded Start
+0 eligible/6 skipped and Stop 4 eligible/2 skipped. With review enabled, the
+radius-34 request was explicitly submitted to the four online characters; all
+four results completed with `observed` verification and readback stayed at 34.
+The browser review preference was restored to its original off state. With it off,
+Return Scroll and Disconnect each showed a mandatory confirmation for four
+eligible characters and two offline skips; both were cancelled without admission.
+Clientless remained unavailable and sent no mutation. Do not claim live execution
+for Return Scroll, Disconnect, trace or `training.area.set` changes. Screenshot:
+`/tmp/phmon-issue35-live-radius-results.png`.
 
-Files changed in this follow-up: `plugin/PhMon.py`, `plugin/test_phmon.py`,
-`web/app/utils/remoteControlActions.ts`, `web/app/components/RemoteControlPanel.vue`,
+The previously reported two Disconnect admissions later reached terminal history
+with `unverified` results. Current live characters were online at the subsequent
+readback; the earlier void-return calls do not establish their state at execution.
+The existing live history also showed completed API-confirmed bot.stop and bot.start
+results for all four online characters before this follow-up test. The live
+projection does not report plugin version, and `stopped`/`None` from `get_status()`
+remain unverified. Fixture tests and real plugin evidence must remain distinct.
+
+Files changed for Issue #35 plus the live radius correction: `plugin/PhMon.py`,
+`plugin/test_phmon.py`, `web/app/utils/remoteControlActions.ts`,
+`web/app/components/RemoteControlPanel.vue`,
 `web/app/components/CommandFanOutPreview.vue`,
-`web/app/components/RemoteCommandActions.vue`, `web/tests/remoteControlActions.test.ts`,
-`plugin/README.md`, `docs/{phbot-capabilities,protocol,reference-parity,slice-3-implementation-plan}.md`,
-and this guide.
+`web/app/components/RemoteCommandActions.vue`,
+`web/tests/remoteControlActions.test.ts`, `plugin/README.md`,
+`docs/{phbot-capabilities,protocol,reference-parity,slice-3-implementation-plan}.md`,
+and this guide. The radius correction passes all 128 frontend tests, Nuxt
+typecheck, formatting check, ESLint (0 errors, 51 existing warnings) and production
+build. The Compose web image was rebuilt successfully and `/api/health` reports
+database health after restart.
 
 #### CI correction — 2026-10-01
 
@@ -4788,5 +4810,7 @@ contract, so `PROTOCOL_VERSION` stays at 9 while `pVersion` is bumped to 1.7.1.
 version-guard parity check reports plugin 1.7.0 → 1.7.1 and no generated contract
 change; all 122 Python plugin tests pass after the bump.
 
-Exact next action: commit and push the version-bump correction, verify PR #56 CI
-restarts and passes, keep it open, and do not merge.
+Exact next action: review the scoped diff (leave the separate changes in
+`web/app/pages/map.vue` and untracked `web/app/layouts/map.vue` untouched), commit
+and push only the radius correction and evidence docs to PR #56, verify CI on the
+new head, keep the PR open, and do not merge.

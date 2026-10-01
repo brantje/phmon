@@ -194,7 +194,11 @@ Client API only inspects client state, so clientless stays unavailable. The plug
 does not kill processes, change relog settings, run arbitrary scripts, persist
 commands locally or replay them after reconnect. Bool and void API returns remain
 distinct; walk, return-scroll and disconnect effects are unverified until separately
-observed. Botting status remains unknown.
+observed. Botting status is reported through the existing `CharacterView.botting`
+field when `get_character_data()['botting']` is an actual boolean. The optional
+`get_status()` fallback recognizes only `botting`/`training` as true and `tracing`
+as false; unknown values, errors and unavailable status remain unknown. Commands
+never optimistically set this state.
 
 The stop path closes the worker socket to unblock bounded reads without joining from
 a phBot callback. Outbound results use their own bounded, non-coalescing queue and may

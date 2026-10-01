@@ -15,7 +15,7 @@ export interface RemoteControlArgs {
   traceName?: string
   trainingAreaMode?: 'current_position' | 'named'
   trainingAreaName?: string
-  trainingRadius?: string
+  trainingRadius?: string | number
 }
 
 function noActiveTrainingArea() {
@@ -197,8 +197,9 @@ export function validateRemoteControlArgs(
   if (name === 'training.area.set')
     return { trainingAreaMode: 'current_position' }
   if (name === 'training.radius.set') {
-    if (!input.trainingRadius?.trim()) return null
-    const value = Number(input.trainingRadius)
+    const rawValue = String(input.trainingRadius ?? '').trim()
+    if (!rawValue) return null
+    const value = Number(rawValue)
     return Number.isFinite(value) && value >= 1 && value <= 10_000
       ? { trainingRadius: String(value) }
       : null

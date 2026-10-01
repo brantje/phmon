@@ -74,10 +74,11 @@ Screenshot files: `client-easy-1440x1000.png`,
 `client-advanced-1280x800.png`, `client-easy-390x844.png`,
 `client-advanced-390x844.png`, and the corresponding `map-easy-*` and
 `map-advanced-*` files. `map-remote-controls-mobile.png` records the scrolled
-mobile control panel. The screenshots remain outside the repository and predate
-the final mandatory-confirmation correction. The updated code passes automated
-checks, but browser verification of its confirmation view remains incomplete; do
-not treat the earlier screenshots as evidence for that prompt.
+mobile control panel. The fixture screenshots remain outside the repository and
+predate the final mandatory-confirmation correction. Operator-authorized
+live-browser verification later confirmed both Return Scroll and Disconnect count
+prompts with review off; both were cancelled without submission. The live radius
+result capture is `/tmp/phmon-issue35-live-radius-results.png`.
 
 Final verification passed `bash scripts/check.sh` on Node 24.20.0 against a fresh
 isolated disposable PostgreSQL test database: Go race tests, 118 plugin tests,
@@ -603,12 +604,11 @@ Visual parity and remaining real phBot lifecycle/data checks remain open.
   stacks without page-level horizontal overflow. [Character detail at 1440 × 1000](evidence/slice2-character-detail-1440x1000.png)
   has no direct reference capture; its hierarchy follows the shared shell while later
   panels remain explicit gaps.
-- Botting/training remains unknown because official docs expose start/stop mutations
-  but no read-only getter. Real phBot 20.1.1/plugin 1.1.0 evidence separately shows
-  server, character name, zone, level, HP/MP, XP/SP, gold, region and position in live
-  records; it does not validate every lifecycle edge or botting state. The PR review
-  fixes were exercised through the deterministic simulator over the production
-  transport, not manually revalidated on phBot.
+- At this Slice 2 snapshot, botting/training was unknown because official docs expose
+  start/stop mutations but no read-only getter. Issue #35 later added the narrow
+  botting readback described above; the operator-authorized 2026-10-01 live check
+  observed boolean botting state on four active sessions. This does not verify the
+  meaning of `stopped` or `None` from optional `get_status()`.
 
 The review follow-up also verifies stale character-scoped state/snapshot/leave
 rejections over real WebSockets: the old socket remains usable for its unrelated
