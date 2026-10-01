@@ -30,7 +30,6 @@ const optionSnapshot = () => ({
 const {
   display: lockedOptions,
   lock,
-  unlock,
   onPointerDown,
   onFocus,
   onChange,
