@@ -211,7 +211,7 @@ const statusLabel = computed(() => {
 .map-character-resource {
   position: relative;
   display: block;
-  height: 0.78rem;
+  height: 1rem;
   overflow: hidden;
   border: 1px solid rgba(14, 21, 31, 0.85);
   border-radius: 3px;
@@ -242,7 +242,7 @@ const statusLabel = computed(() => {
   justify-content: center;
   padding: 0 0.2rem;
   color: #e9eff8;
-  font-size: 0.55rem;
+  font-size: 0.8rem;
   line-height: 1;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.95);
   white-space: nowrap;
