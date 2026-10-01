@@ -1662,3 +1662,11 @@ simultaneous independent routes and fresh arrival after command completion.
 Independent `path_not_found` failures are retained in the ledger; their cause is
 unverified. The operator confirmed the plugin upload and later reported working
 behavior. Fixture arrival remains explicitly separate from Windows/phBot evidence.
+
+### Monster rank icons on the name label — 2026-10-01
+
+Live monster markers stay the red HP bubble. General, Champion, and Giant rank
+icons, plus the shared party badge for party ranks, render in front of the
+opt-in name label. They do not replace or cover the bubble. Names remain off
+until **Show nearby monsters names** is enabled, so the icons appear only with
+that label.

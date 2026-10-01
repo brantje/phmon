@@ -1060,27 +1060,28 @@ function markerIconContent(
     content.style.setProperty('--phmon-monster-hp', String(fraction ?? 0))
     if (marker.monster) {
       const presentation = monsterTypePresentation(marker.monster)
-      if (presentation.iconUrl) {
-        const rankIcon = document.createElement('img')
-        rankIcon.className = 'phmon-map-monster-rank-icon'
-        rankIcon.src = presentation.iconUrl
-        rankIcon.alt = ''
-        rankIcon.onerror = () => rankIcon.remove()
-        content.append(rankIcon)
-      }
-      if (presentation.partyBadgeUrl) {
-        const partyBadge = document.createElement('img')
-        partyBadge.className = 'phmon-map-monster-party-badge'
-        partyBadge.src = presentation.partyBadgeUrl
-        partyBadge.alt = ''
-        partyBadge.onerror = () => partyBadge.remove()
-        content.append(partyBadge)
-      }
       const mapName = monsterMapName(marker.monster, Boolean(marker.showLabel))
       if (mapName) {
         const name = document.createElement('span')
         name.className = 'phmon-map-monster-name'
-        name.textContent = mapName
+        const appendLabelIcon = (src: string, className: string) => {
+          if (!src) return
+          const icon = document.createElement('img')
+          icon.className = className
+          icon.src = src
+          icon.alt = ''
+          icon.onerror = () => icon.remove()
+          name.append(icon)
+        }
+        appendLabelIcon(presentation.iconUrl, 'phmon-map-monster-rank-icon')
+        appendLabelIcon(
+          presentation.partyBadgeUrl,
+          'phmon-map-monster-party-badge',
+        )
+        const text = document.createElement('span')
+        text.className = 'phmon-map-monster-name-text'
+        text.textContent = mapName
+        name.append(text)
         content.append(name)
       }
     }
@@ -1825,27 +1826,13 @@ onBeforeUnmount(() => {
     0 1px 4px #000a;
 }
 
-:global(.phmon-map-monster-rank-icon) {
-  position: absolute;
-  inset: 1px;
-  z-index: 1;
-  width: calc(100% - 2px);
-  height: calc(100% - 2px);
-  object-fit: contain;
-  pointer-events: none;
-  filter: drop-shadow(0 1px 1px #000c);
-}
-
+:global(.phmon-map-monster-rank-icon),
 :global(.phmon-map-monster-party-badge) {
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  z-index: 2;
-  width: 8px;
-  height: 8px;
+  flex: none;
+  width: 12px;
+  height: 12px;
   object-fit: contain;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px #000c);
 }
 
 :global(.phmon-map-marker--party .phmon-map-monster-bubble) {
@@ -1869,24 +1856,32 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-monster-name) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   position: absolute;
   top: calc(100% + 5px);
   left: 50%;
   z-index: 3;
   transform: translateX(-50%);
-  max-width: 120px;
+  max-width: 148px;
   overflow: hidden;
-  padding: 2px 5px;
+  padding: 2px 4px 2px 3px;
   border-radius: 7px;
   background: #0d1119ec;
   color: #fff;
   font-size: 10px;
   font-weight: 500;
   line-height: 1.1;
-  text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 4px #000b;
   pointer-events: none;
+}
+
+:global(.phmon-map-monster-name-text) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 :global(.phmon-map-marker--hp-unavailable .phmon-map-monster-bubble) {

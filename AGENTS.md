@@ -4701,3 +4701,9 @@ navigation confirmation with zero command posts, with no horizontal overflow at
 1440×1000, 1280×800, and 390×844. That fixture is not real phBot `get_npcs()`
 evidence. Exact next action: operator installs plugin 1.7.0 and records a live
 NPC snapshot separately from the simulator.
+
+### Resume — 2026-10-01 monster rank icons on the name label
+
+The live monster marker is the red HP bubble again. General, Champion, and Giant
+icons, and the shared party badge, sit in front of the opt-in name label. They
+no longer cover the bubble. Exact next action: none for this visual correction.

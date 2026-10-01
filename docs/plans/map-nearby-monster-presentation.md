@@ -5,9 +5,8 @@ Working branch: `fix/map-monster-icons`.
 
 ## Requested behavior
 
-- Keep the existing live monster HP bubbles and their current HP/attacking/size behavior.
-- Add the appropriate monster rank icon to each live monster bubble.
-- For party monsters, compose the matching rank icon with the shared party badge exported by PR #44; do not treat the party badge as rank artwork.
+- Keep the existing live monster HP bubbles and their current HP/attacking/size behavior. The bubble stays the red HP dot.
+- Place the General, Champion, or Giant rank icon, and the shared party badge for party monsters, in front of the opt-in name label. Do not draw those icons on the bubble.
 - Add an opt-in **Show nearby monsters names** control under the **Current nearby monsters** layer entry.
 - When that control is enabled, show the monster name next to/below the existing bubble. Default it off so the map remains uncluttered unless requested.
 - Do not show user-facing monster UI text labeled `Type` / `Mob type`. Present the normalized rank name directly.
@@ -32,11 +31,10 @@ Working branch: `fix/map-monster-icons`.
    - Reuse the committed PR #44 assets under `/game-assets/monster-types/`.
    - Keep unknown type codes safe: retain the HP bubble, show no fabricated icon, and use a neutral unknown label only where text is required.
 
-2. **Preserve the bubble and layer in artwork**
-   - Update `web/app/components/MapCanvas.vue` so monster marker content remains `phmon-map-monster-bubble`.
-   - Add the rank icon inside the bubble rather than replacing it.
-   - For party variants, overlay the shared party badge in a small corner while retaining the corresponding General/Champion/Giant rank icon.
-   - Keep the current HP ring, attacking highlight, party styling, marker scaling, animation, popup behavior, hit target, and z-order unchanged unless a small CSS adjustment is required to fit the artwork.
+2. **Keep the red bubble and put rank artwork on the name label**
+   - Update `web/app/components/MapCanvas.vue` so monster marker content remains the red `phmon-map-monster-bubble`.
+   - When the name label is shown, prepend the General, Champion, or Giant rank icon, then the shared party badge for party variants.
+   - Keep the current HP ring, attacking highlight, party styling, marker scaling, animation, popup behavior, hit target, and z-order unchanged.
 
 3. **Add opt-in monster name labels**
    - Add `showNearbyMonsterNames = ref(false)` in `web/app/pages/map.vue`.
