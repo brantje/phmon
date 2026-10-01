@@ -104,6 +104,17 @@ def main():
         code, _, credential = request_json(opener, WEB_URL + "/api/agents/credentials", "POST", {}, cookie)
         if code != 201 or not credential.get("agent_id") or not credential.get("agent_token"):
             raise RuntimeError("simulator credential creation failed: HTTP " + str(code))
+        agent_http = os.environ.get("PHMON_AGENT_URL", "ws://127.0.0.1:8081/agent").replace(
+            "ws://", "http://", 1
+        ).replace("wss://", "https://", 1).rsplit("/agent", 1)[0]
+        ready_deadline = time.monotonic() + 30
+        while time.monotonic() < ready_deadline:
+            ready_code, _, ready_body = request_json(opener, agent_http + "/readyz")
+            if ready_code == 200 and isinstance(ready_body, dict) and ready_body.get("status") == "ok":
+                break
+            time.sleep(0.25)
+        else:
+            raise RuntimeError("agent server did not report ready before command smoke")
         live = live_smoke.WebSocketClient(
             WEB_URL.replace("http://", "ws://", 1).replace("https://", "wss://", 1) + "/api/live",
             ORIGIN,
@@ -115,8 +126,57 @@ def main():
             "subscription_id": "command-targets",
             "revision": 1,
             "stream": "characters",
-            "filter": {"q": character_prefix},
+            "filter": {"q": character_prefix, "server": server},
         })
+
+        targets_by_name = {}
+        connect_timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "45"))
+
+        def wait_for_character(character_name: str) -> None:
+            deadline = time.monotonic() + connect_timeout
+            last_http_poll = 0.0
+            last_refresh = 0.0
+            while time.monotonic() < deadline:
+                now = time.monotonic()
+                if now - last_refresh >= 1.0:
+                    live.send_json({
+                        "type": "refresh",
+                        "protocol_version": 1,
+                        "subscription_id": "command-targets",
+                        "revision": 1,
+                    })
+                    last_refresh = now
+                if now - last_http_poll >= 0.5:
+                    ingest_online_targets(
+                        targets_by_name,
+                        fetch_http_characters(opener, cookie, character_prefix, server),
+                        character_names,
+                        server,
+                    )
+                    last_http_poll = now
+                if character_name in targets_by_name:
+                    return
+                frame = receive_or_timeout(live, timeout=1)
+                if frame is not None and frame.get("subscription_id") == "command-targets":
+                    ingest_online_targets(
+                        targets_by_name,
+                        frame.get("data", {}).get("characters", []),
+                        character_names,
+                        server,
+                    )
+                if character_name in targets_by_name:
+                    return
+                if any(process.poll() is not None for process in simulators):
+                    exited = next(process for process in simulators if process.poll() is not None)
+                    output = (exited.stdout.read() if exited.stdout else "")[-2000:]
+                    raise RuntimeError(
+                        "a simulator exited before publishing a current session: " + output
+                    )
+            raise RuntimeError(
+                "simulator session did not appear for " + character_name + " within "
+                + str(int(connect_timeout))
+                + "s"
+            )
 
         for index, character_name in enumerate(character_names):
             env = dict(os.environ)
@@ -128,51 +188,15 @@ def main():
                 "PHMON_SIMULATOR_SERVER": server,
                 "PHMON_SIMULATOR_CHARACTER": character_name,
                 "PHMON_SIMULATOR_COMMAND_TIMEOUT": "60",
-                "PHMON_SIMULATOR_CONNECT_TIMEOUT": "30",
+                "PHMON_SIMULATOR_CONNECT_TIMEOUT": str(int(connect_timeout)),
                 "PHMON_SIMULATOR_BOT_STOP_RESULT": "false" if index == 1 else "true",
             })
             simulators.append(subprocess.Popen(
                 [sys.executable, os.path.join(ROOT, "scripts", "agent_simulator.py")],
                 cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             ))
-            time.sleep(0.25)
+            wait_for_character(character_name)
 
-        targets_by_name = {}
-        deadline = time.monotonic() + 90
-        last_http_poll = 0.0
-        last_refresh = 0.0
-        while time.monotonic() < deadline and len(targets_by_name) < len(character_names):
-            now = time.monotonic()
-            if now - last_refresh >= 2.0:
-                live.send_json({
-                    "type": "refresh",
-                    "protocol_version": 1,
-                    "subscription_id": "command-targets",
-                    "revision": 1,
-                })
-                last_refresh = now
-            if now - last_http_poll >= 1.0:
-                ingest_online_targets(
-                    targets_by_name,
-                    fetch_http_characters(opener, cookie, character_prefix, server),
-                    character_names,
-                    server,
-                )
-                last_http_poll = now
-            frame = receive_or_timeout(live, timeout=2)
-            if frame is not None and frame.get("subscription_id") == "command-targets":
-                ingest_online_targets(
-                    targets_by_name,
-                    frame.get("data", {}).get("characters", []),
-                    character_names,
-                    server,
-                )
-            if any(process.poll() is not None for process in simulators):
-                exited = next(process for process in simulators if process.poll() is not None)
-                output = (exited.stdout.read() if exited.stdout else "")[-2000:]
-                raise RuntimeError(
-                    "a simulator exited before publishing a current session: " + output
-                )
         if len(targets_by_name) != len(character_names):
             missing = [name for name in character_names if name not in targets_by_name]
             raise RuntimeError(

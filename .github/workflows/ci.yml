@@ -55,6 +55,7 @@ jobs:
       - name: Verify production browser live WebSocket path
         run: python3 scripts/live_smoke.py
       - name: Verify authenticated remote command through production plugin worker
+        id: command_smoke
         env:
           OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
           PHMON_AGENT_URL: ws://127.0.0.1:8081/agent
@@ -208,7 +209,7 @@ jobs:
           test "${{ steps.outage.outcome }}" = success
           test "${{ steps.recovery.outcome }}" = success
       - name: Verify Nuxt development WebSocket relay
-        if: always() && steps.recovery.outcome == 'success'
+        if: always() && steps.recovery.outcome == 'success' && steps.command_smoke.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
