@@ -551,7 +551,8 @@ function trainingActionButton(kind: 'discard' | 'accept', label: HTMLElement) {
     stopTrainingActionEvent(event)
     const characterID = label.dataset.areaId
     if (!characterID || button.disabled) return
-    emit(kind === 'accept' ? 'trainingaccept' : 'trainingdiscard', characterID)
+    if (kind === 'accept') emit('trainingaccept', characterID)
+    else emit('trainingdiscard', characterID)
   }
   for (const type of [
     'mousedown',
