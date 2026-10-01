@@ -38,8 +38,13 @@ const mpPercent = computed(() =>
       role="progressbar"
       aria-label="Character health"
       :aria-valuemin="0"
-      :aria-valuemax="character.hp_max ?? undefined"
-      :aria-valuenow="character.hp ?? undefined"
+      :aria-valuemax="hpPercent == null ? undefined : character.hp_max"
+      :aria-valuenow="
+        hpPercent == null
+          ? undefined
+          : Math.max(0, Math.min(character.hp!, character.hp_max!))
+      "
+      :aria-valuetext="resourceLabel('HP', character.hp, character.hp_max)"
     >
       <span
         class="map-character-resource-fill"
@@ -55,8 +60,13 @@ const mpPercent = computed(() =>
       role="progressbar"
       aria-label="Character mana"
       :aria-valuemin="0"
-      :aria-valuemax="character.mp_max ?? undefined"
-      :aria-valuenow="character.mp ?? undefined"
+      :aria-valuemax="mpPercent == null ? undefined : character.mp_max"
+      :aria-valuenow="
+        mpPercent == null
+          ? undefined
+          : Math.max(0, Math.min(character.mp!, character.mp_max!))
+      "
+      :aria-valuetext="resourceLabel('MP', character.mp, character.mp_max)"
     >
       <span
         class="map-character-resource-fill"

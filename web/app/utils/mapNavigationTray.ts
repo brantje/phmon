@@ -50,6 +50,7 @@ export function mapNavigationTrayRows(
         child.server.toLowerCase() !== server.toLowerCase() ||
         routes.some(
           (route) =>
+            Boolean(child.commandID) &&
             route.commandID === child.commandID &&
             route.sessionID === child.sessionID &&
             route.characterID === child.characterID,

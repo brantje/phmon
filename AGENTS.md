@@ -308,6 +308,26 @@ They remain explicitly unavailable where the existing contracts lack them. Retur
 Scroll uses real command outcomes without fabricated routes. Simulator checks do
 not establish real Windows/phBot runtime validation. No real character was operated.
 
+PR [#58](https://github.com/brantje/phmon/pull/58) is open against `main`, with the
+merged #35 dependency included in its ancestry. CodeRabbit's requested full review
+of `a098ed4` completed on 2026-10-01 at 19:05:54 UTC: one actionable accessibility
+finding and three nitpicks. All initial CI validation/stack jobs passed.
+
+Review fixes make HP/MP accessible text match the visible values, omit numeric ARIA
+values for missing/invalid ranges and clamp out-of-range values; require a real
+command ID before suppressing a submission tray row; consolidate the monster HP
+track style; and cache per-action map eligibility reasons while retaining an
+immediate click-time eligibility check. A separate browser reproduction found and
+fixed Go-to result selection reopening the dropdown after partial search.
+
+Validation: all 132 frontend tests pass, including unassigned-command tray cases.
+Isolated browser component checks passed for eight missing/valid/out-of-range
+resource bars and partial search selection with Enter/mouse plus Escape. The full
+post-review `bash scripts/check.sh` passed (Go, Python, transport audit, formatting,
+132 frontend tests, lint, typecheck/build and Compose validation). Exact next action:
+push these fixes, reply to the inline finding and review-body nitpicks with the
+commit SHA, and verify the new-head CI/review status. Leave PR #58 unmerged.
+
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
 Implemented the reusable command fan-out foundation for Issue #30. The frontend

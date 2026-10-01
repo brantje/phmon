@@ -254,7 +254,7 @@ const mapMoreActions = [
   'training.radius.set',
   'client.clientless',
 ]
-function mapActionReason(name: RemoteControlActionName) {
+function computeMapActionReason(name: RemoteControlActionName) {
   if (!props.selectedIds.length) return 'Select characters below.'
   if (actions.preparing.value || actions.submitting.value)
     return 'Another action is being submitted.'
@@ -273,9 +273,20 @@ function mapActionReason(name: RemoteControlActionName) {
         .filter(Boolean)
         .join(' · ') || 'No eligible targets.'
 }
+const mapActionReasons = computed(() =>
+  Object.fromEntries(
+    (
+      [
+        ...mapActions.map((action) => action.name),
+        'trace.start',
+        'trace.stop',
+      ] as RemoteControlActionName[]
+    ).map((name) => [name, computeMapActionReason(name)]),
+  ),
+)
 async function runMapAction(name: RemoteControlActionName, event: MouseEvent) {
   mapActionTrigger.value = event.currentTarget as HTMLButtonElement
-  if (mapActionReason(name)) return
+  if (computeMapActionReason(name)) return
   chooseAction(name)
   await nextTick()
   await runAction()
@@ -440,8 +451,8 @@ function cancelReview(operation: FanOutOperation) {
         :key="action.name"
         class="compact-button"
         type="button"
-        :disabled="Boolean(mapActionReason(action.name))"
-        :title="mapActionReason(action.name)"
+        :disabled="Boolean(mapActionReasons[action.name])"
+        :title="mapActionReasons[action.name]"
         @click="runMapAction(action.name, $event)"
       >
         <UIcon :name="action.icon" />{{ action.label }}
@@ -469,8 +480,8 @@ function cancelReview(operation: FanOutOperation) {
         <button
           class="compact-button"
           type="button"
-          :disabled="Boolean(mapActionReason('trace.start'))"
-          :title="mapActionReason('trace.start')"
+          :disabled="Boolean(mapActionReasons['trace.start'])"
+          :title="mapActionReasons['trace.start']"
           @click="runMapAction('trace.start', $event)"
         >
           Start
@@ -478,8 +489,8 @@ function cancelReview(operation: FanOutOperation) {
         <button
           class="compact-button"
           type="button"
-          :disabled="Boolean(mapActionReason('trace.stop'))"
-          :title="mapActionReason('trace.stop')"
+          :disabled="Boolean(mapActionReasons['trace.stop'])"
+          :title="mapActionReasons['trace.stop']"
           @click="runMapAction('trace.stop', $event)"
         >
           Stop

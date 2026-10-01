@@ -2167,7 +2167,8 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-detail-hp-track) {
-  height: 8px;
+  position: relative;
+  height: 16px;
   margin: 9px 1px 1px;
   border-radius: 5px;
   background: #532c32;
@@ -2221,10 +2222,6 @@ onBeforeUnmount(() => {
   max-width: calc(100% - 24px);
   gap: 6px;
   padding: 10px;
-}
-:global(.phmon-map-detail-hp-track) {
-  position: relative;
-  height: 16px;
 }
 :global(.phmon-map-detail-hp-label) {
   position: absolute;

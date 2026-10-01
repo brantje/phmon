@@ -74,3 +74,21 @@ test('command completion does not fabricate arrival; dismissals do not hide repl
   assert.equal(navigationTrayGroup('arrived'), 'done')
   assert.equal(navigationTrayGroup('progress_uncertain'), 'attention')
 })
+
+test('unassigned command IDs never suppress a submitted child row', () => {
+  for (const commandID of [undefined, '']) {
+    const pending = {
+      ...operation,
+      children: [{ ...operation.children[0]!, commandID }],
+    }
+    assert.equal(
+      mapNavigationTrayRows(
+        [{ ...route, commandID: '' }],
+        [pending],
+        'greatest',
+        new Set(),
+      ).length,
+      2,
+    )
+  }
+})

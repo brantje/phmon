@@ -81,3 +81,20 @@ Reset… button share the footer. Counts remain sourced from the backend.
 custom dates, conditional rank filter and scoped reset dialog/Cancel, plus mobile
 filter sizing without horizontal overflow. Browser error collection was empty.
 [Updated section](historical-heatmaps-panel.png).
+
+
+## PR #58 full review
+
+CodeRabbit's requested full review of `a098ed4` completed with one accessibility
+finding and three nitpicks. The fixes provide matching accessible resource labels
+and bounded numeric values, require an assigned command ID for tray deduplication,
+consolidate the monster HP-track CSS, and cache map action eligibility for rendering
+while checking it again when clicked. All 132 frontend unit tests pass, including
+missing/empty command-ID cases.
+
+An isolated browser harness compiled the actual Vue components: eight resource
+bars covered missing, valid, nonfinite and out-of-range data; all exposed matching
+accessible text and consistent bounded numeric attributes. Partial Go-to searches
+now close after Enter or mouse selection, reopen when typing, and close on Escape.
+Browser error collection was empty. These checks use local fixtures only.
+The full post-review `bash scripts/check.sh` passed.

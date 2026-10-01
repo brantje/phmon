@@ -18,10 +18,14 @@ const filtered = computed(() =>
       .includes(query.value.trim().toLocaleLowerCase()),
   ),
 )
-watch(query, () => {
-  active.value = 0
-  open.value = true
-})
+watch(
+  query,
+  () => {
+    active.value = 0
+    open.value = true
+  },
+  { flush: 'sync' },
+)
 watch(filtered, () => {
   active.value = Math.min(active.value, Math.max(0, filtered.value.length - 1))
 })
