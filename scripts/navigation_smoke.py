@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Disposable authenticated protocol-v8 navigation flow using fixture adapters.
+"""Disposable authenticated navigation flow using fixture adapters.
 
 Requires an isolated Compose project/database and never invokes a real phBot API.
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -29,6 +30,19 @@ DESTINATION = {"region": 25001, "x": 6650, "y": 1080, "z": 0} if OUTDOOR_SEAM el
     "region": 25000, "x": 6430, "y": 1090, "z": 0,
 }
 LAST_NAVIGATION_ROUTES: list[dict] = []
+
+
+def plugin_protocol_version() -> int:
+    path = os.path.join(ROOT, "plugin", "PhMon.py")
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "PROTOCOL_VERSION" and isinstance(node.value, ast.Constant):
+                return int(node.value.value)
+    raise RuntimeError("plugin PROTOCOL_VERSION was not found")
 
 
 def required(name: str) -> str:
@@ -187,15 +201,16 @@ def main():
             "type": "subscribe", "protocol_version": 1, "subscription_id": "navigation-controls",
             "revision": 1, "stream": "controls", "filter": {"character_ids": [character["character_id"]]},
         })
+        protocol_version = plugin_protocol_version()
         controls = wait_for_subscription(
             live, "navigation-controls",
             lambda data: next((target.get("controls") for target in data.get("targets", [])
                                if target.get("character_id") == character["character_id"]
                                and target.get("character", {}).get("session_id") == character["session_id"]
-                               and target.get("controls", {}).get("agent_protocol_version") == 8), None),
+                               and target.get("controls", {}).get("agent_protocol_version") == protocol_version), None),
         )
         if not controls.get("capabilities", {}).get("character.navigate", {}).get("supported"):
-            raise RuntimeError("protocol-v8 fixture did not report supported generated-script navigation")
+            raise RuntimeError("current plugin protocol fixture did not report supported generated-script navigation")
 
         position_count_before_command = position_history_count(project, character["character_id"])
 

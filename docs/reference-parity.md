@@ -13,6 +13,9 @@ at its top edge. Selecting a label or its side-list row opens a compact
 editor with the observed center/radius, Move center, a Radius input, Apply and
 Reset. The center and edge handles drag a local draft; the label gains an
 `· unsaved` suffix and the observed circle stays visible until readback arrives.
+While that suffix is showing, the chip places a discard X and an accept
+checkmark after the character name and before `unsaved`. Those controls call
+the same Reset and Apply actions as the side editor.
 Apply sends only the dirty parts, center before radius, through the existing
 audited commands and reports each step's durable result. Reset discards the draft.
 Hiding the layer removes circles, handles and the editor.
@@ -77,6 +80,26 @@ disconnects and session replacement remove the old live contribution through the
 existing live-map invalidation path.
 
 This entry records implementation/test semantics, not a live phBot screenshot.
+
+## Live NPC and teleporter map layer — 2026-10-01
+
+Issue #24 adds a current-state **NPCs** layer to the Map screen. It uses
+`/game-assets/interface/minimap/mm_sign_npc.png` for both NPCs and teleporters.
+Names are always drawn under the marker. A row is a teleporter when its server
+name matches `GATE_<name>`; every other row is an NPC. The popup shows name, role,
+server name, model, region, coordinates, and the observing characters. Navigate
+here opens the existing navigation confirmation at the marker and does not submit
+a command by itself.
+
+The payload is the union of connected characters' latest `get_npcs()` snapshots.
+Different sessions collapse when server, region, server name, model, and position
+within 8 world units match. Same-session rows stay separate. Cave placement uses
+the observer's Z and omits a row when the floor cannot be proven. Disconnect,
+session replacement, and a 35-second TTL remove a snapshot. There is no NPC
+history, shop listing, or teleport execution.
+
+This entry records implementation and fixture semantics. A live phBot `get_npcs()`
+observation still requires plugin 1.7.0 on the operator's runtime.
 A same-viewport runtime check with a spawned party member, duplicate observers and
 a cave floor remains open.
 
@@ -1588,7 +1611,9 @@ touch/keyboard use. Local browser inspection showed selected targets, per-charac
 offline skips and reasons, and a disabled Navigate action when no target was
 eligible. Enter selected the map center. At 390×844 the selected-point action opened
 the menu within the viewport. Active route overlays showed an independently labeled
-character route, destination and waiting/stale status at all three target viewports.
+character route and waiting/stale status at all three target viewports. A later
+operator request removed the separate destination marker; the remaining path and
+waypoint dots stay.
 The browser document had no horizontal overflow at 1440×1000, 1280×800 or 390×844;
 there were no page errors. No command was submitted from the browser UI because its
 fixture targets were offline.
@@ -1639,3 +1664,11 @@ simultaneous independent routes and fresh arrival after command completion.
 Independent `path_not_found` failures are retained in the ledger; their cause is
 unverified. The operator confirmed the plugin upload and later reported working
 behavior. Fixture arrival remains explicitly separate from Windows/phBot evidence.
+
+### Monster rank icons on the name label — 2026-10-01
+
+Live monster markers stay the red HP bubble. General, Champion, and Giant rank
+icons, plus the shared party badge for party ranks, render in front of the
+opt-in name label. They do not replace or cover the bubble. Names remain off
+until **Show nearby monsters names** is enabled, so the icons appear only with
+that label.

@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.6.2'
+pVersion = '1.7.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -53,6 +53,10 @@ MAX_EVENT_BYTES = 40 * 1024
 MAX_EVENT_PAYLOAD_BYTES = 32768
 MAX_EVENT_BATCH_SIZE = 16
 MAX_MONSTERS_PER_SNAPSHOT = 128
+MAX_NPCS_PER_SNAPSHOT = 128
+NPC_POLL_INTERVAL_SECONDS = 2.0
+NPC_REFRESH_INTERVAL_SECONDS = 15.0
+_NPC_GATE_ROLE = re.compile(r'^GATE_[A-Za-z0-9_]+$')
 MAX_MOB_SPOOL_ITEMS = 2048
 MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
 MOB_POLL_INTERVAL_SECONDS = 0.1
@@ -127,7 +131,7 @@ def _optional_phbot_api(name):
     except Exception:
         return None
 
-_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','generate_path','set_training_position',
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','generate_path','set_training_position',
               'set_training_radius','set_training_area','get_training_area','move_to_region',
               'generate_script','start_script','use_return_scroll','disconnect')
 
@@ -300,6 +304,76 @@ def collect_monster_observation(api=None):
             monster['z'] = float(z)
         monsters.append(monster)
     return ('truncated' if truncated else 'observed'), monsters, truncated
+
+
+def _npc_role(servername):
+    if isinstance(servername, str) and _NPC_GATE_ROLE.fullmatch(servername):
+        return 'teleporter'
+    return 'npc'
+
+
+def collect_npc_observation(api=None):
+    """Return an explicitly classified, bounded get_npcs() observation."""
+    function = (api or {}).get('get_npcs') if isinstance(api, dict) else None
+    if not callable(function):
+        if isinstance(api, dict):
+            return 'unavailable', [], False
+        function = _optional_phbot_api('get_npcs')
+    if not callable(function):
+        return 'unavailable', [], False
+    try:
+        raw = function()
+    except Exception:
+        return 'unavailable', [], False
+    if raw is None or not isinstance(raw, dict):
+        return 'unavailable', [], False
+    entries = list(raw.items())
+    truncated = len(entries) > MAX_NPCS_PER_SNAPSHOT
+    npcs = []
+    for npc_id, value in entries[:MAX_NPCS_PER_SNAPSHOT]:
+        if not isinstance(value, dict):
+            truncated = True
+            continue
+        identifier = _bounded_text(npc_id, 64)
+        model = value.get('model')
+        region = value.get('region')
+        x = value.get('x', value.get('X'))
+        y = value.get('y', value.get('Y'))
+        if (identifier is None or model is not None and (
+                not isinstance(model, int) or isinstance(model, bool) or model < 0 or model > 4294967295) or
+                not _valid_position_region(region) or not _number(x) or not _number(y) or
+                abs(x) > 1000000 or abs(y) > 1000000):
+            truncated = True
+            continue
+        servername = _bounded_text(value.get('servername'), 64)
+        while servername and len(servername.encode('utf-8')) > 64:
+            servername = servername[:-1]
+        npc = {
+            'id': identifier, 'role': _npc_role(servername), 'region': region,
+            'x': float(x), 'y': float(y),
+        }
+        name = _bounded_text(value.get('name'), 64)
+        while name and len(name.encode('utf-8')) > 64:
+            name = name[:-1]
+        if name is not None:
+            npc['name'] = name
+        if servername is not None:
+            npc['servername'] = servername
+        if model is not None:
+            npc['model_id'] = model
+        npcs.append(npc)
+    return ('truncated' if truncated else 'observed'), npcs, truncated
+
+
+def _npc_snapshot_signature(status, region, npcs):
+    rows = []
+    for npc in npcs:
+        rows.append((
+            npc.get('id'), npc.get('name'), npc.get('servername'), npc.get('model_id'),
+            npc.get('role'), npc.get('region'), npc.get('x'), npc.get('y'),
+        ))
+    rows.sort()
+    return (status, region, tuple(rows))
 
 
 def _zone_name_for_region(region, limit=80):
@@ -2009,6 +2083,9 @@ class AgentWorker(object):
         self._mob_retry_at = {}
         self._latest_map_observation = None
         self._last_map_sent_at = None
+        self._npc_samples = _queue.Queue(maxsize=1)
+        self._latest_npc_observation = None
+        self._last_npc_sent_at = None
         self._event_sequence_lock = threading.Lock()
         self._event_sequences = {}
         self._alchemy_items_lock = threading.Lock()
@@ -2071,6 +2148,29 @@ class AgentWorker(object):
                 return False
         return True
 
+    def update_map_npcs(self, identity, status, region, npcs, observer_z=None):
+        observation = {
+            'identity': dict(identity), 'status': status, 'region': region,
+            'npcs': [dict(npc) for npc in npcs], 'observed_at': _worker_utc_now(self),
+        }
+        if _number(observer_z) and abs(observer_z) <= 1000000:
+            observation['observer_z'] = float(observer_z)
+        try:
+            self._npc_samples.put_nowait(observation)
+        except _queue.Full:
+            try: self._npc_samples.get_nowait()
+            except _queue.Empty: pass
+            try: self._npc_samples.put_nowait(observation)
+            except _queue.Full: pass
+        return True
+
+    def clear_map_npcs(self):
+        while True:
+            try: self._npc_samples.get_nowait()
+            except _queue.Empty: break
+        self._latest_npc_observation = None
+        self._last_npc_sent_at = None
+
     def _spool_queued_mob_samples(self):
         while True:
             sample = self._pending_mob_spool_sample
@@ -2104,6 +2204,7 @@ class AgentWorker(object):
             client.send_json({'type': 'map.monsters', 'protocol_version': PROTOCOL_VERSION,
                               'map_snapshot': snapshot})
             self._last_map_sent_at = observation['observed_at']
+        self._flush_map_npcs(client)
         self._flush_navigation_route(client)
         now = _monotonic()
         for sample in self._mob_spool.pending():
@@ -2113,6 +2214,27 @@ class AgentWorker(object):
             client.send_json({'type': 'mob.sample', 'protocol_version': PROTOCOL_VERSION, 'sample': sample})
             self._mob_retry_at[sample_id] = now + 3.0
             break
+
+    def _flush_map_npcs(self, client):
+        while True:
+            try: self._latest_npc_observation = self._npc_samples.get_nowait()
+            except _queue.Empty: break
+        observation = self._latest_npc_observation
+        if (observation is None or self.character_id is None or self.session_id is None or
+                self._identity_key(observation.get('identity')) != self._identity_key(self._current_identity) or
+                observation.get('observed_at') == self._last_npc_sent_at):
+            return
+        snapshot = {
+            'status': observation['status'], 'character_id': self.character_id,
+            'session_id': self.session_id, 'observed_at': observation['observed_at'],
+            'region': observation['region'], 'npcs': observation['npcs'],
+            'truncated': observation['status'] == 'truncated',
+        }
+        if observation.get('observer_z') is not None:
+            snapshot['observer_z'] = observation['observer_z']
+        client.send_json({'type': 'map.npcs', 'protocol_version': PROTOCOL_VERSION,
+                          'map_snapshot': snapshot})
+        self._last_npc_sent_at = observation['observed_at']
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
@@ -2467,6 +2589,7 @@ class AgentWorker(object):
                 self._latest_resources = None
                 self._latest_resources_identity = None
                 self._last_map_sent_at = None
+                self._last_npc_sent_at = None
                 self._item_tracker.reset('backend_reconnect')
                 # Callbacks may have queued a leave while the backend was
                 # unavailable. Apply the newest queued fact before replaying
@@ -2488,6 +2611,7 @@ class AgentWorker(object):
                             self._latest_resources_identity = None
                             self._latest_map_observation = None
                             self._last_map_sent_at = None
+                            self.clear_map_npcs()
                             self._resource_baseline_required = True
                             self._confirmed_resources = None
                             self._item_tracker.reset('character_left')
@@ -3487,6 +3611,20 @@ _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
 _last_monster_poll_at = 0.0
 _last_mob_cell_samples = {}
+_last_npc_poll_at = 0.0
+_last_npc_region = None
+_last_npc_signature = None
+_last_npc_publish_at = 0.0
+_npc_sample_forced = False
+
+
+def _reset_npc_sample_state():
+    global _last_npc_poll_at, _last_npc_region, _last_npc_signature, _last_npc_publish_at, _npc_sample_forced
+    _last_npc_poll_at = 0.0
+    _last_npc_region = None
+    _last_npc_signature = None
+    _last_npc_publish_at = 0.0
+    _npc_sample_forced = False
 _death_callback_active = False
 _phbot_connected_state = None
 _pending_callback_events = _queue.Queue(maxsize=64)
@@ -3644,6 +3782,7 @@ def disconnected():
         _lifecycle_event('session.disconnected', 'disconnected', include_identity=_worker is not None)
     if _worker is not None:
         _worker.leave_character()
+    _reset_npc_sample_state()
     _set_gui_status('SRO client disconnected. Waiting for login...')
 
 
@@ -3655,11 +3794,14 @@ def joined_game():
     _character_joined = True
     _death_callback_active = False
     # joined_game runs before phBot has loaded character data; keep this agent-scoped.
+    _reset_npc_sample_state()
     if not already_joined:
         _lifecycle_event('session.joined_game', 'joined_game')
 
 
 def teleported():
+    global _npc_sample_forced
+    _npc_sample_forced = True
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
         _worker._cancel_navigation_generation('character_teleported')
     _lifecycle_event('session.teleported', 'teleported', include_identity=True)
@@ -4006,6 +4148,7 @@ def _sample_character(timing=None):
         _last_character_signature = signature
         _last_character_sample_at = now
     timing.run('monsters', _sample_monsters, identity, state, position, now)
+    timing.run('npcs', _sample_npcs, identity, state, position, now)
     if hasattr(_worker, 'report_control_state'):
         try: timing.run('controls', _worker.report_control_state)
         except Exception as error: _log('control-state sample failed (' + error.__class__.__name__ + ')')
@@ -4075,6 +4218,39 @@ def _sample_monsters(identity, state, position, now=None):
         oldest = sorted(_last_mob_cell_samples.items(), key=lambda item: item[1])[:2048]
         for key, _ in oldest:
             _last_mob_cell_samples.pop(key, None)
+    return True
+
+
+def _sample_npcs(identity, state, position, now=None):
+    global _last_npc_poll_at, _last_npc_region, _last_npc_signature, _last_npc_publish_at, _npc_sample_forced
+    if _worker is None:
+        return False
+    now = _monotonic() if now is None else now
+    region = state.get('region') if isinstance(state, dict) else None
+    if not _valid_position_region(region):
+        return False
+    forced = _npc_sample_forced or _last_npc_region != region
+    if not forced and now - _last_npc_poll_at < NPC_POLL_INTERVAL_SECONDS:
+        return False
+    _last_npc_poll_at = now
+    _npc_sample_forced = False
+    status, npcs, truncated = collect_npc_observation()
+    matching = [npc for npc in npcs if _mob_region_matches(region, npc.get('region'))]
+    if len(matching) != len(npcs):
+        truncated = True
+    if truncated:
+        status = 'truncated'
+    signature = _npc_snapshot_signature(status, region, matching)
+    changed = signature != _last_npc_signature
+    refresh_due = (_last_npc_publish_at == 0.0 or
+                   now - _last_npc_publish_at >= NPC_REFRESH_INTERVAL_SECONDS)
+    _last_npc_region = region
+    if not forced and not changed and not refresh_due:
+        return False
+    observer_z = position.get('z') if isinstance(position, dict) else None
+    _worker.update_map_npcs(identity, status, region, matching, observer_z=observer_z)
+    _last_npc_signature = signature
+    _last_npc_publish_at = now
     return True
 
 

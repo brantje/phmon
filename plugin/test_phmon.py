@@ -262,6 +262,163 @@ class MobObservationTests(unittest.TestCase):
             self.assertEqual(worker._mob_spool.pending(), [])
 
 
+class NPCObservationTests(unittest.TestCase):
+    def setUp(self):
+        self.previous = (
+            plugin._worker, plugin._last_npc_poll_at, plugin._last_npc_region,
+            plugin._last_npc_signature, plugin._last_npc_publish_at, plugin._npc_sample_forced,
+        )
+        plugin._reset_npc_sample_state()
+
+    def tearDown(self):
+        (plugin._worker, plugin._last_npc_poll_at, plugin._last_npc_region,
+         plugin._last_npc_signature, plugin._last_npc_publish_at, plugin._npc_sample_forced) = self.previous
+
+    def test_collector_distinguishes_missing_empty_exception_and_role(self):
+        self.assertEqual(plugin.collect_npc_observation({'get_npcs': lambda: None}),
+                         ('unavailable', [], False))
+        self.assertEqual(plugin.collect_npc_observation({'get_npcs': lambda: {}}),
+                         ('observed', [], False))
+
+        def explode():
+            raise RuntimeError('npc api failed')
+
+        self.assertEqual(plugin.collect_npc_observation({'get_npcs': explode}),
+                         ('unavailable', [], False))
+        self.assertEqual(plugin.collect_npc_observation({}), ('unavailable', [], False))
+        raw = {
+            10: {'name': 'Jangan', 'servername': 'GATE_CH', 'model': 2094,
+                 'region': 25000, 'x': 6461.4, 'y': 1097.4},
+            273: {'name': 'Herbalist Yangyun', 'servername': 'NPC_CH_POTION',
+                  'model': 2005, 'region': 25000, 'x': 6494.4, 'y': 1100.7},
+            'bad': {'name': 'Dropped', 'region': 0, 'x': 1, 'y': 2},
+        }
+        status, npcs, truncated = plugin.collect_npc_observation({'get_npcs': lambda: raw})
+        self.assertEqual((status, truncated), ('truncated', True))
+        self.assertEqual([npc['id'] for npc in npcs], ['10', '273'])
+        self.assertEqual(npcs[0]['role'], 'teleporter')
+        self.assertEqual(npcs[1]['role'], 'npc')
+        self.assertNotIn('servername', plugin.collect_npc_observation({
+            'get_npcs': lambda: {1: {'region': 25000, 'x': 1, 'y': 2}},
+        })[1][0])
+
+    def test_collector_bounds_rows_and_text(self):
+        raw = {
+            str(index): {'name': 'N', 'servername': 'NPC_TEST', 'model': 1,
+                         'region': 25000, 'x': index, 'y': index}
+            for index in range(plugin.MAX_NPCS_PER_SNAPSHOT + 1)
+        }
+        status, npcs, truncated = plugin.collect_npc_observation({'get_npcs': lambda: raw})
+        self.assertEqual(status, 'truncated')
+        self.assertTrue(truncated)
+        self.assertEqual(len(npcs), plugin.MAX_NPCS_PER_SNAPSHOT)
+        long_name = '名' * 80
+        _, bounded, _ = plugin.collect_npc_observation({
+            'get_npcs': lambda: {7: {'name': long_name, 'servername': 'S' * 80,
+                                     'region': 25000, 'x': 1, 'y': 2}},
+        })
+        self.assertLessEqual(len(bounded[0]['name'].encode('utf-8')), 64)
+        self.assertLess(len(bounded[0]['name']), 64)
+        self.assertEqual(len(bounded[0]['servername']), 64)
+        self.assertLessEqual(len(bounded[0]['servername'].encode('utf-8')), 64)
+        self.assertEqual(bounded[0]['role'], 'npc')
+
+    def test_sampler_filters_region_suppresses_unchanged_and_refreshes(self):
+        class WorkerStub:
+            def __init__(self):
+                self.snapshots = []
+
+            def update_map_npcs(self, identity, status, region, npcs, observer_z=None):
+                self.snapshots.append((status, region, npcs, observer_z))
+                return True
+
+        worker = WorkerStub()
+        plugin._worker = worker
+        seen = {'region': 25000}
+
+        def collect():
+            return ('observed', [{
+                'id': '10', 'name': 'Jangan', 'servername': 'GATE_CH', 'role': 'teleporter',
+                'region': seen['region'], 'x': 10.0, 'y': 20.0,
+            }, {
+                'id': '99', 'name': 'Elsewhere', 'servername': 'NPC_OTHER', 'role': 'npc',
+                'region': 25273, 'x': 1.0, 'y': 2.0,
+            }], False)
+
+        with patch.object(plugin, 'collect_npc_observation', side_effect=lambda: collect()):
+            self.assertTrue(plugin._sample_npcs({'name': 'Alpha'}, {'region': 25000},
+                                                 {'x': 1, 'y': 2, 'z': 3}, now=10))
+            self.assertFalse(plugin._sample_npcs({'name': 'Alpha'}, {'region': 25000},
+                                                  {'x': 1, 'y': 2, 'z': 3}, now=11.9))
+            self.assertFalse(plugin._sample_npcs({'name': 'Alpha'}, {'region': 25000},
+                                                  {'x': 1, 'y': 2, 'z': 3}, now=12))
+            self.assertTrue(plugin._sample_npcs({'name': 'Alpha'}, {'region': 25000},
+                                                 {'x': 1, 'y': 2, 'z': 3}, now=25))
+            seen['region'] = 32767
+            self.assertTrue(plugin._sample_npcs({'name': 'Alpha'}, {'region': -32767},
+                                                 {'x': 1, 'y': 2, 'z': -9}, now=25))
+        self.assertEqual(len(worker.snapshots), 3)
+        status, region, npcs, observer_z = worker.snapshots[0]
+        self.assertEqual((status, region, observer_z), ('truncated', 25000, 3))
+        self.assertEqual([npc['id'] for npc in npcs], ['10'])
+        self.assertEqual(worker.snapshots[2][1], -32767)
+        self.assertEqual(worker.snapshots[2][2][0]['region'], 32767)
+
+    def test_teleport_forces_an_immediate_resample(self):
+        class WorkerStub:
+            def __init__(self):
+                self.calls = 0
+
+            def update_map_npcs(self, identity, status, region, npcs, observer_z=None):
+                self.calls += 1
+                return True
+
+        plugin._worker = WorkerStub()
+        with patch.object(plugin, 'collect_npc_observation', return_value=('observed', [], False)):
+            plugin._sample_npcs({'name': 'Alpha'}, {'region': 25000}, {'z': 0}, now=10)
+            plugin._npc_sample_forced = True
+            self.assertTrue(plugin._sample_npcs({'name': 'Alpha'}, {'region': 25000}, {'z': 0}, now=10))
+        self.assertEqual(plugin._worker.calls, 2)
+        plugin._worker = None
+        plugin._npc_sample_forced = False
+        plugin.teleported()
+        self.assertTrue(plugin._npc_sample_forced)
+        plugin._pending_callback_events.get_nowait()
+
+    def test_worker_sends_npc_snapshot_and_clears_it_with_the_session(self):
+        worker = plugin.AgentWorker(
+            {'backend_url': 'ws://127.0.0.1:1', 'agent_id': AGENT_ID, 'agent_token': 'fixture-token'},
+            'fixture',
+        )
+        identity = {'server': 'greatest', 'name': 'Alpha', 'guild': ''}
+        worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker._current_identity = identity
+        npc = {'id': '10', 'name': 'Jangan', 'servername': 'GATE_CH', 'role': 'teleporter',
+               'region': 25000, 'x': 1.0, 'y': 2.0}
+        self.assertTrue(worker.update_map_npcs(identity, 'observed', 25000, [npc], observer_z=0))
+
+        class Client:
+            def __init__(self):
+                self.sent = []
+
+            def send_json(self, message):
+                self.sent.append(message)
+
+        client = Client()
+        worker._flush_map_npcs(client)
+        self.assertEqual(client.sent[0]['type'], 'map.npcs')
+        self.assertEqual(client.sent[0]['protocol_version'], plugin.PROTOCOL_VERSION)
+        self.assertEqual(client.sent[0]['map_snapshot']['npcs'], [npc])
+        worker._flush_map_npcs(client)
+        self.assertEqual(len(client.sent), 1)
+        worker.update_map_npcs(identity, 'observed', 25000, [])
+        worker.clear_map_npcs()
+        worker._flush_map_npcs(client)
+        self.assertEqual(len(client.sent), 1)
+        self.assertIsNone(worker._latest_npc_observation)
+
+
 class ConfigTests(unittest.TestCase):
     def test_profile_path_is_unavailable_until_phbot_reports_login(self):
         with patch.object(plugin, '_get_profile', return_value=None):

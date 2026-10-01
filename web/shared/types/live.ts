@@ -168,6 +168,32 @@ export interface MapPartyMember {
   observed_at: string
 }
 
+export interface MapNpcObserver {
+  character_id: string
+  session_id: string
+  name: string
+}
+
+export interface MapNpc {
+  id: string
+  name?: string
+  servername?: string
+  model_id?: number
+  role: 'npc' | 'teleporter'
+  region: number
+  x: number
+  y: number
+  observer_z?: number
+  observed_at: string
+  observers: MapNpcObserver[]
+}
+
+export interface MapNpcSnapshot {
+  status: 'observed' | 'unavailable' | 'truncated'
+  truncated?: boolean
+  npcs: MapNpc[]
+}
+
 export interface MapPartySnapshot {
   status: 'observed' | 'unavailable' | 'truncated'
   truncated?: boolean
@@ -239,6 +265,8 @@ export interface MapSnapshot {
   /** Optional for compatibility with backends predating training areas. */
   training_areas?: MapTrainingAreasSnapshot
   monsters: MapMonsterObservation[]
+  /** Optional for compatibility with backends predating live NPCs. */
+  npcs?: MapNpcSnapshot
   events: ActivityEvent[]
   /** Optional for compatibility with backends predating navigation routes. */
   navigation?: NavigationRoute[]

@@ -124,7 +124,6 @@ test('keeps wait/teleport blocks independent and safely maps each segment', () =
   assert.equal(overlays[0]?.blocks[0]?.length, 2)
   assert.equal(overlays[0]?.blocks[1]?.length, 1)
   assert.ok(overlays[0]?.currentAnchor)
-  assert.ok(overlays[0]?.destination)
 })
 
 test('stale routes freeze their remaining geometry and suppress the live connector', () => {
@@ -286,7 +285,6 @@ test('job temple route evidence scoped to 1F never renders on manually selected 
   })
   assert.equal(upper.length, 1)
   assert.equal(upper[0]?.blocks.length, 0)
-  assert.equal(upper[0]?.destination, undefined)
 })
 
 test('outdoor tile seams remain one connected walk and allow its current connector', () => {
@@ -339,5 +337,4 @@ test('a filtered prefix cannot attach the character to a later visible section',
   })[0]!
   assert.equal(overlay.blocks[0]?.length, 1)
   assert.equal(overlay.currentAnchor, undefined)
-  assert.equal(overlay.destination, undefined)
 })

@@ -19,11 +19,12 @@ import (
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
+	"phmon/server/internal/npcs"
 	"phmon/server/internal/resources"
 )
 
 const (
-	agentProtocolVersion    = 8
+	agentProtocolVersion    = 9
 	agentMinProtocolVersion = 2
 )
 
@@ -57,6 +58,7 @@ type agentHandler struct {
 	events     *events.Store
 	mobs       *mobs.Store
 	mobLive    *mobs.LiveStore
+	npcLive    *npcs.LiveStore
 	analytics  *mapanalytics.Store
 	navigation *navigation.Store
 }
@@ -70,6 +72,7 @@ type agentMonsterSnapshot struct {
 	ObserverZ   *float64       `json:"observer_z,omitempty"`
 	Truncated   bool           `json:"truncated,omitempty"`
 	Monsters    []mobs.Monster `json:"monsters"`
+	NPCs        []npcs.NPC     `json:"npcs"`
 }
 
 type agentCapability struct {
@@ -263,6 +266,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if h.mobLive != nil {
 				h.mobLive.RemoveAgent(hello.AgentID)
 			}
+			if h.npcLive != nil {
+				h.npcLive.RemoveAgent(hello.AgentID)
+			}
 			if h.navigation != nil {
 				h.navigation.RemoveAgent(hello.AgentID)
 			}
@@ -347,6 +353,33 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			h.mobLive.Apply(mobs.LiveSnapshot{Server: character.Server, AgentID: hello.AgentID, CharacterID: frame.CharacterID, SessionID: frame.SessionID,
 				Character: character.Name, Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
 				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Monsters: frame.Monsters})
+			h.live.Invalidate()
+		case "map.npcs":
+			frame := message.MapSnapshot
+			if hello.ProtocolVersion < 9 || frame == nil || h.characters == nil || h.npcLive == nil ||
+				!agentdomain.ValidAgentID(frame.CharacterID) || !agentdomain.ValidAgentID(frame.SessionID) ||
+				frame.ObserverZ != nil && !mobs.ValidCoordinate(*frame.ObserverZ) ||
+				npcs.ValidateLiveSnapshot(frame.Status, frame.Region, frame.NPCs, time.Now().UTC(), frame.ObservedAt) != nil ||
+				(frame.Status == "truncated") != frame.Truncated {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid map npc snapshot", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
+			cancel()
+			if characterErr != nil || !character.Online || character.SessionID == nil || *character.SessionID != frame.SessionID ||
+				character.AgentID == nil || *character.AgentID != hello.AgentID {
+				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, frame.CharacterID, frame.SessionID) {
+					return
+				}
+				continue
+			}
+			if character.Region == nil || *character.Region != frame.Region {
+				continue
+			}
+			h.npcLive.Apply(npcs.LiveSnapshot{Server: character.Server, AgentID: hello.AgentID, CharacterID: frame.CharacterID, SessionID: frame.SessionID,
+				Character: character.Name, Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
+				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, NPCs: frame.NPCs})
 			h.live.Invalidate()
 		case "navigation.route":
 			frame := message.NavigationRoute
@@ -611,6 +644,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				// snapshot in either case so that the new route can be admitted.
 				h.navigation.RemoveSession(previous.SessionID)
 			}
+			if h.npcLive != nil && previous.SessionID != "" && previous.SessionID != sessionID {
+				h.npcLive.RemoveSession(previous.SessionID)
+			}
 			if previous.SessionID != "" && (previous.AgentID != hello.AgentID || previous.Generation != generation) {
 				revokeCtx, revokeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
 				previousProtocol := h.registry.ProtocolVersion(previous.AgentID, previous.Generation)
@@ -755,6 +791,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			if h.mobLive != nil && message.SessionID != "" {
 				h.mobLive.RemoveSession(message.SessionID)
+			}
+			if h.npcLive != nil && message.SessionID != "" {
+				h.npcLive.RemoveSession(message.SessionID)
 			}
 			if h.navigation != nil && message.SessionID != "" {
 				h.navigation.RemoveSession(message.SessionID)

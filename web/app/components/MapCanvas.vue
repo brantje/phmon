@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import type {
   ActivityEvent,
   MapMonster,
+  MapNpc,
   MapPartyMember,
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
@@ -22,6 +23,11 @@ import {
   trainingAreaAtPoint,
   type TrainingAreaOverlay,
 } from '~/utils/mapTrainingAreas'
+import {
+  NPC_MARKER_ICON,
+  npcDisplayLabel,
+  npcRoleLabel,
+} from '~/utils/mapNpcMarkers'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
 import {
   localMapAsset,
@@ -47,12 +53,13 @@ import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 interface MapCanvasMarker {
   id: string
   label: string
-  kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
+  kind: 'character' | 'party' | 'npc' | 'monster' | 'death' | 'drop' | 'event'
   position: RasterPosition
   placement?: 'exact' | 'region-tile'
   selected?: boolean
   character?: CharacterMarkerInput
   party?: MapPartyMember
+  npc?: MapNpc
   monster?: MapMonster
   showLabel?: boolean
   itemName?: string
@@ -71,16 +78,22 @@ const props = defineProps<{
   navigationRoutes?: MapRouteOverlay[]
   trainingAreas?: TrainingAreaOverlay[]
   trainingEditable?: boolean
+  trainingAcceptDisabled?: boolean
+  trainingDiscardDisabled?: boolean
+  trainingAcceptTitle?: string
 }>()
 const emit = defineEmits<{
   viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
   trainingselect: [characterID: string]
   trainingmove: [characterID: string, point: RasterPosition]
   trainingresize: [characterID: string, radiusPixels: number]
+  trainingaccept: [characterID: string]
+  trainingdiscard: [characterID: string]
   pointselect: [point: RasterPosition, trainingAreaID?: string | null]
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
+  navigateto: [point: RasterPosition, anchor: { x: number; y: number }]
   mapdrag: []
   opencharacter: [characterID: string]
 }>()
@@ -105,8 +118,6 @@ let heatRenderer: L.Canvas | undefined
 let makeHeatCircle: typeof import('leaflet').circleMarker | undefined
 let makePolyline: typeof import('leaflet').polyline | undefined
 let makeRouteCircle: typeof import('leaflet').circleMarker | undefined
-let makeDivIcon: typeof import('leaflet').divIcon | undefined
-let makeRouteMarker: typeof import('leaflet').marker | undefined
 let createLatLng: ((latitude: number, longitude: number) => LatLng) | undefined
 let makeMarker:
   | ((
@@ -396,34 +407,6 @@ function syncNavigationRoutes() {
         dot.addTo(navigationLayerGroup)
       }
     }
-    if (route.destination) {
-      const point = route.destination
-      const column = point.tileX - props.profile.tiles.min_x
-      const row = props.profile.tiles.max_y - point.tileY
-      const label = document.createElement('span')
-      label.className = 'phmon-map-route-destination'
-      label.textContent = `Destination · ${route.characterName}`
-      if (makeDivIcon && makeRouteMarker) {
-        const icon = makeDivIcon({
-          className: 'phmon-map-route-destination-marker',
-          html: label,
-          iconSize: [0, 0],
-          iconAnchor: [0, 12],
-        })
-        const marker = makeRouteMarker(
-          toLatLng(-(row * 256 + point.pixelY), column * 256 + point.pixelX),
-          {
-            icon,
-            interactive: true,
-            keyboard: false,
-          },
-        )
-        marker.setOpacity(opacity)
-        marker
-          .bindTooltip(`Destination · ${route.characterName}`)
-          .addTo(navigationLayerGroup)
-      }
-    }
   }
 }
 
@@ -534,16 +517,117 @@ function ensureTrainingHandles(id: string, rendered: RenderedTrainingArea) {
   }
 }
 
+function stopTrainingActionEvent(event: Event) {
+  event.stopPropagation()
+}
+
+function trainingActionIcon(kind: 'discard' | 'accept') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 12 12')
+  svg.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  path.setAttribute('fill', 'none')
+  path.setAttribute('stroke', 'currentColor')
+  path.setAttribute('stroke-width', '1.7')
+  path.setAttribute('stroke-linecap', 'round')
+  path.setAttribute('stroke-linejoin', 'round')
+  path.setAttribute(
+    'd',
+    kind === 'discard'
+      ? 'M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8'
+      : 'M2.1 6.3l2.7 2.7 5.1-5.6',
+  )
+  svg.append(path)
+  return svg
+}
+
+function trainingActionButton(kind: 'discard' | 'accept', label: HTMLElement) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = `phmon-map-training-label-action phmon-map-training-label-action--${kind}`
+  button.dataset.action = kind
+  button.append(trainingActionIcon(kind))
+  const emitAction = (event: Event) => {
+    stopTrainingActionEvent(event)
+    const characterID = label.dataset.areaId
+    if (!characterID || button.disabled) return
+    if (kind === 'accept') emit('trainingaccept', characterID)
+    else emit('trainingdiscard', characterID)
+  }
+  for (const type of [
+    'mousedown',
+    'pointerdown',
+    'touchstart',
+    'dblclick',
+    'contextmenu',
+    'click',
+    'keydown',
+  ])
+    button.addEventListener(type, stopTrainingActionEvent)
+  button.addEventListener('click', emitAction)
+  return button
+}
+
 function updateTrainingLabel(
   rendered: RenderedTrainingArea,
   area: TrainingAreaOverlay,
 ) {
   const element = rendered.label.getElement()
-  const label = element?.querySelector('.phmon-map-training-label')
+  const label = element?.querySelector<HTMLElement>('.phmon-map-training-label')
   if (!element || !label) return
-  label.textContent = area.label
+  label.dataset.areaId = area.id
   label.classList.toggle('phmon-map-training-label--selected', area.selected)
   label.classList.toggle('phmon-map-training-label--draft', area.draft)
+  let name = label.querySelector('.phmon-map-training-label-name')
+  if (!name) {
+    label.replaceChildren()
+    name = document.createElement('span')
+    name.className = 'phmon-map-training-label-name'
+    label.append(name)
+  }
+  name.textContent = area.label
+  const showActions = area.draft && !props.compact
+  let actions = label.querySelector<HTMLElement>(
+    '.phmon-map-training-label-actions',
+  )
+  let status = label.querySelector('.phmon-map-training-label-status')
+  if (showActions) {
+    if (!actions) {
+      actions = document.createElement('span')
+      actions.className = 'phmon-map-training-label-actions'
+      actions.append(
+        trainingActionButton('discard', label),
+        trainingActionButton('accept', label),
+      )
+      leaflet?.DomEvent.disableClickPropagation(actions)
+      name.after(actions)
+    }
+    if (!status) {
+      status = document.createElement('span')
+      status.className = 'phmon-map-training-label-status'
+      status.textContent = '· unsaved'
+      actions.after(status)
+    }
+    const discard = actions.querySelector<HTMLButtonElement>(
+      '[data-action="discard"]',
+    )
+    const accept = actions.querySelector<HTMLButtonElement>(
+      '[data-action="accept"]',
+    )
+    if (discard) {
+      discard.disabled = Boolean(props.trainingDiscardDisabled)
+      discard.setAttribute('aria-label', `Discard changes for ${area.label}`)
+      discard.title = 'Discard changes'
+    }
+    if (accept) {
+      accept.disabled = Boolean(props.trainingAcceptDisabled)
+      accept.setAttribute('aria-label', `Accept changes for ${area.label}`)
+      accept.title = props.trainingAcceptTitle || 'Accept changes'
+    }
+  } else {
+    actions?.remove()
+    status?.remove()
+  }
   element.setAttribute(
     'aria-label',
     `Training area for ${area.label}${area.draft ? ', unsaved changes' : ''}${area.selected ? ', selected' : ''}`,
@@ -592,6 +676,11 @@ function syncTrainingAreas() {
       label.addTo(trainingLayerGroup)
       label.getElement()?.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
+        if (
+          event.target instanceof Element &&
+          event.target.closest('.phmon-map-training-label-action')
+        )
+          return
         event.preventDefault()
         emit('trainingselect', area.id)
       })
@@ -794,6 +883,38 @@ function markerPopup(marker: MapCanvasMarker) {
       details.append(...rows)
       panel.append(details)
     }
+  } else if (marker.kind === 'npc' && marker.npc) {
+    const npc = marker.npc
+    title.textContent = npcDisplayLabel(npc)
+    subtitle.textContent = npcRoleLabel(npc.role)
+    const icon = document.createElement('img')
+    icon.className = 'phmon-map-detail-npc-icon'
+    icon.src = NPC_MARKER_ICON
+    icon.alt = ''
+    header.prepend(icon)
+    const observers = npc.observers
+      .map((observer) => observer.name)
+      .filter(Boolean)
+      .join(', ')
+    details.append(
+      detailRow('Server name', npc.servername || '—'),
+      detailRow('Model', npc.model_id == null ? '—' : String(npc.model_id)),
+      detailRow('Region', String(npc.region)),
+      detailRow('Position', positionText(npc.x, npc.y, npc.observer_z)),
+      detailRow('Observed by', observers || '—'),
+    )
+    const actions = document.createElement('div')
+    actions.className = 'phmon-map-detail-actions'
+    const navigate = document.createElement('button')
+    navigate.type = 'button'
+    navigate.textContent = 'Navigate here'
+    navigate.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const rect = navigate.getBoundingClientRect()
+      emit('navigateto', marker.position, { x: rect.left, y: rect.bottom })
+    })
+    actions.append(navigate)
+    panel.append(header, details, actions)
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
     title.textContent = monsterDisplayName(monster)
@@ -888,6 +1009,16 @@ function markerIconContent(
     name.className = 'phmon-map-party-name'
     name.textContent = marker.party?.name?.trim() || marker.label
     content.append(name)
+  } else if (marker.kind === 'npc') {
+    content.className = 'phmon-map-npc-icon'
+    const img = document.createElement('img')
+    img.src = NPC_MARKER_ICON
+    img.alt = ''
+    content.append(img)
+    const name = document.createElement('span')
+    name.className = 'phmon-map-npc-name'
+    name.textContent = marker.npc ? npcDisplayLabel(marker.npc) : marker.label
+    content.append(name)
   } else if (marker.kind === 'monster') {
     content.className = 'phmon-map-monster-bubble'
     if (openMonsterPopup) {
@@ -900,27 +1031,28 @@ function markerIconContent(
     content.style.setProperty('--phmon-monster-hp', String(fraction ?? 0))
     if (marker.monster) {
       const presentation = monsterTypePresentation(marker.monster)
-      if (presentation.iconUrl) {
-        const rankIcon = document.createElement('img')
-        rankIcon.className = 'phmon-map-monster-rank-icon'
-        rankIcon.src = presentation.iconUrl
-        rankIcon.alt = ''
-        rankIcon.onerror = () => rankIcon.remove()
-        content.append(rankIcon)
-      }
-      if (presentation.partyBadgeUrl) {
-        const partyBadge = document.createElement('img')
-        partyBadge.className = 'phmon-map-monster-party-badge'
-        partyBadge.src = presentation.partyBadgeUrl
-        partyBadge.alt = ''
-        partyBadge.onerror = () => partyBadge.remove()
-        content.append(partyBadge)
-      }
       const mapName = monsterMapName(marker.monster, Boolean(marker.showLabel))
       if (mapName) {
         const name = document.createElement('span')
         name.className = 'phmon-map-monster-name'
-        name.textContent = mapName
+        const appendLabelIcon = (src: string, className: string) => {
+          if (!src) return
+          const icon = document.createElement('img')
+          icon.className = className
+          icon.src = src
+          icon.alt = ''
+          icon.onerror = () => icon.remove()
+          name.append(icon)
+        }
+        appendLabelIcon(presentation.iconUrl, 'phmon-map-monster-rank-icon')
+        appendLabelIcon(
+          presentation.partyBadgeUrl,
+          'phmon-map-monster-party-badge',
+        )
+        const text = document.createElement('span')
+        text.className = 'phmon-map-monster-name-text'
+        text.textContent = mapName
+        name.append(text)
         content.append(name)
       }
     }
@@ -975,8 +1107,6 @@ onMounted(async () => {
   makeHeatCircle = L.circleMarker
   makePolyline = L.polyline
   makeRouteCircle = L.circleMarker
-  makeDivIcon = L.divIcon
-  makeRouteMarker = L.marker
   heatRenderer = L.canvas({ padding: 0.5 })
   const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
   const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
@@ -1117,7 +1247,7 @@ onMounted(async () => {
     const size =
       marker.kind === 'character'
         ? 28
-        : marker.kind === 'party'
+        : marker.kind === 'party' || marker.kind === 'npc'
           ? 24
           : marker.kind === 'monster'
             ? Math.round(12 * (type?.scale || 1))
@@ -1134,6 +1264,9 @@ onMounted(async () => {
       marker.character?.online,
       marker.character?.position_stale,
       marker.selected,
+      marker.npc ? npcDisplayLabel(marker.npc) : '',
+      marker.npc?.role,
+      marker.npc?.servername,
       type?.code,
       type?.scale,
       type?.party,
@@ -1191,9 +1324,11 @@ onMounted(async () => {
           ? 1000
           : marker.kind === 'party'
             ? 700
-            : marker.kind === 'drop' || marker.kind === 'death'
-              ? 400
-              : 0,
+            : marker.kind === 'npc'
+              ? 650
+              : marker.kind === 'drop' || marker.kind === 'death'
+                ? 400
+                : 0,
     })
     if (!props.compact)
       rendered.bindPopup(markerPopup(marker), {
@@ -1217,10 +1352,18 @@ onMounted(async () => {
     event.preventDefault()
     if (map) selectPoint(map.getCenter())
   }
+  const onMiddleButton = (event: MouseEvent) => {
+    if (event.button !== 1) return
+    event.preventDefault()
+  }
   element.value.addEventListener('keydown', onKeydown)
-  map.once('unload', () =>
-    element.value?.removeEventListener('keydown', onKeydown),
-  )
+  element.value.addEventListener('mousedown', onMiddleButton, true)
+  element.value.addEventListener('auxclick', onMiddleButton, true)
+  map.once('unload', () => {
+    element.value?.removeEventListener('keydown', onKeydown)
+    element.value?.removeEventListener('mousedown', onMiddleButton, true)
+    element.value?.removeEventListener('auxclick', onMiddleButton, true)
+  })
   map.on('click', (event: L.LeafletMouseEvent) => {
     const point = indexAt(event.latlng)
     const trainingAreaID = props.compact
@@ -1273,7 +1416,13 @@ watch(() => props.markers, syncMarkers, { deep: true })
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
 watch(() => props.navigationRoutes, syncNavigationRoutes, { deep: true })
 watch(
-  [() => props.trainingAreas, () => props.trainingEditable],
+  [
+    () => props.trainingAreas,
+    () => props.trainingEditable,
+    () => props.trainingAcceptDisabled,
+    () => props.trainingDiscardDisabled,
+    () => props.trainingAcceptTitle,
+  ],
   syncTrainingAreas,
   { deep: true },
 )
@@ -1302,8 +1451,6 @@ onBeforeUnmount(() => {
   makeHeatCircle = undefined
   makePolyline = undefined
   makeRouteCircle = undefined
-  makeDivIcon = undefined
-  makeRouteMarker = undefined
   makeMarker = undefined
   renderedMarkers.clear()
   markerIconSignatures.clear()
@@ -1349,11 +1496,6 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 
-:global(.phmon-map-route-destination-marker) {
-  border: 0;
-  background: transparent;
-}
-
 /* Leaflet positions the marker with `transform`; `translate` composes with it. */
 :global(.phmon-map-training-label-marker) {
   width: max-content;
@@ -1364,7 +1506,9 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-training-label) {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 1px 6px;
   border: 1px solid #4db9ffb3;
   border-radius: 3px;
@@ -1372,6 +1516,7 @@ onBeforeUnmount(() => {
   color: #d8eeff;
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
   white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 1px 4px #0009;
@@ -1383,8 +1528,53 @@ onBeforeUnmount(() => {
   color: #ffffff;
 }
 
-:global(.phmon-map-training-label--draft::after) {
-  content: ' · unsaved';
+:global(.phmon-map-training-label-actions) {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+:global(.phmon-map-training-label-action) {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #d8eeff;
+  cursor: pointer;
+}
+
+:global(.phmon-map-training-label-action svg) {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+:global(.phmon-map-training-label-action--discard) {
+  color: #ffc9c9;
+}
+
+:global(.phmon-map-training-label-action--accept) {
+  color: #9eecc4;
+}
+
+:global(.phmon-map-training-label-action:hover),
+:global(.phmon-map-training-label-action:focus-visible) {
+  background: #ffffff22;
+  outline: none;
+  box-shadow: 0 0 0 1px #9bc8ff;
+}
+
+:global(.phmon-map-training-label-action:disabled) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:global(.phmon-map-training-label-status) {
   color: #fef6c3;
   font-weight: 500;
 }
@@ -1409,22 +1599,6 @@ onBeforeUnmount(() => {
 :global(.phmon-map-training-handle--edge) {
   border-radius: 2px;
   cursor: ew-resize;
-}
-
-:global(.phmon-map-route-destination) {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 22px;
-  padding: 2px 7px;
-  border: 1px solid #b8ffff;
-  border-radius: 3px;
-  background: #09232bf2;
-  color: #eaffff;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 1px 5px #000a;
 }
 
 :global(.phmon-map-character-pin) {
@@ -1522,6 +1696,26 @@ onBeforeUnmount(() => {
   filter: drop-shadow(0 1px 3px #000c);
 }
 
+:global(.phmon-map-npc-icon) {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1px 3px #000c);
+}
+
+:global(.phmon-map-npc-icon img),
+:global(.phmon-map-detail-npc-icon) {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+:global(.phmon-map-detail-npc-icon) {
+  width: 32px;
+  height: 32px;
+}
+
+:global(.phmon-map-npc-name),
 :global(.phmon-map-party-name) {
   position: absolute;
   top: calc(100% - 2px);
@@ -1586,27 +1780,13 @@ onBeforeUnmount(() => {
     0 1px 4px #000a;
 }
 
-:global(.phmon-map-monster-rank-icon) {
-  position: absolute;
-  inset: 1px;
-  z-index: 1;
-  width: calc(100% - 2px);
-  height: calc(100% - 2px);
-  object-fit: contain;
-  pointer-events: none;
-  filter: drop-shadow(0 1px 1px #000c);
-}
-
+:global(.phmon-map-monster-rank-icon),
 :global(.phmon-map-monster-party-badge) {
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  z-index: 2;
-  width: 8px;
-  height: 8px;
+  flex: none;
+  width: 12px;
+  height: 12px;
   object-fit: contain;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px #000c);
 }
 
 :global(.phmon-map-marker--party .phmon-map-monster-bubble) {
@@ -1630,24 +1810,32 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-monster-name) {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   position: absolute;
   top: calc(100% + 5px);
   left: 50%;
   z-index: 3;
   transform: translateX(-50%);
-  max-width: 120px;
+  max-width: 148px;
   overflow: hidden;
-  padding: 2px 5px;
+  padding: 2px 4px 2px 3px;
   border-radius: 7px;
   background: #0d1119ec;
   color: #fff;
   font-size: 10px;
   font-weight: 500;
   line-height: 1.1;
-  text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 4px #000b;
   pointer-events: none;
+}
+
+:global(.phmon-map-monster-name-text) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 :global(.phmon-map-marker--hp-unavailable .phmon-map-monster-bubble) {

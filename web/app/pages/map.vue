@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   CharacterView,
   MapMonster,
+  MapNpc,
   MapPartyMember,
   MapSnapshot,
 } from '~~/shared/types/live'
@@ -21,6 +22,7 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
+import { npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
@@ -171,6 +173,7 @@ const resetError = ref('')
 const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerParty = ref(true)
+const layerNPCs = ref(true)
 const layerTraining = ref(true)
 const layerMonsters = ref(true)
 const showNearbyMonsterNames = ref(DEFAULT_SHOW_NEARBY_MONSTER_NAMES)
@@ -250,6 +253,14 @@ function selectTrainingArea(characterID: string) {
   trainingEditor.select(
     trainingEditor.selectedID.value === characterID ? '' : characterID,
   )
+}
+function acceptTrainingDraft(characterID: string) {
+  if (trainingEditor.selectedID.value !== characterID) return
+  void trainingEditor.apply()
+}
+function discardTrainingDraft(characterID: string) {
+  if (trainingEditor.selectedID.value !== characterID) return
+  trainingEditor.reset()
 }
 function trainingAreaSummary(characterID: string) {
   const area = trainingAreas.value.find(
@@ -589,6 +600,16 @@ function openContextNavigation(action: {
     document.querySelector<HTMLElement>('.map-canvas'),
   )
 }
+function openNpcNavigation(
+  point: RasterPosition,
+  anchor: { x: number; y: number },
+) {
+  void navigationAction.open(
+    point,
+    anchor,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
+}
 const scopedCharacters = computed(() => {
   const items = mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.characters || []
@@ -714,11 +735,12 @@ const mapMarkers = computed(() => {
   const markers: Array<{
     id: string
     label: string
-    kind: 'character' | 'party' | 'monster' | 'death' | 'drop' | 'event'
+    kind: 'character' | 'party' | 'npc' | 'monster' | 'death' | 'drop' | 'event'
     position: RasterPosition
     placement?: 'exact' | 'region-tile'
     selected?: boolean
     party?: MapPartyMember
+    npc?: MapNpc
     monster?: MapMonster
     showLabel?: boolean
     itemName?: string
@@ -766,6 +788,15 @@ const mapMarkers = computed(() => {
       ),
     )
   }
+  markers.push(
+    ...npcMapMarkers(
+      profile,
+      areaID.value,
+      floorID.value,
+      mapSnapshot.value?.npcs?.npcs || [],
+      layerNPCs.value,
+    ),
+  )
   if (layerMonsters.value) {
     for (const entry of currentMonsters.value) {
       addMarker(
@@ -826,6 +857,9 @@ const placedCharacterCount = computed(
 )
 const placedPartyCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'party').length,
+)
+const placedNpcCount = computed(
+  () => mapMarkers.value.filter((marker) => marker.kind === 'npc').length,
 )
 const zoneNameForRegion = (region?: number | null) => {
   if (region == null) return 'Unknown zone'
@@ -1415,12 +1449,20 @@ useHead({ title: 'Map · PhMon' })
               :navigation-routes="mapNavigationRoutes"
               :training-areas="renderedTrainingAreas"
               :training-editable="trainingEditor.editable.value"
+              :training-accept-disabled="
+                Boolean(trainingEditor.applyReason.value)
+              "
+              :training-discard-disabled="trainingEditor.applying.value"
+              :training-accept-title="trainingEditor.applyReason.value"
               @viewchange="mapView = $event"
               @pointselect="selectMapPoint"
               @trainingselect="selectTrainingArea"
               @trainingmove="trainingEditor.moveCenter"
               @trainingresize="trainingEditor.resizeFromPixels"
+              @trainingaccept="acceptTrainingDraft"
+              @trainingdiscard="discardTrainingDraft"
               @contextaction="openContextNavigation"
+              @navigateto="openNpcNavigation"
               @mapdrag="navigationAction.close(false)"
               @opencharacter="
                 (characterID) =>
@@ -1677,6 +1719,45 @@ useHead({ title: 'Map · PhMon' })
       </section>
 
       <aside class="map-side-panel panel">
+        <!--
+          Visual placeholders for later issues. These buttons and the Trace
+          select have no click handlers, commands, or live data. Do not treat
+          Start/Stop bot, Return scroll, Disconnect, or Trace as implemented.
+        -->
+        <section class="map-side-list map-character-actions">
+          <div class="map-list-heading">
+            <h2>Character actions</h2>
+          </div>
+          <div class="map-target-toolbar">
+            <button class="compact-button" type="button">
+              Start bot for {{ actionTargetIDs.size }} characters
+            </button>
+            <button class="compact-button" type="button">
+              Stop bot for {{ actionTargetIDs.size }} characters
+            </button>
+            <button class="compact-button" type="button">
+              Return scroll for {{ actionTargetIDs.size }} characters
+            </button>
+            <button class="compact-button" type="button">
+              Disconnect {{ actionTargetIDs.size }} characters
+            </button>
+          </div>
+          <div class="">
+            <div>
+              Trace:
+              <select>
+                <option value="char1">char1</option>
+                <option value="char2">char2</option>
+                <option value="char3">char3</option>
+              </select>
+              <button class="compact-button" type="button">
+                Refresh player list
+              </button>
+            </div>
+            <button class="compact-button" type="button">Start trace</button>
+            <button class="compact-button" type="button">Stop trace</button>
+          </div>
+        </section>
         <section class="map-side-list map-character-list">
           <div class="map-list-heading">
             <h2>Characters</h2>
@@ -1960,6 +2041,10 @@ useHead({ title: 'Map · PhMon' })
           <label class="map-layer-toggle"
             ><input v-model="layerParty" type="checkbox" /> Party members
             <span>{{ placedPartyCount }} shown</span></label
+          >
+          <label class="map-layer-toggle"
+            ><input v-model="layerNPCs" type="checkbox" /> NPCs
+            <span>{{ placedNpcCount }} shown</span></label
           >
           <label class="map-layer-toggle"
             ><input v-model="layerTraining" type="checkbox" /> Training areas

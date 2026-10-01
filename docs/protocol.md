@@ -1,4 +1,4 @@
-# Agent protocol versions 2–8
+# Agent protocol versions 2–9
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -6,7 +6,8 @@ leave messages. Slice 3 adds v3 command delivery. Slice 4 adds v4 resource snaps
 and deltas. Protocol v5 adds nullable live death state and the original death event
 frame. Protocol v6 adds canonical event batches. Protocol v7 adds live monster
 snapshots and durable observation samples. Protocol v8 adds transient navigation
-route snapshots. The backend continues accepting v2–v7 agents; v2–v4 cannot submit
+route snapshots. Protocol v9 adds ephemeral live NPC and teleporter snapshots.
+The backend continues accepting v2–v8 agents; v2–v4 cannot submit
 events, and v5 retains its death frame and individual acknowledgement.
 Sections below retain the v2 baseline contract; later sections define version-specific
 extensions and limits.
@@ -1157,3 +1158,27 @@ center sends `training.area.set` with `mode: "position"` and explicit
 are applied in that order for one character. The multi-target point action fans out
 only `training.area.set`, so each target keeps its own radius. Success is shown only
 after the durable command result; the circle moves when the next readback arrives.
+
+## Live NPC and teleporter snapshots (v9)
+
+`map.npcs` carries one character's current `get_npcs()` view. It is accepted only
+from a hello that negotiated protocol 9 or newer. The frame uses the same
+`map_snapshot` object as monsters, with `npcs` instead of `monsters`, plus optional
+`observer_z`. There is no acknowledgement and no durable table. A new snapshot for
+the same session replaces the previous one. `unavailable` or a matching
+`character.left` clears that session. The last socket for an agent clears every
+snapshot from that agent. A replacement character session clears the previous
+session. Rows expire from the live map 35 seconds after `observed_at`.
+
+Each row has a runtime `id`, optional `name`, `servername`, `model_id`, required
+`role` (`teleporter` only when `servername` matches `^GATE_[A-Za-z0-9_]+$`,
+otherwise `npc`), `region`, and finite `x`/`y`. The plugin caps a snapshot at 128
+rows and marks it truncated when a row is dropped. The browser projection merges
+only different sessions that share server, region (including the Donwhang alias),
+server name, model, and a position within 8 world units. Same-session rows stay
+separate. Cave placement uses the observer's current Z and fails closed when the
+floor is ambiguous.
+
+```json
+{"type":"map.npcs","protocol_version":9,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"npcs":[{"id":"10","name":"Jangan","servername":"GATE_CH","model_id":2094,"role":"teleporter","region":25273,"x":30,"y":40}]}}
+```
