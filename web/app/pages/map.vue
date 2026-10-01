@@ -1719,6 +1719,70 @@ useHead({ title: 'Map · PhMon' })
       </section>
 
       <aside class="map-side-panel panel">
+        <!--
+          Visual placeholders for later issues. These buttons and the Trace
+          select have no click handlers, commands, or live data. Do not treat
+          Start/Stop bot, Return scroll, Disconnect, or Trace as implemented.
+        -->
+        <section class="map-side-list map-character-actions">
+          <div class="map-list-heading">
+            <h2>Character actions</h2>
+          </div>
+          <div class="map-target-toolbar">
+            <button
+              class="compact-button"
+              type="button"
+            >
+              Start bot for {{ actionTargetIDs.size }} characters
+            </button>
+            <button
+              class="compact-button"
+              type="button"
+            >
+              Stop bot for {{ actionTargetIDs.size }} characters
+            </button>
+            <button
+              class="compact-button"
+              type="button"
+            >
+             Return scroll for {{ actionTargetIDs.size }} characters
+            </button>
+            <button
+              class="compact-button"
+              type="button"
+            >
+              Disconnect {{ actionTargetIDs.size }} characters
+            </button>
+          </div>
+          <div class="">
+            <div>
+              Trace: 
+              <select>
+                <option value="char1">char1</option>
+                <option value="char2">char2</option>
+                <option value="char3">char3</option>
+              </select>
+              <button
+                class="compact-button"
+                type="button"
+              >
+              Refresh player list
+              </button>
+            </div>
+            <button
+              class="compact-button"
+              type="button"
+            >
+              Start trace
+            </button>
+            <button
+              class="compact-button"
+              type="button"
+            >
+              Stop trace
+            </button>
+          </div>
+        </section>
         <section class="map-side-list map-character-list">
           <div class="map-list-heading">
             <h2>Characters</h2>
