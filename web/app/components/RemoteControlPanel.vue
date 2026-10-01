@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CharacterView, MapOtherPlayersSnapshot } from '~~/shared/types/live'
+import { useFrozenWhileFocused } from '~/composables/useFrozenWhileFocused'
 import { tracePickerOptions } from '~/utils/mapTracePicker'
 import type { FanOutOperation } from '~/utils/commandFanOut'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
@@ -22,7 +23,6 @@ const props = withDefaults(
     variant?: 'default' | 'map'
     traceCandidates?: CharacterView[]
     mapPlayers?: MapOtherPlayersSnapshot
-    mapAgentProtocolVersion?: number
     mapSnapshotCurrent?: boolean
   }>(),
   {
@@ -36,12 +36,22 @@ const emit = defineEmits<{
   actionNotification: [notification: MapActionNotification]
   refreshNearbyPlayers: []
 }>()
-const tracePicker = computed(() =>
+const liveTracePicker = computed(() =>
   tracePickerOptions({
     managed: props.traceCandidates,
     players: props.mapPlayers,
-    protocolVersion: props.mapAgentProtocolVersion,
   }),
+)
+const {
+  frozen: tracePicker,
+  onFocus: onTraceSelectFocus,
+  onBlur: onTraceSelectBlur,
+} = useFrozenWhileFocused(() => liveTracePicker.value)
+const traceManagedOptions = computed(() =>
+  tracePicker.value.options.filter((item) => item.group === 'managed'),
+)
+const traceNearbyOptions = computed(() =>
+  tracePicker.value.options.filter((item) => item.group === 'nearby'),
 )
 const actions = useRemoteControlActions({
   scopeKey: () => props.scopeKey,
@@ -533,46 +543,18 @@ function cancelReview(operation: FanOutOperation) {
         }}
       </button>
       <div class="map-trace-row remote-control-form">
-        <select v-model="traceName" aria-label="Trace leader">
-          <option value="">Trace player…</option>
-          <optgroup
-            v-if="tracePicker.options.some((item) => item.group === 'managed')"
-            label="Managed characters"
-          >
-            <option
-              v-for="option in tracePicker.options.filter(
-                (item) => item.group === 'managed',
-              )"
-              :key="`managed-${option.value}`"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </optgroup>
-          <optgroup
-            v-if="tracePicker.options.some((item) => item.group === 'nearby')"
-            label="Nearby players"
-          >
-            <option
-              v-for="option in tracePicker.options.filter(
-                (item) => item.group === 'nearby',
-              )"
-              :key="`nearby-${option.value}`"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </optgroup>
-          <option
-            v-if="
-              traceName &&
-              !tracePicker.options.some((item) => item.value === traceName)
-            "
-            :value="traceName"
-          >
-            {{ traceName }}
-          </option>
-        </select>
+        <MapTraceLeaderSelect
+          v-model="traceName"
+          :managed="traceManagedOptions"
+          :nearby="traceNearbyOptions"
+          :nearby-status="tracePicker.nearbyStatus"
+          @interacting="
+            (open) => {
+              if (open) onTraceSelectFocus()
+              else onTraceSelectBlur()
+            }
+          "
+        />
         <button
           class="compact-button"
           type="button"
@@ -607,13 +589,13 @@ function cancelReview(operation: FanOutOperation) {
         </button>
       </div>
       <p
-        v-if="tracePicker.nearbyStatus === 'empty'"
+        v-show="tracePicker.nearbyStatus === 'empty'"
         class="map-trace-hint map-empty-copy"
       >
         No nearby players in the current map snapshot.
       </p>
       <p
-        v-else-if="tracePicker.nearbyStatus === 'unavailable'"
+        v-show="tracePicker.nearbyStatus === 'unavailable'"
         class="map-trace-hint map-empty-copy"
       >
         Nearby players unavailable. Managed characters and manual entry still

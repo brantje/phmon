@@ -39,7 +39,6 @@ test('trace picker groups managed characters and deduped nearby players', () => 
         },
       ],
     },
-    protocolVersion: 10,
   })
   assert.equal(nearbyStatus, 'available')
   assert.deepEqual(
@@ -48,12 +47,19 @@ test('trace picker groups managed characters and deduped nearby players', () => 
   )
 })
 
-test('nearby players unavailable before protocol 10', () => {
+test('nearby players empty when snapshot is observed with no rows', () => {
   const { nearbyStatus, options } = tracePickerOptions({
     managed: [],
     players: { status: 'observed', players: [] },
-    protocolVersion: 9,
+  })
+  assert.equal(nearbyStatus, 'empty')
+  assert.equal(options.length, 0)
+})
+
+test('nearby players unavailable when map projection is unavailable', () => {
+  const { nearbyStatus } = tracePickerOptions({
+    managed: [],
+    players: { status: 'unavailable', players: [] },
   })
   assert.equal(nearbyStatus, 'unavailable')
-  assert.equal(options.length, 0)
 })

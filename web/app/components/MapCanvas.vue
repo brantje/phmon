@@ -1914,7 +1914,16 @@ onBeforeUnmount(() => {
   place-items: center;
 }
 
-:global(.phmon-map-party-icon),
+:global(.phmon-map-party-icon) {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  filter: drop-shadow(0 1px 3px #000c);
+}
+
 :global(.phmon-map-player-icon),
 :global(.phmon-map-npc-icon) {
   display: flex;
@@ -1965,9 +1974,15 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-party-icon img),
-:global(.phmon-map-player-icon img),
-:global(.phmon-map-npc-icon img),
 :global(.phmon-map-detail-party-icon img) {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+:global(.phmon-map-player-icon img),
+:global(.phmon-map-npc-icon img) {
   display: block;
   width: 20px;
   height: 20px;

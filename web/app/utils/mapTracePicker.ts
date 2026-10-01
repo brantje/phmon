@@ -13,10 +13,8 @@ export interface TracePickerOption {
 
 export function nearbyPlayersStatus(
   snapshot: MapOtherPlayersSnapshot | undefined,
-  protocolVersion?: number,
 ): NearbyPlayersStatus {
   if (!snapshot || snapshot.status === 'unavailable') return 'unavailable'
-  if ((protocolVersion ?? 0) < 10) return 'unavailable'
   if (!snapshot.players.length) return 'empty'
   return 'available'
 }
@@ -24,7 +22,6 @@ export function nearbyPlayersStatus(
 export function tracePickerOptions(input: {
   managed: CharacterView[]
   players?: MapOtherPlayersSnapshot
-  protocolVersion?: number
 }): { options: TracePickerOption[]; nearbyStatus: NearbyPlayersStatus } {
   const managedNames = new Set(
     input.managed.map((character) => character.name.toLowerCase()),
@@ -34,7 +31,7 @@ export function tracePickerOptions(input: {
     label: character.name,
     group: 'managed',
   }))
-  const nearbyStatus = nearbyPlayersStatus(input.players, input.protocolVersion)
+  const nearbyStatus = nearbyPlayersStatus(input.players)
   if (nearbyStatus === 'available') {
     const seen = new Set<string>()
     for (const player of input.players?.players || []) {

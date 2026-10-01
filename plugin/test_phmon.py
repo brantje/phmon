@@ -95,7 +95,7 @@ class PlayerObservationTests(unittest.TestCase):
         self.assertEqual(client.send_json.call_count, 1)
         frame = client.send_json.call_args.args[0]
         self.assertEqual(frame['type'], 'map.players')
-        self.assertEqual(frame['protocol_version'], 10)
+        self.assertEqual(frame['protocol_version'], plugin.PROTOCOL_VERSION)
         worker._current_identity = {'server': 'Greatest', 'name': 'Other'}
         worker.update_map_players(worker._current_identity, 'observed', 25000, [], observer_z=-6.0)
         worker._flush_map_players(client)

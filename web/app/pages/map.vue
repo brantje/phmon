@@ -414,6 +414,69 @@ const historicalMobTypes = computed(() =>
     ),
   ].sort((left, right) => left.localeCompare(right)),
 )
+const mapSelectFocused = ref(false)
+const stableRegionOptions = ref(regionOptions.value)
+const stableHistoricalCharacters = ref(historicalCharacters.value)
+const stableHistoricalMobTypes = ref(historicalMobTypes.value)
+const stableServerOptions = ref(serverOptions.value)
+const stableMapAreas = ref(mapProfile.value?.areas ?? [])
+const frozenTraceCandidates = ref(historicalCharacters.value)
+const frozenMapPlayers = ref(mapSnapshot.value?.players)
+function syncMapSelectOptionSnapshots() {
+  stableRegionOptions.value = regionOptions.value
+  stableHistoricalCharacters.value = historicalCharacters.value
+  stableHistoricalMobTypes.value = historicalMobTypes.value
+  stableServerOptions.value = serverOptions.value
+  stableMapAreas.value = mapProfile.value?.areas ?? []
+  frozenTraceCandidates.value = historicalCharacters.value
+  frozenMapPlayers.value = mapSnapshot.value?.players
+}
+watch(regionOptions, (next) => {
+  if (!mapSelectFocused.value) stableRegionOptions.value = next
+})
+watch(historicalCharacters, (next) => {
+  if (!mapSelectFocused.value) {
+    stableHistoricalCharacters.value = next
+    frozenTraceCandidates.value = next
+  }
+})
+watch(historicalMobTypes, (next) => {
+  if (!mapSelectFocused.value) stableHistoricalMobTypes.value = next
+})
+watch(serverOptions, (next) => {
+  if (!mapSelectFocused.value) stableServerOptions.value = next
+})
+watch(
+  () => mapProfile.value?.areas,
+  (next) => {
+    if (!mapSelectFocused.value) stableMapAreas.value = next ?? []
+  },
+)
+watch(
+  () => mapSnapshot.value?.players,
+  (next) => {
+    if (!mapSelectFocused.value) frozenMapPlayers.value = next
+  },
+)
+function armMapSelectFreeze(event: Event) {
+  if (event.target instanceof HTMLSelectElement) mapSelectFocused.value = true
+}
+function onMapSelectFocusOut(event: FocusEvent) {
+  if (!(event.target instanceof HTMLSelectElement)) return
+  queueMicrotask(() => {
+    const page = event.currentTarget as HTMLElement | null
+    if (page?.querySelector('select:focus')) return
+    mapSelectFocused.value = false
+    syncMapSelectOptionSnapshots()
+  })
+}
+function maybeClearRegionFilterForCharacterRegion(
+  characterRegion: number | null | undefined,
+) {
+  if (mapSelectFocused.value) return
+  if (!regionID.value || characterRegion == null) return
+  if (regionID.value !== characterRegion) regionID.value = 0
+}
 const historicalQuery = computed(() => {
   const window = heatmapWindow.value
   if (!window) return null
@@ -767,21 +830,20 @@ const navigationStopSupport = computed(() => {
   }
   return result
 })
-const mapAgentProtocolVersion = computed(() =>
-  Math.max(
-    0,
-    ...Object.values(mapActivityFeed.value?.targets || {}).map(
-      (target) => target.controls?.agent_protocol_version ?? 0,
-    ),
-  ),
+const mapActivityTargetKey = computed(() =>
+  scopedCharacters.value
+    .filter((character) => character.online && character.session_id)
+    .map((character) => character.character_id)
+    .sort()
+    .join('\u0000'),
 )
 watch(
-  () =>
-    scopedCharacters.value
-      .filter((character) => character.online && character.session_id)
-      .map((character) => character.character_id),
-  (characterIDs) => {
-    setCommandFanOutTargets(MAP_ACTIVITY_OWNER, characterIDs)
+  mapActivityTargetKey,
+  (key) => {
+    setCommandFanOutTargets(
+      MAP_ACTIVITY_OWNER,
+      key ? key.split('\u0000') : [],
+    )
   },
   { immediate: true },
 )
@@ -1614,18 +1676,20 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
   else regionID.value = 0
   selectedCharacterID.value = event.character_id
 })
-watch(selectedCharacterID, (characterID) => {
+watch(selectedCharacterID, (characterID, previousID) => {
   if (characterID) selectedDestinationID.value = ''
+  if (characterID === previousID) return
   const selected = mapSnapshot.value?.characters.find(
     (character) => character.character_id === characterID,
   )
-  if (selected && regionID.value && regionID.value !== selected.region)
-    regionID.value = 0
+  maybeClearRegionFilterForCharacterRegion(selected?.region)
 })
-watch(currentCharacter, (character) => {
-  if (character && regionID.value && regionID.value !== character.region)
-    regionID.value = 0
-})
+watch(
+  () => currentCharacter.value?.region,
+  (region) => {
+    maybeClearRegionFilterForCharacterRegion(region)
+  },
+)
 watch(
   actionTargetScopeKey,
   (nextScope, previousScope) => {
@@ -1651,7 +1715,7 @@ watch(
 )
 watch([server, areaID, floorID, regionID, selectedCharacterID], () => {})
 watch(mapProfile, (profile) => {
-  if (!profile) return
+  if (!profile || mapSelectFocused.value) return
   const selectedArea = profile.areas.find((area) => area.id === areaID.value)
   if (!selectedArea) {
     areaID.value = 'world'
@@ -1762,7 +1826,12 @@ useHead({ title: 'Map · PhMon' })
 </script>
 
 <template>
-  <section class="map-page">
+  <section
+    class="map-page"
+    @pointerdown="armMapSelectFreeze"
+    @focusin="armMapSelectFreeze"
+    @focusout="onMapSelectFocusOut"
+  >
     <header
       class="page-header map-page-header map-header-row character-filters"
     >
@@ -1785,7 +1854,11 @@ useHead({ title: 'Map · PhMon' })
               })
           "
         >
-          <option v-for="option in serverOptions" :key="option" :value="option">
+          <option
+            v-for="option in stableServerOptions"
+            :key="option"
+            :value="option"
+          >
             {{ option }}
           </option>
         </select>
@@ -1805,7 +1878,7 @@ useHead({ title: 'Map · PhMon' })
           "
         >
           <option
-            v-for="area in mapProfile?.areas || []"
+            v-for="area in stableMapAreas"
             :key="area.id"
             :value="area.id"
           >
@@ -1836,7 +1909,11 @@ useHead({ title: 'Map · PhMon' })
         Zone
         <select v-model.number="regionID" aria-label="Filter map data by zone">
           <option :value="0">All zones</option>
-          <option v-for="region in regionOptions" :key="region" :value="region">
+          <option
+            v-for="region in stableRegionOptions"
+            :key="region"
+            :value="region"
+          >
             {{ zoneOptionLabels.get(region) }}
           </option>
         </select>
@@ -2561,9 +2638,8 @@ useHead({ title: 'Map · PhMon' })
           >
             <RemoteControlPanel
               variant="map"
-              :trace-candidates="historicalCharacters"
-              :map-players="mapSnapshot?.players"
-              :map-agent-protocol-version="mapAgentProtocolVersion"
+              :trace-candidates="frozenTraceCandidates"
+              :map-players="frozenMapPlayers"
               :selected-ids="[...actionTargetIDs]"
               :scope-key="remoteActionScopeKey"
               :scope-key-for-character="mapControlScopeKeyForCharacter"
@@ -3018,7 +3094,7 @@ useHead({ title: 'Map · PhMon' })
                     >
                       <option value="">All characters</option>
                       <option
-                        v-for="character in historicalCharacters"
+                        v-for="character in stableHistoricalCharacters"
                         :key="character.character_id"
                         :value="character.character_id"
                       >
@@ -3058,7 +3134,7 @@ useHead({ title: 'Map · PhMon' })
                   >
                     <option value="">All observed monster ranks</option>
                     <option
-                      v-for="monsterRankValue in historicalMobTypes"
+                      v-for="monsterRankValue in stableHistoricalMobTypes"
                       :key="monsterRankValue"
                       :value="monsterRankValue"
                     >
