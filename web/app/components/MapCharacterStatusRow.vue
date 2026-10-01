@@ -198,7 +198,6 @@ const statusLabel = computed(() => {
 
 .map-character-level {
   flex: 0 0 auto;
-  color: #e0a44f;
   font-size: 0.61rem;
 }
 
