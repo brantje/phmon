@@ -334,6 +334,21 @@ fix/reply loop are complete; a fresh post-fix review has not run. Exact next act
 verify final-head CI, leave PR #58 open, and retry an incremental review when the
 external allowance permits. Do not merge or deploy.
 
+Operator bug correction — 2026-10-01: Action feedback starts collapsed and changes
+only through its button. Removed the three map-page watchers that forced feedback
+open for submitting/review/operation updates and switched the active tab. The
+operation-array replacement watcher could rerun with unchanged lengths on live
+updates. Command review/results remain mounted behind the manual disclosure.
+
+Validation: the pre-fix feedback markup/watchers reproduced opening after one
+one-second update in an isolated Vue browser harness. The corrected production
+markup/state remained closed through nine live updates, including new operations,
+submission and review changes; clicking opened it, clicking again kept it closed,
+and the active tab was preserved. Browser error collection was empty. Full
+`bash scripts/check.sh` passed with all 132 frontend tests. Next action: push this
+correction to PR #58 and verify its CI; CodeRabbit's post-fix review allowance is
+still unavailable until approximately 20:01 UTC. Leave the PR open/unmerged.
+
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
 Implemented the reusable command fan-out foundation for Issue #30. The frontend

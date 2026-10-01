@@ -146,6 +146,7 @@ const navigationTrayOpen = ref(true)
 const navigationTrayCompact = ref(false)
 const mapWorkspaceElement = ref<HTMLElement | null>(null)
 let workspaceObserver: ResizeObserver | undefined
+// User-controlled disclosure: live action updates must not change this state.
 const actionFeedbackOpen = ref(false)
 const selectedNavigationRouteID = ref('')
 const inspectorOpen = ref(true)
@@ -286,38 +287,6 @@ const navigationAction = useMapNavigationAction({
   reviewActions: () => reviewActions.value,
   now: () => freshnessNow.value,
 })
-watch(
-  () =>
-    navigationAction.submitting.value ||
-    navigationAction.trainingSubmitting.value,
-  (submitting) => {
-    if (submitting) {
-      sideTab.value = 'characters'
-      actionFeedbackOpen.value = true
-    }
-  },
-  { flush: 'sync' },
-)
-watch(
-  navigationAction.reviewOperation,
-  (operation) => {
-    if (operation) {
-      sideTab.value = 'characters'
-      actionFeedbackOpen.value = true
-    }
-  },
-  { flush: 'sync' },
-)
-watch(
-  () => [
-    navigationAction.operations.value.length,
-    navigationAction.trainingOperations.value.length,
-  ],
-  () => {
-    actionFeedbackOpen.value = true
-  },
-  { flush: 'sync' },
-)
 const trainingAreas = computed(() =>
   mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.training_areas?.areas || []

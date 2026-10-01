@@ -98,3 +98,15 @@ accessible text and consistent bounded numeric attributes. Partial Go-to searche
 now close after Enter or mouse selection, reopen when typing, and close on Escape.
 Browser error collection was empty. These checks use local fixtures only.
 The full post-review `bash scripts/check.sh` passed.
+
+
+## Action feedback live-update correction
+
+Action feedback starts closed and toggles only through its button. Submission,
+review and operation-array updates cannot reopen it or select another panel tab.
+An isolated Vue browser harness using the actual page feedback markup/state and
+pre-fix watchers reproduced opening after one update. After removal, nine
+one-second updates plus new operations/submission/review changes preserved the
+closed state and active tab. Click-open and click-close both retained the operator's
+choice during updates. Browser errors were empty, and the full
+`bash scripts/check.sh` passed with all 132 frontend tests.
