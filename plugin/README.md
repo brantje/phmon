@@ -11,7 +11,8 @@ seconds, immediately after a teleport or region change, and refreshed at least e
 15 seconds while the normalized view is unchanged. `GATE_<name>` server names are
 teleporters; other rows are NPCs. `unavailable` clears that character's markers.
 There is no NPC history. Protocol v10 adds ephemeral `map.players` snapshots from
-optional `get_players()` with the same cadence, 128-row and 64 KiB bounds, and
+optional `get_players()` (operator-tuned **1 s** poll and **2 s** unchanged refresh;
+NPC cadence remains 2 s / 15 s), 128-row and 64 KiB bounds, and
 observer Z in the publish signature. Equipment and player Z are not copied. The
 backend keeps accepting protocol v2–v9 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain

@@ -141,8 +141,8 @@ metadata only, not player identities, equipment records or sighting history.
 ### Production map.players transport (plugin 1.8.0, protocol 10)
 
 Plugin **1.8.0** removes the manual probe buttons and publishes bounded
-`map.players` snapshots on the existing worker path (2 s poll, 15 s unchanged
-refresh, signature includes observer Z). Rows copy canonical decimal-string IDs,
+`map.players` snapshots on the existing worker path (operator-tuned **1 s** poll,
+**2 s** unchanged refresh; signature includes observer Z). Rows copy canonical decimal-string IDs,
 name, guild, grant, dead, level, region and X/Y only. Equipment and player Z are
 omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
 generation-scoped disconnect cleanup, and map projection with party-style dedup.

@@ -413,6 +413,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if character.Region == nil || *character.Region != frame.Region {
 				continue
 			}
+			ctxApply, cancelApply := context.WithTimeout(sessionCtx, 2*time.Second)
+			activeNow, hasNow, activeNowErr := h.characters.ActiveSession(ctxApply, frame.CharacterID)
+			cancelApply()
+			if activeNowErr != nil || !hasNow || activeNow.SessionID != frame.SessionID ||
+				activeNow.AgentID != hello.AgentID || activeNow.Generation != generation {
+				continue
+			}
 			h.playerLive.Apply(players.LiveSnapshot{
 				Server: character.Server, AgentID: hello.AgentID, Generation: generation,
 				CharacterID: frame.CharacterID, SessionID: frame.SessionID, Character: character.Name,

@@ -44,11 +44,12 @@ class PlayerObservationTests(unittest.TestCase):
     def test_collect_player_observation_marks_malformed_duplicate_and_bounds(self):
         valid = {'name': 'Player', 'x': 1, 'y': 2}
         raw = {1: valid, 2: None, 3: dict(valid, x=float('nan')), 4: dict(valid, name=''),
-               5: dict(valid, level=0), 6: dict(valid, region=True), 1: dict(valid, x=3, y=4)}
+               5: dict(valid, level=0), 6: dict(valid, region=True), '01': dict(valid, x=3, y=4)}
         status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
         self.assertEqual(status, 'truncated')
         self.assertTrue(truncated)
         self.assertEqual(len(players), 1)
+        self.assertEqual(players[0]['x'], 1.0)
 
     def test_player_snapshot_signature_includes_observer_z(self):
         players = [{'player_id': '1', 'name': 'A', 'x': 1.0, 'y': 2.0}]
