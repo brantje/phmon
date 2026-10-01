@@ -183,9 +183,12 @@ watch(
 )
 
 watch(
-  () => [props.selectedIds.join('\0'), props.scopeKey] as const,
+  [() => props.selectedIds.join('\0'), () => props.scopeKey],
   ([targetKey, scopeKey], previous) => {
     if (!previous) return
+    const targetsChanged = targetKey !== previous[0]
+    const scopeChanged = scopeKey !== previous[1]
+    if (!targetsChanged && !scopeChanged) return
     const operation = selectedOperation.value
     if (operation?.state === 'prepared') {
       actions.cancel(operation)
@@ -194,8 +197,8 @@ watch(
       reviewNotice.value =
         'Targets or scope changed. Choose the action again to prepare a new request.'
     }
-    if (targetKey !== previous[0]) actions.setTargets(props.selectedIds)
-    if (scopeKey !== previous[1]) formError.value = ''
+    if (targetsChanged) actions.setTargets(props.selectedIds)
+    if (scopeChanged) formError.value = ''
   },
 )
 
