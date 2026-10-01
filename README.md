@@ -252,6 +252,12 @@ a fake adapter. It verifies one callback invocation and the authoritative result
 the same-origin `/api/live` stream. It creates fixture records and must run only on a
 disposable local/test database; it never connects to phBot.
 
+`scripts/remote_controls_smoke.py` runs the Issue #35 multi-character flow on the
+same disposable stack. It uses three production plugin workers with fake bot,
+trace, return, disconnect and training adapters to verify independent results,
+execution-time positions, named-area/radius readback and unsupported Clientless
+capability. It never invokes a real phBot API.
+
 With the full Compose stack running, verify outage and recovery:
 
 ```sh

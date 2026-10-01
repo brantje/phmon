@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current Issue #24 development release is **1.7.0** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.7.1** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v9 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -21,6 +21,11 @@ imports `phBotChat`, reports callable General/Private/Party/Guild/Union/Global m
 and accepts bounded `chat.send` commands through the existing callback-thread
 dispatcher. A boolean API result records phBot acceptance only, not delivery. No real
 chat callback or send was exercised in the simulator tests.
+
+Version 1.7.1 reports botting state from a boolean `get_character_data()` field
+when available, otherwise from narrowly recognized `get_status()` values. Unknown
+statuses remain unknown; the meaning of `stopped` and `None` still needs runtime
+verification.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback
@@ -189,7 +194,11 @@ Client API only inspects client state, so clientless stays unavailable. The plug
 does not kill processes, change relog settings, run arbitrary scripts, persist
 commands locally or replay them after reconnect. Bool and void API returns remain
 distinct; walk, return-scroll and disconnect effects are unverified until separately
-observed. Botting status remains unknown.
+observed. Botting status is reported through the existing `CharacterView.botting`
+field when `get_character_data()['botting']` is an actual boolean. The optional
+`get_status()` fallback recognizes only `botting`/`training` as true and `tracing`
+as false; unknown values, errors and unavailable status remain unknown. Commands
+never optimistically set this state.
 
 The stop path closes the worker socket to unblock bounded reads without joining from
 a phBot callback. Outbound results use their own bounded, non-coalescing queue and may

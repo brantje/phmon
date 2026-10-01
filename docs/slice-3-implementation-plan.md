@@ -165,8 +165,11 @@ Separate **API outcome** from **observed state**. A bool success can complete th
 documented API operation. Void-return calls can report “API call returned; arrival/
 disconnect not yet verified,” not “reached destination.” Use result evidence such as
 `api_return`, `effective_args`, `observed_after`, and `verification` (`api_confirmed`,
-`observed`, `unverified`). Never set `botting=true/false` from the last command:
-there is still no documented read-only botting getter in the checked sources.
+`observed`, `unverified`). Botting has no documented standalone getter; Issue #35
+uses an actual boolean from `get_character_data()['botting']` first, then the narrow
+optional `get_status()` normalization (`botting`/`training` true, `tracing` false).
+Unknown values remain unknown, and the browser never derives botting state from the
+last command.
 
 ## 5. Freeze these architecture decisions before coding transport
 
@@ -562,7 +565,7 @@ do not describe connectivity as absent or simulator mutation tests as real runti
 | Delivery | Success; API false/exception/void; duplicate submit/ack/result; lost HTTP response; result before sent bookkeeping; queue full; writer failure; no automatic action retry. |
 | Time | Expired before send, expired in callback queue, transit delay/skew, duplicate TTL not refreshed, operation started before expiry but result later, uncertain result timeout. |
 | Recovery | Backend restart at each lifecycle phase; DB outage before intent/after send/during result; plugin reload/socket loss; no stale action replay; old-session result accepted only for its original audit. |
-| Truthfulness | Bool API success versus observed setting; walk reports observed arrival only from callback-time position readback after bounded same-region waypoints; disconnect does not promise relog disabled; return does not promise teleport finished; botting remains unknown without a getter. |
+| Truthfulness | Bool API success versus observed setting; walk reports observed arrival only from callback-time position readback after bounded same-region waypoints; disconnect does not promise relog disabled; return does not promise teleport finished; botting uses only recognized current readback and remains unknown otherwise (Issue #35). |
 | Live/UI | POST 202 is not success; cross-client updates; stale controls disabled; old dialog/filter revisions ignored; refresh/reconnect/history through WS only; auth expiry shown; keyboard/mobile forms. |
 | Resource limits | Bounded command/result queues and dedup cache; rate limits; history pagination/retention; oversized frames; slow browser and agent writers; shutdown leaves no leaked workers. |
 

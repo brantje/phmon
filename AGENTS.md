@@ -255,8 +255,8 @@ only the visible easy-mode flows were exercised during the initial inspection.
 Implemented the reusable command fan-out foundation for Issue #30. The frontend
 prepares ordered, deduplicated per-character requests only from current, matching
 session controls/capabilities; freezes arguments, target identity, idempotency key
-and request body; rechecks session/scope before each admission; submits at most four
-children concurrently; and retains independent rejection, uncertainty, execution
+and request body; rechecks session/scope before each admission; submits every
+eligible child concurrently; and retains independent rejection, uncertainty, execution
 and verification results. Exact-key retries retain the original body. `chat.send`
 is excluded from the supported typed command union.
 
@@ -273,9 +273,9 @@ cookie preference, default off. When on, reusable fan-out actions show an inline
 preview and refresh eligibility before admission. Changed sessions are skipped
 without adopting their replacement; changed arguments hold the old frozen command
 and require a new explicit action. Existing Return Scroll, Disconnect, Clientless,
-map navigation and training-area prompts follow the same preference. Required
-`confirmation: true` intent fields remain. This follows the operator's direction
-that review is optional and requires no approval checkpoint.
+map navigation and training-area prompts retain explicit confirmation, with the
+target count shown for multi-character consequential actions. The preference
+controls routine action review. Required `confirmation: true` intent fields remain.
 
 Changed files: `server/internal/{characters,commands,httpapi}`, `web/app` live-data,
 fan-out components/composables/utilities, Settings and single-character prompt
@@ -4715,3 +4715,102 @@ visual change.
 The live monster marker is the red HP bubble again. General, Champion, and Giant
 icons, and the shared party badge, sit in front of the opt-in name label. They
 no longer cover the bubble. Exact next action: none for this visual correction.
+
+### Resume — 2026-10-01 Issue #35 CI and botting-state follow-up
+
+Issue #35 is implemented on Map and phBot → Client in the existing checkout. The
+shared `RemoteControlPanel` uses one existing `useCommandFanOut` owner per mounted
+panel and the nine-command frontend catalog. It reuses immutable per-character
+requests, session/capability/scope admission guards, exact retries, independent
+durable outcomes and the existing command history. Read-only preview allocates no
+idempotency keys. Current-position and radius previews use only matching-session
+training readback: a reported absent area skips that target, while missing or
+mismatched readback is labeled unconfirmed. Named area stays independent of active
+area readback. Return Scroll, Disconnect and Clientless retain `confirmation: true`
+even when optional browser-local review is off. Return Scroll and disruptive
+controls always show an explicit confirmation with the eligible target count;
+single-character Return Scroll and Disconnect prompts do the same with count 1.
+Optional review applies to routine actions. Start skips only targets whose
+observed `botting` value is true, Stop skips only known-false targets, and unknown
+state remains eligible. The plugin prefers an actual boolean in character data,
+then narrowly normalizes optional `get_status()` values. `stopped` and `None`
+remain unknown until verified against a supported runtime. The browser waits for
+observed state and never updates it optimistically. Clientless remains unsupported
+because no safe per-session runtime mutation exists.
+
+Client has page-local individual/group/All/None selection, server labels, offline
+eligibility, stale-snapshot retention and an Inspect control independent from
+targets. Map keeps `actionTargetIDs`, focus behavior and spatial/dataset scope.
+Character-card controls remain single-character. The new `remote-controls`
+simulator scenario can omit primitives or training modes, report area availability,
+use distinct positions, return independent false results and replace a session at
+a controlled command count. The Issue #35 smoke uses the production plugin worker
+and local fake APIs; it does not establish Windows/phBot runtime behavior.
+
+The reachable operator-supplied LAN demo was inspected in a real browser before
+screen work; the public demo host was inaccessible. Local fixture screenshots for
+Map and Client easy/advanced modes at 1440×1000, 1280×800 and 390×844 are in
+`/tmp/phmon-issue35-evidence/`, plus a scrolled mobile Map panel capture. Browser
+checks confirmed no document horizontal overflow, three eligible Map results,
+three eligible Client results with offline rows skipped, and review cancellation
+with no command POSTs. Screenshot evidence and the full observation are recorded
+in `docs/reference-parity.md`.
+
+The latest full `scripts/check.sh` run passed with Node 24.20.0 and a throwaway
+Compose-only `OPERATOR_ACCESS_SECRET`: Go race tests, 122 Python plugin tests,
+live transport audit, Prettier, 128 frontend unit tests, Nuxt typecheck, production
+build and Compose config. ESLint reported zero errors and 51 existing warnings.
+The first run stopped only at Compose interpolation because the local secret was
+unset; the throwaway-value rerun passed. `git diff --check` also passes.
+
+Operator-authorized live verification on 2026-10-01 found and fixed a radius-form
+runtime bug: Vue supplied the `type=number` model as a number while validation
+called `.trim()` directly. `validateRemoteControlArgs()` now normalizes string or
+number input, and its regression test covers numeric 34. The web container alone
+was rebuilt/restarted from this checkout; Go, PostgreSQL and agent sessions were
+left running. The deployed projection showed four online Greatest characters with
+matching control sessions, `botting: true`, and active training radius 34; two
+Zerkroad records were offline. All six targets selected in Client yielded Start
+0 eligible/6 skipped and Stop 4 eligible/2 skipped. With review enabled, the
+radius-34 request was explicitly submitted to the four online characters; all
+four results completed with `observed` verification and readback stayed at 34.
+The browser review preference was restored to its original off state. With it off,
+Return Scroll and Disconnect each showed a mandatory confirmation for four
+eligible characters and two offline skips; both were cancelled without admission.
+Clientless remained unavailable and sent no mutation. Do not claim live execution
+for Return Scroll, Disconnect, trace or `training.area.set` changes. Screenshot:
+`/tmp/phmon-issue35-live-radius-results.png`.
+
+The previously reported two Disconnect admissions later reached terminal history
+with `unverified` results. Current live characters were online at the subsequent
+readback; the earlier void-return calls do not establish their state at execution.
+The existing live history also showed completed API-confirmed bot.stop and bot.start
+results for all four online characters before this follow-up test. The live
+projection does not report plugin version, and `stopped`/`None` from `get_status()`
+remain unverified. Fixture tests and real plugin evidence must remain distinct.
+
+Files changed for Issue #35 plus the live radius correction: `plugin/PhMon.py`,
+`plugin/test_phmon.py`, `web/app/utils/remoteControlActions.ts`,
+`web/app/components/RemoteControlPanel.vue`,
+`web/app/components/CommandFanOutPreview.vue`,
+`web/app/components/RemoteCommandActions.vue`,
+`web/tests/remoteControlActions.test.ts`, `plugin/README.md`,
+`docs/{phbot-capabilities,protocol,reference-parity,slice-3-implementation-plan}.md`,
+and this guide. The radius correction passes all 128 frontend tests, Nuxt
+typecheck, formatting check, ESLint (0 errors, 51 existing warnings) and production
+build. The Compose web image was rebuilt successfully and `/api/health` reports
+database health after restart.
+
+#### CI correction — 2026-10-01
+
+PR #56 CI reported `PhMon.py changed, but pVersion was not increased (1.7.0 ->
+1.7.0)`. The botting-state change does not alter the generated monitor output
+contract, so `PROTOCOL_VERSION` stays at 9 while `pVersion` is bumped to 1.7.1.
+`plugin/README.md` and `docs/phbot-capabilities.md` record that version. Local
+version-guard parity check reports plugin 1.7.0 → 1.7.1 and no generated contract
+change; all 122 Python plugin tests pass after the bump.
+
+Exact next action: review the scoped diff (leave the separate changes in
+`web/app/pages/map.vue` and untracked `web/app/layouts/map.vue` untouched), commit
+and push only the radius correction and evidence docs to PR #56, verify CI on the
+new head, keep the PR open, and do not merge.

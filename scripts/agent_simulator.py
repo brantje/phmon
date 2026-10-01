@@ -467,6 +467,86 @@ def run_training_areas(worker, stopping, api_calls, area, position):
     return 0
 
 
+def run_remote_controls(worker, stopping, api_calls, area, position):
+    """Fixture-only remote-control flow through the production plugin worker."""
+    timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+    command_timeout = float(os.environ.get("PHMON_SIMULATOR_COMMAND_TIMEOUT", "60"))
+    max_commands = int(os.environ.get("PHMON_SIMULATOR_MAX_COMMANDS", "0"))
+    replace_after = int(os.environ.get("PHMON_SIMULATOR_REPLACE_SESSION_AFTER", "0"))
+    session_replaced = False
+    wait_until(lambda: "Connected" in worker.status, timeout, "backend connection")
+    identity = {
+        "server": required("PHMON_SIMULATOR_SERVER"),
+        "name": required("PHMON_SIMULATOR_CHARACTER"),
+        "guild": "",
+        "profile_key": "remote-controls-fixture",
+    }
+    state = {
+        "level": 75,
+        "hp": 900,
+        "region": position["region"],
+        "zone": "Fixture remote controls",
+        "x": position["x"],
+        "y": position["y"],
+        "z": position["z"],
+        "botting": None,
+    }
+    worker.update_character(identity, state)
+    deadline = time.monotonic() + command_timeout
+    last_state = time.monotonic()
+    while time.monotonic() < deadline and not stopping[0]:
+        if worker.character_id and worker.session_id:
+            worker.report_control_state()
+            before = len(api_calls)
+            worker.process_one_command(identity, position["region"])
+            if len(api_calls) != before:
+                call = api_calls[-1]
+                print("REMOTE_CONTROL_CALL", json.dumps(call), flush=True)
+                print("REMOTE_CONTROL_READBACK", json.dumps(area), flush=True)
+                worker.report_control_state(force=True)
+                if replace_after and not session_replaced and len(api_calls) >= replace_after:
+                    previous_character_id = worker.character_id
+                    previous_session_id = worker.session_id
+                    worker.leave_character()
+                    replacement_deadline = time.monotonic() + 8
+                    while worker.character_id is not None and time.monotonic() < replacement_deadline:
+                        time.sleep(0.05)
+                    if worker.character_id is not None:
+                        raise SystemExit("controlled session replacement did not leave the old session")
+                    worker.update_character(identity, state)
+                    replacement_deadline = time.monotonic() + 15
+                    while (worker.session_id is None or worker.session_id == previous_session_id) and time.monotonic() < replacement_deadline:
+                        time.sleep(0.05)
+                    if (worker.character_id != previous_character_id or worker.session_id is None
+                            or worker.session_id == previous_session_id):
+                        raise SystemExit("controlled session replacement did not register a new session")
+                    session_replaced = True
+                    last_state = time.monotonic()
+                    print("REMOTE_CONTROL_SESSION_REPLACED", json.dumps({
+                        "character_id": worker.character_id,
+                        "previous_session_id": previous_session_id,
+                        "session_id": worker.session_id,
+                    }), flush=True)
+                if max_commands and len(api_calls) >= max_commands and (not replace_after or session_replaced):
+                    break
+        if time.monotonic() - last_state >= 5.0:
+            worker.update_character(identity, state)
+            last_state = time.monotonic()
+        time.sleep(0.1)
+    if not api_calls:
+        raise SystemExit("simulator timed out waiting for a supported remote-control adapter call")
+    # The production command callback queues its result; let the socket worker
+    # flush it before returning so smoke tests can inspect authoritative results.
+    flush_deadline = time.monotonic() + 3.0
+    while not worker._outgoing.empty() and time.monotonic() < flush_deadline:
+        time.sleep(0.05)
+    stopping[0] = True
+    worker.stop()
+    worker.join(3.0)
+    print("PASS fixture remote-control adapter calls used production command validation and worker", flush=True)
+    return 0
+
+
 def main():
     scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
     spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario in ("death-events", "map-observations") else None
@@ -525,6 +605,95 @@ def main():
             'set_training_radius': set_training_radius,
             'get_position': lambda: dict(training_position),
         })
+    elif scenario == 'remote-controls':
+        training_position = {
+            "region": int(os.environ.get("PHMON_SIMULATOR_REGION", "25000")),
+            "x": float(os.environ.get("PHMON_SIMULATOR_X", "6400")),
+            "y": float(os.environ.get("PHMON_SIMULATOR_Y", "1080")),
+            "z": float(os.environ.get("PHMON_SIMULATOR_Z", "0")),
+        }
+        area_available = os.environ.get("PHMON_SIMULATOR_NO_TRAINING_AREA", "false").lower() != "true"
+        training_area = ({
+            "region": training_position["region"],
+            "x": float(os.environ.get("PHMON_SIMULATOR_TRAINING_X", str(training_position["x"]))),
+            "y": float(os.environ.get("PHMON_SIMULATOR_TRAINING_Y", str(training_position["y"]))),
+            "z": float(os.environ.get("PHMON_SIMULATOR_TRAINING_Z", str(training_position["z"]))),
+            "radius": float(os.environ.get("PHMON_SIMULATOR_TRAINING_RADIUS", "50")),
+        } if area_available else None)
+        unsupported = {
+            value.strip() for value in
+            os.environ.get("PHMON_SIMULATOR_UNSUPPORTED_PRIMITIVES", "").split(",")
+            if value.strip()
+        }
+        unsupported_modes = {
+            value.strip() for value in
+            os.environ.get("PHMON_SIMULATOR_UNSUPPORTED_TRAINING_MODES", "").split(",")
+            if value.strip()
+        }
+        false_action = os.environ.get("PHMON_SIMULATOR_FALSE_ACTION", "")
+        named_areas = {
+            value.strip() for value in
+            os.environ.get("PHMON_SIMULATOR_NAMED_AREAS", "Fixture Area").split(",")
+            if value.strip()
+        }
+
+        def result_for(name):
+            return name != false_action
+
+        def record(name, *args):
+            fake_calls.append([name, *args])
+            return result_for(name)
+
+        def set_training_position(region, x, y, z):
+            nonlocal_training_area = training_area
+            record_result = record("set_training_position", region, x, y, z)
+            if record_result and nonlocal_training_area is not None:
+                nonlocal_training_area.update({"region": region, "x": x, "y": y, "z": z})
+            return record_result
+
+        def set_training_radius(radius):
+            record_result = record("set_training_radius", radius)
+            if record_result and training_area is not None:
+                training_area["radius"] = radius
+            return record_result
+
+        def set_training_area(name):
+            nonlocal training_area
+            if name not in named_areas:
+                return False
+            record_result = record("set_training_area", name)
+            if record_result and training_area is None:
+                training_area = {
+                    "region": training_position["region"],
+                    "x": training_position["x"],
+                    "y": training_position["y"],
+                    "z": training_position["z"],
+                    "radius": float(os.environ.get("PHMON_SIMULATOR_TRAINING_RADIUS", "50")),
+                }
+            return record_result
+
+        adapters = {
+            "start_bot": lambda: record("start_bot"),
+            "stop_bot": lambda: record("stop_bot"),
+            "start_trace": lambda name: record("start_trace", name),
+            "stop_trace": lambda: record("stop_trace"),
+            "use_return_scroll": lambda: record("use_return_scroll"),
+            # phBot's documented disconnect() returns None. The fixture records
+            # the invocation without pretending it observed a disconnection.
+            "disconnect": lambda: fake_calls.append(["disconnect"]) or None,
+            "get_position": lambda: dict(training_position),
+            "get_training_area": lambda: dict(training_area) if training_area is not None else None,
+            "set_training_position": set_training_position,
+            "set_training_radius": set_training_radius,
+            "set_training_area": set_training_area,
+        }
+        for primitive in unsupported:
+            adapters.pop(primitive, None)
+        if "current_position" in unsupported_modes:
+            adapters.pop("get_position", None)
+        if "named" in unsupported_modes:
+            adapters.pop("set_training_area", None)
+        api = PhMon.PhBotAdapter(adapters)
     else:
         api = None
     worker = PhMon.AgentWorker(config, 'simulator-fixture', api_adapter=api)
@@ -569,6 +738,9 @@ def main():
 
     if scenario == "training-areas":
         return run_training_areas(worker, stopping, fake_calls, training_area, training_position)
+
+    if scenario == "remote-controls":
+        return run_remote_controls(worker, stopping, fake_calls, training_area, training_position)
 
     if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "character-lifecycle":
         deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))

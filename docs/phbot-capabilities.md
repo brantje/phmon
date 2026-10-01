@@ -248,7 +248,9 @@ coordinates; historical event names are not inferred. The API documentation does
 not specify behavior for unsupported/custom region IDs, so those remain unnamed.
 - [Botting](https://plugins.phbot.org/phbot-api/botting) documents `start_bot()` and
   `stop_bot()` mutations but no read-only botting/training-state getter. Slice 2
-  reports this field as unknown rather than inferring state from commands or UI.
+  initially reported this field as unknown rather than inferring state from
+  commands or UI. Issue #35 later added guarded readback; see the current status
+  update below.
 
 Implementation imports only these documented APIs. It copies primitive values on
 the callback thread, change-detects at a one-second minimum and refreshes at five
@@ -265,8 +267,10 @@ not clear stored metadata.
 Remaining Slice 2 runtime checks: record embedded Python version; verify repeated
 disconnect callbacks, character switch, teleport/region change, and reconnect
 snapshot behavior. The collector recovery after loading post-join is implemented
-and unit-tested, but not isolated as a manual runtime scenario. Botting state remains
-unavailable until an authoritative documented/read-only API is verified.
+and unit-tested, but not isolated as a manual runtime scenario. Issue #35 later
+added guarded botting-state readback from a boolean character-data field or a
+narrowly recognized optional status value. `stopped` and `None` remain unknown
+until their meaning is verified on a supported phBot runtime.
 
 The real-runtime gate requires installing PhMon.py in a supported phBot build,
 configuring at least two distinct bot profiles through the PhMon QtBind tab, and
@@ -355,9 +359,10 @@ within that tolerance; the route becomes `unknown` on target/region change, time
 teleport and not execution of `generate_script` output. The public API rate-limits
 path generation to once per five seconds and the plugin surfaces its documented
 `False` (rate-limited or not in game) and `None` (no path) outcomes as failed
-commands. Return-scroll never claims teleport completion, disconnect never claims
-relog was disabled, and botting state remains unknown because the checked public
-Botting API still exposes no authoritative read-only getter.
+commands. Return-scroll never claims teleport completion and disconnect never
+claims relog was disabled. The public Botting API still documents no state getter;
+Issue #35 uses the character-data boolean and a narrow optional status fallback,
+with unknown values remaining unknown (see the current status update below).
 
 ### Slice 3 implementation evidence refresh (2026-09-27)
 
@@ -1023,3 +1028,73 @@ and check that no ten-second callback warning returns. Do not claim this runtime
 gate passed based only on Python fixture threads. Exact next action: push 1.6.2
 for operator installation and inspect its callback/position evidence, then finish
 final-head CI and CodeRabbit without merging PR #50.
+
+## Issue #35 multi-character control mapping — 2026-10-01
+
+The Issue #35 browser panel reuses the existing audited `POST /api/commands`
+catalog and each current session's reported capability frame. It adds no plugin
+primitive, wire command, protocol version or backend batch operation. `bot.start`,
+`bot.stop`, `trace.start`, `trace.stop`, `character.return`, and
+`character.disconnect` keep the signatures and result semantics in the Slice 3
+matrix above. `character.disconnect` returns `None`; PhMon reports invocation as
+unverified and does not infer that the character went offline. Return, Disconnect
+and Clientless requests retain `confirmation: true` even when the browser-local
+optional review preference is off.
+
+`training.area.set` exposes only `current_position` and `named` in this panel.
+`current_position` requires the exact reported mode and sends only that mode; the
+production worker reads `get_position()` when it executes. `named` calls the
+documented `set_training_area(name)` and remains independent of current active-area
+readback; the operator supplies a profile-local name. Both current-position and
+radius eligibility use only a matching-session `get_training_area()` readback to
+explain a reported unavailable area. A missing readback is not treated as proof of
+an absent area or its coordinates. The separate radius operation requires the
+documented getter and setter and retains its post-call readback.
+
+The documented Client API has `get_client()` but no safe per-session Clientless
+mutation. The runtime continues to report `client.clientless` as
+`unsupported_runtime_primitive`; the panel displays that reason for every target
+and sends no mutation. It does not inspect or terminate client processes. Official
+source pages: [Botting](https://plugins.phbot.org/phbot-api/botting), [Training
+Area](https://plugins.phbot.org/phbot-api/training-area), [Misc](https://plugins.phbot.org/phbot-api/misc), and [Client](https://plugins.phbot.org/phbot-api/client).
+
+The Issue #35 deterministic `remote-controls` fixture uses the production
+`PhMon.py` worker with local fake adapters for bot/trace, return, disconnect and
+training operations. It can omit primitives, report no active area, vary each
+worker's position, return false independently, omit configured training modes,
+and replace a character session on a chosen adapter-call count. Fake Disconnect
+records a local call and returns `None`; fixture Clientless remains unsupported.
+The browser eligibility preview labels a missing or mismatched training readback
+as unconfirmed and blocks current-position/radius only when a current readback
+reports no active area. Fixture outcomes verify transport and result handling
+only, not Windows/phBot API effects.
+
+Plugin 1.7.1 publishes botting state in the existing `CharacterView.botting`
+field without changing the generated monitor output contract or agent protocol.
+It prefers `get_character_data()['botting']` when it is a boolean.
+Otherwise, the optional and undocumented `get_status()` fallback accepts only
+`botting`/`training` as true and `tracing` as false. Unknown values, errors,
+unavailable status, `stopped` and `None` remain unknown because the available
+phBot 20.1.1 runtime evidence did not verify their semantics. Start skips a target
+only when its latest observed state is true; Stop skips only when it is false.
+Unknown state remains eligible under normal session/capability rules, and the UI
+waits for the next observed state instead of updating optimistically. Verify
+`stopped` and `None` against a supported phBot runtime before mapping either to
+false.
+
+An operator-authorized live check on 2026-10-01 observed four online Greatest
+sessions with matching control/readback session IDs, `botting: true`, an available
+active training area and radius 34. Two Zerkroad character records were offline.
+The Client All selection previewed Start as 0 eligible/6 skipped and Stop as
+4 eligible/2 skipped. A reviewed `training.radius.set` request using each target's
+already-observed value 34 completed on all four online sessions with `observed`
+verification; subsequent readback remained 34. Return Scroll and Disconnect
+confirmation previews each showed four eligible targets and two offline skips and
+were cancelled without submission. Clientless remained capability-blocked. The
+view does not expose plugin version, and no Return Scroll, Disconnect, trace or
+`training.area.set` mutation was submitted during this check.
+
+The live numeric-radius form exposed a frontend-only type issue: Vue provided the
+number input model as a number while validation assumed a string. Validation now
+normalizes either representation before trimming/parsing; the added regression
+test covers numeric input. This does not change the protocol or plugin contract.

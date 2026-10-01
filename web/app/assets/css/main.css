@@ -3269,7 +3269,8 @@ select:focus-visible {
 }
 .map-side-panel {
   display: flex;
-  overflow: visible;
+  max-height: min(80vh, 840px);
+  overflow-y: auto;
   flex-direction: column;
   gap: 0.55rem;
   padding: 0.65rem;
@@ -3407,6 +3408,7 @@ select:focus-visible {
   .map-side-panel {
     display: grid;
     max-height: none;
+    overflow: visible;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }

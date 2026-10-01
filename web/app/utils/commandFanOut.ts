@@ -38,11 +38,15 @@ export interface FanOutCommandDefinition {
   label: string
   impact: FanOutImpact
   buildArgs(character: CharacterView): Record<string, unknown>
-  summarizeArgs?(args: Record<string, unknown>): string
+  summarizeArgs?(
+    args: Record<string, unknown>,
+    controls: ControlsSnapshot,
+  ): string
   preEligibility?(character: CharacterView): FanOutSkipReason | null
   eligibility?(
     character: CharacterView,
     args: Record<string, unknown>,
+    controls: ControlsSnapshot,
   ): FanOutSkipReason | null
   admissionGuard?(
     child: FanOutChild,
@@ -99,7 +103,14 @@ export interface PrepareFanOutInput {
   targets: Record<string, FanOutTargetData>
   scopeKey: string
   liveCurrent: boolean
-  idempotencyKey(): string
+  idempotencyKey?: () => string
+}
+
+export interface CommandFanOutPreview {
+  selectedCount: number
+  eligibleCount: number
+  skippedCount: number
+  children: FanOutChild[]
 }
 
 function deepFreeze<T>(value: T): T {
@@ -319,9 +330,29 @@ export function prepareCommandFanOut(
       continue
     }
 
-    const actionReason = command.eligibility?.(invocationCharacter, args)
+    const actionReason = command.eligibility?.(
+      invocationCharacter,
+      args,
+      controls,
+    )
     if (actionReason) {
       reject(actionReason)
+      continue
+    }
+
+    if (!input.idempotencyKey) {
+      children.push(
+        freezeChildTarget({
+          characterID: character.character_id,
+          characterName: character.name,
+          server: character.server,
+          sessionID: character.session_id,
+          scopeKey: input.scopeKey,
+          args,
+          argsSummary: command.summarizeArgs?.(args, controls),
+          submission: 'ready',
+        }),
+      )
       continue
     }
 
@@ -342,7 +373,7 @@ export function prepareCommandFanOut(
         sessionID: character.session_id,
         scopeKey: input.scopeKey,
         args,
-        argsSummary: command.summarizeArgs?.(args),
+        argsSummary: command.summarizeArgs?.(args, controls),
         idempotencyKey,
         request,
         submission: 'ready',
@@ -357,6 +388,25 @@ export function prepareCommandFanOut(
     selectedCount: characterIDs.length,
     children,
     state: 'prepared',
+  }
+}
+
+/** Assess targets with the same rules as preparation without allocating request IDs. */
+export function previewCommandFanOut(
+  input: Omit<PrepareFanOutInput, 'operationID' | 'idempotencyKey'>,
+): CommandFanOutPreview {
+  const assessment = prepareCommandFanOut({
+    ...input,
+    operationID: '',
+  })
+  const eligibleCount = assessment.children.filter(
+    (child) => !child.skipReason,
+  ).length
+  return {
+    selectedCount: assessment.selectedCount,
+    eligibleCount,
+    skippedCount: assessment.children.length - eligibleCount,
+    children: assessment.children,
   }
 }
 

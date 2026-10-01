@@ -5,6 +5,7 @@ import {
   fanOutCounts,
   mergeFanOutCommand,
   prepareCommandFanOut,
+  previewCommandFanOut,
   refreshPreparedCommandFanOut,
   retryFanOutSubmission,
   submitCommandFanOut,
@@ -132,6 +133,43 @@ test('deduplicates overlapping selections in order and freezes one child request
     Reflect.set(operation.children[0]!.request!.args, 'region', 900),
     false,
   )
+})
+
+test('read-only preview shares eligibility decisions and never allocates request keys', () => {
+  let idempotencyKeys = 0
+  const input = {
+    command,
+    characterIDs: ['one', 'offline', 'one'],
+    targets: {
+      one: target('one'),
+      offline: {
+        ...target('offline'),
+        character: { ...character('offline'), online: false },
+      },
+    },
+    scopeKey: 'Greatest:world',
+    liveCurrent: true,
+  }
+  const preview = previewCommandFanOut(input)
+  const prepared = prepareCommandFanOut({
+    ...input,
+    operationID: 'preview-parity',
+    idempotencyKey: () => `key-${++idempotencyKeys}`,
+  })
+  assert.equal(preview.selectedCount, 2)
+  assert.equal(preview.eligibleCount, 1)
+  assert.equal(preview.skippedCount, 1)
+  assert.equal(
+    preview.children[0]?.characterID,
+    prepared.children[0]?.characterID,
+  )
+  assert.equal(
+    preview.children[0]?.skipReason?.code,
+    prepared.children[0]?.skipReason?.code,
+  )
+  assert.equal(preview.children[0]?.request, undefined)
+  assert.equal(preview.children[0]?.idempotencyKey, undefined)
+  assert.equal(idempotencyKeys, 1)
 })
 
 test('projection chunking keeps every target and exact key in ordered groups of at most 100', () => {

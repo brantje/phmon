@@ -129,8 +129,11 @@ may continue observing B while another owns A.
      "region":25000,"zone":"Jangan","x":6428.2,"y":1086.7,"z":-32.6,"botting":null}}
 
 Changed observations use `character.state` with the same explicit ID and state
-shape. Missing fields mean unavailable/not observed; null botting means the verified
-phBot API has no read-only state getter. Values are validated before persistence.
+shape. Missing fields mean unavailable/not observed; null botting means the plugin
+did not obtain a recognized value from the available state sources. The plugin
+prefers a boolean `get_character_data()['botting']` and can normalize a small set
+of known strings from optional `get_status()`; unverified `stopped` and `None`
+values remain unknown. Values are validated before persistence.
 Server-owned state/session/activity timestamps are authoritative; plugin `sent_at` is
 diagnostic only.
 
@@ -424,7 +427,8 @@ live position readback reaches the last waypoint and destination within the docu
 application tolerance. Target/region changes, missing readback, or the five-minute
 route limit produce an honest unknown outcome. Return-scroll does not claim teleport
 completion from its API call; disconnect does not change relog configuration; botting
-remains unknown absent a documented getter.
+state is never inferred from command results and remains unknown without recognized
+readback (see the current botting-state source precedence above).
 Walk admission additionally requires the serving socket to advertise plugin version
 1.1.2 or newer, so older v3 agents cannot receive the prior direct-movement behavior.
 

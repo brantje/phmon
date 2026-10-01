@@ -8,9 +8,12 @@ import {
   refreshPreparedCommandFanOut,
   retryFanOutSubmission,
   submitCommandFanOut,
+  previewCommandFanOut,
   type FanOutCommandDefinition,
   type FanOutOperation,
   type FanOutTargetData,
+  type CommandFanOutPreview,
+  type PrepareFanOutInput,
 } from '~/utils/commandFanOut'
 
 let nextOwnerNumber = 0
@@ -96,11 +99,9 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     })
   }
 
-  function makePreparedOperation(
+  function targetData(
     selected: string[],
     scopeKey: string,
-    operationID: string,
-    command: FanOutCommandDefinition = options.command,
     operationScopeKey = scopeKey,
   ) {
     const snapshot = feed.value
@@ -138,9 +139,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
             : undefined),
       }
     }
-    return prepareCommandFanOut({
-      operationID,
-      command,
+    return {
       characterIDs: selected,
       targets,
       scopeKey,
@@ -148,8 +147,42 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
         Boolean(snapshot?.controls_current) &&
         live.connectionState.value === 'current' &&
         !live.liveStale.value,
-      idempotencyKey: createIdempotencyKey,
+    }
+  }
+
+  function preview(
+    characterIDs: string[],
+    command: FanOutCommandDefinition = options.command,
+    operationScopeKey = options.scopeKey,
+  ): CommandFanOutPreview | null {
+    const selected = [...new Set(characterIDs)]
+    const snapshot = feed.value
+    if (
+      !snapshot?.controls_current ||
+      live.connectionState.value !== 'current' ||
+      live.liveStale.value
+    )
+      return null
+    return previewCommandFanOut({
+      ...targetData(selected, operationScopeKey, operationScopeKey),
+      command,
     })
+  }
+
+  function makePreparedOperation(
+    selected: string[],
+    scopeKey: string,
+    operationID: string,
+    command: FanOutCommandDefinition = options.command,
+    operationScopeKey = scopeKey,
+  ) {
+    const input: PrepareFanOutInput = {
+      ...targetData(selected, scopeKey, operationScopeKey),
+      operationID,
+      command,
+      idempotencyKey: createIdempotencyKey,
+    }
+    return prepareCommandFanOut(input)
   }
 
   async function prepare(
@@ -161,7 +194,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     error.value = ''
     preparing.value = true
     const selected = [...new Set(characterIDs)]
-    live.setCommandFanOutTargets(ownerID, selected)
+    setTargets(selected)
     try {
       await waitForControls()
       if (disposed) return null
@@ -184,6 +217,11 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     } finally {
       preparing.value = false
     }
+  }
+
+  function setTargets(characterIDs: string[]) {
+    if (disposed) return
+    live.setCommandFanOutTargets(ownerID, [...new Set(characterIDs)])
   }
 
   async function refreshPreview(operation: FanOutOperation) {
@@ -317,6 +355,8 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     preparing: readonly(preparing),
     submitting: readonly(submitting),
     prepare,
+    preview,
+    setTargets,
     refreshPreview,
     submit,
     cancel,

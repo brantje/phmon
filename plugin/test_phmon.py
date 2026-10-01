@@ -1643,6 +1643,83 @@ class CanonicalCallbackTests(unittest.TestCase):
 
 
 class CharacterCollectorTests(unittest.TestCase):
+    def test_botting_normalizes_only_known_status_values(self):
+        cases = (
+            ('botting', True),
+            ('training', True),
+            ('tracing', False),
+            (' Botting ', True),
+            ('stopped', None),
+            ('idle', None),
+            ('running', None),
+            (None, None),
+            (True, None),
+            (1, None),
+        )
+        for value, expected in cases:
+            with self.subTest(value=value):
+                self.assertIs(plugin._normalize_botting_status(value), expected)
+
+    def test_boolean_character_data_has_precedence_over_optional_status(self):
+        for value in (True, False):
+            with self.subTest(value=value):
+                with patch.object(plugin, '_optional_phbot_api') as resolve:
+                    self.assertIs(
+                        plugin._read_botting_state({'botting': value}),
+                        value,
+                    )
+                resolve.assert_not_called()
+
+    def test_non_boolean_character_data_falls_back_without_guessing(self):
+        getter = Mock(return_value='training')
+        self.assertIs(
+            plugin._read_botting_state({'botting': 'true'}, getter),
+            True,
+        )
+        getter.assert_called_once_with()
+        with patch.object(plugin, '_optional_phbot_api', return_value=None):
+            self.assertIs(plugin._read_botting_state({}, None), None)
+        self.assertIs(plugin._read_botting_state({}, lambda: None), None)
+        self.assertIs(plugin._read_botting_state({}, lambda: 'unknown'), None)
+
+        def unavailable_status():
+            raise RuntimeError('status unavailable')
+
+        self.assertIs(plugin._read_botting_state({}, unavailable_status), None)
+
+    def test_character_sample_publishes_normalized_optional_status(self):
+        previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        )
+        worker = Mock()
+        try:
+            plugin._worker = worker
+            plugin._character_joined = True
+            plugin._last_character_signature = None
+            plugin._last_character_sample_at = 0
+            plugin._last_resources_sample_at = time.monotonic()
+            with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                    patch.object(plugin, '_get_character_data', return_value={
+                        'server': 'Greatest', 'name': 'Alpha', 'botting': 'unknown',
+                    }), \
+                    patch.object(plugin, '_get_position', return_value=None), \
+                    patch.object(plugin, '_get_profile', return_value=None), \
+                    patch.object(plugin, '_optional_phbot_api', return_value=lambda: 'tracing'), \
+                    patch.object(plugin, '_sample_monsters'), \
+                    patch.object(plugin, '_sample_npcs'):
+                plugin._sample_character()
+
+            state = worker.update_character.call_args.args[1]
+            self.assertIs(state['botting'], False)
+        finally:
+            (plugin._worker, plugin._character_joined,
+             plugin._last_character_signature, plugin._last_character_sample_at,
+             plugin._last_resources_sample_at) = previous
+
     def test_profile_identity_fence_is_local_and_captured_for_session_replacement(self):
         previous = (
             plugin._worker,
