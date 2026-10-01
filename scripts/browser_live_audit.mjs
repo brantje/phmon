@@ -326,6 +326,24 @@ async function main() {
       'group deletion replacement snapshot',
       10000,
     )
+    // Restore the unfiltered character list after exercising group-scoped cards.
+    await evaluate(
+      cdp,
+      `(() => {
+        const input = document.querySelector('input[aria-label="Search characters, guild, server or zone"]')
+        if (!input) throw new Error('character search input missing')
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+        setter.call(input, '')
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        const allChip = [...document.querySelectorAll('button.character-group-chip')].find(
+          (button) => button.textContent.trim().startsWith('All characters'),
+        )
+        if (!allChip) throw new Error('All characters group chip missing')
+        allChip.click()
+        return true
+      })()`,
+    )
+    await sleep(700)
     await waitFor(
       () =>
         evaluate(
@@ -333,7 +351,7 @@ async function main() {
           `document.querySelector('.character-cards-grid .character-card') !== null`,
         ),
       'character cards after clearing the deleted group filter',
-      10000,
+      20000,
     )
 
     // Verify the current responsive shell still fits both mobile and desktop widths.
