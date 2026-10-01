@@ -281,6 +281,10 @@ export interface NavigationRoute {
   blocks: NavigationRouteBlock[]
   arrived?: boolean
   geometry_omitted?: boolean
+  instruction_count?: number
+  completed_instructions?: number
+  progress?: number
+  eta_seconds?: number
 }
 
 export interface MapSnapshot {
@@ -483,6 +487,10 @@ export interface ControlsSnapshot {
     training_z?: number
     training_radius?: number
     observed_at?: string
+    activity_state?: 'unknown' | 'tracing' | 'not_tracing'
+    activity_observed_at?: string
+    activity_source?: string
+    trace_requested_name?: string
   }
 }
 

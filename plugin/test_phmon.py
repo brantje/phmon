@@ -2806,6 +2806,46 @@ class CallbackTimingTests(unittest.TestCase):
             self.assertNotIn('private', log.call_args.args[0])
 
 
+class Issue57NavigationAndTraceTests(unittest.TestCase):
+    def test_read_trace_activity_maps_status_values(self):
+        self.assertEqual(plugin._read_trace_activity(lambda: 'tracing'), ('tracing', 'get_status'))
+        self.assertEqual(plugin._read_trace_activity(lambda: 'botting'), ('not_tracing', 'get_status'))
+        self.assertEqual(plugin._read_trace_activity(lambda: 'stopped'), ('unknown', 'get_status'))
+        self.assertEqual(plugin._read_trace_activity(lambda: None), ('unknown', 'get_status_unavailable'))
+
+    def test_navigate_stop_requires_matching_active_token(self):
+        worker = plugin.AgentWorker(
+            {
+                'backend_url': 'ws://127.0.0.1/agent',
+                'agent_id': AGENT_ID,
+                'agent_token': 'token',
+            },
+            '20.1.2',
+        )
+        worker.api = Mock()
+        worker.api.has = Mock(return_value=True)
+        worker.api.call = Mock(return_value=True)
+        worker._active_navigation = {
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+            'route_sequence': 1,
+            'epoch': worker._profile_epoch,
+        }
+        args = {
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+            'route_sequence': 2,
+        }
+        with self.assertRaises(ValueError):
+            worker._invoke('character.navigate.stop', args, 25000)
+        worker.api.call.assert_not_called()
+        args['route_sequence'] = 1
+        result, effective, _, verification = worker._invoke(
+            'character.navigate.stop', args, 25000
+        )
+        worker.api.call.assert_called_once_with('stop_script')
+        self.assertTrue(result)
+        self.assertIsNone(worker._active_navigation)
+
+
 class WorkerStopTests(unittest.TestCase):
     def test_stop_worker_signals_without_joining_callback(self):
         worker = Mock()

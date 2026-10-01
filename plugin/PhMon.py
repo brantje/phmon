@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.8.0'
+pVersion = '1.9.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 10
+PROTOCOL_VERSION = 11
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -145,6 +145,25 @@ def _normalize_botting_status(value):
         return False
     return None
 
+def _read_trace_activity(status_getter=None):
+    if status_getter is None:
+        status_getter = _optional_phbot_api('get_status')
+    if not callable(status_getter):
+        return 'unknown', 'get_status_unavailable'
+    try:
+        value = status_getter()
+    except Exception:
+        return 'unknown', 'get_status_unavailable'
+    if not isinstance(value, str):
+        return 'unknown', 'get_status_unavailable'
+    status = value.strip().lower()
+    if status == 'tracing':
+        return 'tracing', 'get_status'
+    if status in ('botting', 'training'):
+        return 'not_tracing', 'get_status'
+    return 'unknown', 'get_status'
+
+
 def _read_botting_state(character_data, status_getter=None, timing=None):
     """Prefer a boolean character field, then narrowly normalize optional status text."""
     if isinstance(character_data, dict):
@@ -165,7 +184,7 @@ def _read_botting_state(character_data, status_getter=None, timing=None):
 
 _API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','generate_path','set_training_position',
               'set_training_radius','set_training_area','get_training_area','move_to_region',
-              'generate_script','start_script','use_return_scroll','disconnect')
+              'generate_script','start_script','stop_script','use_return_scroll','disconnect')
 
 _CHAT_METHODS = {
     'general': ('All',),
@@ -2258,6 +2277,8 @@ class AgentWorker(object):
         self._latest_navigation_route = None
         self._navigation_route_sent_at = 0.0
         self._last_navigation_evidence = None
+        self._active_navigation = None
+        self._trace_requested_name = None
         self._server_clock_offset = 0.0
         self._last_control_sample_session = None
         self._last_control_sample_at = 0.0
@@ -2739,6 +2760,7 @@ class AgentWorker(object):
             self._latest_navigation_route = None
             self._navigation_route_sent_at = 0.0
         self._last_navigation_evidence = None
+        self._active_navigation = None
 
     def _run(self):
         backoff = ReconnectBackoff()
@@ -2988,6 +3010,11 @@ class AgentWorker(object):
             self._navigation_sequence = sequence
             self._latest_navigation_route = route
             self._navigation_route_sent_at = 0.0
+            self._active_navigation = {
+                'command_id': message.get('command_id'),
+                'route_sequence': sequence,
+                'epoch': self._profile_epoch,
+            }
         return True
 
     def _send_resource_snapshot(self, client, value):
@@ -3211,6 +3238,7 @@ class AgentWorker(object):
             'training.radius.set': ('set_training_radius', 'unsupported_runtime_primitive'),
             'character.walk': ('move_to_region', 'unsupported_runtime_primitive'),
             'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
+            'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
             'client.clientless': (None, 'unsupported_runtime_primitive'),
@@ -3231,6 +3259,8 @@ class AgentWorker(object):
                 supported = all(self.api.has(symbol) for symbol in ('generate_path', 'move_to_region', 'get_position'))
             if name == 'character.navigate':
                 supported = self.api.has('generate_script') and self.api.has('start_script')
+            if name == 'character.navigate.stop':
+                supported = self.api.has('stop_script') and self.api.has('start_script')
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
         chat_modes = self.api.chat_modes()
@@ -3686,11 +3716,34 @@ class AgentWorker(object):
             exact(())
             function = {'bot.start':'start_bot','bot.stop':'stop_bot','trace.stop':'stop_trace','character.return':'use_return_scroll','character.disconnect':'disconnect'}[name]
             result = self.api.call(function)
+            if name == 'trace.stop' and result is not False:
+                self._trace_requested_name = None
             return result, {}, None, 'api_confirmed' if isinstance(result,bool) else 'unverified'
         if name == 'trace.start':
             exact(('name',)); value=args.get('name')
             if not isinstance(value,str) or not value.strip() or len(value.strip().encode('utf-8'))>64: raise ValueError('invalid_arguments')
-            result=self.api.call('start_trace',value.strip()); return result,{'name':value.strip()},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
+            leader=value.strip()
+            result=self.api.call('start_trace',leader)
+            if result is not False:
+                self._trace_requested_name = leader
+            return result,{'name':leader},None,'api_confirmed' if isinstance(result,bool) else 'unverified'
+        if name == 'character.navigate.stop':
+            exact(('command_id', 'route_sequence'))
+            command_id = args.get('command_id')
+            sequence = args.get('route_sequence')
+            if (not isinstance(command_id, str) or not command_id.startswith('cmd_') or len(command_id) != 40 or
+                    not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= 0):
+                raise ValueError('invalid_arguments')
+            token = self._active_navigation
+            if (not isinstance(token, dict) or token.get('command_id') != command_id or
+                    token.get('route_sequence') != sequence or token.get('epoch') != self._profile_epoch):
+                raise ValueError('route_token_mismatch')
+            if not self.api.has('stop_script'):
+                raise ValueError('unsupported_runtime_primitive')
+            result = self.api.call('stop_script')
+            self._active_navigation = None
+            status = 'failed' if result is False else 'completed'
+            return result, {'command_id': command_id, 'route_sequence': sequence}, None, 'api_confirmed' if isinstance(result, bool) else 'unverified'
         if name == 'chat.send':
             exact(('channel','text','recipient'))
             channel=args.get('channel'); value=args.get('text'); recipient=args.get('recipient')
@@ -3766,7 +3819,15 @@ class AgentWorker(object):
             if self.api.has('get_training_area'): area=self.api.call('get_training_area')
         except Exception: area=None
         safe=self._safe_area(area) or {}
-        state={'training_available':bool(isinstance(area,dict)),'observed_at':_utc_now()}
+        activity_state, activity_source = _read_trace_activity()
+        state={
+            'training_available':bool(isinstance(area,dict)),
+            'observed_at':_utc_now(),
+            'activity_state': activity_state,
+            'activity_source': activity_source,
+        }
+        if self._trace_requested_name:
+            state['trace_requested_name'] = self._trace_requested_name
         state.update(safe)
         self._queue_result({'type':'character.control_state','protocol_version':PROTOCOL_VERSION,'character_id':message.get('character_id'),
                             'session_id':message.get('session_id'),'control_state':state})

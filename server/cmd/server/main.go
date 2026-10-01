@@ -107,6 +107,7 @@ func run() error {
 	}
 	dispatcher := commands.NewDispatcher(dispatchStore, registry, live)
 	commandService.SetDispatcher(dispatcher)
+	commandService.SetNavigationAdmission(live.NavigationAdmission())
 	go dispatcher.Run(ctx)
 	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{

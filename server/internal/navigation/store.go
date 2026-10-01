@@ -66,25 +66,29 @@ type Block struct {
 }
 
 type View struct {
-	CommandID          string    `json:"command_id"`
-	CharacterID        string    `json:"character_id"`
-	SessionID          string    `json:"session_id"`
-	Sequence           uint64    `json:"route_sequence"`
-	Server             string    `json:"server"`
-	DatasetID          string    `json:"dataset_id"`
-	DatasetVersion     string    `json:"dataset_version"`
-	AreaID             string    `json:"area_id,omitempty"`
-	FloorID            string    `json:"floor_id,omitempty"`
-	Destination        Point     `json:"destination"`
-	DestinationAreaID  string    `json:"destination_area_id,omitempty"`
-	DestinationFloorID string    `json:"destination_floor_id,omitempty"`
-	CurrentAnchor      *Point    `json:"current_anchor,omitempty"`
-	Status             string    `json:"status"`
-	Reason             string    `json:"reason,omitempty"`
-	UpdatedAt          time.Time `json:"updated_at"`
-	Blocks             []Block   `json:"blocks"`
-	Arrived            bool      `json:"arrived,omitempty"`
-	GeometryOmitted    bool      `json:"geometry_omitted,omitempty"`
+	CommandID             string    `json:"command_id"`
+	CharacterID           string    `json:"character_id"`
+	SessionID             string    `json:"session_id"`
+	Sequence              uint64    `json:"route_sequence"`
+	Server                string    `json:"server"`
+	DatasetID             string    `json:"dataset_id"`
+	DatasetVersion        string    `json:"dataset_version"`
+	AreaID                string    `json:"area_id,omitempty"`
+	FloorID               string    `json:"floor_id,omitempty"`
+	Destination           Point     `json:"destination"`
+	DestinationAreaID     string    `json:"destination_area_id,omitempty"`
+	DestinationFloorID    string    `json:"destination_floor_id,omitempty"`
+	CurrentAnchor         *Point    `json:"current_anchor,omitempty"`
+	Status                string    `json:"status"`
+	Reason                string    `json:"reason,omitempty"`
+	UpdatedAt             time.Time `json:"updated_at"`
+	Blocks                []Block   `json:"blocks"`
+	Arrived               bool      `json:"arrived,omitempty"`
+	GeometryOmitted       bool      `json:"geometry_omitted,omitempty"`
+	InstructionCount      int       `json:"instruction_count,omitempty"`
+	CompletedInstructions int       `json:"completed_instructions,omitempty"`
+	Progress              *float64  `json:"progress,omitempty"`
+	ETASeconds            *int      `json:"eta_seconds,omitempty"`
 }
 
 type route struct {
@@ -101,6 +105,8 @@ type route struct {
 	arrived      bool
 	lastPosition *Position
 	anchor       *Position
+	stopped      bool
+	recentMoves  []Position
 }
 
 type routeOwner struct {
@@ -200,6 +206,9 @@ func (s *Store) ReplaceIf(input Input, agentID string, generation uint64, server
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, ok := s.routes[input.SessionID]
+	if ok && current.stopped && input.Sequence == current.Sequence {
+		return false
+	}
 	if ok && (input.Sequence <= current.Sequence || input.InvokedAt.Before(current.InvokedAt)) {
 		return false
 	}
@@ -223,7 +232,7 @@ func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	current, ok := s.routes[sessionID]
-	if !ok || current.CharacterID != characterID || position.At.Before(current.InvokedAt) ||
+	if !ok || current.stopped || current.CharacterID != characterID || position.At.Before(current.InvokedAt) ||
 		current.lastPosition != nil && !position.At.After(current.lastPosition.At) {
 		return false
 	}
@@ -273,6 +282,56 @@ func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 	} else if progressed || current.cursor > 0 {
 		current.status = "moving"
 	}
+	if progressed && current.status == "moving" {
+		appendRecentMove(&current, position)
+	}
+	s.routes[sessionID] = current
+	return true
+}
+
+// CanStopNavigation reports whether a stop command may be admitted for the
+// current in-memory route owned by the character session.
+func (s *Store) CanStopNavigation(characterID, sessionID, commandID string, sequence uint64) (bool, string) {
+	if s == nil || characterID == "" || sessionID == "" || commandID == "" || sequence == 0 {
+		return false, "route_not_active"
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	current, ok := s.routes[sessionID]
+	if !ok || current.stopped || current.arrived || current.CharacterID != characterID ||
+		current.CommandID != commandID || current.Sequence != sequence {
+		return false, "route_not_active"
+	}
+	switch current.status {
+	case "moving", "waiting_for_arrival", "transition_awaiting_evidence", "progress_uncertain":
+		return true, ""
+	default:
+		return false, "route_not_started"
+	}
+}
+
+// MarkNavigationStopped records a terminal stop outcome for the active route.
+func (s *Store) MarkNavigationStopped(sessionID, commandID string, sequence uint64, success bool, now time.Time) bool {
+	if s == nil || sessionID == "" || commandID == "" || sequence == 0 {
+		return false
+	}
+	lifecycle := s.sessionLifecycleLock(sessionID)
+	lifecycle.Lock()
+	defer lifecycle.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.routes[sessionID]
+	if !ok || current.stopped || current.arrived || current.CommandID != commandID || current.Sequence != sequence {
+		return false
+	}
+	current.stopped = true
+	current.status = "stopped"
+	if !success {
+		current.status = "stop_failed"
+		current.reason = "stop_script_failed"
+	}
+	current.updatedAt = now.UTC()
+	current.recentMoves = nil
 	s.routes[sessionID] = current
 	return true
 }
@@ -431,6 +490,9 @@ func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Tim
 		if view.UpdatedAt.IsZero() {
 			view.UpdatedAt = now.UTC()
 		}
+		view.InstructionCount = len(route.Instructions)
+		view.CompletedInstructions = route.cursor
+		view.Progress, view.ETASeconds = navigationProgress(route, now)
 		views = append(views, view)
 	}
 	sort.Slice(views, func(i, j int) bool { return views[i].SessionID < views[j].SessionID })
@@ -865,3 +927,129 @@ func coordinate(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && math.Abs(value) <= 10_000_000
 }
 func equalFold(a, b string) bool { return strings.EqualFold(a, b) }
+
+const (
+	maxRecentMoveSamples = 6
+	positionStaleAfter   = 35 * time.Second
+)
+
+func appendRecentMove(route *route, position Position) {
+	if route == nil {
+		return
+	}
+	copyPosition := position
+	route.recentMoves = append(route.recentMoves, copyPosition)
+	if len(route.recentMoves) > maxRecentMoveSamples {
+		route.recentMoves = route.recentMoves[len(route.recentMoves)-maxRecentMoveSamples:]
+	}
+}
+
+func navigationProgress(route route, now time.Time) (*float64, *int) {
+	total := len(route.Instructions)
+	if total == 0 || route.stopped {
+		return nil, nil
+	}
+	completed := route.cursor
+	if route.arrived {
+		value := 1.0
+		return &value, nil
+	}
+	if completed <= 0 && route.status == "waiting_for_movement" {
+		return nil, nil
+	}
+	denominator := float64(total)
+	numerator := float64(completed)
+	if completed >= total {
+		numerator = denominator - 1
+		if numerator < 0 {
+			numerator = 0
+		}
+	}
+	if numerator > denominator-1 && denominator > 1 {
+		numerator = denominator - 1
+	}
+	progress := numerator / denominator
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 0.99 && !route.arrived {
+		progress = 0.99
+	}
+	eta := navigationETA(route, now)
+	return &progress, eta
+}
+
+func navigationETA(route route, now time.Time) *int {
+	if route.status != "moving" || route.lastPosition == nil || len(route.recentMoves) < 2 {
+		return nil
+	}
+	if now.Sub(route.lastPosition.At) > positionStaleAfter {
+		return nil
+	}
+	if route.cursor < len(route.Instructions) {
+		step := route.Instructions[route.cursor]
+		if step.Kind == "wait" || step.Kind == "teleport" {
+			return nil
+		}
+	}
+	remaining := remainingWalkDistance(route)
+	if remaining <= 0 {
+		return nil
+	}
+	speed := recentWalkSpeed(route.recentMoves)
+	if speed <= 0.5 {
+		return nil
+	}
+	seconds := int(math.Round(remaining / speed))
+	if seconds < 1 {
+		seconds = 1
+	}
+	return &seconds
+}
+
+func remainingWalkDistance(route route) float64 {
+	total := 0.0
+	var previous *Point
+	if route.lastPosition != nil {
+		point, _, _, ok := scopeStep(route, Instruction{Kind: "walk", X: route.lastPosition.X, Y: route.lastPosition.Y, Z: positionZValue(*route.lastPosition)})
+		if ok {
+			previous = &point
+		}
+	}
+	for index := route.cursor; index < len(route.Instructions); index++ {
+		step := route.Instructions[index]
+		if step.Kind != "walk" {
+			break
+		}
+		point, _, _, ok := scopeStep(route, step)
+		if !ok {
+			break
+		}
+		if previous != nil {
+			total += math.Hypot(point.X-previous.X, point.Y-previous.Y)
+		}
+		previous = &point
+	}
+	return total
+}
+
+func positionZValue(position Position) float64 {
+	if position.Z != nil {
+		return *position.Z
+	}
+	return 0
+}
+
+func recentWalkSpeed(samples []Position) float64 {
+	if len(samples) < 2 {
+		return 0
+	}
+	left := samples[len(samples)-2]
+	right := samples[len(samples)-1]
+	elapsed := right.At.Sub(left.At).Seconds()
+	if elapsed <= 0 {
+		return 0
+	}
+	distance := math.Hypot(right.X-left.X, right.Y-left.Y)
+	return distance / elapsed
+}

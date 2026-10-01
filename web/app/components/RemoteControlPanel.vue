@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { CharacterView } from '~~/shared/types/live'
+import type { CharacterView, MapOtherPlayersSnapshot } from '~~/shared/types/live'
+import { tracePickerOptions } from '~/utils/mapTracePicker'
 import type { FanOutOperation } from '~/utils/commandFanOut'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import { useRemoteControlActions } from '~/composables/useRemoteControlActions'
@@ -20,6 +21,8 @@ const props = withDefaults(
     currentCharacter(characterID: string): CharacterView | undefined
     variant?: 'default' | 'map'
     traceCandidates?: CharacterView[]
+    mapPlayers?: MapOtherPlayersSnapshot
+    mapAgentProtocolVersion?: number
     mapSnapshotCurrent?: boolean
   }>(),
   {
@@ -31,7 +34,15 @@ const props = withDefaults(
 const reviewActions = useReviewActionsPreference()
 const emit = defineEmits<{
   actionNotification: [notification: MapActionNotification]
+  refreshNearbyPlayers: []
 }>()
+const tracePicker = computed(() =>
+  tracePickerOptions({
+    managed: props.traceCandidates,
+    players: props.mapPlayers,
+    protocolVersion: props.mapAgentProtocolVersion,
+  }),
+)
 const actions = useRemoteControlActions({
   scopeKey: () => props.scopeKey,
   scopeKeyForCharacter: props.scopeKeyForCharacter,
@@ -524,21 +535,42 @@ function cancelReview(operation: FanOutOperation) {
       <div class="map-trace-row remote-control-form">
         <select v-model="traceName" aria-label="Trace leader">
           <option value="">Trace player…</option>
-          <option
-            v-for="character in traceCandidates"
-            :key="character.character_id"
-            :value="character.name"
+          <optgroup
+            v-if="tracePicker.options.some((item) => item.group === 'managed')"
+            label="Managed characters"
           >
-            Trace {{ character.name }}
-          </option>
+            <option
+              v-for="option in tracePicker.options.filter(
+                (item) => item.group === 'managed',
+              )"
+              :key="`managed-${option.value}`"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </optgroup>
+          <optgroup
+            v-if="tracePicker.options.some((item) => item.group === 'nearby')"
+            label="Nearby players"
+          >
+            <option
+              v-for="option in tracePicker.options.filter(
+                (item) => item.group === 'nearby',
+              )"
+              :key="`nearby-${option.value}`"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </optgroup>
           <option
             v-if="
               traceName &&
-              !traceCandidates.some((item) => item.name === traceName)
+              !tracePicker.options.some((item) => item.value === traceName)
             "
             :value="traceName"
           >
-            Trace {{ traceName }}
+            {{ traceName }}
           </option>
         </select>
         <button
@@ -562,13 +594,31 @@ function cancelReview(operation: FanOutOperation) {
         <button
           class="compact-button"
           type="button"
-          disabled
-          title="Nearby-player discovery is unavailable; tracked in issue #57."
+          :disabled="!mapSnapshotCurrent"
+          :title="
+            mapSnapshotCurrent
+              ? 'Refresh nearby players from the live map feed'
+              : 'Refresh the map scope before reloading nearby players'
+          "
           aria-label="Refresh nearby players"
+          @click="emit('refreshNearbyPlayers')"
         >
           <UIcon name="i-lucide-refresh-cw" />
         </button>
       </div>
+      <p
+        v-if="tracePicker.nearbyStatus === 'empty'"
+        class="map-trace-hint map-empty-copy"
+      >
+        No nearby players in the current map snapshot.
+      </p>
+      <p
+        v-else-if="tracePicker.nearbyStatus === 'unavailable'"
+        class="map-trace-hint map-empty-copy"
+      >
+        Nearby players unavailable. Managed characters and manual entry still
+        work.
+      </p>
     </div>
     <details
       v-if="variant === 'map'"

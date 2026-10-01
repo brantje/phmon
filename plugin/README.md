@@ -1,7 +1,7 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.8.0** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v10 over the existing authenticated
+The current plugin development release is **1.9.0** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v11 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
@@ -36,6 +36,11 @@ findings remain in [runtime evidence](../docs/phbot-capabilities.md#issue-36--ma
 Install/reload **1.8.0**, connect to a protocol-10 backend, and open the Map with
 **Other players** enabled. There is no equipment inspection, player history, or
 packet fallback.
+
+Version 1.9.0 adds `character.navigate.stop` through documented `stop_script()`,
+trace `activity_state` on control state (from optional `get_status()`), session-scoped
+`trace_requested_name`, and protocol v11 capability reporting. Connect to a
+protocol-11 backend for navigation Stop and the trace activity fields.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

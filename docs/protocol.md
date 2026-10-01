@@ -1163,6 +1163,37 @@ are applied in that order for one character. The multi-target point action fans 
 only `training.area.set`, so each target keeps its own radius. Success is shown only
 after the durable command result; the circle moves when the next readback arrives.
 
+## Issue #57 protocol v11: navigation stop, progress, and trace activity
+
+Protocol v11 adds `character.navigate.stop`, navigation progress fields on live map
+route views, and trace-activity fields on `character.control_state`. Protocols 2–10
+remain accepted; older agents omit stop support and the new control-state fields.
+
+`character.navigate.stop` accepts exact args
+`{"command_id":"<durable cmd UUID>","route_sequence":<uint>}`.
+Admission requires the current session, a matching in-memory route for that command
+and sequence, and a status that means movement has started (`moving`,
+`waiting_for_arrival`, `transition_awaiting_evidence`, or `progress_uncertain`).
+`waiting_for_movement` and `submitting` remain ineligible so generation fencing is
+unchanged. The plugin calls documented `stop_script()` only when its last
+PhMon-started `(command_id, route_sequence)` token still matches on the callback
+thread. `True` means stopped, `False` means failed, anything else is unknown.
+Terminal `stopped` / `stop_failed` routes are not revived by later duplicate
+`navigation.route` frames for the same sequence.
+
+Live map navigation views may include `instruction_count`,
+`completed_instructions`, optional `progress` (0–1 observation cursor), and optional
+`eta_seconds` (approximate, from recent accepted movement). Arrival remains the only
+complete state; a full cursor with a pending arrival check stays below 1.
+
+`character.control_state` may add `activity_state` (`unknown`, `tracing`,
+`not_tracing`), `activity_observed_at`, `activity_source`, and optional
+`trace_requested_name` from the last admitted `trace.start` until session replacement
+or a completed `trace.stop`. Observed tracing does not prove the requested leader.
+
+Return Scroll (`character.return`) remains a command result only. It does not create
+navigation tray rows or synthetic route geometry.
+
 ## Live NPC and teleporter snapshots (v9)
 
 `map.npcs` carries one character's current `get_npcs()` view. It is accepted only

@@ -38,6 +38,7 @@ type rateBucket struct {
 type Service struct {
 	store        *Store
 	capabilities CapabilityChecker
+	navigation   NavigationAdmission
 	dispatcher   *Dispatcher
 	now          func() time.Time
 
@@ -47,6 +48,9 @@ type Service struct {
 }
 
 func (s *Service) SetDispatcher(dispatcher *Dispatcher) { s.dispatcher = dispatcher }
+func (s *Service) SetNavigationAdmission(admission NavigationAdmission) {
+	s.navigation = admission
+}
 func (s *Service) DispatchNow() {
 	if s.dispatcher != nil {
 		s.dispatcher.Notify()
@@ -145,7 +149,7 @@ func (s *Service) controlSnapshot(target Target, state *ControlState) map[string
 
 func (s *Service) commandCapabilities(target Target) map[string]Capability {
 	capabilities := make(map[string]Capability)
-	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
+	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.navigate.stop", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
 		ok, reason := false, "plugin_upgrade_required"
 		if s.capabilities != nil {
 			ok, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, name)
@@ -261,6 +265,22 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 				}
 				return Command{}, false, reason, ErrUnsupported
 			}
+		}
+	}
+	if validated.Name == "character.navigate.stop" {
+		var args navigateStopArgs
+		if json.Unmarshal(validated.Args, &args) != nil {
+			return Command{}, false, "", ErrInvalid
+		}
+		if s.navigation == nil {
+			return Command{}, false, "navigation_unavailable", ErrUnsupported
+		}
+		ok, reason := s.navigation.CanStopNavigation(input.CharacterID, input.ExpectedSessionID, args.CommandID, args.RouteSequence)
+		if !ok {
+			if reason == "" {
+				reason = "route_not_active"
+			}
+			return Command{}, false, reason, ErrUnsupported
 		}
 	}
 	if validated.Name == "chat.send" {

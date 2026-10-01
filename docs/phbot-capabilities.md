@@ -1244,3 +1244,21 @@ The live numeric-radius form exposed a frontend-only type issue: Vue provided th
 number input model as a number while validation assumed a string. Validation now
 normalizes either representation before trimming/parsing; the added regression
 test covers numeric input. This does not change the protocol or plugin contract.
+
+### Issue #57 navigation stop and trace activity — plugin 1.9.0 / protocol 11
+
+`character.navigate.stop` uses documented `stop_script()` with no script id or
+return contract beyond boolean/unknown. PhMon tracks the last started navigation
+`(command_id, route_sequence)` token and refuses the call when it no longer
+matches. If the operator starts a different script in phBot after ours,
+`stop_script()` can only stop whatever is current; PhMon still refuses when its
+token does not match.
+
+Optional `get_status()` text maps narrowly to `activity_state`: `tracing`,
+`botting`/`training` → `not_tracing`, everything else → `unknown`. It does not
+return a trace target name. `trace_requested_name` comes only from the admitted
+`trace.start` argument until session replacement or completed `trace.stop`.
+
+There is no documented navigation progress or ETA API; PhMon derives progress from
+its observation cursor and approximate ETA from recent accepted movement on the
+active route.
