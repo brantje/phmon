@@ -118,8 +118,6 @@ let heatRenderer: L.Canvas | undefined
 let makeHeatCircle: typeof import('leaflet').circleMarker | undefined
 let makePolyline: typeof import('leaflet').polyline | undefined
 let makeRouteCircle: typeof import('leaflet').circleMarker | undefined
-let makeDivIcon: typeof import('leaflet').divIcon | undefined
-let makeRouteMarker: typeof import('leaflet').marker | undefined
 let createLatLng: ((latitude: number, longitude: number) => LatLng) | undefined
 let makeMarker:
   | ((
@@ -407,34 +405,6 @@ function syncNavigationRoutes() {
           opacity: 0.95,
         })
         dot.addTo(navigationLayerGroup)
-      }
-    }
-    if (route.destination) {
-      const point = route.destination
-      const column = point.tileX - props.profile.tiles.min_x
-      const row = props.profile.tiles.max_y - point.tileY
-      const label = document.createElement('span')
-      label.className = 'phmon-map-route-destination'
-      label.textContent = `Destination · ${route.characterName}`
-      if (makeDivIcon && makeRouteMarker) {
-        const icon = makeDivIcon({
-          className: 'phmon-map-route-destination-marker',
-          html: label,
-          iconSize: [0, 0],
-          iconAnchor: [0, 12],
-        })
-        const marker = makeRouteMarker(
-          toLatLng(-(row * 256 + point.pixelY), column * 256 + point.pixelX),
-          {
-            icon,
-            interactive: true,
-            keyboard: false,
-          },
-        )
-        marker.setOpacity(opacity)
-        marker
-          .bindTooltip(`Destination · ${route.characterName}`)
-          .addTo(navigationLayerGroup)
       }
     }
   }
@@ -1136,8 +1106,6 @@ onMounted(async () => {
   makeHeatCircle = L.circleMarker
   makePolyline = L.polyline
   makeRouteCircle = L.circleMarker
-  makeDivIcon = L.divIcon
-  makeRouteMarker = L.marker
   heatRenderer = L.canvas({ padding: 0.5 })
   const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
   const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
@@ -1474,8 +1442,6 @@ onBeforeUnmount(() => {
   makeHeatCircle = undefined
   makePolyline = undefined
   makeRouteCircle = undefined
-  makeDivIcon = undefined
-  makeRouteMarker = undefined
   makeMarker = undefined
   renderedMarkers.clear()
   markerIconSignatures.clear()
@@ -1517,11 +1483,6 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-marker) {
-  border: 0;
-  background: transparent;
-}
-
-:global(.phmon-map-route-destination-marker) {
   border: 0;
   background: transparent;
 }
@@ -1629,22 +1590,6 @@ onBeforeUnmount(() => {
 :global(.phmon-map-training-handle--edge) {
   border-radius: 2px;
   cursor: ew-resize;
-}
-
-:global(.phmon-map-route-destination) {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 22px;
-  padding: 2px 7px;
-  border: 1px solid #b8ffff;
-  border-radius: 3px;
-  background: #09232bf2;
-  color: #eaffff;
-  font-size: 11px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 1px 5px #000a;
 }
 
 :global(.phmon-map-character-pin) {

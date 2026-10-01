@@ -2476,9 +2476,10 @@ use the existing `training.area.set` command and require an active area and expl
 region. Never derive Z from a two-dimensional click without validated area data, and
 never call phBot directly from the browser.
 
-**Active-route display (operator visual target, 2026-09-28):** While a map-issued
-navigation command is active, draw its remaining walk path in the frontend map as a
-cyan line with visible waypoint dots, the current character marker and destination.
+**Active-route display (operator visual target, 2026-09-28; destination markers
+removed 2026-10-01):** While a map-issued navigation command is active, draw its
+remaining walk path in the frontend map as a cyan line with visible waypoint dots
+and the current character marker.
 The operator-supplied image is a visual target for this overlay, not evidence of a
 phMonitor API or routing algorithm. Keep route geometry transient and scoped to the
 command, character, session, server, region and cave floor. The plugin may send a
@@ -4701,6 +4702,13 @@ navigation confirmation with zero command posts, with no horizontal overflow at
 1440×1000, 1280×800, and 390×844. That fixture is not real phBot `get_npcs()`
 evidence. Exact next action: operator installs plugin 1.7.0 and records a live
 NPC snapshot separately from the simulator.
+
+### Resume — 2026-10-01 navigation destination markers removed
+
+Right-click navigation no longer draws a destination label on the map. The
+remaining cyan route and waypoint dots are unchanged. Overlay projection dropped
+the destination raster used only by that marker. Exact next action: none for this
+visual change.
 
 ### Resume — 2026-10-01 monster rank icons on the name label
 

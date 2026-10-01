@@ -1611,7 +1611,9 @@ touch/keyboard use. Local browser inspection showed selected targets, per-charac
 offline skips and reasons, and a disabled Navigate action when no target was
 eligible. Enter selected the map center. At 390×844 the selected-point action opened
 the menu within the viewport. Active route overlays showed an independently labeled
-character route, destination and waiting/stale status at all three target viewports.
+character route and waiting/stale status at all three target viewports. A later
+operator request removed the separate destination marker; the remaining path and
+waypoint dots stay.
 The browser document had no horizontal overflow at 1440×1000, 1280×800 or 390×844;
 there were no page errors. No command was submitted from the browser UI because its
 fixture targets were offline.

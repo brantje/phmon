@@ -14,7 +14,6 @@ export interface MapRouteOverlay {
   selected: boolean
   blocks: RasterPosition[][]
   currentAnchor?: RasterPosition
-  destination?: RasterPosition
 }
 
 function segmentsForBlock(
@@ -105,21 +104,6 @@ export function mapNavigationRouteOverlays(input: {
             input.region,
           )
         : []
-    const destination =
-      route.dataset_version === input.profile.dataset_version &&
-      route.destination_area_id === input.areaID &&
-      route.destination_floor_id === input.floorID &&
-      (!input.region || route.destination.region === input.region)
-        ? worldPositionToRaster(
-            input.profile,
-            input.areaID,
-            input.floorID,
-            route.destination.region,
-            route.destination.x,
-            route.destination.y,
-            route.destination.z,
-          ) || undefined
-        : undefined
     const firstPoint = route.blocks[0]?.points[0]
     const firstRaster =
       firstPoint && (!input.region || firstPoint.region === input.region)
@@ -181,7 +165,6 @@ export function mapNavigationRouteOverlays(input: {
         !input.selectedRouteID || input.selectedRouteID === route.character_id,
       blocks,
       currentAnchor: anchor,
-      destination,
     })
   }
   return overlays.sort((left, right) =>
