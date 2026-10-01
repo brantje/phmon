@@ -274,8 +274,9 @@ and final verification details are in `docs/reference-parity.md` and
 `docs/reference/issue55/README.md`. The route fixture verified waiting-for-movement,
 reported arrival and Clear finished. Final captures cover 2560 × 1287, 1440 × 1000,
 1280 × 800 and 390 × 844 without horizontal overflow. Implementation and verification
-are complete for #55. The operator requested a PR, a full CodeRabbit review, fixes
-and commit-linked replies; next action is publish the branch and complete that loop.
+are complete for #55. PR #58 is open; the initial CodeRabbit review and fix/reply
+loop are complete. The operator subsequently instructed us to ignore CodeRabbit;
+do not wait for or act on its pending follow-up review.
 No deployment or real-character operation was performed.
 
 Operator correction — 2026-10-01: remove the left-click coordinate/action popup.
@@ -381,9 +382,15 @@ canceled confirmation without another admission. Evidence is in
 `docs/reference/issue55/README.md`. The final browser check selected all three
 fixtures and dispatched trace only to Bravo/Charlie, confirmed by the database;
 Alpha was the leader. Mobile notification bounds stay within the viewport.
-Exact next action: commit these changes together including the zoom edit, push to
-PR #58, request CodeRabbit review and verify final-head CI. Do not merge, deploy
-or operate real characters.
+These changes, including the zoom edit, are pushed in `19183c7`. The operator's
+subsequent crosshair icon edit is pushed in `e2ad3e9`; its accessible Focus label
+remains intact and Prettier passed. All validation and stack CI jobs passed for
+both commits. CodeRabbit accepted the requested full review at 20:11 UTC and
+updated its review range through `e2ad3e9` at 20:21 UTC.
+The operator then instructed us to ignore CodeRabbit. Its pending review is no
+longer a completion requirement. Implementation, browser verification and CI for
+the current code are complete. Leave PR #58 open; do not merge, deploy or operate
+real characters.
 
 ### Resume — 2026-09-30 Issue #30 multi-character command orchestration
 
