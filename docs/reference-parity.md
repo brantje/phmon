@@ -4,6 +4,19 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Other players — issue #36 runtime gate (2026-10-01)
+
+The operator requested a downloadable diagnostic plugin before implementing this
+layer. The official [Players API](https://plugins.phbot.org/phbot-api/players)
+still marks `get_players()` disabled. Plugin 1.7.2 adds a manual local-log
+**Test get_players** button with bounded samples and explicit None/empty/populated
+classification; [test instructions](../plugin/README.md#test-the-players-api-issue-36)
+cover connected and known clientless sessions. All 131 plugin fixture tests pass,
+including nine probe tests. Actual phBot results remain pending. Backend and map
+UI are unchanged, and no Other players layer, player history or packet fallback
+is claimed. The runtime source gate remains open; no visual comparison is needed
+for this plugin-only diagnostic.
+
 ## Multi-character remote controls — 2026-10-01
 
 Before the Issue #35 screen changes, the operator supplied a reachable LAN demo

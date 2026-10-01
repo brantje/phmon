@@ -250,6 +250,32 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-01 Issue #36 Players API runtime probe
+
+The operator scoped this run to testing whether `get_players()` works and pushing
+a new downloadable plugin branch. Work is on `codex/issue-36-get-players-probe`
+in the existing checkout. Plugin 1.7.2 adds a manual **Test get_players** button
+that works without a backend credential/worker. It logs module/symbol/callable
+availability, distinguishes unavailable/None/empty/populated/malformed results,
+records selected phBot/client/session/observer context, and bounds inspection to
+128 entries and three sanitized samples. It does not send player data to Go or
+add a map layer/history. Protocol remains 9. The official Players page still marks
+the API disabled; installed-runtime results are pending operator testing.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
+`docs/phbot-capabilities.md`, `docs/reference-parity.md`, and this guide.
+Validation: Python compilation and all 131 plugin tests (nine new probe tests),
+live transport audit and `git diff --check` pass. The generated monitor output
+contract matches the base; the version guard passes 1.7.1 → 1.7.2 with protocol 9
+unchanged.
+
+Exact next action: download/install the branch's plugin, collect local probe logs
+in connected/clientless states using `plugin/README.md`, and record observed phBot
+version, mode and return shape in `docs/phbot-capabilities.md`. Only after usable
+runtime data is established should issue #36 transport/map implementation begin.
+No real bot action or deployment was performed; unrelated untracked map HTML is
+untouched. This diagnostic does not claim issue #36 feature completion.
+
 ### Resume — 2026-10-01 Issue #55 map redesign
 
 Implemented the seven UI reorganization phases on `codex/issue-55-map-redesign`.

@@ -4,6 +4,45 @@ Slice 1 starts the real phBot integration. This document records only capabiliti
 verified from public phBot plugin documentation or an actual runtime. Simulator
 coverage is tracked separately and is never treated as proof of a real phBot run.
 
+## Issue #36 — manual Players API runtime probe (2026-10-01)
+
+The official [Players API](https://plugins.phbot.org/phbot-api/players), rechecked
+on 2026-10-01, explicitly says `get_players()` is disabled. Its documented return
+is `None` or a possibly empty dictionary keyed by player ID, with name, guild,
+grant, items, X/Y and dead fields. Region and Z are not documented for players.
+The official [Client API](https://plugins.phbot.org/phbot-api/client) documents
+`get_client()` returning `None` or a dictionary with a boolean `running` field;
+this is process state, not proof of a logged-in clientless session. The official
+[Misc API](https://plugins.phbot.org/phbot-api/misc) documents `get_version()` as
+the bot version string. The [GUI API](https://plugins.phbot.org/gui-api) verifies
+`createButton` with a named callback and `setText` for the local result label.
+
+Plugin **1.7.2**, agent protocol **9**, adds **Test get_players** to its existing
+QtBind tab. One operator click imports/probes the actual `phBot` module and calls
+`get_players()` at most once; clicks are throttled to two seconds. The bounded
+local JSON log records module/symbol/callable availability, result classification,
+native call duration, selected session/client/observer context and at most three
+sanitized samples. It distinguishes `None` from `{}`, handles exceptions without
+logging their messages, inspects at most 128 entries and labels overflow explicitly.
+Only selected first-entry field types are included for structural evidence;
+equipment and unrelated field values are excluded. No native API call is moved
+to an unverified background thread, and no network/disk I/O is added to the probe.
+
+Validation: **131 Python plugin tests** pass, including nine new diagnostic tests
+for absent/missing/noncallable/disabled/empty/populated/unexpected API behavior,
+malformed coordinates/entries, overflow and log bounds, import probing, unknown
+client state and the backend-independent throttled button. These are CPython
+fixtures, not installed phBot observations. No supported Windows/phBot runtime is
+available in this checkout, so actual version/mode/results remain **pending**.
+See [operator instructions](../plugin/README.md#test-the-players-api-issue-36).
+
+The issue remains gated on actual operator logs from connected client and known
+clientless sessions, ideally with known nearby players. A returned empty dictionary
+alone does not establish usable player discovery. No player transport/UI/history or
+packet fallback is implemented by this diagnostic branch. Once results arrive,
+record the actual runtime/version/mode, return shape and limitations here before
+deciding whether the existing live-map architecture can safely use the source.
+
 ## Sources checked on 2026-09-26
 
 - Plugin introduction: https://plugins.phbot.org/

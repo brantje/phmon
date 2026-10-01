@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), 'PhMon.py')
@@ -15,6 +16,158 @@ plugin = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plugin)
 
 AGENT_ID = '11111111-2222-4333-8444-555555555555'
+
+
+class PlayersProbeTests(unittest.TestCase):
+    def test_probe_distinguishes_missing_not_callable_none_and_empty(self):
+        for api, outcome in (
+                ({}, 'missing'), ({'get_players': None}, 'not_callable'),
+                ({'get_players': lambda: None}, 'none'),
+                ({'get_players': lambda: {}}, 'empty_dict')):
+            with self.subTest(outcome=outcome):
+                report = plugin.collect_players_probe(api)
+                self.assertEqual(report['outcome'], outcome)
+                self.assertEqual(report['samples'], [])
+                self.assertEqual(report['callable'], outcome in ('none', 'empty_dict'))
+                self.assertEqual('entry_count' in report, outcome == 'empty_dict')
+
+    def test_probe_classifies_exceptions_without_logging_exception_text(self):
+        def unavailable():
+            raise RuntimeError('private token and native details')
+
+        report = plugin.collect_players_probe({'get_players': unavailable})
+        self.assertEqual(report['outcome'], 'exception')
+        self.assertEqual(report['error_type'], 'RuntimeError')
+        self.assertIn('call_duration_ms', report)
+        self.assertNotIn('private', json.dumps(report))
+
+    def test_unexpected_return_is_not_a_healthy_empty_dictionary(self):
+        for value in (False, 0, [], 'private payload'):
+            with self.subTest(value=value):
+                report = plugin.collect_players_probe({'get_players': lambda: value})
+                self.assertEqual(report['outcome'], 'unexpected_type')
+                self.assertNotIn('entry_count', report)
+                self.assertNotIn('private payload', json.dumps(report))
+
+    def test_probe_reads_actual_module_symbol_and_handles_absent_module(self):
+        runtime = SimpleNamespace(get_players=Mock(return_value={}), get_version=lambda: '20.1.1')
+        with patch.dict('sys.modules', {'phBot': runtime}):
+            report = plugin.collect_players_probe()
+        self.assertTrue(report['phbot_importable'])
+        self.assertTrue(report['symbol_present'])
+        self.assertTrue(report['callable'])
+        self.assertEqual(report['phbot_version'], '20.1.1')
+        runtime.get_players.assert_called_once_with()
+        with patch.dict('sys.modules', {'phBot': SimpleNamespace()}):
+            report = plugin.collect_players_probe()
+        self.assertTrue(report['phbot_importable'])
+        self.assertFalse(report['symbol_present'])
+        self.assertEqual(report['outcome'], 'missing')
+        with patch.dict('sys.modules', {'phBot': None}):
+            report = plugin.collect_players_probe()
+        self.assertFalse(report['phbot_importable'])
+        self.assertEqual(report['outcome'], 'import_failed')
+
+    def test_probe_preserves_selected_fields_and_observer_context_only(self):
+        raw = {8654977: {'name': 'Nearby', 'guild': 'Guild', 'grant': 'Member',
+                         'dead': False, 'x': 6433.5, 'y': 1096.9,
+                         'items': [{'name': 'PRIVATE_EQUIPMENT'}], 'extra': 'PRIVATE_EXTRA'}}
+        for running in (True, False, None):
+            with self.subTest(running=running), \
+                    patch.object(plugin, '_phbot_connected_state', True), \
+                    patch.object(plugin, '_character_joined', True):
+                report = plugin.collect_players_probe({
+                    'get_players': lambda: raw, 'get_version': lambda: '20.1.1',
+                    'get_client': lambda: {'running': running, 'path': 'PRIVATE_PATH', 'pid': 123},
+                    'get_character_data': lambda: {'name': 'Observer', 'server': 'Silkroad', 'token': 'PRIVATE_TOKEN'},
+                    'get_position': lambda: {'region': -32767, 'x': -24300, 'y': 20, 'z': -9},
+                })
+                self.assertEqual(report['outcome'], 'populated_dict')
+                self.assertEqual((report['entry_count'], report['valid_entries'], report['invalid_entries']), (1, 1, 0))
+                self.assertEqual(report['samples'], [{
+                    'player_id': '8654977', 'name': 'Nearby', 'guild': 'Guild',
+                    'grant': 'Member', 'dead': False, 'x': 6433.5, 'y': 1096.9}])
+                self.assertEqual(report['observer'], {
+                    'name': 'Observer', 'server': 'Silkroad', 'region': -32767,
+                    'x': -24300.0, 'y': 20.0, 'z': -9.0})
+                self.assertIs(report['client_running'], running)
+                self.assertTrue(report['character_data_available'])
+                self.assertTrue(report['game_connected_callback'])
+                self.assertEqual(report['first_entry_types']['items'], 'list')
+                self.assertNotIn('PRIVATE_', json.dumps(report))
+                self.assertNotIn('region', report['samples'][0])
+                self.assertNotIn('z', report['samples'][0])
+
+    def test_invalid_coordinates_ids_and_rows_are_classified_and_bounded(self):
+        valid = {'name': 'Player', 'x': 1, 'y': 2, 'dead': 'unknown'}
+        raw = {1: valid, 2: None, 3: dict(valid, x=float('nan')),
+               4: dict(valid, y=float('inf')), 5: dict(valid, x=True),
+               6: dict(valid, y=10000001), 7: dict(valid, name=''),
+               '8': valid, 4294967296: valid, -1: valid}
+        report = plugin.collect_players_probe({'get_players': lambda: raw})
+        self.assertEqual(report['outcome'], 'populated_dict')
+        self.assertEqual((report['inspected_entries'], report['valid_entries'], report['invalid_entries']), (10, 1, 9))
+        self.assertNotIn('dead', report['samples'][0])
+        json.dumps(report, allow_nan=False)
+
+    def test_large_result_inspects_only_bound_and_caps_local_log_samples(self):
+        class BoundedDictionary(dict):
+            def items(self):
+                for index, row in enumerate(super().items()):
+                    if index >= plugin.MAX_PLAYERS_PROBE_ENTRIES:
+                        raise AssertionError('probe iterated past its limit')
+                    yield row
+
+        raw = BoundedDictionary((index + 1, {
+            'name': '界' * 10000, 'guild': '界' * 10000, 'grant': '界' * 10000,
+            'x': index, 'y': index + 1, 'items': ['PRIVATE_EQUIPMENT'] * 10000,
+        }) for index in range(plugin.MAX_PLAYERS_PROBE_ENTRIES + 10))
+        report = plugin.collect_players_probe({'get_players': lambda: raw})
+        self.assertTrue(report['truncated'])
+        self.assertEqual(report['entry_count'], len(raw))
+        self.assertEqual(report['inspected_entries'], plugin.MAX_PLAYERS_PROBE_ENTRIES)
+        self.assertEqual(len(report['samples']), plugin.MAX_PLAYERS_PROBE_SAMPLES)
+        encoded = json.dumps(report, allow_nan=False)
+        self.assertLess(len(encoded.encode('utf-8')), 8192)
+        self.assertNotIn('PRIVATE_EQUIPMENT', encoded)
+
+    def test_unknown_client_context_does_not_guess_clientless_or_connected(self):
+        def broken():
+            raise ValueError('PRIVATE_CONTEXT')
+
+        with patch.object(plugin, '_phbot_connected_state', None), \
+                patch.object(plugin, '_character_joined', None):
+            report = plugin.collect_players_probe({
+                'get_players': lambda: {}, 'get_client': lambda: {'running': 0},
+                'get_character_data': broken, 'get_version': broken,
+                'get_position': lambda: {'region': 0, 'x': float('inf'), 'y': True, 'z': None},
+            })
+        self.assertIsNone(report['client_running'])
+        self.assertIsNone(report['game_connected_callback'])
+        self.assertIsNone(report['joined_game_callback'])
+        self.assertFalse(report['character_data_available'])
+        self.assertEqual(report['observer'], {})
+        self.assertEqual(report['phbot_version'], 'unknown')
+
+    def test_manual_button_works_without_worker_and_throttles_repeated_clicks(self):
+        runtime = SimpleNamespace(get_players=Mock(return_value=None))
+        gui = Mock()
+        with patch.dict('sys.modules', {'phBot': runtime}), \
+                patch.object(plugin, '_worker', None), \
+                patch.object(plugin, '_last_players_probe_at', float('-inf')), \
+                patch.object(plugin, '_monotonic', return_value=10), \
+                patch.object(plugin, '_QtBind', gui), \
+                patch.object(plugin, '_gui', 'fixture-gui'), \
+                patch.object(plugin, '_gui_players_probe_status', 'probe-status'), \
+                patch.object(plugin, '_log') as log:
+            report = plugin.test_get_players()
+            self.assertEqual(report['outcome'], 'none')
+            self.assertIsNone(plugin.test_get_players())
+            runtime.get_players.assert_called_once_with()
+            self.assertEqual(log.call_count, 2)
+            self.assertIn('started', log.call_args_list[0].args[0])
+            self.assertIn('"outcome":"none"', log.call_args_list[1].args[0])
+            gui.setText.assert_called_once_with('fixture-gui', 'probe-status', 'get_players: none - see phBot log')
 
 
 class MobObservationTests(unittest.TestCase):

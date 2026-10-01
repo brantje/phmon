@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.7.1** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.7.2** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v9 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -26,6 +26,49 @@ Version 1.7.1 reports botting state from a boolean `get_character_data()` field
 when available, otherwise from narrowly recognized `get_status()` values. Unknown
 statuses remain unknown; the meaning of `stopped` and `None` still needs runtime
 verification.
+
+Version 1.7.2 adds a manual, read-only **Test get_players** button for
+[issue #36](https://github.com/brantje/phmon/issues/36). Its results stay in the
+local phBot log; agent protocol remains v9.
+
+## Test the Players API (issue #36)
+
+The [official Players API](https://plugins.phbot.org/phbot-api/players) explicitly
+marks `get_players()` disabled. This diagnostic checks the installed runtime before
+any nearby-player map feature is implemented. It needs no backend configuration.
+
+1. Replace `PhMon.py` in the phBot **Plugins** directory with this branch's file
+   and reload it. Confirm the tab shows **PhMon v1.7.2**. Existing connection
+   settings continue to work.
+2. Open **Plugins -> PhMon** and click **Test get_players** while joined with the
+   game client running, preferably where other players are visibly nearby. Repeat
+   a few times, at least two seconds apart.
+3. Repeat in a known clientless session if available. Note the actual mode with
+   the results; the probe never changes it. Optionally test when already logged
+   out/disconnected to compare availability.
+4. Copy the `Plugin: PhMon get_players probe:` JSON lines from the phBot log,
+   together with which mode you tested and whether other players were known to be
+   nearby. A preceding `probe started` line without a result identifies a native
+   call that has not returned.
+
+The log distinguishes `import_failed`, `missing`, `not_callable`, `exception`,
+`none`, `empty_dict`, `populated_dict` and `unexpected_type`. **`none` means
+unavailable, not zero nearby players.** An `empty_dict` records what was returned;
+it alone does not prove nearby-player discovery works. A populated dictionary
+records total, inspected, valid and invalid entry counts, with `truncated: true`
+when more than 128 entries were returned. The first entry's selected field types
+help diagnose unexpected runtime shapes. At most three valid samples contain ID,
+name/guild/grant, finite X/Y and an actual boolean dead flag when supplied. Text
+fields are capped at 64 characters, and equipment/unknown field values are excluded.
+
+Context includes phBot/plugin version, UTC timestamp, connection/join callbacks,
+available observer identity/region/X/Y/Z, and the documented `get_client()` boolean
+`running` value. A non-running client alone does not establish a logged-in
+clientless session; missing context remains unknown. No client path, process ID,
+token or backend URL is logged. This is a manual local diagnostic: no player
+poller, player transport, map layer, player history or packet fallback is added.
+Automated fixture tests cover classification and bounds; actual runtime evidence
+is still pending the operator's logs.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

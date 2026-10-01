@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.7.1'
+pVersion = '1.7.2'
 pUrl = ''
 
 PROTOCOL_VERSION = 9
@@ -56,6 +56,9 @@ MAX_MONSTERS_PER_SNAPSHOT = 128
 MAX_NPCS_PER_SNAPSHOT = 128
 NPC_POLL_INTERVAL_SECONDS = 2.0
 NPC_REFRESH_INTERVAL_SECONDS = 15.0
+MAX_PLAYERS_PROBE_ENTRIES = 128
+MAX_PLAYERS_PROBE_SAMPLES = 3
+PLAYERS_PROBE_INTERVAL_SECONDS = 2.0
 _NPC_GATE_ROLE = re.compile(r'^GATE_[A-Za-z0-9_]+$')
 MAX_MOB_SPOOL_ITEMS = 2048
 MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
@@ -268,6 +271,115 @@ def _bounded_text(value, limit=256):
         return None
     result = str(value).strip()
     return result[:limit] if result else None
+
+
+def collect_players_probe(api=None):
+    """Manually inspect the disabled Players API; never publish player state."""
+    report = {
+        'plugin_version': pVersion, 'observed_at': _utc_now(),
+        'phbot_importable': None, 'symbol_present': False, 'callable': False,
+        'outcome': 'unavailable', 'samples': [],
+        'game_connected_callback': _phbot_connected_state,
+        'joined_game_callback': _character_joined,
+    }
+    if api is None:
+        try:
+            import phBot
+            report['phbot_importable'] = True
+            api = dict((name, getattr(phBot, name, None)) for name in (
+                'get_players', 'get_version', 'get_character_data', 'get_position', 'get_client'))
+            report['symbol_present'] = hasattr(phBot, 'get_players')
+        except Exception as error:
+            report.update(phbot_importable=False, outcome='import_failed',
+                          error_type=error.__class__.__name__[:64])
+            return report
+    else:
+        report['symbol_present'] = 'get_players' in api
+
+    # Only selected context is logged. Never include client paths, credentials,
+    # character inventories or the Players API's equipped-item arrays.
+    def read_context(name):
+        function = api.get(name)
+        try:
+            return function() if callable(function) else None
+        except Exception:
+            return None
+
+    version = read_context('get_version')
+    report['phbot_version'] = version[:64] if isinstance(version, str) else 'unknown'
+    client = read_context('get_client')
+    running = client.get('running') if isinstance(client, dict) else None
+    report['client_running'] = running if isinstance(running, bool) else None
+    character = read_context('get_character_data')
+    observer = {}
+    if isinstance(character, dict):
+        for key in ('name', 'server'):
+            value = character.get(key)
+            if isinstance(value, str):
+                observer[key] = value[:64]
+    report['character_data_available'] = bool(observer.get('name') and observer.get('server'))
+    position = read_context('get_position')
+    if isinstance(position, dict):
+        if _valid_position_region(position.get('region')):
+            observer['region'] = position['region']
+        for key in ('x', 'y', 'z'):
+            value = position.get(key)
+            if _number(value) and abs(value) <= 10000000:
+                observer[key] = float(value)
+    report['observer'] = observer
+
+    function = api.get('get_players')
+    report['callable'] = callable(function)
+    if not report['callable']:
+        report['outcome'] = 'not_callable' if report['symbol_present'] else 'missing'
+        return report
+    started = _monotonic()
+    try:
+        raw = function()
+    except Exception as error:
+        report.update(outcome='exception', error_type=error.__class__.__name__[:64])
+        return report
+    finally:
+        report['call_duration_ms'] = int(max(0, _monotonic() - started) * 1000)
+    report['result_type'] = raw.__class__.__name__[:64]
+    if raw is None:
+        report['outcome'] = 'none'
+        return report
+    if not isinstance(raw, dict):
+        report['outcome'] = 'unexpected_type'
+        return report
+    report.update(
+        outcome='populated_dict' if raw else 'empty_dict', entry_count=len(raw),
+        inspected_entries=0, valid_entries=0, invalid_entries=0,
+        truncated=len(raw) > MAX_PLAYERS_PROBE_ENTRIES,
+    )
+    for identifier, player in itertools.islice(raw.items(), MAX_PLAYERS_PROBE_ENTRIES):
+        report['inspected_entries'] += 1
+        if report['inspected_entries'] == 1:
+            types = {'player_id': identifier.__class__.__name__[:64], 'entry': player.__class__.__name__[:64]}
+            if isinstance(player, dict):
+                for key in ('name', 'guild', 'grant', 'dead', 'x', 'y', 'region', 'z', 'items'):
+                    if key in player:
+                        types[key] = player[key].__class__.__name__[:64]
+            report['first_entry_types'] = types
+        if (not isinstance(identifier, int) or isinstance(identifier, bool)
+                or not 0 < identifier <= 4294967295 or not isinstance(player, dict)
+                or not isinstance(player.get('name'), str) or not player['name'][:64].strip()
+                or not all(_number(player.get(key)) and abs(player[key]) <= 10000000 for key in ('x', 'y'))):
+            report['invalid_entries'] += 1
+            continue
+        report['valid_entries'] += 1
+        if len(report['samples']) >= MAX_PLAYERS_PROBE_SAMPLES:
+            continue
+        sample = {'player_id': str(identifier), 'x': float(player['x']), 'y': float(player['y'])}
+        for key in ('name', 'guild', 'grant'):
+            value = player.get(key)
+            if isinstance(value, str):
+                sample[key] = value[:64]
+        if isinstance(player.get('dead'), bool):
+            sample['dead'] = player['dead']
+        report['samples'].append(sample)
+    return report
 
 
 def collect_monster_observation(api=None):
@@ -3634,6 +3746,8 @@ _gui_backend_url = None
 _gui_agent_id = None
 _gui_agent_token = None
 _gui_status = None
+_gui_players_probe_status = None
+_last_players_probe_at = float('-inf')
 _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
@@ -3787,6 +3901,27 @@ def save_config():
     _set_gui_config(config)
     _set_gui_status('Settings saved for this bot profile. Connecting to PhMon backend...')
     _start_worker(config)
+
+
+def test_get_players():
+    """Qt button callback: one read-only native call, independent of the backend."""
+    global _last_players_probe_at
+    now = _monotonic()
+    if now - _last_players_probe_at < PLAYERS_PROBE_INTERVAL_SECONDS:
+        return
+    _last_players_probe_at = now
+    _log('get_players probe started (manual, read-only)')
+    try:
+        report = collect_players_probe()
+    except Exception as error:
+        report = {'outcome': 'probe_failed', 'error_type': error.__class__.__name__[:64]}
+    _log('get_players probe: ' + json.dumps(report, separators=(',', ':'), sort_keys=True, allow_nan=False))
+    if _QtBind is not None and _gui is not None and _gui_players_probe_status is not None:
+        summary = 'get_players: ' + report['outcome']
+        if 'entry_count' in report:
+            summary += ' (' + str(report['entry_count']) + ' entries)'
+        _QtBind.setText(_gui, _gui_players_probe_status, summary + ' - see phBot log')
+    return report
 
 
 def connected():
@@ -4301,6 +4436,10 @@ if _PHBOT_AVAILABLE and _QtBind is not None:
         10,
         200,
     )
+    _QtBind.createLabel(_gui, 'Read-only Players API check (local log; no backend required)', 10, 235)
+    _QtBind.createButton(_gui, 'test_get_players', 'Test get_players', 10, 260)
+    _gui_players_probe_status = _QtBind.createLabel(
+        _gui, 'Click Test get_players; compare client and clientless sessions.', 10, 295)
     try:
         _load_active_profile(force=True)
     except Exception as error:
