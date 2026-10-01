@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.7.3'
+pVersion = '1.7.4'
 pUrl = ''
 
 PROTOCOL_VERSION = 9
@@ -59,6 +59,8 @@ NPC_REFRESH_INTERVAL_SECONDS = 15.0
 MAX_PLAYERS_PROBE_ENTRIES = 128
 MAX_PLAYERS_PROBE_SAMPLES = 3
 PLAYERS_PROBE_INTERVAL_SECONDS = 2.0
+MAX_PLAYERS_EQUIPMENT_ITEMS = 32
+MAX_PLAYERS_EQUIPMENT_BYTES = 8192
 _NPC_GATE_ROLE = re.compile(r'^GATE_[A-Za-z0-9_]+$')
 MAX_MOB_SPOOL_ITEMS = 2048
 MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
@@ -273,7 +275,67 @@ def _bounded_text(value, limit=256):
     return result[:limit] if result else None
 
 
-def collect_players_probe(api=None):
+def _players_equipment_probe(player):
+    """Inspect only the documented items array, without guessing equipment slots."""
+    evidence = {'availability': 'unavailable', 'reason': 'items_missing', 'items': []}
+    if 'items' not in player:
+        return evidence
+    raw = player['items']
+    if raw is None:
+        evidence['reason'] = 'items_none'
+        return evidence
+    if not isinstance(raw, list):
+        evidence['reason'] = 'unexpected_items_type'
+        evidence['result_type'] = _item_evidence_type(raw)
+        return evidence
+    evidence = {
+        'availability': 'observed', 'reported_items': len(raw), 'inspected_items': 0,
+        'empty_items': 0, 'invalid_items': 0, 'truncated': len(raw) > MAX_PLAYERS_EQUIPMENT_ITEMS,
+        'items': [],
+    }
+    for index, item in enumerate(itertools.islice(raw, MAX_PLAYERS_EQUIPMENT_ITEMS)):
+        evidence['inspected_items'] += 1
+        if item is None:
+            evidence['empty_items'] += 1
+            continue
+        if 'first_item_type' not in evidence:
+            evidence['first_item_type'] = _item_evidence_type(item)
+            if isinstance(item, dict):
+                evidence['first_item_field_types'] = _item_api_field_types(item)
+        if not isinstance(item, dict):
+            evidence['invalid_items'] += 1
+            continue
+        row = {}
+        for key, limit in (('name', 64), ('servername', 128)):
+            value = item.get(key)
+            if isinstance(value, str) and value[:limit].strip():
+                row[key] = value[:limit]
+        for key in ('model', 'degree', 'level', 'plus'):
+            value = item.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 4294967295:
+                if key != 'model' or value > 0:
+                    row[key] = value
+        if not any(key in row for key in ('name', 'servername', 'model')):
+            evidence['invalid_items'] += 1
+            continue
+        row['source_index'] = index
+        evidence['items'].append(row)
+        # Reserve room for the final availability/count fields, including the
+        # structural evidence. Never serialize the native item list or blues.
+        if len(json.dumps(evidence, separators=(',', ':'), allow_nan=False).encode('utf-8')) > MAX_PLAYERS_EQUIPMENT_BYTES - 128:
+            evidence['items'].pop()
+            evidence['truncated'] = True
+            break
+    if evidence['truncated']:
+        evidence['availability'] = 'truncated'
+    elif evidence['invalid_items']:
+        evidence['availability'] = 'partial' if evidence['items'] else 'malformed'
+    elif not evidence['items']:
+        evidence['availability'] = 'observed_empty'
+    return evidence
+
+
+def collect_players_probe(api=None, inspect_equipment=False, target=None):
     """Manually inspect the disabled Players API; never publish player state."""
     report = {
         'plugin_version': pVersion, 'observed_at': _utc_now(),
@@ -282,6 +344,12 @@ def collect_players_probe(api=None):
         'game_connected_callback': _phbot_connected_state,
         'joined_game_callback': _character_joined,
     }
+    if inspect_equipment:
+        if target is not None and (not isinstance(target, str) or len(target) > 64):
+            report['outcome'] = 'invalid_target'
+            return report
+        target = target.strip() if target else ''
+        report.update(inspection='equipment', target=target, matching_entries=0)
     if api is None:
         try:
             import phBot
@@ -297,7 +365,7 @@ def collect_players_probe(api=None):
         report['symbol_present'] = 'get_players' in api
 
     # Only selected context is logged. Never include client paths, credentials,
-    # character inventories or the Players API's equipped-item arrays.
+    # character inventories or unfiltered equipped-item arrays.
     def read_context(name):
         function = api.get(name)
         try:
@@ -373,6 +441,10 @@ def collect_players_probe(api=None):
             report['invalid_entries'] += 1
             continue
         report['valid_entries'] += 1
+        if inspect_equipment:
+            if target and target != str(identifier) and target.casefold() != player['name'][:64].casefold():
+                continue
+            report['matching_entries'] += 1
         if len(report['samples']) >= MAX_PLAYERS_PROBE_SAMPLES:
             continue
         sample = {'player_id': str(identifier), 'x': float(player['x']), 'y': float(player['y'])}
@@ -388,6 +460,11 @@ def collect_players_probe(api=None):
             sample['region'] = player['region']
         if _number(player.get('z')) and abs(player['z']) <= 10000000:
             sample['z'] = float(player['z'])
+        if inspect_equipment:
+            sample['field_types'] = _item_api_field_types(player)
+            sample['field_count'] = len(player)
+            sample['field_types_truncated'] = len(sample['field_types']) < len(player)
+            sample['equipment'] = _players_equipment_probe(player)
         report['samples'].append(sample)
     return report
 
@@ -3757,6 +3834,7 @@ _gui_agent_id = None
 _gui_agent_token = None
 _gui_status = None
 _gui_players_probe_status = None
+_gui_player_probe_target = None
 _last_players_probe_at = float('-inf')
 _last_character_signature = None
 _last_character_sample_at = 0.0
@@ -3914,18 +3992,37 @@ def save_config():
 
 
 def test_get_players():
+    return _run_players_probe()
+
+
+def inspect_player_equipment():
+    target = None
+    if _QtBind is not None and _gui is not None and _gui_player_probe_target is not None:
+        target = _QtBind.text(_gui, _gui_player_probe_target)
+    return _run_players_probe(inspect_equipment=True, target=target)
+
+
+def _run_players_probe(inspect_equipment=False, target=None):
     """Qt button callback: one read-only native call, independent of the backend."""
     global _last_players_probe_at
     now = _monotonic()
     if now - _last_players_probe_at < PLAYERS_PROBE_INTERVAL_SECONDS:
         return
     _last_players_probe_at = now
-    _log('get_players probe started (manual, read-only)')
+    label = 'get_players equipment' if inspect_equipment else 'get_players'
+    _log(label + ' probe started (manual, read-only)')
     try:
-        report = collect_players_probe()
+        report = collect_players_probe(inspect_equipment=inspect_equipment, target=target)
     except Exception as error:
         report = {'outcome': 'probe_failed', 'error_type': error.__class__.__name__[:64]}
-    _log('get_players probe: ' + json.dumps(report, separators=(',', ':'), sort_keys=True, allow_nan=False))
+    summary = dict(report) if inspect_equipment else report
+    if inspect_equipment:
+        summary.pop('samples', None)
+        summary['sample_count'] = len(report.get('samples', []))
+    _log(label + ' probe: ' + json.dumps(summary, separators=(',', ':'), sort_keys=True, allow_nan=False))
+    if inspect_equipment:
+        for sample in report.get('samples', []):
+            _log(label + ' sample: ' + json.dumps(sample, separators=(',', ':'), sort_keys=True, allow_nan=False))
     if _QtBind is not None and _gui is not None and _gui_players_probe_status is not None:
         summary = 'get_players: ' + report['outcome']
         if 'entry_count' in report:
@@ -4450,6 +4547,10 @@ if _PHBOT_AVAILABLE and _QtBind is not None:
     _QtBind.createButton(_gui, 'test_get_players', 'Test get_players', 10, 260)
     _gui_players_probe_status = _QtBind.createLabel(
         _gui, 'Click Test get_players; compare client and clientless sessions.', 10, 295)
+    _QtBind.createLabel(_gui, 'Equipment probe: player ID or name (optional)', 390, 60)
+    _gui_player_probe_target = _QtBind.createLineEdit(_gui, '', 390, 80, 300, 20)
+    _QtBind.createButton(_gui, 'inspect_player_equipment', 'Inspect player equipment', 390, 110)
+    _QtBind.createLabel(_gui, 'Leave blank to inspect up to 3 nearby players.', 390, 145)
     try:
         _load_active_profile(force=True)
     except Exception as error:

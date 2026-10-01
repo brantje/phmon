@@ -63,14 +63,49 @@ and preserving them exactly, alongside the existing bounded integer IDs. No deci
 format is assumed before seeing actual values. Samples now retain valid per-player
 region and optional finite bounded Z only when present on that entry; the observer's
 region/Z are never substituted. All **133 plugin tests** pass, including two new
-tests for the observed string-key shape and identifier bounds. Fixture positions/IDs
-are synthetic; no real player sample values have been captured or invented.
+tests for the observed string-key shape and identifier bounds. Test positions/IDs
+are synthetic; real player sightings are not persisted as test fixtures.
 
-Next runtime gate: repeat the probe on 1.7.3 to inspect player samples, and compare
-with a known clientless session if available. A returned empty dictionary alone does
-not establish usable discovery. No player transport/UI/history or packet fallback
-is implemented by this diagnostic branch. Record actual sample-field semantics
-before choosing transport and safe placement in the existing live-map architecture.
+### Client-closed runtime result and equipment follow-up (2026-10-01)
+
+The operator supplied a second log at **21:20:27 UTC / 23:20:27 Amsterdam**, from
+phBot **20.1.2**, plugin **1.7.3**, on server **Greatest**. The API returned a
+dictionary of **nine entries in 16 ms**, all nine valid, no truncation.
+`client_running: false`, `character_data_available: true` and
+`joined_game_callback: true` establish an observed joined session with no running
+client. This is runtime evidence that the Players source is usable in that
+clientless state, not merely a fixture or an inference from client process state
+alone. The connection callback remained unknown after reload.
+
+All three sanitized samples have decimal-string IDs, string name/guild/grant,
+boolean dead, integer region **26244** and finite float X/Y. That region matches
+the current observer in this observation; no player Z is supplied. This does not
+establish cross-observer ID equivalence, cross-region behavior or cave-floor safety.
+No `items` field appeared in the first entry's selected field-type evidence.
+Other nearby players' equipment availability is therefore still unverified.
+
+The operator then explicitly requested armor/weapon inspection. The official
+[Players API](https://plugins.phbot.org/phbot-api/players), rechecked on 2026-10-01,
+shows an `items` list whose examples include armor/weapons, with name, degree,
+model, servername, level and plus. This example is a documented lead; it does not
+prove the current runtime populates equipment. No equipment getter or request is
+invented, and no list-index-to-equipment-slot mapping is assumed.
+
+Plugin **1.7.4**, protocol **9**, adds a separate **Inspect player equipment**
+button with an optional exact ID or case-insensitive name target. It reuses the
+same bounded, manual Players getter. The general probe continues to omit items.
+Equipment samples contain at most three players, selected field names/types
+through the existing 2 KiB structural evidence helper, and at most 32 item
+entries / 8 KiB equipment evidence per player. Only documented item fields and
+source list index are copied. Missing/None/empty/unexpected/malformed/partial/
+truncated states remain distinct; equipment is never transported or persisted.
+One summary and one local log line per player keep results easy to copy.
+
+Validation: **138 plugin tests** pass, including five new equipment tests for
+availability distinctions, field preservation, target selection, unknown-value
+exclusion, item/byte bounds and the backend-independent Qt callback. Native armor/
+weapon results still await the operator's 1.7.4 logs. Map placement and identity
+rules remain separate gates before issue #36 transport/UI implementation.
 
 ## Sources checked on 2026-09-26
 

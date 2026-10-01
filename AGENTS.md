@@ -264,19 +264,33 @@ API disabled, but the operator's 2026-10-01 21:15:21 UTC log proves phBot 20.1.2
 returned ten entries in 19 ms with the client running. The first entry has a
 string ID and integer region. The probe's integer-only validator rejected string
 keys; plugin 1.7.3 corrects this and retains actual per-player region/optional Z.
+The operator's 21:20:27 UTC log then confirmed nine valid entries in 16 ms while
+joined with the client closed; samples have decimal-string IDs, region 26244,
+finite X/Y and no player Z. Players source availability is confirmed for both
+observed modes on phBot 20.1.2; identity/cave placement semantics remain open.
+
+The operator explicitly requested armor/weapon inspection next. Plugin 1.7.4
+adds a separate **Inspect player equipment** button with optional player name/ID
+targeting. It inspects the documented `items` field, includes bounded field-type
+evidence, copies selected item fields/source index only, and distinguishes missing,
+empty, malformed/partial and truncated results. Equipment stays in local diagnostic
+logs, with three players / 32 items / 8 KiB equipment evidence per player. The
+normal player probe continues to omit equipment. No guessed getter, slot mapping,
+packet request, player transport/history or bot action is introduced.
 
 Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
 `docs/phbot-capabilities.md`, `docs/reference-parity.md`, and this guide.
-Validation: Python compilation and all 133 plugin tests (eleven probe tests),
+Validation: Python compilation and all 138 plugin tests (sixteen probe tests),
 live transport audit and `git diff --check` pass. The generated monitor output
-contract matches the base; the version guard passes 1.7.2 → 1.7.3 with protocol 9
+contract matches the base; the version guard passes 1.7.3 → 1.7.4 with protocol 9
 unchanged.
 
-Exact next action: download/install plugin 1.7.3 from the same branch, repeat
-the probe for sample values and known clientless behavior using `plugin/README.md`,
-and record observed coordinate/ID semantics in `docs/phbot-capabilities.md` before
-issue #36 transport/map implementation. The populated return is confirmed; sample
-validity, clientless behavior and map placement are not yet validated.
+Exact next action: download/install plugin 1.7.4 from the same branch and use
+**Inspect player equipment** for a nearby player (or leave target blank). Record
+its local equipment summary/sample logs in `docs/phbot-capabilities.md`. Actual
+equipment availability remains unverified: the prior first entry omitted `items`.
+Only after observed fields are verified should further equipment behavior be added.
+Map placement and cross-observer identity remain separate issue #36 gates.
 No real bot action or deployment was performed; unrelated untracked map HTML is
 untouched. This diagnostic does not claim issue #36 feature completion.
 

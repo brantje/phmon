@@ -200,6 +200,118 @@ class PlayersProbeTests(unittest.TestCase):
             gui.setText.assert_called_once_with('fixture-gui', 'probe-status', 'get_players: none - see phBot log')
 
 
+class PlayerEquipmentProbeTests(unittest.TestCase):
+    def test_equipment_distinguishes_missing_none_empty_and_malformed(self):
+        for player, availability, reason in (
+                ({}, 'unavailable', 'items_missing'),
+                ({'items': None}, 'unavailable', 'items_none'),
+                ({'items': []}, 'observed_empty', None),
+                ({'items': [None]}, 'observed_empty', None),
+                ({'items': {}}, 'unavailable', 'unexpected_items_type'),
+                ({'items': [False, {}, {'plus': 7}]}, 'malformed', None)):
+            with self.subTest(player=player):
+                report = plugin._players_equipment_probe(player)
+                self.assertEqual(report['availability'], availability)
+                self.assertEqual(report.get('reason'), reason)
+                self.assertEqual(report['items'], [])
+
+    def test_documented_armor_weapon_fields_are_preserved_without_slot_guesses(self):
+        raw = {'items': [None, {
+            'name': 'Fixture armor', 'servername': 'ITEM_FIXTURE_ARMOR',
+            'model': 1001, 'degree': 9, 'level': 80, 'plus': 5,
+            'blues': 'PRIVATE_BLUES', 'token': 'PRIVATE_TOKEN',
+        }, {
+            'name': 'Fixture weapon', 'servername': 'ITEM_FIXTURE_WEAPON',
+            'model': 1002, 'degree': 9, 'level': 85, 'plus': 0,
+        }, {'model': True, 'name': 'Fixture', 'plus': float('nan'), 'level': -1}]}
+        report = plugin._players_equipment_probe(raw)
+        self.assertEqual(report['availability'], 'observed')
+        self.assertEqual((report['reported_items'], report['empty_items']), (4, 1))
+        self.assertEqual(report['items'][0], {
+            'source_index': 1, 'name': 'Fixture armor', 'servername': 'ITEM_FIXTURE_ARMOR',
+            'model': 1001, 'degree': 9, 'level': 80, 'plus': 5})
+        self.assertEqual(report['items'][1]['source_index'], 2)
+        self.assertEqual(report['items'][1]['plus'], 0)
+        self.assertEqual(report['items'][2], {'source_index': 3, 'name': 'Fixture'})
+        encoded = json.dumps(report, allow_nan=False)
+        self.assertNotIn('PRIVATE_', encoded)
+        self.assertNotIn('token', report['first_item_field_types'])
+        self.assertNotIn('slot', report['items'][0])
+
+    def test_equipment_mode_targets_names_or_ids_and_exposes_only_field_shapes(self):
+        players = {
+            str(index): {'name': 'Player' + str(index), 'x': index, 'y': index,
+                         'items': [{'model': index, 'name': 'Fixture gear'}],
+                         'equipment_alias': {'PRIVATE_VALUE': 'PRIVATE_CONTENT'},
+                         'token': 'PRIVATE_TOKEN'}
+            for index in range(1, 10)
+        }
+        for target in ('9', 'player9'):
+            with self.subTest(target=target):
+                report = plugin.collect_players_probe({'get_players': lambda: players},
+                                                      inspect_equipment=True, target=target)
+                self.assertEqual(report['valid_entries'], 9)
+                self.assertEqual(report['matching_entries'], 1)
+                self.assertEqual(len(report['samples']), 1)
+                sample = report['samples'][0]
+                self.assertEqual(sample['name'], 'Player9')
+                self.assertEqual(sample['equipment']['items'][0]['model'], 9)
+                self.assertEqual(sample['field_types']['equipment_alias']['type'], 'dict')
+                self.assertTrue(sample['field_types_truncated'])
+                self.assertNotIn('PRIVATE_', json.dumps(report))
+        report = plugin.collect_players_probe({'get_players': lambda: players}, inspect_equipment=True)
+        self.assertEqual((report['matching_entries'], len(report['samples'])), (9, 3))
+        report = plugin.collect_players_probe({'get_players': lambda: players},
+                                              inspect_equipment=True, target='absent')
+        self.assertEqual(report['matching_entries'], 0)
+        self.assertEqual(report['samples'], [])
+        getter = Mock()
+        report = plugin.collect_players_probe({'get_players': getter}, inspect_equipment=True, target='x' * 65)
+        self.assertEqual(report['outcome'], 'invalid_target')
+        getter.assert_not_called()
+
+    def test_equipment_and_field_evidence_remain_bounded(self):
+        row = {'model': 1001, 'name': '界' * 10000, 'servername': '界' * 10000}
+        row.update(('extra_' + str(index), 'PRIVATE_VALUE') for index in range(1000))
+        report = plugin._players_equipment_probe({'items': [row] * 10000})
+        self.assertEqual(report['reported_items'], 10000)
+        self.assertLessEqual(report['inspected_items'], plugin.MAX_PLAYERS_EQUIPMENT_ITEMS)
+        self.assertEqual(report['availability'], 'truncated')
+        self.assertLessEqual(len(json.dumps(report).encode('utf-8')), plugin.MAX_PLAYERS_EQUIPMENT_BYTES)
+        self.assertNotIn('PRIVATE_VALUE', json.dumps(report))
+        report = plugin._players_equipment_probe({'items': [{'model': 1}] * 33})
+        self.assertEqual(len(report['items']), plugin.MAX_PLAYERS_EQUIPMENT_ITEMS)
+        self.assertTrue(report['truncated'])
+        report = plugin._players_equipment_probe({'items': [{'model': 1}, False]})
+        self.assertEqual(report['availability'], 'partial')
+
+    def test_equipment_button_logs_bounded_samples_without_backend_worker(self):
+        runtime = SimpleNamespace(get_players=Mock(return_value={
+            '7': {'name': 'Player7', 'x': 1, 'y': 2, 'items': [{'model': 1001, 'plus': 7}]},
+        }))
+        gui = Mock()
+        gui.text.return_value = 'Player7'
+        with patch.dict('sys.modules', {'phBot': runtime}), \
+                patch.object(plugin, '_worker', None), \
+                patch.object(plugin, '_last_players_probe_at', float('-inf')), \
+                patch.object(plugin, '_monotonic', return_value=10), \
+                patch.object(plugin, '_QtBind', gui), \
+                patch.object(plugin, '_gui', 'fixture-gui'), \
+                patch.object(plugin, '_gui_player_probe_target', 'target'), \
+                patch.object(plugin, '_log') as log:
+            report = plugin.inspect_player_equipment()
+        gui.text.assert_called_once_with('fixture-gui', 'target')
+        runtime.get_players.assert_called_once_with()
+        self.assertEqual(report['matching_entries'], 1)
+        self.assertEqual(log.call_count, 3)
+        summary = log.call_args_list[1].args[0]
+        sample = log.call_args_list[2].args[0]
+        self.assertIn('equipment probe:', summary)
+        self.assertNotIn('"model":', summary)
+        self.assertIn('equipment sample:', sample)
+        self.assertIn('"model":1001', sample)
+
+
 class MobObservationTests(unittest.TestCase):
     def test_current_monster_polling_runs_at_one_tenth_second_interval(self):
         previous_worker = plugin._worker

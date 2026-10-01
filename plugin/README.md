@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.7.3** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.7.4** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v9 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -36,6 +36,10 @@ returned ten entries with string keys. Bounded string IDs are preserved without
 numeric coercion. Samples also include the player's own valid region and optional
 Z when the runtime supplies them, independently of the observer's position.
 
+Version 1.7.4 adds **Inspect player equipment**, a separate manual diagnostic
+for the operator-requested armor/weapon investigation. The normal player probe
+continues to omit equipment. Agent protocol remains v9.
+
 ## Test the Players API (issue #36)
 
 The [official Players API](https://plugins.phbot.org/phbot-api/players) explicitly
@@ -43,7 +47,7 @@ marks `get_players()` disabled. This diagnostic checks the installed runtime bef
 any nearby-player map feature is implemented. It needs no backend configuration.
 
 1. Replace `PhMon.py` in the phBot **Plugins** directory with this branch's file
-   and reload it. Confirm the tab shows **PhMon v1.7.3**. Existing connection
+   and reload it. Confirm the tab shows **PhMon v1.7.4**. Existing connection
    settings continue to work.
 2. Open **Plugins -> PhMon** and click **Test get_players** while joined with the
    game client running, preferably where other players are visibly nearby. Repeat
@@ -73,10 +77,36 @@ clientless session; missing context remains unknown. No client path, process ID,
 token or backend URL is logged. This is a manual local diagnostic: no player
 poller, player transport, map layer, player history or packet fallback is added.
 Automated fixture tests cover classification and bounds. The operator's
-2026-10-01 log confirms a populated dictionary on phBot 20.1.2 with a running
-client, string keys and a first-entry integer region field. Sample values and
-clientless behavior still need a repeat probe; see
+2026-10-01 logs confirm populated dictionaries on phBot 20.1.2 with a running
+client and while joined with the client closed. The latter returned nine valid
+entries with decimal-string IDs, region/X/Y and no player Z in the three samples; see
 [runtime evidence](../docs/phbot-capabilities.md#issue-36--manual-players-api-runtime-probe-2026-10-01).
+
+## Inspect nearby-player armor and weapons
+
+1. Install/reload **1.7.4**. In **Plugins -> PhMon**, enter a nearby player's name
+   or runtime ID in **Equipment probe: player ID or name**. Leave it blank to
+   inspect the first three valid entries.
+2. Click **Inspect player equipment**. Both diagnostic buttons share a two-second
+   cooldown and require no backend connection. Name matching ignores case; IDs
+   match exactly. The search inspects at most 128 entries and reports truncation.
+3. Copy the `get_players equipment probe:` summary and
+   `get_players equipment sample:` lines from the phBot log.
+
+Each sample records bounded player field names/types and inspects only the
+documented `items` list. Equipment reports distinguish a missing/None field,
+empty list, unexpected field type, malformed/partial data and truncation. Item
+records preserve source list index and only supplied name, server code, model,
+degree, level and plus. No list index is labeled an armor slot or weapon slot;
+the documented API does not establish such a mapping. Nested unknown values,
+blues, credentials and client paths are excluded. At most 32 item entries are
+inspected per sampled player, with an 8 KiB equipment evidence bound. Results
+are split into one local log line per player.
+
+The first entry in the operator's 1.7.3 log omitted `items`, so actual equipment
+availability remains unverified. Field-type evidence helps identify an alternate
+runtime shape without guessing what undocumented values mean. This diagnostic
+adds no player equipment transport, database records, packet requests or bot action.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

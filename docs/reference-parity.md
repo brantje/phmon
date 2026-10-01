@@ -16,8 +16,16 @@ confirms phBot 20.1.2 returned ten entries in 19 ms with the client running. Its
 string keys were rejected by the diagnostic's integer-only validator. Plugin 1.7.3
 accepts bounded string IDs and preserves actual per-player region/optional Z
 instead of assuming the documented example's shape. All 133 plugin tests pass.
-Repeat sample inspection, clientless behavior and coordinate/ID semantics remain
-pending; [runtime evidence](phbot-capabilities.md) distinguishes these gates.
+The second operator log (21:20:27 UTC) returned nine valid entries in 16 ms while
+joined with the client closed. Samples supply decimal-string IDs, region 26244
+and finite X/Y, with no player Z. This confirms source availability in that
+observed clientless session. Cross-observer identity and cave placement remain
+unverified; [runtime evidence](phbot-capabilities.md) distinguishes these gates.
+The operator next authorized armor/weapon inspection: plugin 1.7.4 adds a
+separate manual equipment probe with optional player name/ID targeting, bounded
+field-type evidence and documented item fields. All 138 plugin tests pass.
+Runtime equipment availability remains pending; the previous first entry omitted
+`items`. This explicit diagnostic does not enable a nearby-player equipment UI.
 Backend and map UI are unchanged, and no Other players layer, player history or
 packet fallback is claimed. No visual comparison is needed for this diagnostic.
 
