@@ -4,6 +4,7 @@ import type {
   CharacterView,
   MapMonster,
   MapNpc,
+  MapOtherPlayer,
   MapPartyMember,
   MapSnapshot,
 } from '~~/shared/types/live'
@@ -23,6 +24,7 @@ import {
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
 import { npcMapMarkers } from '~/utils/mapNpcMarkers'
+import { playerMapMarkers } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
@@ -241,6 +243,7 @@ const resetError = ref('')
 const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerParty = ref(true)
+const layerPlayers = ref(true)
 const layerNPCs = ref(true)
 const layerTraining = ref(true)
 const layerMonsters = ref(true)
@@ -1025,11 +1028,20 @@ const mapMarkers = computed(() => {
   const markers: Array<{
     id: string
     label: string
-    kind: 'character' | 'party' | 'npc' | 'monster' | 'death' | 'drop' | 'event'
+    kind:
+      | 'character'
+      | 'party'
+      | 'player'
+      | 'npc'
+      | 'monster'
+      | 'death'
+      | 'drop'
+      | 'event'
     position: RasterPosition
     placement?: 'exact' | 'region-tile'
     selected?: boolean
     party?: MapPartyMember
+    player?: MapOtherPlayer
     npc?: MapNpc
     monster?: MapMonster
     showLabel?: boolean
@@ -1077,6 +1089,25 @@ const mapMarkers = computed(() => {
         layerCharacters.value
           ? characterMarkers.map((marker) => marker.character.name)
           : [],
+      ),
+    )
+  }
+  const playersSnapshot = mapSnapshot.value?.players
+  if (
+    layerPlayers.value &&
+    playersSnapshot &&
+    playersSnapshot.status !== 'unavailable'
+  ) {
+    markers.push(
+      ...playerMapMarkers(
+        profile,
+        areaID.value,
+        floorID.value,
+        playersSnapshot.players,
+        layerCharacters.value
+          ? characterMarkers.map((marker) => marker.character.name)
+          : [],
+        layerParty.value ? currentPartyMembers.value : [],
       ),
     )
   }
@@ -1162,6 +1193,15 @@ const placedPartyCount = computed(
 )
 const placedNpcCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'npc').length,
+)
+const placedPlayerCount = computed(
+  () => mapMarkers.value.filter((marker) => marker.kind === 'player').length,
+)
+const otherPlayersStatus = computed(
+  () => mapSnapshot.value?.players?.status || 'unavailable',
+)
+const otherPlayersLayerDisabled = computed(
+  () => otherPlayersStatus.value === 'unavailable',
 )
 const zoneNameForRegion = (region?: number | null) => {
   if (region == null) return 'Unknown zone'
@@ -2722,6 +2762,26 @@ useHead({ title: 'Map · PhMon' })
                   :aria-checked="layerParty"
                 />
                 Party members <span>{{ placedPartyCount }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerPlayers"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerPlayers"
+                  :disabled="otherPlayersLayerDisabled"
+                />
+                Other players <span>{{ placedPlayerCount }}</span>
+                <span
+                  v-if="otherPlayersStatus === 'unavailable'"
+                  class="map-layer-status"
+                  >unavailable</span
+                >
+                <span
+                  v-else-if="otherPlayersStatus === 'truncated'"
+                  class="map-layer-status"
+                  >truncated</span
+                ></label
               >
               <label class="map-layer-toggle"
                 ><input

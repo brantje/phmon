@@ -1,7 +1,7 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.7.1** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v9 over the existing authenticated
+The current plugin development release is **1.8.0** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v10 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
@@ -10,8 +10,11 @@ transient route reports for generated-script navigation. Protocol v9 adds epheme
 seconds, immediately after a teleport or region change, and refreshed at least every
 15 seconds while the normalized view is unchanged. `GATE_<name>` server names are
 teleporters; other rows are NPCs. `unavailable` clears that character's markers.
-There is no NPC history. The backend keeps accepting
-protocol v2–v8 and older plugins continue
+There is no NPC history. Protocol v10 adds ephemeral `map.players` snapshots from
+optional `get_players()` (operator-tuned **1 s** poll and **2 s** unchanged refresh;
+NPC cadence remains 2 s / 15 s), 128-row and 64 KiB bounds, and
+observer Z in the publish signature. Equipment and player Z are not copied. The
+backend keeps accepting protocol v2–v9 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime
@@ -26,6 +29,13 @@ Version 1.7.1 reports botting state from a boolean `get_character_data()` field
 when available, otherwise from narrowly recognized `get_status()` values. Unknown
 statuses remain unknown; the meaning of `stopped` and `None` still needs runtime
 verification.
+
+Version 1.8.0 replaces the issue #36 manual player/equipment probes with production
+`map.players` collection for the PhMon **Other players** map layer. Historical probe
+findings remain in [runtime evidence](../docs/phbot-capabilities.md#issue-36--manual-players-api-runtime-probe-2026-10-01).
+Install/reload **1.8.0**, connect to a protocol-10 backend, and open the Map with
+**Other players** enabled. There is no equipment inspection, player history, or
+packet fallback.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

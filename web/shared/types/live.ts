@@ -194,6 +194,35 @@ export interface MapNpcSnapshot {
   npcs: MapNpc[]
 }
 
+export interface MapOtherPlayerObserver {
+  character_id: string
+  session_id: string
+  name: string
+}
+
+export interface MapOtherPlayer {
+  id: string
+  player_id: string
+  name: string
+  guild?: string
+  grant?: string
+  dead?: boolean
+  level?: number
+  region: number
+  x: number
+  y: number
+  observer_region: number
+  observer_z?: number
+  observed_at: string
+  observers: MapOtherPlayerObserver[]
+}
+
+export interface MapOtherPlayersSnapshot {
+  status: 'observed' | 'unavailable' | 'truncated'
+  truncated?: boolean
+  players: MapOtherPlayer[]
+}
+
 export interface MapPartySnapshot {
   status: 'observed' | 'unavailable' | 'truncated'
   truncated?: boolean
@@ -267,6 +296,8 @@ export interface MapSnapshot {
   monsters: MapMonsterObservation[]
   /** Optional for compatibility with backends predating live NPCs. */
   npcs?: MapNpcSnapshot
+  /** Optional for compatibility with backends predating live other players. */
+  players?: MapOtherPlayersSnapshot
   events: ActivityEvent[]
   /** Optional for compatibility with backends predating navigation routes. */
   navigation?: NavigationRoute[]

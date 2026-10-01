@@ -1024,6 +1024,12 @@ function applySnapshot(subscription: Subscription, data: unknown) {
             !Array.isArray(snapshot.npcs.npcs))
         )
           snapshot.npcs = undefined
+        if (
+          snapshot.players &&
+          (typeof snapshot.players.status !== 'string' ||
+            !Array.isArray(snapshot.players.players))
+        )
+          snapshot.players = undefined
         mapFeeds.value = { ...mapFeeds.value, [subscription.id]: snapshot }
         mapFeedCurrent.value = {
           ...mapFeedCurrent.value,

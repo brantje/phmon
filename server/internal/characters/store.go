@@ -361,6 +361,26 @@ func (s *Store) GetScoped(ctx context.Context, id, server string) (Character, er
 	return c, err
 }
 
+type ActiveSession struct {
+	AgentID    string
+	SessionID  string
+	Generation uint64
+}
+
+func (s *Store) ActiveSession(ctx context.Context, characterID string) (ActiveSession, bool, error) {
+	var session ActiveSession
+	err := s.pool.QueryRow(ctx, `SELECT agent_id::text,session_id::text,connection_generation
+FROM character_sessions WHERE character_id=$1 AND ended_at IS NULL`, characterID).Scan(
+		&session.AgentID, &session.SessionID, &session.Generation)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ActiveSession{}, false, nil
+	}
+	if err != nil {
+		return ActiveSession{}, false, err
+	}
+	return session, true, nil
+}
+
 func (s *Store) GetMany(ctx context.Context, ids []string) (map[string]Character, error) {
 	rows, err := s.pool.Query(ctx, selectCharacters+` WHERE c.character_id::text=ANY($1::text[]) ORDER BY c.server_name,c.character_name`, ids)
 	if err != nil {

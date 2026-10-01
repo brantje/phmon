@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 MODULE_PATH = os.path.join(os.path.dirname(__file__), 'PhMon.py')
@@ -15,6 +16,90 @@ plugin = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(plugin)
 
 AGENT_ID = '11111111-2222-4333-8444-555555555555'
+
+
+class PlayerObservationTests(unittest.TestCase):
+    def test_collect_player_observation_classifies_missing_none_empty_and_unavailable(self):
+        self.assertEqual(plugin.collect_player_observation({}), ('unavailable', [], False))
+        self.assertEqual(plugin.collect_player_observation({'get_players': None}), ('unavailable', [], False))
+        self.assertEqual(plugin.collect_player_observation({'get_players': lambda: None}), ('unavailable', [], False))
+        self.assertEqual(plugin.collect_player_observation({'get_players': lambda: {}}), ('observed', [], False))
+
+    def test_collect_player_observation_normalizes_decimal_string_ids_and_fields(self):
+        raw = {
+            '08654977': {'name': 'Nearby', 'guild': 'Guild', 'grant': 'Member',
+                         'dead': False, 'level': 71, 'region': 26244, 'x': 10.5, 'y': 20.0,
+                         'items': ['PRIVATE'], 'z': 3.0},
+        }
+        status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'observed')
+        self.assertFalse(truncated)
+        self.assertEqual(players, [{
+            'player_id': '8654977', 'name': 'Nearby', 'guild': 'Guild', 'grant': 'Member',
+            'dead': False, 'level': 71, 'region': 26244, 'x': 10.5, 'y': 20.0,
+        }])
+        self.assertNotIn('items', players[0])
+        self.assertNotIn('z', players[0])
+
+    def test_collect_player_observation_marks_malformed_duplicate_and_bounds(self):
+        valid = {'name': 'Player', 'x': 1, 'y': 2}
+        raw = {1: valid, 2: None, 3: dict(valid, x=float('nan')), 4: dict(valid, name=''),
+               5: dict(valid, level=0), 6: dict(valid, region=True), '01': dict(valid, x=3, y=4)}
+        status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'truncated')
+        self.assertTrue(truncated)
+        self.assertEqual(len(players), 1)
+        self.assertEqual(players[0]['x'], 1.0)
+
+    def test_player_snapshot_signature_includes_observer_z(self):
+        players = [{'player_id': '1', 'name': 'A', 'x': 1.0, 'y': 2.0}]
+        first = plugin._player_snapshot_signature('observed', 25000, -6.0, players)
+        second = plugin._player_snapshot_signature('observed', 25000, 12.0, players)
+        self.assertNotEqual(first, second)
+
+    def test_sample_players_respects_poll_refresh_and_forces_on_region_change(self):
+        previous = (
+            plugin._worker, plugin._last_player_poll_at, plugin._last_player_region,
+            plugin._last_player_observer_z, plugin._last_player_signature,
+            plugin._last_player_publish_at, plugin._player_sample_forced,
+        )
+        plugin._reset_player_sample_state()
+        worker = Mock()
+        worker.update_map_players = Mock(return_value=True)
+        plugin._worker = worker
+        identity = {'server': 'Greatest', 'name': 'Observer'}
+        state = {'region': 25000}
+        position = {'z': -6.0}
+        now = 100.0
+        with patch.object(plugin, 'collect_player_observation', return_value=('observed', [], False)):
+            self.assertTrue(plugin._sample_players(identity, state, position, now))
+            self.assertFalse(plugin._sample_players(identity, state, position, now + 1.0))
+            self.assertTrue(plugin._sample_players(identity, state, position, now + 16.0))
+            state['region'] = 25001
+            self.assertTrue(plugin._sample_players(identity, state, position, now + 17.0))
+        plugin._worker, plugin._last_player_poll_at, plugin._last_player_region, \
+            plugin._last_player_observer_z, plugin._last_player_signature, \
+            plugin._last_player_publish_at, plugin._player_sample_forced = previous
+
+    def test_flush_map_players_requires_matching_identity(self):
+        worker = plugin.AgentWorker({'backend_url': 'ws://127.0.0.1/agent', 'agent_id': AGENT_ID,
+                                     'agent_token': 'token'}, '20.1.2')
+        worker.character_id = AGENT_ID
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker._current_identity = {'server': 'Greatest', 'name': 'Observer'}
+        client = Mock()
+        worker.update_map_players(worker._current_identity, 'observed', 25000,
+                                  [{'player_id': '7', 'name': 'Nearby', 'x': 1.0, 'y': 2.0}],
+                                  observer_z=-6.0)
+        worker._flush_map_players(client)
+        self.assertEqual(client.send_json.call_count, 1)
+        frame = client.send_json.call_args.args[0]
+        self.assertEqual(frame['type'], 'map.players')
+        self.assertEqual(frame['protocol_version'], 10)
+        worker._current_identity = {'server': 'Greatest', 'name': 'Other'}
+        worker.update_map_players(worker._current_identity, 'observed', 25000, [], observer_z=-6.0)
+        worker._flush_map_players(client)
+        self.assertEqual(client.send_json.call_count, 1)
 
 
 class MobObservationTests(unittest.TestCase):

@@ -250,6 +250,32 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-01 Issue #36 Other players map layer
+
+Branch `codex/issue-36-get-players-probe` replaces the manual get_players/equipment
+probes with production collection and the Map **Other players** layer. Plugin
+**1.8.0** / agent protocol **10** publishes bounded `map.players` on the worker
+(2 s / 15 s cadence, 128 rows, 64 KiB, observer Z in signature). Go adds
+`server/internal/players` memory store with generation-scoped cleanup and
+`map_players` projection (35 s TTL, dedup, 256/16 caps). Map UI: default-on layer,
+`mm_sign_otherplayer.png` markers, popup, precedence over Characters/Party when
+those layers are on. Probe history stays in `docs/phbot-capabilities.md`; equipment
+and packet fallback remain out of scope.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
+`server/internal/{players,httpapi,characters}/`, `web/app/{pages,map,components,
+composables,utils}/`, `web/shared/types/live.ts`, `web/tests/mapPlayerMarkers.test.ts`,
+`scripts/{plugin_protocol_contract.py,agent_simulator.py}`, `docs/protocol.md`,
+`docs/reference-parity.md`, and this guide. Leave untracked `PhMon Map Redesign.html`
+untouched. Do not merge or deploy unless authorized.
+
+Validation target: plugin unit tests, Go `./...`, frontend unit tests, full
+`bash scripts/check.sh` with Node 24.20.0 and disposable `TEST_DATABASE_URL`,
+browser map layer at 1440×1000, 1280×800 and 390×844 on a fixture stack. Installed
+phBot map validation remains a separate gate after operator loads 1.8.0 against a
+protocol-10 backend. Exact next action: commit/push this branch, require CI green,
+and record live map evidence when the upgraded plugin is connected.
+
 ### Resume — 2026-10-01 Issue #55 map redesign
 
 Implemented the seven UI reorganization phases on `codex/issue-55-map-redesign`.

@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.7.1'
+pVersion = '1.8.0'
 pUrl = ''
 
-PROTOCOL_VERSION = 9
+PROTOCOL_VERSION = 10
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -56,6 +56,10 @@ MAX_MONSTERS_PER_SNAPSHOT = 128
 MAX_NPCS_PER_SNAPSHOT = 128
 NPC_POLL_INTERVAL_SECONDS = 2.0
 NPC_REFRESH_INTERVAL_SECONDS = 15.0
+MAX_PLAYERS_PER_SNAPSHOT = 128
+MAX_PLAYERS_SNAPSHOT_BYTES = 64 * 1024
+PLAYER_POLL_INTERVAL_SECONDS = 1.0 # Changed by user do not change this value
+PLAYER_REFRESH_INTERVAL_SECONDS = 2 # Changed by user do not change this value
 _NPC_GATE_ROLE = re.compile(r'^GATE_[A-Za-z0-9_]+$')
 MAX_MOB_SPOOL_ITEMS = 2048
 MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
@@ -268,6 +272,114 @@ def _bounded_text(value, limit=256):
         return None
     result = str(value).strip()
     return result[:limit] if result else None
+
+
+def _canonical_player_id(identifier):
+    if isinstance(identifier, int) and not isinstance(identifier, bool):
+        if 0 < identifier <= 4294967295:
+            return str(identifier)
+        return None
+    if isinstance(identifier, str):
+        text = identifier.strip()
+        if not text or len(text) > 64:
+            return None
+        if text.isdigit():
+            try:
+                value = int(text, 10)
+            except ValueError:
+                return None
+            if 0 < value <= 4294967295:
+                return str(value)
+    return None
+
+
+def _bounded_player_text(value):
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    while text and len(text.encode('utf-8')) > 64:
+        text = text[:-1]
+    return text or None
+
+
+def collect_player_observation(api=None):
+    """Return an explicitly classified, bounded get_players() observation."""
+    function = (api or {}).get('get_players') if isinstance(api, dict) else None
+    if not callable(function):
+        if isinstance(api, dict):
+            return 'unavailable', [], False
+        function = _optional_phbot_api('get_players')
+    if not callable(function):
+        return 'unavailable', [], False
+    try:
+        raw = function()
+    except Exception:
+        return 'unavailable', [], False
+    if raw is None or not isinstance(raw, dict):
+        return 'unavailable', [], False
+    truncated = len(raw) > MAX_PLAYERS_PER_SNAPSHOT
+    players = []
+    seen = set()
+    for index, (identifier, value) in enumerate(raw.items()):
+        if index >= MAX_PLAYERS_PER_SNAPSHOT:
+            break
+        if not isinstance(value, dict):
+            truncated = True
+            continue
+        player_id = _canonical_player_id(identifier)
+        name = _bounded_player_text(value.get('name'))
+        x = value.get('x', value.get('X'))
+        y = value.get('y', value.get('Y'))
+        if (player_id is None or name is None or not _number(x) or not _number(y) or
+                abs(x) > 1000000 or abs(y) > 1000000):
+            truncated = True
+            continue
+        if player_id in seen:
+            truncated = True
+            continue
+        level = value.get('level')
+        if ('level' in value and level is not None and
+                not (isinstance(level, int) and not isinstance(level, bool) and 1 <= level <= 255)):
+            truncated = True
+            continue
+        region = value.get('region')
+        if ('region' in value and region is not None and not _valid_position_region(region)):
+            truncated = True
+            continue
+        row = {
+            'player_id': player_id, 'name': name,
+            'x': float(x), 'y': float(y),
+        }
+        for key in ('guild', 'grant'):
+            detail = _bounded_player_text(value.get(key))
+            if detail is not None:
+                row[key] = detail
+        if isinstance(value.get('dead'), bool):
+            row['dead'] = value['dead']
+        if isinstance(level, int) and not isinstance(level, bool) and 1 <= level <= 255:
+            row['level'] = level
+        if _valid_position_region(region):
+            row['region'] = region
+        encoded = json.dumps(players + [row], separators=(',', ':'), sort_keys=True, allow_nan=False).encode('utf-8')
+        if len(encoded) > MAX_PLAYERS_SNAPSHOT_BYTES:
+            truncated = True
+            break
+        seen.add(player_id)
+        players.append(row)
+    return ('truncated' if truncated else 'observed'), players, truncated
+
+
+def _player_snapshot_signature(status, region, observer_z, players):
+    rows = []
+    for player in players:
+        rows.append((
+            player.get('player_id'), player.get('name'), player.get('guild'), player.get('grant'),
+            player.get('dead'), player.get('level'), player.get('region'), player.get('x'), player.get('y'),
+        ))
+    rows.sort()
+    return (status, region, observer_z, tuple(rows))
 
 
 def collect_monster_observation(api=None):
@@ -2114,6 +2226,9 @@ class AgentWorker(object):
         self._npc_samples = _queue.Queue(maxsize=1)
         self._latest_npc_observation = None
         self._last_npc_sent_at = None
+        self._player_samples = _queue.Queue(maxsize=1)
+        self._latest_player_observation = None
+        self._last_player_sent_at = None
         self._event_sequence_lock = threading.Lock()
         self._event_sequences = {}
         self._alchemy_items_lock = threading.Lock()
@@ -2199,6 +2314,29 @@ class AgentWorker(object):
         self._latest_npc_observation = None
         self._last_npc_sent_at = None
 
+    def update_map_players(self, identity, status, region, players, observer_z=None):
+        observation = {
+            'identity': dict(identity), 'status': status, 'region': region,
+            'players': [dict(player) for player in players], 'observed_at': _worker_utc_now(self),
+        }
+        if _number(observer_z) and abs(observer_z) <= 1000000:
+            observation['observer_z'] = float(observer_z)
+        try:
+            self._player_samples.put_nowait(observation)
+        except _queue.Full:
+            try: self._player_samples.get_nowait()
+            except _queue.Empty: pass
+            try: self._player_samples.put_nowait(observation)
+            except _queue.Full: pass
+        return True
+
+    def clear_map_players(self):
+        while True:
+            try: self._player_samples.get_nowait()
+            except _queue.Empty: break
+        self._latest_player_observation = None
+        self._last_player_sent_at = None
+
     def _spool_queued_mob_samples(self):
         while True:
             sample = self._pending_mob_spool_sample
@@ -2233,6 +2371,7 @@ class AgentWorker(object):
                               'map_snapshot': snapshot})
             self._last_map_sent_at = observation['observed_at']
         self._flush_map_npcs(client)
+        self._flush_map_players(client)
         self._flush_navigation_route(client)
         now = _monotonic()
         for sample in self._mob_spool.pending():
@@ -2263,6 +2402,27 @@ class AgentWorker(object):
         client.send_json({'type': 'map.npcs', 'protocol_version': PROTOCOL_VERSION,
                           'map_snapshot': snapshot})
         self._last_npc_sent_at = observation['observed_at']
+
+    def _flush_map_players(self, client):
+        while True:
+            try: self._latest_player_observation = self._player_samples.get_nowait()
+            except _queue.Empty: break
+        observation = self._latest_player_observation
+        if (observation is None or self.character_id is None or self.session_id is None or
+                self._identity_key(observation.get('identity')) != self._identity_key(self._current_identity) or
+                observation.get('observed_at') == self._last_player_sent_at):
+            return
+        snapshot = {
+            'status': observation['status'], 'character_id': self.character_id,
+            'session_id': self.session_id, 'observed_at': observation['observed_at'],
+            'region': observation['region'], 'players': observation['players'],
+            'truncated': observation['status'] == 'truncated',
+        }
+        if observation.get('observer_z') is not None:
+            snapshot['observer_z'] = observation['observer_z']
+        client.send_json({'type': 'map.players', 'protocol_version': PROTOCOL_VERSION,
+                          'map_snapshot': snapshot})
+        self._last_player_sent_at = observation['observed_at']
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
@@ -2618,6 +2778,7 @@ class AgentWorker(object):
                 self._latest_resources_identity = None
                 self._last_map_sent_at = None
                 self._last_npc_sent_at = None
+                self._last_player_sent_at = None
                 self._item_tracker.reset('backend_reconnect')
                 # Callbacks may have queued a leave while the backend was
                 # unavailable. Apply the newest queued fact before replaying
@@ -2640,6 +2801,7 @@ class AgentWorker(object):
                             self._latest_map_observation = None
                             self._last_map_sent_at = None
                             self.clear_map_npcs()
+                            self.clear_map_players()
                             self._resource_baseline_required = True
                             self._confirmed_resources = None
                             self._item_tracker.reset('character_left')
@@ -3644,6 +3806,12 @@ _last_npc_region = None
 _last_npc_signature = None
 _last_npc_publish_at = 0.0
 _npc_sample_forced = False
+_last_player_poll_at = 0.0
+_last_player_region = None
+_last_player_observer_z = None
+_last_player_signature = None
+_last_player_publish_at = 0.0
+_player_sample_forced = False
 
 
 def _reset_npc_sample_state():
@@ -3653,6 +3821,17 @@ def _reset_npc_sample_state():
     _last_npc_signature = None
     _last_npc_publish_at = 0.0
     _npc_sample_forced = False
+
+
+def _reset_player_sample_state():
+    global _last_player_poll_at, _last_player_region, _last_player_observer_z
+    global _last_player_signature, _last_player_publish_at, _player_sample_forced
+    _last_player_poll_at = 0.0
+    _last_player_region = None
+    _last_player_observer_z = None
+    _last_player_signature = None
+    _last_player_publish_at = 0.0
+    _player_sample_forced = False
 _death_callback_active = False
 _phbot_connected_state = None
 _pending_callback_events = _queue.Queue(maxsize=64)
@@ -3811,6 +3990,7 @@ def disconnected():
     if _worker is not None:
         _worker.leave_character()
     _reset_npc_sample_state()
+    _reset_player_sample_state()
     _set_gui_status('SRO client disconnected. Waiting for login...')
 
 
@@ -3823,13 +4003,15 @@ def joined_game():
     _death_callback_active = False
     # joined_game runs before phBot has loaded character data; keep this agent-scoped.
     _reset_npc_sample_state()
+    _reset_player_sample_state()
     if not already_joined:
         _lifecycle_event('session.joined_game', 'joined_game')
 
 
 def teleported():
-    global _npc_sample_forced
+    global _npc_sample_forced, _player_sample_forced
     _npc_sample_forced = True
+    _player_sample_forced = True
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
         _worker._cancel_navigation_generation('character_teleported')
     _lifecycle_event('session.teleported', 'teleported', include_identity=True)
@@ -4176,6 +4358,7 @@ def _sample_character(timing=None):
         _last_character_sample_at = now
     timing.run('monsters', _sample_monsters, identity, state, position, now)
     timing.run('npcs', _sample_npcs, identity, state, position, now)
+    timing.run('players', _sample_players, identity, state, position, now)
     if hasattr(_worker, 'report_control_state'):
         try: timing.run('controls', _worker.report_control_state)
         except Exception as error: _log('control-state sample failed (' + error.__class__.__name__ + ')')
@@ -4278,6 +4461,44 @@ def _sample_npcs(identity, state, position, now=None):
     _worker.update_map_npcs(identity, status, region, matching, observer_z=observer_z)
     _last_npc_signature = signature
     _last_npc_publish_at = now
+    return True
+
+
+def _sample_players(identity, state, position, now=None):
+    global _last_player_poll_at, _last_player_region, _last_player_observer_z
+    global _last_player_signature, _last_player_publish_at, _player_sample_forced
+    if _worker is None:
+        return False
+    now = _monotonic() if now is None else now
+    region = state.get('region') if isinstance(state, dict) else None
+    if not _valid_position_region(region):
+        return False
+    observer_z = position.get('z') if isinstance(position, dict) else None
+    normalized_z = float(observer_z) if _number(observer_z) and abs(observer_z) <= 1000000 else None
+    forced = (_player_sample_forced or _last_player_region != region or
+              _last_player_observer_z != normalized_z)
+    if not forced and now - _last_player_poll_at < PLAYER_POLL_INTERVAL_SECONDS:
+        return False
+    _last_player_poll_at = now
+    _player_sample_forced = False
+    status, players, truncated = collect_player_observation()
+    matching = [player for player in players
+                if player.get('region') is None or _mob_region_matches(region, player.get('region'))]
+    if len(matching) != len(players):
+        truncated = True
+    if truncated:
+        status = 'truncated'
+    signature = _player_snapshot_signature(status, region, normalized_z, matching)
+    changed = signature != _last_player_signature
+    refresh_due = (_last_player_publish_at == 0.0 or
+                   now - _last_player_publish_at >= PLAYER_REFRESH_INTERVAL_SECONDS)
+    _last_player_region = region
+    _last_player_observer_z = normalized_z
+    if not forced and not changed and not refresh_due:
+        return False
+    _worker.update_map_players(identity, status, region, matching, observer_z=observer_z)
+    _last_player_signature = signature
+    _last_player_publish_at = now
     return True
 
 

@@ -4,6 +4,20 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Other players — issue #36 map layer (2026-10-01)
+
+Historical probe evidence (phBot 20.1.2 populated `get_players()` dictionaries,
+decimal-string IDs, optional per-player region, equipment absent on the observed
+eight-field clientless record) remains in [phbot-capabilities.md](phbot-capabilities.md).
+Production delivery uses plugin **1.8.0** / agent protocol **10** `map.players`
+snapshots (operator-tuned 1 s poll / 2 s unchanged refresh, 128-row / 64 KiB bounds, observer Z
+in the signature, generation-scoped backend cleanup). The Map page adds **Other
+players** (default on) with `mm_sign_otherplayer.png` markers, name labels,
+alive/dead popup fields, and precedence over managed-character names and party
+runtime IDs when Characters/Party layers are enabled. No navigate, equipment,
+player history, or packet fallback. Installed-runtime map validation remains
+separate from simulator/fixture evidence recorded after CI on this branch.
+
 ## Multi-character remote controls — 2026-10-01
 
 Before the Issue #35 screen changes, the operator supplied a reachable LAN demo

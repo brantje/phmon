@@ -4,6 +4,152 @@ Slice 1 starts the real phBot integration. This document records only capabiliti
 verified from public phBot plugin documentation or an actual runtime. Simulator
 coverage is tracked separately and is never treated as proof of a real phBot run.
 
+## Issue #36 — manual Players API runtime probe (2026-10-01)
+
+The official [Players API](https://plugins.phbot.org/phbot-api/players), rechecked
+on 2026-10-01, explicitly says `get_players()` is disabled. Its documented return
+is `None` or a possibly empty dictionary keyed by player ID, with name, guild,
+grant, items, X/Y and dead fields. Region and Z are not documented for players.
+The official [Client API](https://plugins.phbot.org/phbot-api/client) documents
+`get_client()` returning `None` or a dictionary with a boolean `running` field;
+this is process state, not proof of a logged-in clientless session. The official
+[Misc API](https://plugins.phbot.org/phbot-api/misc) documents `get_version()` as
+the bot version string. The [GUI API](https://plugins.phbot.org/gui-api) verifies
+`createButton` with a named callback and `setText` for the local result label.
+
+Plugin **1.7.2**, agent protocol **9**, adds **Test get_players** to its existing
+QtBind tab. One operator click imports/probes the actual `phBot` module and calls
+`get_players()` at most once; clicks are throttled to two seconds. The bounded
+local JSON log records module/symbol/callable availability, result classification,
+native call duration, selected session/client/observer context and at most three
+sanitized samples. It distinguishes `None` from `{}`, handles exceptions without
+logging their messages, inspects at most 128 entries and labels overflow explicitly.
+Only selected first-entry field types are included for structural evidence;
+equipment and unrelated field values are excluded. No native API call is moved
+to an unverified background thread, and no network/disk I/O is added to the probe.
+
+Validation: **131 Python plugin tests** pass, including nine new diagnostic tests
+for absent/missing/noncallable/disabled/empty/populated/unexpected API behavior,
+malformed coordinates/entries, overflow and log bounds, import probing, unknown
+client state and the backend-independent throttled button. These are CPython
+fixtures, not installed phBot observations. Subsequent operator runtime evidence
+and the corrected diagnostic are recorded below.
+See [operator instructions](../plugin/README.md#test-the-players-api-issue-36).
+
+### Operator runtime result and ID correction (2026-10-01)
+
+Operator-provided plugin 1.7.2 log at **21:15:21 UTC / 23:15:21 Amsterdam**:
+
+| Evidence | Observed result |
+| --- | --- |
+| phBot | **20.1.2**, `phbot_importable: true` |
+| Players symbol | Present and callable |
+| Native call | Returned in **19 ms** |
+| Return | `dict`, **10 entries**, no truncation |
+| Client/session | `client_running: true`, character data available, joined-game true |
+| First entry | String ID key; dict with string name/guild/grant, boolean dead, integer region, float X/Y |
+| Samples | None: ten entries rejected; the observed string-key shape fails 1.7.2's integer-only validator |
+
+This establishes that the API returns populated data on this observed runtime with
+the client running despite the documentation's disabled notice. It does not verify
+clientless behavior, player coordinate values, cross-observer ID identity or cave
+placement. `game_connected_callback: null` is unknown callback state after plugin
+reload, not evidence of a disconnected game. The first entry exposes a `region`
+field absent from the official example; its value and semantics remain unverified.
+No player Z field appeared in the first-entry type evidence.
+
+Plugin **1.7.3** fixes sampling by accepting nonblank string IDs up to 64 characters
+and preserving them exactly, alongside the existing bounded integer IDs. No decimal
+format is assumed before seeing actual values. Samples now retain valid per-player
+region and optional finite bounded Z only when present on that entry; the observer's
+region/Z are never substituted. All **133 plugin tests** pass, including two new
+tests for the observed string-key shape and identifier bounds. Test positions/IDs
+are synthetic; real player sightings are not persisted as test fixtures.
+
+### Client-closed runtime result and equipment follow-up (2026-10-01)
+
+The operator supplied a second log at **21:20:27 UTC / 23:20:27 Amsterdam**, from
+phBot **20.1.2**, plugin **1.7.3**, on server **Greatest**. The API returned a
+dictionary of **nine entries in 16 ms**, all nine valid, no truncation.
+`client_running: false`, `character_data_available: true` and
+`joined_game_callback: true` establish an observed joined session with no running
+client. This is runtime evidence that the Players source is usable in that
+clientless state, not merely a fixture or an inference from client process state
+alone. The connection callback remained unknown after reload.
+
+All three sanitized samples have decimal-string IDs, string name/guild/grant,
+boolean dead, integer region **26244** and finite float X/Y. That region matches
+the current observer in this observation; no player Z is supplied. This does not
+establish cross-observer ID equivalence, cross-region behavior or cave-floor safety.
+No `items` field appeared in the first entry's selected field-type evidence.
+Other nearby players' equipment availability is therefore still unverified.
+
+The operator then explicitly requested armor/weapon inspection. The official
+[Players API](https://plugins.phbot.org/phbot-api/players), rechecked on 2026-10-01,
+shows an `items` list whose examples include armor/weapons, with name, degree,
+model, servername, level and plus. This example is a documented lead; it does not
+prove the current runtime populates equipment. No equipment getter or request is
+invented, and no list-index-to-equipment-slot mapping is assumed.
+
+Plugin **1.7.4**, protocol **9**, adds a separate **Inspect player equipment**
+button with an optional exact ID or case-insensitive name target. It reuses the
+same bounded, manual Players getter. The general probe continues to omit items.
+Equipment samples contain at most three players, selected field names/types
+through the existing 2 KiB structural evidence helper, and at most 32 item
+entries / 8 KiB equipment evidence per player. Only documented item fields and
+source list index are copied. Missing/None/empty/unexpected/malformed/partial/
+truncated states remain distinct; equipment is never transported or persisted.
+One summary and one local log line per player keep results easy to copy.
+
+Validation: **138 plugin tests** pass, including five new equipment tests for
+availability distinctions, field preservation, target selection, unknown-value
+exclusion, item/byte bounds and the backend-independent Qt callback. Subsequent
+native results are recorded below. Map placement and identity rules remain
+separate gates before issue #36 transport/UI implementation.
+
+### Equipment runtime result: field absent (2026-10-01)
+
+Operator-provided phBot **20.1.2** / plugin **1.7.4** logs establish two distinct
+results with the client closed and the character joined:
+
+- **21:29:23 UTC / 23:29:23 Amsterdam**, observer region 25733: `get_players()`
+  returned `{}` in 0 ms, with zero entries/samples. Target matching occurs after
+  the native call, so the requested target did not cause the empty dictionary.
+  This response tests observed-empty player discovery, not equipment availability.
+- **21:31:16 UTC / 23:31:16 Amsterdam**, observer region 26244: the getter returned
+  ten valid entries in 18 ms. Name targeting matched one player and produced one
+  sample, with no truncation. The sample's complete field evidence has exactly
+  eight fields: `name`, `guild`, `grant`, `level`, `dead`, `region`, `x`, `y`.
+  `field_types_truncated: false` establishes that the absence of equipment fields
+  is not a structural logging limit. `items` is absent, and equipment reports
+  `availability: unavailable`, `reason: items_missing`.
+
+The sampled runtime record cannot supply that player's armor or weapon. There is
+no alternate equipment field in this complete eight-field shape. This is a verified
+source limitation for the observed player/clientless session, not proof about every
+player, game mode or other phBot version. Integer `level` is now observed as a field
+type; its value was not copied by this diagnostic. No item model/code/plus can be
+derived from the supplied player record. Later XP/SP and gold log messages are
+unrelated to this capability result.
+
+The requested investigation is complete for this response. Equipment inspection
+remains blocked on a documented/observed source exposing item data. The existing
+probe can compare additional players/client-running state without a plugin update.
+No guessed API or packet fallback is added. This document retains capability
+metadata only, not player identities, equipment records or sighting history.
+
+### Production map.players transport (plugin 1.8.0, protocol 10)
+
+Plugin **1.8.0** removes the manual probe buttons and publishes bounded
+`map.players` snapshots on the existing worker path (operator-tuned **1 s** poll,
+**2 s** unchanged refresh; signature includes observer Z). Rows copy canonical decimal-string IDs,
+name, guild, grant, dead, level, region and X/Y only. Equipment and player Z are
+omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
+generation-scoped disconnect cleanup, and map projection with party-style dedup.
+The PhMon Map **Other players** layer is fixture-tested separately from installed
+phBot validation; cross-observer identity and cave placement semantics remain
+open gates until recorded on a live runtime after upgrade.
+
 ## Sources checked on 2026-09-26
 
 - Plugin introduction: https://plugins.phbot.org/

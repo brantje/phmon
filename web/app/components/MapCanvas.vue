@@ -11,6 +11,7 @@ import type {
   ActivityEvent,
   MapMonster,
   MapNpc,
+  MapOtherPlayer,
   MapPartyMember,
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
@@ -28,6 +29,10 @@ import {
   npcRoleLabel,
 } from '~/utils/mapNpcMarkers'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
+import {
+  OTHER_PLAYER_ICON,
+  playerAliveLabel,
+} from '~/utils/mapPlayerPresentation'
 import {
   localMapAsset,
   monsterDisplayName,
@@ -54,12 +59,21 @@ import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
 interface MapCanvasMarker {
   id: string
   label: string
-  kind: 'character' | 'party' | 'npc' | 'monster' | 'death' | 'drop' | 'event'
+  kind:
+    | 'character'
+    | 'party'
+    | 'player'
+    | 'npc'
+    | 'monster'
+    | 'death'
+    | 'drop'
+    | 'event'
   position: RasterPosition
   placement?: 'exact' | 'region-tile'
   selected?: boolean
   character?: CharacterMarkerInput
   party?: MapPartyMember
+  player?: MapOtherPlayer
   npc?: MapNpc
   monster?: MapMonster
   showLabel?: boolean
@@ -945,6 +959,34 @@ function markerPopup(marker: MapCanvasMarker) {
       details.append(...rows)
       panel.append(details)
     }
+  } else if (marker.kind === 'player' && marker.player) {
+    const other = marker.player
+    title.textContent = other.name || `Player ${other.player_id}`
+    subtitle.textContent = 'Other player'
+    const icon = document.createElement('img')
+    icon.className = 'phmon-map-detail-player-icon'
+    icon.src = OTHER_PLAYER_ICON
+    icon.alt = ''
+    header.prepend(icon)
+    const rows: HTMLElement[] = []
+    if (other.guild) rows.push(detailRow('Guild', other.guild))
+    if (other.grant) rows.push(detailRow('Grant', other.grant))
+    if (other.level != null) rows.push(detailRow('Level', String(other.level)))
+    rows.push(detailRow('State', playerAliveLabel(other.dead)))
+    const observers = other.observers
+      .map((observer) => observer.name)
+      .filter(Boolean)
+      .join(', ')
+    details.append(
+      detailRow('Region', String(other.region)),
+      detailRow('Position', positionText(other.x, other.y, other.observer_z)),
+      detailRow('Observed by', observers || '—'),
+    )
+    panel.append(header)
+    if (rows.length) {
+      details.append(...rows)
+      panel.append(details)
+    }
   } else if (marker.kind === 'npc' && marker.npc) {
     const npc = marker.npc
     title.textContent = npcDisplayLabel(npc)
@@ -1082,6 +1124,16 @@ function markerIconContent(
     const name = document.createElement('span')
     name.className = 'phmon-map-party-name'
     name.textContent = marker.party?.name?.trim() || marker.label
+    content.append(name)
+  } else if (marker.kind === 'player') {
+    content.className = 'phmon-map-player-icon'
+    const img = document.createElement('img')
+    img.src = OTHER_PLAYER_ICON
+    img.alt = ''
+    content.append(img)
+    const name = document.createElement('span')
+    name.className = 'phmon-map-player-name'
+    name.textContent = marker.player?.name?.trim() || marker.label
     content.append(name)
   } else if (marker.kind === 'npc') {
     content.className = 'phmon-map-npc-icon'
@@ -1321,7 +1373,9 @@ onMounted(async () => {
     const size =
       marker.kind === 'character'
         ? 28
-        : marker.kind === 'party' || marker.kind === 'npc'
+        : marker.kind === 'party' ||
+            marker.kind === 'player' ||
+            marker.kind === 'npc'
           ? 24
           : marker.kind === 'monster'
             ? Math.round(12 * (type?.scale || 1))
@@ -1400,11 +1454,13 @@ onMounted(async () => {
           ? 1000
           : marker.kind === 'party'
             ? 700
-            : marker.kind === 'npc'
-              ? 650
-              : marker.kind === 'drop' || marker.kind === 'death'
-                ? 400
-                : 0,
+            : marker.kind === 'player'
+              ? 680
+              : marker.kind === 'npc'
+                ? 650
+                : marker.kind === 'drop' || marker.kind === 'death'
+                  ? 400
+                  : 0,
     })
     if (!props.compact && marker.kind === 'character')
       rendered.on('click', () => emit('inspectcharacter', marker.id))
@@ -1660,6 +1716,12 @@ onBeforeUnmount(() => {
   background: transparent;
 }
 
+:global(.phmon-map-marker--party.leaflet-div-icon),
+:global(.phmon-map-marker--player.leaflet-div-icon),
+:global(.phmon-map-marker--npc.leaflet-div-icon) {
+  overflow: visible;
+}
+
 /* Leaflet positions the marker with `transform`; `translate` composes with it. */
 :global(.phmon-map-training-label-marker) {
   width: max-content;
@@ -1847,23 +1909,22 @@ onBeforeUnmount(() => {
   border-style: dashed;
 }
 
-:global(.phmon-map-party-icon),
 :global(.phmon-map-detail-party-icon) {
   display: grid;
   place-items: center;
 }
 
-:global(.phmon-map-party-icon) {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  filter: drop-shadow(0 1px 3px #000c);
-}
-
+:global(.phmon-map-party-icon),
+:global(.phmon-map-player-icon),
 :global(.phmon-map-npc-icon) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   position: relative;
   width: 100%;
   height: 100%;
+  box-sizing: border-box;
   filter: drop-shadow(0 1px 3px #000c);
 }
 
@@ -1880,11 +1941,13 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-npc-name),
-:global(.phmon-map-party-name) {
+:global(.phmon-map-party-name),
+:global(.phmon-map-player-name) {
   position: absolute;
-  top: calc(100% - 2px);
+  top: calc(100% + 2px);
   left: 50%;
   transform: translateX(-50%);
+  width: max-content;
   max-width: 112px;
   overflow: hidden;
   padding: 2px 5px;
@@ -1894,6 +1957,7 @@ onBeforeUnmount(() => {
   font-size: 10px;
   font-weight: 500;
   line-height: 1.1;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 4px #000b;
@@ -1901,10 +1965,16 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-party-icon img),
+:global(.phmon-map-player-icon img),
+:global(.phmon-map-npc-icon img),
 :global(.phmon-map-detail-party-icon img) {
+  display: block;
+  width: 20px;
+  height: 20px;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  flex: none;
 }
 
 :global(.phmon-map-detail-party-icon) {
