@@ -13,6 +13,9 @@ at its top edge. Selecting a label or its side-list row opens a compact
 editor with the observed center/radius, Move center, a Radius input, Apply and
 Reset. The center and edge handles drag a local draft; the label gains an
 `· unsaved` suffix and the observed circle stays visible until readback arrives.
+While that suffix is showing, the chip places a discard X and an accept
+checkmark after the character name and before `unsaved`. Those controls call
+the same Reset and Apply actions as the side editor.
 Apply sends only the dirty parts, center before radius, through the existing
 audited commands and reports each step's durable result. Reset discards the draft.
 Hiding the layer removes circles, handles and the editor.

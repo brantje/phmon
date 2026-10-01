@@ -78,12 +78,17 @@ const props = defineProps<{
   navigationRoutes?: MapRouteOverlay[]
   trainingAreas?: TrainingAreaOverlay[]
   trainingEditable?: boolean
+  trainingAcceptDisabled?: boolean
+  trainingDiscardDisabled?: boolean
+  trainingAcceptTitle?: string
 }>()
 const emit = defineEmits<{
   viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
   trainingselect: [characterID: string]
   trainingmove: [characterID: string, point: RasterPosition]
   trainingresize: [characterID: string, radiusPixels: number]
+  trainingaccept: [characterID: string]
+  trainingdiscard: [characterID: string]
   pointselect: [point: RasterPosition, trainingAreaID?: string | null]
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
@@ -542,16 +547,116 @@ function ensureTrainingHandles(id: string, rendered: RenderedTrainingArea) {
   }
 }
 
+function stopTrainingActionEvent(event: Event) {
+  event.stopPropagation()
+}
+
+function trainingActionIcon(kind: 'discard' | 'accept') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 12 12')
+  svg.setAttribute('aria-hidden', 'true')
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  path.setAttribute('fill', 'none')
+  path.setAttribute('stroke', 'currentColor')
+  path.setAttribute('stroke-width', '1.7')
+  path.setAttribute('stroke-linecap', 'round')
+  path.setAttribute('stroke-linejoin', 'round')
+  path.setAttribute(
+    'd',
+    kind === 'discard'
+      ? 'M2.2 2.2l7.6 7.6M9.8 2.2L2.2 9.8'
+      : 'M2.1 6.3l2.7 2.7 5.1-5.6',
+  )
+  svg.append(path)
+  return svg
+}
+
+function trainingActionButton(kind: 'discard' | 'accept', label: HTMLElement) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = `phmon-map-training-label-action phmon-map-training-label-action--${kind}`
+  button.dataset.action = kind
+  button.append(trainingActionIcon(kind))
+  const emitAction = (event: Event) => {
+    stopTrainingActionEvent(event)
+    const characterID = label.dataset.areaId
+    if (!characterID || button.disabled) return
+    emit(kind === 'accept' ? 'trainingaccept' : 'trainingdiscard', characterID)
+  }
+  for (const type of [
+    'mousedown',
+    'pointerdown',
+    'touchstart',
+    'dblclick',
+    'contextmenu',
+    'click',
+    'keydown',
+  ])
+    button.addEventListener(type, stopTrainingActionEvent)
+  button.addEventListener('click', emitAction)
+  return button
+}
+
 function updateTrainingLabel(
   rendered: RenderedTrainingArea,
   area: TrainingAreaOverlay,
 ) {
   const element = rendered.label.getElement()
-  const label = element?.querySelector('.phmon-map-training-label')
+  const label = element?.querySelector<HTMLElement>('.phmon-map-training-label')
   if (!element || !label) return
-  label.textContent = area.label
+  label.dataset.areaId = area.id
   label.classList.toggle('phmon-map-training-label--selected', area.selected)
   label.classList.toggle('phmon-map-training-label--draft', area.draft)
+  let name = label.querySelector('.phmon-map-training-label-name')
+  if (!name) {
+    label.replaceChildren()
+    name = document.createElement('span')
+    name.className = 'phmon-map-training-label-name'
+    label.append(name)
+  }
+  name.textContent = area.label
+  const showActions = area.draft && !props.compact
+  let actions = label.querySelector<HTMLElement>(
+    '.phmon-map-training-label-actions',
+  )
+  let status = label.querySelector('.phmon-map-training-label-status')
+  if (showActions) {
+    if (!actions) {
+      actions = document.createElement('span')
+      actions.className = 'phmon-map-training-label-actions'
+      actions.append(
+        trainingActionButton('discard', label),
+        trainingActionButton('accept', label),
+      )
+      leaflet?.DomEvent.disableClickPropagation(actions)
+      name.after(actions)
+    }
+    if (!status) {
+      status = document.createElement('span')
+      status.className = 'phmon-map-training-label-status'
+      status.textContent = '· unsaved'
+      actions.after(status)
+    }
+    const discard = actions.querySelector<HTMLButtonElement>(
+      '[data-action="discard"]',
+    )
+    const accept = actions.querySelector<HTMLButtonElement>(
+      '[data-action="accept"]',
+    )
+    if (discard) {
+      discard.disabled = Boolean(props.trainingDiscardDisabled)
+      discard.setAttribute('aria-label', `Discard changes for ${area.label}`)
+      discard.title = 'Discard changes'
+    }
+    if (accept) {
+      accept.disabled = Boolean(props.trainingAcceptDisabled)
+      accept.setAttribute('aria-label', `Accept changes for ${area.label}`)
+      accept.title = props.trainingAcceptTitle || 'Accept changes'
+    }
+  } else {
+    actions?.remove()
+    status?.remove()
+  }
   element.setAttribute(
     'aria-label',
     `Training area for ${area.label}${area.draft ? ', unsaved changes' : ''}${area.selected ? ', selected' : ''}`,
@@ -600,6 +705,11 @@ function syncTrainingAreas() {
       label.addTo(trainingLayerGroup)
       label.getElement()?.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return
+        if (
+          event.target instanceof Element &&
+          event.target.closest('.phmon-map-training-label-action')
+        )
+          return
         event.preventDefault()
         emit('trainingselect', area.id)
       })
@@ -1328,7 +1438,13 @@ watch(() => props.markers, syncMarkers, { deep: true })
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
 watch(() => props.navigationRoutes, syncNavigationRoutes, { deep: true })
 watch(
-  [() => props.trainingAreas, () => props.trainingEditable],
+  [
+    () => props.trainingAreas,
+    () => props.trainingEditable,
+    () => props.trainingAcceptDisabled,
+    () => props.trainingDiscardDisabled,
+    () => props.trainingAcceptTitle,
+  ],
   syncTrainingAreas,
   { deep: true },
 )
@@ -1419,7 +1535,9 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-training-label) {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 1px 6px;
   border: 1px solid #4db9ffb3;
   border-radius: 3px;
@@ -1427,6 +1545,7 @@ onBeforeUnmount(() => {
   color: #d8eeff;
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
   white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 1px 4px #0009;
@@ -1438,8 +1557,53 @@ onBeforeUnmount(() => {
   color: #ffffff;
 }
 
-:global(.phmon-map-training-label--draft::after) {
-  content: ' · unsaved';
+:global(.phmon-map-training-label-actions) {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+:global(.phmon-map-training-label-action) {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #d8eeff;
+  cursor: pointer;
+}
+
+:global(.phmon-map-training-label-action svg) {
+  display: block;
+  width: 12px;
+  height: 12px;
+}
+
+:global(.phmon-map-training-label-action--discard) {
+  color: #ffc9c9;
+}
+
+:global(.phmon-map-training-label-action--accept) {
+  color: #9eecc4;
+}
+
+:global(.phmon-map-training-label-action:hover),
+:global(.phmon-map-training-label-action:focus-visible) {
+  background: #ffffff22;
+  outline: none;
+  box-shadow: 0 0 0 1px #9bc8ff;
+}
+
+:global(.phmon-map-training-label-action:disabled) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:global(.phmon-map-training-label-status) {
   color: #fef6c3;
   font-weight: 500;
 }

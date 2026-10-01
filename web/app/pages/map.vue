@@ -254,6 +254,14 @@ function selectTrainingArea(characterID: string) {
     trainingEditor.selectedID.value === characterID ? '' : characterID,
   )
 }
+function acceptTrainingDraft(characterID: string) {
+  if (trainingEditor.selectedID.value !== characterID) return
+  void trainingEditor.apply()
+}
+function discardTrainingDraft(characterID: string) {
+  if (trainingEditor.selectedID.value !== characterID) return
+  trainingEditor.reset()
+}
 function trainingAreaSummary(characterID: string) {
   const area = trainingAreas.value.find(
     (item) => item.character_id === characterID,
@@ -1441,11 +1449,18 @@ useHead({ title: 'Map · PhMon' })
               :navigation-routes="mapNavigationRoutes"
               :training-areas="renderedTrainingAreas"
               :training-editable="trainingEditor.editable.value"
+              :training-accept-disabled="
+                Boolean(trainingEditor.applyReason.value)
+              "
+              :training-discard-disabled="trainingEditor.applying.value"
+              :training-accept-title="trainingEditor.applyReason.value"
               @viewchange="mapView = $event"
               @pointselect="selectMapPoint"
               @trainingselect="selectTrainingArea"
               @trainingmove="trainingEditor.moveCenter"
               @trainingresize="trainingEditor.resizeFromPixels"
+              @trainingaccept="acceptTrainingDraft"
+              @trainingdiscard="discardTrainingDraft"
               @contextaction="openContextNavigation"
               @navigateto="openNpcNavigation"
               @mapdrag="navigationAction.close(false)"

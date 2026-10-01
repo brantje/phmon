@@ -244,7 +244,12 @@ export function estimateTrainingLabelSize(
   area: Pick<TrainingAreaOverlay, 'label' | 'draft'>,
 ): TrainingLabelSize {
   const text = area.label.length + (area.draft ? 10 : 0)
-  return { width: Math.round(text * 6.6 + 14), height: DEFAULT_LABEL_HEIGHT }
+  // Discard and accept controls sit between the name and the unsaved suffix.
+  const actions = area.draft ? 36 : 0
+  return {
+    width: Math.round(text * 6.6 + 14 + actions),
+    height: DEFAULT_LABEL_HEIGHT,
+  }
 }
 
 function clusterAngles(count: number) {
