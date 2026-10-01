@@ -255,8 +255,8 @@ only the visible easy-mode flows were exercised during the initial inspection.
 Implemented the reusable command fan-out foundation for Issue #30. The frontend
 prepares ordered, deduplicated per-character requests only from current, matching
 session controls/capabilities; freezes arguments, target identity, idempotency key
-and request body; rechecks session/scope before each admission; submits at most four
-children concurrently; and retains independent rejection, uncertainty, execution
+and request body; rechecks session/scope before each admission; submits every
+eligible child concurrently; and retains independent rejection, uncertainty, execution
 and verification results. Exact-key retries retain the original body. `chat.send`
 is excluded from the supported typed command union.
 
@@ -4715,3 +4715,56 @@ visual change.
 The live monster marker is the red HP bubble again. General, Champion, and Giant
 icons, and the shared party badge, sit in front of the opt-in name label. They
 no longer cover the bubble. Exact next action: none for this visual correction.
+
+### Resume — 2026-10-01 Issue #35 multi-character remote controls — complete
+
+Issue #35 is implemented on Map and phBot → Client in the existing checkout. The
+shared `RemoteControlPanel` uses one existing `useCommandFanOut` owner per mounted
+panel and the nine-command frontend catalog. It reuses immutable per-character
+requests, session/capability/scope admission guards, exact retries, independent
+durable outcomes and the existing command history. Read-only preview allocates no
+idempotency keys. Current-position and radius previews use only matching-session
+training readback: a reported absent area skips that target, while missing or
+mismatched readback is labeled unconfirmed. Named area stays independent of active
+area readback. Return Scroll, Disconnect and Clientless retain `confirmation: true`
+even when optional browser-local review is off. The operator's optional-review
+exception applies to every control on both screens; do not restore mandatory
+prompts. Clientless remains unsupported because no safe per-session runtime
+mutation exists.
+
+Client has page-local individual/group/All/None selection, server labels, offline
+eligibility, stale-snapshot retention and an Inspect control independent from
+targets. Map keeps `actionTargetIDs`, focus behavior and spatial/dataset scope.
+Character-card controls remain single-character. The new `remote-controls`
+simulator scenario can omit primitives or training modes, report area availability,
+use distinct positions, return independent false results and replace a session at
+a controlled command count. The Issue #35 smoke uses the production plugin worker
+and local fake APIs; it does not establish Windows/phBot runtime behavior.
+
+The reachable operator-supplied LAN demo was inspected in a real browser before
+screen work; the public demo host was inaccessible. Local fixture screenshots for
+Map and Client easy/advanced modes at 1440×1000, 1280×800 and 390×844 are in
+`/tmp/phmon-issue35-evidence/`, plus a scrolled mobile Map panel capture. Browser
+checks confirmed no document horizontal overflow, three eligible Map results,
+three eligible Client results with offline rows skipped, and review cancellation
+with no command POSTs. Screenshot evidence and the full observation are recorded
+in `docs/reference-parity.md`.
+
+Validation passed: `bash scripts/check.sh` with Node 24.20.0 and a fresh isolated
+disposable PostgreSQL test database; Go race tests, 118 plugin tests, 126 frontend
+unit tests, live transport audit, Prettier, typecheck, production build and Compose
+config all pass. ESLint reported zero errors and 51 style warnings. `git diff
+--check` and Python fixture compilation pass. `scripts/command_smoke.py` and the
+expanded `scripts/remote_controls_smoke.py` pass; the latter confirms named-mode
+capability, controlled replacement, stale-session rejection, execution-time
+position, training readback, intent flags, independent results and unsupported
+Clientless. Browser screenshots and review-cancel/zero-POST evidence are recorded
+in `docs/reference-parity.md`. Validation uses fixture adapters only and does not
+establish Windows/phBot runtime behavior.
+
+After adding explicit focus return from review cancellation, the 126 frontend unit
+tests, format check, lint, typecheck and production build were rerun and passed.
+
+Exact next action: operator review. No further Issue #35 implementation work is
+pending. Do not deploy, publish, push, open a PR or act on real characters as part
+of this issue.

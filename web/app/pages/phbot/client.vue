@@ -1,5 +1,6 @@
 <script setup lang="ts">
-const reviewActions = useReviewActionsPreference()
+import type { CharacterView } from '~~/shared/types/live'
+
 const {
   fleetCharacters,
   characterControls,
@@ -8,105 +9,78 @@ const {
   setCharacterControls,
   clearCharacterCommandSubscriptions,
   liveStale,
+  connectionState,
 } = useLiveData()
-const { matchesServer, serverScope } = useServerScope()
-const targetID = ref('')
-const resultMessage = ref('No command has been submitted from this panel.')
-const errorMessage = ref('')
-const sending = ref(false)
-const selectedCharacter = computed(
-  () =>
-    fleetCharacters.value.find(
-      (item) =>
-        item.character_id === targetID.value && matchesServer(item.server),
-    ) || null,
+const { matchesServer, serverScope, scopedGroups } = useServerScope()
+const targetIDs = ref<string[]>([])
+const inspectedCharacterID = ref('')
+const currentList = computed(
+  () => connectionState.value === 'current' && !liveStale.value,
 )
 const selectableCharacters = computed(() =>
-  fleetCharacters.value.filter((item) => matchesServer(item.server)),
+  fleetCharacters.value.filter((character) => matchesServer(character.server)),
 )
+const inspectedCharacter = computed(
+  () =>
+    selectableCharacters.value.find(
+      (character) => character.character_id === inspectedCharacterID.value,
+    ) || null,
+)
+const clientScopeKey = computed(
+  () => `client:${serverScope.value.toLocaleLowerCase()}`,
+)
+function clientScopeKeyForCharacter(
+  character: CharacterView,
+  scopeKey: string,
+) {
+  return matchesServer(character.server)
+    ? scopeKey
+    : `server:${character.server.toLocaleLowerCase()}`
+}
+function currentClientScopeKey(characterID: string) {
+  const character = fleetCharacters.value.find(
+    (item) => item.character_id === characterID,
+  )
+  return character
+    ? clientScopeKeyForCharacter(character, clientScopeKey.value)
+    : 'unavailable'
+}
+function findCurrentCharacter(characterID: string) {
+  return fleetCharacters.value.find(
+    (character) => character.character_id === characterID,
+  )
+}
+function inspectCharacter(characterID: string) {
+  inspectedCharacterID.value = characterID
+}
+
 watch(serverScope, () => {
-  if (
-    targetID.value &&
-    !selectableCharacters.value.some(
-      (item) => item.character_id === targetID.value,
-    )
-  ) {
-    targetID.value = ''
-  }
+  targetIDs.value = []
+  inspectedCharacterID.value = ''
 })
-let stopTargetWatch: (() => void) | undefined
-onMounted(() => {
-  stopTargetWatch = watch(
-    targetID,
-    (id) => {
-      if (!id) {
-        clearCharacterCommandSubscriptions()
-        return
-      }
+watch(
+  [inspectedCharacterID, currentList],
+  ([id, current]) => {
+    if (!current) return
+    if (
+      id &&
+      !selectableCharacters.value.some(
+        (character) => character.character_id === id,
+      )
+    ) {
+      inspectedCharacterID.value = ''
+      return
+    }
+    if (id) {
       setCharacterControls(id)
       setCharacterCommands(id)
-    },
-    { immediate: true },
-  )
-})
-onBeforeUnmount(() => {
-  stopTargetWatch?.()
-  clearCharacterCommandSubscriptions()
-})
-const clientCapability = computed(() =>
-  characterControls.value?.character_id === targetID.value
-    ? characterControls.value.capabilities['client.clientless']
-    : undefined,
+    } else {
+      clearCharacterCommandSubscriptions()
+    }
+  },
+  { immediate: true },
 )
-const disabledReason = computed(() => {
-  if (!selectedCharacter.value) return 'Choose a character first.'
-  if (liveStale.value) return 'Live controls are stale.'
-  if (!selectedCharacter.value.online || !selectedCharacter.value.session_id)
-    return 'Character is offline.'
-  if (
-    characterControls.value?.session_id !== selectedCharacter.value.session_id
-  )
-    return 'Waiting for capabilities for the current session.'
-  return clientCapability.value?.supported
-    ? ''
-    : clientCapability.value?.reason ||
-        'This phBot runtime has not reported a safe clientless primitive.'
-})
-async function goClientless() {
-  const target = selectedCharacter.value
-  if (!target?.session_id || disabledReason.value) return
-  if (
-    reviewActions.value &&
-    !window.confirm(
-      `Review going clientless for ${target.name} on ${target.server}? This uses only the selected character's documented runtime capability.`,
-    )
-  )
-    return
-  sending.value = true
-  errorMessage.value = ''
-  try {
-    const response = await $fetch<{ command_id: string }>('/api/commands', {
-      method: 'POST',
-      body: {
-        character_id: target.character_id,
-        expected_session_id: target.session_id,
-        name: 'client.clientless',
-        args: {},
-        confirmation: true,
-        idempotency_key: createIdempotencyKey(),
-      },
-    })
-    resultMessage.value = `Accepted ${response.command_id}. Awaiting result over the live connection.`
-  } catch (error) {
-    const failure = error as { data?: { message?: string; error?: string } }
-    errorMessage.value =
-      failure.data?.message ||
-      failure.data?.error ||
-      'Command could not be accepted.'
-  } finally {
-    sending.value = false
-  }
-}
+onBeforeUnmount(clearCharacterCommandSubscriptions)
 </script>
 
 <template>
@@ -114,33 +88,8 @@ async function goClientless() {
     <PageHeader
       title="phBot | Client"
       icon="i-lucide-bot"
-      description="Session-scoped controls for the selected phBot character."
+      description="Session-scoped controls for one character, a saved group or the current server scope."
     />
-    <section class="panel client-intro">
-      <small>LOCAL CONTROL</small>
-      <h2>Manage a selected phBot character</h2>
-      <p>
-        Actions use the live session assigned to this character. Commands never
-        target every client process on the machine.
-      </p>
-      <label
-        >Character
-        <select
-          v-model="targetID"
-          aria-label="Select character for Client actions"
-        >
-          <option value="">Select a character</option>
-          <option
-            v-for="character in selectableCharacters"
-            :key="character.character_id"
-            :value="character.character_id"
-          >
-            {{ character.name }} · {{ character.server }} ·
-            {{ character.online ? 'Online' : 'Offline' }}
-          </option>
-        </select>
-      </label>
-    </section>
     <div class="client-tool-grid">
       <nav class="panel client-tool-menu" aria-label="phBot tools">
         <NuxtLink class="nav-item active" to="/phbot/client" aria-current="page"
@@ -159,47 +108,201 @@ async function goClientless() {
           ><small>Later</small></span
         >
       </nav>
-      <section class="panel clientless-panel">
-        <div class="panel-header compact">
-          <div>
-            <h2>Go Clientless</h2>
-            <p>Requires a verified, per-session phBot API capability.</p>
-          </div>
-        </div>
-        <p class="clientless-explanation">
-          No supported clientless mutation was found in the official public API
-          docs or installed runtime evidence. The demo describes killing all
-          <code>sro_client.exe</code> processes; PhMon does not reproduce that
-          machine-wide behavior.
+
+      <main class="client-control-workspace">
+        <p v-if="liveStale" class="status-banner warning" role="status">
+          Live data is stale. Character actions are disabled until the current
+          fleet snapshot returns.
         </p>
-        <button
-          class="compact-button primary"
-          type="button"
-          :disabled="Boolean(disabledReason) || sending"
-          :title="disabledReason"
-          @click="goClientless"
-        >
-          {{ sending ? 'Submitting…' : 'Go Clientless' }}
-        </button>
-        <p v-if="disabledReason" class="capability-reason" role="status">
-          {{ disabledReason }}
-        </p>
-        <p v-if="errorMessage" class="status-banner warning" role="alert">
-          {{ errorMessage }}
-        </p>
-        <div class="client-result-inset">
-          <strong>LATEST RESULT</strong>
-          <p>{{ resultMessage }}</p>
-          <p v-if="commandHistory[0]">
-            {{ commandHistory[0].name }} · {{ commandHistory[0].state }} ·
-            {{
-              commandHistory[0].message ||
-              commandHistory[0].verification ||
-              'No execution evidence yet'
-            }}
+        <ActionTargetSelector
+          v-model:selected-ids="targetIDs"
+          :characters="selectableCharacters"
+          :groups="scopedGroups"
+          :snapshot-current="currentList"
+          @inspect="inspectCharacter"
+        />
+        <RemoteControlPanel
+          :selected-ids="targetIDs"
+          :scope-key="clientScopeKey"
+          :scope-key-for-character="clientScopeKeyForCharacter"
+          :current-scope-key="currentClientScopeKey"
+          :current-character="findCurrentCharacter"
+        />
+
+        <section class="panel client-inspector">
+          <header>
+            <div>
+              <h2>Character command history</h2>
+              <p>
+                Inspect a character independently of the action target
+                selection.
+              </p>
+            </div>
+            <span v-if="inspectedCharacter" class="status-chip">
+              <span />{{ inspectedCharacter.name }} ·
+              {{ inspectedCharacter.server }}
+            </span>
+          </header>
+          <p v-if="!inspectedCharacter" class="client-inspector-empty">
+            Choose Inspect beside a character to view its recent command
+            results.
           </p>
-        </div>
-      </section>
+          <p v-else-if="!commandHistory.length" class="client-inspector-empty">
+            No recent commands are recorded for this character.
+          </p>
+          <ul v-else class="client-history-list">
+            <li v-for="command in commandHistory" :key="command.command_id">
+              <span
+                ><strong>{{ command.name }}</strong
+                ><small>{{ command.created_at }}</small></span
+              >
+              <span
+                class="status-chip"
+                :class="
+                  command.state === 'completed'
+                    ? 'online'
+                    : ['failed', 'expired'].includes(command.state)
+                      ? 'stale'
+                      : 'pending'
+                "
+              >
+                <span />{{ command.state }}
+              </span>
+              <small>{{
+                command.message ||
+                command.verification ||
+                'No execution evidence yet'
+              }}</small>
+            </li>
+          </ul>
+          <p
+            v-if="
+              inspectedCharacter &&
+              characterControls?.character_id ===
+                inspectedCharacter.character_id &&
+              characterControls.session_id === inspectedCharacter.session_id
+            "
+            class="client-inspector-readback"
+          >
+            <template v-if="characterControls.training?.training_available">
+              Training area ·
+              {{
+                characterControls.training.training_zone ||
+                inspectedCharacter.zone ||
+                'Unknown zone'
+              }}
+              · radius
+              {{ characterControls.training.training_radius ?? 'unknown' }}
+            </template>
+            <template v-else
+              >Training area readback unavailable for this session.</template
+            >
+          </p>
+        </section>
+      </main>
     </div>
   </div>
 </template>
+
+<style scoped>
+.client-tool-page {
+  display: grid;
+  gap: 0.9rem;
+}
+.client-tool-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 205px) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.8rem;
+}
+.client-tool-menu {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.55rem;
+}
+.client-tool-menu .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border: 1px solid #344253;
+  border-radius: 4px;
+  color: #eaf1ff;
+}
+.client-control-workspace {
+  display: grid;
+  min-width: 0;
+  gap: 0.7rem;
+}
+.client-inspector {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding: 11px;
+}
+.client-inspector header,
+.client-inspector header > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+.client-inspector h2,
+.client-inspector p {
+  margin: 0;
+}
+.client-inspector h2 {
+  color: var(--ph-primary);
+  font-size: 14px;
+}
+.client-inspector header p,
+.client-inspector-empty,
+.client-inspector-readback {
+  color: var(--ph-muted);
+  font-size: 12px;
+}
+.client-history-list {
+  display: grid;
+  gap: 5px;
+  max-height: 250px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.client-history-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px;
+  border: 1px solid var(--ph-border-soft);
+  border-radius: 4px;
+  color: var(--ph-muted);
+  font-size: 12px;
+}
+.client-history-list li > span:first-child {
+  display: grid;
+  min-width: 0;
+}
+.client-history-list strong {
+  color: var(--ph-text);
+}
+.client-history-list small,
+.client-inspector-readback {
+  overflow-wrap: anywhere;
+}
+.client-history-list li > small {
+  grid-column: 1 / -1;
+}
+@media (max-width: 640px) {
+  .client-tool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .client-tool-menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>

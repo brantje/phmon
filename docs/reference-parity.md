@@ -4,6 +4,79 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Multi-character remote controls — 2026-10-01
+
+Before the Issue #35 screen changes, the operator supplied a reachable LAN demo
+at `http://192.168.10.105/` with Map selected. A real-browser inspection at the
+desktop reference viewport showed the Map canvas, Select character / Jump To
+Character selectors, quick destination selection, and right-side Characters,
+Academy, deaths, drops, mob-density and mob-type layers. The phBot → Client view
+kept the tool navigation and showed one Go Clientless panel. The panel text
+described terminating every `sro_client.exe`; that machine-wide behavior is not
+copied. The public `phmonitor.com/demo` host was inaccessible from this workspace,
+so hidden dialogs and any behavior beyond the reachable LAN demo were not inferred.
+
+Issue #35 adds a shared remote-control panel to Map and phBot → Client while
+leaving character-card actions single-character. Map continues to use its current
+deduplicated action targets and spatial/dataset scope; its right panel has its own
+scroll region so the character list, layers, and map remain reachable. Client has
+local fleet/group target selection, offline rows with eligibility reasons, an
+independent Inspect action, and server labels in All servers scope. The panel
+exposes bot start/stop, trace start/stop, current-position or named training area,
+radius, Return Scroll, Disconnect and a capability-blocked Clientless action.
+Controls show read-only eligible/skipped counts even when the operator's optional
+review preference is off. Per-character durable results reuse the existing command
+history lifecycle.
+
+Training behavior is described from phBot readback rather than inferred from the
+demo: current-position arguments contain no copied coordinates, named area names
+are profile-specific, and radius remains a separate command. The action catalog
+does not add nearby-player discovery, coordinates, point navigation, party setup,
+scripts, or other tool workflows to these screens. The exact optional-review
+exception is operator-directed: it applies to every action on these two surfaces,
+including Return Scroll, Disconnect and Clientless. Their requests still carry
+`confirmation: true` for the existing server intent contract.
+
+Local implementation screenshot evidence and fixture-only browser results are
+recorded in `/tmp/phmon-issue35-evidence/`; no production screenshot or
+real-character action was used as validation. Easy and advanced modes were
+captured for Map and Client at 1440×1000, 1280×800 and 390×844. The largest
+observed document widths were 1425, 1265 and 375 pixels respectively, within
+their viewport widths; the map's narrow-screen control panel remained reachable
+by scrolling below the canvas.
+
+The isolated browser fixture selected a saved two-character Client group,
+inspected a third character without changing action targets, and used All to
+select all 18 displayed rows, including 15 offline records. Eligibility marked
+the three current sessions eligible and the offline records skipped. With
+review off, Start Training produced three independently completed results. With
+review on, the two-character Trace preview waited for explicit submission;
+Cancel sent zero `/api/commands` POSTs. On Map, All selected three current
+fixture characters under the registered `greatest` dataset and Stop Training
+produced three independently completed results. These end-to-end commands used
+only the production worker against local fake APIs. The expanded
+`remote-controls` smoke also confirmed exact training-mode projection, distinct
+execution-time positions, readback, intent flags, void Disconnect semantics,
+unsupported Clientless, and rejection of a stale session after controlled
+replacement.
+
+Screenshot files: `client-easy-1440x1000.png`,
+`client-advanced-1440x1000.png`, `client-easy-1280x800.png`,
+`client-advanced-1280x800.png`, `client-easy-390x844.png`,
+`client-advanced-390x844.png`, and the corresponding `map-easy-*` and
+`map-advanced-*` files. `map-remote-controls-mobile.png` records the scrolled
+mobile control panel. The screenshots remain outside the repository.
+
+Final verification passed `bash scripts/check.sh` on Node 24.20.0 against a fresh
+isolated disposable PostgreSQL test database: Go race tests, 118 plugin tests,
+126 frontend unit tests, live transport audit, Prettier, typecheck, lint,
+production build and Compose configuration. ESLint reported 0 errors and 51 style
+warnings. `scripts/command_smoke.py` and `scripts/remote_controls_smoke.py` both
+passed on the isolated fixture stack. This validates the production worker against
+local fake APIs; Windows/phBot runtime behavior remains unverified. Following the
+focus-return accessibility adjustment for review cancellation, the frontend unit
+suite, formatting, lint, typecheck and production build passed again.
+
 ## Map training areas — 2026-09-30
 
 [Issue #25](https://github.com/brantje/phmon/issues/25) adds a **Training areas**
@@ -1434,7 +1507,7 @@ phBot runtime checks remain open.
 
 Added a reusable frontend fan-out contract with typed catalog command names,
 deduplicated ordered targets, current capability/session/scope checks, frozen
-per-target arguments and request bodies, independent submissions capped at four,
+per-target arguments and request bodies, independent submissions started concurrently,
 per-child idempotency keys, uncertain-outcome retry using the original request,
 and session-matched exact-result merging. The reusable action/result components show
 individual skipped, rejected, accepted and execution outcomes, separate submission
@@ -1466,7 +1539,7 @@ confirmation and record-deletion confirms are outside the character-command flow
 
 Pure utility tests cover selection deduplication, unsupported and unavailable
 targets, argument-mode checks, all-ineligible zero submissions, session replacement,
-four-request concurrency, partial rejection/uncertain outcomes, original-body retry,
+more-than-four-request concurrency, partial rejection/uncertain outcomes, original-body retry,
 HTTP-response loss after an authoritative result, and session-safe result merging.
 `scripts/command_smoke.py` now starts three disposable simulator workers and exercises
 the multi-character controls projection, independent session-fenced command rows,

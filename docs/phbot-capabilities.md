@@ -1023,3 +1023,43 @@ and check that no ten-second callback warning returns. Do not claim this runtime
 gate passed based only on Python fixture threads. Exact next action: push 1.6.2
 for operator installation and inspect its callback/position evidence, then finish
 final-head CI and CodeRabbit without merging PR #50.
+
+## Issue #35 multi-character control mapping — 2026-10-01
+
+The Issue #35 browser panel reuses the existing audited `POST /api/commands`
+catalog and each current session's reported capability frame. It adds no plugin
+primitive, wire command, protocol version or backend batch operation. `bot.start`,
+`bot.stop`, `trace.start`, `trace.stop`, `character.return`, and
+`character.disconnect` keep the signatures and result semantics in the Slice 3
+matrix above. `character.disconnect` returns `None`; PhMon reports invocation as
+unverified and does not infer that the character went offline. Return, Disconnect
+and Clientless requests retain `confirmation: true` even when the browser-local
+optional review preference is off.
+
+`training.area.set` exposes only `current_position` and `named` in this panel.
+`current_position` requires the exact reported mode and sends only that mode; the
+production worker reads `get_position()` when it executes. `named` calls the
+documented `set_training_area(name)` and remains independent of current active-area
+readback; the operator supplies a profile-local name. Both current-position and
+radius eligibility use only a matching-session `get_training_area()` readback to
+explain a reported unavailable area. A missing readback is not treated as proof of
+an absent area or its coordinates. The separate radius operation requires the
+documented getter and setter and retains its post-call readback.
+
+The documented Client API has `get_client()` but no safe per-session Clientless
+mutation. The runtime continues to report `client.clientless` as
+`unsupported_runtime_primitive`; the panel displays that reason for every target
+and sends no mutation. It does not inspect or terminate client processes. Official
+source pages: [Botting](https://plugins.phbot.org/phbot-api/botting), [Training
+Area](https://plugins.phbot.org/phbot-api/training-area), [Misc](https://plugins.phbot.org/phbot-api/misc), and [Client](https://plugins.phbot.org/phbot-api/client).
+
+The Issue #35 deterministic `remote-controls` fixture uses the production
+`PhMon.py` worker with local fake adapters for bot/trace, return, disconnect and
+training operations. It can omit primitives, report no active area, vary each
+worker's position, return false independently, omit configured training modes,
+and replace a character session on a chosen adapter-call count. Fake Disconnect
+records a local call and returns `None`; fixture Clientless remains unsupported.
+The browser eligibility preview labels a missing or mismatched training readback
+as unconfirmed and blocks current-position/radius only when a current readback
+reports no active area. Fixture outcomes verify transport and result handling
+only, not Windows/phBot API effects.
