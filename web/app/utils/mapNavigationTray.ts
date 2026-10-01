@@ -99,8 +99,7 @@ export function mapNavigationTrayRows(
   )
   const rows: MapNavigationTrayRow[] = routes.map((route) => {
     const backend = routeByID.get(route.id)
-    const stopSupported =
-      stopSupportedByCharacter?.[route.characterID] ?? false
+    const stopSupported = stopSupportedByCharacter?.[route.characterID] ?? false
     return {
       id: route.id,
       characterID: route.characterID,

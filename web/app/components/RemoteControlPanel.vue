@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { CharacterView, MapOtherPlayersSnapshot } from '~~/shared/types/live'
+import type {
+  CharacterView,
+  MapOtherPlayersSnapshot,
+} from '~~/shared/types/live'
 import { useFrozenWhileFocused } from '~/composables/useFrozenWhileFocused'
 import { tracePickerOptions } from '~/utils/mapTracePicker'
 import type { FanOutOperation } from '~/utils/commandFanOut'

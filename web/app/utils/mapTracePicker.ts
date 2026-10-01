@@ -43,8 +43,7 @@ export function tracePickerOptions(input: {
       options.push({ value: name, label: name, group: 'nearby' })
     }
     options.sort((left, right) => {
-      if (left.group !== right.group)
-        return left.group === 'managed' ? -1 : 1
+      if (left.group !== right.group) return left.group === 'managed' ? -1 : 1
       return left.label.localeCompare(right.label)
     })
   }

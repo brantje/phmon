@@ -14,10 +14,10 @@ export function navigationRouteCanStop(
 ): boolean {
   return Boolean(
     route &&
-      stopSupported &&
-      NAVIGATION_STOP_ELIGIBLE.has(route.status) &&
-      route.command_id &&
-      route.route_sequence > 0,
+    stopSupported &&
+    NAVIGATION_STOP_ELIGIBLE.has(route.status) &&
+    route.command_id &&
+    route.route_sequence > 0,
   )
 }
 

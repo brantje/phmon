@@ -840,10 +840,7 @@ const mapActivityTargetKey = computed(() =>
 watch(
   mapActivityTargetKey,
   (key) => {
-    setCommandFanOutTargets(
-      MAP_ACTIVITY_OWNER,
-      key ? key.split('\u0000') : [],
-    )
+    setCommandFanOutTargets(MAP_ACTIVITY_OWNER, key ? key.split('\u0000') : [])
   },
   { immediate: true },
 )
