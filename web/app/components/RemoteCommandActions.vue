@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CharacterView } from '~~/shared/types/live'
+import { requiresRemoteControlConfirmation } from '~/utils/remoteControlActions'
 
 const props = defineProps<{ character: CharacterView }>()
 const reviewActions = useReviewActionsPreference()
@@ -229,14 +230,14 @@ async function submit(name: string) {
     return
   }
   if (
-    reviewActions.value &&
-    ['character.return', 'character.disconnect'].includes(name)
+    (name === 'character.return' || name === 'character.disconnect') &&
+    requiresRemoteControlConfirmation(name, reviewActions.value)
   ) {
     const action =
       name === 'character.return' ? 'use a Return Scroll' : 'disconnect'
     if (
       !window.confirm(
-        `Review ${action} for ${props.character.name} on ${props.character.server}?`,
+        `Confirm ${action} for 1 character (${props.character.name} on ${props.character.server})?`,
       )
     )
       return

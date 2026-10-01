@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  requiresRemoteControlConfirmation,
   remoteControlDefinition,
   validateRemoteControlArgs,
   type RemoteControlActionName,
@@ -36,10 +37,11 @@ function controls(
   name: RemoteControlActionName,
   modes?: string[],
   training?: ControlsSnapshot['training'],
+  targetCharacter = character,
 ): ControlsSnapshot {
   return {
-    character_id: character.character_id,
-    session_id: character.session_id!,
+    character_id: targetCharacter.character_id,
+    session_id: targetCharacter.session_id!,
     capabilities: {
       [name]: { supported: true, modes },
       ...(name === 'training.area.set'
@@ -48,6 +50,31 @@ function controls(
     },
     training,
   }
+}
+
+function prepareMany(
+  name: RemoteControlActionName,
+  characters: CharacterView[],
+) {
+  let key = 0
+  return prepareCommandFanOut({
+    operationID: `remote-action-many-${name}`,
+    command: remoteControlDefinition(name),
+    characterIDs: characters.map((item) => item.character_id),
+    targets: Object.fromEntries(
+      characters.map((item) => [
+        item.character_id,
+        {
+          character: item,
+          controls: controls(name, undefined, undefined, item),
+          scopeKey: 'Greatest',
+        },
+      ]),
+    ),
+    scopeKey: 'Greatest',
+    liveCurrent: true,
+    idempotencyKey: () => `key-${++key}`,
+  })
 }
 
 function prepare(
@@ -104,6 +131,74 @@ test('intent flags remain true for return, disconnect and clientless', () => {
   }
   for (const name of ['bot.start', 'bot.stop', 'trace.stop'] as const) {
     assert.equal(prepare(name).children[0]?.request?.confirmation, false)
+  }
+})
+
+test('Start and Stop Training skip only targets with a known incompatible botting state', () => {
+  const characters: CharacterView[] = [
+    {
+      ...character,
+      character_id: 'training',
+      name: 'Training',
+      session_id: 'training-session',
+      botting: true,
+    },
+    {
+      ...character,
+      character_id: 'stopped',
+      name: 'Stopped',
+      session_id: 'stopped-session',
+      botting: false,
+    },
+    {
+      ...character,
+      character_id: 'unknown',
+      name: 'Unknown',
+      session_id: 'unknown-session',
+      botting: null,
+    },
+  ]
+  const start = prepareMany('bot.start', characters)
+  assert.equal(start.selectedCount, 3)
+  assert.deepEqual(
+    start.children.map((child) => [child.characterID, child.skipReason?.code]),
+    [
+      ['training', 'already_botting'],
+      ['stopped', undefined],
+      ['unknown', undefined],
+    ],
+  )
+
+  const stop = prepareMany('bot.stop', characters)
+  assert.equal(stop.selectedCount, 3)
+  assert.deepEqual(
+    stop.children.map((child) => [child.characterID, child.skipReason?.code]),
+    [
+      ['training', undefined],
+      ['stopped', 'not_botting'],
+      ['unknown', undefined],
+    ],
+  )
+})
+
+test('consequential controls require explicit review regardless of the optional preference', () => {
+  for (const name of [
+    'character.return',
+    'character.disconnect',
+    'client.clientless',
+  ] as const) {
+    assert.equal(requiresRemoteControlConfirmation(name, false), true)
+  }
+  for (const name of [
+    'bot.start',
+    'bot.stop',
+    'trace.start',
+    'trace.stop',
+    'training.area.set',
+    'training.radius.set',
+  ] as const) {
+    assert.equal(requiresRemoteControlConfirmation(name, false), false)
+    assert.equal(requiresRemoteControlConfirmation(name, true), true)
   }
 })
 

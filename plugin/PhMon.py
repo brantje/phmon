@@ -131,6 +131,34 @@ def _optional_phbot_api(name):
     except Exception:
         return None
 
+def _normalize_botting_status(value):
+    if not isinstance(value, str):
+        return None
+    status = value.strip().lower()
+    if status in ('botting', 'training'):
+        return True
+    if status == 'tracing':
+        return False
+    return None
+
+def _read_botting_state(character_data, status_getter=None, timing=None):
+    """Prefer a boolean character field, then narrowly normalize optional status text."""
+    if isinstance(character_data, dict):
+        value = character_data.get('botting')
+        if isinstance(value, bool):
+            return value
+    if status_getter is None:
+        status_getter = _optional_phbot_api('get_status')
+    if not callable(status_getter):
+        return None
+    try:
+        value = timing.run('bot_status', status_getter) if timing else status_getter()
+    except Exception:
+        return None
+    # None remains unknown until a supported runtime observation verifies that it
+    # means stopped. Do not turn missing status into a guessed false value.
+    return _normalize_botting_status(value)
+
 _API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','generate_path','set_training_position',
               'set_training_radius','set_training_area','get_training_area','move_to_region',
               'generate_script','start_script','use_return_scroll','disconnect')
@@ -4104,8 +4132,7 @@ def _sample_character(timing=None):
         zone = timing.run('zone_name', _zone_name_for_region, state['region'], 100)
         if zone:
             state['zone'] = zone
-    # Official Botting docs expose start/stop mutations but no state getter.
-    state['botting'] = None
+    state['botting'] = _read_botting_state(data, timing=timing)
     try:
         active_profile = timing.run('profile', _get_profile) if callable(_get_profile) else None
     except Exception:

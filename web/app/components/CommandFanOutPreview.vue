@@ -4,6 +4,7 @@ import { fanOutCounts } from '~/utils/commandFanOut'
 
 const props = defineProps<{
   operation: FanOutOperation
+  confirmationRequired?: boolean
   busy?: boolean
   notice?: string
 }>()
@@ -19,13 +20,27 @@ const counts = computed(() => fanOutCounts(props.operation))
     <header>
       <div>
         <h3 id="fanout-preview-title">
-          Review {{ props.operation.command.label }}
+          {{
+            props.confirmationRequired
+              ? `Confirm ${props.operation.command.label}`
+              : `Review ${props.operation.command.label}`
+          }}
         </h3>
         <p>
-          {{ props.operation.command.impact }} action · browser-local review
+          {{
+            props.confirmationRequired
+              ? 'Explicit confirmation required'
+              : `${props.operation.command.impact} action · browser-local review`
+          }}
         </p>
       </div>
-      <span class="status-chip pending"><span />Review before submitting</span>
+      <span class="status-chip pending"
+        ><span />{{
+          props.confirmationRequired
+            ? 'Confirmation required'
+            : 'Review before submitting'
+        }}</span
+      >
     </header>
 
     <p v-if="props.notice" class="fanout-preview-notice" role="status">
@@ -88,7 +103,9 @@ const counts = computed(() => fanOutCounts(props.operation))
         {{
           props.busy
             ? 'Rechecking targets…'
-            : `Submit ${counts.eligible} commands`
+            : props.confirmationRequired
+              ? `Confirm ${props.operation.command.label} for ${counts.eligible} characters`
+              : `Submit ${counts.eligible} commands`
         }}
       </button>
     </div>

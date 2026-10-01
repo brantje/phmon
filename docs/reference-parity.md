@@ -25,22 +25,31 @@ independent Inspect action, and server labels in All servers scope. The panel
 exposes bot start/stop, trace start/stop, current-position or named training area,
 radius, Return Scroll, Disconnect and a capability-blocked Clientless action.
 Controls show read-only eligible/skipped counts even when the operator's optional
-review preference is off. Per-character durable results reuse the existing command
-history lifecycle.
+review preference is off. Return Scroll and disruptive controls always require an
+explicit target-count confirmation; the preference controls review for routine
+actions. Per-character durable results reuse the existing command history lifecycle.
 
 Training behavior is described from phBot readback rather than inferred from the
 demo: current-position arguments contain no copied coordinates, named area names
 are profile-specific, and radius remains a separate command. The action catalog
 does not add nearby-player discovery, coordinates, point navigation, party setup,
-scripts, or other tool workflows to these screens. The exact optional-review
-exception is operator-directed: it applies to every action on these two surfaces,
-including Return Scroll, Disconnect and Clientless. Their requests still carry
+scripts, or other tool workflows to these screens. The browser-local review
+preference is default-off for routine actions. Return Scroll, Disconnect and
+Clientless retain explicit confirmation regardless of that preference, with the
+eligible target count shown before submission. Their requests still carry
 `confirmation: true` for the existing server intent contract.
 
+Start Training skips targets whose latest observed `botting` state is true; Stop
+Training skips targets whose state is false. Unknown values remain eligible under
+normal capability/session checks, and the browser does not optimistically change
+state while a command runs. The collector prefers a boolean character-data field
+and narrowly maps optional `get_status()` values. Since the recorded live runtime
+predates that fallback, `stopped` and `None` remain unknown until their meaning is
+verified on a supported runtime.
+
 Local implementation screenshot evidence and fixture-only browser results are
-recorded in `/tmp/phmon-issue35-evidence/`; no production screenshot or
-real-character action was used as validation. Easy and advanced modes were
-captured for Map and Client at 1440×1000, 1280×800 and 390×844. The largest
+recorded in `/tmp/phmon-issue35-evidence/`. Easy and advanced modes were captured
+for Map and Client at 1440×1000, 1280×800 and 390×844. The largest
 observed document widths were 1425, 1265 and 375 pixels respectively, within
 their viewport widths; the map's narrow-screen control panel remained reachable
 by scrolling below the canvas.
@@ -65,7 +74,10 @@ Screenshot files: `client-easy-1440x1000.png`,
 `client-advanced-1280x800.png`, `client-easy-390x844.png`,
 `client-advanced-390x844.png`, and the corresponding `map-easy-*` and
 `map-advanced-*` files. `map-remote-controls-mobile.png` records the scrolled
-mobile control panel. The screenshots remain outside the repository.
+mobile control panel. The screenshots remain outside the repository and predate
+the final mandatory-confirmation correction. The updated code passes automated
+checks, but browser verification of its confirmation view remains incomplete; do
+not treat the earlier screenshots as evidence for that prompt.
 
 Final verification passed `bash scripts/check.sh` on Node 24.20.0 against a fresh
 isolated disposable PostgreSQL test database: Go race tests, 118 plugin tests,

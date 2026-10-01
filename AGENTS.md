@@ -273,9 +273,9 @@ cookie preference, default off. When on, reusable fan-out actions show an inline
 preview and refresh eligibility before admission. Changed sessions are skipped
 without adopting their replacement; changed arguments hold the old frozen command
 and require a new explicit action. Existing Return Scroll, Disconnect, Clientless,
-map navigation and training-area prompts follow the same preference. Required
-`confirmation: true` intent fields remain. This follows the operator's direction
-that review is optional and requires no approval checkpoint.
+map navigation and training-area prompts retain explicit confirmation, with the
+target count shown for multi-character consequential actions. The preference
+controls routine action review. Required `confirmation: true` intent fields remain.
 
 Changed files: `server/internal/{characters,commands,httpapi}`, `web/app` live-data,
 fan-out components/composables/utilities, Settings and single-character prompt
@@ -4716,7 +4716,7 @@ The live monster marker is the red HP bubble again. General, Champion, and Giant
 icons, and the shared party badge, sit in front of the opt-in name label. They
 no longer cover the bubble. Exact next action: none for this visual correction.
 
-### Resume — 2026-10-01 Issue #35 multi-character remote controls — complete
+### Resume — 2026-10-01 Issue #35 final confirmation and botting-state follow-up
 
 Issue #35 is implemented on Map and phBot → Client in the existing checkout. The
 shared `RemoteControlPanel` uses one existing `useCommandFanOut` owner per mounted
@@ -4727,10 +4727,16 @@ idempotency keys. Current-position and radius previews use only matching-session
 training readback: a reported absent area skips that target, while missing or
 mismatched readback is labeled unconfirmed. Named area stays independent of active
 area readback. Return Scroll, Disconnect and Clientless retain `confirmation: true`
-even when optional browser-local review is off. The operator's optional-review
-exception applies to every control on both screens; do not restore mandatory
-prompts. Clientless remains unsupported because no safe per-session runtime
-mutation exists.
+even when optional browser-local review is off. Return Scroll and disruptive
+controls always show an explicit confirmation with the eligible target count;
+single-character Return Scroll and Disconnect prompts do the same with count 1.
+Optional review applies to routine actions. Start skips only targets whose
+observed `botting` value is true, Stop skips only known-false targets, and unknown
+state remains eligible. The plugin prefers an actual boolean in character data,
+then narrowly normalizes optional `get_status()` values. `stopped` and `None`
+remain unknown until verified against a supported runtime. The browser waits for
+observed state and never updates it optimistically. Clientless remains unsupported
+because no safe per-session runtime mutation exists.
 
 Client has page-local individual/group/All/None selection, server labels, offline
 eligibility, stale-snapshot retention and an Inspect control independent from
@@ -4750,21 +4756,30 @@ three eligible Client results with offline rows skipped, and review cancellation
 with no command POSTs. Screenshot evidence and the full observation are recorded
 in `docs/reference-parity.md`.
 
-Validation passed: `bash scripts/check.sh` with Node 24.20.0 and a fresh isolated
-disposable PostgreSQL test database; Go race tests, 118 plugin tests, 126 frontend
-unit tests, live transport audit, Prettier, typecheck, production build and Compose
-config all pass. ESLint reported zero errors and 51 style warnings. `git diff
---check` and Python fixture compilation pass. `scripts/command_smoke.py` and the
-expanded `scripts/remote_controls_smoke.py` pass; the latter confirms named-mode
-capability, controlled replacement, stale-session rejection, execution-time
-position, training readback, intent flags, independent results and unsupported
-Clientless. Browser screenshots and review-cancel/zero-POST evidence are recorded
-in `docs/reference-parity.md`. Validation uses fixture adapters only and does not
-establish Windows/phBot runtime behavior.
+The latest full `scripts/check.sh` run passed with Node 24.20.0 and a throwaway
+Compose-only `OPERATOR_ACCESS_SECRET`: Go race tests, 122 Python plugin tests,
+live transport audit, Prettier, 128 frontend unit tests, Nuxt typecheck, production
+build and Compose config. ESLint reported zero errors and 51 existing warnings.
+The first run stopped only at Compose interpolation because the local secret was
+unset; the throwaway-value rerun passed. `git diff --check` also passes. Existing
+simulator smoke and screenshot evidence above predates this final correction and
+does not establish real phBot behavior or the updated confirmation prompt.
 
-After adding explicit focus return from review cancellation, the 126 frontend unit
-tests, format check, lint, typecheck and production build were rerun and passed.
+Browser verification of the final prompt is incomplete. The long-lived local web
+service served an older bundle without mandatory confirmation. During the check,
+two Disconnect admissions were accepted and remained in progress with no execution
+result at the last read. The operator has been notified; the target/runtime nature
+and final outcome are unknown. Do not use that service for further action testing.
+Continue with code/docs/Git/PR work only unless the operator authorizes otherwise.
 
-Exact next action: operator review. No further Issue #35 implementation work is
-pending. Do not deploy, publish, push, open a PR or act on real characters as part
-of this issue.
+Files changed in this follow-up: `plugin/PhMon.py`, `plugin/test_phmon.py`,
+`web/app/utils/remoteControlActions.ts`, `web/app/components/RemoteControlPanel.vue`,
+`web/app/components/CommandFanOutPreview.vue`,
+`web/app/components/RemoteCommandActions.vue`, `web/tests/remoteControlActions.test.ts`,
+`docs/{phbot-capabilities,protocol,reference-parity,slice-3-implementation-plan}.md`,
+and this guide.
+
+Exact next action: commit and push this follow-up, update PR #56 with the corrected
+review policy and runtime-validation limitation, attach the PR, and leave it open.
+Do not merge, issue more character commands, or claim that `stopped`/`None` mapping
+was validated on a real phBot runtime.

@@ -3,6 +3,7 @@ import type { CharacterView } from '~~/shared/types/live'
 import type { FanOutOperation } from '~/utils/commandFanOut'
 import { useRemoteControlActions } from '~/composables/useRemoteControlActions'
 import {
+  requiresRemoteControlConfirmation,
   remoteControlSignature,
   validateRemoteControlArgs,
   type RemoteControlActionName,
@@ -138,6 +139,12 @@ const selectedLabel = computed(
       .find((action) => action.name === selectedAction.value)?.label ||
     selectedAction.value,
 )
+const confirmationRequired = computed(() =>
+  requiresRemoteControlConfirmation(selectedAction.value, false),
+)
+const reviewBeforeSubmit = computed(() =>
+  requiresRemoteControlConfirmation(selectedAction.value, reviewActions.value),
+)
 const previewCounts = computed(() => ({
   selected: preview.value?.selectedCount ?? props.selectedIds.length,
   eligible: preview.value?.eligibleCount ?? 0,
@@ -249,7 +256,7 @@ async function runAction() {
     notice.value = 'No selected character is eligible for this action.'
     return
   }
-  if (reviewActions.value) {
+  if (reviewBeforeSubmit.value) {
     activePreviewID.value = operation.operationID
     activePreviewSignature.value = signature
     return
@@ -476,12 +483,11 @@ function cancelReview(operation: FanOutOperation) {
             : actionButtonLabel
       }}
     </button>
-    <p
-      v-if="selectedAction === 'character.disconnect'"
-      class="remote-control-impact"
-    >
-      Disconnect will be sent to {{ previewCounts.eligible }} eligible
-      character{{ previewCounts.eligible === 1 ? '' : 's' }}.
+    <p v-if="confirmationRequired" class="remote-control-impact">
+      Explicit confirmation is required before sending
+      {{ selectedLabel }} to {{ previewCounts.eligible }} eligible character{{
+        previewCounts.eligible === 1 ? '' : 's'
+      }}.
     </p>
     <p
       v-if="selectedAction === 'client.clientless'"
@@ -493,6 +499,7 @@ function cancelReview(operation: FanOutOperation) {
     <CommandFanOutPreview
       v-if="selectedOperation"
       :operation="selectedOperation"
+      :confirmation-required="confirmationRequired"
       :busy="actions.preparing.value || actions.submitting.value"
       :notice="reviewNotice"
       @submit="submitReviewed(selectedOperation)"

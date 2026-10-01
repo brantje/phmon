@@ -66,11 +66,27 @@ export function remoteControlDefinition(
       label: 'Start Training',
       impact: 'routine',
       buildArgs: () => ({}),
+      eligibility: (character) =>
+        character.botting === true
+          ? {
+              code: 'already_botting',
+              message:
+                'The latest observed state says this character is already botting.',
+            }
+          : null,
     },
     'bot.stop': {
       label: 'Stop Training',
       impact: 'routine',
       buildArgs: () => ({}),
+      eligibility: (character) =>
+        character.botting === false
+          ? {
+              code: 'not_botting',
+              message:
+                'The latest observed state says this character is not botting.',
+            }
+          : null,
     },
     'trace.start': {
       label: 'Start Trace',
@@ -153,6 +169,13 @@ export function remoteControlDefinition(
               'The current map scope is stale. Refresh it before acting.',
           },
   }
+}
+
+export function requiresRemoteControlConfirmation(
+  name: RemoteControlActionName,
+  optionalReview: boolean,
+) {
+  return optionalReview || remoteControlDefinition(name).impact !== 'routine'
 }
 
 export function validateRemoteControlArgs(

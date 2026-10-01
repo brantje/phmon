@@ -248,7 +248,9 @@ coordinates; historical event names are not inferred. The API documentation does
 not specify behavior for unsupported/custom region IDs, so those remain unnamed.
 - [Botting](https://plugins.phbot.org/phbot-api/botting) documents `start_bot()` and
   `stop_bot()` mutations but no read-only botting/training-state getter. Slice 2
-  reports this field as unknown rather than inferring state from commands or UI.
+  initially reported this field as unknown rather than inferring state from
+  commands or UI. Issue #35 later added guarded readback; see the current status
+  update below.
 
 Implementation imports only these documented APIs. It copies primitive values on
 the callback thread, change-detects at a one-second minimum and refreshes at five
@@ -355,9 +357,10 @@ within that tolerance; the route becomes `unknown` on target/region change, time
 teleport and not execution of `generate_script` output. The public API rate-limits
 path generation to once per five seconds and the plugin surfaces its documented
 `False` (rate-limited or not in game) and `None` (no path) outcomes as failed
-commands. Return-scroll never claims teleport completion, disconnect never claims
-relog was disabled, and botting state remains unknown because the checked public
-Botting API still exposes no authoritative read-only getter.
+commands. Return-scroll never claims teleport completion and disconnect never
+claims relog was disabled. The public Botting API still documents no state getter;
+Issue #35 uses the character-data boolean and a narrow optional status fallback,
+with unknown values remaining unknown (see the current status update below).
 
 ### Slice 3 implementation evidence refresh (2026-09-27)
 
@@ -1063,3 +1066,14 @@ The browser eligibility preview labels a missing or mismatched training readback
 as unconfirmed and blocks current-position/radius only when a current readback
 reports no active area. Fixture outcomes verify transport and result handling
 only, not Windows/phBot API effects.
+
+Botting state prefers `get_character_data()['botting']` when it is a boolean.
+Otherwise, the optional and undocumented `get_status()` fallback accepts only
+`botting`/`training` as true and `tracing` as false. Unknown values, errors,
+unavailable status, `stopped` and `None` remain unknown because the available
+phBot 20.1.1 runtime evidence did not verify their semantics. Start skips a target
+only when its latest observed state is true; Stop skips only when it is false.
+Unknown state remains eligible under normal session/capability rules, and the UI
+waits for the next observed state instead of updating optimistically. Verify
+`stopped` and `None` against a supported phBot runtime before mapping either to
+false.
