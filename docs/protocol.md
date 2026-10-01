@@ -1,4 +1,4 @@
-# Agent protocol versions 2–9
+# Agent protocol versions 2–10
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -1185,4 +1185,30 @@ floor is ambiguous.
 
 ```json
 {"type":"map.npcs","protocol_version":9,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"npcs":[{"id":"10","name":"Jangan","servername":"GATE_CH","model_id":2094,"role":"teleporter","region":25273,"x":30,"y":40}]}}
+```
+
+## Live other-player snapshots (v10)
+
+`map.players` carries one character's current `get_players()` view. It is accepted only
+from a hello that negotiated protocol 10 or newer. The frame uses the same
+`map_snapshot` envelope as monsters and NPCs, with `players` instead of `monsters` or
+`npcs`, plus required `observer_z`. There is no acknowledgement and no durable table.
+A new snapshot for the same session replaces the previous one. `unavailable` or a
+matching `character.left` clears that session. Every socket disconnect removes
+snapshots owned by that socket generation; the last socket for an agent does not use
+a separate agent-wide clear. A replacement character session clears the previous
+session. Rows expire from the live map 35 seconds after `observed_at`, with the same
+5 second future skew as party observers.
+
+Each row has a canonical decimal-string `player_id`, required `name`, finite `x`/`y`,
+optional `guild`, `grant`, boolean `dead`, integer `level`, and optional `region`.
+The plugin caps a snapshot at 128 rows and 64 KiB serialized payload, marking
+`truncated` when a row is dropped. The browser projection deduplicates by
+`player_id` within the selected server, keeps the freshest `observed_at`, merges up
+to 16 observer attributions, and caps the union at 256 players. Cave placement uses
+the observer's current Z and fails closed when the floor is ambiguous. Contradictory
+player regions relative to the observer are withheld.
+
+```json
+{"type":"map.players","protocol_version":10,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"x":30,"y":40}]}}
 ```

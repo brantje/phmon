@@ -16,6 +16,7 @@ import (
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
 	"phmon/server/internal/npcs"
+	"phmon/server/internal/players"
 	"phmon/server/internal/resources"
 )
 
@@ -45,6 +46,7 @@ type Dependencies struct {
 	Mobs         *mobs.Store
 	MobLive      *mobs.LiveStore
 	NPCLive      *npcs.LiveStore
+	PlayerLive   *players.LiveStore
 	MapAnalytics *mapanalytics.Store
 }
 
@@ -91,6 +93,11 @@ func New(deps Dependencies) http.Handler {
 			npcLive = npcs.NewLiveStore()
 		}
 		live.SetNPCLive(npcLive)
+		playerLive := deps.PlayerLive
+		if playerLive == nil {
+			playerLive = players.NewLiveStore()
+		}
+		live.SetPlayerLive(playerLive)
 		if live.navigation == nil {
 			live.SetNavigation(navigation.NewStore())
 		}
@@ -106,6 +113,7 @@ func New(deps Dependencies) http.Handler {
 			mobs:       deps.Mobs,
 			mobLive:    mobLive,
 			npcLive:    npcLive,
+			playerLive: playerLive,
 			analytics:  deps.MapAnalytics,
 			navigation: live.navigation,
 		}

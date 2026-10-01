@@ -406,6 +406,24 @@ def frame_fixtures(plugin, resources, monsters):
         "observed_at": "2026-01-01T00:00:00Z",
         "observer_z": -6.0,
     }
+    map_worker._latest_player_observation = {
+        "identity": dict(map_worker._current_identity),
+        "status": "observed",
+        "region": 25000,
+        "players": [{
+            "player_id": "8654977",
+            "name": "Nearby",
+            "guild": "Guild",
+            "grant": "Member",
+            "dead": False,
+            "level": 71,
+            "region": 25000,
+            "x": 30.0,
+            "y": 40.0,
+        }],
+        "observed_at": "2026-01-01T00:00:00Z",
+        "observer_z": -6.0,
+    }
     map_worker._flush_map_observations(map_client)
     frames["map"] = map_client.sent
 

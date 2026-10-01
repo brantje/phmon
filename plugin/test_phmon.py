@@ -18,298 +18,87 @@ spec.loader.exec_module(plugin)
 AGENT_ID = '11111111-2222-4333-8444-555555555555'
 
 
-class PlayersProbeTests(unittest.TestCase):
-    def test_probe_distinguishes_missing_not_callable_none_and_empty(self):
-        for api, outcome in (
-                ({}, 'missing'), ({'get_players': None}, 'not_callable'),
-                ({'get_players': lambda: None}, 'none'),
-                ({'get_players': lambda: {}}, 'empty_dict')):
-            with self.subTest(outcome=outcome):
-                report = plugin.collect_players_probe(api)
-                self.assertEqual(report['outcome'], outcome)
-                self.assertEqual(report['samples'], [])
-                self.assertEqual(report['callable'], outcome in ('none', 'empty_dict'))
-                self.assertEqual('entry_count' in report, outcome == 'empty_dict')
+class PlayerObservationTests(unittest.TestCase):
+    def test_collect_player_observation_classifies_missing_none_empty_and_unavailable(self):
+        self.assertEqual(plugin.collect_player_observation({}), ('unavailable', [], False))
+        self.assertEqual(plugin.collect_player_observation({'get_players': None}), ('unavailable', [], False))
+        self.assertEqual(plugin.collect_player_observation({'get_players': lambda: None}), ('unavailable', [], False))
+        self.assertEqual(plugin.collect_player_observation({'get_players': lambda: {}}), ('observed', [], False))
 
-    def test_probe_classifies_exceptions_without_logging_exception_text(self):
-        def unavailable():
-            raise RuntimeError('private token and native details')
-
-        report = plugin.collect_players_probe({'get_players': unavailable})
-        self.assertEqual(report['outcome'], 'exception')
-        self.assertEqual(report['error_type'], 'RuntimeError')
-        self.assertIn('call_duration_ms', report)
-        self.assertNotIn('private', json.dumps(report))
-
-    def test_unexpected_return_is_not_a_healthy_empty_dictionary(self):
-        for value in (False, 0, [], 'private payload'):
-            with self.subTest(value=value):
-                report = plugin.collect_players_probe({'get_players': lambda: value})
-                self.assertEqual(report['outcome'], 'unexpected_type')
-                self.assertNotIn('entry_count', report)
-                self.assertNotIn('private payload', json.dumps(report))
-
-    def test_probe_reads_actual_module_symbol_and_handles_absent_module(self):
-        runtime = SimpleNamespace(get_players=Mock(return_value={}), get_version=lambda: '20.1.1')
-        with patch.dict('sys.modules', {'phBot': runtime}):
-            report = plugin.collect_players_probe()
-        self.assertTrue(report['phbot_importable'])
-        self.assertTrue(report['symbol_present'])
-        self.assertTrue(report['callable'])
-        self.assertEqual(report['phbot_version'], '20.1.1')
-        runtime.get_players.assert_called_once_with()
-        with patch.dict('sys.modules', {'phBot': SimpleNamespace()}):
-            report = plugin.collect_players_probe()
-        self.assertTrue(report['phbot_importable'])
-        self.assertFalse(report['symbol_present'])
-        self.assertEqual(report['outcome'], 'missing')
-        with patch.dict('sys.modules', {'phBot': None}):
-            report = plugin.collect_players_probe()
-        self.assertFalse(report['phbot_importable'])
-        self.assertEqual(report['outcome'], 'import_failed')
-
-    def test_probe_preserves_selected_fields_and_observer_context_only(self):
-        raw = {8654977: {'name': 'Nearby', 'guild': 'Guild', 'grant': 'Member',
-                         'dead': False, 'x': 6433.5, 'y': 1096.9,
-                         'items': [{'name': 'PRIVATE_EQUIPMENT'}], 'extra': 'PRIVATE_EXTRA'}}
-        for running in (True, False, None):
-            with self.subTest(running=running), \
-                    patch.object(plugin, '_phbot_connected_state', True), \
-                    patch.object(plugin, '_character_joined', True):
-                report = plugin.collect_players_probe({
-                    'get_players': lambda: raw, 'get_version': lambda: '20.1.1',
-                    'get_client': lambda: {'running': running, 'path': 'PRIVATE_PATH', 'pid': 123},
-                    'get_character_data': lambda: {'name': 'Observer', 'server': 'Silkroad', 'token': 'PRIVATE_TOKEN'},
-                    'get_position': lambda: {'region': -32767, 'x': -24300, 'y': 20, 'z': -9},
-                })
-                self.assertEqual(report['outcome'], 'populated_dict')
-                self.assertEqual((report['entry_count'], report['valid_entries'], report['invalid_entries']), (1, 1, 0))
-                self.assertEqual(report['samples'], [{
-                    'player_id': '8654977', 'name': 'Nearby', 'guild': 'Guild',
-                    'grant': 'Member', 'dead': False, 'x': 6433.5, 'y': 1096.9}])
-                self.assertEqual(report['observer'], {
-                    'name': 'Observer', 'server': 'Silkroad', 'region': -32767,
-                    'x': -24300.0, 'y': 20.0, 'z': -9.0})
-                self.assertIs(report['client_running'], running)
-                self.assertTrue(report['character_data_available'])
-                self.assertTrue(report['game_connected_callback'])
-                self.assertEqual(report['first_entry_types']['items'], 'list')
-                self.assertNotIn('PRIVATE_', json.dumps(report))
-                self.assertNotIn('region', report['samples'][0])
-                self.assertNotIn('z', report['samples'][0])
-
-    def test_invalid_coordinates_ids_and_rows_are_classified_and_bounded(self):
-        valid = {'name': 'Player', 'x': 1, 'y': 2, 'dead': 'unknown'}
-        raw = {1: valid, 2: None, 3: dict(valid, x=float('nan')),
-               4: dict(valid, y=float('inf')), 5: dict(valid, x=True),
-               6: dict(valid, y=10000001), 7: dict(valid, name=''),
-               '8': valid, 4294967296: valid, -1: valid}
-        report = plugin.collect_players_probe({'get_players': lambda: raw})
-        self.assertEqual(report['outcome'], 'populated_dict')
-        self.assertEqual((report['inspected_entries'], report['valid_entries'], report['invalid_entries']), (10, 2, 8))
-        self.assertNotIn('dead', report['samples'][0])
-        json.dumps(report, allow_nan=False)
-
-    def test_runtime_string_ids_and_actual_player_region_are_preserved(self):
-        for identifier in ('8654977', 'observer-local:A7', 8654977):
-            with self.subTest(identifier=identifier):
-                raw = {identifier: {'name': 'Player', 'guild': '', 'grant': '',
-                                    'dead': False, 'region': 26244, 'x': -542.5, 'y': 1980.6}}
-                report = plugin.collect_players_probe({
-                    'get_players': lambda: raw,
-                    'get_position': lambda: {'region': -32767, 'x': -24300, 'y': 20, 'z': -9},
-                })
-                self.assertEqual((report['valid_entries'], report['invalid_entries']), (1, 0))
-                self.assertEqual(report['samples'][0]['player_id'], str(identifier))
-                self.assertEqual(report['first_entry_types']['player_id'], type(identifier).__name__)
-                self.assertEqual(report['samples'][0]['region'], 26244)
-                self.assertNotIn('z', report['samples'][0])
-                raw[identifier]['z'] = 12.0
-                report = plugin.collect_players_probe({'get_players': lambda: raw})
-                self.assertEqual(report['samples'][0]['z'], 12.0)
-                raw[identifier].update(region=True, z=float('nan'))
-                report = plugin.collect_players_probe({'get_players': lambda: raw})
-                self.assertNotIn('region', report['samples'][0])
-                self.assertNotIn('z', report['samples'][0])
-
-    def test_probe_rejects_unbounded_or_invalid_runtime_ids(self):
-        for identifier in ('', ' ' * 64, 'x' * 65, True, 0, -1, 4294967296, None):
-            with self.subTest(identifier=identifier):
-                raw = {identifier: {'name': 'Player', 'x': 1, 'y': 2}}
-                report = plugin.collect_players_probe({'get_players': lambda: raw})
-                self.assertEqual((report['valid_entries'], report['invalid_entries']), (0, 1))
-                self.assertEqual(report['samples'], [])
-
-    def test_large_result_inspects_only_bound_and_caps_local_log_samples(self):
-        class BoundedDictionary(dict):
-            def items(self):
-                for index, row in enumerate(super().items()):
-                    if index >= plugin.MAX_PLAYERS_PROBE_ENTRIES:
-                        raise AssertionError('probe iterated past its limit')
-                    yield row
-
-        raw = BoundedDictionary((index + 1, {
-            'name': '界' * 10000, 'guild': '界' * 10000, 'grant': '界' * 10000,
-            'x': index, 'y': index + 1, 'items': ['PRIVATE_EQUIPMENT'] * 10000,
-        }) for index in range(plugin.MAX_PLAYERS_PROBE_ENTRIES + 10))
-        report = plugin.collect_players_probe({'get_players': lambda: raw})
-        self.assertTrue(report['truncated'])
-        self.assertEqual(report['entry_count'], len(raw))
-        self.assertEqual(report['inspected_entries'], plugin.MAX_PLAYERS_PROBE_ENTRIES)
-        self.assertEqual(len(report['samples']), plugin.MAX_PLAYERS_PROBE_SAMPLES)
-        encoded = json.dumps(report, allow_nan=False)
-        self.assertLess(len(encoded.encode('utf-8')), 8192)
-        self.assertNotIn('PRIVATE_EQUIPMENT', encoded)
-
-    def test_unknown_client_context_does_not_guess_clientless_or_connected(self):
-        def broken():
-            raise ValueError('PRIVATE_CONTEXT')
-
-        with patch.object(plugin, '_phbot_connected_state', None), \
-                patch.object(plugin, '_character_joined', None):
-            report = plugin.collect_players_probe({
-                'get_players': lambda: {}, 'get_client': lambda: {'running': 0},
-                'get_character_data': broken, 'get_version': broken,
-                'get_position': lambda: {'region': 0, 'x': float('inf'), 'y': True, 'z': None},
-            })
-        self.assertIsNone(report['client_running'])
-        self.assertIsNone(report['game_connected_callback'])
-        self.assertIsNone(report['joined_game_callback'])
-        self.assertFalse(report['character_data_available'])
-        self.assertEqual(report['observer'], {})
-        self.assertEqual(report['phbot_version'], 'unknown')
-
-    def test_manual_button_works_without_worker_and_throttles_repeated_clicks(self):
-        runtime = SimpleNamespace(get_players=Mock(return_value=None))
-        gui = Mock()
-        with patch.dict('sys.modules', {'phBot': runtime}), \
-                patch.object(plugin, '_worker', None), \
-                patch.object(plugin, '_last_players_probe_at', float('-inf')), \
-                patch.object(plugin, '_monotonic', return_value=10), \
-                patch.object(plugin, '_QtBind', gui), \
-                patch.object(plugin, '_gui', 'fixture-gui'), \
-                patch.object(plugin, '_gui_players_probe_status', 'probe-status'), \
-                patch.object(plugin, '_log') as log:
-            report = plugin.test_get_players()
-            self.assertEqual(report['outcome'], 'none')
-            self.assertIsNone(plugin.test_get_players())
-            runtime.get_players.assert_called_once_with()
-            self.assertEqual(log.call_count, 2)
-            self.assertIn('started', log.call_args_list[0].args[0])
-            self.assertIn('"outcome":"none"', log.call_args_list[1].args[0])
-            gui.setText.assert_called_once_with('fixture-gui', 'probe-status', 'get_players: none - see phBot log')
-
-
-class PlayerEquipmentProbeTests(unittest.TestCase):
-    def test_equipment_distinguishes_missing_none_empty_and_malformed(self):
-        for player, availability, reason in (
-                ({}, 'unavailable', 'items_missing'),
-                ({'items': None}, 'unavailable', 'items_none'),
-                ({'items': []}, 'observed_empty', None),
-                ({'items': [None]}, 'observed_empty', None),
-                ({'items': {}}, 'unavailable', 'unexpected_items_type'),
-                ({'items': [False, {}, {'plus': 7}]}, 'malformed', None)):
-            with self.subTest(player=player):
-                report = plugin._players_equipment_probe(player)
-                self.assertEqual(report['availability'], availability)
-                self.assertEqual(report.get('reason'), reason)
-                self.assertEqual(report['items'], [])
-
-    def test_documented_armor_weapon_fields_are_preserved_without_slot_guesses(self):
-        raw = {'items': [None, {
-            'name': 'Fixture armor', 'servername': 'ITEM_FIXTURE_ARMOR',
-            'model': 1001, 'degree': 9, 'level': 80, 'plus': 5,
-            'blues': 'PRIVATE_BLUES', 'token': 'PRIVATE_TOKEN',
-        }, {
-            'name': 'Fixture weapon', 'servername': 'ITEM_FIXTURE_WEAPON',
-            'model': 1002, 'degree': 9, 'level': 85, 'plus': 0,
-        }, {'model': True, 'name': 'Fixture', 'plus': float('nan'), 'level': -1}]}
-        report = plugin._players_equipment_probe(raw)
-        self.assertEqual(report['availability'], 'observed')
-        self.assertEqual((report['reported_items'], report['empty_items']), (4, 1))
-        self.assertEqual(report['items'][0], {
-            'source_index': 1, 'name': 'Fixture armor', 'servername': 'ITEM_FIXTURE_ARMOR',
-            'model': 1001, 'degree': 9, 'level': 80, 'plus': 5})
-        self.assertEqual(report['items'][1]['source_index'], 2)
-        self.assertEqual(report['items'][1]['plus'], 0)
-        self.assertEqual(report['items'][2], {'source_index': 3, 'name': 'Fixture'})
-        encoded = json.dumps(report, allow_nan=False)
-        self.assertNotIn('PRIVATE_', encoded)
-        self.assertNotIn('token', report['first_item_field_types'])
-        self.assertNotIn('slot', report['items'][0])
-
-    def test_equipment_mode_targets_names_or_ids_and_exposes_only_field_shapes(self):
-        players = {
-            str(index): {'name': 'Player' + str(index), 'x': index, 'y': index,
-                         'items': [{'model': index, 'name': 'Fixture gear'}],
-                         'equipment_alias': {'PRIVATE_VALUE': 'PRIVATE_CONTENT'},
-                         'token': 'PRIVATE_TOKEN'}
-            for index in range(1, 10)
+    def test_collect_player_observation_normalizes_decimal_string_ids_and_fields(self):
+        raw = {
+            '08654977': {'name': 'Nearby', 'guild': 'Guild', 'grant': 'Member',
+                         'dead': False, 'level': 71, 'region': 26244, 'x': 10.5, 'y': 20.0,
+                         'items': ['PRIVATE'], 'z': 3.0},
         }
-        for target in ('9', 'player9'):
-            with self.subTest(target=target):
-                report = plugin.collect_players_probe({'get_players': lambda: players},
-                                                      inspect_equipment=True, target=target)
-                self.assertEqual(report['valid_entries'], 9)
-                self.assertEqual(report['matching_entries'], 1)
-                self.assertEqual(len(report['samples']), 1)
-                sample = report['samples'][0]
-                self.assertEqual(sample['name'], 'Player9')
-                self.assertEqual(sample['equipment']['items'][0]['model'], 9)
-                self.assertEqual(sample['field_types']['equipment_alias']['type'], 'dict')
-                self.assertTrue(sample['field_types_truncated'])
-                self.assertNotIn('PRIVATE_', json.dumps(report))
-        report = plugin.collect_players_probe({'get_players': lambda: players}, inspect_equipment=True)
-        self.assertEqual((report['matching_entries'], len(report['samples'])), (9, 3))
-        report = plugin.collect_players_probe({'get_players': lambda: players},
-                                              inspect_equipment=True, target='absent')
-        self.assertEqual(report['matching_entries'], 0)
-        self.assertEqual(report['samples'], [])
-        getter = Mock()
-        report = plugin.collect_players_probe({'get_players': getter}, inspect_equipment=True, target='x' * 65)
-        self.assertEqual(report['outcome'], 'invalid_target')
-        getter.assert_not_called()
+        status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'observed')
+        self.assertFalse(truncated)
+        self.assertEqual(players, [{
+            'player_id': '8654977', 'name': 'Nearby', 'guild': 'Guild', 'grant': 'Member',
+            'dead': False, 'level': 71, 'region': 26244, 'x': 10.5, 'y': 20.0,
+        }])
+        self.assertNotIn('items', players[0])
+        self.assertNotIn('z', players[0])
 
-    def test_equipment_and_field_evidence_remain_bounded(self):
-        row = {'model': 1001, 'name': '界' * 10000, 'servername': '界' * 10000}
-        row.update(('extra_' + str(index), 'PRIVATE_VALUE') for index in range(1000))
-        report = plugin._players_equipment_probe({'items': [row] * 10000})
-        self.assertEqual(report['reported_items'], 10000)
-        self.assertLessEqual(report['inspected_items'], plugin.MAX_PLAYERS_EQUIPMENT_ITEMS)
-        self.assertEqual(report['availability'], 'truncated')
-        self.assertLessEqual(len(json.dumps(report).encode('utf-8')), plugin.MAX_PLAYERS_EQUIPMENT_BYTES)
-        self.assertNotIn('PRIVATE_VALUE', json.dumps(report))
-        report = plugin._players_equipment_probe({'items': [{'model': 1}] * 33})
-        self.assertEqual(len(report['items']), plugin.MAX_PLAYERS_EQUIPMENT_ITEMS)
-        self.assertTrue(report['truncated'])
-        report = plugin._players_equipment_probe({'items': [{'model': 1}, False]})
-        self.assertEqual(report['availability'], 'partial')
+    def test_collect_player_observation_marks_malformed_duplicate_and_bounds(self):
+        valid = {'name': 'Player', 'x': 1, 'y': 2}
+        raw = {1: valid, 2: None, 3: dict(valid, x=float('nan')), 4: dict(valid, name=''),
+               5: dict(valid, level=0), 6: dict(valid, region=True), 1: dict(valid, x=3, y=4)}
+        status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'truncated')
+        self.assertTrue(truncated)
+        self.assertEqual(len(players), 1)
 
-    def test_equipment_button_logs_bounded_samples_without_backend_worker(self):
-        runtime = SimpleNamespace(get_players=Mock(return_value={
-            '7': {'name': 'Player7', 'x': 1, 'y': 2, 'items': [{'model': 1001, 'plus': 7}]},
-        }))
-        gui = Mock()
-        gui.text.return_value = 'Player7'
-        with patch.dict('sys.modules', {'phBot': runtime}), \
-                patch.object(plugin, '_worker', None), \
-                patch.object(plugin, '_last_players_probe_at', float('-inf')), \
-                patch.object(plugin, '_monotonic', return_value=10), \
-                patch.object(plugin, '_QtBind', gui), \
-                patch.object(plugin, '_gui', 'fixture-gui'), \
-                patch.object(plugin, '_gui_player_probe_target', 'target'), \
-                patch.object(plugin, '_log') as log:
-            report = plugin.inspect_player_equipment()
-        gui.text.assert_called_once_with('fixture-gui', 'target')
-        runtime.get_players.assert_called_once_with()
-        self.assertEqual(report['matching_entries'], 1)
-        self.assertEqual(log.call_count, 3)
-        summary = log.call_args_list[1].args[0]
-        sample = log.call_args_list[2].args[0]
-        self.assertIn('equipment probe:', summary)
-        self.assertNotIn('"model":', summary)
-        self.assertIn('equipment sample:', sample)
-        self.assertIn('"model":1001', sample)
+    def test_player_snapshot_signature_includes_observer_z(self):
+        players = [{'player_id': '1', 'name': 'A', 'x': 1.0, 'y': 2.0}]
+        first = plugin._player_snapshot_signature('observed', 25000, -6.0, players)
+        second = plugin._player_snapshot_signature('observed', 25000, 12.0, players)
+        self.assertNotEqual(first, second)
+
+    def test_sample_players_respects_poll_refresh_and_forces_on_region_change(self):
+        previous = (
+            plugin._worker, plugin._last_player_poll_at, plugin._last_player_region,
+            plugin._last_player_observer_z, plugin._last_player_signature,
+            plugin._last_player_publish_at, plugin._player_sample_forced,
+        )
+        plugin._reset_player_sample_state()
+        worker = Mock()
+        worker.update_map_players = Mock(return_value=True)
+        plugin._worker = worker
+        identity = {'server': 'Greatest', 'name': 'Observer'}
+        state = {'region': 25000}
+        position = {'z': -6.0}
+        now = 100.0
+        with patch.object(plugin, 'collect_player_observation', return_value=('observed', [], False)):
+            self.assertTrue(plugin._sample_players(identity, state, position, now))
+            self.assertFalse(plugin._sample_players(identity, state, position, now + 1.0))
+            self.assertTrue(plugin._sample_players(identity, state, position, now + 16.0))
+            state['region'] = 25001
+            self.assertTrue(plugin._sample_players(identity, state, position, now + 17.0))
+        plugin._worker, plugin._last_player_poll_at, plugin._last_player_region, \
+            plugin._last_player_observer_z, plugin._last_player_signature, \
+            plugin._last_player_publish_at, plugin._player_sample_forced = previous
+
+    def test_flush_map_players_requires_matching_identity(self):
+        worker = plugin.AgentWorker({'backend_url': 'ws://127.0.0.1/agent', 'agent_id': AGENT_ID,
+                                     'agent_token': 'token'}, '20.1.2')
+        worker.character_id = AGENT_ID
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker._current_identity = {'server': 'Greatest', 'name': 'Observer'}
+        client = Mock()
+        worker.update_map_players(worker._current_identity, 'observed', 25000,
+                                  [{'player_id': '7', 'name': 'Nearby', 'x': 1.0, 'y': 2.0}],
+                                  observer_z=-6.0)
+        worker._flush_map_players(client)
+        self.assertEqual(client.send_json.call_count, 1)
+        frame = client.send_json.call_args.args[0]
+        self.assertEqual(frame['type'], 'map.players')
+        self.assertEqual(frame['protocol_version'], 10)
+        worker._current_identity = {'server': 'Greatest', 'name': 'Other'}
+        worker.update_map_players(worker._current_identity, 'observed', 25000, [], observer_z=-6.0)
+        worker._flush_map_players(client)
+        self.assertEqual(client.send_json.call_count, 1)
 
 
 class MobObservationTests(unittest.TestCase):

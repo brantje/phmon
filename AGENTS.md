@@ -250,55 +250,31 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
-### Resume — 2026-10-01 Issue #36 Players API runtime probe
+### Resume — 2026-10-01 Issue #36 Other players map layer
 
-The operator scoped this run to testing whether `get_players()` works and pushing
-a new downloadable plugin branch. Work is on `codex/issue-36-get-players-probe`
-in the existing checkout. Plugin 1.7.2 added a manual **Test get_players** button
-that works without a backend credential/worker. It logs module/symbol/callable
-availability, distinguishes unavailable/None/empty/populated/malformed results,
-records selected phBot/client/session/observer context, and bounds inspection to
-128 entries and three sanitized samples. It does not send player data to Go or
-add a map layer/history. Protocol remains 9. The official Players page marks the
-API disabled, but the operator's 2026-10-01 21:15:21 UTC log proves phBot 20.1.2
-returned ten entries in 19 ms with the client running. The first entry has a
-string ID and integer region. The probe's integer-only validator rejected string
-keys; plugin 1.7.3 corrects this and retains actual per-player region/optional Z.
-The operator's 21:20:27 UTC log then confirmed nine valid entries in 16 ms while
-joined with the client closed; samples have decimal-string IDs, region 26244,
-finite X/Y and no player Z. Players source availability is confirmed for both
-observed modes on phBot 20.1.2; identity/cave placement semantics remain open.
-
-The operator explicitly requested armor/weapon inspection next. Plugin 1.7.4
-adds a separate **Inspect player equipment** button with optional player name/ID
-targeting. It inspects the documented `items` field, includes bounded field-type
-evidence, copies selected item fields/source index only, and distinguishes missing,
-empty, malformed/partial and truncated results. Equipment stays in local diagnostic
-logs, with three players / 32 items / 8 KiB equipment evidence per player. The
-normal player probe continues to omit equipment. No guessed getter, slot mapping,
-packet request, player transport/history or bot action is introduced.
-Operator logs at 21:29:23 / 21:31:16 UTC then established observed-empty discovery
-followed by ten valid entries in 18 ms and one successful equipment target match.
-That matched record has exactly eight fields (name/guild/grant/level/dead/region/
-X/Y), with complete field-type evidence and no `items` or alternate equipment
-field. Armor/weapon inspection is source-blocked for this observed clientless
-record. This is not a parser failure and does not establish all-version support.
+Branch `codex/issue-36-get-players-probe` replaces the manual get_players/equipment
+probes with production collection and the Map **Other players** layer. Plugin
+**1.8.0** / agent protocol **10** publishes bounded `map.players` on the worker
+(2 s / 15 s cadence, 128 rows, 64 KiB, observer Z in signature). Go adds
+`server/internal/players` memory store with generation-scoped cleanup and
+`map_players` projection (35 s TTL, dedup, 256/16 caps). Map UI: default-on layer,
+`mm_sign_otherplayer.png` markers, popup, precedence over Characters/Party when
+those layers are on. Probe history stays in `docs/phbot-capabilities.md`; equipment
+and packet fallback remain out of scope.
 
 Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
-`docs/phbot-capabilities.md`, `docs/reference-parity.md`, and this guide.
-Validation: Python compilation and all 138 plugin tests (sixteen probe tests),
-live transport audit and `git diff --check` pass. The generated monitor output
-contract matches the base; the version guard passes 1.7.3 → 1.7.4 with protocol 9
-unchanged.
+`server/internal/{players,httpapi,characters}/`, `web/app/{pages,map,components,
+composables,utils}/`, `web/shared/types/live.ts`, `web/tests/mapPlayerMarkers.test.ts`,
+`scripts/{plugin_protocol_contract.py,agent_simulator.py}`, `docs/protocol.md`,
+`docs/reference-parity.md`, and this guide. Leave untracked `PhMon Map Redesign.html`
+untouched. Do not merge or deploy unless authorized.
 
-The requested runtime/armor investigation is complete for the supplied results.
-Exact next action if further equipment work is requested: establish a documented/
-observed source with actual item data, or compare additional players/client-running
-state using the existing probe. Keep unavailable equipment explicit; do not infer
-item model/code/plus from the eight-field player record or add a packet fallback.
-Map placement and cross-observer identity remain separate issue #36 gates.
-No real bot action or deployment was performed; unrelated untracked map HTML is
-untouched. This diagnostic does not claim issue #36 feature completion.
+Validation target: plugin unit tests, Go `./...`, frontend unit tests, full
+`bash scripts/check.sh` with Node 24.20.0 and disposable `TEST_DATABASE_URL`,
+browser map layer at 1440×1000, 1280×800 and 390×844 on a fixture stack. Installed
+phBot map validation remains a separate gate after operator loads 1.8.0 against a
+protocol-10 backend. Exact next action: commit/push this branch, require CI green,
+and record live map evidence when the upgraded plugin is connected.
 
 ### Resume — 2026-10-01 Issue #55 map redesign
 

@@ -4,33 +4,19 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
-## Other players — issue #36 runtime gate (2026-10-01)
+## Other players — issue #36 map layer (2026-10-01)
 
-The operator requested a downloadable diagnostic plugin before implementing this
-layer. The official [Players API](https://plugins.phbot.org/phbot-api/players)
-still marks `get_players()` disabled. Plugin 1.7.2 adds a manual local-log
-**Test get_players** button with bounded samples and explicit None/empty/populated
-classification; [test instructions](../plugin/README.md#test-the-players-api-issue-36)
-cover connected and known clientless sessions. The operator's 2026-10-01 log
-confirms phBot 20.1.2 returned ten entries in 19 ms with the client running. Its
-string keys were rejected by the diagnostic's integer-only validator. Plugin 1.7.3
-accepts bounded string IDs and preserves actual per-player region/optional Z
-instead of assuming the documented example's shape. All 133 plugin tests pass.
-The second operator log (21:20:27 UTC) returned nine valid entries in 16 ms while
-joined with the client closed. Samples supply decimal-string IDs, region 26244
-and finite X/Y, with no player Z. This confirms source availability in that
-observed clientless session. Cross-observer identity and cave placement remain
-unverified; [runtime evidence](phbot-capabilities.md) distinguishes these gates.
-The operator next authorized armor/weapon inspection: plugin 1.7.4 adds a
-separate manual equipment probe with optional player name/ID targeting, bounded
-field-type evidence and documented item fields. All 138 plugin tests pass.
-The operator's 1.7.4 test first returned an empty dictionary in region 25733, then
-ten valid players in 18 ms in region 26244. A successful target match yielded a
-complete eight-field record with no `items` or alternate equipment field. Armor/
-weapon inspection is source-blocked for this observed clientless player record.
-This explicit diagnostic does not enable a nearby-player equipment UI.
-Backend and map UI are unchanged, and no Other players layer, player history or
-packet fallback is claimed. No visual comparison is needed for this diagnostic.
+Historical probe evidence (phBot 20.1.2 populated `get_players()` dictionaries,
+decimal-string IDs, optional per-player region, equipment absent on the observed
+eight-field clientless record) remains in [phbot-capabilities.md](phbot-capabilities.md).
+Production delivery uses plugin **1.8.0** / agent protocol **10** `map.players`
+snapshots (2 s poll, 15 s unchanged refresh, 128-row / 64 KiB bounds, observer Z
+in the signature, generation-scoped backend cleanup). The Map page adds **Other
+players** (default on) with `mm_sign_otherplayer.png` markers, name labels,
+alive/dead popup fields, and precedence over managed-character names and party
+runtime IDs when Characters/Party layers are enabled. No navigate, equipment,
+player history, or packet fallback. Installed-runtime map validation remains
+separate from simulator/fixture evidence recorded after CI on this branch.
 
 ## Multi-character remote controls — 2026-10-01
 

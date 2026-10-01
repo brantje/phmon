@@ -282,6 +282,20 @@ def run_map_observations(worker, stopping):
         worker.update_map_npcs(identity, "observed", 25273, [npc], observer_z=0.0)
         time.sleep(0.3)
         worker.update_map_npcs(identity, "observed", 25273, [], observer_z=0.0)
+        nearby_player = {
+            "player_id": "8654977",
+            "name": "MapFixtureAlpha",
+            "guild": "Fixture",
+            "grant": "Member",
+            "dead": False,
+            "level": 50,
+            "region": 25273,
+            "x": 35.0,
+            "y": 45.0,
+        }
+        worker.update_map_players(identity, "observed", 25273, [nearby_player], observer_z=0.0)
+        time.sleep(0.3)
+        worker.update_map_players(identity, "observed", 25273, [], observer_z=0.0)
         first_sample = sample(str(uuid.uuid4()), [monster], 10.0)
         worker.update_map_monsters(identity, "observed", 25273, [monster], first_sample)
         wait_until(

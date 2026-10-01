@@ -138,6 +138,18 @@ probe can compare additional players/client-running state without a plugin updat
 No guessed API or packet fallback is added. This document retains capability
 metadata only, not player identities, equipment records or sighting history.
 
+### Production map.players transport (plugin 1.8.0, protocol 10)
+
+Plugin **1.8.0** removes the manual probe buttons and publishes bounded
+`map.players` snapshots on the existing worker path (2 s poll, 15 s unchanged
+refresh, signature includes observer Z). Rows copy canonical decimal-string IDs,
+name, guild, grant, dead, level, region and X/Y only. Equipment and player Z are
+omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
+generation-scoped disconnect cleanup, and map projection with party-style dedup.
+The PhMon Map **Other players** layer is fixture-tested separately from installed
+phBot validation; cross-observer identity and cave placement semantics remain
+open gates until recorded on a live runtime after upgrade.
+
 ## Sources checked on 2026-09-26
 
 - Plugin introduction: https://plugins.phbot.org/

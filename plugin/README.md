@@ -1,7 +1,7 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.7.4** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v9 over the existing authenticated
+The current plugin development release is **1.8.0** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v10 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
@@ -10,8 +10,10 @@ transient route reports for generated-script navigation. Protocol v9 adds epheme
 seconds, immediately after a teleport or region change, and refreshed at least every
 15 seconds while the normalized view is unchanged. `GATE_<name>` server names are
 teleporters; other rows are NPCs. `unavailable` clears that character's markers.
-There is no NPC history. The backend keeps accepting
-protocol v2–v8 and older plugins continue
+There is no NPC history. Protocol v10 adds ephemeral `map.players` snapshots from
+optional `get_players()` with the same cadence, 128-row and 64 KiB bounds, and
+observer Z in the publish signature. Equipment and player Z are not copied. The
+backend keeps accepting protocol v2–v9 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
 type. Explicit channel names are normalized, along with operator-confirmed runtime
@@ -27,91 +29,12 @@ when available, otherwise from narrowly recognized `get_status()` values. Unknow
 statuses remain unknown; the meaning of `stopped` and `None` still needs runtime
 verification.
 
-Version 1.7.2 adds a manual, read-only **Test get_players** button for
-[issue #36](https://github.com/brantje/phmon/issues/36). Its results stay in the
-local phBot log; agent protocol remains v9.
-
-Version 1.7.3 fixes the probe's integer-only ID assumption after phBot 20.1.2
-returned ten entries with string keys. Bounded string IDs are preserved without
-numeric coercion. Samples also include the player's own valid region and optional
-Z when the runtime supplies them, independently of the observer's position.
-
-Version 1.7.4 adds **Inspect player equipment**, a separate manual diagnostic
-for the operator-requested armor/weapon investigation. The normal player probe
-continues to omit equipment. Agent protocol remains v9.
-
-## Test the Players API (issue #36)
-
-The [official Players API](https://plugins.phbot.org/phbot-api/players) explicitly
-marks `get_players()` disabled. This diagnostic checks the installed runtime before
-any nearby-player map feature is implemented. It needs no backend configuration.
-
-1. Replace `PhMon.py` in the phBot **Plugins** directory with this branch's file
-   and reload it. Confirm the tab shows **PhMon v1.7.4**. Existing connection
-   settings continue to work.
-2. Open **Plugins -> PhMon** and click **Test get_players** while joined with the
-   game client running, preferably where other players are visibly nearby. Repeat
-   a few times, at least two seconds apart.
-3. Repeat in a known clientless session if available. Note the actual mode with
-   the results; the probe never changes it. Optionally test when already logged
-   out/disconnected to compare availability.
-4. Copy the `Plugin: PhMon get_players probe:` JSON lines from the phBot log,
-   together with which mode you tested and whether other players were known to be
-   nearby. A preceding `probe started` line without a result identifies a native
-   call that has not returned.
-
-The log distinguishes `import_failed`, `missing`, `not_callable`, `exception`,
-`none`, `empty_dict`, `populated_dict` and `unexpected_type`. **`none` means
-unavailable, not zero nearby players.** An `empty_dict` records what was returned;
-it alone does not prove nearby-player discovery works. A populated dictionary
-records total, inspected, valid and invalid entry counts, with `truncated: true`
-when more than 128 entries were returned. The first entry's selected field types
-help diagnose unexpected runtime shapes. At most three valid samples contain ID,
-name/guild/grant, finite X/Y, an actual boolean dead flag and valid region/Z when supplied. Text
-fields are capped at 64 characters, and equipment/unknown field values are excluded.
-
-Context includes phBot/plugin version, UTC timestamp, connection/join callbacks,
-available observer identity/region/X/Y/Z, and the documented `get_client()` boolean
-`running` value. A non-running client alone does not establish a logged-in
-clientless session; missing context remains unknown. No client path, process ID,
-token or backend URL is logged. This is a manual local diagnostic: no player
-poller, player transport, map layer, player history or packet fallback is added.
-Automated fixture tests cover classification and bounds. The operator's
-2026-10-01 logs confirm populated dictionaries on phBot 20.1.2 with a running
-client and while joined with the client closed. The latter returned nine valid
-entries with decimal-string IDs, region/X/Y and no player Z in the three samples; see
-[runtime evidence](../docs/phbot-capabilities.md#issue-36--manual-players-api-runtime-probe-2026-10-01).
-
-## Inspect nearby-player armor and weapons
-
-1. Install/reload **1.7.4**. In **Plugins -> PhMon**, enter a nearby player's name
-   or runtime ID in **Equipment probe: player ID or name**. Leave it blank to
-   inspect the first three valid entries.
-2. Click **Inspect player equipment**. Both diagnostic buttons share a two-second
-   cooldown and require no backend connection. Name matching ignores case; IDs
-   match exactly. The search inspects at most 128 entries and reports truncation.
-3. Copy the `get_players equipment probe:` summary and
-   `get_players equipment sample:` lines from the phBot log.
-
-Each sample records bounded player field names/types and inspects only the
-documented `items` list. Equipment reports distinguish a missing/None field,
-empty list, unexpected field type, malformed/partial data and truncation. Item
-records preserve source list index and only supplied name, server code, model,
-degree, level and plus. No list index is labeled an armor slot or weapon slot;
-the documented API does not establish such a mapping. Nested unknown values,
-blues, credentials and client paths are excluded. At most 32 item entries are
-inspected per sampled player, with an 8 KiB equipment evidence bound. Results
-are split into one local log line per player.
-
-The operator's 1.7.4 client-closed test matched a nearby player and exposed the
-complete eight-field record: name/guild/grant/level/dead/region/X/Y. It had no
-`items` or alternate equipment field, so that observation cannot reveal armor or
-weapons. This is a runtime source limitation for that sample. The probe can compare
-other players/client-running state if needed. Field-type evidence identifies actual
-runtime shape without guessing undocumented values. See
-[the recorded result](../docs/phbot-capabilities.md#equipment-runtime-result-field-absent-2026-10-01).
-This diagnostic adds no player equipment transport, database records, packet
-requests or bot action.
+Version 1.8.0 replaces the issue #36 manual player/equipment probes with production
+`map.players` collection for the PhMon **Other players** map layer. Historical probe
+findings remain in [runtime evidence](../docs/phbot-capabilities.md#issue-36--manual-players-api-runtime-probe-2026-10-01).
+Install/reload **1.8.0**, connect to a protocol-10 backend, and open the Map with
+**Other players** enabled. There is no equipment inspection, player history, or
+packet fallback.
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback
