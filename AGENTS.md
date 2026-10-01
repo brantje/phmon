@@ -4716,7 +4716,7 @@ The live monster marker is the red HP bubble again. General, Champion, and Giant
 icons, and the shared party badge, sit in front of the opt-in name label. They
 no longer cover the bubble. Exact next action: none for this visual correction.
 
-### Resume — 2026-10-01 Issue #35 final confirmation and botting-state follow-up
+### Resume — 2026-10-01 Issue #35 CI and botting-state follow-up
 
 Issue #35 is implemented on Map and phBot → Client in the existing checkout. The
 shared `RemoteControlPanel` uses one existing `useCommandFanOut` owner per mounted
@@ -4776,10 +4776,17 @@ Files changed in this follow-up: `plugin/PhMon.py`, `plugin/test_phmon.py`,
 `web/app/utils/remoteControlActions.ts`, `web/app/components/RemoteControlPanel.vue`,
 `web/app/components/CommandFanOutPreview.vue`,
 `web/app/components/RemoteCommandActions.vue`, `web/tests/remoteControlActions.test.ts`,
-`docs/{phbot-capabilities,protocol,reference-parity,slice-3-implementation-plan}.md`,
+`plugin/README.md`, `docs/{phbot-capabilities,protocol,reference-parity,slice-3-implementation-plan}.md`,
 and this guide.
 
-Exact next action: commit and push this follow-up, update PR #56 with the corrected
-review policy and runtime-validation limitation, attach the PR, and leave it open.
-Do not merge, issue more character commands, or claim that `stopped`/`None` mapping
-was validated on a real phBot runtime.
+#### CI correction — 2026-10-01
+
+PR #56 CI reported `PhMon.py changed, but pVersion was not increased (1.7.0 ->
+1.7.0)`. The botting-state change does not alter the generated monitor output
+contract, so `PROTOCOL_VERSION` stays at 9 while `pVersion` is bumped to 1.7.1.
+`plugin/README.md` and `docs/phbot-capabilities.md` record that version. Local
+version-guard parity check reports plugin 1.7.0 → 1.7.1 and no generated contract
+change; all 122 Python plugin tests pass after the bump.
+
+Exact next action: commit and push the version-bump correction, verify PR #56 CI
+restarts and passes, keep it open, and do not merge.

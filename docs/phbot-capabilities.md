@@ -1067,7 +1067,9 @@ as unconfirmed and blocks current-position/radius only when a current readback
 reports no active area. Fixture outcomes verify transport and result handling
 only, not Windows/phBot API effects.
 
-Botting state prefers `get_character_data()['botting']` when it is a boolean.
+Plugin 1.7.1 publishes botting state in the existing `CharacterView.botting`
+field without changing the generated monitor output contract or agent protocol.
+It prefers `get_character_data()['botting']` when it is a boolean.
 Otherwise, the optional and undocumented `get_status()` fallback accepts only
 `botting`/`training` as true and `tracing` as false. Unknown values, errors,
 unavailable status, `stopped` and `None` remain unknown because the available
