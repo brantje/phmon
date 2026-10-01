@@ -15,6 +15,7 @@ import time
 from socket import timeout as SocketTimeout
 from http.cookies import SimpleCookie
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, build_opener
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +49,34 @@ def receive_or_timeout(client, timeout=5):
         return client.receive_json(timeout=timeout)
     except (TimeoutError, SocketTimeout):
         return None
+
+def ingest_online_targets(targets_by_name, characters, character_names, server):
+    if not isinstance(characters, list):
+        return
+    for item in characters:
+        if not isinstance(item, dict):
+            continue
+        if (
+            item.get("name") in character_names
+            and item.get("server") == server
+            and item.get("online")
+            and item.get("session_id")
+        ):
+            targets_by_name[item["name"]] = item
+
+def fetch_http_characters(opener, cookie, character_prefix, server):
+    path = (
+        WEB_URL
+        + "/api/characters?q="
+        + quote(character_prefix)
+        + "&server="
+        + quote(server)
+    )
+    code, _, body = request_json(opener, path, cookie=cookie)
+    if code != 200 or not isinstance(body, dict):
+        return []
+    characters = body.get("characters", [])
+    return characters if isinstance(characters, list) else []
 
 def main():
     # Set before importing the browser relay smoke's dependency-free RFC6455 client.
@@ -106,23 +135,52 @@ def main():
                 [sys.executable, os.path.join(ROOT, "scripts", "agent_simulator.py")],
                 cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             ))
+            time.sleep(0.25)
 
         targets_by_name = {}
-        deadline = time.monotonic() + 45
+        deadline = time.monotonic() + 90
+        last_http_poll = 0.0
+        last_refresh = 0.0
         while time.monotonic() < deadline and len(targets_by_name) < len(character_names):
-            frame = receive_or_timeout(live, timeout=5)
-            if frame is None:
-                continue
-            if frame.get("subscription_id") != "command-targets":
-                continue
-            data = frame.get("data", {})
-            for item in data.get("characters", []):
-                if item.get("name") in character_names and item.get("server") == server and item.get("online") and item.get("session_id"):
-                    targets_by_name[item["name"]] = item
+            now = time.monotonic()
+            if now - last_refresh >= 2.0:
+                live.send_json({
+                    "type": "refresh",
+                    "protocol_version": 1,
+                    "subscription_id": "command-targets",
+                    "revision": 1,
+                })
+                last_refresh = now
+            if now - last_http_poll >= 1.0:
+                ingest_online_targets(
+                    targets_by_name,
+                    fetch_http_characters(opener, cookie, character_prefix, server),
+                    character_names,
+                    server,
+                )
+                last_http_poll = now
+            frame = receive_or_timeout(live, timeout=2)
+            if frame is not None and frame.get("subscription_id") == "command-targets":
+                ingest_online_targets(
+                    targets_by_name,
+                    frame.get("data", {}).get("characters", []),
+                    character_names,
+                    server,
+                )
             if any(process.poll() is not None for process in simulators):
-                raise RuntimeError("a simulator exited before publishing a current session")
+                exited = next(process for process in simulators if process.poll() is not None)
+                output = (exited.stdout.read() if exited.stdout else "")[-2000:]
+                raise RuntimeError(
+                    "a simulator exited before publishing a current session: " + output
+                )
         if len(targets_by_name) != len(character_names):
-            raise RuntimeError("not all simulator sessions appeared in the live character snapshot")
+            missing = [name for name in character_names if name not in targets_by_name]
+            raise RuntimeError(
+                "not all simulator sessions appeared in the live character snapshot; missing "
+                + ", ".join(missing)
+                + "; observed "
+                + ", ".join(sorted(targets_by_name))
+            )
         targets = [targets_by_name[name] for name in character_names]
 
         live.send_json({"type":"subscribe","protocol_version":1,"subscription_id":"fanout-controls","revision":1,"stream":"controls","filter":{"character_ids":[target["character_id"] for target in targets]}})

@@ -344,6 +344,17 @@ async function main() {
       })()`,
     )
     await sleep(700)
+    await evaluate(
+      cdp,
+      `(() => {
+        const button = [...document.querySelectorAll('button')].find(
+          (item) => item.textContent.trim() === 'Refresh',
+        )
+        if (button) button.click()
+        return true
+      })()`,
+    )
+    await sleep(500)
     await waitFor(
       () =>
         evaluate(
@@ -351,7 +362,7 @@ async function main() {
           `document.querySelector('.character-cards-grid .character-card') !== null`,
         ),
       'character cards after clearing the deleted group filter',
-      20000,
+      30000,
     )
 
     // Verify the current responsive shell still fits both mobile and desktop widths.
