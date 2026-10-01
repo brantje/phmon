@@ -11,11 +11,15 @@ layer. The official [Players API](https://plugins.phbot.org/phbot-api/players)
 still marks `get_players()` disabled. Plugin 1.7.2 adds a manual local-log
 **Test get_players** button with bounded samples and explicit None/empty/populated
 classification; [test instructions](../plugin/README.md#test-the-players-api-issue-36)
-cover connected and known clientless sessions. All 131 plugin fixture tests pass,
-including nine probe tests. Actual phBot results remain pending. Backend and map
-UI are unchanged, and no Other players layer, player history or packet fallback
-is claimed. The runtime source gate remains open; no visual comparison is needed
-for this plugin-only diagnostic.
+cover connected and known clientless sessions. The operator's 2026-10-01 log
+confirms phBot 20.1.2 returned ten entries in 19 ms with the client running. Its
+string keys were rejected by the diagnostic's integer-only validator. Plugin 1.7.3
+accepts bounded string IDs and preserves actual per-player region/optional Z
+instead of assuming the documented example's shape. All 133 plugin tests pass.
+Repeat sample inspection, clientless behavior and coordinate/ID semantics remain
+pending; [runtime evidence](phbot-capabilities.md) distinguishes these gates.
+Backend and map UI are unchanged, and no Other players layer, player history or
+packet fallback is claimed. No visual comparison is needed for this diagnostic.
 
 ## Multi-character remote controls — 2026-10-01
 

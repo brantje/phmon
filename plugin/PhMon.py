@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.7.2'
+pVersion = '1.7.3'
 pUrl = ''
 
 PROTOCOL_VERSION = 9
@@ -362,8 +362,12 @@ def collect_players_probe(api=None):
                     if key in player:
                         types[key] = player[key].__class__.__name__[:64]
             report['first_entry_types'] = types
-        if (not isinstance(identifier, int) or isinstance(identifier, bool)
-                or not 0 < identifier <= 4294967295 or not isinstance(player, dict)
+        # phBot 20.1.2 returns string keys. Preserve bounded opaque strings for
+        # inspection; do not guess that every runtime ID is a decimal integer.
+        valid_identifier = (
+            isinstance(identifier, int) and not isinstance(identifier, bool) and 0 < identifier <= 4294967295
+            or isinstance(identifier, str) and 0 < len(identifier) <= 64 and bool(identifier.strip()))
+        if (not valid_identifier or not isinstance(player, dict)
                 or not isinstance(player.get('name'), str) or not player['name'][:64].strip()
                 or not all(_number(player.get(key)) and abs(player[key]) <= 10000000 for key in ('x', 'y'))):
             report['invalid_entries'] += 1
@@ -378,6 +382,12 @@ def collect_players_probe(api=None):
                 sample[key] = value[:64]
         if isinstance(player.get('dead'), bool):
             sample['dead'] = player['dead']
+        # This runtime also exposes region, unlike the documented example.
+        # Keep only actual entry values; never substitute the observer's scope.
+        if _valid_position_region(player.get('region')):
+            sample['region'] = player['region']
+        if _number(player.get('z')) and abs(player['z']) <= 10000000:
+            sample['z'] = float(player['z'])
         report['samples'].append(sample)
     return report
 

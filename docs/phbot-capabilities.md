@@ -32,16 +32,45 @@ Validation: **131 Python plugin tests** pass, including nine new diagnostic test
 for absent/missing/noncallable/disabled/empty/populated/unexpected API behavior,
 malformed coordinates/entries, overflow and log bounds, import probing, unknown
 client state and the backend-independent throttled button. These are CPython
-fixtures, not installed phBot observations. No supported Windows/phBot runtime is
-available in this checkout, so actual version/mode/results remain **pending**.
+fixtures, not installed phBot observations. Subsequent operator runtime evidence
+and the corrected diagnostic are recorded below.
 See [operator instructions](../plugin/README.md#test-the-players-api-issue-36).
 
-The issue remains gated on actual operator logs from connected client and known
-clientless sessions, ideally with known nearby players. A returned empty dictionary
-alone does not establish usable player discovery. No player transport/UI/history or
-packet fallback is implemented by this diagnostic branch. Once results arrive,
-record the actual runtime/version/mode, return shape and limitations here before
-deciding whether the existing live-map architecture can safely use the source.
+### Operator runtime result and ID correction (2026-10-01)
+
+Operator-provided plugin 1.7.2 log at **21:15:21 UTC / 23:15:21 Amsterdam**:
+
+| Evidence | Observed result |
+| --- | --- |
+| phBot | **20.1.2**, `phbot_importable: true` |
+| Players symbol | Present and callable |
+| Native call | Returned in **19 ms** |
+| Return | `dict`, **10 entries**, no truncation |
+| Client/session | `client_running: true`, character data available, joined-game true |
+| First entry | String ID key; dict with string name/guild/grant, boolean dead, integer region, float X/Y |
+| Samples | None: ten entries rejected; the observed string-key shape fails 1.7.2's integer-only validator |
+
+This establishes that the API returns populated data on this observed runtime with
+the client running despite the documentation's disabled notice. It does not verify
+clientless behavior, player coordinate values, cross-observer ID identity or cave
+placement. `game_connected_callback: null` is unknown callback state after plugin
+reload, not evidence of a disconnected game. The first entry exposes a `region`
+field absent from the official example; its value and semantics remain unverified.
+No player Z field appeared in the first-entry type evidence.
+
+Plugin **1.7.3** fixes sampling by accepting nonblank string IDs up to 64 characters
+and preserving them exactly, alongside the existing bounded integer IDs. No decimal
+format is assumed before seeing actual values. Samples now retain valid per-player
+region and optional finite bounded Z only when present on that entry; the observer's
+region/Z are never substituted. All **133 plugin tests** pass, including two new
+tests for the observed string-key shape and identifier bounds. Fixture positions/IDs
+are synthetic; no real player sample values have been captured or invented.
+
+Next runtime gate: repeat the probe on 1.7.3 to inspect player samples, and compare
+with a known clientless session if available. A returned empty dictionary alone does
+not establish usable discovery. No player transport/UI/history or packet fallback
+is implemented by this diagnostic branch. Record actual sample-field semantics
+before choosing transport and safe placement in the existing live-map architecture.
 
 ## Sources checked on 2026-09-26
 

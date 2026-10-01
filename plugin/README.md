@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.7.2** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.7.3** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v9 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -31,6 +31,11 @@ Version 1.7.2 adds a manual, read-only **Test get_players** button for
 [issue #36](https://github.com/brantje/phmon/issues/36). Its results stay in the
 local phBot log; agent protocol remains v9.
 
+Version 1.7.3 fixes the probe's integer-only ID assumption after phBot 20.1.2
+returned ten entries with string keys. Bounded string IDs are preserved without
+numeric coercion. Samples also include the player's own valid region and optional
+Z when the runtime supplies them, independently of the observer's position.
+
 ## Test the Players API (issue #36)
 
 The [official Players API](https://plugins.phbot.org/phbot-api/players) explicitly
@@ -38,7 +43,7 @@ marks `get_players()` disabled. This diagnostic checks the installed runtime bef
 any nearby-player map feature is implemented. It needs no backend configuration.
 
 1. Replace `PhMon.py` in the phBot **Plugins** directory with this branch's file
-   and reload it. Confirm the tab shows **PhMon v1.7.2**. Existing connection
+   and reload it. Confirm the tab shows **PhMon v1.7.3**. Existing connection
    settings continue to work.
 2. Open **Plugins -> PhMon** and click **Test get_players** while joined with the
    game client running, preferably where other players are visibly nearby. Repeat
@@ -58,7 +63,7 @@ it alone does not prove nearby-player discovery works. A populated dictionary
 records total, inspected, valid and invalid entry counts, with `truncated: true`
 when more than 128 entries were returned. The first entry's selected field types
 help diagnose unexpected runtime shapes. At most three valid samples contain ID,
-name/guild/grant, finite X/Y and an actual boolean dead flag when supplied. Text
+name/guild/grant, finite X/Y, an actual boolean dead flag and valid region/Z when supplied. Text
 fields are capped at 64 characters, and equipment/unknown field values are excluded.
 
 Context includes phBot/plugin version, UTC timestamp, connection/join callbacks,
@@ -67,8 +72,11 @@ available observer identity/region/X/Y/Z, and the documented `get_client()` bool
 clientless session; missing context remains unknown. No client path, process ID,
 token or backend URL is logged. This is a manual local diagnostic: no player
 poller, player transport, map layer, player history or packet fallback is added.
-Automated fixture tests cover classification and bounds; actual runtime evidence
-is still pending the operator's logs.
+Automated fixture tests cover classification and bounds. The operator's
+2026-10-01 log confirms a populated dictionary on phBot 20.1.2 with a running
+client, string keys and a first-entry integer region field. Sample values and
+clientless behavior still need a repeat probe; see
+[runtime evidence](../docs/phbot-capabilities.md#issue-36--manual-players-api-runtime-probe-2026-10-01).
 
 The event spool upgrades profile-scoped death rows in place. Its bounded reserve is
 512 important occurrences / 8 MiB plus 2,048 ordinary occurrences / 16 MiB. Callback

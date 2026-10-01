@@ -106,9 +106,39 @@ class PlayersProbeTests(unittest.TestCase):
                '8': valid, 4294967296: valid, -1: valid}
         report = plugin.collect_players_probe({'get_players': lambda: raw})
         self.assertEqual(report['outcome'], 'populated_dict')
-        self.assertEqual((report['inspected_entries'], report['valid_entries'], report['invalid_entries']), (10, 1, 9))
+        self.assertEqual((report['inspected_entries'], report['valid_entries'], report['invalid_entries']), (10, 2, 8))
         self.assertNotIn('dead', report['samples'][0])
         json.dumps(report, allow_nan=False)
+
+    def test_runtime_string_ids_and_actual_player_region_are_preserved(self):
+        for identifier in ('8654977', 'observer-local:A7', 8654977):
+            with self.subTest(identifier=identifier):
+                raw = {identifier: {'name': 'Player', 'guild': '', 'grant': '',
+                                    'dead': False, 'region': 26244, 'x': -542.5, 'y': 1980.6}}
+                report = plugin.collect_players_probe({
+                    'get_players': lambda: raw,
+                    'get_position': lambda: {'region': -32767, 'x': -24300, 'y': 20, 'z': -9},
+                })
+                self.assertEqual((report['valid_entries'], report['invalid_entries']), (1, 0))
+                self.assertEqual(report['samples'][0]['player_id'], str(identifier))
+                self.assertEqual(report['first_entry_types']['player_id'], type(identifier).__name__)
+                self.assertEqual(report['samples'][0]['region'], 26244)
+                self.assertNotIn('z', report['samples'][0])
+                raw[identifier]['z'] = 12.0
+                report = plugin.collect_players_probe({'get_players': lambda: raw})
+                self.assertEqual(report['samples'][0]['z'], 12.0)
+                raw[identifier].update(region=True, z=float('nan'))
+                report = plugin.collect_players_probe({'get_players': lambda: raw})
+                self.assertNotIn('region', report['samples'][0])
+                self.assertNotIn('z', report['samples'][0])
+
+    def test_probe_rejects_unbounded_or_invalid_runtime_ids(self):
+        for identifier in ('', ' ' * 64, 'x' * 65, True, 0, -1, 4294967296, None):
+            with self.subTest(identifier=identifier):
+                raw = {identifier: {'name': 'Player', 'x': 1, 'y': 2}}
+                report = plugin.collect_players_probe({'get_players': lambda: raw})
+                self.assertEqual((report['valid_entries'], report['invalid_entries']), (0, 1))
+                self.assertEqual(report['samples'], [])
 
     def test_large_result_inspects_only_bound_and_caps_local_log_samples(self):
         class BoundedDictionary(dict):
