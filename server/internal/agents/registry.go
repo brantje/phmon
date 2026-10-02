@@ -37,7 +37,7 @@ func (r *Registry) CommandModeSupport(agentID string, generation uint64, name, m
 		return false, "capabilities_pending"
 	}
 	if len(capability.Modes) == 0 {
-		if name == "training.area.set" || name == "chat.send" {
+		if name == "training.area.set" || name == "chat.send" || name == "character.reverse_return" {
 			return false, "capability_modes_missing"
 		}
 		return true, ""

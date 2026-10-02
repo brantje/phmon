@@ -250,6 +250,39 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 Issue #34 Reverse return
+
+Implemented the explicitly scoped Issue #34 plan on `codex/issue-34-reverse-return`,
+without a worktree or deployment. Plugin **1.9.10** keeps protocol **13** and adds
+confirmed `character.reverse_return` (types 0/1/2), primitive/mode reporting and
+callback-time party recheck/self-target rejection. Type 3 is explicitly unavailable:
+`named_location_names_unavailable` pending a verified source of valid names.
+Go projects optional, batched current-session party/inventory context from existing
+resources using `checked_at` freshness (35 seconds / five seconds future tolerance).
+Fresh collection refreshes unchanged party observations; cached resends do not.
+Scroll recognition is advisory. No migrations, group command or separate history.
+
+UI: single/selected-target controls and **Map → Teleport → Reverse return → mode
+choices**, also with zero nearby gates. Mandatory shared confirmation/results,
+checked targets only, concurrent eligible admissions and target/scope/session
+invalidation. Menu/party flyouts support keyboard, touch, Escape and viewport bounds.
+
+Files: `plugin/{PhMon.py,test_phmon.py,README.md}`, command/resource Go providers,
+validation/service/registry/HTTP wiring and tests, shared frontend Reverse return
+helpers/component, existing remote controls/map/fan-out/preview components,
+`scripts/{agent_simulator.py,command_smoke.py}`, capability/protocol/parity docs and
+`docs/reference/issue-34/` local fixture evidence. Validation uses disposable
+PostgreSQL/Go/Nuxt and production plugin worker fake adapters; actual Windows/phBot
+scroll operation remains unverified. Full `bash scripts/check.sh` passed with
+Node 24.20.0, a disposable secret and fresh test database (159 plugin / 158 frontend
+tests; lint zero errors, 60 existing warnings). See the issue-34 parity entry for checks and
+screenshots. No merge, deployment or real-character operation was performed.
+
+Exact next action: after operator authorization to test real characters, load
+1.9.10 against a protocol-13 backend, verify primitive/mode/current-party reporting,
+and try a reviewed scroll attempt. Named locations require a separate verified
+name source before implementation. The remaining roadmap is outside this run.
+
 ### Resume — 2026-10-02 other-player zone names
 
 Plugin **1.9.8** / protocol **13** adds optional `zone` on `map.players` rows from

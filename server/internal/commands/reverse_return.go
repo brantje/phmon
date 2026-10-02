@@ -1,0 +1,49 @@
+package commands
+
+import (
+	"context"
+	"time"
+)
+
+// ReverseReturnContext contains current-session resource evidence, not command eligibility.
+// ScrollObserved is advisory; only the native reverse_return API decides availability.
+type ReverseReturnContext struct {
+	SessionID          string     `json:"session_id"`
+	PartyStatus        string     `json:"party_status"`
+	PartyNames         []string   `json:"party_names"`
+	PartyCheckedAt     *time.Time `json:"party_checked_at,omitempty"`
+	ScrollObserved     *bool      `json:"scroll_observed"`
+	InventoryCheckedAt *time.Time `json:"inventory_checked_at,omitempty"`
+}
+
+type ReverseReturnContextProvider interface {
+	ReverseReturnContexts(context.Context, map[string]string, time.Time) (map[string]ReverseReturnContext, error)
+}
+
+func (s *Service) addReverseReturnContexts(ctx context.Context, snapshots []map[string]any) error {
+	if s.reverseReturn == nil {
+		return nil
+	}
+	sessions := make(map[string]string)
+	for _, snapshot := range snapshots {
+		id, _ := snapshot["character_id"].(string)
+		session, _ := snapshot["session_id"].(string)
+		if session != "" {
+			sessions[id] = session
+		}
+	}
+	if len(sessions) == 0 {
+		return nil
+	}
+	contexts, err := s.reverseReturn.ReverseReturnContexts(ctx, sessions, s.now())
+	if err != nil {
+		return err
+	}
+	for _, snapshot := range snapshots {
+		id, _ := snapshot["character_id"].(string)
+		if evidence, ok := contexts[id]; ok {
+			snapshot["reverse_return"] = evidence
+		}
+	}
+	return nil
+}

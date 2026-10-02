@@ -1,4 +1,4 @@
-# Agent protocol versions 2–10
+# Agent protocol versions 2–13
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -33,9 +33,9 @@ extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: latest 8. Version 1 agents are rejected with an explicit
+Protocol version: latest 13. Version 1 agents are rejected with an explicit
 unsupported protocol close reason because the character identity/state contract is
-required. Versions 2–7 remain accepted for rolling deployment compatibility.
+required. Versions 2–12 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -560,6 +560,7 @@ Canonical Slice 3 commands and application bounds:
 | `training.radius.set`  | `{radius:number}`                                        | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum                                              |
 | `character.walk`       | `{region:int,x:number,y:number,z:number}`                | same observed region only; finite coordinates abs <= 10,000,000                                                          |
 | `character.teleport`   | `{source:string,destination:string,gate_servername:string}` | comma-free labels 1..64 chars; `gate_servername` must match `GATE_*`; plugin requires live gate in session `get_npcs()`, successful `get_teleport_data`, then one `teleport,source,destination` script line via `start_script`; does not prove arrival |
+| `character.reverse_return` | `{type:integer,name?:string}`                               | explicit confirmation; modes 0/1 require empty name, mode 2 requires trimmed 1..100 UTF-8 bytes without control characters and current party membership; mode 3 returns `named_location_names_unavailable`; boolean API acceptance does not prove arrival |
 | `character.return`     | `{}`                                                     | bool means scroll invocation accepted, not teleport completion                                                           |
 | `character.disconnect` | `{}`                                                     | void return; does not alter relog settings                                                                               |
 | `client.clientless`    | `{}`                                                     | unsupported until a safe documented/versioned per-instance primitive is verified                                         |
@@ -1262,3 +1263,43 @@ player regions relative to the observer are withheld.
 ```json
 {"type":"map.players","protocol_version":13,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"zone":"Taklamakan","x":30,"y":40}]}}
 ```
+
+## Issue #34 Reverse return — additive protocol 13 command
+
+Plugin 1.9.10 advertises `character.reverse_return` only with a callable
+`reverse_return`. Modes are `last_return` (0), `last_death` (1), and
+`party_member` (2); party mode additionally requires callable `get_party`.
+No agent/browser protocol bump, group command or schema migration is introduced.
+Normal `POST /api/commands`, four delivery workers, bounded dispatcher queue,
+one active command per character, expiry, generation/session fencing and exact
+idempotent retries apply. Type 3 is reserved and rejected with
+`named_location_names_unavailable`, including when no named-location name is given.
+
+Single and batched `controls` snapshots optionally include `reverse_return`:
+
+```json
+{
+  "session_id": "<current-session-uuid>",
+  "party_status": "observed",
+  "party_names": ["ObservedMember"],
+  "party_checked_at": "2026-10-02T12:00:00Z",
+  "scroll_observed": true,
+  "inventory_checked_at": "2026-10-02T12:00:00Z"
+}
+```
+
+`party_status` is `observed`, `stale` or `unavailable`. Names are deduplicated
+and bounded to 32 per character, independent of coordinates and map filtering.
+The resource receipt/check timestamp (`updated_at`, projected as `checked_at`)
+is fresh for 35 seconds with five seconds of future tolerance; content-change
+`observed_at` is not a freshness signal. The plugin refreshes unchanged party
+observations only after a new callback collection, not when resending cached
+resources. Each controls batch reads current-session observations together.
+
+`scroll_observed` is nullable advisory evidence from fresh character inventory
+only, recognizing `ITEM_MALL_REVERSE_RETURN_SCROLL` with positive quantity.
+Missing/stale/unknown inventory, storage and pets do not prevent modes 0/1.
+The plugin rechecks party membership directly immediately before mode 2, rejects
+self-targeting, and records the observed member's exact name in `effective_args`.
+A true API result completes with `api_confirmed`; false fails with
+`api_return_false`. Exceptions/non-boolean results fail. No result proves arrival.

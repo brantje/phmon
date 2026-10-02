@@ -61,7 +61,13 @@ const counts = computed(() => fanOutCounts(props.operation))
         <dd>{{ counts.skipped }}</dd>
       </div>
       <div>
-        <dt>Planned commands</dt>
+        <dt>
+          {{
+            props.operation.command.name === 'character.reverse_return'
+              ? 'Scroll attempts'
+              : 'Planned commands'
+          }}
+        </dt>
         <dd>{{ counts.eligible }}</dd>
       </div>
     </dl>

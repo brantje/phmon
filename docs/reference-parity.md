@@ -1927,3 +1927,67 @@ animation props. The native batch regenerates 105 pictures; only
 tests and native bundle/public validation pass. All 12,069 unrelated public
 records are preserved. The one unsupported `volkoft` resource and existing UI
 parity scope remain documented in [export evidence](monster-art-export.md).
+
+### Issue #34 — Reverse return — 2026-10-02
+
+Implemented the operator-approved issue #34 hierarchy: **Map point actions →
+Teleport → Reverse return → Last Return Scroll location / Last death location /
+Party member… / Named location (disabled)**. Teleport remains visible with zero
+nearby gates. Existing observed gate routes and Other destination stay alongside
+Reverse return. Opening/hovering only prepares choices. Only checked action targets
+are used; focused character, clicked coordinates and destination-region resolution
+are not inputs to Reverse return.
+
+The same control is available in character remote actions and selected-target
+panels. It reuses the existing concurrent fan-out, mandatory shared confirmation
+and individual result components. The preview shows mode/member, selected/eligible/
+skipped counts, reasons and scroll attempts. Scope/targets/sessions invalidate a
+pending review. Party choices union fresh current-session names across targets,
+not filtered map markers; each target checks membership independently and the
+plugin repeats the check against phBot immediately before invocation. Inventory
+scroll presence is advisory and never blocks last-return/death modes.
+
+Backend/plugin evidence: `character.reverse_return` through normal authenticated
+command admission, audit/result storage and delivery; plugin **1.9.10**, protocol
+**13**, bounded optional Reverse return controls context from existing resources.
+No migration, group command, arrival tracking or separate history is added. Named
+locations remain explicitly unavailable because valid names have no verified source
+(`named_location_names_unavailable`); the UI explains this limitation.
+
+Validation uses an isolated PostgreSQL/Go/Nuxt stack and production `PhMon.py`
+worker with fake local adapters. Simulator smoke verifies concurrent independent
+success/false outcomes, exact-key audit recovery and an unsupported skip. Browser
+checks verify no-gate access, 3 selected / 2 eligible / 1 skipped, mixed-party
+preview (1 eligible / 2 skipped), cancellation without POST, keyboard arrows,
+Escape/focus return, touch taps, and viewport bounds at 1440×1000, 1280×800 and
+390×844. Focusing Bravo while only Alpha was checked prepared only Alpha;
+clearing targets invalidated that review with zero POSTs. Native touch party
+selection and cancellation also sent zero POSTs. Existing gate route visibility is checked with a separate local fixture;
+teleport plugin/Go/frontend regressions run in the full suite. No real character
+was operated. Windows/phBot validation remains pending.
+
+Local evidence: [menu, 1440](reference/issue-34/menu-1440.png),
+[party confirmation, 1440](reference/issue-34/party-confirmation-1440.png),
+[party submenu, 1440](reference/issue-34/party-1440.png),
+[results, 1440](reference/issue-34/results-1440.png),
+[menu, 1280](reference/issue-34/menu-1280.png),
+[menu, mobile](reference/issue-34/menu-mobile.png),
+[native touch confirmation/cancellation, mobile](reference/issue-34/touch-mobile.json), and
+[existing gate routes](reference/issue-34/gate-menu-1440.png).
+The screenshot and native touch evidence come from local simulators using the
+repository's existing asset setup,
+not new phMonitor assets. The public demo was reopened during verification; its
+connection-lost overlay was hidden for inspection, but Map navigation remained
+unavailable and no live Reverse return flow could be observed. The
+requested new hierarchy is specified by the operator plan, not claimed as a newly
+verified demo workflow. The existing reference shell and compact menu style are
+retained.
+
+Checks: `python3 -m unittest discover -s plugin -p 'test_*.py'` — **159 passed**;
+focused frontend tests — **14 passed**; full frontend unit suite — **158 passed**.
+`OPERATOR_ACCESS_SECRET=<disposable-secret> TEST_DATABASE_URL=<fresh-test-db>
+bash scripts/check.sh` — passed Go vet/race tests/build, plugin tests, transport
+audit, formatting, frontend tests, lint (zero errors; 60 existing warnings),
+typecheck, Nuxt build and compose validation. The suite uses a separate freshly
+created database, never the fixture server's database. Follow-up UI type/lint/build
+checks cover the final touch hover-timer and flyout stacking corrections.

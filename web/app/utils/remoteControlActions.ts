@@ -1,3 +1,8 @@
+import {
+  hasReverseReturnControlCharacters,
+  reverseReturnEligibility,
+  reverseReturnSummary,
+} from './reverseReturn.ts'
 import type { FanOutCommandDefinition } from '~/utils/commandFanOut'
 
 export type RemoteControlActionName =
@@ -6,12 +11,15 @@ export type RemoteControlActionName =
   | 'trace.start'
   | 'trace.stop'
   | 'character.return'
+  | 'character.reverse_return'
   | 'character.disconnect'
   | 'client.clientless'
   | 'training.area.set'
   | 'training.radius.set'
 
 export interface RemoteControlArgs {
+  reverseReturnType?: number
+  reverseReturnName?: string
   traceName?: string
   trainingAreaMode?: 'current_position' | 'named'
   trainingAreaName?: string
@@ -98,6 +106,18 @@ export function remoteControlDefinition(
       impact: 'routine',
       buildArgs: () => ({}),
     },
+    'character.reverse_return': {
+      label: 'Reverse return',
+      impact: 'movement',
+      buildArgs: () => ({
+        type: inputArgs.reverseReturnType ?? 0,
+        name: inputArgs.reverseReturnName ?? '',
+      }),
+      eligibility: (character, commandArgs, controls) =>
+        reverseReturnEligibility(character, controls, commandArgs),
+      summarizeArgs: (commandArgs, controls) =>
+        reverseReturnSummary(commandArgs, controls),
+    },
     'character.return': {
       label: 'Return Scroll',
       impact: 'movement',
@@ -182,6 +202,26 @@ export function validateRemoteControlArgs(
   name: RemoteControlActionName,
   input: RemoteControlArgs,
 ): RemoteControlArgs | null {
+  if (name === 'character.reverse_return') {
+    const type = input.reverseReturnType ?? 0
+    const name = input.reverseReturnName ?? ''
+    if (
+      !Number.isInteger(type) ||
+      type < 0 ||
+      type > 2 ||
+      (type < 2 && name !== '') ||
+      hasReverseReturnControlCharacters(name)
+    )
+      return null
+    const trimmed = name.trim()
+    if (
+      new TextEncoder().encode(trimmed).length > 100 ||
+      (type < 2 && trimmed) ||
+      (type === 2 && !trimmed)
+    )
+      return null
+    return { reverseReturnType: type, reverseReturnName: trimmed }
+  }
   if (name === 'trace.start') {
     const value = input.traceName?.trim() || ''
     const bytes = new TextEncoder().encode(value)

@@ -15,6 +15,7 @@ const actionNames: RemoteControlActionName[] = [
   'trace.start',
   'trace.stop',
   'character.return',
+  'character.reverse_return',
   'character.disconnect',
   'client.clientless',
   'training.area.set',
@@ -100,7 +101,7 @@ function prepare(
   })
 }
 
-test('remote-control catalog contains only the nine intended existing commands', () => {
+test('remote-control catalog contains the intended character-scoped commands', () => {
   assert.deepEqual(
     actionNames.map((name) => remoteControlDefinition(name).name),
     actionNames,
@@ -113,6 +114,7 @@ test('remote-control catalog contains only the nine intended existing commands',
       'Start Trace',
       'Stop Trace',
       'Return Scroll',
+      'Reverse return',
       'Disconnect',
       'Go Clientless',
       'Set Training Area',

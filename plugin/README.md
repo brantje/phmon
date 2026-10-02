@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.9** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.9.10** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v13 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -26,6 +26,14 @@ imports `phBotChat`, reports callable General/Private/Party/Guild/Union/Global m
 and accepts bounded `chat.send` commands through the existing callback-thread
 dispatcher. A boolean API result records phBot acceptance only, not delivery. No real
 chat callback or send was exercised in the simulator tests.
+
+Version 1.9.10 adds confirmed `character.reverse_return` (issue #34), retaining
+protocol 13. A callable `reverse_return` enables last Return Scroll and death
+locations. Party mode also requires `get_party` and rechecks the chosen observed
+member immediately before using a scroll; self-targets are rejected. Named
+locations remain disabled with `named_location_names_unavailable` because valid
+names have no verified source. Boolean API acceptance records scroll use, not
+arrival. Unchanged party observations refresh only after a new callback collection.
 
 Version 1.7.1 reports botting state from a boolean `get_character_data()` field
 when available, otherwise from narrowly recognized `get_status()` values. Unknown
@@ -270,3 +278,19 @@ bounded passive item decoder remains available for naturally observed supported
 updates. API-derived details should be used where verified; packet data is needed
 only for missing inputs. Absolute formulas, max durability and blue presentation
 still require validated definitions and matching live observations.
+
+Reverse return fixture smoke (disposable stack only): set `SMOKE_WEB_URL`,
+`PHMON_AGENT_URL`, `OPERATOR_ACCESS_SECRET` and `NUXT_OPERATOR_COOKIE_NAME` for
+your test stack, then run:
+
+```sh
+PHMON_SMOKE_COMMAND=character.reverse_return PHMON_SMOKE_SKIP_THIRD=true python3 scripts/command_smoke.py
+```
+
+It imports the production plugin worker, admits eligible commands concurrently,
+and verifies one fake API success, one fake API failure, and one unsupported
+skip with independent audited results. `remote-controls` fixtures also support
+`PHMON_SIMULATOR_PARTY_NAMES` (comma-separated observed names),
+`PHMON_SIMULATOR_FALSE_ACTION=reverse_return`, and omission through
+`PHMON_SIMULATOR_UNSUPPORTED_PRIMITIVES=reverse_return` or `get_party`.
+No simulator result validates Windows/phBot scroll behavior.

@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.9'
+pVersion = '1.9.10'
 pUrl = ''
 
 PROTOCOL_VERSION = 13
@@ -212,7 +212,7 @@ def _read_botting_state(character_data, status_getter=None, timing=None):
 
 _API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','get_teleport_data',
               'generate_path','set_training_position','set_training_radius','set_training_area','get_training_area',
-              'move_to_region','generate_script','start_script','stop_script','use_return_scroll','disconnect')
+              'move_to_region','generate_script','start_script','stop_script','use_return_scroll','reverse_return','get_party','disconnect')
 
 _CHAT_METHODS = {
     'general': ('All',),
@@ -3289,7 +3289,7 @@ class AgentWorker(object):
                             self._update_alchemy_items(resources)
                             self._latest_resources = resources
                             self._latest_resources_identity = self._identity_key(resource_sample['identity'])
-                            self._send_resource_snapshot(client, self._latest_resources)
+                            self._send_resource_snapshot(client, self._latest_resources, refresh_party=True)
                     except _queue.Empty:
                         pass
                     if (self._latest_resources is not None and
@@ -3447,7 +3447,7 @@ class AgentWorker(object):
             }
         return True
 
-    def _send_resource_snapshot(self, client, value):
+    def _send_resource_snapshot(self, client, value, refresh_party=False):
         if not isinstance(value, dict) or self.character_id is None or self.session_id is None:
             return False
         full = self._resource_baseline_required or self._confirmed_resources is None
@@ -3468,6 +3468,10 @@ class AgentWorker(object):
             for key, resource_json in serialized_resources.items():
                 if resource_json != previous.get(key):
                     changed[key] = resource_values[key]
+            # Party membership can stay unchanged for hours. Refresh this bounded
+            # observation so controls can distinguish a fresh check from stale data.
+            if refresh_party and 'party' in resource_values:
+                changed['party'] = resource_values['party']
             if not changed:
                 return True
 
@@ -3671,6 +3675,7 @@ class AgentWorker(object):
             'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
             'character.teleport': (None, 'unsupported_runtime_primitive'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
+            'character.reverse_return': ('reverse_return', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
             'client.clientless': (None, 'unsupported_runtime_primitive'),
         }
@@ -3692,6 +3697,9 @@ class AgentWorker(object):
                 supported = self.api.has('generate_script') and self.api.has('start_script')
             if name == 'character.navigate.stop':
                 supported = self.api.has('stop_script') and self.api.has('start_script')
+            if name == 'character.reverse_return':
+                extra['modes'] = ['last_return', 'last_death'] if supported else []
+                if supported and self.api.has('get_party'): extra['modes'].append('party_member')
             if name == 'character.teleport':
                 supported = all(self.api.has(symbol) for symbol in ('get_npcs', 'get_teleport_data', 'start_script'))
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
@@ -4152,6 +4160,33 @@ class AgentWorker(object):
             if name == 'trace.stop' and result is not False:
                 self._trace_requested_name = None
             return result, {}, None, 'api_confirmed' if isinstance(result,bool) else 'unverified'
+        if name == 'character.reverse_return':
+            exact(('type', 'name'))
+            kind = args.get('type')
+            value = args.get('name', '')
+            if (type(kind) is not int or kind < 0 or kind > 3 or not isinstance(value, str) or
+                    any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value) or (kind < 2 and value)):
+                raise ValueError('invalid_arguments')
+            value = value.strip()
+            if len(value.encode('utf-8')) > 100 or (kind < 2 and value) or (kind == 2 and not value):
+                raise ValueError('invalid_arguments')
+            if kind == 3: raise ValueError('named_location_names_unavailable')
+            if not self.api.has('reverse_return'): raise ValueError('unsupported_runtime_primitive')
+            if kind == 2:
+                if not self.api.has('get_party'): raise ValueError('party_unavailable')
+                identity = self._current_identity or {}
+                if value.casefold() == str(identity.get('name', '')).casefold(): raise ValueError('party_self_target')
+                party = self.api.call('get_party')
+                if not isinstance(party, dict): raise ValueError('party_unavailable')
+                matches = [row.get('name', '').strip() for row in list(party.values())[:32]
+                           if isinstance(row, dict) and isinstance(row.get('name'), str) and row['name'].strip().casefold() == value.casefold()]
+                if not matches: raise ValueError('party_member_not_found')
+                value = matches[0]
+                if len(value.encode('utf-8')) > 100 or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value):
+                    raise ValueError('party_member_not_found')
+            outcome = self.api.call('reverse_return', kind, value)
+            if not isinstance(outcome, bool): raise ValueError('invalid_api_result')
+            return outcome, {'type': kind, 'name': value}, None, 'api_confirmed'
         if name == 'trace.start':
             exact(('name',)); value=args.get('name')
             if not isinstance(value,str) or not value.strip() or len(value.strip().encode('utf-8'))>64: raise ValueError('invalid_arguments')

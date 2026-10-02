@@ -36,15 +36,20 @@ type rateBucket struct {
 }
 
 type Service struct {
-	store        *Store
-	capabilities CapabilityChecker
-	navigation   NavigationAdmission
-	dispatcher   *Dispatcher
-	now          func() time.Time
+	store         *Store
+	capabilities  CapabilityChecker
+	navigation    NavigationAdmission
+	dispatcher    *Dispatcher
+	reverseReturn ReverseReturnContextProvider
+	now           func() time.Time
 
 	mu             sync.Mutex
 	operatorRates  map[string]rateBucket
 	characterRates map[string]rateBucket
+}
+
+func (s *Service) SetReverseReturnContext(provider ReverseReturnContextProvider) {
+	s.reverseReturn = provider
 }
 
 func (s *Service) SetDispatcher(dispatcher *Dispatcher) { s.dispatcher = dispatcher }
@@ -100,7 +105,11 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	return s.controlSnapshot(target, state), nil
+	snapshot := s.controlSnapshot(target, state)
+	if err := s.addReverseReturnContexts(ctx, []map[string]any{snapshot}); err != nil {
+		return nil, err
+	}
+	return snapshot, nil
 }
 
 func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string) ([]map[string]any, error) {
@@ -128,6 +137,9 @@ func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string)
 			training,
 		))
 	}
+	if err := s.addReverseReturnContexts(ctx, result); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
@@ -149,7 +161,7 @@ func (s *Service) controlSnapshot(target Target, state *ControlState) map[string
 
 func (s *Service) commandCapabilities(target Target) map[string]Capability {
 	capabilities := make(map[string]Capability)
-	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.navigate.stop", "character.teleport", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
+	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.navigate.stop", "character.teleport", "character.return", "character.reverse_return", "character.disconnect", "client.clientless", "chat.send"} {
 		ok, reason := false, "plugin_upgrade_required"
 		if s.capabilities != nil {
 			ok, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, name)
@@ -160,6 +172,18 @@ func (s *Service) commandCapabilities(target Target) map[string]Capability {
 				CommandModeSupport(string, uint64, string, string) (bool, string)
 			}); exists {
 				for _, mode := range []string{"current_position", "position", "named"} {
+					if supported, _ := checker.CommandModeSupport(target.AgentID, target.Generation, name, mode); supported {
+						capability.Modes = append(capability.Modes, mode)
+					}
+				}
+				capability.Supported = len(capability.Modes) > 0
+			}
+		}
+		if name == "character.reverse_return" && ok {
+			if checker, exists := s.capabilities.(interface {
+				CommandModeSupport(string, uint64, string, string) (bool, string)
+			}); exists {
+				for _, mode := range []string{"last_return", "last_death", "party_member"} {
 					if supported, _ := checker.CommandModeSupport(target.AgentID, target.Generation, name, mode); supported {
 						capability.Modes = append(capability.Modes, mode)
 					}
@@ -244,6 +268,13 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 	// Position mode carries an explicit region, including signed cave IDs;
 	// phBot validates whether the destination was accepted.
 
+	if validated.Name == "character.reverse_return" {
+		var args reverseReturnArgs
+		_ = json.Unmarshal(validated.Args, &args)
+		if *args.Type == 3 {
+			return Command{}, false, "named_location_names_unavailable", ErrUnsupported
+		}
+	}
 	supported, reason := false, "plugin_upgrade_required"
 	if s.capabilities != nil {
 		supported, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, validated.Name)
@@ -319,6 +350,13 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 }
 
 func commandMode(validated Validated) (string, bool) {
+	if validated.Name == "character.reverse_return" {
+		var args reverseReturnArgs
+		if json.Unmarshal(validated.Args, &args) != nil || args.Type == nil || *args.Type < 0 || *args.Type > 2 {
+			return "", false
+		}
+		return []string{"last_return", "last_death", "party_member"}[*args.Type], true
+	}
 	if validated.Name != "training.area.set" {
 		return "", false
 	}
