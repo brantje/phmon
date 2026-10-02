@@ -250,6 +250,27 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 PR #64 CI and CodeRabbit follow-up
+
+PR [#64](https://github.com/brantje/phmon/pull/64) is open on
+`codex/issue-34-reverse-return`. Its protocol guard initially treated the new
+`character.reverse_return` capability row as an incompatible protocol change.
+Protocol 13 capability catalogs are now forward-compatible: old servers ignore
+well-formed unknown command names and validate known entries as before. The guard
+requires a protocol bump for removals, changed known capabilities or any other
+contract changes, but permits additive entries. `.coderabbit.yaml` excludes only
+the generated public game asset tree so the review stays under CodeRabbit's
+100-file limit. No protocol version bump or wider review filter is used.
+
+Files: capability-name validation and catalog ingestion/tests,
+`scripts/plugin_protocol_contract.py` and its tests, the plugin version guard,
+protocol documentation, and CodeRabbit path filters. Focused verification passes:
+`go test ./internal/httpapi`, `python3 -m unittest plugin.test_protocol_contract`,
+contract comparison against `origin/main` (raw catalog differs, incompatible
+change false), and `git diff --check`. Exact next action: push this fix, request a
+full CodeRabbit review, then monitor CI and repair any actionable review comments
+with a reply naming the fixing commit SHA. Keep PR #64 open; do not merge.
+
 ### Resume — 2026-10-02 complete exporter textdata extraction
 
 Exporter **0.6.3** now extracts every file recursively from

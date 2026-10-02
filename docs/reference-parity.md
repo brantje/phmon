@@ -1948,11 +1948,11 @@ plugin repeats the check against phBot immediately before invocation. Inventory
 scroll presence is advisory and never blocks last-return/death modes.
 
 Backend/plugin evidence: `character.reverse_return` through normal authenticated
-command admission, audit/result storage and delivery; plugin **1.9.10**, protocol
-**13**, bounded optional Reverse return controls context from existing resources.
-No migration, group command, arrival tracking or separate history is added. Named
-locations remain explicitly unavailable because valid names have no verified source
-(`named_location_names_unavailable`); the UI explains this limitation.
+command admission, audit/result storage and delivery; initial plugin **1.9.10**,
+protocol **13**, bounded optional Reverse return controls context from existing
+resources. No migration, group command, arrival tracking or separate history is
+added. Named locations were initially unavailable because valid names had no
+verified source; the next entry records the operator-supplied catalog follow-up.
 
 Validation uses an isolated PostgreSQL/Go/Nuxt stack and production `PhMon.py`
 worker with fake local adapters. Simulator smoke verifies concurrent independent

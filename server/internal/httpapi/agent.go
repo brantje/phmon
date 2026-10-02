@@ -580,7 +580,17 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			capabilities := make([]agentdomain.CommandCapability, 0, len(message.Commands))
 			seen := make(map[string]struct{}, len(message.Commands))
 			for _, capability := range message.Commands {
-				if !validReportedCommandName(capability.Name) || len(capability.Reason) > 64 {
+				if !validCapabilityCommandName(capability.Name) {
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability report", hello.AgentID, hello.ProtocolVersion)
+					return
+				}
+				// Capability catalogs are extensible within protocol v3. An older
+				// server ignores commands it does not implement, allowing newer
+				// plugins to keep reporting their full catalog without disconnecting.
+				if !validReportedCommandName(capability.Name) {
+					continue
+				}
+				if len(capability.Reason) > 64 {
 					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability report", hello.AgentID, hello.ProtocolVersion)
 					return
 				}
@@ -1004,6 +1014,25 @@ func validReportedCommandName(name string) bool {
 	default:
 		return false
 	}
+}
+
+func validCapabilityCommandName(name string) bool {
+	if len(name) == 0 || len(name) > 64 || name[0] < 'a' || name[0] > 'z' {
+		return false
+	}
+	segmentStart := false
+	for i := 0; i < len(name); i++ {
+		char := name[i]
+		switch {
+		case char >= 'a' && char <= 'z', char >= '0' && char <= '9':
+			segmentStart = false
+		case (char == '.' || char == '_') && !segmentStart && i < len(name)-1:
+			segmentStart = true
+		default:
+			return false
+		}
+	}
+	return !segmentStart
 }
 
 func (h *agentHandler) createCredential(w http.ResponseWriter, r *http.Request) {

@@ -367,10 +367,13 @@ and stable `character_id + session_id` recorded at admission.
 After `hello.ack` (which includes a server-owned whole-second UTC RFC3339
 `server_time` for compatibility with the embedded Python parser), a v3 worker sends
 one bounded `agent.capabilities` frame. The server intersects its fixed catalog
-with support reported by that exact socket. Capability modes are schema-bound; the
-current training-area modes are reported as `current_position`, `position` and
-`named` only when their documented primitives are importable. There is no sibling
-socket capability union.
+with support reported by that exact socket. Capability command names are
+forward-compatible: an older server ignores well-formed names it does not
+implement, then validates and intersects the entries it knows. The command catalog
+can therefore grow without changing the protocol frame schema. Capability modes
+remain schema-bound for known commands; the current training-area modes are reported
+as `current_position`, `position` and `named` only when their documented primitives
+are importable. There is no sibling socket capability union.
 
 The server keeps both `server_time` and command `expires_at` at whole-second UTC
 RFC3339 for compatibility with deployed embedded parsers that validate `Z` at
