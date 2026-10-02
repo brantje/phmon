@@ -250,6 +250,32 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 phMonitor mob HP behavior
+
+Completed the operator's bounded request to inspect the supplied local
+`%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` and use its mob HP display behavior.
+Current map sightings now match by normalized server and monster ID, with stable
+Leaflet keys across observers; the previous eight-unit name/model matching rule
+is superseded. HP-only updates change the ring in place, and zero-maximum
+ring/popup behavior follows the reference. Missing HP stays explicitly unavailable.
+PhMon retains deterministic timestamp selection of one complete source row rather
+than the reference backend's unordered row overwrite. No minimum-HP cache,
+protocol/schema change, real character command or deployment was added.
+
+Files: `web/app/utils/mapMarkerPresentation.ts`, `web/app/pages/map.vue`,
+`web/app/components/MapCanvas.vue`, `web/tests/mapMarkerPresentation.test.ts`,
+`docs/reference/monster-hp-investigation.md`, `docs/{reference-parity,phbot-capabilities}.md`
+and this guide. Validation: all 166 frontend tests, lint (zero errors; 60 existing
+warnings), Nuxt typecheck, production build, focused formatting and
+`git diff --check`; 21 real-component browser checks pass at each of 1440 × 1000,
+1280 × 800 and 390 × 844. Evidence and executable offsets are in the investigation.
+Actual Windows/phBot multi-observer HP reports and instanced identity remain a
+separate runtime gate. The operator subsequently authorized a PR, waiting for CI
+and CodeRabbit, fixing actionable findings and replying with the fixing SHA.
+Publication uses `codex/fix-map-monster-hp`; CI/review results are recorded in
+the PR discussion. Leave the PR open and unmerged. The separate Windows/phBot
+runtime gate remains the next implementation acceptance action after PR checks.
+
 ### Resume — 2026-10-02 PR #64 CI and CodeRabbit follow-up
 
 PR [#64](https://github.com/brantje/phmon/pull/64) is open on

@@ -4,6 +4,22 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Monster HP identity and updates — 2026-10-02
+
+Operator-authorized inspection of the local phMonitor v0.5.0 executable verified
+raw `get_monsters()` HP collection, server/monster-ID identity, in-place HP ring
+updates and zero-maximum ring/bar behavior. PhMon implements those behaviors
+independently, preserving explicit unavailable HP and deterministic snapshot
+timestamp selection. This supersedes the earlier eight-unit cross-observer
+matching rule: different IDs remain separate and moving instances retain one
+marker across observers. No minimum-HP cache, extra packet parser, protocol change
+or static HP estimate is introduced.
+
+[Investigation and implementation evidence](reference/monster-hp-investigation.md)
+includes executable offsets/symbols, regression coverage, 166 passing frontend
+tests and 21 real-component browser checks at each required viewport. Actual
+Windows/phBot multi-observer HP behavior remains separate from fixture evidence.
+
 ## Other players — issue #36 map layer (2026-10-01)
 
 Historical probe evidence (phBot 20.1.2 populated `get_players()` dictionaries,
