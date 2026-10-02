@@ -113,6 +113,10 @@ const emit = defineEmits<{
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
   navigateto: [point: RasterPosition, anchor: { x: number; y: number }]
+  teleportto: [
+    npc: NonNullable<MapCanvasMarker['npc']>,
+    anchor: { x: number; y: number },
+  ]
   mapdrag: []
   opencharacter: [characterID: string]
   inspectcharacter: [characterID: string]
@@ -1027,6 +1031,17 @@ function markerPopup(marker: MapCanvasMarker) {
       emit('navigateto', marker.position, { x: rect.left, y: rect.bottom })
     })
     actions.append(navigate)
+    if (npc.role === 'teleporter') {
+      const teleport = document.createElement('button')
+      teleport.type = 'button'
+      teleport.textContent = 'Teleport to…'
+      teleport.addEventListener('click', (event) => {
+        event.stopPropagation()
+        const rect = teleport.getBoundingClientRect()
+        emit('teleportto', npc, { x: rect.left, y: rect.bottom })
+      })
+      actions.append(teleport)
+    }
     panel.append(header, details, actions)
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster

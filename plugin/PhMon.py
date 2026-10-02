@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.3'
+pVersion = '1.9.4'
 pUrl = ''
 
 PROTOCOL_VERSION = 11
@@ -738,6 +738,10 @@ def probe_teleporter_capabilities(api=None, npcs=None, api_module=None):
     if len(result['pair_tests']) > MAX_TELEPORT_PROBE_PAIR_CALLS:
         result['errors'].append('pair_test_overflow')
         result['pair_tests'] = result['pair_tests'][:MAX_TELEPORT_PROBE_PAIR_CALLS]
+    for test in result['pair_tests']:
+        if test.get('tag') == 'hotan_to_jangan' and test.get('classification', {}).get('result') == 'tuple':
+            result['execution'] = 'documented_script_command_verified_hotan_jangan'
+            break
     return result
 
 
@@ -752,6 +756,27 @@ def summarize_teleport_probe(result):
         'Teleporter probe: {gates} gate(s), get_teleport_data={api}, '
         '{pairs} pair test(s), enumeration unsupported.'
     ).format(gates=gates, api=teleport_api, pairs=pairs)
+
+
+def _session_teleporter_gate(npcs, gate_servername, source):
+    if not isinstance(npcs, list):
+        return None
+    gate_servername = gate_servername.strip() if isinstance(gate_servername, str) else ''
+    source_label = _teleport_probe_label(source) if isinstance(source, str) else None
+    if not gate_servername or not _NPC_GATE_ROLE.fullmatch(gate_servername):
+        return None
+    for row in npcs:
+        if not isinstance(row, dict) or row.get('role') != 'teleporter':
+            continue
+        if row.get('servername') == gate_servername:
+            return row
+    if source_label:
+        for row in npcs:
+            if not isinstance(row, dict) or row.get('role') != 'teleporter':
+                continue
+            if row.get('name') == source_label and row.get('servername') == gate_servername:
+                return row
+    return None
 
 
 def _hotan_gate_row(npcs):
@@ -3544,6 +3569,7 @@ class AgentWorker(object):
             'character.walk': ('move_to_region', 'unsupported_runtime_primitive'),
             'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
             'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
+            'character.teleport': (None, 'unsupported_runtime_primitive'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
             'client.clientless': (None, 'unsupported_runtime_primitive'),
@@ -3566,6 +3592,8 @@ class AgentWorker(object):
                 supported = self.api.has('generate_script') and self.api.has('start_script')
             if name == 'character.navigate.stop':
                 supported = self.api.has('stop_script') and self.api.has('start_script')
+            if name == 'character.teleport':
+                supported = all(self.api.has(symbol) for symbol in ('get_npcs', 'get_teleport_data', 'start_script'))
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
         chat_modes = self.api.chat_modes()
@@ -4097,6 +4125,36 @@ class AgentWorker(object):
             result=self.api.call('set_training_radius',float(radius)); observed=self.api.call('get_training_area') if self.api.has('get_training_area') else None
             confirmed=isinstance(observed,dict) and observed.get('radius')==float(radius)
             return result,{'radius':float(radius)},self._safe_area(observed),'observed' if confirmed else ('api_confirmed' if isinstance(result,bool) else 'unverified')
+        if name == 'character.teleport':
+            exact(('source', 'destination', 'gate_servername'))
+            source = _teleport_probe_label(args.get('source'))
+            destination = _teleport_probe_label(args.get('destination'))
+            gate_servername = args.get('gate_servername')
+            if (not source or not destination or not isinstance(gate_servername, str) or
+                    not _NPC_GATE_ROLE.fullmatch(gate_servername.strip())):
+                raise ValueError('invalid_arguments')
+            gate_servername = gate_servername.strip()
+            npc_status, npcs, _ = collect_npc_observation()
+            if npc_status != 'observed':
+                raise ValueError('teleporter_gate_not_observed')
+            gate = _session_teleporter_gate(npcs, gate_servername, source)
+            if gate is None:
+                raise ValueError('teleporter_gate_not_observed')
+            observed = self.api.call('get_teleport_data', source, destination)
+            if observed is None:
+                raise ValueError('teleport_route_unavailable')
+            line = 'teleport,{0},{1}'.format(source, destination)
+            result = self.api.call('start_script', line)
+            code = observed[1] if isinstance(observed, tuple) and len(observed) > 1 else None
+            effective = {
+                'source': source,
+                'destination': destination,
+                'gate_servername': gate_servername,
+                'gate_npc_id': gate.get('id'),
+                'script_line': line,
+                'teleport_code': code,
+            }
+            return result, effective, None, 'api_confirmed' if isinstance(result, bool) else 'unverified'
         if name == 'character.navigate':
             raise ValueError('navigation_requires_callback_path')
         if name == 'character.walk':

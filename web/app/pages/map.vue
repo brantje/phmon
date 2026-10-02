@@ -66,6 +66,7 @@ import {
 import { submitNavigationStop } from '~/utils/mapNavigationStop'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
+import { useMapTeleportAction } from '~/composables/useMapTeleportAction'
 import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import {
@@ -303,6 +304,14 @@ const navigationAction = useMapNavigationAction({
   reviewActions: () => reviewActions.value,
   now: () => freshnessNow.value,
 })
+const teleportAction = useMapTeleportAction({
+  server: () => server.value,
+  selectedTargetIDs: () => [...actionTargetIDs.value],
+  characters: () => [...fleetCharacters.value],
+  mapFeedCurrent: () =>
+    streamCurrent.value && mapSnapshotInFeedScope.value && !liveStale.value,
+  reviewActions: () => reviewActions.value,
+})
 const actionNotification = ref<MapActionNotification | null>(null)
 let actionNotificationTimer: ReturnType<typeof setTimeout> | undefined
 function showMapActionNotification(notification: MapActionNotification) {
@@ -317,6 +326,7 @@ useMapActionNotifications(
   () => [
     ...navigationAction.operations.value,
     ...navigationAction.trainingOperations.value,
+    ...teleportAction.operations.value,
   ],
   showMapActionNotification,
 )
@@ -789,6 +799,7 @@ function openContextNavigation(action: {
   point: RasterPosition
   anchor: { x: number; y: number }
 }) {
+  teleportAction.close(false)
   void navigationAction.open(
     action.point,
     action.anchor,
@@ -799,8 +810,20 @@ function openNpcNavigation(
   point: RasterPosition,
   anchor: { x: number; y: number },
 ) {
+  teleportAction.close(false)
   void navigationAction.open(
     point,
+    anchor,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
+}
+function openTeleporterAction(
+  npc: MapNpc,
+  anchor: { x: number; y: number },
+) {
+  navigationAction.close(false)
+  void teleportAction.open(
+    npc,
     anchor,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
@@ -2002,7 +2025,13 @@ useHead({ title: 'Map · PhMon' })
               @trainingdiscard="discardTrainingDraft"
               @contextaction="openContextNavigation"
               @navigateto="openNpcNavigation"
-              @mapdrag="navigationAction.close(false)"
+              @teleportto="openTeleporterAction"
+              @mapdrag="
+                () => {
+                  navigationAction.close(false)
+                  teleportAction.close(false)
+                }
+              "
               @opencharacter="
                 (characterID) =>
                   router.push(`/characters/${encodeURIComponent(characterID)}`)
@@ -2444,6 +2473,91 @@ useHead({ title: 'Map · PhMon' })
             </p>
           </div>
           <div
+            v-if="teleportAction.menuOpen.value"
+            :ref="teleportAction.menuElement"
+            class="map-navigation-context map-teleport-context"
+            role="dialog"
+            aria-label="Teleporter destination"
+            :style="{
+              left: `${teleportAction.menuAnchor.value.x}px`,
+              top: `${teleportAction.menuAnchor.value.y}px`,
+            }"
+            @pointerdown.stop
+          >
+            <div class="map-context-heading">
+              <strong>{{ teleportAction.gateLabel.value }}</strong
+              ><small>Teleporter</small>
+            </div>
+            <label class="map-teleport-destination">
+              Destination
+              <input
+                type="text"
+                name="teleport-destination"
+                autocomplete="off"
+                spellcheck="false"
+                maxlength="64"
+                :value="teleportAction.destination.value"
+                @input="
+                  teleportAction.destination.value = (
+                    $event.target as HTMLInputElement
+                  ).value;
+                  teleportAction.onDestinationInput()
+                "
+              />
+            </label>
+            <p
+              v-if="!actionTargetIDs.size"
+              class="map-navigation-menu-summary"
+            >
+              Tick characters in the panel to teleport them.
+            </p>
+            <CommandFanOutPreview
+              v-if="teleportAction.reviewOperation.value"
+              :operation="teleportAction.reviewOperation.value"
+              :busy="
+                teleportAction.preparing.value ||
+                teleportAction.submitting.value
+              "
+              @submit="teleportAction.confirmReview"
+              @cancel="teleportAction.cancelReview"
+            />
+            <template v-else>
+              <button
+                class="map-navigation-menu-action"
+                type="button"
+                :disabled="
+                  teleportAction.preparing.value ||
+                  teleportAction.submitting.value ||
+                  teleportAction.counts.value.eligible === 0
+                "
+                @click="teleportAction.submit"
+              >
+                <UIcon name="i-lucide-signpost" />
+                {{
+                  teleportAction.preparing.value
+                    ? 'Checking targets…'
+                    : teleportAction.submitting.value
+                      ? 'Submitting…'
+                      : teleportAction.targetLabel.value
+                }}
+              </button>
+              <p
+                v-if="teleportAction.menuSummary.value"
+                class="map-navigation-menu-summary"
+                role="status"
+              >
+                {{ teleportAction.menuSummary.value }}
+              </p>
+            </template>
+            <button
+              class="map-text-action"
+              type="button"
+              @click="teleportAction.close()"
+            >
+              Cancel
+            </button>
+          </div>
+          <div
             v-if="areaID !== 'world' && !canvasProfile"
             class="map-empty-view"
           >
@@ -2778,8 +2892,10 @@ useHead({ title: 'Map · PhMon' })
             <button
               v-if="
                 navigationAction.reviewOperation.value ||
+                teleportAction.reviewOperation.value ||
                 navigationAction.operations.value.length ||
-                navigationAction.trainingOperations.value.length
+                navigationAction.trainingOperations.value.length ||
+                teleportAction.operations.value.length
               "
               class="compact-button"
               type="button"
@@ -2807,6 +2923,16 @@ useHead({ title: 'Map · PhMon' })
                 @submit="navigationAction.submitReviewed"
                 @cancel="navigationAction.cancelReview"
               />
+              <CommandFanOutPreview
+                v-else-if="teleportAction.reviewOperation.value"
+                :operation="teleportAction.reviewOperation.value"
+                :busy="
+                  teleportAction.preparing.value ||
+                  teleportAction.submitting.value
+                "
+                @submit="teleportAction.confirmReview"
+                @cancel="teleportAction.cancelReview"
+              />
               <CommandFanOutResults
                 v-for="operation in navigationAction.operations.value.filter(
                   (item) =>
@@ -2826,6 +2952,24 @@ useHead({ title: 'Map · PhMon' })
                     navigationAction.retry(operation, characterID)
                 "
                 :on-dismiss="() => navigationAction.dismissResults(operation)"
+              />
+              <CommandFanOutResults
+                v-for="operation in teleportAction.operations.value.filter(
+                  (item) =>
+                    item.state !== 'prepared' && item.state !== 'cancelled',
+                )"
+                :key="'teleport-' + operation.operationID"
+                :operation="operation"
+                status-note="Script acceptance does not prove arrival; check zone or position separately."
+                :stale="false"
+                :on-retry="
+                  (characterID: string) =>
+                    teleportAction.fanout.retrySubmission(
+                      operation,
+                      characterID,
+                    )
+                "
+                :on-dismiss="() => teleportAction.fanout.dismiss(operation)"
               />
               <CommandFanOutResults
                 v-for="operation in navigationAction.trainingOperations.value.filter(
@@ -3537,6 +3681,25 @@ useHead({ title: 'Map · PhMon' })
   .map-header-row .map-go-to {
     margin-left: 0;
   }
+}
+
+.map-teleport-destination {
+  display: grid;
+  gap: 4px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.map-teleport-destination input {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #495b6f;
+  border-radius: 3px;
+  background: #0a1018;
+  color: var(--ph-text);
+  font-size: 13px;
 }
 
 .map-navigation-context {

@@ -357,8 +357,12 @@ Validation: `python3 -m unittest plugin.test_phmon.TeleporterProbeTests` and ful
 `teleport,Hotan,Jangan`, `get_teleport_data` code `1`, `start_script=True`, phBot
 `Script: Teleporting`. Enumeration/recall still unsupported. Evidence:
 `docs/reference/issue32-teleporter-investigation.md`. PR [#61](https://github.com/brantje/phmon/pull/61).
-Exact next action: implement #33 fan-out using the verified script-line contract;
-recall stays open until authorized `0x7059` capture. Do not merge without review.
+Issue #33 follow-up (plugin **1.9.4**): `character.teleport` command, map teleporter
+**Teleport to…** fan-out, probe `execution` flag when `hotan_to_jangan` resolves.
+Operator should re-run **Probe teleporters** at Hotan to confirm tagged pair tuple in
+JSON; use map UI or remote command for multi-character teleports. Arrival evidence
+remains separate. Recall stays open until authorized `0x7059` capture. Validate CI;
+do not merge without review.
 
 ### Resume — 2026-10-02 Issue #57 map navigation stop and trace state
 

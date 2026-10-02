@@ -204,15 +204,14 @@ observation still requires plugin 1.7.0 on the operator's runtime.
 A same-viewport runtime check with a spawned party member, duplicate observers and
 a cave floor remains open.
 
-## Issue #32 teleporter investigation — 2026-10-02
+## Issue #32 / #33 teleporter — 2026-10-02
 
-Issue #32 is documentation and a read-only plugin probe only. No map teleporter
-menu, destination list, or teleport command ships in this increment. The
-investigation report is
+Issue #32 investigation and operator Hotan→Jangan script verification are recorded in
 [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
-Destination enumeration and Designate Recall Point remain unsupported for PhMon;
-issue #33 may add explicit-destination fan-out using the documented
-`teleport,source,destination` script line after Windows/phBot verification.
+Issue #33 adds `character.teleport` fan-out and a map teleporter **Teleport to…**
+dialog (operator-entered destination only; no menu enumeration). Plugin **1.9.4**
+reuses `get_teleport_data` plus one `teleport,source,destination` script line per
+character. Designate Recall Point and destination lists remain unsupported.
 
 ## Cave-floor map reference inspection — 2026-09-28
 

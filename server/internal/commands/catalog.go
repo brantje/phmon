@@ -38,6 +38,12 @@ type navigateStopArgs struct {
 	RouteSequence uint64 `json:"route_sequence"`
 }
 
+type teleportArgs struct {
+	Source         string `json:"source"`
+	Destination    string `json:"destination"`
+	GateServername string `json:"gate_servername"`
+}
+
 type trainingAreaArgs struct {
 	Mode   string   `json:"mode"`
 	Name   *string  `json:"name,omitempty"`
@@ -95,6 +101,19 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 		}
 		args.CommandID = strings.TrimSpace(args.CommandID)
 		if len(args.CommandID) != 40 || !strings.HasPrefix(args.CommandID, "cmd_") || strings.ContainsRune(args.CommandID, 0) || args.RouteSequence == 0 {
+			return Validated{}, ErrInvalid
+		}
+		normalized, _ := json.Marshal(args)
+		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
+	case "character.teleport":
+		var args teleportArgs
+		if err := decodeExact(raw, &args); err != nil {
+			return Validated{}, ErrInvalid
+		}
+		args.Source = strings.TrimSpace(args.Source)
+		args.Destination = strings.TrimSpace(args.Destination)
+		args.GateServername = strings.TrimSpace(args.GateServername)
+		if !teleportLabel(args.Source) || !teleportLabel(args.Destination) || !teleportGateServername(args.GateServername) {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)
@@ -177,3 +196,26 @@ func coordinate(value float64) bool {
 }
 
 func validRegion(value int) bool { return value >= -32768 && value <= 65535 && value != 0 }
+
+func teleportLabel(value string) bool {
+	if len(value) < 1 || len(value) > 64 || strings.ContainsRune(value, 0) ||
+		strings.Contains(value, ",") || strings.Contains(value, "\n") || strings.Contains(value, "\r") {
+		return false
+	}
+	return true
+}
+
+func teleportGateServername(value string) bool {
+	if len(value) < 6 || len(value) > 64 || strings.ContainsRune(value, 0) {
+		return false
+	}
+	if !strings.HasPrefix(value, "GATE_") {
+		return false
+	}
+	for _, r := range value[5:] {
+		if (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' {
+			return false
+		}
+	}
+	return true
+}

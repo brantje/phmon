@@ -202,9 +202,11 @@ Script: Teleporting
 - Another character’s runtime NPC id or resolved tuple → never used.
 - Custom/private servers may return `None` for valid-looking names (documented forum case).
 
-## Issue #33 implementation contract (not in this PR)
+## Issue #33 implementation contract
 
-- Reuse [#29](https://github.com/brantje/phmon/issues/29) action targets and [#30](https://github.com/brantje/phmon/issues/30) fan-out; one `character.*` command per eligible child; no `group.teleport`.
+- Reuse [#29](https://github.com/brantje/phmon/issues/29) action targets and [#30](https://github.com/brantje/phmon/issues/30) fan-out; one `character.teleport` command per eligible child; no `group.teleport`.
+- Map teleporter markers expose **Teleport to…** with an operator-entered destination string (no enumeration). Eligibility requires the character to observe the gate, live map feed, and `character.teleport` capability.
+- Plugin **1.9.4** implements `character.teleport` using the verified script-line sequence above. Arrival/zone readback remains a separate observation.
 - UI may show destination only as **operator-entered or pre-known string** (same as `TP source dest`), with eligibility preview (online, session, gate observed, pair resolves).
 - **Omit** Designate Recall Point and Jupiter room until supported mechanisms exist.
 - **No** durable teleporter/NPC catalog tables.

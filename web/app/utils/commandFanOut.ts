@@ -13,6 +13,7 @@ export type FanOutCommandName =
   | 'training.radius.set'
   | 'character.walk'
   | 'character.navigate'
+  | 'character.teleport'
   | 'character.return'
   | 'character.disconnect'
   | 'client.clientless'

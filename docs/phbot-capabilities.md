@@ -1265,7 +1265,7 @@ active route.
 
 ### Issue #32 teleporter investigation — plugin 1.9.2 probe — 2026-10-02
 
-**Status:** investigation contract complete for [#32](https://github.com/brantje/phmon/issues/32); [#33](https://github.com/brantje/phmon/issues/33) not started. No PhMon teleporter command, map menu, or packet injection in this increment.
+**Status:** [#32](https://github.com/brantje/phmon/issues/32) investigation complete; [#33](https://github.com/brantje/phmon/issues/33) **character.teleport** fan-out and map **Teleport to…** UI implemented in plugin **1.9.4** (no packet injection, no destination menu enumeration).
 
 **Live gate identity:** Documented `get_npcs()` per session; `GATE_*` → teleporter; runtime id is the API dictionary key. Already shipped as protocol v9 `map.npcs` (issue #24).
 

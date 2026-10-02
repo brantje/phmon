@@ -70,6 +70,9 @@ export function mapActionNotification(
     case 'character.navigate':
       message = `Navigation sent to ${characters(count)}`
       break
+    case 'character.teleport':
+      message = `Teleport script sent to ${characters(count)}`
+      break
     case 'training.area.set':
       message = `Training area set for ${characters(count)}`
       break

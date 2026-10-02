@@ -2936,6 +2936,15 @@ class TeleporterProbeTests(unittest.TestCase):
         self.assertIn('1 gate', text)
         self.assertIn('enumeration unsupported', text)
 
+    def test_probe_marks_execution_when_hotan_jangan_resolves(self):
+        result = plugin.probe_teleporter_capabilities(
+            api={'get_teleport_data': lambda s, d: (1, 7) if s == 'Hotan' and d == 'Jangan' else None},
+            npcs=[{
+                'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+            }],
+        )
+        self.assertEqual(result['execution'], 'documented_script_command_verified_hotan_jangan')
+
     def test_probe_includes_hotan_jangan_reference_pairs(self):
         gates = [{'id': '4', 'name': 'Hotan', 'servername': 'GATE_KT'}]
         result = plugin.probe_teleporter_capabilities(
@@ -2984,6 +2993,54 @@ class TeleporterProbeTests(unittest.TestCase):
         ), patch.object(plugin, '_set_gui_status'), patch.object(plugin, '_log'):
             plugin.test_teleport_hotan_jangan()
         self.assertEqual(scripts, ['teleport,Hotan,Jangan'])
+
+    def test_character_teleport_command_requires_gate_and_route(self):
+        scripts = []
+        adapter = plugin.PhBotAdapter({
+            'get_teleport_data': lambda s, d: (1, 3) if s == 'Hotan' and d == 'Jangan' else None,
+            'start_script': lambda line: scripts.append(line) or True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+            'region': 25000, 'x': 30, 'y': 40,
+        }]
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000099',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.teleport',
+            'args': {'source': 'Hotan', 'destination': 'Jangan', 'gate_servername': 'GATE_KT'},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        with patch.object(plugin, 'collect_npc_observation', return_value=('observed', npcs, False)):
+            worker._accept_command(frame)
+            worker.process_one_command({'server': 'Silkroad', 'name': 'Alpha'}, 25000)
+        worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(scripts, ['teleport,Hotan,Jangan'])
+        self.assertEqual(result['effective_args']['teleport_code'], 3)
+
+    def test_capability_reports_character_teleport_when_apis_present(self):
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {},
+            'get_teleport_data': lambda *_args: None,
+            'start_script': lambda *_args: True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        caps = {item['name']: item for item in worker._capability_frame()['commands']}
+        self.assertTrue(caps['character.teleport']['supported'])
 
 
 if __name__ == '__main__':
