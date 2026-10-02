@@ -2689,7 +2689,8 @@ useHead({ title: 'Map · PhMon' })
               @keydown.right.prevent="openTeleportWithKeyboard"
             >
               <UIcon name="i-lucide-signpost" />
-              Teleport
+              Teleport {{ actionTargetIDs.size }}
+              {{ actionTargetIDs.size === 1 ? 'character' : 'characters' }}
               <UIcon
                 name="i-lucide-chevron-right"
                 class="map-context-submenu-chevron"

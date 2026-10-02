@@ -287,6 +287,16 @@ audit. Exact next action: investigate the monster resource cycle before claiming
 a complete native 0.6.3 bundle export. The existing
 npm wrapper needs no new arguments, and CLI publication uses `--asset-output`.
 
+### Resume — 2026-10-02 map Teleport target count
+
+The right-click Teleport parent now reads **Teleport N characters**, using the
+deduplicated checked action targets; one target reads **Teleport 1 character**.
+Files: `web/app/pages/map.vue` and this resume ledger. Validation: focused Prettier
+and ESLint checks pass (zero errors, 28 existing map warnings), and Nuxt typecheck
+passes. The operator authorized committing and pushing this label-only change on
+the existing issue-34 branch. Exact next action: the separate Windows/phBot runtime
+validation below remains pending operator authorization.
+
 ### Resume — 2026-10-02 named Reverse return follow-up
 
 The operator supplied `web/public/game-assets/textdata/refoptionalteleport.txt`
