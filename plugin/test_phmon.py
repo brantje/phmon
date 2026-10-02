@@ -3050,6 +3050,8 @@ class TeleporterProbeTests(unittest.TestCase):
                 return (1, 7)
             if source == 'Hotan' and destination == 'Samarkand':
                 return (1, 2)
+            if source == 'Jangan' and destination == 'Soldier Choiyoung [teleport]':
+                return (1, 4)
             return None
 
         adapter = plugin.PhBotAdapter({
@@ -3063,6 +3065,11 @@ class TeleporterProbeTests(unittest.TestCase):
             ['Jangan', 'Samarkand'],
         )
         self.assertEqual(routes[0]['teleport_code'], 7)
+        jangan = plugin._teleport_routes_for_gate('Jangan', 'GATE_CH', adapter)
+        self.assertIn(
+            'Soldier Choiyoung [teleport]',
+            [item['destination'] for item in jangan],
+        )
 
     def test_default_adapter_exposes_get_teleport_data_for_capability_gate(self):
         teleport = lambda *_args: None

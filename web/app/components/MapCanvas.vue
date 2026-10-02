@@ -117,6 +117,10 @@ const emit = defineEmits<{
     npc: NonNullable<MapCanvasMarker['npc']>,
     anchor: { x: number; y: number },
   ]
+  teleportercontext: [
+    npc: NonNullable<MapCanvasMarker['npc']>,
+    anchor: { x: number; y: number },
+  ]
   mapdrag: []
   opencharacter: [characterID: string]
   inspectcharacter: [characterID: string]
@@ -1422,6 +1426,7 @@ onMounted(async () => {
       marker.npc ? npcDisplayLabel(marker.npc) : '',
       marker.npc?.role,
       marker.npc?.servername,
+      marker.npc?.teleport_routes?.map((route) => route.destination),
       type?.code,
       type?.scale,
       type?.party,
@@ -1491,6 +1496,20 @@ onMounted(async () => {
     })
     if (!props.compact && marker.kind === 'character')
       rendered.on('click', () => emit('inspectcharacter', marker.id))
+    if (
+      !props.compact &&
+      marker.kind === 'npc' &&
+      marker.npc?.role === 'teleporter'
+    ) {
+      rendered.on('contextmenu', (event: L.LeafletMouseEvent) => {
+        L.DomEvent.preventDefault(event.originalEvent)
+        L.DomEvent.stopPropagation(event.originalEvent)
+        emit('teleportercontext', marker.npc!, {
+          x: event.originalEvent.clientX,
+          y: event.originalEvent.clientY,
+        })
+      })
+    }
     if (!props.compact && marker.kind !== 'character')
       rendered.bindPopup(markerPopup(marker), {
         className: 'phmon-map-popup',

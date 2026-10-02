@@ -18,6 +18,7 @@ export function useMapTeleportAction(options: {
   reviewActions(): boolean
 }) {
   const menuOpen = ref(false)
+  const menuPresentation = ref<'dialog' | 'context'>('dialog')
   const menuAnchor = ref({ x: 0, y: 0 })
   const menuNpc = ref<MapNpc | null>(null)
   const destination = ref('')
@@ -162,15 +163,17 @@ export function useMapTeleportAction(options: {
     if (operation) activeOperationID.value = operation.operationID
   }
 
-  async function open(
+  async function openMenu(
     npc: MapNpc,
     anchor: { x: number; y: number },
+    presentation: 'dialog' | 'context',
     focusTarget?: HTMLElement | null,
   ) {
     const previous = menuOperation.value
     if (previous?.state === 'prepared') fanout.dismiss(previous)
     returnFocusElement =
       focusTarget ?? document.querySelector<HTMLElement>('.map-canvas')
+    menuPresentation.value = presentation
     menuNpc.value = npc
     destination.value = pickDefaultTeleportDestination(
       npc,
@@ -184,11 +187,78 @@ export function useMapTeleportAction(options: {
     await nextTick()
     await prepareOperation()
     await nextTick()
+    if (presentation === 'dialog') {
+      menuElement.value?.querySelector<HTMLInputElement>('input')?.focus()
+    } else {
+      menuElement.value?.focus()
+    }
+  }
+
+  async function open(
+    npc: MapNpc,
+    anchor: { x: number; y: number },
+    focusTarget?: HTMLElement | null,
+  ) {
+    await openMenu(npc, anchor, 'dialog', focusTarget)
+  }
+
+  async function openContext(
+    npc: MapNpc,
+    anchor: { x: number; y: number },
+    focusTarget?: HTMLElement | null,
+  ) {
+    await openMenu(npc, anchor, 'context', focusTarget)
+  }
+
+  async function setDestination(next: string) {
+    if (destination.value === next) return
+    destination.value = next
+    await onDestinationInput()
+  }
+
+  function teleportScopeKey() {
+    const npc = menuNpc.value
+    return npc
+      ? `teleport:${options.server().toLowerCase()}:${npc.servername || npc.id}`
+      : 'unavailable'
+  }
+
+  async function showDestinationDialog() {
+    menuPresentation.value = 'dialog'
+    await nextTick()
     menuElement.value?.querySelector<HTMLInputElement>('input')?.focus()
+  }
+
+  async function submitForCharacter(characterID: string, nextDestination?: string) {
+    if (nextDestination) destination.value = nextDestination
+    const currentIntent = intent.value
+    if (!currentIntent) return
+    const previous = menuOperation.value
+    if (previous?.state === 'prepared') fanout.dismiss(previous)
+    activeOperationID.value = ''
+    const operation = await fanout.prepare(
+      [characterID],
+      definition(),
+      teleportScopeKey(),
+    )
+    if (!menuOpen.value || !operation) return
+    activeOperationID.value = operation.operationID
+    const child = operation.children.find(
+      (item) => item.characterID === characterID,
+    )
+    if (!child || child.submission !== 'ready') return
+    if (options.reviewActions() && !reviewingOperationID.value) {
+      reviewingOperationID.value = operation.operationID
+      return
+    }
+    reviewingOperationID.value = ''
+    await fanout.submit(operation)
+    close(false)
   }
 
   function close(restoreFocus = true) {
     menuOpen.value = false
+    menuPresentation.value = 'dialog'
     reviewingOperationID.value = ''
     const operation = menuOperation.value
     if (operation?.state === 'prepared') fanout.dismiss(operation)
@@ -260,6 +330,7 @@ export function useMapTeleportAction(options: {
 
   return {
     menuOpen,
+    menuPresentation,
     menuAnchor,
     menuElement,
     menuNpc,
@@ -276,8 +347,12 @@ export function useMapTeleportAction(options: {
     reviewOperation,
     reviewingOperationID,
     open,
+    openContext,
     close,
     submit,
+    setDestination,
+    submitForCharacter,
+    showDestinationDialog,
     onDestinationInput,
     cancelReview,
     confirmReview,

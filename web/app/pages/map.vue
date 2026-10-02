@@ -828,6 +828,43 @@ function openTeleporterAction(
     document.querySelector<HTMLElement>('.map-canvas'),
   )
 }
+function openTeleporterContext(
+  npc: MapNpc,
+  anchor: { x: number; y: number },
+) {
+  navigationAction.close(false)
+  void teleportAction.openContext(
+    npc,
+    anchor,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
+}
+function teleportTargetName(characterID: string) {
+  return (
+    fleetCharacters.value.find(
+      (character) => character.character_id === characterID,
+    )?.name || characterID
+  )
+}
+function teleportTargetChild(characterID: string) {
+  return teleportAction.menuOperation.value?.children.find(
+    (child) => child.characterID === characterID,
+  )
+}
+function teleportTargetReady(characterID: string) {
+  return teleportTargetChild(characterID)?.submission === 'ready'
+}
+function teleportTargetHint(characterID: string) {
+  const child = teleportTargetChild(characterID)
+  if (!child) return 'Checking eligibility…'
+  if (child.submission === 'ready') return ''
+  return child.skipReason?.message || 'Unavailable.'
+}
+const teleportContextTargetIDs = computed(() =>
+  [...actionTargetIDs.value].filter((characterID) =>
+    applicableActionTargetIDs.value.has(characterID),
+  ),
+)
 const scopedCharacters = computed(() => {
   const items = mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.characters || []
@@ -2026,6 +2063,7 @@ useHead({ title: 'Map · PhMon' })
               @contextaction="openContextNavigation"
               @navigateto="openNpcNavigation"
               @teleportto="openTeleporterAction"
+              @teleportercontext="openTeleporterContext"
               @mapdrag="
                 () => {
                   navigationAction.close(false)
@@ -2473,7 +2511,151 @@ useHead({ title: 'Map · PhMon' })
             </p>
           </div>
           <div
-            v-if="teleportAction.menuOpen.value"
+            v-if="
+              teleportAction.menuOpen.value &&
+              teleportAction.menuPresentation.value === 'context'
+            "
+            :ref="teleportAction.menuElement"
+            class="map-navigation-context map-teleport-context map-teleport-flyout"
+            role="menu"
+            tabindex="-1"
+            aria-label="Teleporter actions"
+            :style="{
+              left: `${teleportAction.menuAnchor.value.x}px`,
+              top: `${teleportAction.menuAnchor.value.y}px`,
+            }"
+            @pointerdown.stop
+            @keydown.escape.prevent="teleportAction.close()"
+          >
+            <div class="map-context-heading">
+              <strong>{{ teleportAction.gateLabel.value }}</strong
+              ><small>Teleporter</small>
+            </div>
+            <p
+              v-if="!teleportContextTargetIDs.length"
+              class="map-navigation-menu-summary"
+            >
+              Tick characters in the panel to teleport them.
+            </p>
+            <div class="map-context-submenu map-context-submenu-root">
+              <button
+                class="map-navigation-menu-action map-context-submenu-trigger"
+                type="button"
+                role="menuitem"
+                aria-haspopup="true"
+                :disabled="
+                  !teleportAction.discoveredRoutes.value.length &&
+                  !teleportAction.destination.value.trim()
+                "
+              >
+                <UIcon name="i-lucide-signpost" />
+                Teleport
+                <UIcon
+                  name="i-lucide-chevron-right"
+                  class="map-context-submenu-chevron"
+                />
+              </button>
+              <div
+                class="map-context-submenu-panel"
+                role="menu"
+                aria-label="Teleport destinations"
+              >
+                <template
+                  v-if="teleportAction.discoveredRoutes.value.length"
+                >
+                  <div
+                    v-for="route in teleportAction.discoveredRoutes.value"
+                    :key="route.destination"
+                    class="map-context-submenu"
+                  >
+                    <button
+                      class="map-navigation-menu-action map-context-submenu-trigger"
+                      type="button"
+                      role="menuitem"
+                      aria-haspopup="true"
+                      @mouseenter="
+                        teleportAction.setDestination(route.destination)
+                      "
+                      @focus="
+                        teleportAction.setDestination(route.destination)
+                      "
+                    >
+                      {{ route.destination }}
+                      <UIcon
+                        name="i-lucide-chevron-right"
+                        class="map-context-submenu-chevron"
+                      />
+                    </button>
+                    <div
+                      class="map-context-submenu-panel"
+                      role="menu"
+                      :aria-label="`Teleport to ${route.destination}`"
+                    >
+                      <button
+                        v-for="characterID in teleportContextTargetIDs"
+                        :key="`${route.destination}:${characterID}`"
+                        class="map-navigation-menu-action"
+                        type="button"
+                        role="menuitem"
+                        :disabled="
+                          teleportAction.preparing.value ||
+                          teleportAction.submitting.value ||
+                          !teleportTargetReady(characterID)
+                        "
+                        :title="teleportTargetHint(characterID)"
+                        @click="
+                          teleportAction.submitForCharacter(
+                            characterID,
+                            route.destination,
+                          )
+                        "
+                      >
+                        {{ teleportTargetName(characterID) }}
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                <p
+                  v-else
+                  class="map-navigation-menu-summary"
+                >
+                  No verified destinations yet. Open the full picker to type a
+                  town name.
+                </p>
+                <button
+                  class="map-navigation-menu-action"
+                  type="button"
+                  role="menuitem"
+                  @click="teleportAction.showDestinationDialog()"
+                >
+                  <UIcon name="i-lucide-pencil" />
+                  Other destination…
+                </button>
+              </div>
+            </div>
+            <CommandFanOutPreview
+              v-if="teleportAction.reviewOperation.value"
+              :operation="teleportAction.reviewOperation.value"
+              :busy="
+                teleportAction.preparing.value ||
+                teleportAction.submitting.value
+              "
+              @submit="teleportAction.confirmReview"
+              @cancel="teleportAction.cancelReview"
+            />
+            <button
+              class="map-text-action"
+              type="button"
+              @click="teleportAction.close()"
+            >
+              Cancel
+            </button>
+          </div>
+          <div
+            v-if="
+              teleportAction.menuOpen.value &&
+              teleportAction.menuPresentation.value === 'dialog'
+            "
             :ref="teleportAction.menuElement"
             class="map-navigation-context map-teleport-context"
             role="dialog"
@@ -3811,6 +3993,52 @@ useHead({ title: 'Map · PhMon' })
   background: #0a1018;
   color: var(--ph-text);
   font-size: 13px;
+}
+
+.map-context-submenu {
+  position: relative;
+}
+
+.map-context-submenu-root > .map-context-submenu-panel {
+  margin-top: 2px;
+}
+
+.map-teleport-flyout {
+  overflow: visible;
+  max-height: none;
+  max-width: none;
+}
+
+.map-context-submenu-panel {
+  display: none;
+  position: absolute;
+  left: calc(100% + 2px);
+  top: 0;
+  z-index: 2;
+  min-width: 180px;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 5px;
+  border: 1px solid #495b6f;
+  border-radius: 5px;
+  background: #0d131df5;
+  box-shadow: 0 8px 28px #000b;
+  white-space: nowrap;
+}
+
+.map-context-submenu:hover > .map-context-submenu-panel,
+.map-context-submenu:focus-within > .map-context-submenu-panel {
+  display: block;
+}
+
+.map-context-submenu-trigger {
+  justify-content: space-between;
+}
+
+.map-context-submenu-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.75;
 }
 
 .map-navigation-context {

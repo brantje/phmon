@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.6'
+pVersion = '1.9.7'
 pUrl = ''
 
 PROTOCOL_VERSION = 11
@@ -76,6 +76,8 @@ _TELEPORT_DESTINATION_CANDIDATES = (
     'Alexandria (North)', 'Alexandria (South)',
     'Tiger Mountain', 'Baghdad', 'Alexandria', 'Constantinople Fortress',
     'GATE_CH', 'GATE_KT', 'GATE_HWANG', 'GATE_CA',
+    # Special links use the exact phBot menu label, including the [teleport] suffix.
+    'Soldier Choiyoung [teleport]', 'Jupiter Room',
 )
 _teleport_route_cache = {}
 # Documented phBot examples (Hotan gate → Jangan); read-only in probe, optional operator script test.
