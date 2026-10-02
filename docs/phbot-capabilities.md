@@ -1279,4 +1279,6 @@ active route.
 
 **Operator probe:** Plugin **1.9.2** QtBind **Probe teleporters** calls `probe_teleporter_capabilities()` — symbol name discovery, at most 16 read-only `get_teleport_data` tests, no `inject_joymax` / `start_script`. Full report: [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
 
-**Simulator/runtime:** Plugin unit tests cover the probe; no phBot process in CI. Append operator probe log output to the investigation doc before claiming execution verified.
+**Live probe (2026-10-02):** Operator ran **Probe teleporters** on plugin 1.9.2 at the Hotan gate (`GATE_KT`, runtime npc id `4`). `get_npcs`, `get_teleport_data`, and `start_script` were present. Symbol scan found no destination-menu or recall API (only `get_teleport_data`, script/path helpers, `get_npc_goods`, `get_gateway`). Three read-only pair checks returned `none` (including control unknown destination; `Hotan`→`GATE_KT` is not a valid destination label). JSON and interpretation: [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md) § Operator live probe. **Script teleport execution not run.**
+
+**Simulator/runtime:** Plugin unit tests cover the probe in CI; live pair resolution confirmed at Hotan; `start_script` teleports remain unverified.

@@ -109,7 +109,74 @@ Operator action: PhMon QtBind **Probe teleporters** (read-only).
 
 Results are written to the phBot log and a short status line. No backend frame or database row.
 
-**Runtime gate:** Windows/phBot execution of `teleport,…` via `start_script` was **not** exercised in the environment that produced this document. Append operator probe JSON to this file when available before claiming execution verified.
+**Runtime gate:** Read-only probe exercised on installed phBot (below). `start_script` with a `teleport,…` line was **not** run; execution remains `documented_script_command_unverified`.
+
+### Operator live probe — 2026-10-02 10:53 UTC
+
+Captured from phBot log after **Probe teleporters** on plugin **1.9.2** while standing at the Hotan gate (`phMonitorAdapter` was also loaded; probe output is from PhMon only).
+
+```json
+{
+  "capabilities": {
+    "get_npcs": true,
+    "get_teleport_data": true,
+    "start_script": true
+  },
+  "enumeration": "unsupported",
+  "errors": [],
+  "execution": "documented_script_command_unverified",
+  "gates": [
+    {
+      "id": "4",
+      "name": "Hotan",
+      "servername": "GATE_KT"
+    }
+  ],
+  "npc_observation": "observed",
+  "pair_tests": [
+    {
+      "classification": { "result": "none" },
+      "destination": "__phmon_probe_unknown_destination__",
+      "gate_id": "4",
+      "source": "Hotan"
+    },
+    {
+      "classification": { "result": "none" },
+      "destination": "GATE_KT",
+      "gate_id": null,
+      "source": "Hotan"
+    },
+    {
+      "classification": { "result": "none" },
+      "destination": "__phmon_probe_unknown_destination__",
+      "gate_id": "4",
+      "source": "GATE_KT"
+    }
+  ],
+  "plugin_version": "1.9.2",
+  "recall": "unsupported",
+  "status": "ok",
+  "symbols": [
+    { "callable": true, "name": "generate_script" },
+    { "callable": true, "name": "get_gateway" },
+    { "callable": true, "name": "get_npc_goods" },
+    { "callable": true, "name": "get_npcs" },
+    { "callable": true, "name": "get_teleport_data" },
+    { "callable": true, "name": "set_training_script" },
+    { "callable": true, "name": "start_script" },
+    { "callable": true, "name": "stop_script" }
+  ]
+}
+```
+
+**Interpretation (not a teleport attempt):**
+
+- Confirms **no destination-list / recall / menu** symbol appeared in the probe’s name filter; only pair-resolution and script helpers (`get_teleport_data`, `start_script`, `generate_script`, etc.).
+- One live gate: runtime id **`4`**, display name **Hotan**, server name **`GATE_KT`** — matches PhMon’s `GATE_*` teleporter rule.
+- All three automated `get_teleport_data` checks returned **`none`**: expected for the unknown-destination control; **`Hotan` → `GATE_KT`** is not a valid player destination (that string is the gate’s own server name, not a target city). Issue #33 must use an explicit destination such as another town name (`Jangan`, `Donwhang`, …) and treat `none` as “no route” before any script line runs.
+- **`get_gateway`** appeared in symbol discovery only; this spike does not call it. Revisit only if a future probe authorizes safe read-only inspection.
+
+**Still open before #33 execution is “verified”:** one authorized `start_script('teleport,Hotan,<destination>')` (or `GATE_KT` source form) with observed teleport, plus optional `get_teleport_data` success for that same pair.
 
 ## Fail-closed rules
 
