@@ -290,6 +290,7 @@ export function useMapTeleportAction(options: {
     const operation = menuOperation.value
     if (operation?.state === 'prepared') fanout.dismiss(operation)
     activeOperationID.value = ''
+    reviewingOperationID.value = ''
     await prepareOperation()
   }
 
