@@ -4953,7 +4953,7 @@ def _sample_npcs(identity, state, position, now=None):
     if truncated:
         status = 'truncated'
     if _worker is not None:
-        _attach_teleporter_routes(matching, _worker.api)
+        _attach_teleporter_routes(matching, getattr(_worker, 'api', None))
     signature = _npc_snapshot_signature(status, region, matching)
     changed = signature != _last_npc_signature
     refresh_due = (_last_npc_publish_at == 0.0 or
