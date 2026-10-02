@@ -173,3 +173,87 @@ archive with that catalog, so no verified option definitions are packaged here.
 compact backend catalog. The optional local archive upgrades old bundles only
 when every ID/code matches. New exporter item records carry `presentation`.
 Generated output has no source archive paths; it references existing local PNGs.
+
+## Offline monster artwork — exporter 0.6.1
+
+The normal export can produce transparent model pictures using a CPU rasterizer
+implemented with NumPy and Pillow. It requires no browser, GPU or external
+renderer. Geometry is read from the operator's local `Data.pk2`; archive access
+remains bounded and read-only. No binary client resources are copied to the bundle.
+
+The exact `CharacterData` numeric ID/code and zero-based `AssocFileObj128` field
+52 were checked against the local Tiger Girl row: model ID 1954,
+`MOB_CH_TIGERWOMAN`, `mob\china\tigerwoman.bsr`. The event variant ID 50918
+references that same resource. The public basename is `tigerwoman`, and both direct
+references map to `monsters/tigerwoman.png`. Variant rows with `xxx` resources
+follow their explicit OrgObjCodeName128 (column 4) reference. Comma-separated
+resource lists expand into individual transformations. Resource path joins are
+validated against the archive; basename collisions use distinguishing folder
+names, preserving model names instead of numeric IDs.
+
+Independent format parsers were checked against the actual headers and offsets
+and the format author's research:
+
+- [Compound CPD, `JMXVCPD 0101`](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/JMXVCPD)
+- [Resource BSR, `JMXVRES 0109`](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/JMXVRES)
+- [Mesh BMS, `JMXVBMS 0110`](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/JMXVBMS)
+- [Material BMT, `JMXVBMT 0102`](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/JMXVBMT)
+- [Skeleton BSK, `JMXVBSK 0101`](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/JMXVBSK)
+- [Animation BAN, `JMXVBAN 0102`](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/JMXVBAN)
+
+These are community research descriptions, not Joymax official specifications.
+Unsupported versions and flags fail closed for that model. Named model artwork
+uses the explicit base palette ID 0; alternate entity textures are not separate
+model PNGs. Tiger Girl has seven meshes, 1,937 triangles and
+69 bones. The renderer calculates bind and posed world matrices, normalizes the
+observed two-bone weights, uses the recorded idle keyframe nearest 20% of the
+animation's duration, and converts the left-handed frame to its camera frame.
+Diffuse UVs retain their DirectX top-left origin. A depth buffer resolves visible
+triangles independently of draw order; explicitly named `_2side` materials use
+cutout alpha. Other diffuse alpha is treated as sheen. Lighting is an approximation,
+and no cloth/particle simulation or exact client-shader matching is claimed.
+
+Output is deterministic within the pinned renderer environment: NumPy 2.5.3,
+Pillow 12.3.0 and renderer `phmon-software-v1`. A 2× supersampled render is reduced
+to a 512 × 512 RGBA PNG. No renderer library runs in the web app. Private audit
+records include every read dependency's SHA-256, pose and triangle/bone counts;
+the public index contains PNG metadata and semantic keys only. Missing or
+unsupported artwork remains missing, without a decorative generated substitute.
+
+Portrait camera fitting excludes meshes separated from the largest mesh's bounds
+by more than four times that mesh's span. The actual local `mad_general_stand02`
+frame moves `mad_general_weapon_02.bms` to Y −1,342…−1,313 while the body occupies
+Y 0…65. Including that spare weapon in the camera bounds shrank the body to a
+few pixels. The fit now follows the main geometry, without changing the recorded
+pose or replacing source geometry. All meshes still participate in rasterization;
+`cameraFitExcludedMeshes` retains excluded dependency paths in the private audit.
+Regression fixtures verify that distant props do not shrink the portrait, mesh
+ordering does not change the fit, and nearby detached parts remain visible.
+
+Malformed exact resource joins are retained separately as `invalid` private audit
+entries, with their original reference IDs, codes, resource strings and reasons.
+They have no valid model alias and are excluded from the catalogue's `models` and
+`unsupported` counts. A separate `invalid` coverage count and
+`monsterRenderInvalidCount` result preserve the diagnostics, including for a
+selected export. Any invalid joins keep the family partial/unresolved. The
+exporter patch version participates in dataset identity so corrected bundles
+cannot reuse the earlier immutable outputs.
+
+The `--unique-monsters` selection uses enabled MOB_ rows and rarity **3/8**,
+verified against the primary RSBot
+[ObjectRarity source](https://github.com/SDClowen/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Client/ReferenceObjects/ObjectRarity.cs)
+and [MonsterRarity source](https://github.com/SDClowen/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/MonsterRarity.cs).
+Rarity 6/7 are elites, not uniques. The local source has 801 enabled unique rows,
+resolving to 106 resource definitions including transformation models and custom
+pet-shaped uniques.
+
+Custom mesh files sometimes renamed skin bones without updating subsequent BMS
+section offsets. The parser reads faces at the actual end of the documented skin
+block, bounds the discrepancy to 4 KiB, validates every triangle, and records the
+header discrepancy privately. CPD equipment paths similarly permit a maximum
+16-byte discrepancy between the declared length and their explicit `.bsr` end.
+No source data is repaired or overwritten. CPD equipment shares the root skeleton;
+independent accessories use their BSR attachment bone. Invalid or unsupported bind/animation
+data falls back to the resource's unchanged rest geometry with a pose warning.
+Ignored skeleton origin/local transforms are skipped rather than rejecting their
+unused NaNs. Missing named material joins remain unsupported.

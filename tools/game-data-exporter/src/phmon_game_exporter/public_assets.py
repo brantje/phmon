@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import time
 from pathlib import Path, PurePosixPath
@@ -120,9 +121,11 @@ def ensure_public_asset_destination(destination: Path) -> None:
     _existing_generated_files(destination.resolve())
 
 
-def materialize_public_assets(bundle: Path, audit: Path, destination: Path) -> dict[str, Any]:
+def materialize_public_assets(bundle: Path, audit: Path, destination: Path, *, namespace: str | None = None) -> dict[str, Any]:
     """Serialize writes to the public target and publish the finished tree."""
     _no_symlink_components(destination)
+    if namespace not in (None, "monsters"):
+        raise ValueError("unsupported scoped public asset namespace")
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     lock = destination.parent / f".{destination.name}.asset-export.lock"
@@ -132,12 +135,12 @@ def materialize_public_assets(bundle: Path, audit: Path, destination: Path) -> d
         raise ValueError("another export is writing this public asset destination") from exc
     os.close(descriptor)
     try:
-        return _materialize_public_assets_locked(bundle, audit, destination)
+        return _materialize_public_assets_locked(bundle, audit, destination, namespace=namespace)
     finally:
         lock.unlink(missing_ok=True)
 
 
-def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Path) -> dict[str, Any]:
+def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Path, *, namespace: str | None = None) -> dict[str, Any]:
     """Create a replaceable public tree from a validated bundle and private audit."""
     bundle = bundle.resolve(strict=True)
     audit = audit.resolve(strict=True)
@@ -160,17 +163,28 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
             by_key[key] = row
 
     aliases: dict[str, dict[str, Any]] = {}
+    previous = None
+    if namespace is not None and (destination / INDEX_NAME).exists():
+        validate_public_assets(destination)
+        previous = json.loads((destination / INDEX_NAME).read_text(encoding="utf-8"))
     key_paths: dict[str, str] = {}
     for audit_row in audit_rows:
-        if audit_row.get("status") != "converted":
+        status = audit_row.get("status")
+        if status not in ("converted", "rendered"):
             continue
         key = audit_row.get("assetKey")
         asset = by_key.get(key)
         if asset is None:
             raise ValueError("exporter audit references an asset missing from the bundle")
         source_path = _safe_relative(audit_row.get("sourceEntry"), label="audited source entry")
-        if source_path.suffix.casefold() != ".ddj":
+        if status == "converted" and source_path.suffix.casefold() != ".ddj":
             raise ValueError("converted source entry does not have a DDJ extension")
+        if status == "rendered" and (
+            source_path.suffix.casefold() not in (".bsr", ".cpd")
+            or audit_row.get("renderer") != "phmon-software-v1"
+            or not re.fullmatch(r"monsters/[a-z0-9][a-z0-9_-]{0,127}\.png", str(audit_row.get("publicAlias", "")))
+        ):
+            raise ValueError("rendered monster alias or provenance is invalid")
         public_path = (
             _safe_relative(audit_row["publicAlias"], label="public asset alias")
             if "publicAlias" in audit_row else source_path.with_suffix(".png")
@@ -178,6 +192,8 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
         if public_path.suffix.casefold() != ".png":
             raise ValueError("public asset alias must have a PNG extension")
         public_relative = PurePosixPath(*(part.casefold() for part in public_path.parts)).as_posix()
+        if namespace is not None and not public_relative.startswith(namespace + "/"):
+            continue
         prior_path = key_paths.get(key)
         if prior_path is not None and prior_path != public_relative:
             raise ValueError("one semantic asset key maps to multiple public paths")
@@ -200,6 +216,12 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
         aliases[public_relative]["assetKeys"].add(key)
 
     if not aliases:
+        if namespace is not None:
+            # A failed model must not remove last-known artwork or publish a fake.
+            return validate_public_assets(destination) if previous else {
+                "datasetId": manifest.get("datasetId"), "publicFilesValidated": 0,
+                "semanticAssetKeysValidated": 0, "sourceKnowledgeRequired": False,
+            }
         raise ValueError("exporter audit contains no converted assets")
 
     stage = destination.parent / f".{destination.name}.staging-{os.getpid()}-{time.time_ns()}"
@@ -207,6 +229,17 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
     stage.mkdir(parents=True)
     try:
         public_rows = []
+        if previous is not None:
+            for row in previous["files"]:
+                if row["path"] in aliases:
+                    continue
+                relative = _safe_relative(row["path"], label="existing public asset path")
+                target = stage.joinpath(*relative.parts)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(destination.joinpath(*relative.parts), target)
+                if target.stat().st_size != row["sizeBytes"] or _digest(target) != row["sha256"]:
+                    raise ValueError("existing public asset changed during scoped publication")
+                public_rows.append(row)
         for relative in sorted(aliases):
             row = aliases[relative]
             bundle_relative = _safe_relative(row["bundlePath"], label="bundle asset path")
@@ -232,12 +265,14 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
             "format": INDEX_FORMAT,
             "formatVersion": 1,
             "generator": GENERATOR,
-            "datasetId": manifest.get("datasetId"),
+            "datasetId": previous["datasetId"] if previous else manifest.get("datasetId"),
             "urlPrefix": destination.name,
             "fileCount": len(public_rows),
             "assetKeyCount": sum(len(row["assetKeys"]) for row in public_rows),
-            "files": public_rows,
+            "files": sorted(public_rows, key=lambda row: row["path"]),
         }
+        if namespace is not None:
+            index["monsterDatasetId"] = manifest.get("datasetId")
         index_path = stage / INDEX_NAME
         index_path.write_text(json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
 

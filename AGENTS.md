@@ -5062,3 +5062,53 @@ Exact next action: review the scoped diff (leave the separate changes in
 `web/app/pages/map.vue` and untracked `web/app/layouts/map.vue` untouched), commit
 and push only the radius correction and evidence docs to PR #56, verify CI on the
 new head, keep the PR open, and do not merge.
+
+### Resume — 2026-10-02 unique PNG export and checkout coordination
+
+The requested unique export produced **105 of 106** named transparent 512×512
+PNGs in `web/public/game-assets/monsters/`; `volkoft` is unsupported because
+its armor mesh/material names disagree. Five other rigs use audited rest poses.
+All 71 exporter tests passed before the code was stashed. Native bundle/public
+validation checks 21 catalogues, 10,142 bundle assets and 12,174 public files,
+preserving all 12,069 unrelated records. Evidence is under ignored
+`exports/uniques-render/{export-result,validation,checkout-recovery}.json`.
+
+Another chat stashed the exporter changes with message `wip monster export
+unrelated to issue 33` and switched to `codex/issue-33-teleport-eligibility`. The
+validated PNGs were restored from the immutable bundle, while the other chat's
+plugin/server/map changes were left untouched. On the operator's follow-up request
+to add the monster assets and exporter to Git, the scoped exporter source, tests,
+dependencies and evidence docs were restored from that saved stash. The current
+exporter is 0.6.0 and includes `--unique-monsters` and `--monster-model NAME`.
+The operator requested Git staging: 121 scoped files are staged, including all
+105 PNGs, their public index, exporter source/dependencies/tests and evidence docs.
+The restored exporter passes all 71 tests; public asset validation checks 12,174
+files and all monster checksums. Source archives, private audits and scratch
+exports stay ignored. The saved stash
+and private exporter snapshot remain available. Exact next action for the missing
+picture: repair/verify the volkoft material join, then run a scoped export. The
+operator then requested a new branch and pull request. The scoped change is on
+`codex/offline-unique-monster-export`, based on `origin/main` at ca01f23, excluding
+the separate Issue 33 teleport commit. Commit/push/PR creation are authorized;
+merge, deployment and real bot operation remain outside this request.
+
+### Resume — 2026-10-02 PR #62 exporter review
+
+The operator requested fixing and replying to the feedback on
+[PR #62](https://github.com/brantje/phmon/pull/62). Exporter 0.6.1 isolates malformed
+resource joins in a separate invalid audit/coverage count, preserving valid full
+and selected renders. Portrait camera fitting excludes distant displaced meshes
+from its bounds while retaining their source geometry and private provenance.
+The actual `mad_general_2` idle frame moves a spare weapon far below its body;
+its corrected PNG has 49,029 visible pixels, up from 470.
+
+All 79 exporter tests pass. Native dataset `gamedata-48ad548c98056b6c87b3` rerenders
+105 models with one unsupported (`volkoft`) and zero invalid joins. Bundle/public
+validation checks 21 catalogues, 10,142 bundle assets and 12,174 public files. Only
+`mad_general_2.png` changes; all 104 other monster PNGs and 12,069 unrelated records
+are preserved. Files: exporter source/version/tests/docs, public asset index,
+corrected PNG, `docs/{monster-art-export,reference-parity}.md` and this guide.
+Ignored evidence: `exports/uniques-render/review-{export-result,validation}.json`
+and `review-export/`. Commit/push and replies to the two review comments are
+authorized. Exact next action: monitor PR #62 validation and reviewer follow-up;
+keep the PR open and do not merge or deploy without authorization.

@@ -1,7 +1,7 @@
 {
-  "assetKeyCount": 32174,
+  "assetKeyCount": 32279,
   "datasetId": "gamedata-17f8847c77edd7c7fadd",
-  "fileCount": 12069,
+  "fileCount": 12174,
   "files": [
     {
       "assetKeys": [
@@ -164935,10 +164935,1271 @@
       "sizeBytes": 586,
       "url": "game-assets/monster-types/4_giant.png",
       "width": 16
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:a11saaa1_a11saaae"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/a11saaa1_a11saaae.png",
+      "sha256": "5b5a51cacbbaf393be2e4fd64bef0041518c66591ab8c7a9171ffd3a14655165",
+      "sizeBytes": 243162,
+      "url": "game-assets/monsters/a11saaa1_a11saaae.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:a11saaa3_a11saaae"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/a11saaa3_a11saaae.png",
+      "sha256": "dd1d32738e7baa8796b9b85c5cd02adc496909e6ff9d5a435520d7f4b3afceb9",
+      "sizeBytes": 235646,
+      "url": "game-assets/monsters/a11saaa3_a11saaae.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:a11saaae_a11saaae"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/a11saaae_a11saaae.png",
+      "sha256": "21b9e42a1a5dde732d1bdeebd619595c3a8bd57a083f076ebcf6107c05012c68",
+      "sizeBytes": 248052,
+      "url": "game-assets/monsters/a11saaae_a11saaae.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:anubis"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/anubis.png",
+      "sha256": "9c6ba8c56215ee2538c65db2389252093f006f53159a1d85e32cd55d1f7326f1",
+      "sizeBytes": 182018,
+      "url": "game-assets/monsters/anubis.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:apis"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/apis.png",
+      "sha256": "f850c1fd52a08826d557c8b3430c2a370acf7b9c71d1ec41492144c38427af03",
+      "sizeBytes": 156096,
+      "url": "game-assets/monsters/apis.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:baal"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/baal.png",
+      "sha256": "8e4b16b3166e3f66813027fb22ef74cb41b4b0b94a8e672ac848d2f289a459a6",
+      "sizeBytes": 171601,
+      "url": "game-assets/monsters/baal.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:baal_weapon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/baal_weapon.png",
+      "sha256": "aaa34eded3ef9a22667e8ba35c4b500c010225d755f15d163bac85ebe1bd054f",
+      "sizeBytes": 146926,
+      "url": "game-assets/monsters/baal_weapon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:babilion"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/babilion.png",
+      "sha256": "544bd92b97a2602bba7bcb2a2437caf8c0f40c6543c644869e26b9f25ee6a649",
+      "sizeBytes": 200038,
+      "url": "game-assets/monsters/babilion.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:bartis"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/bartis.png",
+      "sha256": "ab91a2d0be49931cd329ebfb02bbc63102cd6f874f38d0cd7105e1725b3308e4",
+      "sizeBytes": 332440,
+      "url": "game-assets/monsters/bartis.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:blacksnake"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/blacksnake.png",
+      "sha256": "4d51e6c681a2cc0294a8de222f6274a49af63ee9f5fc711f5b95fcb8a7a5f3ed",
+      "sizeBytes": 133940,
+      "url": "game-assets/monsters/blacksnake.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:blight_dragon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/blight_dragon.png",
+      "sha256": "46f6b860a075371a6a5971076021bbb17ab0f9e31b50ae194b964518a2c66510",
+      "sizeBytes": 119504,
+      "url": "game-assets/monsters/blight_dragon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:bonelord"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/bonelord.png",
+      "sha256": "1c8223da161f6d733a46e78debb10aa976dc9db82dc85797bb5981af23946a3a",
+      "sizeBytes": 251216,
+      "url": "game-assets/monsters/bonelord.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:boneroc"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/boneroc.png",
+      "sha256": "ddab76cd21c8237f741e24e5fbb161f8e2c7abc326037592e85a793d9d6bb99a",
+      "sizeBytes": 161617,
+      "url": "game-assets/monsters/boneroc.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:cos_pet2_pet_ostrich_saddle_a"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/cos_pet2_pet_ostrich_saddle_a.png",
+      "sha256": "9e8c07388e93b17fdd3998c825c6e6b38b8fd54d3447da7a54aa7f96b1af543a",
+      "sizeBytes": 106763,
+      "url": "game-assets/monsters/cos_pet2_pet_ostrich_saddle_a.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:dark_dog"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/dark_dog.png",
+      "sha256": "1a06ac6ba83800b2573d940a9d43700f96bab3d255315a7851617c6191ddfd70",
+      "sizeBytes": 261372,
+      "url": "game-assets/monsters/dark_dog.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:darkguardian"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/darkguardian.png",
+      "sha256": "2fd3e91dca0684eb9060b975cd4aabf5f1b67798abe8aff42d60f62ba3dbab39",
+      "sizeBytes": 211142,
+      "url": "game-assets/monsters/darkguardian.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:devildog"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/devildog.png",
+      "sha256": "37741eaac83eaabbf6104c0353248696c6bf07fe4628c3656ed2f1d309c7d5ee",
+      "sizeBytes": 207180,
+      "url": "game-assets/monsters/devildog.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:devilsaytan"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/devilsaytan.png",
+      "sha256": "b9be5645e043975d00b0843d3583227ddeb48b910e5f1e2bf1f1e4c9ce108fee",
+      "sizeBytes": 176324,
+      "url": "game-assets/monsters/devilsaytan.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:devilspore"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/devilspore.png",
+      "sha256": "a9cbf3cc9ee781d5a594263fde023db8f880975a24a305685c8a6eb67d9bd461",
+      "sizeBytes": 93645,
+      "url": "game-assets/monsters/devilspore.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:dmsolide"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/dmsolide.png",
+      "sha256": "abbe37cf4c35a354c37b9231ced2444d3fdf8d9a119bfc8b14d2d0fa2e6058fa",
+      "sizeBytes": 168865,
+      "url": "game-assets/monsters/dmsolide.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:dowb"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/dowb.png",
+      "sha256": "e342c11b1b19fa772fddcd568e7fcb18ee23f85bfd8c4fbb8ba9a9b35a7c14cc",
+      "sizeBytes": 305018,
+      "url": "game-assets/monsters/dowb.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:eastguardian"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/eastguardian.png",
+      "sha256": "eb0b8954aeb5538f07422be68148e0a08b9992a6eaa3de09f59b0fe3bd9841a6",
+      "sizeBytes": 299020,
+      "url": "game-assets/monsters/eastguardian.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:emp_evog2_dragon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/emp_evog2_dragon.png",
+      "sha256": "2e7d861fb46f260f563a2026d3e64dfde6e317214b4b693fe94214177656de07",
+      "sizeBytes": 178621,
+      "url": "game-assets/monsters/emp_evog2_dragon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:event_pandora"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/event_pandora.png",
+      "sha256": "ed0f44d53bb790ffdf1ffe9cee3805146b6ac5d28f16c0eb6ab0f7cc2e155be1",
+      "sizeBytes": 215933,
+      "url": "game-assets/monsters/event_pandora.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:event_winter_blackknight"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/event_winter_blackknight.png",
+      "sha256": "4b5e887feb3bbcab8cf03d0261ed6e235a82ed888f23e36f20657eb80278a0d9",
+      "sizeBytes": 185059,
+      "url": "game-assets/monsters/event_winter_blackknight.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:event_winter_princess"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/event_winter_princess.png",
+      "sha256": "2369024c77a6aafbfc6bf731d82ca39a9fa68caa7c8561628a228112b3913a4e",
+      "sizeBytes": 250879,
+      "url": "game-assets/monsters/event_winter_princess.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:event_winter_whiteknight"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/event_winter_whiteknight.png",
+      "sha256": "adfd0d7406e1c95908514cdbb4573e8605ff7894ebf46b8d44ba820100b9fd3a",
+      "sizeBytes": 185751,
+      "url": "game-assets/monsters/event_winter_whiteknight.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:flame_adjutant"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/flame_adjutant.png",
+      "sha256": "298f53c02915cbbb6e0e2fc5da665071482e5371faf938927e72b6aa5a845d62",
+      "sizeBytes": 222197,
+      "url": "game-assets/monsters/flame_adjutant.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:flame_captain"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/flame_captain.png",
+      "sha256": "9705a662b6bd469592d305c9a7189863b56ac5b1090f2e40eec3ffd62329a61f",
+      "sizeBytes": 73925,
+      "url": "game-assets/monsters/flame_captain.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:flame_cowking"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/flame_cowking.png",
+      "sha256": "ef6d6d546f9ee70ce2bb3f76a85cbaacaf58234f05983ed9104ab0d7dcee02f9",
+      "sizeBytes": 153550,
+      "url": "game-assets/monsters/flame_cowking.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:fw_battlegolem"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/fw_battlegolem.png",
+      "sha256": "e350c1aeb3dd83b0969547515b198d41d640b52c391e5baf59c19876e26a30a3",
+      "sizeBytes": 251585,
+      "url": "game-assets/monsters/fw_battlegolem.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:fw_hyeongcheon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/fw_hyeongcheon.png",
+      "sha256": "694ffdde0da0e9e3bbf8138384075cd92de83cdfb85ad345cf1ad4a8cfa55167",
+      "sizeBytes": 292961,
+      "url": "game-assets/monsters/fw_hyeongcheon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:fw_mujigi"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/fw_mujigi.png",
+      "sha256": "db4bc37d2acf08ee093cce6ee2294086fbc1af7eb15addf3edcb070c663ca763",
+      "sizeBytes": 282804,
+      "url": "game-assets/monsters/fw_mujigi.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:fw_taese"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/fw_taese.png",
+      "sha256": "7bea683e6e253bd9b22a99692adefca321a94541a6e9f2c15996c926c3c3b511",
+      "sizeBytes": 281797,
+      "url": "game-assets/monsters/fw_taese.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:garm"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/garm.png",
+      "sha256": "bbbab9df58f26e9aa58ca7998c81561d882e0a81e406f0fa6fe1b85a16f07991",
+      "sizeBytes": 206892,
+      "url": "game-assets/monsters/garm.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:geenie"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/geenie.png",
+      "sha256": "bb4f7218d333afecfa1e7195e867963e4f71dd5adbe560213d72f08217b7d316",
+      "sizeBytes": 205840,
+      "url": "game-assets/monsters/geenie.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:ghost_beast"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/ghost_beast.png",
+      "sha256": "077f02e8cb20bba38fbc20c7fa31b8047dda61c4579f94315dfe41af10a5a7bc",
+      "sizeBytes": 155737,
+      "url": "game-assets/monsters/ghost_beast.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:ghost_gluttony"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/ghost_gluttony.png",
+      "sha256": "d62ace20f08af5158732fc6877add800eb2d472c8c9a1bc5df0b9afeb0ede729",
+      "sizeBytes": 180552,
+      "url": "game-assets/monsters/ghost_gluttony.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:ghost_specter"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/ghost_specter.png",
+      "sha256": "94aec8548cabce2863fa6ebebc530a433b459100848048a463232ee6a3d2ccc6",
+      "sizeBytes": 288377,
+      "url": "game-assets/monsters/ghost_specter.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:ghost_undine"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/ghost_undine.png",
+      "sha256": "270c1f864f2f33f71dcf58b419f1b4640c80583d2ce017d7ceb4fe1e475d5f3e",
+      "sizeBytes": 113727,
+      "url": "game-assets/monsters/ghost_undine.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:giant_demon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/giant_demon.png",
+      "sha256": "f17c40dc916191e8df10e941ecf7d1ed9fd0d55e5fe2a1fa8c0d659c69b9def2",
+      "sizeBytes": 244272,
+      "url": "game-assets/monsters/giant_demon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:haroeris"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/haroeris.png",
+      "sha256": "c2d123a2174236408a3bd260e3f2694ee365b4365192f875583dd102efb45d77",
+      "sizeBytes": 105136,
+      "url": "game-assets/monsters/haroeris.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:haroeris_head"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/haroeris_head.png",
+      "sha256": "af515a33260b00a0ec186304e6e303b78e13cea5a4597a781928d934c2dc57be",
+      "sizeBytes": 132650,
+      "url": "game-assets/monsters/haroeris_head.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:haroeris_t2"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/haroeris_t2.png",
+      "sha256": "9010b55f023086619c7cdfcbbb2dbdfe9304fcab6a172a91cdf71e93abe04e1e",
+      "sizeBytes": 79073,
+      "url": "game-assets/monsters/haroeris_t2.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:harrison"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/harrison.png",
+      "sha256": "73e1febaa79fddec7480d7682e5959bf3bf35ee2aefaed6a41b1efa687d213c2",
+      "sizeBytes": 221159,
+      "url": "game-assets/monsters/harrison.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:horned_demon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/horned_demon.png",
+      "sha256": "a566d2bf7893e42e6250aee23c6a300f5b5b5d9946262871e90514b66f8dfb09",
+      "sizeBytes": 175856,
+      "url": "game-assets/monsters/horned_demon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:immotal2"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/immotal2.png",
+      "sha256": "785e638f5a1982343642428f7fbdc06a8e7ec1bb848a61180c1c645091694908",
+      "sizeBytes": 275074,
+      "url": "game-assets/monsters/immotal2.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:isis"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/isis.png",
+      "sha256": "d46d7b672758be69850d6872f17f584fc5b0e6cbfed9eaae31efb690b0a85427",
+      "sizeBytes": 223282,
+      "url": "game-assets/monsters/isis.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:isyutaru"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/isyutaru.png",
+      "sha256": "0cdd5d50805cd935339f79a177e634dbb17c357afb69b57d96bef913d055a4d7",
+      "sizeBytes": 211075,
+      "url": "game-assets/monsters/isyutaru.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:ivy"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/ivy.png",
+      "sha256": "431f34fd17a7fa8b9cdf8ec9138bd4b458e8a1564b14d815dea56b43e80e28ae",
+      "sizeBytes": 88185,
+      "url": "game-assets/monsters/ivy.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:jalliaza"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/jalliaza.png",
+      "sha256": "41836ee68e6206d6d653d46c8745bdd490786efbaa7bac5718367cab7216536e",
+      "sizeBytes": 198960,
+      "url": "game-assets/monsters/jalliaza.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:jupiter"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/jupiter.png",
+      "sha256": "c1578142583e7be0d72034e5af6988c65b4a0630a62e5c7781686ffee067a6ed",
+      "sizeBytes": 89641,
+      "url": "game-assets/monsters/jupiter.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:karmus"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/karmus.png",
+      "sha256": "264d55309acef75824b5ffe16cd48c5b028598a83208bca8bab8215041d8a49e",
+      "sizeBytes": 148048,
+      "url": "game-assets/monsters/karmus.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:kerberos"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/kerberos.png",
+      "sha256": "472773015d8ea86bc01365f062aaf4fc826521648e1dc82073459ca9f4f4cbaa",
+      "sizeBytes": 271982,
+      "url": "game-assets/monsters/kerberos.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:kidemonas"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/kidemonas.png",
+      "sha256": "6f907995b5838174ac6634a29711cbc3be5da9683142d6ceec733240075aa669",
+      "sizeBytes": 235289,
+      "url": "game-assets/monsters/kidemonas.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:launatune"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/launatune.png",
+      "sha256": "a291ec6912ca651b36082fb2d4f4e7bfa16b117675fdee21dfce2981a8843393",
+      "sizeBytes": 233249,
+      "url": "game-assets/monsters/launatune.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:mad_general_1"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/mad_general_1.png",
+      "sha256": "cc6d102a6d70a35fc8bd3921c77b678a0fe53def3e1046d91b295f24352c3540",
+      "sizeBytes": 164898,
+      "url": "game-assets/monsters/mad_general_1.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:mad_general_2"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/mad_general_2.png",
+      "sha256": "09936c502578e4ba0dacf510d81caf761260568e986043b01a80bdeea4dadaf6",
+      "sizeBytes": 135382,
+      "url": "game-assets/monsters/mad_general_2.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:mad_general_3"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/mad_general_3.png",
+      "sha256": "088412684811ddb75a0012968bb5db0eb6b249443f2f4fb29d014b95f0519b11",
+      "sizeBytes": 130292,
+      "url": "game-assets/monsters/mad_general_3.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:mad_general_3_clone"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/mad_general_3_clone.png",
+      "sha256": "e6c9220c01ff77fe15351b4c3d8b5b26893a9b1f96ddd1395bdc7a5d44b21d10",
+      "sizeBytes": 125636,
+      "url": "game-assets/monsters/mad_general_3_clone.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:neith"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/neith.png",
+      "sha256": "0cfe4579f38b7e84f0746dd9201d20a0c6482132407b43666dd33d2e5c6a69fa",
+      "sizeBytes": 122830,
+      "url": "game-assets/monsters/neith.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:nephthys"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/nephthys.png",
+      "sha256": "99039772fd589b3b3a82b13d0ab6c4ca6c56bcc0b9db8d6dfe03660d62eff4d2",
+      "sizeBytes": 90995,
+      "url": "game-assets/monsters/nephthys.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:northguardian"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/northguardian.png",
+      "sha256": "0c9ad0c0648d04fdcb684bcf69e933c46cc4a574610d14a3b7e0c37444902ff1",
+      "sizeBytes": 276736,
+      "url": "game-assets/monsters/northguardian.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:osiris"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/osiris.png",
+      "sha256": "b75aa9338381ca041b4ee75f47e3d419bef8500b7a9f81918472f7a118d06705",
+      "sizeBytes": 205703,
+      "url": "game-assets/monsters/osiris.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet2_pet_ostrich_saddle_a"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet2_pet_ostrich_saddle_a.png",
+      "sha256": "9e8c07388e93b17fdd3998c825c6e6b38b8fd54d3447da7a54aa7f96b1af543a",
+      "sizeBytes": 106763,
+      "url": "game-assets/monsters/pet2_pet_ostrich_saddle_a.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet_bear_a_saddle"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet_bear_a_saddle.png",
+      "sha256": "53cf93ec288c6ad1e72a2aab91205d2fb5f91dafe52e32eec7ef598ce9c4a589",
+      "sizeBytes": 254291,
+      "url": "game-assets/monsters/pet_bear_a_saddle.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet_bird_a"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet_bird_a.png",
+      "sha256": "815e61ebf919a8ec287752a414a29b2d0fd8fec8d371e5c0d0e837d74f8cdc44",
+      "sizeBytes": 131737,
+      "url": "game-assets/monsters/pet_bird_a.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet_cat_a_saddle"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet_cat_a_saddle.png",
+      "sha256": "5234d5334abcc6e67a22a9a566686e068bd464351f27fcb5b716ebd68f28487b",
+      "sizeBytes": 144728,
+      "url": "game-assets/monsters/pet_cat_a_saddle.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet_dinosaur_a_saddle"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet_dinosaur_a_saddle.png",
+      "sha256": "5a034f60f564cc7b357c4c21d626963f78882ec5a967519d599871a9eb3662e5",
+      "sizeBytes": 182217,
+      "url": "game-assets/monsters/pet_dinosaur_a_saddle.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet_dog_a_saddle"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet_dog_a_saddle.png",
+      "sha256": "ea36713789f39e33ef67240117b95a8d7b8265734c5d479daf9c38c67d907b68",
+      "sizeBytes": 228086,
+      "url": "game-assets/monsters/pet_dog_a_saddle.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:pet_dragon_a"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/pet_dragon_a.png",
+      "sha256": "429eba1a9bbf9fc00c51442ba63f258ed8abdf57d37838d7df5abbd2c4069bcf",
+      "sizeBytes": 52197,
+      "url": "game-assets/monsters/pet_dragon_a.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:phhorus"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/phhorus.png",
+      "sha256": "71758e1c5b34d0e8c617d6aa55696090beb082507390fea59edb1265380b9730",
+      "sizeBytes": 174148,
+      "url": "game-assets/monsters/phhorus.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:roc"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/roc.png",
+      "sha256": "0eb3c5315243a631f394826dc4361356b94ae40178bd58f6cb7a865a0d8c9e97",
+      "sizeBytes": 272436,
+      "url": "game-assets/monsters/roc.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:sekhmet"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/sekhmet.png",
+      "sha256": "5e017fd458e9d82b95b050c13ac84a379207456ef4e4fa787c96ccc4a9537979",
+      "sizeBytes": 210180,
+      "url": "game-assets/monsters/sekhmet.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:selkis"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/selkis.png",
+      "sha256": "e2f1f6cdb88e35d6e59ef9c23f50031d40c7116031cd5e44eaf5123cbf7850a7",
+      "sizeBytes": 146899,
+      "url": "game-assets/monsters/selkis.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:seth"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/seth.png",
+      "sha256": "21e0c1790d2bed80b99d22a9d3a2ecae025fb8aab60e50bd5205619ea17fb811",
+      "sizeBytes": 112409,
+      "url": "game-assets/monsters/seth.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:seth_t2"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/seth_t2.png",
+      "sha256": "5980a7b61e993c7c838b7585307501cd3c779e8f16381883aef64d4014391aac",
+      "sizeBytes": 178695,
+      "url": "game-assets/monsters/seth_t2.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:seth_t3"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/seth_t3.png",
+      "sha256": "2c7d23cb5636fa89545f9c5bc60993791f00f3eb4269e15148ca3cbe220e550d",
+      "sizeBytes": 152025,
+      "url": "game-assets/monsters/seth_t3.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:shinmu"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/shinmu.png",
+      "sha256": "6bcea3c117bcae95c6fdd0893f924bba0720e3efff6833a70cb31f876db85fc6",
+      "sizeBytes": 116842,
+      "url": "game-assets/monsters/shinmu.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:snake"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/snake.png",
+      "sha256": "c013f7c65d0569c822a3b90cc76201b53d0de792ad3b73e54318ae924ed34721",
+      "sizeBytes": 140663,
+      "url": "game-assets/monsters/snake.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:snakegeneral"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/snakegeneral.png",
+      "sha256": "110306995e1917c7510f4dfde085481a25b1a24550aa0bee495aa986bd623906",
+      "sizeBytes": 168948,
+      "url": "game-assets/monsters/snakegeneral.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:southguardian"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/southguardian.png",
+      "sha256": "7e41f016a1afd3c83b27bb3e59ffe6fbf28f995f92668e32a78134d6dc961697",
+      "sizeBytes": 59314,
+      "url": "game-assets/monsters/southguardian.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:sphinx"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/sphinx.png",
+      "sha256": "36b7d1ab45fca1eb205e8d70e6bee1d90d326cd6f9bacc389b1270fbf9f34c75",
+      "sizeBytes": 179196,
+      "url": "game-assets/monsters/sphinx.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:spirit"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/spirit.png",
+      "sha256": "67fa4038f756661803240265c4ce14be64027eda45c253c79e155c86c8fb75ad",
+      "sizeBytes": 164440,
+      "url": "game-assets/monsters/spirit.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:spirits"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/spirits.png",
+      "sha256": "65355ca964ca220b64e3f80714d84213316422456df2785fe3a5534e11b7b71c",
+      "sizeBytes": 109490,
+      "url": "game-assets/monsters/spirits.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:tahomet"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/tahomet.png",
+      "sha256": "b9be5645e043975d00b0843d3583227ddeb48b910e5f1e2bf1f1e4c9ce108fee",
+      "sizeBytes": 176324,
+      "url": "game-assets/monsters/tahomet.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:the_earth"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/the_earth.png",
+      "sha256": "5dcbddaad81a561bd586571c3d980406f94dff7c03eacaec2b2f111260b9b398",
+      "sizeBytes": 278554,
+      "url": "game-assets/monsters/the_earth.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:thief_boss"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/thief_boss.png",
+      "sha256": "c9182c18ba0a67b3c674fde8790d06cf2b379b44419b61a480031acecf88cff3",
+      "sizeBytes": 167838,
+      "url": "game-assets/monsters/thief_boss.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:tigerwoman"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/tigerwoman.png",
+      "sha256": "233bba6c895633837a9b5a05dcfc70b4001e670557620c5502b148b54c84f317",
+      "sizeBytes": 156243,
+      "url": "game-assets/monsters/tigerwoman.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:toadstool"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/toadstool.png",
+      "sha256": "977e3eb3525e813ea8d305b095f0140063f5ea269aa2f051e0f0bd207fc00eff",
+      "sizeBytes": 130223,
+      "url": "game-assets/monsters/toadstool.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:togui_elder"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/togui_elder.png",
+      "sha256": "5a18515bc8f7f3e2b5f1491574b59c1fab6bedd78c4e0d500f3bc2e4c2d4d973",
+      "sizeBytes": 101498,
+      "url": "game-assets/monsters/togui_elder.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:togui_general"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/togui_general.png",
+      "sha256": "bcd3d8c05bec286a224e7c2fdc4ac235e6758e4d0369c5f9371520cced44f015",
+      "sizeBytes": 236992,
+      "url": "game-assets/monsters/togui_general.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:tombgeneral"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/tombgeneral.png",
+      "sha256": "f12730035c21b73ea8fbc276780f40228f1e97637534e41aca2ce5c1872247d7",
+      "sizeBytes": 293357,
+      "url": "game-assets/monsters/tombgeneral.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:uruchi"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/uruchi.png",
+      "sha256": "60f476dbbf64fca32bf1f32f7230878c0276cf7860f0f4f4dd6b2e7058f6c02d",
+      "sizeBytes": 121921,
+      "url": "game-assets/monsters/uruchi.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:valkyrie"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/valkyrie.png",
+      "sha256": "0d6530dabf03d944ba7398e96b2e8fc26fbf0c3a4fb603181ecba49063f3acc6",
+      "sizeBytes": 190424,
+      "url": "game-assets/monsters/valkyrie.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:venefica"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/venefica.png",
+      "sha256": "35f187e18d544db351e67f45309c0f00f8e5cc8be3170b1651d4800ab22d8c8c",
+      "sizeBytes": 36446,
+      "url": "game-assets/monsters/venefica.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:venefica_demon"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/venefica_demon.png",
+      "sha256": "d2d4ca2b943646b2f0f61f0eeff4682401ca8ea00602a02a9bf4dd668b3cba34",
+      "sizeBytes": 262282,
+      "url": "game-assets/monsters/venefica_demon.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:voiddevil"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/voiddevil.png",
+      "sha256": "ad4cd9ffc32a766da2cd4814c233dc5808b05ed04198f8388fc07a43f190c750",
+      "sizeBytes": 97520,
+      "url": "game-assets/monsters/voiddevil.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:volkoff"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/volkoff.png",
+      "sha256": "0d7f3872151a70ae2c9097418a11e2b51901560c0e86ea65bdca4a046745707e",
+      "sizeBytes": 105923,
+      "url": "game-assets/monsters/volkoff.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:wendigo"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/wendigo.png",
+      "sha256": "3756e4a0617835ad9e3d89c374a9da6e1c05a205ddc9d7512c920bd0599c4fd9",
+      "sizeBytes": 187723,
+      "url": "game-assets/monsters/wendigo.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:westguardian"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/westguardian.png",
+      "sha256": "7a0779c54b0e4239ab36d51ae203a2cc586cf65b0ed41e8e1f34bc56d322bb66",
+      "sizeBytes": 68910,
+      "url": "game-assets/monsters/westguardian.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:whitesnake"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/whitesnake.png",
+      "sha256": "902a76d497ce9d498f030fe6863d4ebe33c3c78b7177f860359a8a9129d2fcd5",
+      "sizeBytes": 320451,
+      "url": "game-assets/monsters/whitesnake.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:wingtribespear"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/wingtribespear.png",
+      "sha256": "196e77219e18b25edade710462865fd3e5de7caa44ef375f29b58ae7e4feec31",
+      "sizeBytes": 128953,
+      "url": "game-assets/monsters/wingtribespear.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:yuno"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/yuno.png",
+      "sha256": "650443eb04bf43e5df2988d5a7ca482158e280a7408475915f16479375a5d513",
+      "sizeBytes": 145777,
+      "url": "game-assets/monsters/yuno.png",
+      "width": 512
+    },
+    {
+      "assetKeys": [
+        "monster-art:gamedata-48ad548c98056b6c87b3:zed"
+      ],
+      "height": 512,
+      "mediaType": "image/png",
+      "path": "monsters/zed.png",
+      "sha256": "e327cabe1e1e8e92bb14453fa306ce47effc01dd40952ee04bf549f080249cfa",
+      "sizeBytes": 172482,
+      "url": "game-assets/monsters/zed.png",
+      "width": 512
     }
   ],
   "format": "phmon-game-assets-index",
   "formatVersion": 1,
   "generator": "phmon-game-data-exporter",
+  "monsterDatasetId": "gamedata-48ad548c98056b6c87b3",
   "urlPrefix": "game-assets"
 }
