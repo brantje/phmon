@@ -22,10 +22,14 @@ def main():
         (args.textdata / "refoptionalteleport.txt").read_text(encoding="utf-16"),
         (args.textdata / "textdata_object.txt").read_text(encoding="utf-16"),
     )
-    payload = json.loads(args.output.read_text()) if args.output.exists() else {}
+    payload = {}
+    if args.output.exists():
+        payload = json.loads(args.output.read_text(encoding="utf-8"))
     payload[args.dataset] = names
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(f"Wrote {len(names)} named Reverse return destinations for {args.dataset}")
 
 

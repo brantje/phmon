@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestReverseReturnValidation(t *testing.T) {
@@ -59,5 +62,32 @@ func TestNamedReverseReturnProfileAdmission(t *testing.T) {
 	}
 	if got := s.controlSnapshot(Target{Server: "Greatest"}, nil)["reverse_return_named_locations"].([]string); len(got) != 2 {
 		t.Fatal(got)
+	}
+}
+
+type failingReverseReturnContextFixture struct{}
+
+func (failingReverseReturnContextFixture) ReverseReturnContexts(
+	context.Context,
+	map[string]string,
+	time.Time,
+) (map[string]ReverseReturnContext, error) {
+	return nil, errors.New("resource store unavailable")
+}
+
+func TestReverseReturnContextFailureDoesNotDiscardControls(t *testing.T) {
+	s := NewService(nil, nil)
+	s.SetReverseReturnContext(failingReverseReturnContextFixture{})
+	snapshot := map[string]any{
+		"character_id": "character-one",
+		"session_id":   "session-one",
+		"capabilities": map[string]Capability{},
+	}
+	s.addReverseReturnContexts(context.Background(), []map[string]any{snapshot})
+	if snapshot["character_id"] != "character-one" || snapshot["session_id"] != "session-one" {
+		t.Fatalf("core control fields were changed: %#v", snapshot)
+	}
+	if _, ok := snapshot["reverse_return"]; ok {
+		t.Fatalf("failed optional context was attached: %#v", snapshot["reverse_return"])
 	}
 }

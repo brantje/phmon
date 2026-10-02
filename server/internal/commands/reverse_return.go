@@ -48,9 +48,11 @@ func (s *Service) namedReverseReturnReason(server, name string) string {
 	return "named_location_not_found"
 }
 
-func (s *Service) addReverseReturnContexts(ctx context.Context, snapshots []map[string]any) error {
+// addReverseReturnContexts is best-effort: resource context enriches controls but
+// must not make the core control projection unavailable when its query fails.
+func (s *Service) addReverseReturnContexts(ctx context.Context, snapshots []map[string]any) {
 	if s.reverseReturn == nil {
-		return nil
+		return
 	}
 	sessions := make(map[string]string)
 	for _, snapshot := range snapshots {
@@ -61,11 +63,11 @@ func (s *Service) addReverseReturnContexts(ctx context.Context, snapshots []map[
 		}
 	}
 	if len(sessions) == 0 {
-		return nil
+		return
 	}
 	contexts, err := s.reverseReturn.ReverseReturnContexts(ctx, sessions, s.now())
 	if err != nil {
-		return err
+		return
 	}
 	for _, snapshot := range snapshots {
 		id, _ := snapshot["character_id"].(string)
@@ -73,5 +75,4 @@ func (s *Service) addReverseReturnContexts(ctx context.Context, snapshots []map[
 			snapshot["reverse_return"] = evidence
 		}
 	}
-	return nil
 }

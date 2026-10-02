@@ -136,6 +136,15 @@ test('intent flags remain true for return, disconnect and clientless', () => {
   }
 })
 
+test('reverse return is blocked when the supplied map snapshot is stale', () => {
+  const definition = remoteControlDefinition(
+    'character.reverse_return',
+    {},
+    false,
+  )
+  assert.equal(definition.preEligibility?.()?.code, 'stale_map_scope')
+})
+
 test('Start and Stop Training skip only targets with a known incompatible botting state', () => {
   const characters: CharacterView[] = [
     {

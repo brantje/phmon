@@ -267,9 +267,37 @@ Files: capability-name validation and catalog ingestion/tests,
 protocol documentation, and CodeRabbit path filters. Focused verification passes:
 `go test ./internal/httpapi`, `python3 -m unittest plugin.test_protocol_contract`,
 contract comparison against `origin/main` (raw catalog differs, incompatible
-change false), and `git diff --check`. Exact next action: push this fix, request a
-full CodeRabbit review, then monitor CI and repair any actionable review comments
-with a reply naming the fixing commit SHA. Keep PR #64 open; do not merge.
+change false), and `git diff --check`. CI and stack smoke checks passed on
+`0efbfe3`. Keep PR #64 open; do not merge.
+
+The full review ran on `0efbfe3` with 56 source/documentation files and posted
+three valid findings: optional Reverse return context-query errors were failing
+core controls, the location catalog merge relied on the platform default text
+encoding, and Reverse return controls did not receive map-snapshot freshness.
+This follow-up makes context enrichment best-effort, reads catalog JSON as UTF-8,
+and forwards freshness through each Reverse return caller. Focused Go, exporter,
+frontend, typecheck and formatting checks pass. Exact next action: push these
+fixes, reply to all three CodeRabbit threads with the fixing commit SHA, and
+monitor CI and any incremental review on the new head.
+
+### Resume — 2026-10-02 dataset-backed map reference issue
+
+Created [issue #65](https://github.com/brantje/phmon/issues/65) for monster levels,
+monster hunting areas, and NPC/teleporter reference markers throughout the map.
+The operator confirmed that future monster sightings must persist resolved levels
+and provenance in PostgreSQL, and that both the manual teleporter probe and
+automatic candidate-destination probing must be replaced by exported locations
+and routes. Keep live per-character checks when executing commands.
+This supersedes the earlier #24 live-only marker rule and #33 prohibition on a
+persistent NPC/teleporter reference catalog. Static markers follow the selected
+server/dataset and area/floor, independently of character proximity or connection;
+runtime NPC identities and observations remain ephemeral. Preserve unresolved
+joins, coordinate precision, and cave/floor coverage gaps; never convert reference
+locations into fabricated live sightings or heatmap data. Issue #65 contains the
+source counts, implementation scope, regression requirements, and acceptance gates.
+This was issue planning only; no feature implementation or acceptance status changed.
+Exact next action when implementation is requested: start #65's versioned exporter
+and server catalog increment, then integrate levels/persistence and map layers.
 
 ### Resume — 2026-10-02 complete exporter textdata extraction
 

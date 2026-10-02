@@ -107,9 +107,7 @@ func (s *Service) Controls(ctx context.Context, characterID string) (map[string]
 		return nil, err
 	}
 	snapshot := s.controlSnapshot(target, state)
-	if err := s.addReverseReturnContexts(ctx, []map[string]any{snapshot}); err != nil {
-		return nil, err
-	}
+	s.addReverseReturnContexts(ctx, []map[string]any{snapshot})
 	return snapshot, nil
 }
 
@@ -138,9 +136,7 @@ func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string)
 			training,
 		))
 	}
-	if err := s.addReverseReturnContexts(ctx, result); err != nil {
-		return nil, err
-	}
+	s.addReverseReturnContexts(ctx, result)
 	return result, nil
 }
 

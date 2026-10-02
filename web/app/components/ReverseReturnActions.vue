@@ -17,8 +17,9 @@ const props = withDefaults(
     currentCharacter(characterID: string): CharacterView | undefined
     presentation?: 'panel' | 'menu'
     menuVisible?: boolean
+    mapSnapshotCurrent?: boolean
   }>(),
-  { presentation: 'panel', menuVisible: true },
+  { presentation: 'panel', menuVisible: true, mapSnapshotCurrent: true },
 )
 const emit = defineEmits<{
   chosen: []
@@ -31,6 +32,7 @@ const actions = useRemoteControlActions({
   scopeKeyForCharacter: props.scopeKeyForCharacter,
   currentScopeKey: props.currentScopeKey,
   currentCharacter: props.currentCharacter,
+  mapSnapshotCurrent: () => props.mapSnapshotCurrent,
 })
 const reviewID = ref('')
 const review = computed(() =>

@@ -727,6 +727,7 @@ function cancelReview(operation: FanOutOperation) {
       :scope-key-for-character="scopeKeyForCharacter"
       :current-scope-key="currentScopeKey"
       :current-character="currentCharacter"
+      :map-snapshot-current="props.mapSnapshotCurrent"
     />
     <p v-if="!validatedArgs" class="form-error" role="status">
       Enter valid action values before submitting.
