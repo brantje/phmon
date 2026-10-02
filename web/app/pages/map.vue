@@ -823,6 +823,15 @@ function openCustomTeleportDestination() {
   void teleportAction.showDestinationDialog()
   navigationAction.close(false)
 }
+function chooseTeleportDestination(destination: string) {
+  teleportAction.destination.value = destination
+  void teleportAction.onDestinationInput()
+}
+function setTeleportDestinationFromInput(event: Event) {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  chooseTeleportDestination(target.value)
+}
 function openTeleporterContext(
   npc: MapNpc,
   point: RasterPosition,
@@ -2813,10 +2822,7 @@ useHead({ title: 'Map · PhMon' })
                       'is-selected':
                         teleportAction.destination.value === route.destination,
                     }"
-                    @click="
-                      teleportAction.destination.value = route.destination
-                      teleportAction.onDestinationInput()
-                    "
+                    @click="chooseTeleportDestination(route.destination)"
                   >
                     {{ route.destination }}
                   </button>
@@ -2832,12 +2838,7 @@ useHead({ title: 'Map · PhMon' })
                   maxlength="64"
                   placeholder="Town name (for example Jangan)"
                   :value="teleportAction.destination.value"
-                  @input="
-                    teleportAction.destination.value = (
-                      $event.target as HTMLInputElement
-                    ).value
-                    teleportAction.onDestinationInput()
-                  "
+                  @input="setTeleportDestinationFromInput"
                 />
               </label>
               <p
@@ -2859,12 +2860,7 @@ useHead({ title: 'Map · PhMon' })
                   spellcheck="false"
                   maxlength="64"
                   :value="teleportAction.destination.value"
-                  @input="
-                    teleportAction.destination.value = (
-                      $event.target as HTMLInputElement
-                    ).value
-                    teleportAction.onDestinationInput()
-                  "
+                  @input="setTeleportDestinationFromInput"
                 />
               </label>
             </div>
