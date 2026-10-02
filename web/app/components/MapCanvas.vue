@@ -1730,7 +1730,8 @@ onBeforeUnmount(() => {
 
 :global(.phmon-map-marker--party.leaflet-div-icon),
 :global(.phmon-map-marker--player.leaflet-div-icon),
-:global(.phmon-map-marker--npc.leaflet-div-icon) {
+:global(.phmon-map-marker--npc.leaflet-div-icon),
+:global(.phmon-map-marker--monster.leaflet-div-icon) {
   overflow: visible;
 }
 
@@ -1968,7 +1969,8 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   box-shadow: 0 1px 4px #000b;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 :global(.phmon-map-party-icon img),
@@ -2073,7 +2075,8 @@ onBeforeUnmount(() => {
   line-height: 1.1;
   white-space: nowrap;
   box-shadow: 0 1px 4px #000b;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 :global(.phmon-map-monster-name-text) {
