@@ -2488,23 +2488,84 @@ useHead({ title: 'Map · PhMon' })
               <strong>{{ teleportAction.gateLabel.value }}</strong
               ><small>Teleporter</small>
             </div>
-            <label class="map-teleport-destination">
-              Destination
-              <input
-                type="text"
-                name="teleport-destination"
-                autocomplete="off"
-                spellcheck="false"
-                maxlength="64"
-                :value="teleportAction.destination.value"
-                @input="
-                  teleportAction.destination.value = (
-                    $event.target as HTMLInputElement
-                  ).value;
-                  teleportAction.onDestinationInput()
-                "
-              />
-            </label>
+            <div class="map-teleport-destination">
+              <span class="map-teleport-destination-label">Destination</span>
+              <ul
+                v-if="teleportAction.discoveredRoutes.value.length"
+                class="map-teleport-route-list"
+                role="listbox"
+                aria-label="Discovered teleport destinations"
+              >
+                <li
+                  v-for="route in teleportAction.discoveredRoutes.value"
+                  :key="route.destination"
+                  role="option"
+                  :aria-selected="
+                    teleportAction.destination.value === route.destination
+                  "
+                >
+                  <button
+                    type="button"
+                    class="map-teleport-route-button"
+                    :class="{
+                      'is-selected':
+                        teleportAction.destination.value === route.destination,
+                    }"
+                    @click="
+                      teleportAction.destination.value = route.destination;
+                      teleportAction.onDestinationInput()
+                    "
+                  >
+                    {{ route.destination }}
+                  </button>
+                </li>
+              </ul>
+              <label v-else class="map-teleport-destination-field">
+                <span class="sr-only">Destination name</span>
+                <input
+                  type="text"
+                  name="teleport-destination"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="64"
+                  placeholder="Town name (for example Jangan)"
+                  :value="teleportAction.destination.value"
+                  @input="
+                    teleportAction.destination.value = (
+                      $event.target as HTMLInputElement
+                    ).value;
+                    teleportAction.onDestinationInput()
+                  "
+                />
+              </label>
+              <p
+                v-if="teleportAction.discoveredRoutes.value.length"
+                class="map-teleport-route-note"
+              >
+                Routes verified with get_teleport_data at this gate. Type a
+                different name below if needed.
+              </p>
+              <label
+                v-if="teleportAction.discoveredRoutes.value.length"
+                class="map-teleport-destination-field map-teleport-destination-other"
+              >
+                <span>Other destination</span>
+                <input
+                  type="text"
+                  name="teleport-destination-custom"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="64"
+                  :value="teleportAction.destination.value"
+                  @input="
+                    teleportAction.destination.value = (
+                      $event.target as HTMLInputElement
+                    ).value;
+                    teleportAction.onDestinationInput()
+                  "
+                />
+              </label>
+            </div>
             <p
               v-if="!actionTargetIDs.size"
               class="map-navigation-menu-summary"
@@ -3689,6 +3750,56 @@ useHead({ title: 'Map · PhMon' })
   padding: 6px 9px;
   font-size: 12px;
   color: var(--ph-muted);
+}
+
+.map-teleport-destination-label {
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.map-teleport-destination-field {
+  display: grid;
+  gap: 4px;
+}
+
+.map-teleport-route-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.map-teleport-route-button {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #3a4d63;
+  border-radius: 3px;
+  background: #121a26;
+  color: var(--ph-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-teleport-route-button.is-selected,
+.map-teleport-route-button:hover {
+  border-color: #6f8eb8;
+  background: #1a2838;
+}
+
+.map-teleport-route-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8fa3bc;
+}
+
+.map-teleport-destination-other span {
+  font-size: 11px;
 }
 
 .map-teleport-destination input {

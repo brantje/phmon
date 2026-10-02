@@ -65,4 +65,11 @@ func TestValidateNPCSnapshotRejectsBadRolesAndDuplicates(t *testing.T) {
 	if err := ValidateLiveSnapshot("unavailable", 25000, []NPC{{ID: "1", Role: "npc", Region: 25000, X: 1, Y: 2}}, now, now); err == nil {
 		t.Fatal("unavailable snapshot with rows was accepted")
 	}
+	code := int64(7)
+	if err := ValidateLiveSnapshot("observed", 25000, []NPC{{
+		ID: "10", Name: "Hotan", ServerName: "GATE_KT", Model: &model, Role: "teleporter", Region: 25000, X: 1, Y: 2,
+		TeleportRoutes: []TeleportRoute{{Destination: "Jangan", TeleportCode: &code}},
+	}}, now, now); err != nil {
+		t.Fatalf("teleporter routes were rejected: %v", err)
+	}
 }

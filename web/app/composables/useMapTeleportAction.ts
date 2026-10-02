@@ -5,6 +5,10 @@ import {
   mapTeleportCommand,
   mapTeleportGateTitle,
 } from '~/utils/mapTeleportAction'
+import {
+  pickDefaultTeleportDestination,
+  sortedTeleportRoutes,
+} from '~/utils/mapTeleportRoutes'
 
 export function useMapTeleportAction(options: {
   server(): string
@@ -65,9 +69,15 @@ export function useMapTeleportAction(options: {
     },
     currentScopeKey(characterID: string) {
       const character = getCharacter(characterID)
-      return character
-        ? `server:${character.server.toLowerCase()}`
-        : 'unavailable'
+      if (!character) return 'unavailable'
+      if (character.server.toLowerCase() !== options.server().toLowerCase()) {
+        return `server:${character.server.toLowerCase()}`
+      }
+      const npc = menuNpc.value
+      if (npc) {
+        return `teleport:${options.server().toLowerCase()}:${npc.servername || npc.id}`
+      }
+      return `server:${character.server.toLowerCase()}`
     },
     currentCharacter: getCharacter,
   })
@@ -84,6 +94,10 @@ export function useMapTeleportAction(options: {
 
   const gateLabel = computed(() =>
     menuNpc.value ? mapTeleportGateTitle(menuNpc.value) : 'Teleporter',
+  )
+
+  const discoveredRoutes = computed(() =>
+    menuNpc.value ? sortedTeleportRoutes(menuNpc.value) : [],
   )
 
   const counts = computed(() =>
@@ -158,9 +172,10 @@ export function useMapTeleportAction(options: {
     returnFocusElement =
       focusTarget ?? document.querySelector<HTMLElement>('.map-canvas')
     menuNpc.value = npc
-    if (!destination.value.trim() && npc.name?.toLowerCase() === 'hotan') {
-      destination.value = 'Jangan'
-    }
+    destination.value = pickDefaultTeleportDestination(
+      npc,
+      destination.value.trim() || undefined,
+    )
     menuAnchor.value = { x: anchor.x, y: anchor.y }
     activeOperationID.value = ''
     reviewingOperationID.value = ''
@@ -250,6 +265,7 @@ export function useMapTeleportAction(options: {
     menuNpc,
     destination,
     gateLabel,
+    discoveredRoutes,
     targetLabel,
     menuSummary,
     counts,

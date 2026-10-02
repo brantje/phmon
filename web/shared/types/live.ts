@@ -174,6 +174,11 @@ export interface MapNpcObserver {
   name: string
 }
 
+export interface MapTeleportRoute {
+  destination: string
+  teleport_code?: number
+}
+
 export interface MapNpc {
   id: string
   name?: string
@@ -185,6 +190,7 @@ export interface MapNpc {
   y: number
   observer_z?: number
   observed_at: string
+  teleport_routes?: MapTeleportRoute[]
   observers: MapNpcObserver[]
 }
 

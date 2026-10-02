@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.5'
+pVersion = '1.9.6'
 pUrl = ''
 
 PROTOCOL_VERSION = 11
@@ -66,7 +66,18 @@ _TELEPORT_PROBE_SYMBOL_RE = re.compile(
     re.IGNORECASE,
 )
 MAX_TELEPORT_PROBE_PAIR_CALLS = 16
+_MAX_TELEPORT_ROUTES_PER_GATE = 32
+_MAX_TELEPORT_ROUTE_PROBE_CALLS = 64
+_TELEPORT_ROUTE_CACHE_TTL_SECONDS = 120.0
 _TELEPORT_PROBE_UNKNOWN_DEST = '__phmon_probe_unknown_destination__'
+# Bounded labels probed via get_teleport_data; only successful pairs are published.
+_TELEPORT_DESTINATION_CANDIDATES = (
+    'Jangan', 'Hotan', 'Donwhang', 'Samarkand', 'Constantinople',
+    'Alexandria (North)', 'Alexandria (South)',
+    'Tiger Mountain', 'Baghdad', 'Alexandria', 'Constantinople Fortress',
+    'GATE_CH', 'GATE_KT', 'GATE_HWANG', 'GATE_CA',
+)
+_teleport_route_cache = {}
 # Documented phBot examples (Hotan gate → Jangan); read-only in probe, optional operator script test.
 _TELEPORT_PROBE_REFERENCE_PAIRS = (
     ('Hotan', 'Jangan', 'hotan_to_jangan'),
@@ -548,6 +559,57 @@ def _teleport_probe_label(value, limit=64):
     return _bounded_text(text, limit)
 
 
+def _teleport_routes_for_gate(source_label, gate_servername, adapter):
+    """Discover live routes for one gate via bounded get_teleport_data probes."""
+    if adapter is None or not adapter.has('get_teleport_data'):
+        return []
+    source_label = _teleport_probe_label(source_label)
+    gate_key = gate_servername.strip().lower() if isinstance(gate_servername, str) else ''
+    if not source_label:
+        return []
+    cache_key = (source_label.lower(), gate_key)
+    now = _monotonic()
+    cached = _teleport_route_cache.get(cache_key)
+    if cached and cached[0] > now:
+        return list(cached[1])
+    routes = []
+    attempts = 0
+    for candidate in _TELEPORT_DESTINATION_CANDIDATES:
+        if attempts >= _MAX_TELEPORT_ROUTE_PROBE_CALLS or len(routes) >= _MAX_TELEPORT_ROUTES_PER_GATE:
+            break
+        destination_label = _teleport_probe_label(candidate)
+        if not destination_label or destination_label.lower() == source_label.lower():
+            continue
+        attempts += 1
+        try:
+            observed = adapter.call('get_teleport_data', source_label, destination_label)
+        except Exception:
+            continue
+        classification = _classify_teleport_data_result(observed)
+        if classification.get('result') != 'tuple':
+            continue
+        entry = {'destination': destination_label}
+        code = classification.get('code')
+        if isinstance(code, int) and not isinstance(code, bool):
+            entry['teleport_code'] = code
+        routes.append(entry)
+    routes.sort(key=lambda item: item['destination'].lower())
+    _teleport_route_cache[cache_key] = (now + _TELEPORT_ROUTE_CACHE_TTL_SECONDS, tuple(routes))
+    return list(routes)
+
+
+def _attach_teleporter_routes(npc_list, adapter):
+    if not isinstance(npc_list, list) or adapter is None:
+        return
+    for npc in npc_list:
+        if not isinstance(npc, dict) or npc.get('role') != 'teleporter':
+            continue
+        source = npc.get('name') or npc.get('servername')
+        routes = _teleport_routes_for_gate(source, npc.get('servername'), adapter)
+        if routes:
+            npc['teleport_routes'] = routes
+
+
 def _classify_teleport_data_result(value):
     if value is None:
         return {'result': 'none'}
@@ -856,9 +918,17 @@ def probe_teleporters():
 def _npc_snapshot_signature(status, region, npcs):
     rows = []
     for npc in npcs:
+        route_sig = ()
+        routes = npc.get('teleport_routes')
+        if isinstance(routes, list):
+            route_sig = tuple(
+                (item.get('destination'), item.get('teleport_code'))
+                for item in routes
+                if isinstance(item, dict) and item.get('destination')
+            )
         rows.append((
             npc.get('id'), npc.get('name'), npc.get('servername'), npc.get('model_id'),
-            npc.get('role'), npc.get('region'), npc.get('x'), npc.get('y'),
+            npc.get('role'), npc.get('region'), npc.get('x'), npc.get('y'), route_sig,
         ))
     rows.sort()
     return (status, region, tuple(rows))
@@ -4874,6 +4944,8 @@ def _sample_npcs(identity, state, position, now=None):
         truncated = True
     if truncated:
         status = 'truncated'
+    if _worker is not None:
+        _attach_teleporter_routes(matching, _worker.api)
     signature = _npc_snapshot_signature(status, region, matching)
     changed = signature != _last_npc_signature
     refresh_due = (_last_npc_publish_at == 0.0 or

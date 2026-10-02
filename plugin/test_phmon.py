@@ -3042,6 +3042,28 @@ class TeleporterProbeTests(unittest.TestCase):
         caps = {item['name']: item for item in worker._capability_frame()['commands']}
         self.assertTrue(caps['character.teleport']['supported'])
 
+    def test_discover_teleport_routes_for_gate(self):
+        plugin._teleport_route_cache.clear()
+
+        def get_teleport_data(source, destination):
+            if source == 'Hotan' and destination == 'Jangan':
+                return (1, 7)
+            if source == 'Hotan' and destination == 'Samarkand':
+                return (1, 2)
+            return None
+
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {},
+            'get_teleport_data': get_teleport_data,
+            'start_script': lambda *_args: True,
+        })
+        routes = plugin._teleport_routes_for_gate('Hotan', 'GATE_KT', adapter)
+        self.assertEqual(
+            [item['destination'] for item in routes],
+            ['Jangan', 'Samarkand'],
+        )
+        self.assertEqual(routes[0]['teleport_code'], 7)
+
     def test_default_adapter_exposes_get_teleport_data_for_capability_gate(self):
         teleport = lambda *_args: None
 
