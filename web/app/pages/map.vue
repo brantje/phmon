@@ -1419,6 +1419,31 @@ async function stopNavigationRow(row: {
     )
   }
 }
+watch(
+  () => mapSnapshot.value?.navigation,
+  (routes) => {
+    if (!routes?.length || !navigationStopPending.value.size) return
+    const terminal = new Set(
+      routes
+        .filter(
+          (route) =>
+            route.status === 'stopped' || route.status === 'stop_failed',
+        )
+        .map(
+          (route) =>
+            `${route.character_id}:${route.session_id}:${route.route_sequence}`,
+        ),
+    )
+    if (!terminal.size) return
+    const next = [...navigationStopPending.value].filter(
+      (id) => !terminal.has(id),
+    )
+    if (next.length !== navigationStopPending.value.size) {
+      navigationStopPending.value = new Set(next)
+    }
+  },
+  { deep: true },
+)
 function dismissNavigationRow(id: string) {
   dismissedNavigationRows.value = new Set([
     ...dismissedNavigationRows.value,

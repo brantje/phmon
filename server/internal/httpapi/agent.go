@@ -638,7 +638,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				command, commandErr := h.commands.GetByID(resultCtx, message.CommandID)
 				resultCancel()
 				if commandErr == nil && command.Name == "character.navigate.stop" &&
-					(message.Status == "completed" || message.Status == "failed") {
+					(message.Status == "completed" || message.Status == "failed") &&
+					message.Verification == "api_confirmed" {
 					var args struct {
 						CommandID     string `json:"command_id"`
 						RouteSequence uint64 `json:"route_sequence"`

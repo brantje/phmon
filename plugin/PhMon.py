@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.0'
+pVersion = '1.9.1'
 pUrl = ''
 
 PROTOCOL_VERSION = 11
@@ -2939,6 +2939,7 @@ class AgentWorker(object):
                     self.character_id = None
             self._profile_epoch += 1
             self._clear_navigation_route()
+            self._trace_requested_name = None
             self._item_tracker.reset('character_or_profile_changed')
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_utc_now()})
             reply = self._wait_for_registration(client)

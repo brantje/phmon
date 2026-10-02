@@ -14,7 +14,7 @@ import sys
 import time
 from socket import timeout as SocketTimeout
 from http.cookies import SimpleCookie
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, build_opener
 
@@ -72,7 +72,10 @@ def fetch_http_characters(opener, cookie, character_prefix, server):
         + "&server="
         + quote(server)
     )
-    code, _, body = request_json(opener, path, cookie=cookie)
+    try:
+        code, _, body = request_json(opener, path, cookie=cookie)
+    except (URLError, TimeoutError, SocketTimeout, OSError):
+        return []
     if code != 200 or not isinstance(body, dict):
         return []
     characters = body.get("characters", [])
@@ -109,7 +112,10 @@ def main():
         ).replace("wss://", "https://", 1).rsplit("/agent", 1)[0]
         ready_deadline = time.monotonic() + 30
         while time.monotonic() < ready_deadline:
-            ready_code, _, ready_body = request_json(opener, agent_http + "/readyz")
+            try:
+                ready_code, _, ready_body = request_json(opener, agent_http + "/readyz")
+            except (URLError, TimeoutError, SocketTimeout, OSError):
+                ready_code, ready_body = None, None
             if ready_code == 200 and isinstance(ready_body, dict) and ready_body.get("status") == "ok":
                 break
             time.sleep(0.25)
