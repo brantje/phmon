@@ -2936,6 +2936,55 @@ class TeleporterProbeTests(unittest.TestCase):
         self.assertIn('1 gate', text)
         self.assertIn('enumeration unsupported', text)
 
+    def test_probe_includes_hotan_jangan_reference_pairs(self):
+        gates = [{'id': '4', 'name': 'Hotan', 'servername': 'GATE_KT'}]
+        result = plugin.probe_teleporter_capabilities(
+            api={'get_teleport_data': lambda _s, _d: None},
+            npcs=[{
+                'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+            }],
+        )
+        tags = [test.get('tag') for test in result['pair_tests']]
+        self.assertIn('hotan_to_jangan', tags)
+        self.assertIn('gate_kt_to_jangan_gate', tags)
+        hotan_jangan = next(
+            test for test in result['pair_tests'] if test.get('tag') == 'hotan_to_jangan'
+        )
+        self.assertEqual(hotan_jangan['source'], 'Hotan')
+        self.assertEqual(hotan_jangan['destination'], 'Jangan')
+
+    def test_hotan_jangan_test_requires_gate(self):
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), patch.object(
+            plugin, 'collect_npc_observation', return_value=('observed', [], False)
+        ), patch.object(plugin, '_optional_phbot_api', return_value=lambda *_a, **_k: None), patch.object(
+            plugin, '_set_gui_status'
+        ) as set_status:
+            plugin.test_teleport_hotan_jangan()
+        set_status.assert_called()
+        self.assertIn('GATE_KT', set_status.call_args[0][0])
+
+    def test_hotan_jangan_test_runs_script_when_pair_resolves(self):
+        scripts = []
+
+        def start_script(line):
+            scripts.append(line)
+            return True
+
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+        }]
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), patch.object(
+            plugin, 'collect_npc_observation', return_value=('observed', npcs, False)
+        ), patch.object(
+            plugin, '_optional_phbot_api',
+            side_effect=lambda name: {
+                'get_teleport_data': lambda s, d: (1, 99) if s == 'Hotan' and d == 'Jangan' else None,
+                'start_script': start_script,
+            }.get(name),
+        ), patch.object(plugin, '_set_gui_status'), patch.object(plugin, '_log'):
+            plugin.test_teleport_hotan_jangan()
+        self.assertEqual(scripts, ['teleport,Hotan,Jangan'])
+
 
 if __name__ == '__main__':
     unittest.main()

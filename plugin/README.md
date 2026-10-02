@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.2** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.9.3** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v11 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -36,6 +36,12 @@ findings remain in [runtime evidence](../docs/phbot-capabilities.md#issue-36--ma
 Install/reload **1.8.0**, connect to a protocol-10 backend, and open the Map with
 **Other players** enabled. There is no equipment inspection, player history, or
 packet fallback.
+
+Version 1.9.3 adds **Test Hotan→Jangan** (operator-only): requires the Hotan
+`GATE_KT` gate in `get_npcs()`, resolves `get_teleport_data`, then runs one
+`teleport,Hotan,Jangan` or `teleport,GATE_KT,GATE_CH` script line via
+`start_script`. The read-only probe also includes those reference pairs (tagged
+`hotan_to_jangan` / `gate_kt_to_jangan_gate`).
 
 Version 1.9.2 adds a read-only **Probe teleporters** QtBind action for issue #32.
 It discovers matching `phBot` symbol names and runs at most sixteen bounded

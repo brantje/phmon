@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.2'
+pVersion = '1.9.3'
 pUrl = ''
 
 PROTOCOL_VERSION = 11
@@ -67,6 +67,15 @@ _TELEPORT_PROBE_SYMBOL_RE = re.compile(
 )
 MAX_TELEPORT_PROBE_PAIR_CALLS = 16
 _TELEPORT_PROBE_UNKNOWN_DEST = '__phmon_probe_unknown_destination__'
+# Documented phBot examples (Hotan gate → Jangan); read-only in probe, optional operator script test.
+_TELEPORT_PROBE_REFERENCE_PAIRS = (
+    ('Hotan', 'Jangan', 'hotan_to_jangan'),
+    ('GATE_KT', 'GATE_CH', 'gate_kt_to_jangan_gate'),
+)
+_HOTAN_JANGAN_SCRIPT_PAIRS = (
+    ('Hotan', 'Jangan'),
+    ('GATE_KT', 'GATE_CH'),
+)
 MAX_MOB_SPOOL_ITEMS = 2048
 MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
 MOB_POLL_INTERVAL_SECONDS = 0.1
@@ -601,7 +610,7 @@ def _teleport_probe_pair_plan(gates):
     pairs = []
     seen = set()
 
-    def add(source, destination, gate_id=None):
+    def add(source, destination, gate_id=None, tag=None):
         source_label = _teleport_probe_label(source) if isinstance(source, str) else None
         destination_label = _teleport_probe_label(destination) if isinstance(destination, str) else None
         if destination == _TELEPORT_PROBE_UNKNOWN_DEST:
@@ -612,16 +621,24 @@ def _teleport_probe_pair_plan(gates):
         if key in seen:
             return
         seen.add(key)
-        pairs.append({
+        entry = {
             'source': source_label,
             'destination': destination_label,
             'gate_id': gate_id,
-        })
+        }
+        if tag:
+            entry['tag'] = tag
+        pairs.append(entry)
 
     if gates:
         first = gates[0]
         control_source = first.get('name') or first.get('servername')
         add(control_source, _TELEPORT_PROBE_UNKNOWN_DEST, first.get('id'))
+        gate_id = first.get('id')
+        for source, destination, tag in _TELEPORT_PROBE_REFERENCE_PAIRS:
+            add(source, destination, gate_id, tag=tag)
+            if len(pairs) >= MAX_TELEPORT_PROBE_PAIR_CALLS:
+                return pairs[:MAX_TELEPORT_PROBE_PAIR_CALLS]
 
     labels = []
     for gate in gates:
@@ -707,6 +724,8 @@ def probe_teleporter_capabilities(api=None, npcs=None, api_module=None):
             'destination': planned['destination'],
             'gate_id': planned.get('gate_id'),
         }
+        if planned.get('tag'):
+            entry['tag'] = planned['tag']
         try:
             observed = get_teleport_data(planned['source'], planned['destination'])
         except Exception as error:
@@ -733,6 +752,63 @@ def summarize_teleport_probe(result):
         'Teleporter probe: {gates} gate(s), get_teleport_data={api}, '
         '{pairs} pair test(s), enumeration unsupported.'
     ).format(gates=gates, api=teleport_api, pairs=pairs)
+
+
+def _hotan_gate_row(npcs):
+    for row in _teleport_probe_gate_rows(npcs):
+        name = row.get('name')
+        servername = row.get('servername')
+        if isinstance(name, str) and name.lower() == 'hotan':
+            return row
+        if servername == 'GATE_KT':
+            return row
+    return None
+
+
+def test_teleport_hotan_jangan():
+    """Operator-only Hotan→Jangan check: get_teleport_data then one teleport script line."""
+    if not _PHBOT_AVAILABLE:
+        _set_gui_status('Hotan→Jangan test requires the phBot runtime.')
+        return
+    get_teleport_data = _optional_phbot_api('get_teleport_data')
+    start_script = _optional_phbot_api('start_script')
+    if not callable(get_teleport_data) or not callable(start_script):
+        _set_gui_status('Hotan→Jangan test needs get_teleport_data and start_script.')
+        return
+    _, npcs, _ = collect_npc_observation()
+    if _hotan_gate_row(npcs) is None:
+        _set_gui_status('Hotan gate (GATE_KT) not in current get_npcs() snapshot.')
+        return
+    chosen = None
+    for source, destination in _HOTAN_JANGAN_SCRIPT_PAIRS:
+        try:
+            observed = get_teleport_data(source, destination)
+        except Exception as error:
+            _log('PhMon Hotan→Jangan test get_teleport_data error: ' + error.__class__.__name__)
+            continue
+        if observed is not None and isinstance(observed, tuple):
+            chosen = (source, destination, observed)
+            break
+    if chosen is None:
+        _log('PhMon Hotan→Jangan test: get_teleport_data returned none for all pairs')
+        _set_gui_status('No Hotan→Jangan route from get_teleport_data.')
+        return
+    source, destination, observed = chosen
+    line = 'teleport,{0},{1}'.format(source, destination)
+    try:
+        started = start_script(line)
+    except Exception as error:
+        _set_gui_status('Hotan→Jangan start_script failed: ' + error.__class__.__name__)
+        return
+    code = observed[1] if len(observed) > 1 else None
+    _log(
+        'PhMon Hotan→Jangan test line=' + line
+        + ' code=' + str(code)
+        + ' start_script=' + str(started)
+    )
+    _set_gui_status(
+        'Hotan→Jangan test: ' + line + ' (start_script=' + str(started) + ')'
+    )
 
 
 def probe_teleporters():
@@ -4807,11 +4883,12 @@ if _PHBOT_AVAILABLE and _QtBind is not None:
     _gui_agent_token = _QtBind.createLineEdit(_gui, '', 10, 130, 360, 20)
     _QtBind.createButton(_gui, 'save_config', 'Save & Connect', 10, 165)
     _QtBind.createButton(_gui, 'probe_teleporters', 'Probe teleporters', 10, 195)
+    _QtBind.createButton(_gui, 'test_teleport_hotan_jangan', 'Test Hotan→Jangan', 180, 195)
     _gui_status = _QtBind.createLabel(
         _gui,
         'Join the game to select a bot profile.',
         10,
-        230,
+        260,
     )
     try:
         _load_active_profile(force=True)
