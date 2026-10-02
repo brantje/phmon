@@ -170,31 +170,37 @@ const selectedOperation = computed(() =>
     (operation) => operation.operationID === activePreviewID.value,
   ),
 )
-const mapDisconnectOperation = computed(() => {
+function isMapInlineConfirm(name: string) {
+  return name === 'character.return' || name === 'character.disconnect'
+}
+const mapInlineConfirmOperation = computed(() => {
   const operation = selectedOperation.value
   return props.variant === 'map' &&
     operation?.state === 'prepared' &&
-    operation.command.name === 'character.disconnect'
+    isMapInlineConfirm(operation.command.name)
     ? operation
     : undefined
 })
-const mapDisconnectTargets = computed(
+const mapInlineConfirmTargets = computed(
   () =>
-    mapDisconnectOperation.value?.children.filter(
+    mapInlineConfirmOperation.value?.children.filter(
       (child) => child.submission === 'ready',
     ) || [],
 )
-let mapDisconnectTimer: ReturnType<typeof setTimeout> | undefined
-watch(mapDisconnectOperation, (operation) => {
-  if (mapDisconnectTimer) clearTimeout(mapDisconnectTimer)
-  mapDisconnectTimer = undefined
+function mapActionConfirming(name: RemoteControlActionName) {
+  return mapInlineConfirmOperation.value?.command.name === name
+}
+let mapInlineConfirmTimer: ReturnType<typeof setTimeout> | undefined
+watch(mapInlineConfirmOperation, (operation) => {
+  if (mapInlineConfirmTimer) clearTimeout(mapInlineConfirmTimer)
+  mapInlineConfirmTimer = undefined
   if (operation)
-    mapDisconnectTimer = setTimeout(() => {
-      if (mapDisconnectOperation.value === operation) cancelReview(operation)
+    mapInlineConfirmTimer = setTimeout(() => {
+      if (mapInlineConfirmOperation.value === operation) cancelReview(operation)
     }, 3_500)
 })
 onBeforeUnmount(() => {
-  if (mapDisconnectTimer) clearTimeout(mapDisconnectTimer)
+  if (mapInlineConfirmTimer) clearTimeout(mapInlineConfirmTimer)
 })
 const livePreviewSignature = computed(() =>
   remoteControlSignature(
@@ -355,11 +361,24 @@ const mapActionReasons = computed(() =>
     ).map((name) => [name, computeMapActionReason(name)]),
   ),
 )
+function mapActionTitle(name: RemoteControlActionName) {
+  if (!mapActionConfirming(name)) return mapActionReasons.value[name] || ''
+  const verb = name === 'character.return' ? 'return scroll' : 'disconnect'
+  return `Confirm ${verb} for ${mapInlineConfirmTargets.value.map((child) => child.characterName).join(', ')}`
+}
+function mapActionLabel(action: {
+  name: RemoteControlActionName
+  label: string
+}) {
+  return mapActionConfirming(action.name)
+    ? `Confirm (${mapInlineConfirmTargets.value.length})`
+    : action.label
+}
 async function runMapAction(name: RemoteControlActionName, event: MouseEvent) {
   mapActionTrigger.value = event.currentTarget as HTMLButtonElement
   if (computeMapActionReason(name)) return
-  if (name === 'character.disconnect' && mapDisconnectOperation.value) {
-    await submitReviewed(mapDisconnectOperation.value)
+  if (mapActionConfirming(name) && mapInlineConfirmOperation.value) {
+    await submitReviewed(mapInlineConfirmOperation.value)
     return
   }
   chooseAction(name)
@@ -526,24 +545,13 @@ function cancelReview(operation: FanOutOperation) {
         v-for="action in mapActions"
         :key="action.name"
         class="compact-button"
-        :class="{
-          primary:
-            action.name === 'character.disconnect' && mapDisconnectOperation,
-        }"
+        :class="{ primary: mapActionConfirming(action.name) }"
         type="button"
         :disabled="Boolean(mapActionReasons[action.name])"
-        :title="
-          action.name === 'character.disconnect' && mapDisconnectOperation
-            ? `Confirm disconnect for ${mapDisconnectTargets.map((child) => child.characterName).join(', ')}`
-            : mapActionReasons[action.name]
-        "
+        :title="mapActionTitle(action.name)"
         @click="runMapAction(action.name, $event)"
       >
-        <UIcon :name="action.icon" />{{
-          action.name === 'character.disconnect' && mapDisconnectOperation
-            ? `Confirm (${mapDisconnectTargets.length})`
-            : action.label
-        }}
+        <UIcon :name="action.icon" />{{ mapActionLabel(action) }}
       </button>
       <div class="map-trace-row remote-control-form">
         <MapTraceLeaderSelect
@@ -781,7 +789,7 @@ function cancelReview(operation: FanOutOperation) {
       }}
     </button>
     <p
-      v-if="confirmationRequired && !mapDisconnectOperation"
+      v-if="confirmationRequired && !mapInlineConfirmOperation"
       class="remote-control-impact"
     >
       Explicit confirmation is required before sending
@@ -797,7 +805,7 @@ function cancelReview(operation: FanOutOperation) {
     </p>
 
     <CommandFanOutPreview
-      v-if="selectedOperation && !mapDisconnectOperation"
+      v-if="selectedOperation && !mapInlineConfirmOperation"
       :operation="selectedOperation"
       :confirmation-required="confirmationRequired"
       :busy="actions.preparing.value || actions.submitting.value"
