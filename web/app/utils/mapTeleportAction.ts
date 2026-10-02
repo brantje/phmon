@@ -34,6 +34,42 @@ export function characterObservesGate(
   )
 }
 
+export function observerVerifiedDestination(
+  character: Pick<CharacterView, 'character_id' | 'session_id'>,
+  npc: Pick<MapNpc, 'observers'>,
+  destination: string,
+): boolean {
+  const wanted = destination.trim().toLowerCase()
+  if (!wanted || !character.session_id) return false
+  const observer = npc.observers?.find(
+    (item) =>
+      item.character_id === character.character_id &&
+      item.session_id === character.session_id,
+  )
+  return Boolean(
+    observer?.teleport_routes?.some(
+      (route) => route.destination.trim().toLowerCase() === wanted,
+    ),
+  )
+}
+
+export function teleportEligibleActionLabel(input: {
+  destination: string
+  eligible: number
+  eligibleName?: string
+}): string {
+  const destination = input.destination.trim()
+  if (!destination) return 'Teleport'
+  if (input.eligible === 1) {
+    return input.eligibleName
+      ? `Teleport ${input.eligibleName} to ${destination}`
+      : `Teleport 1 character to ${destination}`
+  }
+  if (input.eligible > 1)
+    return `Teleport ${input.eligible} characters to ${destination}`
+  return `Teleport to ${destination}`
+}
+
 export function createMapTeleportIntent(input: {
   server: string
   npc: MapNpc
@@ -93,6 +129,14 @@ export function mapTeleportCommand(state: {
           code: 'gate_not_observed',
           message:
             'This character does not currently observe the selected teleporter gate.',
+        }
+      if (
+        !observerVerifiedDestination(character, intent.npc, intent.destination)
+      )
+        return {
+          code: 'destination_unverified',
+          message:
+            'This character has not verified the selected teleport destination.',
         }
       return null
     },
@@ -171,6 +215,16 @@ export function mapTeleportCommand(state: {
           code: 'gate_not_observed',
           message:
             'The teleporter gate is no longer observed for this character.',
+        }
+      }
+      if (
+        !current.session_id ||
+        !observerVerifiedDestination(current, intent.npc, intent.destination)
+      ) {
+        return {
+          code: 'destination_unverified',
+          message:
+            'This character has not verified the selected teleport destination.',
         }
       }
       if (

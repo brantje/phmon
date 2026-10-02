@@ -48,6 +48,53 @@ func TestProjectNPCsDedupesAcrossSessionsAndKeepsSameSessionRows(t *testing.T) {
 	}
 }
 
+func TestProjectNPCsKeepsObserverTeleportRoutesSeparate(t *testing.T) {
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	model := int64(2094)
+	jangan := int64(7)
+	alpha := npcs.LiveSnapshot{
+		Server: "Greatest", CharacterID: "00000000-0000-4000-8000-000000000001", SessionID: "00000000-0000-4000-8000-000000000011",
+		Character: "Alpha", Status: "observed", Region: 25000, ObservedAt: now.Add(-time.Second),
+		NPCs: []npcs.NPC{{
+			ID: "10", Name: "Hotan", ServerName: "GATE_KT", Model: &model, Role: "teleporter", Region: 25000, X: 100, Y: 200,
+			TeleportRoutes: []npcs.TeleportRoute{{Destination: "Jangan", TeleportCode: &jangan}},
+		}},
+	}
+	beta := npcs.LiveSnapshot{
+		Server: "greatest", CharacterID: "00000000-0000-4000-8000-000000000002", SessionID: "00000000-0000-4000-8000-000000000012",
+		Character: "Bravo", Status: "observed", Region: 25000, ObservedAt: now,
+		NPCs: []npcs.NPC{{
+			ID: "10", Name: "Hotan", ServerName: "GATE_KT", Model: &model, Role: "teleporter", Region: 25000, X: 101, Y: 201,
+		}},
+	}
+	got := projectNPCs(profile, []npcs.LiveSnapshot{alpha, beta}, "world", "world", 0)
+	if len(got.NPCs) != 1 || len(got.NPCs[0].Observers) != 2 {
+		t.Fatalf("shared gate projection = %+v", got.NPCs)
+	}
+	if len(got.NPCs[0].TeleportRoutes) != 1 || got.NPCs[0].TeleportRoutes[0].Destination != "Jangan" {
+		t.Fatalf("menu routes = %+v", got.NPCs[0].TeleportRoutes)
+	}
+	var alphaRoutes, bravoRoutes []mapTeleportRoute
+	for _, observer := range got.NPCs[0].Observers {
+		switch observer.Name {
+		case "Alpha":
+			alphaRoutes = observer.TeleportRoutes
+		case "Bravo":
+			bravoRoutes = observer.TeleportRoutes
+		}
+	}
+	if len(alphaRoutes) != 1 || alphaRoutes[0].Destination != "Jangan" {
+		t.Fatalf("alpha routes = %+v", alphaRoutes)
+	}
+	if len(bravoRoutes) != 0 {
+		t.Fatalf("bravo inherited alpha routes: %+v", bravoRoutes)
+	}
+}
+
 func TestProjectNPCsKeepsDistinctSameSessionMarkerIDs(t *testing.T) {
 	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
 	if err != nil {

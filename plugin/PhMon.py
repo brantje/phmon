@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.8'
+pVersion = '1.9.9'
 pUrl = ''
 
 PROTOCOL_VERSION = 13
@@ -566,7 +566,16 @@ def _teleport_probe_label(value, limit=64):
     return _bounded_text(text, limit)
 
 
-def _teleport_routes_for_gate(source_label, gate_servername, adapter):
+def _teleport_route_cache_key(server, session_id, source_label, gate_key):
+    return (
+        (server or '').strip().lower(),
+        (session_id or '').strip().lower(),
+        source_label.lower(),
+        gate_key,
+    )
+
+
+def _teleport_routes_for_gate(source_label, gate_servername, adapter, server='', session_id=''):
     """Discover live routes for one gate via bounded get_teleport_data probes."""
     if adapter is None or not adapter.has('get_teleport_data'):
         return []
@@ -574,7 +583,7 @@ def _teleport_routes_for_gate(source_label, gate_servername, adapter):
     gate_key = gate_servername.strip().lower() if isinstance(gate_servername, str) else ''
     if not source_label:
         return []
-    cache_key = (source_label.lower(), gate_key)
+    cache_key = _teleport_route_cache_key(server, session_id, source_label, gate_key)
     now = _monotonic()
     cached = _teleport_route_cache.get(cache_key)
     if cached and cached[0] > now:
@@ -605,14 +614,16 @@ def _teleport_routes_for_gate(source_label, gate_servername, adapter):
     return list(routes)
 
 
-def _attach_teleporter_routes(npc_list, adapter):
+def _attach_teleporter_routes(npc_list, adapter, server='', session_id=''):
     if not isinstance(npc_list, list) or adapter is None:
         return
     for npc in npc_list:
         if not isinstance(npc, dict) or npc.get('role') != 'teleporter':
             continue
         source = npc.get('name') or npc.get('servername')
-        routes = _teleport_routes_for_gate(source, npc.get('servername'), adapter)
+        routes = _teleport_routes_for_gate(
+            source, npc.get('servername'), adapter, server, session_id,
+        )
         if routes:
             npc['teleport_routes'] = routes
 
@@ -4964,7 +4975,13 @@ def _sample_npcs(identity, state, position, now=None):
     if truncated:
         status = 'truncated'
     if _worker is not None:
-        _attach_teleporter_routes(matching, getattr(_worker, 'api', None))
+        server_name = identity.get('server') if isinstance(identity, dict) else ''
+        _attach_teleporter_routes(
+            matching,
+            getattr(_worker, 'api', None),
+            server_name if isinstance(server_name, str) else '',
+            getattr(_worker, 'session_id', '') or '',
+        )
     signature = _npc_snapshot_signature(status, region, matching)
     changed = signature != _last_npc_signature
     refresh_due = (_last_npc_publish_at == 0.0 or

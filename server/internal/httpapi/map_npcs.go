@@ -19,9 +19,10 @@ const (
 )
 
 type mapNPCObserver struct {
-	CharacterID string `json:"character_id"`
-	SessionID   string `json:"session_id"`
-	Name        string `json:"name"`
+	CharacterID    string             `json:"character_id"`
+	SessionID      string             `json:"session_id"`
+	Name           string             `json:"name"`
+	TeleportRoutes []mapTeleportRoute `json:"teleport_routes,omitempty"`
 }
 
 type mapTeleportRoute struct {
@@ -93,6 +94,7 @@ func projectNPCs(profile mapprofile.Profile, snapshots []npcs.LiveSnapshot, area
 				TeleportRoutes: copyMapTeleportRoutes(npc.TeleportRoutes),
 				Observers: []mapNPCObserver{{
 					CharacterID: snapshot.CharacterID, SessionID: snapshot.SessionID, Name: snapshot.Character,
+					TeleportRoutes: copyMapTeleportRoutes(npc.TeleportRoutes),
 				}},
 			}
 			matched := -1

@@ -172,6 +172,7 @@ export interface MapNpcObserver {
   character_id: string
   session_id: string
   name: string
+  teleport_routes?: MapTeleportRoute[]
 }
 
 export interface MapTeleportRoute {

@@ -8,6 +8,7 @@ import {
   createMapTeleportIntent,
   mapTeleportCommand,
   mapTeleportGateTitle,
+  teleportEligibleActionLabel,
 } from '~/utils/mapTeleportAction'
 import {
   pickDefaultTeleportDestination,
@@ -144,15 +145,15 @@ export function useMapTeleportAction(options: {
   })
 
   const targetLabel = computed(() => {
-    const dest = destination.value.trim()
-    const ids = options.selectedTargetIDs()
-    if (!dest) return 'Teleport'
-    if (ids.length === 1) {
-      const name = getCharacter(ids[0]!)?.name
-      return name ? `Teleport ${name} to ${dest}` : `Teleport to ${dest}`
-    }
-    if (ids.length > 1) return `Teleport ${ids.length} characters to ${dest}`
-    return `Teleport to ${dest}`
+    const ready =
+      menuOperation.value?.children.filter(
+        (child) => child.submission === 'ready',
+      ) || []
+    return teleportEligibleActionLabel({
+      destination: destination.value,
+      eligible: counts.value.eligible,
+      eligibleName: ready.length === 1 ? ready[0]?.characterName : undefined,
+    })
   })
 
   async function prepareOperation() {
