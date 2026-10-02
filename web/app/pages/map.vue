@@ -31,6 +31,7 @@ import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
   dedupeCurrentMonsters,
   monsterDisplayName,
+  monsterMapKey,
   monsterTypePresentation,
 } from '~/utils/mapMarkerPresentation'
 import {
@@ -1490,7 +1491,7 @@ const mapMarkers = computed(() => {
   if (layerMonsters.value) {
     for (const entry of currentMonsters.value) {
       addMarker(
-        `${entry.observer.session_id}:${entry.id}`,
+        monsterMapKey(entry, entry.observer.server),
         `${monsterDisplayName(entry)} · Lv. ${entry.level ?? 'unavailable'}`,
         'monster',
         entry.region,

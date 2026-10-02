@@ -1012,8 +1012,13 @@ if supplied by the runtime. Go validates these fields in the existing v7
 `map.monsters` frame. The map never treats a numeric type/model code as a level and
 shows level unavailable when absent. Older agents remain compatible, but their
 absent fields cannot be reconstructed from a map screenshot or stored rows. Current
-map sightings are deduplicated across sessions by server, region, model/server name
-and an 8-unit position tolerance, while retaining same-session rows. The installed
+map sightings are deduplicated by normalized server and monster ID. The operator's
+2026-10-02 executable investigation verified that phMonitor uses this identity;
+it supersedes the earlier model/name and 8-unit position matching rule. The
+documented dictionary key is the monster's ID; real cross-observer and instanced
+area behavior remains a runtime validation gate. HP/max HP remain raw fields
+from one chosen snapshot, with no estimated or minimum-held health. See the
+[HP investigation](reference/monster-hp-investigation.md). The installed
 real phBot runtime has not yet been verified with 1.5.2 or a level field.
 
 ### Live NPC and teleporter snapshots — 2026-10-01
