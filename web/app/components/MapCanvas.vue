@@ -115,10 +115,12 @@ const emit = defineEmits<{
   navigateto: [point: RasterPosition, anchor: { x: number; y: number }]
   teleportto: [
     npc: NonNullable<MapCanvasMarker['npc']>,
+    point: RasterPosition,
     anchor: { x: number; y: number },
   ]
   teleportercontext: [
     npc: NonNullable<MapCanvasMarker['npc']>,
+    point: RasterPosition,
     anchor: { x: number; y: number },
   ]
   mapdrag: []
@@ -1042,7 +1044,10 @@ function markerPopup(marker: MapCanvasMarker) {
       teleport.addEventListener('click', (event) => {
         event.stopPropagation()
         const rect = teleport.getBoundingClientRect()
-        emit('teleportto', npc, { x: rect.left, y: rect.bottom })
+        emit('teleportto', npc, marker.position, {
+          x: rect.left,
+          y: rect.bottom,
+        })
       })
       actions.append(teleport)
     }
@@ -1504,7 +1509,7 @@ onMounted(async () => {
       rendered.on('contextmenu', (event: L.LeafletMouseEvent) => {
         L.DomEvent.preventDefault(event.originalEvent)
         L.DomEvent.stopPropagation(event.originalEvent)
-        emit('teleportercontext', marker.npc!, {
+        emit('teleportercontext', marker.npc!, marker.position, {
           x: event.originalEvent.clientX,
           y: event.originalEvent.clientY,
         })

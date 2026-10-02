@@ -24,7 +24,7 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
-import { npcMapMarkers } from '~/utils/mapNpcMarkers'
+import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { playerMapMarkers } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
@@ -799,52 +799,77 @@ function openContextNavigation(action: {
   point: RasterPosition
   anchor: { x: number; y: number }
 }) {
-  teleportAction.close(false)
+  clearTeleportSubmenus()
   void navigationAction.open(
     action.point,
     action.anchor,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
+  syncTeleportGateForNavigation()
 }
 function openNpcNavigation(
   point: RasterPosition,
   anchor: { x: number; y: number },
 ) {
-  teleportAction.close(false)
+  clearTeleportSubmenus()
   void navigationAction.open(
     point,
     anchor,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
+  syncTeleportGateForNavigation()
 }
-function openTeleporterAction(
-  npc: MapNpc,
-  anchor: { x: number; y: number },
-) {
+function openCustomTeleportDestination() {
+  void teleportAction.showDestinationDialog()
   navigationAction.close(false)
-  void teleportAction.open(
-    npc,
-    anchor,
-    document.querySelector<HTMLElement>('.map-canvas'),
-  )
 }
 function openTeleporterContext(
   npc: MapNpc,
+  point: RasterPosition,
   anchor: { x: number; y: number },
 ) {
-  navigationAction.close(false)
+  clearTeleportSubmenus()
+  const focusTarget = document.querySelector<HTMLElement>('.map-canvas')
+  void navigationAction.open(point, anchor, focusTarget)
+  syncTeleportGateForNavigation(npc)
+}
+const rangedTeleporters = computed(() => {
+  const npcs = (mapSnapshot.value?.npcs?.npcs || []).filter(
+    (npc) => npc.role === 'teleporter',
+  )
+  const targets = actionTargetIDs.value
+  if (!targets.size) return npcs
+  return npcs.filter((npc) =>
+    npc.observers?.some((observer) => targets.has(observer.character_id)),
+  )
+})
+function syncTeleportGateForNavigation(preferred?: MapNpc) {
+  const gates = rangedTeleporters.value
+  const gate =
+    preferred && gates.some((item) => item.id === preferred.id)
+      ? preferred
+      : gates.length === 1
+        ? gates[0]
+        : null
+  if (!gate) {
+    if (teleportAction.menuPresentation.value === 'context')
+      teleportAction.close(false)
+    return
+  }
+  if (
+    teleportAction.menuOpen.value &&
+    teleportAction.menuPresentation.value === 'context' &&
+    teleportAction.menuNpc.value?.id === gate.id
+  )
+    return
   void teleportAction.openContext(
-    npc,
-    anchor,
+    gate,
+    navigationAction.menuAnchor.value,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
 }
-const teleportContextTargetIDs = computed(() =>
-  [...actionTargetIDs.value].filter((characterID) =>
-    applicableActionTargetIDs.value.has(characterID),
-  ),
-)
 const teleportMenuTrigger = ref<HTMLButtonElement | null>(null)
+const teleportGateMenu = ref<{ x: number; y: number } | null>(null)
 const teleportDestinationMenu = ref<{ x: number; y: number } | null>(null)
 const teleportCharacterMenu = ref<{
   destination: string
@@ -869,6 +894,7 @@ function keepTeleportSubmenus() {
 
 function clearTeleportSubmenus() {
   keepTeleportSubmenus()
+  teleportGateMenu.value = null
   teleportDestinationMenu.value = null
   teleportCharacterMenu.value = null
 }
@@ -876,9 +902,33 @@ function clearTeleportSubmenus() {
 function hideTeleportSubmenusSoon() {
   if (teleportSubmenuTimer) clearTimeout(teleportSubmenuTimer)
   teleportSubmenuTimer = setTimeout(() => {
+    teleportGateMenu.value = null
     teleportDestinationMenu.value = null
     teleportCharacterMenu.value = null
   }, 280)
+}
+
+function showTeleportMenu(element: HTMLElement) {
+  keepTeleportSubmenus()
+  const gates = rangedTeleporters.value
+  if (gates.length > 1) {
+    teleportGateMenu.value = teleportFlyoutOrigin(
+      element.getBoundingClientRect(),
+      220,
+    )
+    teleportDestinationMenu.value = null
+    teleportCharacterMenu.value = null
+    return
+  }
+  teleportGateMenu.value = null
+  if (gates[0]) syncTeleportGateForNavigation(gates[0])
+  showTeleportDestinations(element)
+}
+
+function showTeleportGateDestinations(npc: MapNpc, element: HTMLElement) {
+  keepTeleportSubmenus()
+  syncTeleportGateForNavigation(npc)
+  showTeleportDestinations(element)
 }
 
 function showTeleportDestinations(element: HTMLElement) {
@@ -901,6 +951,15 @@ function showTeleportGroup(destination: string, element: HTMLElement) {
   void teleportAction.setDestination(destination)
 }
 
+watch(
+  () => navigationAction.menuOpen.value,
+  (open) => {
+    if (!open && teleportAction.menuPresentation.value === 'context') {
+      clearTeleportSubmenus()
+      teleportAction.close(false)
+    }
+  },
+)
 watch(
   () => teleportAction.menuOpen.value,
   (open) => {
@@ -2104,7 +2163,7 @@ useHead({ title: 'Map · PhMon' })
               @trainingdiscard="discardTrainingDraft"
               @contextaction="openContextNavigation"
               @navigateto="openNpcNavigation"
-              @teleportto="openTeleporterAction"
+              @teleportto="openTeleporterContext"
               @teleportercontext="openTeleporterContext"
               @mapdrag="
                 () => {
@@ -2536,6 +2595,27 @@ useHead({ title: 'Map · PhMon' })
               {{ navigationAction.trainingSummary.value }}
             </p>
             <button
+              v-if="rangedTeleporters.length"
+              ref="teleportMenuTrigger"
+              class="map-navigation-menu-action"
+              role="menuitem"
+              type="button"
+              aria-haspopup="true"
+              :aria-expanded="Boolean(teleportDestinationMenu || teleportGateMenu)"
+              @mouseenter="
+                showTeleportMenu($event.currentTarget as HTMLElement)
+              "
+              @mouseleave="hideTeleportSubmenusSoon"
+              @focus="showTeleportMenu($event.currentTarget as HTMLElement)"
+            >
+              <UIcon name="i-lucide-signpost" />
+              Teleport
+              <UIcon
+                name="i-lucide-chevron-right"
+                class="map-context-submenu-chevron"
+              />
+            </button>
+            <button
               class="map-navigation-menu-action"
               role="menuitem"
               type="button"
@@ -2554,67 +2634,43 @@ useHead({ title: 'Map · PhMon' })
           </div>
           <Teleport to="body">
             <div
-              v-if="
-                teleportAction.menuOpen.value &&
-                teleportAction.menuPresentation.value === 'context'
-              "
-              :ref="teleportAction.menuElement"
-              class="map-navigation-context map-teleport-context map-teleport-flyout map-teleport-menu"
+              v-if="teleportGateMenu"
+              class="map-teleport-flyout-panel map-teleport-menu"
               role="menu"
-              tabindex="-1"
-              aria-label="Teleporter actions"
+              aria-label="Teleporters in range"
               :style="{
-                left: `${teleportAction.menuAnchor.value.x}px`,
-                top: `${teleportAction.menuAnchor.value.y}px`,
+                left: `${teleportGateMenu.x}px`,
+                top: `${teleportGateMenu.y}px`,
               }"
               @pointerdown.stop
               @mouseenter="keepTeleportSubmenus"
               @mouseleave="hideTeleportSubmenusSoon"
-              @keydown.escape.prevent="teleportAction.close()"
             >
-              <div class="map-context-heading">
-                <strong>{{ teleportAction.gateLabel.value }}</strong
-                ><small>Teleporter</small>
-              </div>
-              <p
-                v-if="!teleportContextTargetIDs.length"
-                class="map-navigation-menu-summary"
-              >
-                Tick characters in the panel to teleport them.
-              </p>
               <button
-                ref="teleportMenuTrigger"
+                v-for="npc in rangedTeleporters"
+                :key="npc.id"
                 class="map-navigation-menu-action"
                 type="button"
                 role="menuitem"
                 aria-haspopup="true"
-                :aria-expanded="Boolean(teleportDestinationMenu)"
-                @mouseenter="showTeleportDestinations($event.currentTarget as HTMLElement)"
-                @focus="showTeleportDestinations($event.currentTarget as HTMLElement)"
+                @mouseenter="
+                  showTeleportGateDestinations(
+                    npc,
+                    $event.currentTarget as HTMLElement,
+                  )
+                "
+                @focus="
+                  showTeleportGateDestinations(
+                    npc,
+                    $event.currentTarget as HTMLElement,
+                  )
+                "
               >
-                <UIcon name="i-lucide-signpost" />
-                {{ teleportAction.gateLabel.value }}
+                {{ npcDisplayLabel(npc) }}
                 <UIcon
                   name="i-lucide-chevron-right"
                   class="map-context-submenu-chevron"
                 />
-              </button>
-              <CommandFanOutPreview
-                v-if="teleportAction.reviewOperation.value"
-                :operation="teleportAction.reviewOperation.value"
-                :busy="
-                  teleportAction.preparing.value ||
-                  teleportAction.submitting.value
-                "
-                @submit="teleportAction.confirmReview"
-                @cancel="teleportAction.cancelReview"
-              />
-              <button
-                class="map-text-action"
-                type="button"
-                @click="teleportAction.close()"
-              >
-                Cancel
               </button>
             </div>
             <div
@@ -2668,7 +2724,7 @@ useHead({ title: 'Map · PhMon' })
                 class="map-navigation-menu-action"
                 type="button"
                 role="menuitem"
-                @click="teleportAction.showDestinationDialog()"
+                @click="openCustomTeleportDestination"
               >
                 <UIcon name="i-lucide-pencil" />
                 Other destination…

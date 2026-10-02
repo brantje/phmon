@@ -317,7 +317,11 @@ export function useMapTeleportAction(options: {
     const target = event.target
     if (!menuOpen.value || !(target instanceof Node)) return
     if (menuElement.value?.contains(target)) return
-    if (target instanceof Element && target.closest('.map-teleport-menu')) return
+    if (
+      target instanceof Element &&
+      target.closest('.map-teleport-menu, .map-navigation-context')
+    )
+      return
     close(false)
   }
 
