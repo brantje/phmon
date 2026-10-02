@@ -352,13 +352,13 @@ Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
 and this resume entry. No protocol bump, Go/web changes, or character teleports.
 
 Validation: `python3 -m unittest plugin.test_phmon.TeleporterProbeTests` and full
-`plugin.test_phmon` on the PR branch. Operator live probe **2026-10-02**: plugin
-1.9.2 at Hotan gate (`GATE_KT`, runtime id `4`); APIs present; enumeration still
-unsupported; read-only pair tests all `none` (see investigation doc). `start_script`
-teleport line not exercised. PR [#61](https://github.com/brantje/phmon/pull/61).
-Exact next action: optional authorized `get_teleport_data`/`teleport,…` test to a
-real destination (e.g. Jangan), then implement #33 fan-out from the script-line
-contract. Recall stays open until authorized `0x7059` capture. Do not merge without review.
+`plugin.test_phmon` on the PR branch. Operator **2026-10-02**: probe at Hotan
+(`GATE_KT`, id `4`); plugin **1.9.3** **Test Hotan→Jangan** succeeded —
+`teleport,Hotan,Jangan`, `get_teleport_data` code `1`, `start_script=True`, phBot
+`Script: Teleporting`. Enumeration/recall still unsupported. Evidence:
+`docs/reference/issue32-teleporter-investigation.md`. PR [#61](https://github.com/brantje/phmon/pull/61).
+Exact next action: implement #33 fan-out using the verified script-line contract;
+recall stays open until authorized `0x7059` capture. Do not merge without review.
 
 ### Resume — 2026-10-02 Issue #57 map navigation stop and trace state
 

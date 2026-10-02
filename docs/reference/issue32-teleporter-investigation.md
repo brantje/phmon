@@ -13,7 +13,7 @@ This document is the decision-complete contract. It does not authorize map UI, f
 | How is a nearby teleporter identified? | Per-session `get_npcs()` row with `servername` matching `^GATE_[A-Za-z0-9_]+$`; runtime dictionary key is that character’s NPC id (PhMon `map.npcs` role `teleporter`). |
 | How are destinations enumerated? | **Unsupported.** No public phBot API or inspected community plugin lists a gate’s live menu. |
 | How is a destination resolved? | `get_teleport_data(source, destination)` when the operator or UI supplies both names; tuple index `1` is the reference teleport id when present. `None` means no route on this server. |
-| How is a teleport executed (PhMon plan)? | One validated script line `teleport,{source},{destination}` via `start_script` after pair resolution and live-gate checks. **Not verified on Windows/phBot in this spike.** |
+| How is a teleport executed (PhMon plan)? | One validated script line `teleport,{source},{destination}` via `start_script` after pair resolution and live-gate checks. **Verified once** on operator phBot (plugin 1.9.3, Hotan→Jangan); broader routes/servers and PhMon remote commands remain unimplemented. |
 | Designate Recall Point | **Unsupported** for PhMon until an authorized capture validates community opcode `0x7059`. |
 | Persistent teleporter catalog | **Rejected** (exporter graph, phBot locale SQLite, city lists). |
 
@@ -109,7 +109,7 @@ Operator action: PhMon QtBind **Probe teleporters** (read-only).
 
 Results are written to the phBot log and a short status line. No backend frame or database row.
 
-**Runtime gate:** Read-only probe exercised on installed phBot (below). `start_script` with a `teleport,…` line was **not** run; execution remains `documented_script_command_unverified`.
+**Runtime gate:** Read-only probe and one operator **Test Hotan→Jangan** on installed phBot (below). PhMon remote `#33` commands and packet injection were not part of this spike.
 
 ### Operator live probe — 2026-10-02 10:53 UTC
 
@@ -176,7 +176,23 @@ Captured from phBot log after **Probe teleporters** on plugin **1.9.2** while st
 - All three automated `get_teleport_data` checks returned **`none`**: expected for the unknown-destination control; **`Hotan` → `GATE_KT`** is not a valid player destination (that string is the gate’s own server name, not a target city). Issue #33 must use an explicit destination such as another town name (`Jangan`, `Donwhang`, …) and treat `none` as “no route” before any script line runs.
 - **`get_gateway`** appeared in symbol discovery only; this spike does not call it. Revisit only if a future probe authorizes safe read-only inspection.
 
-**Still open before #33 execution is “verified”:** one authorized `start_script('teleport,Hotan,<destination>')` (or `GATE_KT` source form) with observed teleport, plus optional `get_teleport_data` success for that same pair.
+### Operator script test — 2026-10-02 10:57 UTC (plugin 1.9.3)
+
+QtBind **Test Hotan→Jangan** at the Hotan gate (`GATE_KT`):
+
+```text
+PhMon Hotan→Jangan test line=teleport,Hotan,Jangan code=1 start_script=True
+Script: Teleporting
+```
+
+**Interpretation:**
+
+- `get_teleport_data('Hotan', 'Jangan')` returned a tuple whose second element was **`1`** (reference teleport id for this server build).
+- `start_script('teleport,Hotan,Jangan')` returned **`True`**; phBot’s script engine logged **`Teleporting`** (~2s later).
+- This validates the **documented script-command execution path** for this single pair on the operator’s Greatest/runtime profile. It does not verify other destinations, `GATE_KT`/`GATE_CH` form, multi-character fan-out, or arrival/position readback.
+- Issue #33 should reuse the same sequence: live gate present → `get_teleport_data` → one bounded `teleport,source,destination` line → interpret `start_script` result and optional `teleported()` / position change separately.
+
+**Still open for #33:** remote command type, eligibility UI, per-character gate ids, additional destination strings, and recall (`0x7059`).
 
 ## Fail-closed rules
 
