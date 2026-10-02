@@ -313,6 +313,14 @@ export function useMapTeleportAction(options: {
     },
   )
 
+  function outsidePointer(event: PointerEvent) {
+    const target = event.target
+    if (!menuOpen.value || !(target instanceof Node)) return
+    if (menuElement.value?.contains(target)) return
+    if (target instanceof Element && target.closest('.map-teleport-menu')) return
+    close(false)
+  }
+
   function escape(event: KeyboardEvent) {
     if (event.key === 'Escape' && menuOpen.value) {
       event.preventDefault()
@@ -321,9 +329,11 @@ export function useMapTeleportAction(options: {
   }
 
   onMounted(() => {
+    window.addEventListener('pointerdown', outsidePointer)
     window.addEventListener('keydown', escape)
   })
   onBeforeUnmount(() => {
+    window.removeEventListener('pointerdown', outsidePointer)
     window.removeEventListener('keydown', escape)
     fanout.dispose()
   })
