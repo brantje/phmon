@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"phmon/server/internal/mobs"
 )
@@ -25,6 +26,7 @@ type Player struct {
 	Dead     *bool   `json:"dead,omitempty"`
 	Level    *int    `json:"level,omitempty"`
 	Region   *int    `json:"region,omitempty"`
+	Zone     string  `json:"zone,omitempty"`
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
 }
@@ -79,6 +81,7 @@ func validPlayer(observerRegion int, player Player) bool {
 		player.Name == "" || len(player.Name) > maxText || strings.ContainsRune(player.Name, 0) ||
 		len(player.Guild) > maxText || strings.ContainsRune(player.Guild, 0) ||
 		len(player.Grant) > maxText || strings.ContainsRune(player.Grant, 0) ||
+		!validPlayerZone(player.Zone) ||
 		!validCoordinate(player.X) || !validCoordinate(player.Y) {
 		return false
 	}
@@ -91,6 +94,13 @@ func validPlayer(observerRegion int, player Player) bool {
 		return false
 	}
 	return true
+}
+
+func validPlayerZone(zone string) bool {
+	if zone == "" {
+		return true
+	}
+	return zone == strings.TrimSpace(zone) && utf8.RuneCountInString(zone) <= 100 && !strings.ContainsRune(zone, 0)
 }
 
 func validCoordinate(value float64) bool {

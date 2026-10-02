@@ -1,7 +1,7 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.7** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v12 over the existing authenticated
+The current plugin development release is **1.9.8** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v13 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
@@ -13,7 +13,9 @@ teleporters; other rows are NPCs. `unavailable` clears that character's markers.
 There is no NPC history. Protocol v10 adds ephemeral `map.players` snapshots from
 optional `get_players()` (operator-tuned **1 s** poll and **2 s** unchanged refresh;
 NPC cadence remains 2 s / 15 s), 128-row and 64 KiB bounds, and
-observer Z in the publish signature. Equipment and player Z are not copied. The
+observer Z in the publish signature. Each player row may include `zone` from
+`get_zone_name` for that player's region, or the observer region when the row has
+no region. Equipment and player Z are not copied. The
 backend keeps accepting protocol v2–v9 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server

@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.7'
+pVersion = '1.9.8'
 pUrl = ''
 
-PROTOCOL_VERSION = 12
+PROTOCOL_VERSION = 13
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -369,6 +369,7 @@ def collect_player_observation(api=None):
     truncated = len(raw) > MAX_PLAYERS_PER_SNAPSHOT
     players = []
     seen = set()
+    zone_cache = {}
     for index, (identifier, value) in enumerate(raw.items()):
         if index >= MAX_PLAYERS_PER_SNAPSHOT:
             break
@@ -409,6 +410,9 @@ def collect_player_observation(api=None):
             row['level'] = level
         if _valid_position_region(region):
             row['region'] = region
+            zone = _cached_player_zone(region, zone_cache)
+            if zone:
+                row['zone'] = zone
         encoded = json.dumps(players + [row], separators=(',', ':'), sort_keys=True, allow_nan=False).encode('utf-8')
         if len(encoded) > MAX_PLAYERS_SNAPSHOT_BYTES:
             truncated = True
@@ -423,7 +427,8 @@ def _player_snapshot_signature(status, region, observer_z, players):
     for player in players:
         rows.append((
             player.get('player_id'), player.get('name'), player.get('guild'), player.get('grant'),
-            player.get('dead'), player.get('level'), player.get('region'), player.get('x'), player.get('y'),
+            player.get('dead'), player.get('level'), player.get('region'), player.get('zone'),
+            player.get('x'), player.get('y'),
         ))
     rows.sort()
     return (status, region, observer_z, tuple(rows))
@@ -940,6 +945,12 @@ def _npc_snapshot_signature(status, region, npcs):
         ))
     rows.sort()
     return (status, region, tuple(rows))
+
+
+def _cached_player_zone(region, cache):
+    if region not in cache:
+        cache[region] = _zone_name_for_region(region)
+    return cache[region]
 
 
 def _zone_name_for_region(region, limit=80):
@@ -4992,6 +5003,13 @@ def _sample_players(identity, state, position, now=None):
         truncated = True
     if truncated:
         status = 'truncated'
+    if any(not player.get('zone') and not _valid_position_region(player.get('region'))
+           for player in matching):
+        observer_zone = _zone_name_for_region(region)
+        if observer_zone:
+            for player in matching:
+                if not player.get('zone') and not _valid_position_region(player.get('region')):
+                    player['zone'] = observer_zone
     signature = _player_snapshot_signature(status, region, normalized_z, matching)
     changed = signature != _last_player_signature
     refresh_due = (_last_player_publish_at == 0.0 or

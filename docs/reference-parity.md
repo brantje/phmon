@@ -13,7 +13,8 @@ Production delivery uses plugin **1.8.0** / agent protocol **10** `map.players`
 snapshots (operator-tuned 1 s poll / 2 s unchanged refresh, 128-row / 64 KiB bounds, observer Z
 in the signature, generation-scoped backend cleanup). The Map page adds **Other
 players** (default on) with `mm_sign_otherplayer.png` markers, name labels,
-alive/dead popup fields, and precedence over managed-character names and party
+alive/dead popup fields, a zone name from the player row or the same-region
+character/event lookup, and precedence over managed-character names and party
 runtime IDs when Characters/Party layers are enabled. No navigate, equipment,
 player history, or packet fallback. Installed-runtime map validation remains
 separate from simulator/fixture evidence recorded after CI on this branch.

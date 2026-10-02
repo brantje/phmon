@@ -215,6 +215,7 @@ export interface MapOtherPlayer {
   dead?: boolean
   level?: number
   region: number
+  zone?: string
   x: number
   y: number
   observer_region: number

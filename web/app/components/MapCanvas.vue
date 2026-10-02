@@ -997,7 +997,7 @@ function markerPopup(marker: MapCanvasMarker) {
       .filter(Boolean)
       .join(', ')
     details.append(
-      detailRow('Region', String(other.region)),
+      detailRow('Zone', marker.zoneLabel || 'Unknown zone'),
       detailRow('Position', positionText(other.x, other.y, other.observer_z)),
       detailRow('Observed by', observers || '—'),
     )

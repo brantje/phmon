@@ -143,8 +143,9 @@ metadata only, not player identities, equipment records or sighting history.
 Plugin **1.8.0** removes the manual probe buttons and publishes bounded
 `map.players` snapshots on the existing worker path (operator-tuned **1 s** poll,
 **2 s** unchanged refresh; signature includes observer Z). Rows copy canonical decimal-string IDs,
-name, guild, grant, dead, level, region and X/Y only. Equipment and player Z are
-omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
+name, guild, grant, dead, level, region, X/Y, and optional `zone` from
+`get_zone_name` for that player's region (observer region when the row has none).
+Equipment and player Z are omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
 generation-scoped disconnect cleanup, and map projection with party-style dedup.
 The PhMon Map **Other players** layer is fixture-tested separately from installed
 phBot validation; cross-observer identity and cave placement semantics remain

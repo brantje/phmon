@@ -250,6 +250,15 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 other-player zone names
+
+Plugin **1.9.8** / protocol **13** adds optional `zone` on `map.players` rows from
+`get_zone_name` for the player's region, or the observer region when the row has
+none. The map popup shows that name, and otherwise the zone already known for the
+same region from a character or event. Older plugins omit `zone` and still use the
+lookup. No deployment was performed. Exact next action: load 1.9.8 against a
+protocol-13 backend and confirm a nearby player popup shows the zone name.
+
 ### Resume — 2026-10-01 Issue #36 Other players map layer
 
 Branch `codex/issue-36-get-players-probe` replaces the manual get_players/equipment

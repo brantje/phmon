@@ -32,4 +32,19 @@ func TestPlayerLiveStoreReplacesExpiresAndRemovesGeneration(t *testing.T) {
 	}
 }
 
+func TestValidateLiveSnapshotAcceptsZoneAndRejectsUntrimmedZone(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	valid := ValidateLiveSnapshot("observed", 25000, []Player{{
+		PlayerID: "7", Name: "Nearby", X: 1, Y: 2, Zone: "Taklamakan",
+	}}, now, now)
+	if valid != nil {
+		t.Fatal(valid)
+	}
+	if err := ValidateLiveSnapshot("observed", 25000, []Player{{
+		PlayerID: "7", Name: "Nearby", X: 1, Y: 2, Zone: " Taklamakan",
+	}}, now, now); err == nil {
+		t.Fatal("expected untrimmed zone to be rejected")
+	}
+}
+
 func floatPtr(value float64) *float64 { return &value }

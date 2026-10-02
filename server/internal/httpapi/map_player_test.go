@@ -15,7 +15,7 @@ func TestProjectPlayersDedupesByPlayerID(t *testing.T) {
 		{
 			Server: "Greatest", CharacterID: "char-b", SessionID: "session-b", Character: "Beta",
 			Status: "observed", Region: 25000, ObservedAt: now, ObserverZ: &z,
-			Players: []players.Player{{PlayerID: "7", Name: "Nearby", X: 10, Y: 20}},
+			Players: []players.Player{{PlayerID: "7", Name: "Nearby", X: 10, Y: 20, Zone: "Taklamakan"}},
 		},
 		{
 			Server: "Greatest", CharacterID: "char-a", SessionID: "session-a", Character: "Alpha",
@@ -37,6 +37,9 @@ func TestProjectPlayersDedupesByPlayerID(t *testing.T) {
 	}
 	if result.Players[0].X != 11 || len(result.Players[0].Observers) != 2 {
 		t.Fatalf("expected freshest coordinates with merged observers: %+v", result.Players[0])
+	}
+	if result.Players[0].Zone != "Taklamakan" {
+		t.Fatalf("expected the older zone when the freshest row omits it: %+v", result.Players[0])
 	}
 }
 

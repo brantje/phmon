@@ -1164,6 +1164,12 @@ are applied in that order for one character. The multi-target point action fans 
 only `training.area.set`, so each target keeps its own radius. Success is shown only
 after the durable command result; the circle moves when the next readback arrives.
 
+## Protocol v13: other-player zone names
+
+Protocol v13 keeps the v12 frames. `map.players` rows may include optional `zone`
+from `get_zone_name(region)`. Older agents omit the field. The server accepts
+protocol 2 through 13.
+
 ## Protocol v12: teleporter routes on map NPCs
 
 Protocol v12 keeps the v11 command and navigation frames. `map.npcs` rows may include
@@ -1240,7 +1246,12 @@ session. Rows expire from the live map 35 seconds after `observed_at`, with the 
 5 second future skew as party observers.
 
 Each row has a canonical decimal-string `player_id`, required `name`, finite `x`/`y`,
-optional `guild`, `grant`, boolean `dead`, integer `level`, and optional `region`.
+optional `guild`, `grant`, boolean `dead`, integer `level`, optional `region`, and
+optional `zone`. `zone` is the `get_zone_name` result for that player's region.
+When the row has no region, it is the observer's zone, because the map places the
+player in the observer region. Older plugins omit `zone`. The map popup uses the
+sent name, and otherwise the zone already known for that region from a character
+or event.
 The plugin caps a snapshot at 128 rows and 64 KiB serialized payload, marking
 `truncated` when a row is dropped. The browser projection deduplicates by
 `player_id` within the selected server, keeps the freshest `observed_at`, merges up
@@ -1249,5 +1260,5 @@ the observer's current Z and fails closed when the floor is ambiguous. Contradic
 player regions relative to the observer are withheld.
 
 ```json
-{"type":"map.players","protocol_version":10,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"x":30,"y":40}]}}
+{"type":"map.players","protocol_version":13,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"zone":"Taklamakan","x":30,"y":40}]}}
 ```

@@ -40,6 +40,29 @@ class PlayerObservationTests(unittest.TestCase):
         }])
         self.assertNotIn('items', players[0])
         self.assertNotIn('z', players[0])
+        self.assertNotIn('zone', players[0])
+
+    def test_collect_player_observation_resolves_zone_once_per_region(self):
+        raw = {
+            '1': {'name': 'A', 'region': 26753, 'x': 1, 'y': 2},
+            '2': {'name': 'B', 'region': 26753, 'x': 3, 'y': 4},
+            '3': {'name': 'C', 'x': 5, 'y': 6},
+        }
+        with patch.object(plugin, '_get_zone_name', return_value=' Taklamakan ') as get_zone:
+            status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'observed')
+        self.assertFalse(truncated)
+        self.assertEqual([player.get('zone') for player in players], ['Taklamakan', 'Taklamakan', None])
+        get_zone.assert_called_once_with(26753)
+
+    def test_collect_player_observation_omits_zone_when_lookup_fails(self):
+        raw = {'7': {'name': 'Nearby', 'region': 26753, 'x': 1, 'y': 2}}
+        with patch.object(plugin, '_get_zone_name', side_effect=RuntimeError('lookup failed')):
+            status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'observed')
+        self.assertFalse(truncated)
+        self.assertEqual(players[0]['region'], 26753)
+        self.assertNotIn('zone', players[0])
 
     def test_collect_player_observation_marks_malformed_duplicate_and_bounds(self):
         valid = {'name': 'Player', 'x': 1, 'y': 2}
@@ -50,6 +73,36 @@ class PlayerObservationTests(unittest.TestCase):
         self.assertTrue(truncated)
         self.assertEqual(len(players), 1)
         self.assertEqual(players[0]['x'], 1.0)
+
+    def test_player_snapshot_signature_includes_zone(self):
+        base = {'player_id': '1', 'name': 'A', 'region': 26753, 'x': 1.0, 'y': 2.0}
+        named = plugin._player_snapshot_signature('observed', 26753, 0.0, [dict(base, zone='Taklamakan')])
+        missing = plugin._player_snapshot_signature('observed', 26753, 0.0, [dict(base)])
+        self.assertNotEqual(named, missing)
+
+    def test_sample_players_names_regionless_rows_from_the_observer_region(self):
+        previous = (
+            plugin._worker, plugin._last_player_poll_at, plugin._last_player_region,
+            plugin._last_player_observer_z, plugin._last_player_signature,
+            plugin._last_player_publish_at, plugin._player_sample_forced,
+        )
+        plugin._reset_player_sample_state()
+        worker = Mock()
+        worker.update_map_players = Mock(return_value=True)
+        plugin._worker = worker
+        identity = {'server': 'Greatest', 'name': 'Observer'}
+        state = {'region': 26753}
+        position = {'z': 96.0}
+        row = {'player_id': '7', 'name': 'Nearby', 'x': 1.0, 'y': 2.0}
+        with patch.object(plugin, 'collect_player_observation', return_value=('observed', [row], False)), \
+                patch.object(plugin, '_get_zone_name', return_value='Taklamakan') as get_zone:
+            self.assertTrue(plugin._sample_players(identity, state, position, 100.0))
+        sent = worker.update_map_players.call_args.args[3]
+        self.assertEqual(sent[0]['zone'], 'Taklamakan')
+        get_zone.assert_called_once_with(26753)
+        plugin._worker, plugin._last_player_poll_at, plugin._last_player_region, \
+            plugin._last_player_observer_z, plugin._last_player_signature, \
+            plugin._last_player_publish_at, plugin._player_sample_forced = previous
 
     def test_player_snapshot_signature_includes_observer_z(self):
         players = [{'player_id': '1', 'name': 'A', 'x': 1.0, 'y': 2.0}]

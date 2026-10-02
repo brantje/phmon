@@ -25,7 +25,7 @@ import {
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
 import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
-import { playerMapMarkers } from '~/utils/mapPlayerMarkers'
+import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
@@ -1347,6 +1347,7 @@ const mapMarkers = computed(() => {
     itemName?: string
     itemIconUrl?: string
     event?: ActivityEvent
+    zoneLabel?: string
   }> = [...characterMarkers]
   const addMarker = (
     id: string,
@@ -1407,7 +1408,14 @@ const mapMarkers = computed(() => {
           ? characterMarkers.map((marker) => marker.character.name)
           : [],
         layerParty.value ? currentPartyMembers.value : [],
-      ),
+      ).map((marker) => ({
+        ...marker,
+        zoneLabel: playerZoneLabel(
+          marker.player.zone,
+          marker.player.region,
+          zoneNameForRegion,
+        ),
+      })),
     )
   }
   markers.push(
