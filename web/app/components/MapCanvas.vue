@@ -150,6 +150,15 @@ const renderedMarkers = new Map<string, LeafletMarker>()
 const markerIconSignatures = new Map<string, string>()
 const markerAnimationFrames = new Map<string, number>()
 const MARKER_ANIMATION_DURATION_MS = 120
+/** On-map display size for 8×8 minimap sign PNGs (party / other player / NPC). */
+const MINIMAP_SIGN_ICON_PX = 16
+
+function styleMinimapSignImage(img: HTMLImageElement) {
+  const size = `${MINIMAP_SIGN_ICON_PX}px`
+  img.style.width = size
+  img.style.height = size
+  img.style.imageRendering = 'pixelated'
+}
 let canvasResizeObserver: ResizeObserver | undefined
 const clusterChoices = ref<{ id: string; name: string }[]>([])
 let stopped = false
@@ -1120,6 +1129,7 @@ function markerIconContent(
     const img = document.createElement('img')
     img.src = PARTY_MEMBER_ICON
     img.alt = ''
+    styleMinimapSignImage(img)
     content.append(img)
     const name = document.createElement('span')
     name.className = 'phmon-map-party-name'
@@ -1130,6 +1140,7 @@ function markerIconContent(
     const img = document.createElement('img')
     img.src = OTHER_PLAYER_ICON
     img.alt = ''
+    styleMinimapSignImage(img)
     content.append(img)
     const name = document.createElement('span')
     name.className = 'phmon-map-player-name'
@@ -1140,6 +1151,7 @@ function markerIconContent(
     const img = document.createElement('img')
     img.src = NPC_MARKER_ICON
     img.alt = ''
+    styleMinimapSignImage(img)
     content.append(img)
     const name = document.createElement('span')
     name.className = 'phmon-map-npc-name'
@@ -1376,7 +1388,7 @@ onMounted(async () => {
         : marker.kind === 'party' ||
             marker.kind === 'player' ||
             marker.kind === 'npc'
-          ? 24
+          ? MINIMAP_SIGN_ICON_PX
           : marker.kind === 'monster'
             ? Math.round(12 * (type?.scale || 1))
             : marker.kind === 'drop'
@@ -1909,18 +1921,14 @@ onBeforeUnmount(() => {
   border-style: dashed;
 }
 
+:global(.phmon-map-party-icon),
 :global(.phmon-map-detail-party-icon) {
   display: grid;
   place-items: center;
 }
 
 :global(.phmon-map-party-icon) {
-  display: grid;
-  place-items: center;
   position: relative;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
   filter: drop-shadow(0 1px 3px #000c);
 }
 
@@ -1929,24 +1937,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
   position: relative;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
   filter: drop-shadow(0 1px 3px #000c);
-}
-
-:global(.phmon-map-npc-icon img),
-:global(.phmon-map-detail-npc-icon) {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
 }
 
 :global(.phmon-map-detail-npc-icon) {
   width: 32px;
   height: 32px;
+  object-fit: contain;
 }
 
 :global(.phmon-map-npc-name),
@@ -1974,22 +1972,19 @@ onBeforeUnmount(() => {
 }
 
 :global(.phmon-map-party-icon img),
+:global(.phmon-map-player-icon img),
+:global(.phmon-map-npc-icon img) {
+  display: block;
+  flex: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 :global(.phmon-map-detail-party-icon img) {
   display: block;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-}
-
-:global(.phmon-map-player-icon img),
-:global(.phmon-map-npc-icon img) {
-  display: block;
-  width: 20px;
-  height: 20px;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  flex: none;
 }
 
 :global(.phmon-map-detail-party-icon) {
