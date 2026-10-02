@@ -57,8 +57,11 @@ export function useMapTeleportAction(options: {
         ? `teleport:${options.server().toLowerCase()}:${npc.servername || npc.id}`
         : 'unavailable'
     },
-    scopeKeyForCharacter(character: CharacterView) {
-      return `server:${character.server.toLowerCase()}`
+    scopeKeyForCharacter(character: CharacterView, operationScopeKey?: string) {
+      if (character.server.toLowerCase() !== options.server().toLowerCase()) {
+        return `server:${character.server.toLowerCase()}`
+      }
+      return operationScopeKey || `server:${character.server.toLowerCase()}`
     },
     currentScopeKey(characterID: string) {
       const character = getCharacter(characterID)
@@ -98,11 +101,20 @@ export function useMapTeleportAction(options: {
     if (!options.selectedTargetIDs().length)
       return 'Tick characters in the panel to teleport them.'
     if (fanout.preparing.value) return ''
-    if (!counts.value.eligible)
+    if (!counts.value.eligible) {
+      const children = menuOperation.value?.children || []
+      const lines = children
+        .filter((child) => child.skipReason?.message)
+        .map(
+          (child) =>
+            `${child.characterName}: ${child.skipReason?.message || 'Unavailable.'}`,
+        )
+      if (lines.length === 1) return lines[0]!
+      if (lines.length > 1) return lines.join(' ')
       return options.selectedTargetIDs().length === 1
-        ? menuOperation.value?.children[0]?.skipReason?.message ||
-            'Character cannot teleport.'
+        ? 'Character cannot teleport.'
         : 'Selected characters cannot use this teleporter.'
+    }
     return counts.value.skipped
       ? `${counts.value.skipped} of ${counts.value.selected} characters unavailable.`
       : 'Uses get_teleport_data then one teleport script line per character.'

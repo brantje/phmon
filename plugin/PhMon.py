@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.4'
+pVersion = '1.9.5'
 pUrl = ''
 
 PROTOCOL_VERSION = 11
@@ -197,9 +197,9 @@ def _read_botting_state(character_data, status_getter=None, timing=None):
     # means stopped. Do not turn missing status into a guessed false value.
     return _normalize_botting_status(value)
 
-_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','generate_path','set_training_position',
-              'set_training_radius','set_training_area','get_training_area','move_to_region',
-              'generate_script','start_script','stop_script','use_return_scroll','disconnect')
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','get_teleport_data',
+              'generate_path','set_training_position','set_training_radius','set_training_area','get_training_area',
+              'move_to_region','generate_script','start_script','stop_script','use_return_scroll','disconnect')
 
 _CHAT_METHODS = {
     'general': ('All',),

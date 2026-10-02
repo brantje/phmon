@@ -3042,6 +3042,18 @@ class TeleporterProbeTests(unittest.TestCase):
         caps = {item['name']: item for item in worker._capability_frame()['commands']}
         self.assertTrue(caps['character.teleport']['supported'])
 
+    def test_default_adapter_exposes_get_teleport_data_for_capability_gate(self):
+        teleport = lambda *_args: None
+
+        def fake_optional(name):
+            if name == 'get_teleport_data':
+                return teleport
+            return None
+
+        with patch.object(plugin, '_optional_phbot_api', side_effect=fake_optional):
+            adapter = plugin.PhBotAdapter()
+        self.assertTrue(adapter.has('get_teleport_data'))
+
 
 if __name__ == '__main__':
     unittest.main()
