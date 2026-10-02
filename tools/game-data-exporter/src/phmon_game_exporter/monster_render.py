@@ -102,6 +102,23 @@ def _skin(mesh, bind, posed):
     return points, normals
 
 
+def _portrait_mesh_indices(meshes):
+    """Fit the main mesh cluster without framing props animated far off the body.
+
+    A gap exceeding four times the largest mesh's span is treated as displaced
+    geometry. It still participates in rasterization, but cannot shrink the
+    portrait's camera fit. This conservative bound keeps ordinary detached parts.
+    """
+    if not meshes or any(not len(m["positions"]) or not np.isfinite(m["positions"]).all() for m in meshes):
+        raise ModelError("Empty or non-finite geometry")
+    bounds = [(m["positions"].min(axis=0), m["positions"].max(axis=0)) for m in meshes]
+    spans = [float((high - low).max()) for low, high in bounds]
+    anchor = max(range(len(meshes)), key=lambda i: (spans[i], len(meshes[i]["positions"])))
+    low, high = bounds[anchor]
+    return [i for i, (other_low, other_high) in enumerate(bounds)
+            if np.maximum(np.maximum(other_low - high, low - other_high), 0).max() <= spans[anchor] * 4]
+
+
 def rasterize(meshes, *, size=RENDER_SIZE):
     """Orthographic textured triangles with a real depth buffer and 2x antialiasing.
 
@@ -123,7 +140,8 @@ def rasterize(meshes, *, size=RENDER_SIZE):
     all_points = np.concatenate(projected)
     if not len(all_points) or not np.isfinite(all_points).all():
         raise ModelError("Empty or non-finite geometry")
-    low, high = all_points[:, :2].min(axis=0), all_points[:, :2].max(axis=0)
+    fit_points = np.concatenate([projected[i] for i in _portrait_mesh_indices(meshes)])
+    low, high = fit_points[:, :2].min(axis=0), fit_points[:, :2].max(axis=0)
     extent = float((high-low).max())
     if extent < 1e-8:
         raise ModelError("Degenerate model bounds")
@@ -278,7 +296,7 @@ def render_resource(archive, index, resource_path):
             if attachment is not None:
                 points = points @ attachment[:3,:3].T + attachment[:3,3]
                 normals = normals @ attachment[:3,:3].T
-            meshes.append({"positions": points,"normals": normals,
+            meshes.append({"source": source_path(path), "positions": points,"normals": normals,
                            "uvs": np.asarray(mesh["uvs"]).reshape(-1,2),
                            "indices": np.asarray(mesh["indices"],dtype=int).reshape(-1,3),
                            "texture": textures[mesh["material"]],
@@ -286,7 +304,9 @@ def render_resource(archive, index, resource_path):
         parts.append({"resource": source_path(part_path), "bones": len(bones),
                       "pose": "recorded-stand-frame-20-percent" if idle else "rest-geometry",
                       "poseWarning": pose_warning, "attachmentBone": info["attachmentBone"]})
+    fit_indices = set(_portrait_mesh_indices(meshes)) if meshes else set()
     return rasterize(meshes), {"renderer": RENDERER_VERSION,"dependencies": evidence,
+                               "cameraFitExcludedMeshes": [m["source"] for i, m in enumerate(meshes) if i not in fit_indices],
                                "materialPalette": 0,"correctedFaceOffsets": corrected_offsets,
                                "correctedCompoundPaths": compound_corrections,"parts": parts,
                                "pose": parts[0]["pose"],"poseWarning": parts[0]["poseWarning"],

@@ -100,3 +100,35 @@ Ignored native evidence: `exports/uniques-render/export-result.json`,
 `exports/uniques-render/validation.json`, and the immutable bundle/audit under
 `exports/uniques-render/export/gamedata-93183f2f3dec5300d4fc/`. A contact sheet of
 the final published PNGs is `exports/uniques-render/published-preview.jpg`.
+
+## PR #62 review corrections — exporter 0.6.1
+
+Malformed resource paths or basenames no longer stop unrelated valid models from
+rendering. Each rejected join retains its reference ID, code, original resource
+string and reason as an `invalid` private audit entry. Invalid joins have no public
+alias, a separate coverage/result count, and keep the monster family
+partial/unresolved. Regression tests cover full and selected exports, a mixed
+comma-separated join, unsafe paths and an all-invalid batch.
+
+The original `mad_general_2.png` contained only **470** visible pixels. Its actual
+idle frame puts a spare weapon at Y −1,342…−1,313, far below the body at Y 0…65.
+Camera fitting now excludes meshes with a gap greater than four times the largest
+mesh's span, without modifying the recorded pose or source geometry. All meshes
+still undergo rasterization, and excluded mesh paths remain in the private audit.
+The corrected picture has **49,029** visible pixels, a **455×322** visible bounding
+box and **135,382** bytes. It shows the posed body and equipped sword. Fixtures
+verify stable fitting regardless of mesh order and preservation of nearby parts.
+Its SHA-256 is `09936c502578e4ba0dacf510d81caf761260568e986043b01a80bdeea4dadaf6`.
+
+All **79** exporter tests pass. The corrected native rerun uses immutable dataset
+`gamedata-48ad548c98056b6c87b3`; its monster audit reports **105 rendered**, one
+unsupported and **zero invalid** joins. Only `mad_general_2` excludes a mesh from
+camera fitting. Native rerun evidence is under ignored
+`exports/uniques-render/review-export/` and `review-export-result.json`.
+The rerun completed in **505.259 s**. Source-free validation checks 21 catalogues,
+10,142 bundle assets and zero dangling references; public validation checks 12,174
+files and 32,279 semantic keys. All 12,069 unrelated records and their bytes are
+preserved. Only `mad_general_2.png` changes; the other 104 monster PNGs match their
+previous bytes. The public index records the new monster dataset and matching PNG
+checksums/sizes. Full verification evidence is
+`exports/uniques-render/review-validation.json`.

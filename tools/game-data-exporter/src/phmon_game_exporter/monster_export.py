@@ -30,21 +30,31 @@ def monster_target(fields):
     return {"modelName": name, "resource": path, "referenceId": int(fields[1]), "code": fields[2]}
 
 
-def monster_targets(fields, *, uniques_only=False):
-    """Expand the source's explicit comma-separated resource list."""
+def monster_targets(fields, *, uniques_only=False, invalid=None):
+    """Expand explicit resource joins, retaining malformed entries in a private audit."""
     if uniques_only and (fields[0] != "1" or fields[15] not in ("3", "8")):
         return []
     targets = []
     for value in fields[52].split(","):
         row = list(fields)
         row[52] = value
-        target = monster_target(row)
+        try:
+            target = monster_target(row)
+        except ModelError as exc:
+            if invalid is None:
+                raise
+            invalid.append({"modelName": None, "resources": [value.strip()],
+                            "referenceIds": [int(fields[1])], "codes": [fields[2]],
+                            "status": "invalid", "reason": str(exc)})
+            continue
         if target is not None:
             targets.append(target)
     return targets
 
 
-def export_monsters(*, archive, index, targets, selected, dataset_id, bundle, assets, asset_audit):
+def export_monsters(*, archive, index, targets, selected, dataset_id, bundle, assets, asset_audit,
+                    collection_errors=()):
+    """Render valid model groups; keep invalid joins separate from unsupported models."""
     paths = defaultdict(set)
     for target in targets:
         paths[target["modelName"]].add(target["resource"])
@@ -73,7 +83,7 @@ def export_monsters(*, archive, index, targets, selected, dataset_id, bundle, as
         if unknown:
             raise ModelError("Unknown monster model name(s): " + ", ".join(sorted(unknown)))
         groups = {name: groups[name] for name in selected}
-    records, audit = [], []
+    records, audit = [], list(collection_errors)
     for name, group in sorted(groups.items()):
         record = {"id": f"monster:{dataset_id}:{name}", "modelName": name,
                   "referenceIds": sorted({t["referenceId"] for t in group}),
@@ -110,11 +120,13 @@ def export_monsters(*, archive, index, targets, selected, dataset_id, bundle, as
         audit.append(evidence)
     rendered = sum(r["status"] == "rendered" for r in records)
     return records, audit, {"models": len(records),"rendered": rendered,
-                            "unsupported": len(records)-rendered,"renderer": RENDERER_VERSION,
+                            "unsupported": len(records)-rendered,"invalid": len(collection_errors),
+                            "renderer": RENDERER_VERSION,
                             "selection": list(selected) if selected is not None else "all-exact-resource-joins"}
 
 
-def collect_monster_targets(rows, *, uniques_only=False):
+def collect_monster_targets(rows, *, uniques_only=False, invalid=None):
+    """Resolve inherited resource joins while preserving each source monster's identity."""
     by_code = {row[2]: row for row in rows}
     targets = []
     for row in rows:
@@ -131,5 +143,5 @@ def collect_monster_targets(rows, *, uniques_only=False):
                 break
         if base is not None:
             resolved[52] = base[52]
-            targets.extend(monster_targets(resolved))
+            targets.extend(monster_targets(resolved, invalid=invalid))
     return targets

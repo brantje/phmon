@@ -174,7 +174,7 @@ compact backend catalog. The optional local archive upgrades old bundles only
 when every ID/code matches. New exporter item records carry `presentation`.
 Generated output has no source archive paths; it references existing local PNGs.
 
-## Offline monster artwork — exporter 0.6.0
+## Offline monster artwork — exporter 0.6.1
 
 The normal export can produce transparent model pictures using a CPU rasterizer
 implemented with NumPy and Pillow. It requires no browser, GPU or external
@@ -219,6 +219,25 @@ to a 512 × 512 RGBA PNG. No renderer library runs in the web app. Private audit
 records include every read dependency's SHA-256, pose and triangle/bone counts;
 the public index contains PNG metadata and semantic keys only. Missing or
 unsupported artwork remains missing, without a decorative generated substitute.
+
+Portrait camera fitting excludes meshes separated from the largest mesh's bounds
+by more than four times that mesh's span. The actual local `mad_general_stand02`
+frame moves `mad_general_weapon_02.bms` to Y −1,342…−1,313 while the body occupies
+Y 0…65. Including that spare weapon in the camera bounds shrank the body to a
+few pixels. The fit now follows the main geometry, without changing the recorded
+pose or replacing source geometry. All meshes still participate in rasterization;
+`cameraFitExcludedMeshes` retains excluded dependency paths in the private audit.
+Regression fixtures verify that distant props do not shrink the portrait, mesh
+ordering does not change the fit, and nearby detached parts remain visible.
+
+Malformed exact resource joins are retained separately as `invalid` private audit
+entries, with their original reference IDs, codes, resource strings and reasons.
+They have no valid model alias and are excluded from the catalogue's `models` and
+`unsupported` counts. A separate `invalid` coverage count and
+`monsterRenderInvalidCount` result preserve the diagnostics, including for a
+selected export. Any invalid joins keep the family partial/unresolved. The
+exporter patch version participates in dataset identity so corrected bundles
+cannot reuse the earlier immutable outputs.
 
 The `--unique-monsters` selection uses enabled MOB_ rows and rarity **3/8**,
 verified against the primary RSBot

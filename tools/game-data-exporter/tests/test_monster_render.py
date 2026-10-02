@@ -58,6 +58,28 @@ def test_texture_v_origin_is_top_left_and_output_is_deterministic():
     assert image.mode == "RGBA" and image.size == (64,64)
 
 
+def test_displaced_prop_does_not_shrink_portrait_and_mesh_order_does_not_change_fit():
+    body = _square((210,80,40,255))
+    prop = _square((0,255,0,255))
+    prop["positions"] *= 0.5
+    prop["positions"][:,1] -= 1000
+    expected = rasterize([body],size=64)
+    assert rasterize([body,prop],size=64) == expected
+    assert rasterize([prop,body],size=64) == expected
+    alpha = Image.open(io.BytesIO(expected)).getchannel("A")
+    assert sum(alpha.histogram()[1:]) > 3000
+
+
+def test_portrait_camera_keeps_nearby_detached_parts():
+    body = _square((210,80,40,255))
+    prop = _square((0,255,0,255))
+    prop["positions"] *= 0.5
+    prop["positions"][:,0] += 2
+    image = _image([body,prop])
+    assert image.getpixel((50,32))[1] > 200
+    assert image.getpixel((21,32))[0] > 150
+
+
 @pytest.mark.parametrize("path", ["../bad.bsr","/root/bad.bsr",r"C:\bad.bsr","res/mob/../bad.bsr","res//bad.bsr"])
 def test_rejects_unsafe_archive_resource_paths(path):
     with pytest.raises(models.ModelError):
@@ -167,6 +189,56 @@ def test_missing_dependency_is_audited_and_never_publishes_a_placeholder(tmp_pat
     audit=json.loads((Path(result["auditPath"])/"tables/monster-renders.json").read_text())
     assert audit[0]["status"]=="unsupported" and "signature" in audit[0]["reason"]
     validate_public_assets(public)
+
+
+@pytest.mark.parametrize("selected", [None, ["fixture"]])
+@pytest.mark.parametrize("invalid_resource", ["mob/test/unsafe name.bsr", "mob/test/../unsafe.bsr"])
+def test_invalid_resource_is_audited_without_blocking_valid_models(tmp_path,monkeypatch,selected,invalid_resource):
+    source=_monster_source(tmp_path,monkeypatch)
+    fields=["0"]*55
+    fields[0],fields[1],fields[2],fields[15],fields[52]="1","43","MOB_BAD","8",invalid_resource
+    path="server_dep/silkroad/textdata/characterdata_5000.txt"
+    _FakeArchive.payloads[path]=_text(_FakeArchive.payloads[path].decode("utf-16")+"\n"+"\t".join(fields))
+    public=tmp_path/"game-assets"
+    result=exporter.export_dataset(source,tmp_path/"exports","fixture-key",public,monster_models=selected)
+    assert result["monsterRenderCount"]==1
+    assert result["monsterRenderUnsupportedCount"]==0
+    assert result["monsterRenderInvalidCount"]==1
+    catalog=json.loads((Path(result["bundlePath"])/"catalogs/monsters.json").read_text())
+    assert catalog["status"]=="partial"
+    assert catalog["coverage"]["models"]==1 and catalog["coverage"]["invalid"]==1
+    assert [r["modelName"] for r in catalog["records"]]==["fixture"]
+    audit=json.loads((Path(result["auditPath"])/"tables/monster-renders.json").read_text())
+    invalid=next(r for r in audit if r["status"]=="invalid")
+    assert invalid=={"modelName": None, "resources": [invalid_resource], "referenceIds": [43],
+                     "codes": ["MOB_BAD"], "status": "invalid", "reason": invalid["reason"]}
+    assert "safe" in invalid["reason"]
+    assert {p.name for p in (public/"monsters").iterdir()}=={"fixture.png"}
+    validate_bundle(Path(result["bundlePath"]))
+    validate_public_assets(public)
+
+
+def test_invalid_comma_separated_resource_does_not_discard_other_joins(tmp_path,monkeypatch):
+    source=_monster_source(tmp_path,monkeypatch)
+    path="server_dep/silkroad/textdata/characterdata_5000.txt"
+    _FakeArchive.payloads[path]=_text(_FakeArchive.payloads[path].decode("utf-16").replace(
+        "mob/test/fixture.bsr","mob/test/unsafe name.bsr, mob/test/fixture.bsr"))
+    result=exporter.export_dataset(source,tmp_path/"exports","fixture-key",monster_models=["fixture"])
+    assert result["monsterRenderCount"]==1 and result["monsterRenderInvalidCount"]==1
+
+
+def test_all_invalid_resources_leave_unresolved_coverage_without_public_aliases(tmp_path,monkeypatch):
+    source=_monster_source(tmp_path,monkeypatch)
+    path="server_dep/silkroad/textdata/characterdata_5000.txt"
+    _FakeArchive.payloads[path]=_text(_FakeArchive.payloads[path].decode("utf-16").replace(
+        "mob/test/fixture.bsr","mob/test/unsafe name.bsr"))
+    result=exporter.export_dataset(source,tmp_path/"exports","fixture-key")
+    assert result["monsterRenderCount"]==result["monsterRenderUnsupportedCount"]==0
+    assert result["monsterRenderInvalidCount"]==1
+    catalog=json.loads((Path(result["bundlePath"])/"catalogs/monsters.json").read_text())
+    assert catalog["status"]=="unresolved" and catalog["records"]==[]
+    unresolved=json.loads((Path(result["auditPath"])/"unresolved.json").read_text())
+    assert any(r["family"]=="monsters" and "1 invalid" in r["reason"] for r in unresolved)
 
 
 def test_public_alias_rejects_rendered_path_traversal_without_replacing_existing_files(tmp_path,monkeypatch):

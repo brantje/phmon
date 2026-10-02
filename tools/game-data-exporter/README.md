@@ -131,7 +131,7 @@ running the exporter. Their browser URLs start with `/game-assets/monster-types/
 
 ### Monster model pictures
 
-Exporter **0.6.0** reads monster model resources from `Data.pk2` when that archive
+Exporter **0.6.1** reads monster model resources from `Data.pk2` when that archive
 is present. Normal export renders all exact monster resource joins from the indexed
 character tables. Use a repeatable `--monster-model` option to limit a trial:
 
@@ -172,6 +172,9 @@ untouched; its failure remains in the returned counts and private audit.
 
 Rendering applies a recorded idle pose, two-bone skinning, textured triangles,
 depth occlusion, alpha cutouts, modest lighting and antialiasing in software.
+The camera fits the main mesh cluster; props animated more than four times the
+largest mesh's span away cannot shrink the portrait. Those meshes still undergo
+rasterization, and their paths are listed privately as `cameraFitExcludedMeshes`.
 Artwork uses the resource's base material palette (ID 0), rather than each
 entity's TextureType appearance. BSR and assembled CPD character models are
 supported, including equipment skinning and bone attachments. A model without an
@@ -185,6 +188,11 @@ Names are lowercase safe resource basenames. When different resource paths reuse
 a basename, the shortest distinguishing resource-folder names are prefixed; no
 numeric ID is used. Rows with `xxx` resources follow their exact OrgObjCodeName128
 reference. No localized-name or filename guessing is used.
+Unsafe resource paths or basenames are isolated per comma-separated resource and
+retained as `invalid` private audit entries with the original reference ID, code,
+resource and reason. Coverage and the export result report a separate invalid
+count; valid models still render, including when `--monster-model` is selected.
+Invalid joins have no public alias and keep monster coverage partial/unresolved.
 
 The selected names and the `Data.pk2` hash participate in the immutable dataset
 identity. The bundle includes the resulting PNGs, never the mesh, skeleton,

@@ -659,19 +659,23 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             unresolved.append({"family": "entities", "reason": "pet class and full-body artwork roles remain unresolved; character portraits use only the explicit phMonitor v0.5.0 model mapping"})
             entity_records.sort(key=lambda row: row["referenceId"])
             _json_write(bundle / "catalogs" / "entities.json", _catalog(dataset_id, "entities", "partial", entity_records, recordCount=len(entity_records), locales=["en"]))
-            monster_targets = collect_monster_targets(monster_source_rows, uniques_only=unique_monsters)
+            monster_collection_errors = []
+            monster_targets = collect_monster_targets(monster_source_rows, uniques_only=unique_monsters,
+                                                      invalid=monster_collection_errors)
             data_index = _archive_index(data_archive.inventory().entries) if data_archive is not None and monster_targets else {}
             monster_records, monster_audit, monster_coverage = export_monsters(
                 archive=data_archive, index=data_index, targets=monster_targets,
                 selected=monster_models, dataset_id=dataset_id, bundle=bundle,
                 assets=assets_by_hash, asset_audit=asset_refs,
+                collection_errors=monster_collection_errors,
             )
             monster_coverage["uniqueOnly"] = unique_monsters
-            monster_status = "parsed" if monster_records and not monster_coverage["unsupported"] else "partial" if monster_coverage["rendered"] else "unresolved"
+            monster_failures = monster_coverage["unsupported"] + monster_coverage["invalid"]
+            monster_status = "parsed" if monster_records and not monster_failures else "partial" if monster_coverage["rendered"] else "unresolved"
             _json_write(bundle / "catalogs" / "monsters.json", _catalog(dataset_id, "monsters", monster_status, monster_records, recordCount=len(monster_records), coverage=monster_coverage))
             _json_write(audit / "tables" / "monster-renders.json", monster_audit)
-            if data_archive is None or monster_coverage["unsupported"]:
-                unresolved.append({"family": "monsters", "reason": "Data.pk2 unavailable" if data_archive is None else f'{monster_coverage["unsupported"]} monster resources could not be rendered; see private monster-renders audit'})
+            if data_archive is None or monster_failures:
+                unresolved.append({"family": "monsters", "reason": "Data.pk2 unavailable" if data_archive is None else f'{monster_coverage["unsupported"]} unsupported models and {monster_coverage["invalid"]} invalid resource joins; see private monster-renders audit'})
 
             # Skill shards are selected only through the client's plaintext index.
             # The exporter deliberately omits rank rules, costs and prerequisites:
@@ -1424,6 +1428,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             "monsterTypeIconCount": monster_icon_count,
             "monsterRenderCount": monster_coverage["rendered"],
             "monsterRenderUnsupportedCount": monster_coverage["unsupported"],
+            "monsterRenderInvalidCount": monster_coverage["invalid"],
             "unresolvedFamilyCount": len(unresolved),
             "sourceKnowledgeRequired": False,
             "identicalBundleReused": bundle_reused,

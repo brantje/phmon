@@ -1919,3 +1919,11 @@ do not match. Native bundle/public validation and all 71 exporter tests pass; al
 12,069 unrelated public asset records remain unchanged. This improves artwork
 coverage without claiming complete uniques UI parity or hiding the one remaining
 model failure. [Batch evidence and limitations](monster-art-export.md).
+
+PR #62 review follow-up: exporter 0.6.1 isolates malformed resource joins with
+separate invalid diagnostics/coverage and fixes portrait framing around displaced
+animation props. The native batch regenerates 105 pictures; only
+`mad_general_2.png` changes, from 470 to 49,029 visible pixels. All 79 exporter
+tests and native bundle/public validation pass. All 12,069 unrelated public
+records are preserved. The one unsupported `volkoft` resource and existing UI
+parity scope remain documented in [export evidence](monster-art-export.md).
