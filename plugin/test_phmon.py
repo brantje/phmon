@@ -3170,6 +3170,32 @@ class TeleporterProbeTests(unittest.TestCase):
             [item['destination'] for item in jangan],
         )
 
+    def test_teleport_route_cache_does_not_cross_server_or_session(self):
+        plugin._teleport_route_cache.clear()
+        calls = []
+
+        def get_teleport_data(source, destination):
+            calls.append((source, destination))
+            if destination == 'Jangan':
+                return (1, 7)
+            return None
+
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {},
+            'get_teleport_data': get_teleport_data,
+            'start_script': lambda *_args: True,
+        })
+        plugin._teleport_routes_for_gate('Hotan', 'GATE_KT', adapter, 'Greatest', 'session-a')
+        calls.clear()
+        plugin._teleport_routes_for_gate('Hotan', 'GATE_KT', adapter, 'Servar', 'session-b')
+        self.assertIn(('Hotan', 'Jangan'), calls)
+        calls.clear()
+        plugin._teleport_routes_for_gate('Hotan', 'GATE_KT', adapter, 'Greatest', 'session-c')
+        self.assertIn(('Hotan', 'Jangan'), calls)
+        calls.clear()
+        plugin._teleport_routes_for_gate('Hotan', 'GATE_KT', adapter, 'Greatest', 'session-a')
+        self.assertEqual(calls, [])
+
     def test_default_adapter_exposes_get_teleport_data_for_capability_gate(self):
         teleport = lambda *_args: None
 
