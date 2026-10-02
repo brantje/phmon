@@ -545,6 +545,13 @@ def run_remote_controls(worker, stopping, api_calls, area, position):
                     break
         if time.monotonic() - last_state >= 5.0:
             worker.update_character(identity, state)
+            members = ([{'name': name} for name in os.environ.get('PHMON_SIMULATOR_PARTY_NAMES', 'FixturePartyLeader').split(',')] if worker.api.has('get_party') else [])
+            worker.update_resources(identity, {
+                'party': {'availability': 'observed', 'members': members},
+                'inventory': {'availability': 'observed', 'capacity': 1, 'used_slots': 1,
+                              'slots': [{'source_slot': 13, 'displayed_slot': 0,
+                                         'item': {'model': 3795, 'servername': 'ITEM_MALL_REVERSE_RETURN_SCROLL', 'name': 'Reverse Return Scroll', 'quantity': 10}}]},
+            })
             last_state = time.monotonic()
         time.sleep(0.1)
     if not api_calls:
@@ -577,7 +584,11 @@ def main():
     bot_stop_result = os.environ.get('PHMON_SIMULATOR_BOT_STOP_RESULT', 'true').lower() != 'false'
     navigation_position = {"region": 25000, "x": 6400.0, "y": 1080.0, "z": 0.0}
     if scenario == 'commands':
-        api = PhMon.PhBotAdapter({'stop_bot': lambda: fake_calls.append('bot.stop') or bot_stop_result})
+        adapters = {'stop_bot': lambda: fake_calls.append('bot.stop') or bot_stop_result,
+                    'reverse_return': lambda kind, name: fake_calls.append('character.reverse_return') or bot_stop_result,
+                    'get_party': lambda: {1: {'name': 'FixturePartyLeader'}}}
+        if os.environ.get('PHMON_SIMULATOR_SKIP_REVERSE') == 'true': adapters.pop('reverse_return')
+        api = PhMon.PhBotAdapter(adapters)
     elif scenario == 'navigation':
         expected_script = os.environ.get(
             "PHMON_SIMULATOR_EXPECTED_SCRIPT",
@@ -692,6 +703,8 @@ def main():
             "start_trace": lambda name: record("start_trace", name),
             "stop_trace": lambda: record("stop_trace"),
             "use_return_scroll": lambda: record("use_return_scroll"),
+            "reverse_return": lambda kind, name: record("reverse_return", kind, name),
+            "get_party": lambda: {i: {"name": name} for i,name in enumerate(os.environ.get("PHMON_SIMULATOR_PARTY_NAMES", "FixturePartyLeader").split(","))},
             # phBot's documented disconnect() returns None. The fixture records
             # the invocation without pretending it observed a disconnection.
             "disconnect": lambda: fake_calls.append(["disconnect"]) or None,
@@ -823,9 +836,10 @@ def main():
                 time.sleep(0.25)
         finally:
             stop(); worker.join(3.0)
-        if fake_calls != ['bot.stop']:
-            raise SystemExit("simulator did not invoke exactly one fake bot.stop adapter")
-        print("PASS production worker invoked bot.stop once through fake callback adapter")
+        expected = os.environ.get('PHMON_SMOKE_COMMAND', 'bot.stop')
+        if fake_calls != [expected]:
+            raise SystemExit('simulator did not invoke exactly one fake ' + expected + ' adapter')
+        print('PASS production worker invoked ' + expected + ' once through fake callback adapter')
         return 0
 
     run_seconds = float(os.environ.get('PHMON_SIMULATOR_RUN_SECONDS', '0'))

@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import queue
+import re
 import tempfile
 
 
@@ -506,6 +507,49 @@ def build_contract(plugin, path):
             "frames": frames,
         }
     )
+
+
+def protocol_contract_changed(before, after):
+    """Require a bump for monitor changes, allowing additive capability entries.
+
+    Protocol v3 receivers ignore well-formed command names they do not implement.
+    New entries in its existing schema are compatible; removals, changed existing
+    entries and all other frame changes remain guarded.
+    """
+    if before == after:
+        return False
+    normalized = copy.deepcopy(after)
+    try:
+        old_frames = before["frames"]["capabilities"]
+        new_frames = normalized["frames"]["capabilities"]
+        if len(old_frames) != len(new_frames):
+            return True
+        for old_frame, new_frame in zip(old_frames, new_frames):
+            old_commands = old_frame["commands"]
+            commands = new_frame["commands"]
+            known = {entry["name"] for entry in old_commands}
+            names = [entry["name"] for entry in commands]
+            if len(known) != len(old_commands) or len(set(names)) != len(names):
+                return True
+            for entry in commands:
+                if entry["name"] in known:
+                    continue
+                if (not isinstance(entry["name"], str) or not entry["name"]
+                        or len(entry["name"]) > 64
+                        or re.fullmatch(
+                            r"[a-z][a-z0-9]*(?:[._][a-z0-9]+)*", entry["name"]
+                        ) is None
+                        or set(entry) - {"name", "supported", "reason", "modes"}
+                        or type(entry.get("supported")) is not bool
+                        or not isinstance(entry.get("reason"), str)):
+                    return True
+                if "modes" in entry and (not isinstance(entry["modes"], list)
+                        or any(not isinstance(mode, str) for mode in entry["modes"])):
+                    return True
+            new_frame["commands"] = [entry for entry in commands if entry["name"] in known]
+    except (KeyError, TypeError):
+        return True
+    return normalized != before
 
 
 def main():

@@ -279,6 +279,17 @@ async function submit(name: string) {
     working.value = false
   }
 }
+function reverseCharacterScope(character: CharacterView) {
+  return `character:${character.character_id}:${character.session_id || ''}`
+}
+function reverseCurrentScope(id: string) {
+  return id === props.character.character_id
+    ? reverseCharacterScope(props.character)
+    : 'unavailable'
+}
+function reverseCurrentCharacter(id: string) {
+  return id === props.character.character_id ? props.character : undefined
+}
 </script>
 
 <template>
@@ -568,5 +579,13 @@ async function submit(name: string) {
         No matching command history for this character.
       </div>
     </div>
+    <ReverseReturnActions
+      :selected-ids="[character.character_id]"
+      :scope-key="reverseCharacterScope(character)"
+      :scope-key-for-character="reverseCharacterScope"
+      :current-scope-key="reverseCurrentScope"
+      :current-character="reverseCurrentCharacter"
+      :map-snapshot-current="!liveStale"
+    />
   </section>
 </template>

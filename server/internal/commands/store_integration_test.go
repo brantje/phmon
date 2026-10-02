@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -14,6 +15,18 @@ import (
 	"phmon/server/internal/characters"
 	"phmon/server/internal/database"
 )
+
+type reverseReturnCapabilities struct {
+	supported bool
+	party     bool
+}
+
+func (c reverseReturnCapabilities) CommandSupport(_ string, _ uint64, _ string) (bool, string) {
+	return c.supported, "unsupported_runtime_primitive"
+}
+func (c reverseReturnCapabilities) CommandModeSupport(_ string, _ uint64, _ string, mode string) (bool, string) {
+	return mode != "party_member" || c.party, "unsupported_argument_mode"
+}
 
 type allowCapabilities struct{}
 
@@ -111,6 +124,27 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 	if other, err := store.CurrentTrainingAreas(ctx, "another-server", 10); err != nil || len(other) != 0 {
 		t.Fatalf("other server training areas = %+v, err=%v", other, err)
 	}
+	for _, scenario := range []struct {
+		kind      int
+		supported bool
+		party     bool
+		reason    string
+	}{{0, false, false, "unsupported_runtime_primitive"}, {2, true, false, "unsupported_argument_mode"}, {3, true, true, "named_location_names_unavailable"}, {3, false, false, "named_location_names_unavailable"}} {
+		service.capabilities = reverseReturnCapabilities{scenario.supported, scenario.party}
+		args := map[string]any{"type": scenario.kind}
+		if scenario.kind == 2 {
+			args["name"] = "Member"
+		}
+		if scenario.kind == 3 {
+			args["name"] = "Jangan"
+		}
+		raw, _ := json.Marshal(args)
+		_, _, reason, err := service.Submit(ctx, "reverse-validation", SubmitInput{CharacterID: characterID, ExpectedSessionID: target.SessionID, Name: "character.reverse_return", Args: raw, Confirmation: true, IdempotencyKey: fmt.Sprintf("reverse-%d-%v", scenario.kind, scenario.supported)})
+		if !errors.Is(err, ErrUnsupported) || reason != scenario.reason {
+			t.Fatalf("reverse rejection: type=%d reason=%q err=%v", scenario.kind, reason, err)
+		}
+	}
+	service.capabilities = allowCapabilities{}
 	input := SubmitInput{
 		CharacterID:       characterID,
 		ExpectedSessionID: target.SessionID,

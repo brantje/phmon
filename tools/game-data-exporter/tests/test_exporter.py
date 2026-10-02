@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from io import BytesIO
@@ -12,11 +13,11 @@ from phmon_game_exporter import exporter
 from phmon_game_exporter.cli import validate_bundle
 from phmon_game_exporter.item_metadata import item_metadata, magic_option_definitions
 from phmon_game_exporter.portrait_mapping import portrait_for_model, portrait_source_path
-from phmon_game_exporter.pk2 import ArchiveInfo, Entry
+from phmon_game_exporter.pk2 import ArchiveInfo, Entry, PK2Archive
 from phmon_game_exporter.preview import _map_sheet, _safe_bundle_file
 from phmon_game_exporter.public_assets import ensure_public_asset_destination, validate_public_assets
 from phmon_game_exporter.public_assets import materialize_public_assets
-from .helpers import ddj_rgba
+from .helpers import TEST_KEY, ddj_rgba, make_pk2
 
 
 @pytest.mark.parametrize(
@@ -305,6 +306,175 @@ def test_exports_bundle_reuses_identical_bytes_and_copied_bundle_stands_alone(tm
     assert sheet.startswith(b"\x89PNG\r\n\x1a\n")
     with pytest.raises(ValueError, match="unsafe"):
         _safe_bundle_file(copied, "../outside.txt")
+
+
+def test_extracts_all_textdata_files_with_original_names_and_bytes(tmp_path, monkeypatch):
+    source = _make_sources(tmp_path, monkeypatch)
+    additions = {
+        "Server_Dep/Silkroad/TextData/Nested/Unknown.BIN": b"\x00\xff\x80\r\n",
+        "server_dep/silkroad/textdata/skilldata_9999.txt": b"unlisted, unparseable shard",
+        "server_dep/silkroad/textdata/Empty.txt": b"",
+        "server_dep/silkroad/textdata_backup/outside.txt": b"outside the directory",
+        "server_dep/silkroad/other/outside.txt": b"outside the directory",
+    }
+    for path, payload in additions.items():
+        _FakeArchive.payloads[path.casefold()] = payload
+        _FakeArchive.media_entries += (Entry(2, path.rsplit("/", 1)[-1], path, 0, len(payload), 0),)
+    directory = "server_dep/silkroad/textdata/UnusedDirectory"
+    _FakeArchive.media_entries += (Entry(1, "UnusedDirectory", directory, 0, 0, 0),)
+    public = tmp_path / "game-assets"
+    output = tmp_path / "exports"
+    result = exporter.export_dataset(source, output, "unused-test-key", public)
+    textdata = Path(result["textdataPath"])
+    expected = {
+        entry.path[len(exporter.TEXT_ROOT):]: _FakeArchive.payloads[entry.path.casefold()]
+        for entry in _FakeArchive.media_entries
+        if entry.kind == 2 and entry.path.casefold().startswith(exporter.TEXT_ROOT)
+    }
+    actual = {path.relative_to(textdata).as_posix(): path.read_bytes() for path in textdata.rglob("*") if path.is_file()}
+    assert actual == expected
+    assert result["textdataFileCount"] == len(expected)
+    assert result["textdataBytes"] == sum(map(len, expected.values()))
+    report = json.loads((Path(result["auditPath"]) / "textdata.json").read_text())
+    assert report["fileCount"] == result["textdataFileCount"]
+    assert report["totalBytes"] == result["textdataBytes"]
+    for record in report["files"]:
+        assert record["sha256"] == hashlib.sha256(expected[record["path"]]).hexdigest()
+        assert record["sizeBytes"] == len(expected[record["path"]])
+    assert not (Path(result["bundlePath"]) / "textdata").exists()
+    public_textdata = Path(result["publicTextdataPath"])
+    assert public_textdata == public / "textdata"
+    assert {path.relative_to(public_textdata).as_posix(): path.read_bytes() for path in public_textdata.rglob("*") if path.is_file()} == expected
+    assert result["publicTextdataFileCount"] == len(expected)
+    assert validate_public_assets(public)["textdataFilesValidated"] == len(expected)
+    public_index = json.loads((public / "asset-index.json").read_text())
+    raw_rows = [row for row in public_index["files"] if row.get("kind") == "textdata"]
+    assert len(raw_rows) == len(expected)
+    assert all(row["mediaType"] == "application/octet-stream" for row in raw_rows)
+    assert all("sourceEntry" not in row for row in raw_rows)
+    assert not (public / "audit").exists()
+    assert not (public / "textdata.json").exists()
+    assert exporter.export_dataset(source, output, "unused-test-key", public)["identicalBundleReused"]
+
+
+@pytest.mark.parametrize("damage", ["modified", "unindexed", "audit-path"])
+def test_public_textdata_rejects_corrupt_inputs_without_replacing_existing_tree(tmp_path, monkeypatch, damage):
+    source = _make_sources(tmp_path, monkeypatch)
+    public = tmp_path / "game-assets"
+    result = exporter.export_dataset(source, tmp_path / "exports", "unused-test-key", public)
+    index_bytes = (public / "asset-index.json").read_bytes()
+    original_table = (public / "textdata" / "itemdata.txt").read_bytes()
+    textdata = Path(result["textdataPath"])
+    audit = Path(result["auditPath"])
+    if damage == "modified":
+        (textdata / "itemdata.txt").write_bytes(b"corrupted")
+    elif damage == "unindexed":
+        (textdata / "unindexed.txt").write_bytes(b"unexpected")
+    else:
+        report_path = audit / "textdata.json"
+        report = json.loads(report_path.read_text())
+        report["files"][0]["path"] = "../escape.txt"
+        report_path.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match="checksum|extraction audit|safe relative"):
+        materialize_public_assets(Path(result["bundlePath"]), audit, public, textdata=textdata)
+    assert (public / "asset-index.json").read_bytes() == index_bytes
+    assert (public / "textdata" / "itemdata.txt").read_bytes() == original_table
+    assert not list(tmp_path.glob(".game-assets.*"))
+
+
+def test_public_textdata_refresh_removes_obsolete_files(tmp_path, monkeypatch):
+    source = _make_sources(tmp_path, monkeypatch)
+    public = tmp_path / "game-assets"
+    extra = "server_dep/silkroad/textdata/Old.txt"
+    _FakeArchive.media_entries += (Entry(2, "Old.txt", extra, 0, 3, 0),)
+    _FakeArchive.payloads[extra.casefold()] = b"old"
+    exporter.export_dataset(source, tmp_path / "exports", "unused-test-key", public)
+    assert (public / "textdata" / "Old.txt").read_bytes() == b"old"
+    _FakeArchive.media_entries = tuple(entry for entry in _FakeArchive.media_entries if entry.path != extra)
+    (source / "Media.pk2").write_bytes(b"fixture media archive without old table")
+    refreshed = exporter.export_dataset(source, tmp_path / "exports", "unused-test-key", public)
+    assert not (public / "textdata" / "Old.txt").exists()
+    assert validate_public_assets(public)["textdataFilesValidated"] == refreshed["textdataFileCount"]
+
+
+def test_public_validator_checks_raw_textdata_bytes(tmp_path, monkeypatch):
+    source = _make_sources(tmp_path, monkeypatch)
+    public = tmp_path / "game-assets"
+    exporter.export_dataset(source, tmp_path / "exports", "unused-test-key", public)
+    table = public / "textdata" / "itemdata.txt"
+    payload = table.read_bytes()
+    table.write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+    with pytest.raises(ValueError, match="wrong checksum: textdata/itemdata.txt"):
+        validate_public_assets(public)
+
+
+def test_raw_only_publication_preserves_all_existing_artwork(tmp_path, monkeypatch):
+    source = _make_sources(tmp_path, monkeypatch)
+    public = tmp_path / "game-assets"
+    result = exporter.export_dataset(source, tmp_path / "exports", "unused-test-key", public)
+    old_index = json.loads((public / "asset-index.json").read_text())
+    art = {row["path"]: (row, (public / row["path"]).read_bytes()) for row in old_index["files"] if row.get("kind") != "textdata"}
+    raw = Path(result["textdataPath"])
+    (raw / "itemdata.txt").write_bytes(b"new raw bytes")
+    audit = Path(result["auditPath"])
+    report_path = audit / "textdata.json"
+    report = json.loads(report_path.read_text())
+    table = next(row for row in report["files"] if row["path"] == "itemdata.txt")
+    table.update(sizeBytes=13, sha256=hashlib.sha256(b"new raw bytes").hexdigest())
+    report_path.write_text(json.dumps(report))
+    materialize_public_assets(Path(result["bundlePath"]), audit, public, namespace="textdata", textdata=raw)
+    new_index = json.loads((public / "asset-index.json").read_text())
+    for row in new_index["files"]:
+        if row["path"] in art:
+            assert (row, (public / row["path"]).read_bytes()) == art[row["path"]]
+    assert new_index["datasetId"] == old_index["datasetId"]
+    assert (public / "textdata/itemdata.txt").read_bytes() == b"new raw bytes"
+    validate_public_assets(public)
+
+
+def test_extracts_original_payload_through_pk2_reader(tmp_path):
+    archive_path = tmp_path / "Media.pk2"
+    payload = b"\x00\xff\xfe\x80\r\n"
+    make_pk2(archive_path, name="server_dep/silkroad/textdata/Nested/Raw.bin", payload=payload)
+    destination = tmp_path / "textdata"
+    with PK2Archive(archive_path, key=TEST_KEY) as archive:
+        index = exporter._archive_index(archive.inventory().entries)
+        report = exporter._extract_textdata(archive, index, destination)
+    assert (destination / "Nested" / "Raw.bin").read_bytes() == payload
+    assert report["fileCount"] == 1
+
+
+@pytest.mark.parametrize("relative", ["../outside.txt", "nested/../../outside.txt", "/absolute.txt", "C:/outside.txt", "nested\\outside.txt", "control\x00.txt"])
+def test_rejects_unsafe_raw_textdata_paths(tmp_path, relative):
+    path = exporter.TEXT_ROOT + relative
+    entry = Entry(2, relative.rsplit("/", 1)[-1], path, 0, 0, 0)
+    with pytest.raises(exporter.ExportError, match="unsafe textdata output path"):
+        exporter._extract_textdata(_FakeArchive(tmp_path / "Media.pk2", key="unused"), {path.casefold(): entry}, tmp_path / "textdata")
+
+
+@pytest.mark.parametrize("damage", ["modified", "missing-file", "missing-directory", "symlink"])
+def test_reuse_rejects_damaged_textdata_and_preserves_existing_output(tmp_path, monkeypatch, damage):
+    source = _make_sources(tmp_path, monkeypatch)
+    output = tmp_path / "exports"
+    result = exporter.export_dataset(source, output, "unused-test-key")
+    textdata = Path(result["textdataPath"])
+    table = textdata / "itemdata.txt"
+    if damage == "modified":
+        table.write_bytes(b"damaged")
+    elif damage == "missing-file":
+        table.unlink()
+    elif damage == "missing-directory":
+        shutil.rmtree(textdata)
+    else:
+        is_symlink = Path.is_symlink
+        monkeypatch.setattr(Path, "is_symlink", lambda path: path == table or is_symlink(path))
+    with pytest.raises(exporter.ExportError, match="textdata"):
+        exporter.export_dataset(source, output, "unused-test-key")
+    assert Path(result["bundlePath"]).is_dir()
+    assert not list(output.glob(".*.staging-*"))
+    assert not list(output.glob(".*.lock"))
+    if damage == "modified":
+        assert table.read_bytes() == b"damaged"
 
 
 def test_normal_export_reports_missing_monster_badge_without_fabricating_assets(tmp_path, monkeypatch):

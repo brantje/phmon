@@ -877,6 +877,28 @@ function syncTeleportGateForNavigation(preferred?: MapNpc) {
     document.querySelector<HTMLElement>('.map-canvas'),
   )
 }
+const reverseMenu = ref<{ x: number; y: number } | null>(null)
+function openTeleportWithKeyboard(event: KeyboardEvent) {
+  showTeleportMenu(event.currentTarget as HTMLElement)
+  focusTeleportFlyout(
+    rangedTeleporters.value.length > 1
+      ? 'Teleporters in range'
+      : 'Teleport destinations',
+  )
+}
+function openReverseWithKeyboard(event: KeyboardEvent) {
+  showReverseMenu(event.currentTarget as HTMLElement)
+  focusTeleportFlyout('Reverse return')
+}
+function showReverseMenu(element: HTMLElement) {
+  keepTeleportSubmenus()
+  const rect = element.getBoundingClientRect()
+  reverseMenu.value = {
+    ...teleportFlyoutOrigin(rect, 280),
+    y: Math.max(8, Math.min(rect.top - 4, window.innerHeight - 260)),
+  }
+  teleportCharacterMenu.value = null
+}
 const teleportMenuTrigger = ref<HTMLButtonElement | null>(null)
 const teleportGateMenu = ref<{ x: number; y: number } | null>(null)
 const teleportDestinationMenu = ref<{ x: number; y: number } | null>(null)
@@ -903,14 +925,25 @@ function keepTeleportSubmenus() {
 
 function clearTeleportSubmenus() {
   keepTeleportSubmenus()
+  reverseMenu.value = null
   teleportGateMenu.value = null
   teleportDestinationMenu.value = null
   teleportCharacterMenu.value = null
 }
 
-function hideTeleportSubmenusSoon() {
+function hideTeleportSubmenusSoon(event?: MouseEvent) {
+  // Compatibility mouseleave after a touch must not dismiss a tapped flyout.
+  if (
+    (
+      event as
+        | (MouseEvent & { sourceCapabilities?: { firesTouchEvents: boolean } })
+        | undefined
+    )?.sourceCapabilities?.firesTouchEvents
+  )
+    return
   if (teleportSubmenuTimer) clearTimeout(teleportSubmenuTimer)
   teleportSubmenuTimer = setTimeout(() => {
+    reverseMenu.value = null
     teleportGateMenu.value = null
     teleportDestinationMenu.value = null
     teleportCharacterMenu.value = null
@@ -919,6 +952,7 @@ function hideTeleportSubmenusSoon() {
 
 function showTeleportMenu(element: HTMLElement) {
   keepTeleportSubmenus()
+  reverseMenu.value = null
   const gates = rangedTeleporters.value
   if (gates.length > 1) {
     teleportGateMenu.value = teleportFlyoutOrigin(
@@ -949,6 +983,32 @@ function showTeleportDestinations(element: HTMLElement) {
   teleportCharacterMenu.value = null
 }
 
+async function focusTeleportFlyout(label: string) {
+  await nextTick()
+  document
+    .querySelector<HTMLElement>(`[aria-label="${label}"] button:not(:disabled)`)
+    ?.focus()
+}
+function moveTeleportFlyoutFocus(event: KeyboardEvent) {
+  const buttons = [
+    ...(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      'button:not(:disabled)',
+    ),
+  ]
+  const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    buttons[
+      (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) %
+        buttons.length
+    ]?.focus()
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    clearTeleportSubmenus()
+    teleportMenuTrigger.value?.focus()
+  }
+}
 function showTeleportGroup(destination: string, element: HTMLElement) {
   keepTeleportSubmenus()
   if (!teleportDestinationMenu.value && teleportMenuTrigger.value)
@@ -2612,7 +2672,6 @@ useHead({ title: 'Map · PhMon' })
               {{ navigationAction.trainingSummary.value }}
             </p>
             <button
-              v-if="rangedTeleporters.length"
               ref="teleportMenuTrigger"
               class="map-navigation-menu-action"
               role="menuitem"
@@ -2621,14 +2680,17 @@ useHead({ title: 'Map · PhMon' })
               :aria-expanded="
                 Boolean(teleportDestinationMenu || teleportGateMenu)
               "
-              @mouseenter="
+              @pointerenter="
+                $event.pointerType !== 'touch' &&
                 showTeleportMenu($event.currentTarget as HTMLElement)
               "
               @mouseleave="hideTeleportSubmenusSoon"
-              @focus="showTeleportMenu($event.currentTarget as HTMLElement)"
+              @click="showTeleportMenu($event.currentTarget as HTMLElement)"
+              @keydown.right.prevent="openTeleportWithKeyboard"
             >
               <UIcon name="i-lucide-signpost" />
-              Teleport
+              Teleport {{ actionTargetIDs.size }}
+              {{ actionTargetIDs.size === 1 ? 'character' : 'characters' }}
               <UIcon
                 name="i-lucide-chevron-right"
                 class="map-context-submenu-chevron"
@@ -2661,10 +2723,29 @@ useHead({ title: 'Map · PhMon' })
                 left: `${teleportGateMenu.x}px`,
                 top: `${teleportGateMenu.y}px`,
               }"
-              @pointerdown.stop
+              @keydown="moveTeleportFlyoutFocus"
+              @pointerdown.stop="keepTeleportSubmenus"
               @mouseenter="keepTeleportSubmenus"
               @mouseleave="hideTeleportSubmenusSoon"
             >
+              <button
+                class="map-navigation-menu-action"
+                type="button"
+                role="menuitem"
+                aria-haspopup="menu"
+                :aria-expanded="Boolean(reverseMenu)"
+                @pointerenter="
+                  $event.pointerType !== 'touch' &&
+                  showReverseMenu($event.currentTarget as HTMLElement)
+                "
+                @click="showReverseMenu($event.currentTarget as HTMLElement)"
+                @keydown.right.prevent="openReverseWithKeyboard"
+              >
+                <UIcon name="i-lucide-scroll" />Reverse return<UIcon
+                  name="i-lucide-chevron-right"
+                  class="map-context-submenu-chevron"
+                />
+              </button>
               <button
                 v-for="npc in rangedTeleporters"
                 :key="npc.id"
@@ -2701,11 +2782,35 @@ useHead({ title: 'Map · PhMon' })
                 left: `${teleportDestinationMenu.x}px`,
                 top: `${teleportDestinationMenu.y}px`,
               }"
-              @pointerdown.stop
+              @keydown="moveTeleportFlyoutFocus"
+              @pointerdown.stop="keepTeleportSubmenus"
               @mouseenter="keepTeleportSubmenus"
               @mouseleave="hideTeleportSubmenusSoon"
             >
-              <template v-if="teleportAction.discoveredRoutes.value.length">
+              <button
+                class="map-navigation-menu-action"
+                type="button"
+                role="menuitem"
+                aria-haspopup="menu"
+                :aria-expanded="Boolean(reverseMenu)"
+                @pointerenter="
+                  $event.pointerType !== 'touch' &&
+                  showReverseMenu($event.currentTarget as HTMLElement)
+                "
+                @click="showReverseMenu($event.currentTarget as HTMLElement)"
+                @keydown.right.prevent="openReverseWithKeyboard"
+              >
+                <UIcon name="i-lucide-scroll" />Reverse return<UIcon
+                  name="i-lucide-chevron-right"
+                  class="map-context-submenu-chevron"
+                />
+              </button>
+              <template
+                v-if="
+                  rangedTeleporters.length &&
+                  teleportAction.discoveredRoutes.value.length
+                "
+              >
                 <button
                   v-for="route in teleportAction.discoveredRoutes.value"
                   :key="route.destination"
@@ -2736,10 +2841,14 @@ useHead({ title: 'Map · PhMon' })
                   />
                 </button>
               </template>
-              <p v-else class="map-navigation-menu-summary">
+              <p
+                v-else-if="rangedTeleporters.length"
+                class="map-navigation-menu-summary"
+              >
                 No verified destinations from this gate yet.
               </p>
               <button
+                v-if="rangedTeleporters.length"
                 class="map-navigation-menu-action"
                 type="button"
                 role="menuitem"
@@ -2748,6 +2857,38 @@ useHead({ title: 'Map · PhMon' })
                 <UIcon name="i-lucide-pencil" />
                 Other destination…
               </button>
+            </div>
+            <div
+              v-show="reverseMenu"
+              class="map-teleport-flyout-panel map-teleport-menu map-reverse-return-flyout"
+              role="menu"
+              aria-label="Reverse return"
+              :style="{
+                left: `${reverseMenu?.x || 8}px`,
+                top: `${reverseMenu?.y || 8}px`,
+                maxHeight: 'calc(100dvh - 16px)',
+                overflow: 'auto',
+              }"
+              @pointerdown.stop="keepTeleportSubmenus"
+              @mouseenter="keepTeleportSubmenus"
+              @mouseleave="hideTeleportSubmenusSoon"
+            >
+              <ReverseReturnActions
+                presentation="menu"
+                :menu-visible="Boolean(reverseMenu)"
+                :selected-ids="[...actionTargetIDs]"
+                :scope-key="remoteActionScopeKey"
+                :scope-key-for-character="mapControlScopeKeyForCharacter"
+                :current-scope-key="mapControlCurrentScopeKey"
+                :current-character="mapControlCurrentCharacter"
+                :map-snapshot-current="
+                  streamCurrent && mapSnapshotInFeedScope && !liveStale
+                "
+                @chosen="clearTeleportSubmenus"
+                @keep-menu="keepTeleportSubmenus"
+                @leave-menu="hideTeleportSubmenusSoon"
+                @close-menu="reverseMenu = null"
+              />
             </div>
             <div
               v-if="teleportCharacterMenu"
@@ -4144,6 +4285,16 @@ useHead({ title: 'Map · PhMon' })
   background: #0d131df5;
   color: #eaf1ff;
   box-shadow: 0 8px 28px #000b;
+}
+
+.map-reverse-return-flyout {
+  width: min(280px, calc(100vw - 16px));
+  min-width: 0;
+}
+.map-reverse-return-flyout :deep(.map-navigation-menu-action) {
+  width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .map-navigation-context.map-teleport-flyout {

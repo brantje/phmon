@@ -1,0 +1,5 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  path_filters:
+    # These are generated client assets; review the exporter and its tests instead.
+    - "!web/public/game-assets/**"

@@ -477,7 +477,18 @@ export interface CommandFanOutLiveFeed {
   commands_unavailable: boolean
   updated_at?: number
 }
+export interface ReverseReturnContext {
+  session_id: string
+  party_status: 'observed' | 'unavailable' | 'stale'
+  party_names: readonly string[]
+  party_checked_at?: string
+  scroll_observed: boolean | null
+  inventory_checked_at?: string
+}
+
 export interface ControlsSnapshot {
+  reverse_return?: ReverseReturnContext
+  reverse_return_named_locations?: readonly string[] | null
   character_id: string
   session_id: string
   agent_protocol_version?: number

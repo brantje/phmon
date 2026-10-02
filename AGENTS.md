@@ -250,6 +250,175 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 PR #64 CI and CodeRabbit follow-up
+
+PR [#64](https://github.com/brantje/phmon/pull/64) is open on
+`codex/issue-34-reverse-return`. Its protocol guard initially treated the new
+`character.reverse_return` capability row as an incompatible protocol change.
+Protocol 13 capability catalogs are now forward-compatible: old servers ignore
+well-formed unknown command names and validate known entries as before. The guard
+requires a protocol bump for removals, changed known capabilities or any other
+contract changes, but permits additive entries. `.coderabbit.yaml` excludes only
+the generated public game asset tree so the review stays under CodeRabbit's
+100-file limit. No protocol version bump or wider review filter is used.
+
+Files: capability-name validation and catalog ingestion/tests,
+`scripts/plugin_protocol_contract.py` and its tests, the plugin version guard,
+protocol documentation, and CodeRabbit path filters. Focused verification passes:
+`go test ./internal/httpapi`, `python3 -m unittest plugin.test_protocol_contract`,
+contract comparison against `origin/main` (raw catalog differs, incompatible
+change false), and `git diff --check`. CI and stack smoke checks passed on
+`0efbfe3`. Keep PR #64 open; do not merge.
+
+The full review ran on `0efbfe3` with 56 source/documentation files and posted
+three valid findings: optional Reverse return context-query errors were failing
+core controls, the location catalog merge relied on the platform default text
+encoding, and Reverse return controls did not receive map-snapshot freshness.
+This follow-up makes context enrichment best-effort, reads catalog JSON as UTF-8,
+and forwards freshness through each Reverse return caller. Focused Go, exporter,
+frontend, typecheck and formatting checks pass. Exact next action: push these
+fixes, reply to all three CodeRabbit threads with the fixing commit SHA, and
+monitor CI and any incremental review on the new head.
+
+### Resume — 2026-10-02 dataset-backed map reference issue
+
+Created [issue #65](https://github.com/brantje/phmon/issues/65) for monster levels,
+monster hunting areas, and NPC/teleporter reference markers throughout the map.
+The operator confirmed that future monster sightings must persist resolved levels
+and provenance in PostgreSQL, and that both the manual teleporter probe and
+automatic candidate-destination probing must be replaced by exported locations
+and routes. Keep live per-character checks when executing commands.
+This supersedes the earlier #24 live-only marker rule and #33 prohibition on a
+persistent NPC/teleporter reference catalog. Static markers follow the selected
+server/dataset and area/floor, independently of character proximity or connection;
+runtime NPC identities and observations remain ephemeral. Preserve unresolved
+joins, coordinate precision, and cave/floor coverage gaps; never convert reference
+locations into fabricated live sightings or heatmap data. Issue #65 contains the
+source counts, implementation scope, regression requirements, and acceptance gates.
+This was issue planning only; no feature implementation or acceptance status changed.
+Exact next action when implementation is requested: start #65's versioned exporter
+and server catalog increment, then integrate levels/persistence and map layers.
+
+### Resume — 2026-10-02 complete exporter textdata extraction
+
+Exporter **0.6.3** now extracts every file recursively from
+`Media.pk2/server_dep/silkroad/textdata/` into `<dataset>/textdata/`, preserving
+names and original bytes regardless of table support, shard listing or extension.
+The raw copy stays beside `bundle/` and `audit/`. On the operator's follow-up
+instruction, asset publication also copies it to `<asset-output>/textdata/`
+(the npm wrapper defaults to `web/public/game-assets/textdata/`). Filenames and
+bytes are preserved, including during selected-model exports; obsolete raw files
+are removed and existing unrelated artwork remains intact during those exports.
+The public index includes checksummed raw-file entries; exporter-only provenance
+and source archives remain excluded. Export results include `publicTextdataPath`
+and `publicTextdataFileCount`.
+`audit/textdata.json` records file sizes/checksums; export JSON reports
+`textdataPath`, `textdataFileCount` and `textdataBytes`. Atomic publication and
+immutable reuse now include both bundle and raw files. The operator explicitly
+authorized tracking the complete public textdata copy; source archives and private
+audit files remain ignored. Files: exporter source/version/packaging,
+exporter/public publisher tests, README and format notes, plus this guide.
+Validation: all 97
+exporter tests pass, including extraction through the encrypted PK2 reader,
+unlisted/nested/binary/empty files, path rejection, damaged-output reuse, indexed
+public raw copies, stale-file removal, checksum failures and publication rollback.
+Native GreatestSRO extraction and public validation now pass: 210 raw files,
+143,463,249 bytes, 12,384 total public files. Media.pk2's SHA-256 matches the
+previously verified source. All 12,174 existing artwork records and file bytes
+are preserved. The operator authorized committing and pushing the complete public
+textdata tree, updated asset index and exporter source/docs on the existing
+issue-34 branch.
+The normal export attempt stopped on `Cyclic monster base resource reference`;
+raw-only publication through the existing publisher's `textdata` scope completed
+independently using the verified bundle/audit and current Media.pk2. Private
+evidence: `exports/textdata/raw-import-result.json` and the associated raw-import
+audit. Exact next action: investigate the monster resource cycle before claiming
+a complete native 0.6.3 bundle export. The existing
+npm wrapper needs no new arguments, and CLI publication uses `--asset-output`.
+
+### Resume — 2026-10-02 map Teleport target count
+
+The right-click Teleport parent now reads **Teleport N characters**, using the
+deduplicated checked action targets; one target reads **Teleport 1 character**.
+Files: `web/app/pages/map.vue` and this resume ledger. Validation: focused Prettier
+and ESLint checks pass (zero errors, 28 existing map warnings), and Nuxt typecheck
+passes. The operator authorized committing and pushing this label-only change on
+the existing issue-34 branch. Exact next action: the separate Windows/phBot runtime
+validation below remains pending operator authorization.
+
+### Resume — 2026-10-02 named Reverse return follow-up
+
+The operator supplied `web/public/game-assets/textdata/refoptionalteleport.txt`
+as the name source. Plugin **1.9.11** / protocol **13** now accepts type 3 and
+advertises `named_location` when `reverse_return` exists. The catalog builder
+resolves enabled rows' `ZoneName128` keys through the English column of
+`textdata_object.txt`: **36** distinct usable names for the Greatest dataset.
+Disabled, unresolved and ambiguous destinations are excluded. The small catalog
+in `server/game-data/reverse-return-locations.json` follows the existing server
+dataset mapping; admission rejects unavailable profiles or names outside that
+profile. No party, coordinates, nearby gate or new database table is needed.
+
+The named choice now opens an observed-name flyout in the single/selected controls
+and **Map → Teleport → Reverse return**. It uses the existing mandatory preview,
+concurrent admissions and independent audited results. Map activity refreshes do
+not cancel Reverse return reviews; changes to checked targets, scope or sessions
+still do. Files: catalog builder/parser/tests; resource metadata and command
+providers/tests; plugin worker/capabilities/tests; shared UI/types/tests; smoke
+harness and capability/protocol/parity documentation.
+
+Validation: **160 plugin**, **100 exporter** and **159 frontend** tests pass;
+`bash scripts/check.sh` passes using Node 24.20.0 and disposable PostgreSQL 18.6
+(zero lint errors, 60 existing warnings). The production plugin worker simulator
+checks type 3 with `Jangan`: independent API true/false results, unsupported skip,
+session fences and exact effective arguments. The English label passed to phBot
+is a source-based interpretation; actual Windows/phBot named-scroll use remains
+unverified and is separate from simulator evidence. Browser checks cover named
+confirmation/results, zero-POST cancellation and target-change invalidation,
+keyboard/native touch and bounded menus at 1440×1000, 1280×800 and 390×844;
+screenshots/traces are linked in `docs/reference-parity.md`. Disposable test
+services were removed after the final full check. No deployment or real
+character operation occurred. The operator authorized committing and pushing this
+increment together with the exporter changes and complete public textdata tree
+on `codex/issue-34-reverse-return`.
+
+Exact next action: after operator authorization for real-character testing, load
+1.9.11 against a protocol-13 backend and verify `reverse_return(3, 'Jangan')`
+with a reviewed scroll attempt. The earlier type-3 blocker below is superseded
+by this catalog-backed implementation. The remaining roadmap is outside this run.
+
+### Resume — 2026-10-02 Issue #34 Reverse return
+
+Implemented the explicitly scoped Issue #34 plan on `codex/issue-34-reverse-return`,
+without a worktree or deployment. Plugin **1.9.10** keeps protocol **13** and adds
+confirmed `character.reverse_return` (types 0/1/2), primitive/mode reporting and
+callback-time party recheck/self-target rejection. Type 3 is explicitly unavailable:
+`named_location_names_unavailable` pending a verified source of valid names.
+Go projects optional, batched current-session party/inventory context from existing
+resources using `checked_at` freshness (35 seconds / five seconds future tolerance).
+Fresh collection refreshes unchanged party observations; cached resends do not.
+Scroll recognition is advisory. No migrations, group command or separate history.
+
+UI: single/selected-target controls and **Map → Teleport → Reverse return → mode
+choices**, also with zero nearby gates. Mandatory shared confirmation/results,
+checked targets only, concurrent eligible admissions and target/scope/session
+invalidation. Menu/party flyouts support keyboard, touch, Escape and viewport bounds.
+
+Files: `plugin/{PhMon.py,test_phmon.py,README.md}`, command/resource Go providers,
+validation/service/registry/HTTP wiring and tests, shared frontend Reverse return
+helpers/component, existing remote controls/map/fan-out/preview components,
+`scripts/{agent_simulator.py,command_smoke.py}`, capability/protocol/parity docs and
+`docs/reference/issue-34/` local fixture evidence. Validation uses disposable
+PostgreSQL/Go/Nuxt and production plugin worker fake adapters; actual Windows/phBot
+scroll operation remains unverified. Full `bash scripts/check.sh` passed with
+Node 24.20.0, a disposable secret and fresh test database (159 plugin / 158 frontend
+tests; lint zero errors, 60 existing warnings). See the issue-34 parity entry for checks and
+screenshots. No merge, deployment or real-character operation was performed.
+
+Exact next action: after operator authorization to test real characters, load
+1.9.10 against a protocol-13 backend, verify primitive/mode/current-party reporting,
+and try a reviewed scroll attempt. Named locations require a separate verified
+name source before implementation. The remaining roadmap is outside this run.
+
 ### Resume — 2026-10-02 other-player zone names
 
 Plugin **1.9.8** / protocol **13** adds optional `zone` on `map.players` rows from

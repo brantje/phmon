@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Static SRO item definitions are shared by stable item code across servers.
@@ -22,6 +23,7 @@ type ItemMetadata struct {
 	SharedIcons         map[string]string
 	SharedPresentations map[string]map[string]any
 	SharedMagicOptions  map[string]MagicOptionDefinition
+	ReverseReturnNames  map[string][]string
 }
 
 // DatasetForServer returns the selected exported profile using the same
@@ -74,6 +76,7 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 		SharedIcons:         map[string]string{},
 		SharedPresentations: map[string]map[string]any{},
 		SharedMagicOptions:  map[string]MagicOptionDefinition{},
+		ReverseReturnNames:  map[string][]string{},
 	}
 	ambiguousIcons := map[string]bool{}
 	ambiguousPresentations := map[string]map[string]bool{}
@@ -96,6 +99,21 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 	}
 	if err := read(filepath.Join(directory, "servers.json"), &m.Servers); err != nil {
 		return nil, err
+	}
+	if err := read(filepath.Join(directory, "reverse-return-locations.json"), &m.ReverseReturnNames); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	for dataset, names := range m.ReverseReturnNames {
+		if !datasetName.MatchString(dataset) || len(names) > 512 {
+			return nil, fmt.Errorf("invalid Reverse return location catalog")
+		}
+		seen := map[string]bool{}
+		for _, name := range names {
+			if name == "" || name != strings.TrimSpace(name) || len(name) > 100 || strings.ContainsFunc(name, unicode.IsControl) || seen[strings.ToLower(name)] {
+				return nil, fmt.Errorf("invalid Reverse return location name")
+			}
+			seen[strings.ToLower(name)] = true
+		}
 	}
 	for server, dataset := range m.Servers {
 		if server == "" || server != strings.ToLower(strings.TrimSpace(server)) || !datasetName.MatchString(dataset) {

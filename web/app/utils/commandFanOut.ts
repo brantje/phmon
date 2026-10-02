@@ -15,6 +15,7 @@ export type FanOutCommandName =
   | 'character.navigate'
   | 'character.teleport'
   | 'character.return'
+  | 'character.reverse_return'
   | 'character.disconnect'
   | 'client.clientless'
 
@@ -184,6 +185,7 @@ function skip(
 function needsIntentFlag(name: FanOutCommandName) {
   return [
     'character.return',
+    'character.reverse_return',
     'character.disconnect',
     'client.clientless',
   ].includes(name)
