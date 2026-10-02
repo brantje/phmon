@@ -2601,7 +2601,9 @@ useHead({ title: 'Map · PhMon' })
               role="menuitem"
               type="button"
               aria-haspopup="true"
-              :aria-expanded="Boolean(teleportDestinationMenu || teleportGateMenu)"
+              :aria-expanded="
+                Boolean(teleportDestinationMenu || teleportGateMenu)
+              "
               @mouseenter="
                 showTeleportMenu($event.currentTarget as HTMLElement)
               "
@@ -2812,7 +2814,7 @@ useHead({ title: 'Map · PhMon' })
                         teleportAction.destination.value === route.destination,
                     }"
                     @click="
-                      teleportAction.destination.value = route.destination;
+                      teleportAction.destination.value = route.destination
                       teleportAction.onDestinationInput()
                     "
                   >
@@ -2833,7 +2835,7 @@ useHead({ title: 'Map · PhMon' })
                   @input="
                     teleportAction.destination.value = (
                       $event.target as HTMLInputElement
-                    ).value;
+                    ).value
                     teleportAction.onDestinationInput()
                   "
                 />
@@ -2860,16 +2862,13 @@ useHead({ title: 'Map · PhMon' })
                   @input="
                     teleportAction.destination.value = (
                       $event.target as HTMLInputElement
-                    ).value;
+                    ).value
                     teleportAction.onDestinationInput()
                   "
                 />
               </label>
             </div>
-            <p
-              v-if="!actionTargetIDs.size"
-              class="map-navigation-menu-summary"
-            >
+            <p v-if="!actionTargetIDs.size" class="map-navigation-menu-summary">
               Tick characters in the panel to teleport them.
             </p>
             <CommandFanOutPreview

@@ -1,6 +1,8 @@
 import type { MapNpc, MapTeleportRoute } from '../../shared/types/live'
 
-export function sortedTeleportRoutes(npc: Pick<MapNpc, 'teleport_routes'>): MapTeleportRoute[] {
+export function sortedTeleportRoutes(
+  npc: Pick<MapNpc, 'teleport_routes'>,
+): MapTeleportRoute[] {
   const routes = npc.teleport_routes
   if (!routes?.length) return []
   return [...routes].sort((left, right) =>

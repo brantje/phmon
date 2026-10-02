@@ -1,4 +1,8 @@
-import type { CharacterView, ControlsSnapshot, MapNpc } from '../../shared/types/live'
+import type {
+  CharacterView,
+  ControlsSnapshot,
+  MapNpc,
+} from '../../shared/types/live'
 import { useCommandFanOut } from '~/composables/useCommandFanOut'
 import {
   createMapTeleportIntent,
@@ -29,7 +33,9 @@ export function useMapTeleportAction(options: {
   let returnFocusElement: HTMLElement | null = null
 
   const getCharacter = (characterID: string) =>
-    options.characters().find((character) => character.character_id === characterID)
+    options
+      .characters()
+      .find((character) => character.character_id === characterID)
 
   const intent = computed(() => {
     const npc = menuNpc.value
@@ -85,7 +91,9 @@ export function useMapTeleportAction(options: {
 
   const operations = computed(() => fanout.operations.value)
   const menuOperation = computed(() =>
-    operations.value.find((item) => item.operationID === activeOperationID.value),
+    operations.value.find(
+      (item) => item.operationID === activeOperationID.value,
+    ),
   )
   const reviewOperation = computed(() =>
     operations.value.find(
@@ -229,7 +237,10 @@ export function useMapTeleportAction(options: {
     menuElement.value?.querySelector<HTMLInputElement>('input')?.focus()
   }
 
-  async function submitForCharacter(characterID: string, nextDestination?: string) {
+  async function submitForCharacter(
+    characterID: string,
+    nextDestination?: string,
+  ) {
     if (nextDestination) destination.value = nextDestination
     const currentIntent = intent.value
     if (!currentIntent) return

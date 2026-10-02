@@ -69,21 +69,14 @@ test('map teleport eligibility requires gate observer and capability', () => {
     }),
     mapFeedCurrent: () => true,
   })
-  assert.equal(
-    definition.preEligibility?.(character)?.code,
-    undefined,
-  )
+  assert.equal(definition.preEligibility?.(character)?.code, undefined)
   assert.ok(characterObservesGate('char-a', teleporter))
   assert.equal(
-    definition.eligibility?.(
-      character,
-      definition.buildArgs(character),
-      {
-        character_id: 'char-a',
-        session_id: 'sess-a',
-        capabilities: { 'character.teleport': { supported: false } },
-      },
-    )?.code,
+    definition.eligibility?.(character, definition.buildArgs(character), {
+      character_id: 'char-a',
+      session_id: 'sess-a',
+      capabilities: { 'character.teleport': { supported: false } },
+    })?.code,
     'unsupported',
   )
   assert.deepEqual(definition.buildArgs(character), {

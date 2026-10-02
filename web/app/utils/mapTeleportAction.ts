@@ -1,4 +1,8 @@
-import type { CharacterView, ControlsSnapshot, MapNpc } from '../../shared/types/live'
+import type {
+  CharacterView,
+  ControlsSnapshot,
+  MapNpc,
+} from '../../shared/types/live'
 import type { FanOutCommandDefinition } from './commandFanOut.ts'
 import { npcDisplayLabel } from './mapNpcMarkers.ts'
 
@@ -11,7 +15,9 @@ export interface MapTeleportIntent {
   npc: Pick<MapNpc, 'name' | 'servername' | 'observers'>
 }
 
-export function gateSourceLabel(npc: Pick<MapNpc, 'name' | 'servername'>): string {
+export function gateSourceLabel(
+  npc: Pick<MapNpc, 'name' | 'servername'>,
+): string {
   const name = npc.name?.trim()
   if (name) return name
   const servername = npc.servername?.trim()
@@ -156,13 +162,15 @@ export function mapTeleportCommand(state: {
       ) {
         return {
           code: 'unsupported',
-          message: 'Teleporter commands are no longer supported for this session.',
+          message:
+            'Teleporter commands are no longer supported for this session.',
         }
       }
       if (!characterObservesGate(child.characterID, intent.npc)) {
         return {
           code: 'gate_not_observed',
-          message: 'The teleporter gate is no longer observed for this character.',
+          message:
+            'The teleporter gate is no longer observed for this character.',
         }
       }
       if (
