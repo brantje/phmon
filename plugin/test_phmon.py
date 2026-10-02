@@ -3029,6 +3029,52 @@ class TeleporterProbeTests(unittest.TestCase):
         self.assertEqual(scripts, ['teleport,Hotan,Jangan'])
         self.assertEqual(result['effective_args']['teleport_code'], 3)
 
+    def test_session_teleporter_gate_requires_source_match(self):
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+        }]
+        self.assertIsNone(plugin._session_teleporter_gate(npcs, 'GATE_KT', 'Jangan'))
+        self.assertEqual(
+            plugin._session_teleporter_gate(npcs, 'GATE_KT', 'Hotan')['id'],
+            '4',
+        )
+        self.assertEqual(
+            plugin._session_teleporter_gate(npcs, 'GATE_KT', 'GATE_KT')['id'],
+            '4',
+        )
+
+    def test_character_teleport_rejects_non_tuple_route(self):
+        adapter = plugin.PhBotAdapter({
+            'get_teleport_data': lambda *_args: False,
+            'start_script': lambda *_args: True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+        }]
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000098',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.teleport',
+            'args': {'source': 'Hotan', 'destination': 'Jangan', 'gate_servername': 'GATE_KT'},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        with patch.object(plugin, 'collect_npc_observation', return_value=('observed', npcs, False)):
+            worker._accept_command(frame)
+            worker.process_one_command({'server': 'Silkroad', 'name': 'Alpha'}, 25000)
+        worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['reason'], 'teleport_route_unavailable')
+
     def test_capability_reports_character_teleport_when_apis_present(self):
         adapter = plugin.PhBotAdapter({
             'get_npcs': lambda: {},

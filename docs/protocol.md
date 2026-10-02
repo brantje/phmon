@@ -1164,6 +1164,13 @@ are applied in that order for one character. The multi-target point action fans 
 only `training.area.set`, so each target keeps its own radius. Success is shown only
 after the durable command result; the circle moves when the next readback arrives.
 
+## Protocol v12: teleporter routes on map NPCs
+
+Protocol v12 keeps the v11 command and navigation frames. `map.npcs` rows may include
+`teleport_routes`: a bounded list of `{destination, teleport_code?}` pairs resolved
+with `get_teleport_data` at that gate. Older agents omit the field. The server still
+accepts protocol 2 through 12.
+
 ## Issue #57 protocol v11: navigation stop, progress, and trace activity
 
 Protocol v11 adds `character.navigate.stop`, navigation progress fields on live map

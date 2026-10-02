@@ -117,6 +117,12 @@ export function mapTeleportCommand(state: {
       return null
     },
     admissionGuard(child, request, context) {
+      if (!state.mapFeedCurrent()) {
+        return {
+          code: 'stale_map_scope',
+          message: 'The current map snapshot is stale.',
+        }
+      }
       const intent = resolve()
       if (!intent) {
         return {

@@ -31,7 +31,7 @@ pName = 'PhMon'
 pVersion = '1.9.7'
 pUrl = ''
 
-PROTOCOL_VERSION = 11
+PROTOCOL_VERSION = 12
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -822,24 +822,30 @@ def summarize_teleport_probe(result):
     ).format(gates=gates, api=teleport_api, pairs=pairs)
 
 
+def _teleporter_source_matches(row, source_label):
+    if not source_label or not isinstance(row, dict):
+        return False
+    name = row.get('name')
+    servername = row.get('servername')
+    if isinstance(name, str) and name == source_label:
+        return True
+    return isinstance(servername, str) and servername == source_label
+
+
 def _session_teleporter_gate(npcs, gate_servername, source):
     if not isinstance(npcs, list):
         return None
     gate_servername = gate_servername.strip() if isinstance(gate_servername, str) else ''
     source_label = _teleport_probe_label(source) if isinstance(source, str) else None
-    if not gate_servername or not _NPC_GATE_ROLE.fullmatch(gate_servername):
+    if not gate_servername or not source_label or not _NPC_GATE_ROLE.fullmatch(gate_servername):
         return None
     for row in npcs:
         if not isinstance(row, dict) or row.get('role') != 'teleporter':
             continue
-        if row.get('servername') == gate_servername:
+        if row.get('servername') != gate_servername:
+            continue
+        if _teleporter_source_matches(row, source_label):
             return row
-    if source_label:
-        for row in npcs:
-            if not isinstance(row, dict) or row.get('role') != 'teleporter':
-                continue
-            if row.get('name') == source_label and row.get('servername') == gate_servername:
-                return row
     return None
 
 
@@ -4213,7 +4219,7 @@ class AgentWorker(object):
             if gate is None:
                 raise ValueError('teleporter_gate_not_observed')
             observed = self.api.call('get_teleport_data', source, destination)
-            if observed is None:
+            if _classify_teleport_data_result(observed).get('result') != 'tuple':
                 raise ValueError('teleport_route_unavailable')
             line = 'teleport,{0},{1}'.format(source, destination)
             result = self.api.call('start_script', line)

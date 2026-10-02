@@ -1,7 +1,7 @@
 # PhMon phBot plugin
 
 The current plugin development release is **1.9.7** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v11 over the existing authenticated
+evidence schema 2), using agent protocol v12 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds

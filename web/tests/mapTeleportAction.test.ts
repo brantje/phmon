@@ -92,3 +92,51 @@ test('map teleport eligibility requires gate observer and capability', () => {
     gate_servername: 'GATE_KT',
   })
 })
+
+test('map teleport admission rejects a stale map feed', async () => {
+  const intent = createMapTeleportIntent({
+    server: 'Greatest',
+    npc: teleporter,
+    destination: 'Jangan',
+    targetIDs: ['char-a'],
+  })
+  assert.ok(intent)
+  const character: CharacterView = {
+    character_id: 'char-a',
+    name: 'Alpha',
+    server: 'Greatest',
+    online: true,
+    session_id: 'sess-a',
+  }
+  const definition = mapTeleportCommand({
+    getIntent: () => intent,
+    getCharacter: () => character,
+    getControls: () => ({
+      character_id: 'char-a',
+      session_id: 'sess-a',
+      capabilities: {
+        'character.teleport': { supported: true },
+      },
+    }),
+    mapFeedCurrent: () => false,
+  })
+  const reason = await definition.admissionGuard?.(
+    {
+      characterID: 'char-a',
+      characterName: 'Alpha',
+      sessionID: 'sess-a',
+      submission: 'ready',
+    },
+    {
+      character_id: 'char-a',
+      expected_session_id: 'sess-a',
+      args: {
+        source: 'Hotan',
+        destination: 'Jangan',
+        gate_servername: 'GATE_KT',
+      },
+    },
+    {},
+  )
+  assert.equal(reason?.code, 'stale_map_scope')
+})
