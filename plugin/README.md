@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.1** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.9.2** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v11 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -36,6 +36,12 @@ findings remain in [runtime evidence](../docs/phbot-capabilities.md#issue-36--ma
 Install/reload **1.8.0**, connect to a protocol-10 backend, and open the Map with
 **Other players** enabled. There is no equipment inspection, player history, or
 packet fallback.
+
+Version 1.9.2 adds a read-only **Probe teleporters** QtBind action for issue #32.
+It discovers matching `phBot` symbol names and runs at most sixteen bounded
+`get_teleport_data` pair checks from the current `GATE_*` snapshot. It never
+injects packets or starts scripts. Findings belong in
+[issue32-teleporter-investigation.md](../docs/reference/issue32-teleporter-investigation.md).
 
 Version 1.9.0 adds `character.navigate.stop` through documented `stop_script()`,
 trace `activity_state` on control state (from optional `get_status()`), session-scoped

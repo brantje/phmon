@@ -1262,3 +1262,21 @@ return a trace target name. `trace_requested_name` comes only from the admitted
 There is no documented navigation progress or ETA API; PhMon derives progress from
 its observation cursor and approximate ETA from recent accepted movement on the
 active route.
+
+### Issue #32 teleporter investigation — plugin 1.9.2 probe — 2026-10-02
+
+**Status:** investigation contract complete for [#32](https://github.com/brantje/phmon/issues/32); [#33](https://github.com/brantje/phmon/issues/33) not started. No PhMon teleporter command, map menu, or packet injection in this increment.
+
+**Live gate identity:** Documented `get_npcs()` per session; `GATE_*` → teleporter; runtime id is the API dictionary key. Already shipped as protocol v9 `map.npcs` (issue #24).
+
+**Destination enumeration:** **Unsupported.** Public phBot docs expose only `get_teleport_data(source, destination)` for a **known** pair. Inspected community plugins ([xControl](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xControl.py), [EnterVicious](https://github.com/Bunker141/Phbot-Plugins/blob/master/EnterVicious.py), [xNPC](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xNPC.py)) do not list a gate’s menu. phBot’s [map guide](https://guide.phbot.org/phbot/map) shows grouped destinations in the client UI without a matching plugin API. Exporter `teleportdata` / `teleportlink` and phBot locale SQLite `teleport` tables are static client data and are **rejected** as PhMon menus (issue #33 also forbids a persistent catalog).
+
+**Pair resolution:** `get_teleport_data` with source from the character’s own gate `name` or `servername` and an explicit destination label. `None` → no route (including custom servers per [forum evidence](https://forum.projecthax.com/t/get-teleport-data-does-not-return-anything/7854)). Tuple element `1` is the reference teleport id used by community `0x705A` type-2 packets ([SilkroadDoc](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/AGENT_TELEPORT_USE)).
+
+**Execution plan for #33:** After live-gate and pair checks, one plugin-built script line `teleport,{source},{destination}` passed to `start_script` (documented [script command](https://guide.phbot.org/phbot/script-commands)). Community flow uses `0x7045` select then `0x705A`; PhMon does **not** adopt that injection path. **Windows/phBot verification of `start_script` teleports is still open.**
+
+**Designate Recall Point:** **Unsupported.** Community candidate: `inject_joymax(0x7059, struct.pack('I', npc_uid))` after name match in `get_npcs()` ([xControl](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xControl.py)). Script command `recall` is pick-pet only. No authorized PhMon packet capture in this spike.
+
+**Operator probe:** Plugin **1.9.2** QtBind **Probe teleporters** calls `probe_teleporter_capabilities()` — symbol name discovery, at most 16 read-only `get_teleport_data` tests, no `inject_joymax` / `start_script`. Full report: [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
+
+**Simulator/runtime:** Plugin unit tests cover the probe; no phBot process in CI. Append operator probe log output to the investigation doc before claiming execution verified.

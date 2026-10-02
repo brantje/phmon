@@ -204,6 +204,16 @@ observation still requires plugin 1.7.0 on the operator's runtime.
 A same-viewport runtime check with a spawned party member, duplicate observers and
 a cave floor remains open.
 
+## Issue #32 teleporter investigation — 2026-10-02
+
+Issue #32 is documentation and a read-only plugin probe only. No map teleporter
+menu, destination list, or teleport command ships in this increment. The
+investigation report is
+[issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
+Destination enumeration and Designate Recall Point remain unsupported for PhMon;
+issue #33 may add explicit-destination fan-out using the documented
+`teleport,source,destination` script line after Windows/phBot verification.
+
 ## Cave-floor map reference inspection — 2026-09-28
 
 In the operator-supplied phMonitor v0.5.0 map at `192.168.10.105`, Quick navigation

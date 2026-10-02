@@ -2875,5 +2875,67 @@ class WorkerStopTests(unittest.TestCase):
         set_status.assert_called_once_with('Connected to PhMon backend.')
 
 
+class TeleporterProbeTests(unittest.TestCase):
+    def test_probe_never_injects_and_caps_pair_calls(self):
+        calls = []
+
+        def get_teleport_data(source, destination):
+            calls.append((source, destination))
+            if destination == plugin._TELEPORT_PROBE_UNKNOWN_DEST:
+                return None
+            return (1, 42)
+
+        def inject_joymax(*_args, **_kwargs):
+            raise AssertionError('inject_joymax must not run during probe')
+
+        npcs = [{
+            'id': '10', 'role': 'teleporter', 'name': 'Jangan', 'servername': 'GATE_CH',
+        }, {
+            'id': '11', 'role': 'teleporter', 'name': 'Donwhang', 'servername': 'GATE_DW',
+        }]
+        api = {
+            'get_npcs': lambda: {},
+            'get_teleport_data': get_teleport_data,
+            'inject_joymax': inject_joymax,
+        }
+        result = plugin.probe_teleporter_capabilities(api=api, npcs=npcs)
+        self.assertLessEqual(len(calls), plugin.MAX_TELEPORT_PROBE_PAIR_CALLS)
+        self.assertEqual(result['enumeration'], 'unsupported')
+        self.assertTrue(result['capabilities']['get_teleport_data'])
+        self.assertTrue(any(
+            test['classification']['result'] == 'tuple' and test['classification']['code'] == 42
+            for test in result['pair_tests']
+        ))
+        self.assertTrue(any(
+            test['classification']['result'] == 'none'
+            for test in result['pair_tests']
+        ))
+
+    def test_probe_reports_missing_teleport_api(self):
+        result = plugin.probe_teleporter_capabilities(api={'get_npcs': lambda: {}}, npcs=[])
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertIn('get_teleport_data_missing', result['errors'])
+
+    def test_probe_classifies_teleport_errors(self):
+        def explode(*_args, **_kwargs):
+            raise RuntimeError('boom')
+
+        result = plugin.probe_teleporter_capabilities(
+            api={'get_teleport_data': explode},
+            npcs=[{'id': '1', 'role': 'teleporter', 'name': 'Jangan', 'servername': 'GATE_CH'}],
+        )
+        self.assertEqual(result['pair_tests'][0]['classification']['result'], 'error')
+        self.assertEqual(result['pair_tests'][0]['classification']['type'], 'RuntimeError')
+
+    def test_summarize_teleport_probe(self):
+        text = plugin.summarize_teleport_probe({
+            'gates': [{'id': '10'}],
+            'pair_tests': [{'classification': {'result': 'none'}}],
+            'capabilities': {'get_teleport_data': True},
+        })
+        self.assertIn('1 gate', text)
+        self.assertIn('enumeration unsupported', text)
+
+
 if __name__ == '__main__':
     unittest.main()
