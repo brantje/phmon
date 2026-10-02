@@ -36,12 +36,13 @@ type rateBucket struct {
 }
 
 type Service struct {
-	store         *Store
-	capabilities  CapabilityChecker
-	navigation    NavigationAdmission
-	dispatcher    *Dispatcher
-	reverseReturn ReverseReturnContextProvider
-	now           func() time.Time
+	store            *Store
+	capabilities     CapabilityChecker
+	navigation       NavigationAdmission
+	dispatcher       *Dispatcher
+	reverseReturn    ReverseReturnContextProvider
+	reverseLocations ReverseReturnLocationProvider
+	now              func() time.Time
 
 	mu             sync.Mutex
 	operatorRates  map[string]rateBucket
@@ -133,7 +134,7 @@ func (s *Service) ControlsForTargets(ctx context.Context, characterIDs []string)
 			training.SessionID = target.SessionID
 		}
 		result = append(result, s.controlSnapshot(
-			Target{CharacterID: target.CharacterID, SessionID: target.SessionID, AgentID: target.AgentID, Generation: target.Generation, Region: target.Region},
+			Target{CharacterID: target.CharacterID, Server: target.Server, SessionID: target.SessionID, AgentID: target.AgentID, Generation: target.Generation, Region: target.Region},
 			training,
 		))
 	}
@@ -156,7 +157,8 @@ func (s *Service) controlSnapshot(target Target, state *ControlState) map[string
 		protocol = versioned.ProtocolVersion(target.AgentID, target.Generation)
 	}
 	return map[string]any{"character_id": target.CharacterID, "session_id": target.SessionID,
-		"capabilities": s.commandCapabilities(target), "training": state, "agent_protocol_version": protocol}
+		"capabilities": s.commandCapabilities(target), "training": state, "agent_protocol_version": protocol,
+		"reverse_return_named_locations": s.reverseReturnLocations(target.Server)}
 }
 
 func (s *Service) commandCapabilities(target Target) map[string]Capability {
@@ -183,7 +185,7 @@ func (s *Service) commandCapabilities(target Target) map[string]Capability {
 			if checker, exists := s.capabilities.(interface {
 				CommandModeSupport(string, uint64, string, string) (bool, string)
 			}); exists {
-				for _, mode := range []string{"last_return", "last_death", "party_member"} {
+				for _, mode := range []string{"last_return", "last_death", "party_member", "named_location"} {
 					if supported, _ := checker.CommandModeSupport(target.AgentID, target.Generation, name, mode); supported {
 						capability.Modes = append(capability.Modes, mode)
 					}
@@ -272,7 +274,9 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 		var args reverseReturnArgs
 		_ = json.Unmarshal(validated.Args, &args)
 		if *args.Type == 3 {
-			return Command{}, false, "named_location_names_unavailable", ErrUnsupported
+			if reason := s.namedReverseReturnReason(target.Server, args.Name); reason != "" {
+				return Command{}, false, reason, ErrUnsupported
+			}
 		}
 	}
 	supported, reason := false, "plugin_upgrade_required"
@@ -352,10 +356,10 @@ func (s *Service) Submit(ctx context.Context, operatorIdentity string, input Sub
 func commandMode(validated Validated) (string, bool) {
 	if validated.Name == "character.reverse_return" {
 		var args reverseReturnArgs
-		if json.Unmarshal(validated.Args, &args) != nil || args.Type == nil || *args.Type < 0 || *args.Type > 2 {
+		if json.Unmarshal(validated.Args, &args) != nil || args.Type == nil || *args.Type < 0 || *args.Type > 3 {
 			return "", false
 		}
-		return []string{"last_return", "last_death", "party_member"}[*args.Type], true
+		return []string{"last_return", "last_death", "party_member", "named_location"}[*args.Type], true
 	}
 	if validated.Name != "training.area.set" {
 		return "", false

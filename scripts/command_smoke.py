@@ -90,6 +90,8 @@ def main():
 
     command_name = os.environ.get("PHMON_SMOKE_COMMAND", "bot.stop")
     if command_name not in ("bot.stop", "character.reverse_return"): raise RuntimeError("unsupported fixture command")
+    reverse_args = {"type": int(os.environ.get("PHMON_SMOKE_REVERSE_TYPE", "0"))}
+    if reverse_args["type"] >= 2: reverse_args["name"] = os.environ.get("PHMON_SMOKE_REVERSE_NAME", "Jangan")
     skip_third = command_name == "character.reverse_return" and os.environ.get("PHMON_SMOKE_SKIP_THIRD") == "true"
     server = os.environ.get("PHMON_SIMULATOR_SERVER", "Fixture Slice3")
     character_prefix = os.environ.get("PHMON_SIMULATOR_CHARACTER", "Slice3_" + str(int(time.time_ns())))
@@ -266,7 +268,7 @@ def main():
         def admit(target, key):
             code, _, accepted = request_json(opener, WEB_URL + "/api/commands", "POST", {
                 "character_id": target["character_id"], "expected_session_id": target["session_id"],
-                "name": command_name, "args": {"type":0} if command_name=="character.reverse_return" else {},
+                "name": command_name, "args": reverse_args if command_name=="character.reverse_return" else {},
                 "confirmation": command_name=="character.reverse_return", "idempotency_key":key,
             },cookie)
             if code!=202 or not accepted.get("command_id"): raise RuntimeError("command admission failed: "+str(accepted))
@@ -301,6 +303,8 @@ def main():
                 raise RuntimeError("a sibling execution outcome did not remain independent")
             if completed.get("verification") != "api_confirmed" or completed.get("api_return") is not expected_return:
                 raise RuntimeError("authoritative result did not preserve fake adapter evidence")
+            if command_name == "character.reverse_return" and completed.get("effective_args") != {"type": reverse_args["type"], "name": reverse_args.get("name", "")}:
+                raise RuntimeError("Reverse return result changed the reviewed type or name")
             if index == 1 and completed.get("result_code") != "api_return_false":
                 raise RuntimeError("failed fake adapter result omitted its result code")
             if not completed.get("finished_at"):

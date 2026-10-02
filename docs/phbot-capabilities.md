@@ -1297,11 +1297,20 @@ identifies model 3795 as `ITEM_MALL_REVERSE_RETURN_SCROLL`. The example is
 item-code evidence; pet contents are not evidence of usable character inventory.
 The official [Party API](https://plugins.phbot.org/phbot-api/party) documents
 `get_party()` returning a dictionary of party members including their names.
-There is no verified source here for valid type-3 location names. That mode stays
-unavailable with `named_location_names_unavailable`; this is an explicit limitation,
-not a claim that named locations have been implemented.
+The operator supplied `web/public/game-assets/textdata/refoptionalteleport.txt`
+as the type-3 destination source. Its 19-column layout is cross-checked against
+[RSBot's RefOptionalTeleport definition](https://github.com/myildirimofficial/RSBot/blob/master/Library/RSBot.Core/Client/ReferenceObjects/RefOptionalTeleport.cs).
+Enabled rows (service 1) use zero-based column 3 as the exact localization key in
+`textdata_object.txt`, English column 8 (also zero-based). The Greatest archive has 42 rows: four
+disabled rows and two unresolved `xxx` keys are excluded, leaving 36 unique names.
+The `ObjName128` column contains replacement question marks and is not an API name.
+Ambiguous localization, duplicate display names, control characters and names over
+100 UTF-8 bytes are excluded. Coordinates/level restrictions are left to phBot.
+Using the English localized label for the documented `name` argument is the
+implementation's source-based interpretation; native name resolution still needs
+operator-authorized Windows/phBot validation.
 
-Plugin **1.9.10**, protocol **13**, imports these optional APIs through the normal
+Plugin **1.9.11**, protocol **13**, imports these optional APIs through the normal
 allowlisted adapter, advertises supported modes, and invokes `reverse_return` on
 the existing controlled command callback. Party mode rechecks `get_party()` at
 execution, uses the observed member's exact name and refuses the executing
@@ -1323,6 +1332,6 @@ Validation: Python adapter/callback tests, Go validation/admission/resource test
 frontend eligibility/concurrent admission tests and disposable simulator/browser
 flows. The fixture worker executes production plugin validation and reports separate
 true/false audited results plus an unsupported skipped target. These tests do not
-validate native Windows/phBot behavior. Runtime gate remains: load 1.9.10 against
+validate native Windows/phBot behavior. Runtime gate remains: load 1.9.11 against
 a protocol-13 backend, verify available primitive/modes and current party readback,
 then perform an operator-authorized scroll attempt and observe its result/position.

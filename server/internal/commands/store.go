@@ -227,7 +227,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (Command, error) {
 func (s *Store) CurrentControlTargets(ctx context.Context, characterIDs []string) (map[string]TargetControl, error) {
 	rows, err := s.pool.Query(ctx, `
 SELECT c.character_id::text, cs.session_id::text, cs.agent_id::text,
-       cs.connection_generation, c.region,
+       cs.connection_generation, c.region, c.server_name,
        COALESCE(cc.training_available,false), cc.training_region, cc.training_zone,
        cc.training_x, cc.training_y, cc.training_z, cc.training_radius, cc.observed_at
 FROM characters c
@@ -246,7 +246,7 @@ ORDER BY c.character_id`, characterIDs)
 		var generation *uint64
 		var training ControlState
 		if err := rows.Scan(
-			&target.CharacterID, &sessionID, &agentID, &generation, &target.Region,
+			&target.CharacterID, &sessionID, &agentID, &generation, &target.Region, &target.Server,
 			&training.TrainingAvailable, &training.TrainingRegion, &training.TrainingZone,
 			&training.TrainingX, &training.TrainingY, &training.TrainingZ,
 			&training.TrainingRadius, &training.ObservedAt,
@@ -417,12 +417,12 @@ func (s *Store) ResolveTarget(ctx context.Context, characterID string) (Target, 
 	var generation *uint64
 	err := s.pool.QueryRow(ctx, `
 SELECT c.character_id::text, cs.session_id::text, cs.agent_id::text,
-       cs.connection_generation, c.region
+       cs.connection_generation, c.region, c.server_name
 FROM characters c
 LEFT JOIN character_sessions cs
   ON cs.character_id=c.character_id AND cs.ended_at IS NULL
 WHERE c.character_id=$1`, characterID).Scan(
-		&target.CharacterID, &sessionID, &agentID, &generation, &target.Region,
+		&target.CharacterID, &sessionID, &agentID, &generation, &target.Region, &target.Server,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Target{}, ErrNotFound

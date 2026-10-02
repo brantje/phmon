@@ -560,7 +560,7 @@ Canonical Slice 3 commands and application bounds:
 | `training.radius.set`  | `{radius:number}`                                        | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum                                              |
 | `character.walk`       | `{region:int,x:number,y:number,z:number}`                | same observed region only; finite coordinates abs <= 10,000,000                                                          |
 | `character.teleport`   | `{source:string,destination:string,gate_servername:string}` | comma-free labels 1..64 chars; `gate_servername` must match `GATE_*`; plugin requires live gate in session `get_npcs()`, successful `get_teleport_data`, then one `teleport,source,destination` script line via `start_script`; does not prove arrival |
-| `character.reverse_return` | `{type:integer,name?:string}`                               | explicit confirmation; modes 0/1 require empty name, mode 2 requires trimmed 1..100 UTF-8 bytes without control characters and current party membership; mode 3 returns `named_location_names_unavailable`; boolean API acceptance does not prove arrival |
+| `character.reverse_return` | `{type:integer,name?:string}`                               | explicit confirmation; modes 0/1 require empty name; modes 2/3 require trimmed 1..100 UTF-8 bytes without control characters; mode 2 rechecks current party; mode 3 requires a name in the target server's catalog; boolean API acceptance does not prove arrival |
 | `character.return`     | `{}`                                                     | bool means scroll invocation accepted, not teleport completion                                                           |
 | `character.disconnect` | `{}`                                                     | void return; does not alter relog settings                                                                               |
 | `client.clientless`    | `{}`                                                     | unsupported until a safe documented/versioned per-instance primitive is verified                                         |
@@ -1266,14 +1266,23 @@ player regions relative to the observer are withheld.
 
 ## Issue #34 Reverse return — additive protocol 13 command
 
-Plugin 1.9.10 advertises `character.reverse_return` only with a callable
-`reverse_return`. Modes are `last_return` (0), `last_death` (1), and
-`party_member` (2); party mode additionally requires callable `get_party`.
+Plugin 1.9.11 advertises `character.reverse_return` only with a callable
+`reverse_return`. Modes are `last_return` (0), `last_death` (1),
+`party_member` (2), and `named_location` (3); party mode additionally requires
+callable `get_party`.
 No agent/browser protocol bump, group command or schema migration is introduced.
 Normal `POST /api/commands`, four delivery workers, bounded dispatcher queue,
 one active command per character, expiry, generation/session fencing and exact
-idempotent retries apply. Type 3 is reserved and rejected with
-`named_location_names_unavailable`, including when no named-location name is given.
+idempotent retries apply. Type 3 requires a nonempty name from the target server's
+profile. Missing catalogs return `named_location_names_unavailable`; an unknown
+name returns `named_location_not_found`. Older plugins lacking `named_location`
+remain unsupported for this mode.
+
+Single/batched controls also include optional `reverse_return_named_locations`,
+an array derived from the target's configured game-data dataset. The frontend
+offers the union and checks each target independently. The backend repeats exact
+name membership validation before admission. This static catalog has no resource
+freshness or party requirement; clicked coordinates and map region are irrelevant.
 
 Single and batched `controls` snapshots optionally include `reverse_return`:
 

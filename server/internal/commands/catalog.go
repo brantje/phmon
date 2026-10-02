@@ -93,7 +93,7 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 			return Validated{}, ErrInvalid
 		}
 		args.Name = strings.TrimSpace(args.Name)
-		if len(args.Name) > 100 || (*args.Type < 2 && args.Name != "") || (*args.Type == 2 && args.Name == "") {
+		if len(args.Name) > 100 || (*args.Type < 2 && args.Name != "") || (*args.Type >= 2 && args.Name == "") {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)

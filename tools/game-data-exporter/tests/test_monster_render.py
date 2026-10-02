@@ -258,6 +258,9 @@ def test_public_alias_rejects_rendered_path_traversal_without_replacing_existing
 
 def test_selected_model_publication_preserves_existing_icon_bytes_keys_and_dataset(tmp_path,monkeypatch):
     source=_monster_source(tmp_path,monkeypatch)
+    old_table="server_dep/silkroad/textdata/old-unlisted.bin"
+    _FakeArchive.media_entries+=(Entry(2,"old-unlisted.bin",old_table,0,3,0),)
+    _FakeArchive.payloads[old_table]=b"old"
     public=tmp_path/"game-assets"
     first=exporter.export_dataset(source,tmp_path/"exports","fixture-key",public)
     original=(public/"icon/item/test_blade.png").read_bytes()
@@ -266,6 +269,10 @@ def test_selected_model_publication_preserves_existing_icon_bytes_keys_and_datas
     # A fresh source version has a different unrelated icon. Narrow publication
     # must preserve the operator's current icon and catalog semantic keys.
     _FakeArchive.payloads["icon/item/test_blade.ddj"]=ddj_rgba((0,255,0,255))
+    _FakeArchive.media_entries=tuple(entry for entry in _FakeArchive.media_entries if entry.path!=old_table)
+    new_table="server_dep/silkroad/textdata/Nested/Replacement.BIN"
+    _FakeArchive.media_entries+=(Entry(2,"Replacement.BIN",new_table,0,3,0),)
+    _FakeArchive.payloads[new_table.casefold()]=b"new"
     (source/"Media.pk2").write_bytes(b"new fixture media archive revision")
     selected=exporter.export_dataset(source,tmp_path/"exports","fixture-key",public,monster_models=["fixture"])
     assert selected["datasetId"]!=first["datasetId"]
@@ -274,13 +281,23 @@ def test_selected_model_publication_preserves_existing_icon_bytes_keys_and_datas
     assert next(row for row in new["files"] if row["path"]==old_row["path"])==old_row
     assert new["datasetId"]==old["datasetId"]
     assert new["monsterDatasetId"]==selected["datasetId"]
+    assert not (public/"textdata/old-unlisted.bin").exists()
+    assert (public/"textdata/Nested/Replacement.BIN").read_bytes()==b"new"
     validate_public_assets(public)
     before=(public/"asset-index.json").read_bytes()
     _FakeArchive.payloads["res/mob/test/fixture.bsr"]=b"unsupported resource"
     (source/"Data.pk2").write_bytes(b"new unsupported fixture revision")
     failed=exporter.export_dataset(source,tmp_path/"exports","fixture-key",public,monster_models=["fixture"])
     assert failed["monsterRenderUnsupportedCount"]==1
-    assert (public/"asset-index.json").read_bytes()==before
+    # Raw textdata still refreshes; a failed render preserves prior image rows.
+    before_index=json.loads(before)
+    failed_index=json.loads((public/"asset-index.json").read_text())
+    assert [row for row in failed_index["files"] if row.get("kind")!="textdata"]==[
+        row for row in before_index["files"] if row.get("kind")!="textdata"]
+    assert failed_index["monsterDatasetId"]==before_index["monsterDatasetId"]
+    assert failed_index["textdataDatasetId"]==failed["datasetId"]
+    assert (public/"textdata/itemdata.txt").read_bytes()==_FakeArchive.payloads["server_dep/silkroad/textdata/itemdata.txt"]
+    validate_public_assets(public)
 
 
 def test_data_archive_and_model_selection_both_participate_in_dataset_identity(tmp_path,monkeypatch):

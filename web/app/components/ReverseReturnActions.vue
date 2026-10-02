@@ -5,6 +5,7 @@ import {
   namedLocationReason,
   reverseReturnModes,
   reverseReturnPartyNames,
+  reverseReturnNamedLocations,
 } from '~/utils/reverseReturn'
 
 const props = withDefaults(
@@ -14,11 +15,10 @@ const props = withDefaults(
     scopeKeyForCharacter(character: CharacterView, scopeKey: string): string
     currentScopeKey(characterID: string): string
     currentCharacter(characterID: string): CharacterView | undefined
-    mapSnapshotCurrent?: boolean
     presentation?: 'panel' | 'menu'
     menuVisible?: boolean
   }>(),
-  { mapSnapshotCurrent: true, presentation: 'panel', menuVisible: true },
+  { presentation: 'panel', menuVisible: true },
 )
 const emit = defineEmits<{
   chosen: []
@@ -31,7 +31,6 @@ const actions = useRemoteControlActions({
   scopeKeyForCharacter: props.scopeKeyForCharacter,
   currentScopeKey: props.currentScopeKey,
   currentCharacter: props.currentCharacter,
-  mapSnapshotCurrent: () => props.mapSnapshotCurrent,
 })
 const reviewID = ref('')
 const review = computed(() =>
@@ -56,6 +55,15 @@ const partyNames = computed(() =>
     props.selectedIds.map((id) => actions.feed.value?.targets[id]?.controls),
     now.value,
   ),
+)
+const locationNames = computed(() =>
+  reverseReturnNamedLocations(
+    props.selectedIds.map((id) => actions.feed.value?.targets[id]?.controls),
+  ),
+)
+const choiceType = ref<2 | 3>(2)
+const choiceNames = computed(() =>
+  choiceType.value === 2 ? partyNames.value : locationNames.value,
 )
 const rootElement = ref<HTMLElement | null>(null)
 const partyElement = ref<HTMLElement | null>(null)
@@ -87,15 +95,6 @@ watch(targetSignature, () => {
   cancel()
   partyOpen.value = false
 })
-watch(
-  () => props.mapSnapshotCurrent,
-  (current) => {
-    if (!current) {
-      sequence++
-      cancel()
-    }
-  },
-)
 
 function closePartyOutside(event: PointerEvent) {
   const target = event.target as Node | null
@@ -127,9 +126,11 @@ function cancel(shouldRestore = true) {
 }
 function modeReason(type: number) {
   if (!props.selectedIds.length) return 'Select characters in the panel first.'
-  if (!actions.controlsCurrent.value || !props.mapSnapshotCurrent)
+  if (!actions.controlsCurrent.value)
     return 'Waiting for current character controls.'
-  const mode = ['last_return', 'last_death', 'party_member'][type]
+  const mode = ['last_return', 'last_death', 'party_member', 'named_location'][
+    type
+  ]
   if (
     !props.selectedIds.some((id) => {
       const capability =
@@ -142,9 +143,11 @@ function modeReason(type: number) {
     return 'No selected character supports this mode.'
   if (type === 2 && !partyNames.value.length)
     return 'No fresh party member names are available.'
+  if (type === 3 && !locationNames.value.length) return namedLocationReason
   return ''
 }
-function openParty(event: Event) {
+function openParty(event: Event, type = 2) {
+  if (type !== 2 && type !== 3) return
   emit('keepMenu')
   const element = event.currentTarget as HTMLElement
   const rect = element.getBoundingClientRect()
@@ -157,9 +160,10 @@ function openParty(event: Event) {
     y: Math.max(8, Math.min(rect.top, window.innerHeight - 280)),
   }
   partyOpen.value = true
+  choiceType.value = type
 }
-async function focusParty(event: Event) {
-  openParty(event)
+async function focusParty(event: Event, type = 2) {
+  openParty(event, type)
   await nextTick()
   partyElement.value?.querySelector<HTMLButtonElement>('button')?.focus()
 }
@@ -221,14 +225,19 @@ function moveFocus(event: KeyboardEvent) {
         buttons.length
     ]?.focus()
   }
-  if (event.key === 'Escape') {
+  if (
+    event.key === 'Escape' ||
+    (event.key === 'ArrowLeft' && menu === partyElement.value)
+  ) {
     event.preventDefault()
     event.stopPropagation()
     if (partyOpen.value && menu === partyElement.value) {
       partyOpen.value = false
-      rootElement.value
-        ?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[2]
-        ?.focus()
+      const triggers =
+        rootElement.value?.querySelectorAll<HTMLButtonElement>(
+          '[role="menuitem"]',
+        )
+      triggers?.[choiceType.value]?.focus()
       return
     }
     partyOpen.value = false
@@ -282,29 +291,24 @@ function trapReview(event: KeyboardEvent) {
           actions.submitting.value
         "
         :title="modeReason(mode.type)"
-        :aria-haspopup="mode.type === 2 ? 'menu' : 'dialog'"
-        :aria-expanded="mode.type === 2 ? partyOpen : undefined"
-        @click="mode.type === 2 ? openParty($event) : choose(mode.type)"
+        :aria-haspopup="mode.type >= 2 ? 'menu' : 'dialog'"
+        :aria-expanded="
+          mode.type >= 2 ? partyOpen && choiceType === mode.type : undefined
+        "
+        @click="
+          mode.type >= 2 ? openParty($event, mode.type) : choose(mode.type)
+        "
         @pointerenter="
           $event.pointerType !== 'touch' &&
-          (mode.type === 2 ? openParty($event) : (partyOpen = false))
+          (mode.type >= 2 ? openParty($event, mode.type) : (partyOpen = false))
         "
-        @focus="mode.type !== 2 && (partyOpen = false)"
-        @keydown.right.prevent="mode.type === 2 && focusParty($event)"
+        @focus="mode.type < 2 && (partyOpen = false)"
+        @keydown.right.prevent="mode.type >= 2 && focusParty($event, mode.type)"
       >
         {{ mode.label
-        }}<UIcon v-if="mode.type === 2" name="i-lucide-chevron-right" />
+        }}<UIcon v-if="mode.type >= 2" name="i-lucide-chevron-right" />
       </button>
-      <button
-        type="button"
-        role="menuitem"
-        class="map-navigation-menu-action"
-        disabled
-        :title="namedLocationReason"
-      >
-        Named location
-      </button>
-      <small>{{ namedLocationReason }}</small>
+      <small v-if="!locationNames.length">{{ namedLocationReason }}</small>
       <small v-if="!selectedIds.length"
         >Tick characters in the panel to act on them.</small
       >
@@ -318,7 +322,11 @@ function trapReview(event: KeyboardEvent) {
         v-if="partyOpen"
         ref="partyElement"
         role="menu"
-        aria-label="Reverse return party members"
+        :aria-label="
+          choiceType === 2
+            ? 'Reverse return party members'
+            : 'Reverse return named locations'
+        "
         class="reverse-party-menu map-teleport-menu"
         :style="{ left: `${partyAnchor.x}px`, top: `${partyAnchor.y}px` }"
         @pointerdown.stop
@@ -327,18 +335,20 @@ function trapReview(event: KeyboardEvent) {
         @mouseleave="emit('leaveMenu', $event)"
       >
         <button
-          v-for="name in partyNames"
+          v-for="name in choiceNames"
           :key="name"
           type="button"
           role="menuitem"
           class="map-navigation-menu-action"
-          @click="choose(2, name)"
+          @click="choose(choiceType, name)"
         >
           {{ name }}
         </button>
-        <small v-if="!partyNames.length"
-          >No fresh party names are available.</small
-        >
+        <small v-if="!choiceNames.length">{{
+          choiceType === 2
+            ? 'No fresh party names are available.'
+            : namedLocationReason
+        }}</small>
         <button
           type="button"
           role="menuitem"

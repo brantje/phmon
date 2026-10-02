@@ -587,7 +587,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				for _, mode := range capability.Modes {
 					validTrainingMode := capability.Name == "training.area.set" && (mode == "current_position" || mode == "position" || mode == "named")
 					validChatMode := capability.Name == "chat.send" && (mode == "general" || mode == "private" || mode == "party" || mode == "guild" || mode == "union" || mode == "global")
-					validReverseMode := capability.Name == "character.reverse_return" && (mode == "last_return" || mode == "last_death" || mode == "party_member")
+					validReverseMode := capability.Name == "character.reverse_return" && (mode == "last_return" || mode == "last_death" || mode == "party_member" || mode == "named_location")
 					if !validTrainingMode && !validChatMode && !validReverseMode {
 						rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid capability mode", hello.AgentID, hello.ProtocolVersion)
 						return

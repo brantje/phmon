@@ -135,6 +135,9 @@ func TestCommandAdmissionIdempotencyAndSessionFencing(t *testing.T) {
 		if scenario.kind == 2 {
 			args["name"] = "Member"
 		}
+		if scenario.kind == 3 {
+			args["name"] = "Jangan"
+		}
 		raw, _ := json.Marshal(args)
 		_, _, reason, err := service.Submit(ctx, "reverse-validation", SubmitInput{CharacterID: characterID, ExpectedSessionID: target.SessionID, Name: "character.reverse_return", Args: raw, Confirmation: true, IdempotencyKey: fmt.Sprintf("reverse-%d-%v", scenario.kind, scenario.supported)})
 		if !errors.Is(err, ErrUnsupported) || reason != scenario.reason {

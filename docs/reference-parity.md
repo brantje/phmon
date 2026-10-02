@@ -1991,3 +1991,52 @@ audit, formatting, frontend tests, lint (zero errors; 60 existing warnings),
 typecheck, Nuxt build and compose validation. The suite uses a separate freshly
 created database, never the fixture server's database. Follow-up UI type/lint/build
 checks cover the final touch hover-timer and flyout stacking corrections.
+
+### Issue #34 — named Reverse return follow-up — 2026-10-02
+
+The operator's exported `refoptionalteleport.txt` now supplies the named choice.
+Enabled rows resolve exact zone keys through English `textdata_object.txt`
+localization, producing **36** unique destinations for the Greatest dataset.
+Disabled rows, unresolved keys and ambiguous names are excluded. The backend's
+catalog follows the existing server-to-dataset mapping; each target independently
+requires the selected name and native `named_location` capability. An unmapped
+profile retains `named_location_names_unavailable`; an absent name reports
+`named_location_not_found`. English label resolution for the native API is an
+implementation interpretation, with Windows/phBot validation still pending.
+
+**Map → Teleport → Reverse return → Named location… → destination** now opens the
+same mandatory confirmation as other modes, with no nearby gate required. The
+single-character and selected-target controls use the same catalog and UI.
+Plugin **1.9.11** keeps protocol **13** and invokes `reverse_return(3, name)` on
+the controlled callback path. Boolean return values describe scroll use, without
+claiming arrival. Map activity-window refreshes no longer cancel Reverse return
+reviews; target, scope and session changes still invalidate them, and confirmation
+rechecks current controls before admission.
+
+Disposable production-plugin simulator evidence: `Jangan` produces one completed
+true result, one failed `api_return_false` result and one unsupported skip. Both
+accepted commands retain exact type/name arguments and separate command/audit
+records. Browser confirmation shows **3 selected / 2 eligible / 1 skipped / 2
+scroll attempts**, sends both eligible admissions, and displays their independent
+results. Cancellation sends zero POSTs; a pending review survives the periodic
+map refresh. Keyboard arrows enter/leave the named flyout, Escape closes review
+and restores map focus. Native touch selects and cancels `Jangan` with zero POSTs.
+Flyouts remain within 1440×1000, 1280×800 and 390×844 viewports with no horizontal
+page overflow. Existing gate teleport coverage remains in the passing regression
+suite; named mode changes no gate discovery or route arguments.
+
+Evidence: [named menu, 1440](reference/issue-34/named-menu-1440.png),
+[named confirmation, 1440](reference/issue-34/named-confirmation-1440.png),
+[independent results](reference/issue-34/named-results-1440.png),
+[named menu, 1280](reference/issue-34/named-menu-1280.png),
+[named menu, mobile](reference/issue-34/named-menu-mobile.png),
+[named confirmation, mobile](reference/issue-34/named-confirmation-mobile.png), and
+[native touch trace](reference/issue-34/named-touch-mobile.txt).
+
+Checks: **160 plugin**, **100 exporter** and **159 frontend** tests pass.
+`bash scripts/check.sh` passes against disposable PostgreSQL **18.6** with Node
+**24.20.0**, including Go race tests/build, transport audit, frontend formatting,
+lint (zero errors / 60 existing warnings), typecheck, build and compose validation.
+Final UI freshness changes also pass formatting/lint/typecheck/build. These checks
+and screenshots use local test adapters; no real character operation or deployment
+was performed.

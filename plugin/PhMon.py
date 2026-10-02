@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.10'
+pVersion = '1.9.11'
 pUrl = ''
 
 PROTOCOL_VERSION = 13
@@ -3700,6 +3700,7 @@ class AgentWorker(object):
             if name == 'character.reverse_return':
                 extra['modes'] = ['last_return', 'last_death'] if supported else []
                 if supported and self.api.has('get_party'): extra['modes'].append('party_member')
+                if supported: extra['modes'].append('named_location')
             if name == 'character.teleport':
                 supported = all(self.api.has(symbol) for symbol in ('get_npcs', 'get_teleport_data', 'start_script'))
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
@@ -4168,9 +4169,8 @@ class AgentWorker(object):
                     any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in value) or (kind < 2 and value)):
                 raise ValueError('invalid_arguments')
             value = value.strip()
-            if len(value.encode('utf-8')) > 100 or (kind < 2 and value) or (kind == 2 and not value):
+            if len(value.encode('utf-8')) > 100 or (kind < 2 and value) or (kind >= 2 and not value):
                 raise ValueError('invalid_arguments')
-            if kind == 3: raise ValueError('named_location_names_unavailable')
             if not self.api.has('reverse_return'): raise ValueError('unsupported_runtime_primitive')
             if kind == 2:
                 if not self.api.has('get_party'): raise ValueError('party_unavailable')

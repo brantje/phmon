@@ -93,6 +93,7 @@ func run() error {
 	registry := agents.NewRegistry()
 	commandService := commands.NewService(commands.NewStore(pool), registry)
 	commandService.SetReverseReturnContext(resourceStore)
+	commandService.SetReverseReturnLocations(metadata)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
 	live.SetCommands(commandService)
 	live.SetResources(resourceStore)

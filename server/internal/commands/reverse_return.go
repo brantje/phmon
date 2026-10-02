@@ -20,6 +20,34 @@ type ReverseReturnContextProvider interface {
 	ReverseReturnContexts(context.Context, map[string]string, time.Time) (map[string]ReverseReturnContext, error)
 }
 
+type ReverseReturnLocationProvider interface {
+	ReverseReturnLocations(server string) []string
+}
+
+func (s *Service) SetReverseReturnLocations(provider ReverseReturnLocationProvider) {
+	s.reverseLocations = provider
+}
+
+func (s *Service) reverseReturnLocations(server string) []string {
+	if s.reverseLocations == nil {
+		return nil
+	}
+	return s.reverseLocations.ReverseReturnLocations(server)
+}
+
+func (s *Service) namedReverseReturnReason(server, name string) string {
+	locations := s.reverseReturnLocations(server)
+	if len(locations) == 0 {
+		return "named_location_names_unavailable"
+	}
+	for _, location := range locations {
+		if location == name {
+			return ""
+		}
+	}
+	return "named_location_not_found"
+}
+
 func (s *Service) addReverseReturnContexts(ctx context.Context, snapshots []map[string]any) error {
 	if s.reverseReturn == nil {
 		return nil

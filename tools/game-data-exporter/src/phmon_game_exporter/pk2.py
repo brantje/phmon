@@ -1,7 +1,7 @@
 """Bounded, read-only PK2 inventory and random access.
 
 The format fields follow the public Silkroad PK2 layout cited in format-notes.md.
-Source entry names are never used as output paths.
+Raw textdata extraction validates source entry names before using output paths.
 """
 
 from __future__ import annotations

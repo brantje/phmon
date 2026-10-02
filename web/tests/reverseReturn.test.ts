@@ -6,6 +6,7 @@ import {
   reverseReturnPartyNames,
   reverseReturnEligibility,
   reverseReturnSummary,
+  reverseReturnNamedLocations,
 } from '../app/utils/reverseReturn.ts'
 import {
   remoteControlDefinition,
@@ -32,7 +33,7 @@ function controls(id = 'a', names = ['Member']): ControlsSnapshot {
     capabilities: {
       'character.reverse_return': {
         supported: true,
-        modes: ['last_return', 'last_death', 'party_member'],
+        modes: ['last_return', 'last_death', 'party_member', 'named_location'],
       },
     },
     reverse_return: {
@@ -56,6 +57,13 @@ test('Reverse return validates modes and requires explicit confirmation', () => 
     }),
     { reverseReturnType: 2, reverseReturnName: 'Member' },
   )
+  assert.deepEqual(
+    validateRemoteControlArgs('character.reverse_return', {
+      reverseReturnType: 3,
+      reverseReturnName: ' Jangan ',
+    }),
+    { reverseReturnType: 3, reverseReturnName: 'Jangan' },
+  )
   for (const input of [
     { reverseReturnType: 3 },
     { reverseReturnType: 0.5 },
@@ -69,6 +77,43 @@ test('Reverse return validates modes and requires explicit confirmation', () => 
       validateRemoteControlArgs('character.reverse_return', input),
       null,
     )
+})
+test('named locations come from each target profile and never require party or coordinates', () => {
+  const a = controls(),
+    b = controls('b')
+  a.reverse_return_named_locations = ['Jangan', 'Hotan']
+  b.reverse_return_named_locations = ['Other', 'Hotan']
+  assert.deepEqual(reverseReturnNamedLocations([a, b]), [
+    'Hotan',
+    'Jangan',
+    'Other',
+  ])
+  delete a.reverse_return
+  assert.equal(
+    reverseReturnEligibility(character, a, { type: 3, name: 'Jangan' }),
+    null,
+  )
+  assert.equal(
+    reverseReturnEligibility(character, b, { type: 3, name: 'Jangan' })?.code,
+    'named_location_not_found',
+  )
+  delete b.reverse_return_named_locations
+  assert.equal(
+    reverseReturnEligibility(character, b, { type: 3, name: 'Jangan' })?.code,
+    'named_location_names_unavailable',
+  )
+  assert.match(
+    reverseReturnSummary({ type: 3, name: 'Jangan' }, a),
+    /named location Jangan/,
+  )
+  a.capabilities['character.reverse_return']!.modes = [
+    'last_return',
+    'last_death',
+  ]
+  assert.equal(
+    reverseReturnEligibility(character, a, { type: 3, name: 'Jangan' })?.code,
+    'unsupported_argument_mode',
+  )
 })
 test('party names use fresh per-session resources without coordinate filtering', () => {
   const a = controls('a', ['Member', 'Other']),

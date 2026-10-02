@@ -1,0 +1,5 @@
+1	TEST_ICON	charmark/test_icon.ddj
+3	VIP_LVL_1	charmark/viplevel_1.ddj
+4	VIP_LVL_2	charmark/viplevel_2.ddj
+5	VIP_LVL_3	charmark/viplevel_3.ddj
+6	VIP_LVL_2	charmark/viplevel_4.ddj

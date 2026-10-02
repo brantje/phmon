@@ -3232,13 +3232,27 @@ class ReverseReturnTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, reason): worker._invoke('character.reverse_return', {'type': 2, 'name': name}, None)
         self.assertEqual(len(self.calls), 3)
 
-    def test_bad_arguments_and_named_locations_never_execute(self):
+    def test_bad_arguments_never_execute(self):
         worker = self.worker()
         for args in [{}, {'type': True}, {'type': 1.0}, {'type': -1}, {'type': 4}, {'type': 0, 'name': None}, {'type': 0, 'name': 'Member'}, {'type': 0, 'name': ' '}, {'type': 2}, {'type': 2, 'name': 'Member\n'}, {'type': 0, 'extra': True}, {'type': 2, 'name': 'é'*51}]:
             with self.assertRaisesRegex(ValueError, 'invalid_arguments'): worker._invoke('character.reverse_return', args, None)
-        with self.assertRaisesRegex(ValueError, 'named_location_names_unavailable'): worker._invoke('character.reverse_return', {'type': 3, 'name': 'Jangan'}, None)
-        with self.assertRaisesRegex(ValueError, 'named_location_names_unavailable'): worker._invoke('character.reverse_return', {'type': 3}, None)
+        for args in [{'type': 3}, {'type': 3, 'name': ' '}, {'type': 3, 'name': 'Jangan\n'}, {'type': 3, 'name': 'é'*51}]:
+            with self.assertRaisesRegex(ValueError, 'invalid_arguments'): worker._invoke('character.reverse_return', args, None)
         self.assertEqual(self.calls, [])
+
+    def test_named_location_uses_callback_api_without_party_dependency(self):
+        worker = self.worker()
+        worker.api = plugin.PhBotAdapter({'reverse_return': lambda kind, name: self.calls.append((kind, name)) or True})
+        self.assertEqual(worker._invoke('character.reverse_return', {'type': 3, 'name': ' Jangan '}, None), (True, {'type': 3, 'name': 'Jangan'}, None, 'api_confirmed'))
+        self.assertEqual(self.calls, [(3, 'Jangan')])
+        for result in [True, False]:
+            worker = self.worker(result=result)
+            self.assertIs(worker._invoke('character.reverse_return', {'type': 3, 'name': 'Hotan'}, None)[0], result)
+        for result in [None, 1, 'true']:
+            with self.assertRaisesRegex(ValueError, 'invalid_api_result'):
+                self.worker(result=result)._invoke('character.reverse_return', {'type': 3, 'name': 'Hotan'}, None)
+        with self.assertRaisesRegex(RuntimeError, 'native failure'):
+            self.worker(result=RuntimeError('native failure'))._invoke('character.reverse_return', {'type': 3, 'name': 'Hotan'}, None)
 
     def test_native_result_is_authoritative(self):
         for outcome in [True, False]:
@@ -3256,10 +3270,10 @@ class ReverseReturnTests(unittest.TestCase):
         self.assertFalse(caps['character.reverse_return']['supported'])
         worker = self.worker()
         caps = {entry['name']: entry for entry in worker._capability_frame()['commands']}
-        self.assertEqual(caps['character.reverse_return']['modes'], ['last_return', 'last_death', 'party_member'])
+        self.assertEqual(caps['character.reverse_return']['modes'], ['last_return', 'last_death', 'party_member', 'named_location'])
         worker.api = plugin.PhBotAdapter({'reverse_return': lambda *_: True})
         caps = {entry['name']: entry for entry in worker._capability_frame()['commands']}
-        self.assertEqual(caps['character.reverse_return']['modes'], ['last_return', 'last_death'])
+        self.assertEqual(caps['character.reverse_return']['modes'], ['last_return', 'last_death', 'named_location'])
 
     def test_default_adapter_discovers_optional_reverse_and_party_apis(self):
         reverse = lambda *_: True

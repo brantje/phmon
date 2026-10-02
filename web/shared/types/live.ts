@@ -488,6 +488,7 @@ export interface ReverseReturnContext {
 
 export interface ControlsSnapshot {
   reverse_return?: ReverseReturnContext
+  reverse_return_named_locations?: readonly string[] | null
   character_id: string
   session_id: string
   agent_protocol_version?: number

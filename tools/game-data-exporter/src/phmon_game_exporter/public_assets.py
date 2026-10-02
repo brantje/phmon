@@ -40,7 +40,7 @@ def _digest(path: Path) -> str:
 
 
 def _safe_relative(value: object, *, label: str) -> PurePosixPath:
-    if not isinstance(value, str) or not value or "\\" in value or ":" in value:
+    if not isinstance(value, str) or not value or "\\" in value or ":" in value or any(ord(char) < 32 for char in value):
         raise ValueError(f"{label} is not a safe relative POSIX path")
     parts = value.split("/")
     path = PurePosixPath(value)
@@ -121,10 +121,10 @@ def ensure_public_asset_destination(destination: Path) -> None:
     _existing_generated_files(destination.resolve())
 
 
-def materialize_public_assets(bundle: Path, audit: Path, destination: Path, *, namespace: str | None = None) -> dict[str, Any]:
+def materialize_public_assets(bundle: Path, audit: Path, destination: Path, *, namespace: str | None = None, textdata: Path | None = None) -> dict[str, Any]:
     """Serialize writes to the public target and publish the finished tree."""
     _no_symlink_components(destination)
-    if namespace not in (None, "monsters"):
+    if namespace not in (None, "monsters", "textdata"):
         raise ValueError("unsupported scoped public asset namespace")
     destination = destination.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -135,12 +135,12 @@ def materialize_public_assets(bundle: Path, audit: Path, destination: Path, *, n
         raise ValueError("another export is writing this public asset destination") from exc
     os.close(descriptor)
     try:
-        return _materialize_public_assets_locked(bundle, audit, destination, namespace=namespace)
+        return _materialize_public_assets_locked(bundle, audit, destination, namespace=namespace, textdata=textdata)
     finally:
         lock.unlink(missing_ok=True)
 
 
-def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Path, *, namespace: str | None = None) -> dict[str, Any]:
+def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Path, *, namespace: str | None = None, textdata: Path | None = None) -> dict[str, Any]:
     """Create a replaceable public tree from a validated bundle and private audit."""
     bundle = bundle.resolve(strict=True)
     audit = audit.resolve(strict=True)
@@ -215,6 +215,45 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
             }
         aliases[public_relative]["assetKeys"].add(key)
 
+    has_monster_aliases = bool(aliases) and namespace == "monsters"
+    if textdata is not None:
+        _no_symlink_components(textdata)
+        textdata = textdata.resolve(strict=True)
+        if destination == textdata or textdata in destination.parents or destination in textdata.parents:
+            raise ValueError("asset output must be separate from raw textdata")
+        report = json.loads((audit / "textdata.json").read_text(encoding="utf-8"))
+        files = report.get("files")
+        if not isinstance(files, list) or report.get("fileCount") != len(files):
+            raise ValueError("textdata audit has an invalid file list")
+        expected = set()
+        for file in files:
+            relative = _safe_relative(file.get("path"), label="textdata file path")
+            name = relative.as_posix()
+            if name in expected:
+                raise ValueError("textdata audit contains duplicate paths")
+            expected.add(name)
+            public_relative = f"textdata/{name}"
+            if public_relative in aliases:
+                raise ValueError("textdata path collides with a converted public asset")
+            key_hash = hashlib.sha256(name.encode("utf-8")).hexdigest()
+            aliases[public_relative] = {
+                "path": public_relative,
+                "sha256": file.get("sha256"),
+                "mediaType": "application/octet-stream",
+                "sizeBytes": file.get("sizeBytes"),
+                "kind": "textdata",
+                "assetKeys": {f"textdata:{manifest['datasetId']}:{key_hash}"},
+                "textdataPath": name,
+            }
+        actual = set()
+        for path in textdata.rglob("*"):
+            if path.is_symlink():
+                raise ValueError("raw textdata contains a symlink")
+            if path.is_file():
+                actual.add(path.relative_to(textdata).as_posix())
+        if actual != expected:
+            raise ValueError("raw textdata files differ from the extraction audit")
+
     if not aliases:
         if namespace is not None:
             # A failed model must not remove last-known artwork or publish a fake.
@@ -231,7 +270,7 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
         public_rows = []
         if previous is not None:
             for row in previous["files"]:
-                if row["path"] in aliases:
+                if row["path"] in aliases or (textdata is not None and row["path"].startswith("textdata/")):
                     continue
                 relative = _safe_relative(row["path"], label="existing public asset path")
                 target = stage.joinpath(*relative.parts)
@@ -242,10 +281,13 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
                 public_rows.append(row)
         for relative in sorted(aliases):
             row = aliases[relative]
-            bundle_relative = _safe_relative(row["bundlePath"], label="bundle asset path")
-            source_file = bundle.joinpath(*bundle_relative.parts)
+            raw = row.get("kind") == "textdata"
+            source_relative = _safe_relative(row["textdataPath"] if raw else row["bundlePath"], label="exported asset path")
+            source_root = textdata if raw else bundle
+            source_file = source_root.joinpath(*source_relative.parts)
+            _no_symlink_components(source_file)
             if source_file.is_symlink() or not source_file.is_file() or _digest(source_file) != row["sha256"]:
-                raise ValueError(f"bundle asset is missing or failed checksum validation: {bundle_relative}")
+                raise ValueError(f"exported asset is missing or failed checksum validation: {source_relative}")
             output_file = stage.joinpath(*PurePosixPath(relative).parts)
             output_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_file, output_file)
@@ -258,8 +300,7 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
                 "sha256": row["sha256"],
                 "mediaType": row["mediaType"],
                 "sizeBytes": row["sizeBytes"],
-                "width": row["width"],
-                "height": row["height"],
+                **({"kind": "textdata"} if raw else {"width": row["width"], "height": row["height"]}),
             })
         index = {
             "format": INDEX_FORMAT,
@@ -271,8 +312,14 @@ def _materialize_public_assets_locked(bundle: Path, audit: Path, destination: Pa
             "assetKeyCount": sum(len(row["assetKeys"]) for row in public_rows),
             "files": sorted(public_rows, key=lambda row: row["path"]),
         }
-        if namespace is not None:
+        if has_monster_aliases:
             index["monsterDatasetId"] = manifest.get("datasetId")
+        elif previous and "monsterDatasetId" in previous:
+            index["monsterDatasetId"] = previous["monsterDatasetId"]
+        if textdata is not None:
+            index["textdataDatasetId"] = manifest.get("datasetId")
+        elif previous and "textdataDatasetId" in previous:
+            index["textdataDatasetId"] = previous["textdataDatasetId"]
         index_path = stage / INDEX_NAME
         index_path.write_text(json.dumps(index, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8", newline="\n")
 
@@ -317,6 +364,7 @@ def validate_public_assets(destination: Path) -> dict[str, Any]:
         raise ValueError("public asset URL prefix must be one path segment")
     seen_paths: set[str] = set()
     seen_keys: set[str] = set()
+    textdata_count = 0
     for row in rows:
         relative = _safe_relative(row.get("path"), label="public asset path")
         name = relative.as_posix()
@@ -332,10 +380,15 @@ def validate_public_assets(destination: Path) -> dict[str, Any]:
         path = destination.joinpath(*relative.parts)
         if path.is_symlink() or not path.is_file() or path.stat().st_size != row.get("sizeBytes") or _digest(path) != row.get("sha256"):
             raise ValueError(f"public asset is missing or has the wrong checksum: {name}")
-        with Image.open(path) as image:
-            if image.format != "PNG" or image.size != (row.get("width"), row.get("height")):
-                raise ValueError(f"public asset is not the indexed browser-ready PNG: {name}")
-            image.verify()
+        if row.get("kind") == "textdata":
+            if not name.startswith("textdata/") or row.get("mediaType") != "application/octet-stream":
+                raise ValueError("raw textdata index entry has an invalid path or media type")
+            textdata_count += 1
+        else:
+            with Image.open(path) as image:
+                if image.format != "PNG" or image.size != (row.get("width"), row.get("height")):
+                    raise ValueError(f"public asset is not the indexed browser-ready PNG: {name}")
+                image.verify()
     expected = seen_paths | {INDEX_NAME}
     actual: set[str] = set()
     for path in destination.rglob("*"):
@@ -351,5 +404,6 @@ def validate_public_assets(destination: Path) -> dict[str, Any]:
         "datasetId": index.get("datasetId"),
         "publicFilesValidated": len(rows),
         "semanticAssetKeysValidated": index["assetKeyCount"],
+        "textdataFilesValidated": textdata_count,
         "sourceKnowledgeRequired": False,
     }

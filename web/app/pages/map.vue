@@ -2880,9 +2880,6 @@ useHead({ title: 'Map · PhMon' })
                 :scope-key-for-character="mapControlScopeKeyForCharacter"
                 :current-scope-key="mapControlCurrentScopeKey"
                 :current-character="mapControlCurrentCharacter"
-                :map-snapshot-current="
-                  streamCurrent && mapSnapshotInFeedScope && !liveStale
-                "
                 @chosen="clearTeleportSubmenus"
                 @keep-menu="keepTeleportSubmenus"
                 @leave-menu="hideTeleportSubmenusSoon"

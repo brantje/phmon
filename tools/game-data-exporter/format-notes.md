@@ -20,6 +20,32 @@ the bundle. Source handles are opened read-only. Directory traversal, absolute a
 drive paths, cycles, truncated/out-of-range offsets, excessive depths and excessive
 payload reads are rejected.
 
+## Complete raw textdata extraction — exporter 0.6.2
+
+Each export also copies all file entries under
+`Media.pk2/server_dep/silkroad/textdata/` into the dataset's `textdata/` directory,
+beside `bundle/` and `audit/`. Selection uses the complete archive inventory with
+a case-insensitive directory prefix, not shard indexes, extensions or known table
+schemas. The relative filenames and payload bytes are preserved, including nested
+files and zero-length payloads. Unsafe output paths are rejected before writing.
+`audit/textdata.json` records every source entry, output-relative path, size and
+SHA-256 hash. Raw files are not part of the normalized browser bundle.
+Atomic dataset publication includes the raw copy; reuse requires both bundle and
+textdata file sets and checksums to match. The patch version creates a new immutable
+dataset identity, so older datasets lacking this copy are not reused.
+
+Exporter **0.6.3** additionally publishes the raw files to
+`<asset-output>/textdata/` when an asset destination is supplied. The existing npm
+wrapper defaults this to `web/public/game-assets/textdata/`. This is the operator's
+explicit exception for exposing the raw table contents and filenames; source
+archives and audit/provenance reports are still excluded. Publication checks the
+extraction inventory and hashes, preserves original bytes and casing, and updates
+the public asset index atomically with the artwork. Raw index rows use `kind:
+textdata` and `application/octet-stream`; validation checks their bytes without
+requiring PNG decoding. Exports for selected models refresh this directory too,
+remove obsolete raw files and retain existing unrelated artwork. Failed monster
+renders preserve prior artwork while still publishing the raw textdata copy.
+
 ## DDJ images
 
 Representative GreatestSRO payloads begin with the 20-byte `JMXVDDJ 1000` wrapper;

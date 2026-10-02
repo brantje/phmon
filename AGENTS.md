@@ -250,6 +250,83 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 complete exporter textdata extraction
+
+Exporter **0.6.3** now extracts every file recursively from
+`Media.pk2/server_dep/silkroad/textdata/` into `<dataset>/textdata/`, preserving
+names and original bytes regardless of table support, shard listing or extension.
+The raw copy stays beside `bundle/` and `audit/`. On the operator's follow-up
+instruction, asset publication also copies it to `<asset-output>/textdata/`
+(the npm wrapper defaults to `web/public/game-assets/textdata/`). Filenames and
+bytes are preserved, including during selected-model exports; obsolete raw files
+are removed and existing unrelated artwork remains intact during those exports.
+The public index includes checksummed raw-file entries; exporter-only provenance
+and source archives remain excluded. Export results include `publicTextdataPath`
+and `publicTextdataFileCount`.
+`audit/textdata.json` records file sizes/checksums; export JSON reports
+`textdataPath`, `textdataFileCount` and `textdataBytes`. Atomic publication and
+immutable reuse now include both bundle and raw files. The operator explicitly
+authorized tracking the complete public textdata copy; source archives and private
+audit files remain ignored. Files: exporter source/version/packaging,
+exporter/public publisher tests, README and format notes, plus this guide.
+Validation: all 97
+exporter tests pass, including extraction through the encrypted PK2 reader,
+unlisted/nested/binary/empty files, path rejection, damaged-output reuse, indexed
+public raw copies, stale-file removal, checksum failures and publication rollback.
+Native GreatestSRO extraction and public validation now pass: 210 raw files,
+143,463,249 bytes, 12,384 total public files. Media.pk2's SHA-256 matches the
+previously verified source. All 12,174 existing artwork records and file bytes
+are preserved. The operator authorized committing and pushing the complete public
+textdata tree, updated asset index and exporter source/docs on the existing
+issue-34 branch.
+The normal export attempt stopped on `Cyclic monster base resource reference`;
+raw-only publication through the existing publisher's `textdata` scope completed
+independently using the verified bundle/audit and current Media.pk2. Private
+evidence: `exports/textdata/raw-import-result.json` and the associated raw-import
+audit. Exact next action: investigate the monster resource cycle before claiming
+a complete native 0.6.3 bundle export. The existing
+npm wrapper needs no new arguments, and CLI publication uses `--asset-output`.
+
+### Resume — 2026-10-02 named Reverse return follow-up
+
+The operator supplied `web/public/game-assets/textdata/refoptionalteleport.txt`
+as the name source. Plugin **1.9.11** / protocol **13** now accepts type 3 and
+advertises `named_location` when `reverse_return` exists. The catalog builder
+resolves enabled rows' `ZoneName128` keys through the English column of
+`textdata_object.txt`: **36** distinct usable names for the Greatest dataset.
+Disabled, unresolved and ambiguous destinations are excluded. The small catalog
+in `server/game-data/reverse-return-locations.json` follows the existing server
+dataset mapping; admission rejects unavailable profiles or names outside that
+profile. No party, coordinates, nearby gate or new database table is needed.
+
+The named choice now opens an observed-name flyout in the single/selected controls
+and **Map → Teleport → Reverse return**. It uses the existing mandatory preview,
+concurrent admissions and independent audited results. Map activity refreshes do
+not cancel Reverse return reviews; changes to checked targets, scope or sessions
+still do. Files: catalog builder/parser/tests; resource metadata and command
+providers/tests; plugin worker/capabilities/tests; shared UI/types/tests; smoke
+harness and capability/protocol/parity documentation.
+
+Validation: **160 plugin**, **100 exporter** and **159 frontend** tests pass;
+`bash scripts/check.sh` passes using Node 24.20.0 and disposable PostgreSQL 18.6
+(zero lint errors, 60 existing warnings). The production plugin worker simulator
+checks type 3 with `Jangan`: independent API true/false results, unsupported skip,
+session fences and exact effective arguments. The English label passed to phBot
+is a source-based interpretation; actual Windows/phBot named-scroll use remains
+unverified and is separate from simulator evidence. Browser checks cover named
+confirmation/results, zero-POST cancellation and target-change invalidation,
+keyboard/native touch and bounded menus at 1440×1000, 1280×800 and 390×844;
+screenshots/traces are linked in `docs/reference-parity.md`. Disposable test
+services were removed after the final full check. No deployment or real
+character operation occurred. The operator authorized committing and pushing this
+increment together with the exporter changes and complete public textdata tree
+on `codex/issue-34-reverse-return`.
+
+Exact next action: after operator authorization for real-character testing, load
+1.9.11 against a protocol-13 backend and verify `reverse_return(3, 'Jangan')`
+with a reviewed scroll attempt. The earlier type-3 blocker below is superseded
+by this catalog-backed implementation. The remaining roadmap is outside this run.
+
 ### Resume — 2026-10-02 Issue #34 Reverse return
 
 Implemented the explicitly scoped Issue #34 plan on `codex/issue-34-reverse-return`,

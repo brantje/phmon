@@ -1,8 +1,9 @@
 # PhMon game-data exporter
 
 This is an independent offline Python tool. It reads GreatestSRO archives and emits
-a browser-ready `bundle/` plus exporter/operator provenance under `audit/`. Copy only
-the `bundle/` directory to PhMon. PhMon needs no PK2, Windows client path, client
+a browser-ready `bundle/`, a complete raw `textdata/` copy and exporter/operator
+provenance under `audit/`. Copy only the `bundle/` directory to PhMon.
+PhMon needs no PK2, Windows client path, client
 table schema or conversion logic.
 
 It does not call PhMon or any application API and does not require PostgreSQL,
@@ -39,7 +40,23 @@ $source = "C:\Users\sander\Documents\Silkroad Online\GreatestSRO"
 & $python -m phmon_game_exporter.cli export --source $source --output exports/greatestsro
 ```
 
-The export command prints the immutable dataset ID and exact bundle/audit paths.
+The export command prints the immutable dataset ID and exact bundle/audit/textdata
+paths, including `textdataFileCount` and `textdataBytes`.
+
+Every file beneath `Media.pk2/server_dep/silkroad/textdata/` is extracted into
+`<output>/<dataset-id>/textdata/`, preserving filenames, nested directories and
+original bytes. This includes unlisted shards, unknown extensions and empty files;
+no text decoding or table conversion is applied to this copy. Its per-file sizes
+and SHA-256 checksums are recorded in `audit/textdata.json`. Existing normalized
+catalogs still use their verified table schemas and shard lists.
+The raw copy stays outside the normalized browser bundle. When `--asset-output`
+is set, it is also copied byte-for-byte to `<asset-output>/textdata/`, including
+on exports for selected monster models. Obsolete exported textdata files are
+removed when this copy refreshes; existing unrelated artwork is preserved during
+selected-model exports. The public asset index records raw files as `kind:
+textdata`, with sizes and checksums. The export result reports `publicTextdataPath`
+and `publicTextdataFileCount`.
+
 The bundle contains normalized JSON catalogs, deterministic asset names, checksums
 and explicit incomplete/not-in-scope family states. The audit contains source hashes,
 archive paths, source rows/entries and conversion details. Keep audit local to the
@@ -57,13 +74,16 @@ destination on export:
 
 The public tree contains PNG aliases such as
 `game-assets/icon/skill/china/bow_area_a.png` and an `asset-index.json` mapping
-normalized semantic asset keys to public URLs. It contains no archive paths or
-source-table details; those stay under the separate exporter `audit/` directory.
+normalized semantic asset keys to public URLs. It also contains the requested raw
+textdata copy at `game-assets/textdata/`, preserving original table contents and
+names. Archive paths, source hashes and exporter audit reports remain under the
+separate exporter `audit/` directory.
 The default Nuxt destination is tracked with the PhMon repository. Source archives,
 audit files, and temporary exporter outputs remain outside the Nuxt public tree and
 are ignored under `exports/`. Choose a path outside the checkout for temporary outputs.
 
 From `web/`, the npm convenience command uses that Nuxt destination by default.
+It publishes the raw copy to `web/public/game-assets/textdata/` automatically.
 Provide the read-only source with `--source` or the `GREATESTSRO_SOURCE` environment
 variable; output locations can be overridden with `--output` and `--asset-output`:
 Relative `--source`, `--output`, and `--asset-output` values resolve from `web/`.
@@ -219,8 +239,24 @@ See `format-notes.md` and the generated `audit/coverage.json` /
 `audit/unresolved.json` for the actual run counts.
 
 Unchanged archive content, schema and exporter version reuse the same immutable
-dataset folder only if the newly generated bundle bytes match exactly. Changed
+dataset folder only if the newly generated bundle and raw textdata bytes match
+exactly. Missing, altered or symlinked raw output is rejected. Changed
 inputs create a different dataset ID. Failed conversion does not publish a bundle.
+
+## Named Reverse return catalog
+
+Build the backend's profile-scoped named Reverse return catalog from the exported
+Greatest tables (the dataset must match `server/game-data/servers.json`):
+
+```bash
+tools/game-data-exporter/.venv/bin/python tools/game-data-exporter/build_reverse_return_locations.py \
+  web/public/game-assets/textdata gamedata-17f8847c77edd7c7fadd \
+  server/game-data/reverse-return-locations.json
+```
+
+The builder joins enabled optional teleport rows to English object localization,
+excluding unresolved or ambiguous names. Refresh this catalog when the profile's
+textdata changes. It does not operate a character or assert scroll availability.
 
 ## Tests
 

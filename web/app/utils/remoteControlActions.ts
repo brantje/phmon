@@ -208,7 +208,7 @@ export function validateRemoteControlArgs(
     if (
       !Number.isInteger(type) ||
       type < 0 ||
-      type > 2 ||
+      type > 3 ||
       (type < 2 && name !== '') ||
       hasReverseReturnControlCharacters(name)
     )
@@ -217,7 +217,7 @@ export function validateRemoteControlArgs(
     if (
       new TextEncoder().encode(trimmed).length > 100 ||
       (type < 2 && trimmed) ||
-      (type === 2 && !trimmed)
+      (type >= 2 && !trimmed)
     )
       return null
     return { reverseReturnType: type, reverseReturnName: trimmed }
