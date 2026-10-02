@@ -9,6 +9,7 @@ import re
 import shutil
 import time
 from collections import Counter, defaultdict
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -19,6 +20,7 @@ from . import __version__
 from .cli import ARCHIVES, _json_write
 from .mapgrid import infer_tile_grid_orientation
 from .monster_icons import MONSTER_ICONS
+from .monster_export import MODEL_NAME, collect_monster_targets, export_monsters
 from .item_metadata import item_metadata, magic_option_definitions
 from .portrait_mapping import PORTRAIT_MODEL_RANGES, portrait_for_model, portrait_source_path
 from .pk2 import Entry, PK2Archive, PK2Error, sha256_file
@@ -358,7 +360,11 @@ def _publish(staging: Path, destination: Path, lock: Path) -> bool:
         lock.unlink(missing_ok=True)
 
 
-def export_dataset(source: Path, output: Path, key: str, asset_output: Path | None = None) -> dict[str, Any]:
+def export_dataset(source: Path, output: Path, key: str, asset_output: Path | None = None, *, monster_models: list[str] | None = None, unique_monsters: bool = False) -> dict[str, Any]:
+    if monster_models is not None:
+        monster_models = sorted(set(name.casefold() for name in monster_models))
+        if not monster_models or any(not MODEL_NAME.fullmatch(name) for name in monster_models):
+            raise ExportError("monster model selection contains an unsafe or empty model name")
     source = source.resolve(strict=True)
     if not source.is_dir():
         raise ExportError(f"source directory does not exist: {source}")
@@ -385,15 +391,16 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
         if not source_paths[role].is_file():
             raise ExportError(f"required source archive is missing: {source_paths[role].name}")
 
-    # The static catalogue, image and minimap inputs are Media.pk2. Map.pk2 is
-    # identity-checked as the selected map source; its 3D terrain is not rendered.
+    # Catalogues/UI/minimap rasters come from Media.pk2. Monster resources come
+    # from Data.pk2 when present. Map.pk2 is identity-checked; terrain is not rendered.
     media_path = source_paths["media"]
     maps_path = source_paths["maps"]
-    initial_stats = {role: (source_paths[role].stat().st_size, source_paths[role].stat().st_mtime_ns) for role in ("media", "maps")}
-    source_hashes = {role: sha256_file(source_paths[role]) for role in ("media", "maps")}
+    source_roles = ["media", "maps"] + (["data"] if source_paths["data"].is_file() else [])
+    initial_stats = {role: (source_paths[role].stat().st_size, source_paths[role].stat().st_mtime_ns) for role in source_roles}
+    source_hashes = {role: sha256_file(source_paths[role]) for role in source_roles}
     dataset_hash = hashlib.sha256(
         json.dumps(
-            {"schema": SCHEMA_VERSION, "exporter": __version__, "sourceHashes": source_hashes},
+            {"schema": SCHEMA_VERSION, "exporter": __version__, "sourceHashes": source_hashes, "monsterModels": monster_models, "uniqueMonsters": unique_monsters},
             sort_keys=True,
             separators=(",", ":"),
         ).encode("ascii")
@@ -422,13 +429,12 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 {"file": "Map - copia.pk2", "reason": "operator designated Map.pk2 as source and this copy as backup"},
                 {"file": "Music.pk2", "reason": EXCLUDED_BY_OPERATOR["sounds"]},
                 {"file": "Particles.pk2", "reason": "visual effects are outside the bounded asset families selected for this export"},
-                {"file": "Data.pk2", "reason": "no required browser-ready catalog/image in this export is sourced from Data.pk2"},
             ],
             "keyMaterialRecorded": False,
             "datasetId": dataset_id,
         }
         for role, filename, description in ARCHIVES:
-            if role in ("media", "maps"):
+            if role in source_roles:
                 audit_sources["selectedArchives"].append({
                     "role": role,
                     "description": description,
@@ -437,7 +443,10 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "sha256": source_hashes[role],
                 })
 
-        with PK2Archive(media_path, key=key) as media, PK2Archive(maps_path, key=key) as map_archive:
+        with ExitStack() as source_stack:
+            media = source_stack.enter_context(PK2Archive(media_path, key=key))
+            map_archive = source_stack.enter_context(PK2Archive(maps_path, key=key))
+            data_archive = source_stack.enter_context(PK2Archive(source_paths["data"], key=key)) if "data" in source_roles else None
             media_info = media.inventory()
             map_info = map_archive.inventory()
             media_index = _archive_index(media_info.entries)
@@ -555,6 +564,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             # Character data provides entity identities and some associated client
             # icons. It does not establish that those icons are portrait/card art.
             entity_records: list[dict[str, Any]] = []
+            monster_source_rows: list[list[str]] = []
             entity_audit: list[dict[str, Any]] = []
             missing_entity_names = missing_entity_icons = 0
             verified_portrait_joins = 0
@@ -588,6 +598,8 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                         if identity in entity_ids:
                             raise ExportError(f"duplicate entity reference ID {identity}")
                         entity_ids.add(identity)
+                        if fields[2].startswith("MOB_"):
+                            monster_source_rows.append(fields)
                         token = fields[5]
                         names = sorted(set(object_text.get(token, [])))
                         display_name = names[0] if len(names) == 1 else None
@@ -647,6 +659,19 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             unresolved.append({"family": "entities", "reason": "pet class and full-body artwork roles remain unresolved; character portraits use only the explicit phMonitor v0.5.0 model mapping"})
             entity_records.sort(key=lambda row: row["referenceId"])
             _json_write(bundle / "catalogs" / "entities.json", _catalog(dataset_id, "entities", "partial", entity_records, recordCount=len(entity_records), locales=["en"]))
+            monster_targets = collect_monster_targets(monster_source_rows, uniques_only=unique_monsters)
+            data_index = _archive_index(data_archive.inventory().entries) if data_archive is not None and monster_targets else {}
+            monster_records, monster_audit, monster_coverage = export_monsters(
+                archive=data_archive, index=data_index, targets=monster_targets,
+                selected=monster_models, dataset_id=dataset_id, bundle=bundle,
+                assets=assets_by_hash, asset_audit=asset_refs,
+            )
+            monster_coverage["uniqueOnly"] = unique_monsters
+            monster_status = "parsed" if monster_records and not monster_coverage["unsupported"] else "partial" if monster_coverage["rendered"] else "unresolved"
+            _json_write(bundle / "catalogs" / "monsters.json", _catalog(dataset_id, "monsters", monster_status, monster_records, recordCount=len(monster_records), coverage=monster_coverage))
+            _json_write(audit / "tables" / "monster-renders.json", monster_audit)
+            if data_archive is None or monster_coverage["unsupported"]:
+                unresolved.append({"family": "monsters", "reason": "Data.pk2 unavailable" if data_archive is None else f'{monster_coverage["unsupported"]} monster resources could not be rendered; see private monster-renders audit'})
 
             # Skill shards are selected only through the client's plaintext index.
             # The exporter deliberately omits rank rules, costs and prerequisites:
@@ -1310,6 +1335,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "pets": {"verifiedRoleMappings": 0, "status": "unresolved"},
                     "interfaceSymbols": {"candidateImages": len(interface_records), "buttonStatesIncluded": False},
                     "monsterTypes": {"icons": monster_icon_count, "missingTypeCodes": missing_monster_icons, "sharedPartyBadgeTypeCodes": [16, 17, 20]},
+                    "monsters": monster_coverage,
                     "maps": {"tiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "gridOrientations": {row["tileSetId"]: row["status"] for row in tile_set_orientations}, "worldTransformsValidated": False},
                     "regions": {"records": len(region_records)},
                     "teleports": {"records": len(teleport_records), "namesResolved": len(teleport_records) - missing_teleport_names, "regionJoinsResolved": len(teleport_records) - missing_teleport_regions, "links": len(teleport_links), "unresolvedLinks": bad_teleport_links},
@@ -1337,6 +1363,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "pets": {"verifiedRoleMappings": 0, "status": "unresolved"},
                     "interfaceSymbols": {"candidateImagesConverted": len(interface_records), "groups": dict(sorted(Counter(row["symbolGroup"] for row in interface_records).items()))},
                     "monsterTypes": {"iconsConverted": monster_icon_count, "missingTypeCodes": missing_monster_icons},
+                    "monsters": monster_coverage,
                     "maps": {"minimapTiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "tileSetOrientations": tile_set_orientations, "MapPk2Tile2dMetadataEntries": map_metadata_count, "rootTileSetId": root_tile_set_id, "regionGridMatchedRecords": matched_region_tile_count, "regionRecordsWithoutExactRootTile": len(missing_region_tile_rows), "worldCoordinateTransforms": "unvalidated"},
                     "regions": {"parsed": len(region_records), "encoding": region_encoding},
                     "teleports": {"parsed": len(teleport_records), "namesResolved": len(teleport_records) - missing_teleport_names, "regionReferencesResolved": len(teleport_records) - missing_teleport_regions, "linksParsed": len(teleport_links), "linksUnresolved": bad_teleport_links, "status": teleport_status},
@@ -1350,7 +1377,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             })
             _json_write(audit / "unresolved.json", unresolved)
 
-        for role in ("media", "maps"):
+        for role in source_roles:
             after = source_paths[role].stat()
             if (after.st_size, after.st_mtime_ns) != initial_stats[role] or sha256_file(source_paths[role]) != source_hashes[role]:
                 raise ExportError(f"source archive changed during export: {source_paths[role].name}")
@@ -1367,6 +1394,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 dataset_directory / "bundle",
                 dataset_directory / "audit",
                 asset_output,
+                namespace="monsters" if monster_models is not None or unique_monsters else None,
             )
         bundle_bytes = sum(path.stat().st_size for path in (dataset_directory / "bundle").rglob("*") if path.is_file())
         audit_bytes = sum(path.stat().st_size for path in (dataset_directory / "audit").rglob("*") if path.is_file())
@@ -1394,6 +1422,8 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             "portraitModelJoinCount": verified_portrait_joins,
             "interfaceSymbolCount": len(interface_records),
             "monsterTypeIconCount": monster_icon_count,
+            "monsterRenderCount": monster_coverage["rendered"],
+            "monsterRenderUnsupportedCount": monster_coverage["unsupported"],
             "unresolvedFamilyCount": len(unresolved),
             "sourceKnowledgeRequired": False,
             "identicalBundleReused": bundle_reused,

@@ -6,7 +6,8 @@ the `bundle/` directory to PhMon. PhMon needs no PK2, Windows client path, clien
 table schema or conversion logic.
 
 It does not call PhMon or any application API and does not require PostgreSQL,
-Docker, Nuxt, Go or phBot. The source archive folder is opened read-only. Sound and
+Docker, Nuxt, Go, phBot, Three.js, Blender, a browser or a GPU. Monster artwork is
+rendered offline with NumPy and Pillow. The source archive folder is opened read-only. Sound and
 interface-control artwork are excluded; a curated set of non-control symbols is
 included as unmapped candidates. `Map.pk2` is the selected map archive;
 `Map - copia.pk2` is excluded as its backup. Direct minimap images come from the
@@ -127,6 +128,71 @@ See [monster icon findings](../../docs/reference/monster-icon-investigation.md).
 The six PNGs are also committed under `web/public/game-assets/monster-types/` and
 registered in the public asset index, so they can be used immediately without
 running the exporter. Their browser URLs start with `/game-assets/monster-types/`.
+
+### Monster model pictures
+
+Exporter **0.6.0** reads monster model resources from `Data.pk2` when that archive
+is present. Normal export renders all exact monster resource joins from the indexed
+character tables. Use a repeatable `--monster-model` option to limit a trial:
+
+```powershell
+& $python -m phmon_game_exporter.cli export `
+  --source $source `
+  --output exports/greatestsro `
+  --asset-output web/public/game-assets `
+  --monster-model tigerwoman
+```
+
+Or from `web/`: `npm run export:assets -- --source C:\path\to\GreatestSRO --monster-model tigerwoman`.
+The output is **`web/public/game-assets/monsters/tigerwoman.png`**, named for the
+model resource, rather than its numeric ID. PNGs are 512 × 512 with transparent
+backgrounds. `catalogs/monsters.json` maps each resource name to its numeric model
+IDs, codes, semantic asset key and public alias. Multiple IDs referencing the same
+resource share the picture. The public asset index includes its checksum and URL.
+To export all enabled standard and dungeon uniques, use:
+
+```powershell
+& $python -m phmon_game_exporter.cli export `
+  --source $source `
+  --output exports/greatestsro `
+  --asset-output web/public/game-assets `
+  --unique-monsters
+```
+
+From `web/`: `npm run export:assets -- --source C:\path\to\GreatestSRO --unique-monsters`.
+This selects monster rarity 3 and 8, resolves explicit base references, and expands
+comma-separated transformation resources. Event variants share one model picture.
+
+When `--monster-model` or `--unique-monsters` is supplied, public publication updates only successful
+selected monster pictures and their index entries, preserving existing other
+assets and unselected monster pictures. The bundle still exports its normal
+catalogue families. Without either option, public publication uses the normal full
+asset-tree export. A wholly unsupported selected render leaves public assets
+untouched; its failure remains in the returned counts and private audit.
+
+Rendering applies a recorded idle pose, two-bone skinning, textured triangles,
+depth occlusion, alpha cutouts, modest lighting and antialiasing in software.
+Artwork uses the resource's base material palette (ID 0), rather than each
+entity's TextureType appearance. BSR and assembled CPD character models are
+supported, including equipment skinning and bone attachments. A model without an
+idle animation uses its stored rest geometry. An invalid or unsupported custom skeleton also
+uses rest geometry, with an explicit pose warning in the private audit. Unsupported
+formats or missing geometry/material dependencies produce an unsupported record
+and no placeholder PNG. Missing `Data.pk2` leaves artwork unresolved while the
+other catalogue/icon/map export continues.
+
+Names are lowercase safe resource basenames. When different resource paths reuse
+a basename, the shortest distinguishing resource-folder names are prefixed; no
+numeric ID is used. Rows with `xxx` resources follow their exact OrgObjCodeName128
+reference. No localized-name or filename guessing is used.
+
+The selected names and the `Data.pk2` hash participate in the immutable dataset
+identity. The bundle includes the resulting PNGs, never the mesh, skeleton,
+animation or texture source files. Dependency paths, hashes and detailed failures
+remain under `audit/tables/monster-renders.json`. Rendering is approximate; cloth,
+particles and the original client's material shaders are outside this renderer.
+The native unique batch is documented in [export evidence](../../docs/monster-art-export.md).
+Read each run's audit for coverage and rest-pose limitations. See [format notes](format-notes.md).
 
 `manifest.json` fixes the dataset ID, schema/exporter versions, family status,
 supported display locale and safe catalog/asset paths. Each catalog carries its own

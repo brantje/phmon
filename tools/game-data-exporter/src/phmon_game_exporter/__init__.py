@@ -1,4 +1,4 @@
 """Independent, offline PhMon game-data exporter."""
 
-__version__ = "0.4.4"
+__version__ = "0.6.0"
 SCHEMA_VERSION = "1.2.2"

@@ -308,6 +308,8 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument("--source", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--asset-output", type=Path, help="also publish browser paths and an asset index to this directory")
+    export.add_argument("--monster-model", action="append", help="render only this monster resource name (repeatable); default: all exact resource joins")
+    export.add_argument("--unique-monsters", action="store_true", help="render enabled standard/dungeon uniques (rarity 3/8); preserve other public assets")
     export.add_argument("--key", default=os.environ.get("SRO_PK2_KEY", "169841"), help=argparse.SUPPRESS)
     validate = commands.add_parser("validate", help="validate an exported bundle without sources")
     validate.add_argument("--bundle", type=Path, required=True)
@@ -338,7 +340,7 @@ def main() -> int:
         if args.command == "export":
             from .exporter import export_dataset
 
-            result = export_dataset(args.source, args.output, args.key, args.asset_output)
+            result = export_dataset(args.source, args.output, args.key, args.asset_output, monster_models=args.monster_model, unique_monsters=args.unique_monsters)
             print(json.dumps(result, indent=2))
             return 0
         if args.command == "preview":

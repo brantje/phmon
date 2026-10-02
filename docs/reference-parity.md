@@ -1894,3 +1894,28 @@ choices; changed membership replaces the button and separated markers remove it.
 The browser also verifies removal/unmount during animation without errors. Full
 `bash scripts/check.sh` passes with 137 frontend tests. No real bot or production
 service was operated.
+
+### Offline unique artwork experiment — 2026-10-02
+
+The operator requested an exporter implementation without Three.js and filenames
+based on model resource names. Exporter 0.5.0 now renders bounded local BSR/BMS/
+BMT/BSK/BAN resources with NumPy and Pillow and emits transparent named monster
+PNGs. The verified Tiger Girl picture is `game-assets/monsters/tigerwoman.png`;
+its catalogue joins direct model IDs 1954 and 50918. The one-model real export
+and all 66 exporter tests pass. Scoped public publication preserves unrelated
+assets. This is asset evidence for the uniques requirement, not a completed
+uniques screen or general monster-art coverage. Unsupported/missing resources
+remain audited with no placeholder. Details: [native export evidence](monster-art-export.md).
+
+### Unique artwork batch — 2026-10-02
+
+Exporter 0.6.0 `--unique-monsters` resolves all 801 enabled unique rows (rarity
+3/8) to 106 resources and publishes **105** named transparent PNGs in
+`web/public/game-assets/monsters/`. It supports base palettes, transformation lists,
+explicit inherited resources, CPD equipment/attachments and distinguishing folder
+prefixes for duplicate basenames. Five rigs use audited rest-geometry fallbacks;
+one custom definition (`volkoft`) cannot render because its mesh and material names
+do not match. Native bundle/public validation and all 71 exporter tests pass; all
+12,069 unrelated public asset records remain unchanged. This improves artwork
+coverage without claiming complete uniques UI parity or hiding the one remaining
+model failure. [Batch evidence and limitations](monster-art-export.md).
