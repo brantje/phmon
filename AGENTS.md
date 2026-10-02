@@ -329,11 +329,26 @@ passed; browser checks confirmed equal-width dropdowns, 26 × 14 px switches,
 Mobile at 390 × 844 has no horizontal overflow. Evidence:
 `docs/reference/issue55/historical-heatmaps-panel.png`.
 
-Missing navigation Stop, numeric progress/ETA, trace readback and nearby-player
-trace discovery are tracked in [Issue #57](https://github.com/brantje/phmon/issues/57).
-They remain explicitly unavailable where the existing contracts lack them. Return
-Scroll uses real command outcomes without fabricated routes. Simulator checks do
-not establish real Windows/phBot runtime validation. No real character was operated.
+### Resume — 2026-10-02 Issue #57 map navigation stop and trace state
+
+Implemented plugin **1.9.0 / protocol 11**, Go admission and in-memory progress,
+and map UI for Issue #57: `character.navigate.stop` with tray Stop versus Dismiss,
+observed step progress and approximate ETA on live routes, `get_status` trace
+activity separate from session-scoped `trace_requested_name`, nearby-player trace
+picker groups on existing `map.players` with live-feed Refresh, and Return Scroll
+without synthetic navigation rows.
+
+Files include `plugin/PhMon.py`, `plugin/test_phmon.py`, `server/internal/{commands,navigation,httpapi}/`,
+`web/app/{pages/map.vue,components/RemoteControlPanel.vue,components/MapCharacterStatusRow.vue,utils/}`,
+`web/shared/types/live.ts`, `web/tests/`, and `docs/{protocol,phbot-capabilities,reference-parity}.md`.
+
+Validation: `go test ./internal/navigation ./internal/commands`, plugin Issue #57
+tests, and **143** frontend unit tests under Node 24.20.0. Full `bash scripts/check.sh`
+and authenticated browser flows at 1440×1000, 1280×800 and 390×844 remain the
+operator gate when a disposable database and signed-in session are available. Real
+`stop_script` and `get_status` Windows/phBot evidence is separate from fixtures.
+Exact next action: run full CI/check on the branch and record live map evidence when
+the upgraded plugin is connected. Do not merge or deploy unless authorized.
 
 PR [#58](https://github.com/brantje/phmon/pull/58) is open against `main`, with the
 merged #35 dependency included in its ancestry. CodeRabbit's requested full review

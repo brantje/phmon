@@ -33,6 +33,11 @@ type walkArgs struct {
 	Z      float64 `json:"z"`
 }
 
+type navigateStopArgs struct {
+	CommandID     string `json:"command_id"`
+	RouteSequence uint64 `json:"route_sequence"`
+}
+
 type trainingAreaArgs struct {
 	Mode   string   `json:"mode"`
 	Name   *string  `json:"name,omitempty"`
@@ -79,6 +84,17 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 	case "character.walk", "character.navigate":
 		var args walkArgs
 		if err := decodeExact(raw, &args); err != nil || !validRegion(args.Region) || (name == "character.walk" && args.Region < 0) || !coordinate(args.X) || !coordinate(args.Y) || !coordinate(args.Z) {
+			return Validated{}, ErrInvalid
+		}
+		normalized, _ := json.Marshal(args)
+		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
+	case "character.navigate.stop":
+		var args navigateStopArgs
+		if err := decodeExact(raw, &args); err != nil {
+			return Validated{}, ErrInvalid
+		}
+		args.CommandID = strings.TrimSpace(args.CommandID)
+		if len(args.CommandID) != 40 || !strings.HasPrefix(args.CommandID, "cmd_") || strings.ContainsRune(args.CommandID, 0) || args.RouteSequence == 0 {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)

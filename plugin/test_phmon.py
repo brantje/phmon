@@ -95,7 +95,7 @@ class PlayerObservationTests(unittest.TestCase):
         self.assertEqual(client.send_json.call_count, 1)
         frame = client.send_json.call_args.args[0]
         self.assertEqual(frame['type'], 'map.players')
-        self.assertEqual(frame['protocol_version'], 10)
+        self.assertEqual(frame['protocol_version'], plugin.PROTOCOL_VERSION)
         worker._current_identity = {'server': 'Greatest', 'name': 'Other'}
         worker.update_map_players(worker._current_identity, 'observed', 25000, [], observer_z=-6.0)
         worker._flush_map_players(client)
@@ -2804,6 +2804,46 @@ class CallbackTimingTests(unittest.TestCase):
                 plugin.event_loop()
             self.assertIn('resource_collect=10000 ms', log.call_args.args[0])
             self.assertNotIn('private', log.call_args.args[0])
+
+
+class Issue57NavigationAndTraceTests(unittest.TestCase):
+    def test_read_trace_activity_maps_status_values(self):
+        self.assertEqual(plugin._read_trace_activity(lambda: 'tracing'), ('tracing', 'get_status'))
+        self.assertEqual(plugin._read_trace_activity(lambda: 'botting'), ('not_tracing', 'get_status'))
+        self.assertEqual(plugin._read_trace_activity(lambda: 'stopped'), ('unknown', 'get_status'))
+        self.assertEqual(plugin._read_trace_activity(lambda: None), ('unknown', 'get_status_unavailable'))
+
+    def test_navigate_stop_requires_matching_active_token(self):
+        worker = plugin.AgentWorker(
+            {
+                'backend_url': 'ws://127.0.0.1/agent',
+                'agent_id': AGENT_ID,
+                'agent_token': 'token',
+            },
+            '20.1.2',
+        )
+        worker.api = Mock()
+        worker.api.has = Mock(return_value=True)
+        worker.api.call = Mock(return_value=True)
+        worker._active_navigation = {
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+            'route_sequence': 1,
+            'epoch': worker._profile_epoch,
+        }
+        args = {
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+            'route_sequence': 2,
+        }
+        with self.assertRaises(ValueError):
+            worker._invoke('character.navigate.stop', args, 25000)
+        worker.api.call.assert_not_called()
+        args['route_sequence'] = 1
+        result, effective, _, verification = worker._invoke(
+            'character.navigate.stop', args, 25000
+        )
+        worker.api.call.assert_called_once_with('stop_script')
+        self.assertTrue(result)
+        self.assertIsNone(worker._active_navigation)
 
 
 class WorkerStopTests(unittest.TestCase):

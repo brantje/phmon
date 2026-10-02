@@ -481,3 +481,31 @@ func TestSnapshotBudgetChoosesGeometryInStableSessionOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestCanStopNavigationAndMarkStopped(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	input := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6430, Y: 1090})
+	input.CommandID = "cmd_00000000-0000-4000-8000-000000000001"
+	if !store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25000, X: 6430, Y: 1090}, input.InvokedAt) {
+		t.Fatal("route not stored")
+	}
+	if ok, _ := store.CanStopNavigation(input.CharacterID, input.SessionID, input.CommandID, input.Sequence); ok {
+		t.Fatal("waiting_for_movement should not be stoppable")
+	}
+	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25000, X: 6415, Y: 1090, At: input.InvokedAt.Add(time.Second)})
+	ok, reason := store.CanStopNavigation(input.CharacterID, input.SessionID, input.CommandID, input.Sequence)
+	if !ok || reason != "" {
+		t.Fatalf("moving route should be stoppable: ok=%v reason=%q", ok, reason)
+	}
+	if !store.MarkNavigationStopped(input.SessionID, input.CommandID, input.Sequence, true, input.InvokedAt.Add(2*time.Second)) {
+		t.Fatal("stop not recorded")
+	}
+	if store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25000, X: 6430, Y: 1090}, input.InvokedAt.Add(3*time.Second)) {
+		t.Fatal("stopped route must not revive on duplicate sequence")
+	}
+	view := store.Snapshot("Greatest", profile, input.InvokedAt.Add(3*time.Second))[0]
+	if view.Status != "stopped" {
+		t.Fatalf("expected stopped status, got %#v", view)
+	}
+}

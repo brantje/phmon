@@ -2,6 +2,7 @@
 import type {
   ActivityEvent,
   CharacterView,
+  ControlsSnapshot,
   MapMonster,
   MapNpc,
   MapOtherPlayer,
@@ -58,7 +59,12 @@ import {
   mapNavigationRouteOverlays,
   mapNavigationStatusLabel,
 } from '~/utils/mapNavigationRoutes'
-import { mapNavigationTrayRows } from '~/utils/mapNavigationTray'
+import {
+  mapNavigationTrayRows,
+  navigationTrayProgressSummary,
+} from '~/utils/mapNavigationTray'
+import { submitNavigationStop } from '~/utils/mapNavigationStop'
+import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
@@ -81,7 +87,12 @@ const {
   setMapFeed,
   clearMapFeed,
   liveStale,
+  setCommandFanOutTargets,
+  clearCommandFanOutOwner,
+  commandFanOutFeeds,
+  refreshLiveData,
 } = useLiveData()
+const MAP_ACTIVITY_OWNER = 'map-character-activity'
 const {
   enabled: historicalLayers,
   results: heatmapResults,
@@ -145,6 +156,7 @@ const selectedCharacterID = ref(
 )
 const actionTargetIDs = ref(new Set<string>())
 const dismissedNavigationRows = ref(new Set<string>())
+const navigationStopPending = ref(new Set<string>())
 const navigationTrayOpen = ref(true)
 const navigationTrayCompact = ref(false)
 const mapWorkspaceElement = ref<HTMLElement | null>(null)
@@ -402,6 +414,69 @@ const historicalMobTypes = computed(() =>
     ),
   ].sort((left, right) => left.localeCompare(right)),
 )
+const mapSelectFocused = ref(false)
+const stableRegionOptions = ref(regionOptions.value)
+const stableHistoricalCharacters = ref(historicalCharacters.value)
+const stableHistoricalMobTypes = ref(historicalMobTypes.value)
+const stableServerOptions = ref(serverOptions.value)
+const stableMapAreas = ref(mapProfile.value?.areas ?? [])
+const frozenTraceCandidates = ref(historicalCharacters.value)
+const frozenMapPlayers = ref(mapSnapshot.value?.players)
+function syncMapSelectOptionSnapshots() {
+  stableRegionOptions.value = regionOptions.value
+  stableHistoricalCharacters.value = historicalCharacters.value
+  stableHistoricalMobTypes.value = historicalMobTypes.value
+  stableServerOptions.value = serverOptions.value
+  stableMapAreas.value = mapProfile.value?.areas ?? []
+  frozenTraceCandidates.value = historicalCharacters.value
+  frozenMapPlayers.value = mapSnapshot.value?.players
+}
+watch(regionOptions, (next) => {
+  if (!mapSelectFocused.value) stableRegionOptions.value = next
+})
+watch(historicalCharacters, (next) => {
+  if (!mapSelectFocused.value) {
+    stableHistoricalCharacters.value = next
+    frozenTraceCandidates.value = next
+  }
+})
+watch(historicalMobTypes, (next) => {
+  if (!mapSelectFocused.value) stableHistoricalMobTypes.value = next
+})
+watch(serverOptions, (next) => {
+  if (!mapSelectFocused.value) stableServerOptions.value = next
+})
+watch(
+  () => mapProfile.value?.areas,
+  (next) => {
+    if (!mapSelectFocused.value) stableMapAreas.value = next ?? []
+  },
+)
+watch(
+  () => mapSnapshot.value?.players,
+  (next) => {
+    if (!mapSelectFocused.value) frozenMapPlayers.value = next
+  },
+)
+function armMapSelectFreeze(event: Event) {
+  if (event.target instanceof HTMLSelectElement) mapSelectFocused.value = true
+}
+function onMapSelectFocusOut(event: FocusEvent) {
+  if (!(event.target instanceof HTMLSelectElement)) return
+  queueMicrotask(() => {
+    const page = event.currentTarget as HTMLElement | null
+    if (page?.querySelector('select:focus')) return
+    mapSelectFocused.value = false
+    syncMapSelectOptionSnapshots()
+  })
+}
+function maybeClearRegionFilterForCharacterRegion(
+  characterRegion: number | null | undefined,
+) {
+  if (mapSelectFocused.value) return
+  if (!regionID.value || characterRegion == null) return
+  if (regionID.value !== characterRegion) regionID.value = 0
+}
 const historicalQuery = computed(() => {
   const window = heatmapWindow.value
   if (!window) return null
@@ -738,6 +813,60 @@ const scopedCharacters = computed(() => {
     return items.filter((character) => character.region === regionID.value)
   return items
 })
+const mapActivityFeed = computed(
+  () => commandFanOutFeeds.value[MAP_ACTIVITY_OWNER],
+)
+function mapCharacterControls(characterID: string) {
+  return mapActivityFeed.value?.targets[characterID]?.controls ?? null
+}
+const navigationStopSupport = computed(() => {
+  const result: Record<string, boolean> = {}
+  for (const [characterID, target] of Object.entries(
+    mapActivityFeed.value?.targets || {},
+  )) {
+    result[characterID] = Boolean(
+      target.controls?.capabilities?.['character.navigate.stop']?.supported,
+    )
+  }
+  return result
+})
+const mapActivityTargetKey = computed(() =>
+  scopedCharacters.value
+    .filter((character) => character.online && character.session_id)
+    .map((character) => character.character_id)
+    .sort()
+    .join('\u0000'),
+)
+watch(
+  mapActivityTargetKey,
+  (key) => {
+    setCommandFanOutTargets(MAP_ACTIVITY_OWNER, key ? key.split('\u0000') : [])
+  },
+  { immediate: true },
+)
+function characterTraceLines(character: CharacterView) {
+  const lines = traceActivitySummary(
+    mapCharacterControls(character.character_id) as ControlsSnapshot | null,
+  )
+  if (
+    mapNavigationRoutes.value.some(
+      (item) =>
+        item.characterID === character.character_id &&
+        !item.stale &&
+        [
+          'moving',
+          'waiting_for_movement',
+          'waiting_for_arrival',
+          'transition_awaiting_evidence',
+        ].includes(item.status),
+    )
+  )
+    lines.unshift('Navigating')
+  return lines
+}
+function refreshMapPlayers() {
+  refreshLiveData([subscriptionID])
+}
 function characterGoToMeta(character: CharacterView) {
   const profile = mapProfile.value
   if (!profile) return zoneNameText(character.zone)
@@ -1223,21 +1352,97 @@ const navigationTrayRows = computed(() =>
     navigationAction.operations.value,
     server.value,
     dismissedNavigationRows.value,
+    mapSnapshot.value?.navigation,
+    navigationStopSupport.value,
   ).map((row) => {
     const route = mapSnapshot.value?.navigation?.find(
       (item) =>
         `${item.character_id}:${item.session_id}:${item.route_sequence}` ===
         row.id,
     )
+    const progress =
+      typeof route?.progress === 'number'
+        ? ` · ~${Math.round(route.progress * 100)}% steps`
+        : ''
+    const eta =
+      typeof route?.eta_seconds === 'number' && route.eta_seconds > 0
+        ? ` · ~${route.eta_seconds}s ETA (approx.)`
+        : ''
     return {
       ...row,
       detail:
-        row.detail ||
-        (route
-          ? `${zoneNameForRegion(route.destination.region)} · ${route.destination.x.toFixed(1)}, ${route.destination.y.toFixed(1)}`
-          : ''),
+        (row.detail ||
+          (route
+            ? `${zoneNameForRegion(route.destination.region)} · ${route.destination.x.toFixed(1)}, ${route.destination.y.toFixed(1)}`
+            : '')) +
+        progress +
+        eta,
+      status: navigationStopPending.value.has(row.id)
+        ? 'stop_requested'
+        : row.status,
     }
   }),
+)
+const navigationTrayProgress = computed(() =>
+  navigationTrayProgressSummary(navigationTrayRows.value),
+)
+async function stopNavigationRow(row: {
+  id: string
+  characterID: string
+  sessionID?: string
+  commandID?: string
+  routeSequence?: number
+  canStop?: boolean
+}) {
+  if (
+    !row.canStop ||
+    !row.sessionID ||
+    !row.commandID ||
+    !row.routeSequence ||
+    navigationStopPending.value.has(row.id)
+  )
+    return
+  navigationStopPending.value = new Set([
+    ...navigationStopPending.value,
+    row.id,
+  ])
+  try {
+    await submitNavigationStop({
+      characterID: row.characterID,
+      sessionID: row.sessionID,
+      commandID: row.commandID,
+      routeSequence: row.routeSequence,
+    })
+  } catch {
+    navigationStopPending.value = new Set(
+      [...navigationStopPending.value].filter((id) => id !== row.id),
+    )
+  }
+}
+watch(
+  () => mapSnapshot.value?.navigation,
+  (routes) => {
+    if (!routes?.length || !navigationStopPending.value.size) return
+    const terminal = new Set(
+      routes
+        .filter(
+          (route) =>
+            route.status === 'stopped' || route.status === 'stop_failed',
+        )
+        .map(
+          (route) =>
+            `${route.character_id}:${route.session_id}:${route.route_sequence}`,
+        ),
+    )
+    if (!terminal.size) return
+    const next = [...navigationStopPending.value].filter(
+      (id) => !terminal.has(id),
+    )
+    if (next.length !== navigationStopPending.value.size) {
+      navigationStopPending.value = new Set(next)
+    }
+  },
+  { deep: true },
 )
 function dismissNavigationRow(id: string) {
   dismissedNavigationRows.value = new Set([
@@ -1493,18 +1698,20 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
   else regionID.value = 0
   selectedCharacterID.value = event.character_id
 })
-watch(selectedCharacterID, (characterID) => {
+watch(selectedCharacterID, (characterID, previousID) => {
   if (characterID) selectedDestinationID.value = ''
+  if (characterID === previousID) return
   const selected = mapSnapshot.value?.characters.find(
     (character) => character.character_id === characterID,
   )
-  if (selected && regionID.value && regionID.value !== selected.region)
-    regionID.value = 0
+  maybeClearRegionFilterForCharacterRegion(selected?.region)
 })
-watch(currentCharacter, (character) => {
-  if (character && regionID.value && regionID.value !== character.region)
-    regionID.value = 0
-})
+watch(
+  () => currentCharacter.value?.region,
+  (region) => {
+    maybeClearRegionFilterForCharacterRegion(region)
+  },
+)
 watch(
   actionTargetScopeKey,
   (nextScope, previousScope) => {
@@ -1530,7 +1737,7 @@ watch(
 )
 watch([server, areaID, floorID, regionID, selectedCharacterID], () => {})
 watch(mapProfile, (profile) => {
-  if (!profile) return
+  if (!profile || mapSelectFocused.value) return
   const selectedArea = profile.areas.find((area) => area.id === areaID.value)
   if (!selectedArea) {
     areaID.value = 'world'
@@ -1633,6 +1840,7 @@ onBeforeUnmount(() => {
   if (eventWindowTimer) clearInterval(eventWindowTimer)
   if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
   profileRequestID++
+  clearCommandFanOutOwner(MAP_ACTIVITY_OWNER)
   clearMapFeed(subscriptionID)
 })
 
@@ -1640,7 +1848,12 @@ useHead({ title: 'Map · PhMon' })
 </script>
 
 <template>
-  <section class="map-page">
+  <section
+    class="map-page"
+    @pointerdown="armMapSelectFreeze"
+    @focusin="armMapSelectFreeze"
+    @focusout="onMapSelectFocusOut"
+  >
     <header
       class="page-header map-page-header map-header-row character-filters"
     >
@@ -1663,7 +1876,11 @@ useHead({ title: 'Map · PhMon' })
               })
           "
         >
-          <option v-for="option in serverOptions" :key="option" :value="option">
+          <option
+            v-for="option in stableServerOptions"
+            :key="option"
+            :value="option"
+          >
             {{ option }}
           </option>
         </select>
@@ -1683,7 +1900,7 @@ useHead({ title: 'Map · PhMon' })
           "
         >
           <option
-            v-for="area in mapProfile?.areas || []"
+            v-for="area in stableMapAreas"
             :key="area.id"
             :value="area.id"
           >
@@ -1714,7 +1931,11 @@ useHead({ title: 'Map · PhMon' })
         Zone
         <select v-model.number="regionID" aria-label="Filter map data by zone">
           <option :value="0">All zones</option>
-          <option v-for="region in regionOptions" :key="region" :value="region">
+          <option
+            v-for="region in stableRegionOptions"
+            :key="region"
+            :value="region"
+          >
             {{ zoneOptionLabels.get(region) }}
           </option>
         </select>
@@ -2283,6 +2504,9 @@ useHead({ title: 'Map · PhMon' })
             >
               Clear finished
             </button>
+            <small v-if="navigationTrayProgress" class="map-tray-progress">
+              {{ navigationTrayProgress }}
+            </small>
           </div>
           <div
             id="map-tray-rows"
@@ -2350,10 +2574,17 @@ useHead({ title: 'Map · PhMon' })
                 v-if="row.group === 'active'"
                 class="compact-button"
                 type="button"
-                disabled
-                title="Stopping a navigation route is not yet supported; tracked in issue #57."
+                :disabled="!row.canStop || row.status === 'stop_requested'"
+                :title="
+                  row.status === 'stop_requested'
+                    ? 'Stop requested; waiting for the plugin result.'
+                    : row.canStop
+                      ? 'Stop the active navigation script for this character.'
+                      : 'Stop is available once movement has started on a live route.'
+                "
+                @click="stopNavigationRow(row)"
               >
-                Stop
+                {{ row.status === 'stop_requested' ? 'Stopping…' : 'Stop' }}
               </button>
               <button
                 v-else
@@ -2429,7 +2660,8 @@ useHead({ title: 'Map · PhMon' })
           >
             <RemoteControlPanel
               variant="map"
-              :trace-candidates="historicalCharacters"
+              :trace-candidates="frozenTraceCandidates"
+              :map-players="frozenMapPlayers"
               :selected-ids="[...actionTargetIDs]"
               :scope-key="remoteActionScopeKey"
               :scope-key-for-character="mapControlScopeKeyForCharacter"
@@ -2439,6 +2671,7 @@ useHead({ title: 'Map · PhMon' })
                 streamCurrent && mapSnapshotInFeedScope && !liveStale
               "
               @action-notification="showMapActionNotification"
+              @refresh-nearby-players="refreshMapPlayers"
             />
             <section class="map-side-list map-character-list">
               <div class="map-target-toolbar">
@@ -2493,21 +2726,7 @@ useHead({ title: 'Map · PhMon' })
                 :position-fresh="positionIsFresh(character)"
                 :focus-disabled="!canFocusCharacter(character)"
                 :now="freshnessNow"
-                :activity="
-                  mapNavigationRoutes.some(
-                    (item) =>
-                      item.characterID === character.character_id &&
-                      !item.stale &&
-                      [
-                        'moving',
-                        'waiting_for_movement',
-                        'waiting_for_arrival',
-                        'transition_awaiting_evidence',
-                      ].includes(item.status),
-                  )
-                    ? 'navigating'
-                    : undefined
-                "
+                :trace-lines="characterTraceLines(character)"
                 @toggle-target="toggleActionTarget(character.character_id)"
                 @select="selectMapCharacter(character.character_id)"
                 @focus="focusMapCharacter(character.character_id)"
@@ -2897,7 +3116,7 @@ useHead({ title: 'Map · PhMon' })
                     >
                       <option value="">All characters</option>
                       <option
-                        v-for="character in historicalCharacters"
+                        v-for="character in stableHistoricalCharacters"
                         :key="character.character_id"
                         :value="character.character_id"
                       >
@@ -2937,7 +3156,7 @@ useHead({ title: 'Map · PhMon' })
                   >
                     <option value="">All observed monster ranks</option>
                     <option
-                      v-for="monsterRankValue in historicalMobTypes"
+                      v-for="monsterRankValue in stableHistoricalMobTypes"
                       :key="monsterRankValue"
                       :value="monsterRankValue"
                     >
@@ -3186,6 +3405,10 @@ useHead({ title: 'Map · PhMon' })
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+}
+.map-tray-progress {
+  flex-basis: 100%;
+  color: #9eb4d0;
 }
 .map-tray-rows {
   max-height: 120px;

@@ -1828,9 +1828,13 @@ The navigation fixture verified waiting-for-movement, reported arrival and Clear
 finished; training drafts survived tabs/live updates and Reset restored readback.
 These demonstrate UI and
 protocol behavior, not real Windows/phBot runtime validation. The full missing
-behavior plan is [Issue #57](https://github.com/brantje/phmon/issues/57); Stop,
-progress/ETA, observed trace state and nearby-player trace discovery are not claimed
-as implemented by this UI-only redesign.
+behavior plan is [Issue #57](https://github.com/brantje/phmon/issues/57). Issue #57
+implementation (2026-10-02) adds tray Stop via `character.navigate.stop`, observed
+step progress and approximate ETA on live routes, separate trace activity versus
+requested leader on control state, and a nearby-player trace picker fed by the
+existing `map.players` snapshot with Refresh on the live map feed. Return Scroll
+stays on command results without synthetic navigation rows. Real `stop_script` and
+`get_status` validation remains a separate Windows/phBot gate.
 
 
 #### Historical heatmap panel correction — 2026-10-01

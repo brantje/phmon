@@ -75,6 +75,36 @@ test('command completion does not fabricate arrival; dismissals do not hide repl
   assert.equal(navigationTrayGroup('progress_uncertain'), 'attention')
 })
 
+test('navigation tray exposes progress and stop metadata from backend routes', () => {
+  const rows = mapNavigationTrayRows(
+    [route],
+    [],
+    'greatest',
+    new Set(),
+    [
+      {
+        command_id: 'command',
+        character_id: 'c',
+        session_id: 's',
+        route_sequence: 1,
+        server: 'Greatest',
+        dataset_id: 'd',
+        dataset_version: 'v',
+        destination: { region: 1, x: 1, y: 1, z: 0 },
+        status: 'moving',
+        updated_at: '2026-01-01T00:00:00Z',
+        blocks: [],
+        progress: 0.42,
+        eta_seconds: 30,
+      },
+    ],
+    { c: true },
+  )
+  assert.equal(rows[0]?.progress, 0.42)
+  assert.equal(rows[0]?.etaSeconds, 30)
+  assert.equal(rows[0]?.canStop, true)
+})
+
 test('unassigned command IDs never suppress a submitted child row', () => {
   for (const commandID of [undefined, '']) {
     const pending = {

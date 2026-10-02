@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 10
+	agentProtocolVersion    = 11
 	agentMinProtocolVersion = 2
 )
 
@@ -633,6 +633,25 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusInternalError, "command result unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
+			if changed && h.navigation != nil && h.commands != nil {
+				resultCtx, resultCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				command, commandErr := h.commands.GetByID(resultCtx, message.CommandID)
+				resultCancel()
+				if commandErr == nil && command.Name == "character.navigate.stop" &&
+					(message.Status == "completed" || message.Status == "failed") &&
+					message.Verification == "api_confirmed" {
+					var args struct {
+						CommandID     string `json:"command_id"`
+						RouteSequence uint64 `json:"route_sequence"`
+					}
+					if json.Unmarshal(command.Args, &args) == nil {
+						success := message.Status == "completed"
+						if h.navigation.MarkNavigationStopped(command.SessionID, args.CommandID, args.RouteSequence, success, time.Now().UTC()) {
+							h.live.Invalidate()
+						}
+					}
+				}
+			}
 			if changed {
 				h.live.Invalidate()
 			}
@@ -642,7 +661,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var control commands.ControlState
-			if err := json.Unmarshal(message.ControlState, &control); err != nil || !control.ZoneNameValid() {
+			if err := json.Unmarshal(message.ControlState, &control); err != nil || !control.ZoneNameValid() || !control.ActivityValid() || !control.TraceRequestedValid() {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid control state", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
@@ -978,6 +997,7 @@ func validReportedCommandName(name string) bool {
 	switch name {
 	case "bot.start", "bot.stop", "trace.start", "trace.stop",
 		"training.area.set", "training.radius.set", "character.walk", "character.navigate",
+		"character.navigate.stop",
 		"character.return", "character.disconnect", "client.clientless", "chat.send":
 		return true
 	default:

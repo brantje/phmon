@@ -8,6 +8,7 @@ const props = defineProps<{
   positionFresh: boolean
   now: number
   activity?: string
+  traceLines?: string[]
   focusDisabled?: boolean
 }>()
 
@@ -77,6 +78,13 @@ const staleLabel = computed(() => {
         {{ character.online ? character.server : 'Last seen' }} ·
         {{ character.zone || 'Unknown zone'
         }}{{ activity ? ` · ${activity}` : '' }}
+      </small>
+      <small
+        v-for="line in traceLines || []"
+        :key="line"
+        class="map-character-trace-line"
+      >
+        {{ line }}
       </small>
     </button>
     <button
@@ -151,6 +159,11 @@ const staleLabel = computed(() => {
 .map-character-status-select:focus-visible {
   outline: 1px solid #6f9bce;
   outline-offset: 2px;
+}
+
+.map-character-trace-line {
+  display: block;
+  color: #9eb4d0;
 }
 
 .map-character-status-heading {

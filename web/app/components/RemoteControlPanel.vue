@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { CharacterView } from '~~/shared/types/live'
+import type {
+  CharacterView,
+  MapOtherPlayersSnapshot,
+} from '~~/shared/types/live'
+import { useFrozenWhileFocused } from '~/composables/useFrozenWhileFocused'
+import { tracePickerOptions } from '~/utils/mapTracePicker'
 import type { FanOutOperation } from '~/utils/commandFanOut'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import { useRemoteControlActions } from '~/composables/useRemoteControlActions'
@@ -20,6 +25,7 @@ const props = withDefaults(
     currentCharacter(characterID: string): CharacterView | undefined
     variant?: 'default' | 'map'
     traceCandidates?: CharacterView[]
+    mapPlayers?: MapOtherPlayersSnapshot
     mapSnapshotCurrent?: boolean
   }>(),
   {
@@ -31,7 +37,25 @@ const props = withDefaults(
 const reviewActions = useReviewActionsPreference()
 const emit = defineEmits<{
   actionNotification: [notification: MapActionNotification]
+  refreshNearbyPlayers: []
 }>()
+const liveTracePicker = computed(() =>
+  tracePickerOptions({
+    managed: props.traceCandidates,
+    players: props.mapPlayers,
+  }),
+)
+const {
+  frozen: tracePicker,
+  onFocus: onTraceSelectFocus,
+  onBlur: onTraceSelectBlur,
+} = useFrozenWhileFocused(() => liveTracePicker.value)
+const traceManagedOptions = computed(() =>
+  tracePicker.value.options.filter((item) => item.group === 'managed'),
+)
+const traceNearbyOptions = computed(() =>
+  tracePicker.value.options.filter((item) => item.group === 'nearby'),
+)
 const actions = useRemoteControlActions({
   scopeKey: () => props.scopeKey,
   scopeKeyForCharacter: props.scopeKeyForCharacter,
@@ -146,31 +170,37 @@ const selectedOperation = computed(() =>
     (operation) => operation.operationID === activePreviewID.value,
   ),
 )
-const mapDisconnectOperation = computed(() => {
+function isMapInlineConfirm(name: string) {
+  return name === 'character.return' || name === 'character.disconnect'
+}
+const mapInlineConfirmOperation = computed(() => {
   const operation = selectedOperation.value
   return props.variant === 'map' &&
     operation?.state === 'prepared' &&
-    operation.command.name === 'character.disconnect'
+    isMapInlineConfirm(operation.command.name)
     ? operation
     : undefined
 })
-const mapDisconnectTargets = computed(
+const mapInlineConfirmTargets = computed(
   () =>
-    mapDisconnectOperation.value?.children.filter(
+    mapInlineConfirmOperation.value?.children.filter(
       (child) => child.submission === 'ready',
     ) || [],
 )
-let mapDisconnectTimer: ReturnType<typeof setTimeout> | undefined
-watch(mapDisconnectOperation, (operation) => {
-  if (mapDisconnectTimer) clearTimeout(mapDisconnectTimer)
-  mapDisconnectTimer = undefined
+function mapActionConfirming(name: RemoteControlActionName) {
+  return mapInlineConfirmOperation.value?.command.name === name
+}
+let mapInlineConfirmTimer: ReturnType<typeof setTimeout> | undefined
+watch(mapInlineConfirmOperation, (operation) => {
+  if (mapInlineConfirmTimer) clearTimeout(mapInlineConfirmTimer)
+  mapInlineConfirmTimer = undefined
   if (operation)
-    mapDisconnectTimer = setTimeout(() => {
-      if (mapDisconnectOperation.value === operation) cancelReview(operation)
+    mapInlineConfirmTimer = setTimeout(() => {
+      if (mapInlineConfirmOperation.value === operation) cancelReview(operation)
     }, 3_500)
 })
 onBeforeUnmount(() => {
-  if (mapDisconnectTimer) clearTimeout(mapDisconnectTimer)
+  if (mapInlineConfirmTimer) clearTimeout(mapInlineConfirmTimer)
 })
 const livePreviewSignature = computed(() =>
   remoteControlSignature(
@@ -331,11 +361,24 @@ const mapActionReasons = computed(() =>
     ).map((name) => [name, computeMapActionReason(name)]),
   ),
 )
+function mapActionTitle(name: RemoteControlActionName) {
+  if (!mapActionConfirming(name)) return mapActionReasons.value[name] || ''
+  const verb = name === 'character.return' ? 'return scroll' : 'disconnect'
+  return `Confirm ${verb} for ${mapInlineConfirmTargets.value.map((child) => child.characterName).join(', ')}`
+}
+function mapActionLabel(action: {
+  name: RemoteControlActionName
+  label: string
+}) {
+  return mapActionConfirming(action.name)
+    ? `Confirm (${mapInlineConfirmTargets.value.length})`
+    : action.label
+}
 async function runMapAction(name: RemoteControlActionName, event: MouseEvent) {
   mapActionTrigger.value = event.currentTarget as HTMLButtonElement
   if (computeMapActionReason(name)) return
-  if (name === 'character.disconnect' && mapDisconnectOperation.value) {
-    await submitReviewed(mapDisconnectOperation.value)
+  if (mapActionConfirming(name) && mapInlineConfirmOperation.value) {
+    await submitReviewed(mapInlineConfirmOperation.value)
     return
   }
   chooseAction(name)
@@ -502,45 +545,27 @@ function cancelReview(operation: FanOutOperation) {
         v-for="action in mapActions"
         :key="action.name"
         class="compact-button"
-        :class="{
-          primary:
-            action.name === 'character.disconnect' && mapDisconnectOperation,
-        }"
+        :class="{ primary: mapActionConfirming(action.name) }"
         type="button"
         :disabled="Boolean(mapActionReasons[action.name])"
-        :title="
-          action.name === 'character.disconnect' && mapDisconnectOperation
-            ? `Confirm disconnect for ${mapDisconnectTargets.map((child) => child.characterName).join(', ')}`
-            : mapActionReasons[action.name]
-        "
+        :title="mapActionTitle(action.name)"
         @click="runMapAction(action.name, $event)"
       >
-        <UIcon :name="action.icon" />{{
-          action.name === 'character.disconnect' && mapDisconnectOperation
-            ? `Confirm (${mapDisconnectTargets.length})`
-            : action.label
-        }}
+        <UIcon :name="action.icon" />{{ mapActionLabel(action) }}
       </button>
       <div class="map-trace-row remote-control-form">
-        <select v-model="traceName" aria-label="Trace leader">
-          <option value="">Trace player…</option>
-          <option
-            v-for="character in traceCandidates"
-            :key="character.character_id"
-            :value="character.name"
-          >
-            Trace {{ character.name }}
-          </option>
-          <option
-            v-if="
-              traceName &&
-              !traceCandidates.some((item) => item.name === traceName)
-            "
-            :value="traceName"
-          >
-            Trace {{ traceName }}
-          </option>
-        </select>
+        <MapTraceLeaderSelect
+          v-model="traceName"
+          :managed="traceManagedOptions"
+          :nearby="traceNearbyOptions"
+          :nearby-status="tracePicker.nearbyStatus"
+          @interacting="
+            (open) => {
+              if (open) onTraceSelectFocus()
+              else onTraceSelectBlur()
+            }
+          "
+        />
         <button
           class="compact-button"
           type="button"
@@ -562,13 +587,31 @@ function cancelReview(operation: FanOutOperation) {
         <button
           class="compact-button"
           type="button"
-          disabled
-          title="Nearby-player discovery is unavailable; tracked in issue #57."
+          :disabled="!mapSnapshotCurrent"
+          :title="
+            mapSnapshotCurrent
+              ? 'Refresh nearby players from the live map feed'
+              : 'Refresh the map scope before reloading nearby players'
+          "
           aria-label="Refresh nearby players"
+          @click="emit('refreshNearbyPlayers')"
         >
           <UIcon name="i-lucide-refresh-cw" />
         </button>
       </div>
+      <p
+        v-show="tracePicker.nearbyStatus === 'empty'"
+        class="map-trace-hint map-empty-copy"
+      >
+        No nearby players in the current map snapshot.
+      </p>
+      <p
+        v-show="tracePicker.nearbyStatus === 'unavailable'"
+        class="map-trace-hint map-empty-copy"
+      >
+        Nearby players unavailable. Managed characters and manual entry still
+        work.
+      </p>
     </div>
     <details
       v-if="variant === 'map'"
@@ -746,7 +789,7 @@ function cancelReview(operation: FanOutOperation) {
       }}
     </button>
     <p
-      v-if="confirmationRequired && !mapDisconnectOperation"
+      v-if="confirmationRequired && !mapInlineConfirmOperation"
       class="remote-control-impact"
     >
       Explicit confirmation is required before sending
@@ -762,7 +805,7 @@ function cancelReview(operation: FanOutOperation) {
     </p>
 
     <CommandFanOutPreview
-      v-if="selectedOperation && !mapDisconnectOperation"
+      v-if="selectedOperation && !mapInlineConfirmOperation"
       :operation="selectedOperation"
       :confirmation-required="confirmationRequired"
       :busy="actions.preparing.value || actions.submitting.value"

@@ -37,6 +37,7 @@ type Subscription = {
 type CommandFanOutOwner = {
   controlChunks: string[][]
   controlIndex: number
+  controlTargetKey: string
   commandChunks: string[][]
   commandIndex: number
   commandFreshChunks: Set<number>
@@ -495,6 +496,7 @@ function fanOutOwner(ownerID: string) {
     owner = {
       controlChunks: [],
       controlIndex: 0,
+      controlTargetKey: '',
       commandChunks: [],
       commandIndex: 0,
       commandFreshChunks: new Set(),
@@ -518,7 +520,12 @@ function fanOutOwner(ownerID: string) {
 }
 
 function setCommandFanOutTargets(ownerID: string, characterIDs: string[]) {
+  const targetKey = [...new Set(characterIDs)].sort().join('\u0000')
   const owner = fanOutOwner(ownerID)
+  if (owner.controlTargetKey === targetKey) {
+    return
+  }
+  owner.controlTargetKey = targetKey
   owner.controlChunks = chunkFanOutValues([...new Set(characterIDs)])
   owner.controlIndex = 0
   const feed = commandFanOutFeeds.value[ownerID]!

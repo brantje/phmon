@@ -58,6 +58,12 @@ type CapabilityChecker interface {
 	CommandSupport(agentID string, generation uint64, commandName string) (bool, string)
 }
 
+// NavigationAdmission validates navigation-specific commands against the
+// in-memory route projection owned by the live map hub.
+type NavigationAdmission interface {
+	CanStopNavigation(characterID, sessionID, commandID string, routeSequence uint64) (bool, string)
+}
+
 type Validated struct {
 	Name         string
 	Args         json.RawMessage
@@ -110,15 +116,19 @@ type ResultInput struct {
 }
 
 type ControlState struct {
-	SessionID         string     `json:"session_id"`
-	TrainingAvailable bool       `json:"training_available"`
-	TrainingRegion    *int       `json:"training_region,omitempty"`
-	TrainingZone      *string    `json:"training_zone,omitempty"`
-	TrainingX         *float64   `json:"training_x,omitempty"`
-	TrainingY         *float64   `json:"training_y,omitempty"`
-	TrainingZ         *float64   `json:"training_z,omitempty"`
-	TrainingRadius    *float64   `json:"training_radius,omitempty"`
-	ObservedAt        *time.Time `json:"observed_at,omitempty"`
+	SessionID          string     `json:"session_id"`
+	TrainingAvailable  bool       `json:"training_available"`
+	TrainingRegion     *int       `json:"training_region,omitempty"`
+	TrainingZone       *string    `json:"training_zone,omitempty"`
+	TrainingX          *float64   `json:"training_x,omitempty"`
+	TrainingY          *float64   `json:"training_y,omitempty"`
+	TrainingZ          *float64   `json:"training_z,omitempty"`
+	TrainingRadius     *float64   `json:"training_radius,omitempty"`
+	ObservedAt         *time.Time `json:"observed_at,omitempty"`
+	ActivityState      *string    `json:"activity_state,omitempty"`
+	ActivityObservedAt *time.Time `json:"activity_observed_at,omitempty"`
+	ActivitySource     *string    `json:"activity_source,omitempty"`
+	TraceRequestedName *string    `json:"trace_requested_name,omitempty"`
 }
 
 // TrainingAreaObservation is one active session's current observed training
@@ -134,4 +144,24 @@ func (s ControlState) ZoneNameValid() bool {
 		return true
 	}
 	return *s.TrainingZone != "" && *s.TrainingZone == strings.TrimSpace(*s.TrainingZone) && utf8.RuneCountInString(*s.TrainingZone) <= 100
+}
+
+func (s ControlState) ActivityValid() bool {
+	if s.ActivityState == nil {
+		return true
+	}
+	switch strings.TrimSpace(*s.ActivityState) {
+	case "unknown", "tracing", "not_tracing":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s ControlState) TraceRequestedValid() bool {
+	if s.TraceRequestedName == nil {
+		return true
+	}
+	name := strings.TrimSpace(*s.TraceRequestedName)
+	return name != "" && len(name) <= 64 && !strings.ContainsRune(name, 0)
 }

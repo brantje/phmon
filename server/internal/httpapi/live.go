@@ -147,6 +147,13 @@ func (h *LiveHub) SetNavigation(store *navigation.Store) {
 	}
 }
 
+func (h *LiveHub) NavigationAdmission() *navigation.Store {
+	if h == nil {
+		return nil
+	}
+	return h.navigation
+}
+
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
 		agents:     agents,
