@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 11
+	agentProtocolVersion    = 13
 	agentMinProtocolVersion = 2
 )
 
@@ -997,7 +997,7 @@ func validReportedCommandName(name string) bool {
 	switch name {
 	case "bot.start", "bot.stop", "trace.start", "trace.stop",
 		"training.area.set", "training.radius.set", "character.walk", "character.navigate",
-		"character.navigate.stop",
+		"character.navigate.stop", "character.teleport",
 		"character.return", "character.disconnect", "client.clientless", "chat.send":
 		return true
 	default:

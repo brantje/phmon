@@ -418,6 +418,7 @@ def frame_fixtures(plugin, resources, monsters):
             "dead": False,
             "level": 71,
             "region": 25000,
+            "zone": "Jangan",
             "x": 30.0,
             "y": 40.0,
         }],

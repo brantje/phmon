@@ -40,6 +40,29 @@ class PlayerObservationTests(unittest.TestCase):
         }])
         self.assertNotIn('items', players[0])
         self.assertNotIn('z', players[0])
+        self.assertNotIn('zone', players[0])
+
+    def test_collect_player_observation_resolves_zone_once_per_region(self):
+        raw = {
+            '1': {'name': 'A', 'region': 26753, 'x': 1, 'y': 2},
+            '2': {'name': 'B', 'region': 26753, 'x': 3, 'y': 4},
+            '3': {'name': 'C', 'x': 5, 'y': 6},
+        }
+        with patch.object(plugin, '_get_zone_name', return_value=' Taklamakan ') as get_zone:
+            status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'observed')
+        self.assertFalse(truncated)
+        self.assertEqual([player.get('zone') for player in players], ['Taklamakan', 'Taklamakan', None])
+        get_zone.assert_called_once_with(26753)
+
+    def test_collect_player_observation_omits_zone_when_lookup_fails(self):
+        raw = {'7': {'name': 'Nearby', 'region': 26753, 'x': 1, 'y': 2}}
+        with patch.object(plugin, '_get_zone_name', side_effect=RuntimeError('lookup failed')):
+            status, players, truncated = plugin.collect_player_observation({'get_players': lambda: raw})
+        self.assertEqual(status, 'observed')
+        self.assertFalse(truncated)
+        self.assertEqual(players[0]['region'], 26753)
+        self.assertNotIn('zone', players[0])
 
     def test_collect_player_observation_marks_malformed_duplicate_and_bounds(self):
         valid = {'name': 'Player', 'x': 1, 'y': 2}
@@ -50,6 +73,36 @@ class PlayerObservationTests(unittest.TestCase):
         self.assertTrue(truncated)
         self.assertEqual(len(players), 1)
         self.assertEqual(players[0]['x'], 1.0)
+
+    def test_player_snapshot_signature_includes_zone(self):
+        base = {'player_id': '1', 'name': 'A', 'region': 26753, 'x': 1.0, 'y': 2.0}
+        named = plugin._player_snapshot_signature('observed', 26753, 0.0, [dict(base, zone='Taklamakan')])
+        missing = plugin._player_snapshot_signature('observed', 26753, 0.0, [dict(base)])
+        self.assertNotEqual(named, missing)
+
+    def test_sample_players_names_regionless_rows_from_the_observer_region(self):
+        previous = (
+            plugin._worker, plugin._last_player_poll_at, plugin._last_player_region,
+            plugin._last_player_observer_z, plugin._last_player_signature,
+            plugin._last_player_publish_at, plugin._player_sample_forced,
+        )
+        plugin._reset_player_sample_state()
+        worker = Mock()
+        worker.update_map_players = Mock(return_value=True)
+        plugin._worker = worker
+        identity = {'server': 'Greatest', 'name': 'Observer'}
+        state = {'region': 26753}
+        position = {'z': 96.0}
+        row = {'player_id': '7', 'name': 'Nearby', 'x': 1.0, 'y': 2.0}
+        with patch.object(plugin, 'collect_player_observation', return_value=('observed', [row], False)), \
+                patch.object(plugin, '_get_zone_name', return_value='Taklamakan') as get_zone:
+            self.assertTrue(plugin._sample_players(identity, state, position, 100.0))
+        sent = worker.update_map_players.call_args.args[3]
+        self.assertEqual(sent[0]['zone'], 'Taklamakan')
+        get_zone.assert_called_once_with(26753)
+        plugin._worker, plugin._last_player_poll_at, plugin._last_player_region, \
+            plugin._last_player_observer_z, plugin._last_player_signature, \
+            plugin._last_player_publish_at, plugin._player_sample_forced = previous
 
     def test_player_snapshot_signature_includes_observer_z(self):
         players = [{'player_id': '1', 'name': 'A', 'x': 1.0, 'y': 2.0}]
@@ -2873,6 +2926,261 @@ class WorkerStopTests(unittest.TestCase):
             plugin._worker = original
 
         set_status.assert_called_once_with('Connected to PhMon backend.')
+
+
+class TeleporterProbeTests(unittest.TestCase):
+    def test_probe_never_injects_and_caps_pair_calls(self):
+        calls = []
+
+        def get_teleport_data(source, destination):
+            calls.append((source, destination))
+            if destination == plugin._TELEPORT_PROBE_UNKNOWN_DEST:
+                return None
+            return (1, 42)
+
+        def inject_joymax(*_args, **_kwargs):
+            raise AssertionError('inject_joymax must not run during probe')
+
+        npcs = [{
+            'id': '10', 'role': 'teleporter', 'name': 'Jangan', 'servername': 'GATE_CH',
+        }, {
+            'id': '11', 'role': 'teleporter', 'name': 'Donwhang', 'servername': 'GATE_DW',
+        }]
+        api = {
+            'get_npcs': lambda: {},
+            'get_teleport_data': get_teleport_data,
+            'inject_joymax': inject_joymax,
+        }
+        result = plugin.probe_teleporter_capabilities(api=api, npcs=npcs)
+        self.assertLessEqual(len(calls), plugin.MAX_TELEPORT_PROBE_PAIR_CALLS)
+        self.assertEqual(result['enumeration'], 'unsupported')
+        self.assertTrue(result['capabilities']['get_teleport_data'])
+        self.assertTrue(any(
+            test['classification']['result'] == 'tuple' and test['classification']['code'] == 42
+            for test in result['pair_tests']
+        ))
+        self.assertTrue(any(
+            test['classification']['result'] == 'none'
+            for test in result['pair_tests']
+        ))
+
+    def test_probe_reports_missing_teleport_api(self):
+        result = plugin.probe_teleporter_capabilities(api={'get_npcs': lambda: {}}, npcs=[])
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertIn('get_teleport_data_missing', result['errors'])
+
+    def test_probe_classifies_teleport_errors(self):
+        def explode(*_args, **_kwargs):
+            raise RuntimeError('boom')
+
+        result = plugin.probe_teleporter_capabilities(
+            api={'get_teleport_data': explode},
+            npcs=[{'id': '1', 'role': 'teleporter', 'name': 'Jangan', 'servername': 'GATE_CH'}],
+        )
+        self.assertEqual(result['pair_tests'][0]['classification']['result'], 'error')
+        self.assertEqual(result['pair_tests'][0]['classification']['type'], 'RuntimeError')
+
+    def test_summarize_teleport_probe(self):
+        text = plugin.summarize_teleport_probe({
+            'gates': [{'id': '10'}],
+            'pair_tests': [{'classification': {'result': 'none'}}],
+            'capabilities': {'get_teleport_data': True},
+        })
+        self.assertIn('1 gate', text)
+        self.assertIn('enumeration unsupported', text)
+
+    def test_probe_marks_execution_when_hotan_jangan_resolves(self):
+        result = plugin.probe_teleporter_capabilities(
+            api={'get_teleport_data': lambda s, d: (1, 7) if s == 'Hotan' and d == 'Jangan' else None},
+            npcs=[{
+                'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+            }],
+        )
+        self.assertEqual(result['execution'], 'documented_script_command_verified_hotan_jangan')
+
+    def test_probe_includes_hotan_jangan_reference_pairs(self):
+        gates = [{'id': '4', 'name': 'Hotan', 'servername': 'GATE_KT'}]
+        result = plugin.probe_teleporter_capabilities(
+            api={'get_teleport_data': lambda _s, _d: None},
+            npcs=[{
+                'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+            }],
+        )
+        tags = [test.get('tag') for test in result['pair_tests']]
+        self.assertIn('hotan_to_jangan', tags)
+        self.assertIn('gate_kt_to_jangan_gate', tags)
+        hotan_jangan = next(
+            test for test in result['pair_tests'] if test.get('tag') == 'hotan_to_jangan'
+        )
+        self.assertEqual(hotan_jangan['source'], 'Hotan')
+        self.assertEqual(hotan_jangan['destination'], 'Jangan')
+
+    def test_hotan_jangan_test_requires_gate(self):
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), patch.object(
+            plugin, 'collect_npc_observation', return_value=('observed', [], False)
+        ), patch.object(plugin, '_optional_phbot_api', return_value=lambda *_a, **_k: None), patch.object(
+            plugin, '_set_gui_status'
+        ) as set_status:
+            plugin.test_teleport_hotan_jangan()
+        set_status.assert_called()
+        self.assertIn('GATE_KT', set_status.call_args[0][0])
+
+    def test_hotan_jangan_test_runs_script_when_pair_resolves(self):
+        scripts = []
+
+        def start_script(line):
+            scripts.append(line)
+            return True
+
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+        }]
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), patch.object(
+            plugin, 'collect_npc_observation', return_value=('observed', npcs, False)
+        ), patch.object(
+            plugin, '_optional_phbot_api',
+            side_effect=lambda name: {
+                'get_teleport_data': lambda s, d: (1, 99) if s == 'Hotan' and d == 'Jangan' else None,
+                'start_script': start_script,
+            }.get(name),
+        ), patch.object(plugin, '_set_gui_status'), patch.object(plugin, '_log'):
+            plugin.test_teleport_hotan_jangan()
+        self.assertEqual(scripts, ['teleport,Hotan,Jangan'])
+
+    def test_character_teleport_command_requires_gate_and_route(self):
+        scripts = []
+        adapter = plugin.PhBotAdapter({
+            'get_teleport_data': lambda s, d: (1, 3) if s == 'Hotan' and d == 'Jangan' else None,
+            'start_script': lambda line: scripts.append(line) or True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+            'region': 25000, 'x': 30, 'y': 40,
+        }]
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000099',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.teleport',
+            'args': {'source': 'Hotan', 'destination': 'Jangan', 'gate_servername': 'GATE_KT'},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        with patch.object(plugin, 'collect_npc_observation', return_value=('observed', npcs, False)):
+            worker._accept_command(frame)
+            worker.process_one_command({'server': 'Silkroad', 'name': 'Alpha'}, 25000)
+        worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(scripts, ['teleport,Hotan,Jangan'])
+        self.assertEqual(result['effective_args']['teleport_code'], 3)
+
+    def test_session_teleporter_gate_requires_source_match(self):
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+        }]
+        self.assertIsNone(plugin._session_teleporter_gate(npcs, 'GATE_KT', 'Jangan'))
+        self.assertEqual(
+            plugin._session_teleporter_gate(npcs, 'GATE_KT', 'Hotan')['id'],
+            '4',
+        )
+        self.assertEqual(
+            plugin._session_teleporter_gate(npcs, 'GATE_KT', 'GATE_KT')['id'],
+            '4',
+        )
+
+    def test_character_teleport_rejects_non_tuple_route(self):
+        adapter = plugin.PhBotAdapter({
+            'get_teleport_data': lambda *_args: False,
+            'start_script': lambda *_args: True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        npcs = [{
+            'id': '4', 'role': 'teleporter', 'name': 'Hotan', 'servername': 'GATE_KT',
+        }]
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000098',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.teleport',
+            'args': {'source': 'Hotan', 'destination': 'Jangan', 'gate_servername': 'GATE_KT'},
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        with patch.object(plugin, 'collect_npc_observation', return_value=('observed', npcs, False)):
+            worker._accept_command(frame)
+            worker.process_one_command({'server': 'Silkroad', 'name': 'Alpha'}, 25000)
+        worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['reason'], 'teleport_route_unavailable')
+
+    def test_capability_reports_character_teleport_when_apis_present(self):
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {},
+            'get_teleport_data': lambda *_args: None,
+            'start_script': lambda *_args: True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        caps = {item['name']: item for item in worker._capability_frame()['commands']}
+        self.assertTrue(caps['character.teleport']['supported'])
+
+    def test_discover_teleport_routes_for_gate(self):
+        plugin._teleport_route_cache.clear()
+
+        def get_teleport_data(source, destination):
+            if source == 'Hotan' and destination == 'Jangan':
+                return (1, 7)
+            if source == 'Hotan' and destination == 'Samarkand':
+                return (1, 2)
+            if source == 'Jangan' and destination == 'Soldier Choiyoung [teleport]':
+                return (1, 4)
+            return None
+
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {},
+            'get_teleport_data': get_teleport_data,
+            'start_script': lambda *_args: True,
+        })
+        routes = plugin._teleport_routes_for_gate('Hotan', 'GATE_KT', adapter)
+        self.assertEqual(
+            [item['destination'] for item in routes],
+            ['Jangan', 'Samarkand'],
+        )
+        self.assertEqual(routes[0]['teleport_code'], 7)
+        jangan = plugin._teleport_routes_for_gate('Jangan', 'GATE_CH', adapter)
+        self.assertIn(
+            'Soldier Choiyoung [teleport]',
+            [item['destination'] for item in jangan],
+        )
+
+    def test_default_adapter_exposes_get_teleport_data_for_capability_gate(self):
+        teleport = lambda *_args: None
+
+        def fake_optional(name):
+            if name == 'get_teleport_data':
+                return teleport
+            return None
+
+        with patch.object(plugin, '_optional_phbot_api', side_effect=fake_optional):
+            adapter = plugin.PhBotAdapter()
+        self.assertTrue(adapter.has('get_teleport_data'))
 
 
 if __name__ == '__main__':

@@ -24,8 +24,8 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
-import { npcMapMarkers } from '~/utils/mapNpcMarkers'
-import { playerMapMarkers } from '~/utils/mapPlayerMarkers'
+import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
+import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
@@ -66,6 +66,7 @@ import {
 import { submitNavigationStop } from '~/utils/mapNavigationStop'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
+import { useMapTeleportAction } from '~/composables/useMapTeleportAction'
 import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import {
@@ -303,6 +304,14 @@ const navigationAction = useMapNavigationAction({
   reviewActions: () => reviewActions.value,
   now: () => freshnessNow.value,
 })
+const teleportAction = useMapTeleportAction({
+  server: () => server.value,
+  selectedTargetIDs: () => [...actionTargetIDs.value],
+  characters: () => [...fleetCharacters.value],
+  mapFeedCurrent: () =>
+    streamCurrent.value && mapSnapshotInFeedScope.value && !liveStale.value,
+  reviewActions: () => reviewActions.value,
+})
 const actionNotification = ref<MapActionNotification | null>(null)
 let actionNotificationTimer: ReturnType<typeof setTimeout> | undefined
 function showMapActionNotification(notification: MapActionNotification) {
@@ -317,6 +326,7 @@ useMapActionNotifications(
   () => [
     ...navigationAction.operations.value,
     ...navigationAction.trainingOperations.value,
+    ...teleportAction.operations.value,
   ],
   showMapActionNotification,
 )
@@ -789,22 +799,182 @@ function openContextNavigation(action: {
   point: RasterPosition
   anchor: { x: number; y: number }
 }) {
+  clearTeleportSubmenus()
   void navigationAction.open(
     action.point,
     action.anchor,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
+  syncTeleportGateForNavigation()
 }
 function openNpcNavigation(
   point: RasterPosition,
   anchor: { x: number; y: number },
 ) {
+  clearTeleportSubmenus()
   void navigationAction.open(
     point,
     anchor,
     document.querySelector<HTMLElement>('.map-canvas'),
   )
+  syncTeleportGateForNavigation()
 }
+function openCustomTeleportDestination() {
+  void teleportAction.showDestinationDialog()
+  navigationAction.close(false)
+}
+function chooseTeleportDestination(destination: string) {
+  teleportAction.destination.value = destination
+  void teleportAction.onDestinationInput()
+}
+function setTeleportDestinationFromInput(event: Event) {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  chooseTeleportDestination(target.value)
+}
+function openTeleporterContext(
+  npc: MapNpc,
+  point: RasterPosition,
+  anchor: { x: number; y: number },
+) {
+  clearTeleportSubmenus()
+  const focusTarget = document.querySelector<HTMLElement>('.map-canvas')
+  void navigationAction.open(point, anchor, focusTarget)
+  syncTeleportGateForNavigation(npc)
+}
+const rangedTeleporters = computed(() => {
+  const npcs = (mapSnapshot.value?.npcs?.npcs || []).filter(
+    (npc) => npc.role === 'teleporter',
+  )
+  const targets = actionTargetIDs.value
+  if (!targets.size) return npcs
+  return npcs.filter((npc) =>
+    npc.observers?.some((observer) => targets.has(observer.character_id)),
+  )
+})
+function syncTeleportGateForNavigation(preferred?: MapNpc) {
+  const gates = rangedTeleporters.value
+  const gate =
+    preferred && gates.some((item) => item.id === preferred.id)
+      ? preferred
+      : gates.length === 1
+        ? gates[0]
+        : null
+  if (!gate) {
+    if (teleportAction.menuPresentation.value === 'context')
+      teleportAction.close(false)
+    return
+  }
+  if (
+    teleportAction.menuOpen.value &&
+    teleportAction.menuPresentation.value === 'context' &&
+    teleportAction.menuNpc.value?.id === gate.id
+  )
+    return
+  void teleportAction.openContext(
+    gate,
+    navigationAction.menuAnchor.value,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
+}
+const teleportMenuTrigger = ref<HTMLButtonElement | null>(null)
+const teleportGateMenu = ref<{ x: number; y: number } | null>(null)
+const teleportDestinationMenu = ref<{ x: number; y: number } | null>(null)
+const teleportCharacterMenu = ref<{
+  destination: string
+  x: number
+  y: number
+} | null>(null)
+let teleportSubmenuTimer: ReturnType<typeof setTimeout> | undefined
+
+function teleportFlyoutOrigin(rect: DOMRect, width: number) {
+  const x =
+    rect.right + 6 + width > window.innerWidth
+      ? Math.max(8, rect.left - width - 6)
+      : rect.right + 2
+  const y = Math.max(8, Math.min(rect.top - 4, window.innerHeight - 48))
+  return { x, y }
+}
+
+function keepTeleportSubmenus() {
+  if (teleportSubmenuTimer) clearTimeout(teleportSubmenuTimer)
+  teleportSubmenuTimer = undefined
+}
+
+function clearTeleportSubmenus() {
+  keepTeleportSubmenus()
+  teleportGateMenu.value = null
+  teleportDestinationMenu.value = null
+  teleportCharacterMenu.value = null
+}
+
+function hideTeleportSubmenusSoon() {
+  if (teleportSubmenuTimer) clearTimeout(teleportSubmenuTimer)
+  teleportSubmenuTimer = setTimeout(() => {
+    teleportGateMenu.value = null
+    teleportDestinationMenu.value = null
+    teleportCharacterMenu.value = null
+  }, 280)
+}
+
+function showTeleportMenu(element: HTMLElement) {
+  keepTeleportSubmenus()
+  const gates = rangedTeleporters.value
+  if (gates.length > 1) {
+    teleportGateMenu.value = teleportFlyoutOrigin(
+      element.getBoundingClientRect(),
+      220,
+    )
+    teleportDestinationMenu.value = null
+    teleportCharacterMenu.value = null
+    return
+  }
+  teleportGateMenu.value = null
+  if (gates[0]) syncTeleportGateForNavigation(gates[0])
+  showTeleportDestinations(element)
+}
+
+function showTeleportGateDestinations(npc: MapNpc, element: HTMLElement) {
+  keepTeleportSubmenus()
+  syncTeleportGateForNavigation(npc)
+  showTeleportDestinations(element)
+}
+
+function showTeleportDestinations(element: HTMLElement) {
+  keepTeleportSubmenus()
+  teleportDestinationMenu.value = teleportFlyoutOrigin(
+    element.getBoundingClientRect(),
+    280,
+  )
+  teleportCharacterMenu.value = null
+}
+
+function showTeleportGroup(destination: string, element: HTMLElement) {
+  keepTeleportSubmenus()
+  if (!teleportDestinationMenu.value && teleportMenuTrigger.value)
+    showTeleportDestinations(teleportMenuTrigger.value)
+  teleportCharacterMenu.value = {
+    destination,
+    ...teleportFlyoutOrigin(element.getBoundingClientRect(), 240),
+  }
+  void teleportAction.setDestination(destination)
+}
+
+watch(
+  () => navigationAction.menuOpen.value,
+  (open) => {
+    if (!open && teleportAction.menuPresentation.value === 'context') {
+      clearTeleportSubmenus()
+      teleportAction.close(false)
+    }
+  },
+)
+watch(
+  () => teleportAction.menuOpen.value,
+  (open) => {
+    if (!open) clearTeleportSubmenus()
+  },
+)
 const scopedCharacters = computed(() => {
   const items = mapSnapshotInFeedScope.value
     ? mapSnapshot.value?.characters || []
@@ -1177,6 +1347,7 @@ const mapMarkers = computed(() => {
     itemName?: string
     itemIconUrl?: string
     event?: ActivityEvent
+    zoneLabel?: string
   }> = [...characterMarkers]
   const addMarker = (
     id: string,
@@ -1237,7 +1408,14 @@ const mapMarkers = computed(() => {
           ? characterMarkers.map((marker) => marker.character.name)
           : [],
         layerParty.value ? currentPartyMembers.value : [],
-      ),
+      ).map((marker) => ({
+        ...marker,
+        zoneLabel: playerZoneLabel(
+          marker.player.zone,
+          marker.player.region,
+          zoneNameForRegion,
+        ),
+      })),
     )
   }
   markers.push(
@@ -2002,7 +2180,14 @@ useHead({ title: 'Map · PhMon' })
               @trainingdiscard="discardTrainingDraft"
               @contextaction="openContextNavigation"
               @navigateto="openNpcNavigation"
-              @mapdrag="navigationAction.close(false)"
+              @teleportto="openTeleporterContext"
+              @teleportercontext="openTeleporterContext"
+              @mapdrag="
+                () => {
+                  navigationAction.close(false)
+                  teleportAction.close(false)
+                }
+              "
               @opencharacter="
                 (characterID) =>
                   router.push(`/characters/${encodeURIComponent(characterID)}`)
@@ -2427,6 +2612,29 @@ useHead({ title: 'Map · PhMon' })
               {{ navigationAction.trainingSummary.value }}
             </p>
             <button
+              v-if="rangedTeleporters.length"
+              ref="teleportMenuTrigger"
+              class="map-navigation-menu-action"
+              role="menuitem"
+              type="button"
+              aria-haspopup="true"
+              :aria-expanded="
+                Boolean(teleportDestinationMenu || teleportGateMenu)
+              "
+              @mouseenter="
+                showTeleportMenu($event.currentTarget as HTMLElement)
+              "
+              @mouseleave="hideTeleportSubmenusSoon"
+              @focus="showTeleportMenu($event.currentTarget as HTMLElement)"
+            >
+              <UIcon name="i-lucide-signpost" />
+              Teleport
+              <UIcon
+                name="i-lucide-chevron-right"
+                class="map-context-submenu-chevron"
+              />
+            </button>
+            <button
               class="map-navigation-menu-action"
               role="menuitem"
               type="button"
@@ -2442,6 +2650,276 @@ useHead({ title: 'Map · PhMon' })
             >
               {{ copyNotice }}
             </p>
+          </div>
+          <Teleport to="body">
+            <div
+              v-if="teleportGateMenu"
+              class="map-teleport-flyout-panel map-teleport-menu"
+              role="menu"
+              aria-label="Teleporters in range"
+              :style="{
+                left: `${teleportGateMenu.x}px`,
+                top: `${teleportGateMenu.y}px`,
+              }"
+              @pointerdown.stop
+              @mouseenter="keepTeleportSubmenus"
+              @mouseleave="hideTeleportSubmenusSoon"
+            >
+              <button
+                v-for="npc in rangedTeleporters"
+                :key="npc.id"
+                class="map-navigation-menu-action"
+                type="button"
+                role="menuitem"
+                aria-haspopup="true"
+                @mouseenter="
+                  showTeleportGateDestinations(
+                    npc,
+                    $event.currentTarget as HTMLElement,
+                  )
+                "
+                @focus="
+                  showTeleportGateDestinations(
+                    npc,
+                    $event.currentTarget as HTMLElement,
+                  )
+                "
+              >
+                {{ npcDisplayLabel(npc) }}
+                <UIcon
+                  name="i-lucide-chevron-right"
+                  class="map-context-submenu-chevron"
+                />
+              </button>
+            </div>
+            <div
+              v-if="teleportDestinationMenu"
+              class="map-teleport-flyout-panel map-teleport-menu"
+              role="menu"
+              aria-label="Teleport destinations"
+              :style="{
+                left: `${teleportDestinationMenu.x}px`,
+                top: `${teleportDestinationMenu.y}px`,
+              }"
+              @pointerdown.stop
+              @mouseenter="keepTeleportSubmenus"
+              @mouseleave="hideTeleportSubmenusSoon"
+            >
+              <template v-if="teleportAction.discoveredRoutes.value.length">
+                <button
+                  v-for="route in teleportAction.discoveredRoutes.value"
+                  :key="route.destination"
+                  class="map-navigation-menu-action"
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="true"
+                  :aria-expanded="
+                    teleportCharacterMenu?.destination === route.destination
+                  "
+                  @mouseenter="
+                    showTeleportGroup(
+                      route.destination,
+                      $event.currentTarget as HTMLElement,
+                    )
+                  "
+                  @focus="
+                    showTeleportGroup(
+                      route.destination,
+                      $event.currentTarget as HTMLElement,
+                    )
+                  "
+                >
+                  {{ route.destination }}
+                  <UIcon
+                    name="i-lucide-chevron-right"
+                    class="map-context-submenu-chevron"
+                  />
+                </button>
+              </template>
+              <p v-else class="map-navigation-menu-summary">
+                No verified destinations from this gate yet.
+              </p>
+              <button
+                class="map-navigation-menu-action"
+                type="button"
+                role="menuitem"
+                @click="openCustomTeleportDestination"
+              >
+                <UIcon name="i-lucide-pencil" />
+                Other destination…
+              </button>
+            </div>
+            <div
+              v-if="teleportCharacterMenu"
+              class="map-teleport-flyout-panel map-teleport-menu"
+              role="menu"
+              :aria-label="`Teleport to ${teleportCharacterMenu.destination}`"
+              :style="{
+                left: `${teleportCharacterMenu.x}px`,
+                top: `${teleportCharacterMenu.y}px`,
+              }"
+              @pointerdown.stop
+              @mouseenter="keepTeleportSubmenus"
+              @mouseleave="hideTeleportSubmenusSoon"
+            >
+              <button
+                class="map-navigation-menu-action"
+                type="button"
+                role="menuitem"
+                :disabled="
+                  teleportAction.preparing.value ||
+                  teleportAction.submitting.value ||
+                  teleportAction.counts.value.eligible === 0
+                "
+                @click="teleportAction.submit()"
+              >
+                {{
+                  teleportAction.preparing.value
+                    ? 'Checking targets…'
+                    : teleportAction.targetLabel.value
+                }}
+              </button>
+              <p
+                v-if="teleportAction.menuSummary.value"
+                class="map-navigation-menu-summary"
+                role="status"
+              >
+                {{ teleportAction.menuSummary.value }}
+              </p>
+            </div>
+          </Teleport>
+          <div
+            v-if="
+              teleportAction.menuOpen.value &&
+              teleportAction.menuPresentation.value === 'dialog'
+            "
+            :ref="teleportAction.menuElement"
+            class="map-navigation-context map-teleport-context map-teleport-menu"
+            role="dialog"
+            aria-label="Teleporter destination"
+            :style="{
+              left: `${teleportAction.menuAnchor.value.x}px`,
+              top: `${teleportAction.menuAnchor.value.y}px`,
+            }"
+            @pointerdown.stop
+          >
+            <div class="map-context-heading">
+              <strong>{{ teleportAction.gateLabel.value }}</strong
+              ><small>Teleporter</small>
+            </div>
+            <div class="map-teleport-destination">
+              <span class="map-teleport-destination-label">Destination</span>
+              <ul
+                v-if="teleportAction.discoveredRoutes.value.length"
+                class="map-teleport-route-list"
+                role="listbox"
+                aria-label="Discovered teleport destinations"
+              >
+                <li
+                  v-for="route in teleportAction.discoveredRoutes.value"
+                  :key="route.destination"
+                  role="option"
+                  :aria-selected="
+                    teleportAction.destination.value === route.destination
+                  "
+                >
+                  <button
+                    type="button"
+                    class="map-teleport-route-button"
+                    :class="{
+                      'is-selected':
+                        teleportAction.destination.value === route.destination,
+                    }"
+                    @click="chooseTeleportDestination(route.destination)"
+                  >
+                    {{ route.destination }}
+                  </button>
+                </li>
+              </ul>
+              <label v-else class="map-teleport-destination-field">
+                <span class="sr-only">Destination name</span>
+                <input
+                  type="text"
+                  name="teleport-destination"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="64"
+                  placeholder="Town name (for example Jangan)"
+                  :value="teleportAction.destination.value"
+                  @input="setTeleportDestinationFromInput"
+                />
+              </label>
+              <p
+                v-if="teleportAction.discoveredRoutes.value.length"
+                class="map-teleport-route-note"
+              >
+                Routes verified with get_teleport_data at this gate. Type a
+                different name below if needed.
+              </p>
+              <label
+                v-if="teleportAction.discoveredRoutes.value.length"
+                class="map-teleport-destination-field map-teleport-destination-other"
+              >
+                <span>Other destination</span>
+                <input
+                  type="text"
+                  name="teleport-destination-custom"
+                  autocomplete="off"
+                  spellcheck="false"
+                  maxlength="64"
+                  :value="teleportAction.destination.value"
+                  @input="setTeleportDestinationFromInput"
+                />
+              </label>
+            </div>
+            <p v-if="!actionTargetIDs.size" class="map-navigation-menu-summary">
+              Tick characters in the panel to teleport them.
+            </p>
+            <CommandFanOutPreview
+              v-if="teleportAction.reviewOperation.value"
+              :operation="teleportAction.reviewOperation.value"
+              :busy="
+                teleportAction.preparing.value ||
+                teleportAction.submitting.value
+              "
+              @submit="teleportAction.confirmReview"
+              @cancel="teleportAction.cancelReview"
+            />
+            <template v-else>
+              <button
+                class="map-navigation-menu-action"
+                type="button"
+                :disabled="
+                  teleportAction.preparing.value ||
+                  teleportAction.submitting.value ||
+                  teleportAction.counts.value.eligible === 0
+                "
+                @click="teleportAction.submit"
+              >
+                <UIcon name="i-lucide-signpost" />
+                {{
+                  teleportAction.preparing.value
+                    ? 'Checking targets…'
+                    : teleportAction.submitting.value
+                      ? 'Submitting…'
+                      : teleportAction.targetLabel.value
+                }}
+              </button>
+              <p
+                v-if="teleportAction.menuSummary.value"
+                class="map-navigation-menu-summary"
+                role="status"
+              >
+                {{ teleportAction.menuSummary.value }}
+              </p>
+            </template>
+            <button
+              class="map-text-action"
+              type="button"
+              @click="teleportAction.close()"
+            >
+              Cancel
+            </button>
           </div>
           <div
             v-if="areaID !== 'world' && !canvasProfile"
@@ -2778,8 +3256,10 @@ useHead({ title: 'Map · PhMon' })
             <button
               v-if="
                 navigationAction.reviewOperation.value ||
+                teleportAction.reviewOperation.value ||
                 navigationAction.operations.value.length ||
-                navigationAction.trainingOperations.value.length
+                navigationAction.trainingOperations.value.length ||
+                teleportAction.operations.value.length
               "
               class="compact-button"
               type="button"
@@ -2807,6 +3287,16 @@ useHead({ title: 'Map · PhMon' })
                 @submit="navigationAction.submitReviewed"
                 @cancel="navigationAction.cancelReview"
               />
+              <CommandFanOutPreview
+                v-else-if="teleportAction.reviewOperation.value"
+                :operation="teleportAction.reviewOperation.value"
+                :busy="
+                  teleportAction.preparing.value ||
+                  teleportAction.submitting.value
+                "
+                @submit="teleportAction.confirmReview"
+                @cancel="teleportAction.cancelReview"
+              />
               <CommandFanOutResults
                 v-for="operation in navigationAction.operations.value.filter(
                   (item) =>
@@ -2826,6 +3316,24 @@ useHead({ title: 'Map · PhMon' })
                     navigationAction.retry(operation, characterID)
                 "
                 :on-dismiss="() => navigationAction.dismissResults(operation)"
+              />
+              <CommandFanOutResults
+                v-for="operation in teleportAction.operations.value.filter(
+                  (item) =>
+                    item.state !== 'prepared' && item.state !== 'cancelled',
+                )"
+                :key="'teleport-' + operation.operationID"
+                :operation="operation"
+                status-note="Script acceptance does not prove arrival; check zone or position separately."
+                :stale="false"
+                :on-retry="
+                  (characterID: string) =>
+                    teleportAction.fanout.retrySubmission(
+                      operation,
+                      characterID,
+                    )
+                "
+                :on-dismiss="() => teleportAction.fanout.dismiss(operation)"
               />
               <CommandFanOutResults
                 v-for="operation in navigationAction.trainingOperations.value.filter(
@@ -3537,6 +4045,111 @@ useHead({ title: 'Map · PhMon' })
   .map-header-row .map-go-to {
     margin-left: 0;
   }
+}
+
+.map-teleport-destination {
+  display: grid;
+  gap: 4px;
+  padding: 6px 9px;
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.map-teleport-destination-label {
+  font-size: 12px;
+  color: var(--ph-muted);
+}
+
+.map-teleport-destination-field {
+  display: grid;
+  gap: 4px;
+}
+
+.map-teleport-route-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.map-teleport-route-button {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #3a4d63;
+  border-radius: 3px;
+  background: #121a26;
+  color: var(--ph-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-teleport-route-button.is-selected,
+.map-teleport-route-button:hover {
+  border-color: #6f8eb8;
+  background: #1a2838;
+}
+
+.map-teleport-route-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8fa3bc;
+}
+
+.map-teleport-destination-other span {
+  font-size: 11px;
+}
+
+.map-teleport-destination input {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #495b6f;
+  border-radius: 3px;
+  background: #0a1018;
+  color: var(--ph-text);
+  font-size: 13px;
+}
+
+.map-context-submenu-chevron {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.map-teleport-flyout-panel .map-navigation-menu-action {
+  width: max-content;
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+.map-teleport-flyout-panel {
+  position: fixed;
+  z-index: 1500;
+  width: max-content;
+  min-width: 180px;
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: min(70vh, 420px);
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid #495b6f;
+  border-radius: 5px;
+  background: #0d131df5;
+  color: #eaf1ff;
+  box-shadow: 0 8px 28px #000b;
+}
+
+.map-navigation-context.map-teleport-flyout {
+  z-index: 1500;
+  overflow: visible;
+  max-height: none;
 }
 
 .map-navigation-context {

@@ -31,6 +31,7 @@ type mapPlayer struct {
 	Dead                *bool               `json:"dead,omitempty"`
 	Level               *int                `json:"level,omitempty"`
 	Region              int                 `json:"region"`
+	Zone                string              `json:"zone,omitempty"`
 	X                   float64             `json:"x"`
 	Y                   float64             `json:"y"`
 	ObserverRegion      int                 `json:"observer_region"`
@@ -82,7 +83,7 @@ func projectPlayers(profile mapprofile.Profile, snapshots []players.LiveSnapshot
 			candidate := mapPlayer{
 				ID: player.PlayerID, PlayerID: player.PlayerID, Name: player.Name,
 				Guild: player.Guild, Grant: player.Grant, Dead: player.Dead, Level: player.Level,
-				Region: placementRegion, X: player.X, Y: player.Y,
+				Region: placementRegion, Zone: player.Zone, X: player.X, Y: player.Y,
 				ObserverRegion: snapshot.Region, ObserverZ: snapshot.ObserverZ,
 				ObservedAt: snapshot.ObservedAt.UTC().Format(time.RFC3339Nano), observedAt: snapshot.ObservedAt,
 				observerCharacterID: snapshot.CharacterID,
@@ -97,9 +98,15 @@ func projectPlayers(profile mapprofile.Profile, snapshots []players.LiveSnapshot
 			}
 			if candidate.observedAt.After(previous.observedAt) ||
 				candidate.observedAt.Equal(previous.observedAt) && candidate.observerCharacterID < previous.observerCharacterID {
+				if candidate.Zone == "" {
+					candidate.Zone = previous.Zone
+				}
 				candidate.Observers = append(candidate.Observers, previous.Observers...)
 				byID[player.PlayerID] = candidate
 				continue
+			}
+			if previous.Zone == "" {
+				previous.Zone = candidate.Zone
 			}
 			previous.Observers = append(previous.Observers, candidate.Observers...)
 			byID[player.PlayerID] = previous

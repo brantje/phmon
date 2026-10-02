@@ -559,6 +559,7 @@ Canonical Slice 3 commands and application bounds:
 | `training.area.set`    | discriminated `current_position`, `position`, or `named` | region must be explicit/observed and positive; coordinates finite and abs <= 10,000,000; named area trimmed 1..100 chars |
 | `training.radius.set`  | `{radius:number}`                                        | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum                                              |
 | `character.walk`       | `{region:int,x:number,y:number,z:number}`                | same observed region only; finite coordinates abs <= 10,000,000                                                          |
+| `character.teleport`   | `{source:string,destination:string,gate_servername:string}` | comma-free labels 1..64 chars; `gate_servername` must match `GATE_*`; plugin requires live gate in session `get_npcs()`, successful `get_teleport_data`, then one `teleport,source,destination` script line via `start_script`; does not prove arrival |
 | `character.return`     | `{}`                                                     | bool means scroll invocation accepted, not teleport completion                                                           |
 | `character.disconnect` | `{}`                                                     | void return; does not alter relog settings                                                                               |
 | `client.clientless`    | `{}`                                                     | unsupported until a safe documented/versioned per-instance primitive is verified                                         |
@@ -1163,6 +1164,19 @@ are applied in that order for one character. The multi-target point action fans 
 only `training.area.set`, so each target keeps its own radius. Success is shown only
 after the durable command result; the circle moves when the next readback arrives.
 
+## Protocol v13: other-player zone names
+
+Protocol v13 keeps the v12 frames. `map.players` rows may include optional `zone`
+from `get_zone_name(region)`. Older agents omit the field. The server accepts
+protocol 2 through 13.
+
+## Protocol v12: teleporter routes on map NPCs
+
+Protocol v12 keeps the v11 command and navigation frames. `map.npcs` rows may include
+`teleport_routes`: a bounded list of `{destination, teleport_code?}` pairs resolved
+with `get_teleport_data` at that gate. Older agents omit the field. The server still
+accepts protocol 2 through 12.
+
 ## Issue #57 protocol v11: navigation stop, progress, and trace activity
 
 Protocol v11 adds `character.navigate.stop`, navigation progress fields on live map
@@ -1232,7 +1246,12 @@ session. Rows expire from the live map 35 seconds after `observed_at`, with the 
 5 second future skew as party observers.
 
 Each row has a canonical decimal-string `player_id`, required `name`, finite `x`/`y`,
-optional `guild`, `grant`, boolean `dead`, integer `level`, and optional `region`.
+optional `guild`, `grant`, boolean `dead`, integer `level`, optional `region`, and
+optional `zone`. `zone` is the `get_zone_name` result for that player's region.
+When the row has no region, it is the observer's zone, because the map places the
+player in the observer region. Older plugins omit `zone`. The map popup uses the
+sent name, and otherwise the zone already known for that region from a character
+or event.
 The plugin caps a snapshot at 128 rows and 64 KiB serialized payload, marking
 `truncated` when a row is dropped. The browser projection deduplicates by
 `player_id` within the selected server, keeps the freshest `observed_at`, merges up
@@ -1241,5 +1260,5 @@ the observer's current Z and fails closed when the floor is ambiguous. Contradic
 player regions relative to the observer are withheld.
 
 ```json
-{"type":"map.players","protocol_version":10,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"x":30,"y":40}]}}
+{"type":"map.players","protocol_version":13,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"zone":"Taklamakan","x":30,"y":40}]}}
 ```

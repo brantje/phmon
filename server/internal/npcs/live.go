@@ -18,15 +18,21 @@ const (
 
 var gateRole = regexp.MustCompile(`^GATE_[A-Za-z0-9_]+$`)
 
+type TeleportRoute struct {
+	Destination  string `json:"destination"`
+	TeleportCode *int64 `json:"teleport_code,omitempty"`
+}
+
 type NPC struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name,omitempty"`
-	ServerName string  `json:"servername,omitempty"`
-	Model      *int64  `json:"model_id,omitempty"`
-	Role       string  `json:"role"`
-	Region     int     `json:"region"`
-	X          float64 `json:"x"`
-	Y          float64 `json:"y"`
+	ID             string          `json:"id"`
+	Name           string          `json:"name,omitempty"`
+	ServerName     string          `json:"servername,omitempty"`
+	Model          *int64          `json:"model_id,omitempty"`
+	Role           string          `json:"role"`
+	Region         int             `json:"region"`
+	X              float64         `json:"x"`
+	Y              float64         `json:"y"`
+	TeleportRoutes []TeleportRoute `json:"teleport_routes,omitempty"`
 }
 
 type LiveSnapshot struct {
@@ -89,7 +95,30 @@ func validNPC(observerRegion int, npc NPC) bool {
 		!mobs.RegionsMatch(observerRegion, npc.Region) || !validCoordinate(npc.X) || !validCoordinate(npc.Y) {
 		return false
 	}
-	return npc.Model == nil || *npc.Model >= 0 && *npc.Model <= 4294967295
+	if npc.Model != nil && (*npc.Model < 0 || *npc.Model > 4294967295) {
+		return false
+	}
+	if len(npc.TeleportRoutes) > 32 {
+		return false
+	}
+	for _, route := range npc.TeleportRoutes {
+		if !validTeleportRoute(route) {
+			return false
+		}
+	}
+	return true
+}
+
+func validTeleportRoute(route TeleportRoute) bool {
+	destination := strings.TrimSpace(route.Destination)
+	if destination == "" || len(destination) > maxText || strings.ContainsRune(destination, 0) ||
+		strings.Contains(destination, ",") {
+		return false
+	}
+	if route.TeleportCode != nil && (*route.TeleportCode < 0 || *route.TeleportCode > 4294967295) {
+		return false
+	}
+	return true
 }
 
 func validCoordinate(value float64) bool {

@@ -149,7 +149,7 @@ func (s *Service) controlSnapshot(target Target, state *ControlState) map[string
 
 func (s *Service) commandCapabilities(target Target) map[string]Capability {
 	capabilities := make(map[string]Capability)
-	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.navigate.stop", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
+	for _, name := range []string{"bot.start", "bot.stop", "trace.start", "trace.stop", "training.area.set", "training.radius.set", "character.walk", "character.navigate", "character.navigate.stop", "character.teleport", "character.return", "character.disconnect", "client.clientless", "chat.send"} {
 		ok, reason := false, "plugin_upgrade_required"
 		if s.capabilities != nil {
 			ok, reason = s.capabilities.CommandSupport(target.AgentID, target.Generation, name)

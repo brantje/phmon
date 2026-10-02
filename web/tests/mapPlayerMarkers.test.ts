@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { MapOtherPlayer } from '../shared/types/live.ts'
 import type { MapProfile } from '../shared/types/map.ts'
-import { playerMapMarkers } from '../app/utils/mapPlayerMarkers.ts'
+import {
+  playerMapMarkers,
+  playerZoneLabel,
+} from '../app/utils/mapPlayerMarkers.ts'
 import { OTHER_PLAYER_ICON } from '../app/utils/mapPlayerPresentation.ts'
 
 const profile = (): MapProfile => ({
@@ -111,6 +114,17 @@ test('playerMapMarkers skips managed characters and party overlaps', () => {
   assert.deepEqual(
     markers.map((marker) => marker.label),
     ['Nearby'],
+  )
+})
+
+test('playerZoneLabel prefers the observed zone and falls back to the region lookup', () => {
+  const lookup = (region?: number | null) =>
+    region === 26753 ? 'Taklamakan' : 'Unknown zone'
+  assert.equal(playerZoneLabel(' Donwhang ', 26753, lookup), 'Donwhang')
+  assert.equal(playerZoneLabel(undefined, 26753, lookup), 'Taklamakan')
+  assert.equal(
+    playerZoneLabel('  ', 1, () => 'Unknown zone'),
+    'Unknown zone',
   )
 })
 

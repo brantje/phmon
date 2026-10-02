@@ -1,7 +1,7 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.1** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v11 over the existing authenticated
+The current plugin development release is **1.9.8** (`vsro_1188_passive_r2`, API
+evidence schema 2), using agent protocol v13 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
@@ -13,7 +13,9 @@ teleporters; other rows are NPCs. `unavailable` clears that character's markers.
 There is no NPC history. Protocol v10 adds ephemeral `map.players` snapshots from
 optional `get_players()` (operator-tuned **1 s** poll and **2 s** unchanged refresh;
 NPC cadence remains 2 s / 15 s), 128-row and 64 KiB bounds, and
-observer Z in the publish signature. Equipment and player Z are not copied. The
+observer Z in the publish signature. Each player row may include `zone` from
+`get_zone_name` for that player's region, or the observer region when the row has
+no region. Equipment and player Z are not copied. The
 backend keeps accepting protocol v2–v9 and older plugins continue
 sending death events through their original frame. Rare and normal drops remain
 separate and retain only the model ID documented by phBot. Chat keeps its raw server
@@ -36,6 +38,24 @@ findings remain in [runtime evidence](../docs/phbot-capabilities.md#issue-36--ma
 Install/reload **1.8.0**, connect to a protocol-10 backend, and open the Map with
 **Other players** enabled. There is no equipment inspection, player history, or
 packet fallback.
+
+Version 1.9.4 adds audited `character.teleport` for issue #33: live `GATE_*` gate in
+session `get_npcs()`, `get_teleport_data(source, destination)`, then one bounded
+`teleport,source,destination` line via `start_script`. Map UI uses action-target
+fan-out with an operator-entered destination (no menu enumeration). `start_script=True`
+does not prove arrival.
+
+Version 1.9.3 adds **Test Hotan→Jangan** (operator-only): requires the Hotan
+`GATE_KT` gate in `get_npcs()`, resolves `get_teleport_data`, then runs one
+`teleport,Hotan,Jangan` or `teleport,GATE_KT,GATE_CH` script line via
+`start_script`. The read-only probe also includes those reference pairs (tagged
+`hotan_to_jangan` / `gate_kt_to_jangan_gate`).
+
+Version 1.9.2 adds a read-only **Probe teleporters** QtBind action for issue #32.
+It discovers matching `phBot` symbol names and runs at most sixteen bounded
+`get_teleport_data` pair checks from the current `GATE_*` snapshot. It never
+injects packets or starts scripts. Findings belong in
+[issue32-teleporter-investigation.md](../docs/reference/issue32-teleporter-investigation.md).
 
 Version 1.9.0 adds `character.navigate.stop` through documented `stop_script()`,
 trace `activity_state` on control state (from optional `get_status()`), session-scoped

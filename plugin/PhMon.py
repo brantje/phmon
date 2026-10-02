@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.1'
+pVersion = '1.9.8'
 pUrl = ''
 
-PROTOCOL_VERSION = 11
+PROTOCOL_VERSION = 13
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -61,6 +61,34 @@ MAX_PLAYERS_SNAPSHOT_BYTES = 64 * 1024
 PLAYER_POLL_INTERVAL_SECONDS = 1.0 # Changed by user do not change this value
 PLAYER_REFRESH_INTERVAL_SECONDS = 2 # Changed by user do not change this value
 _NPC_GATE_ROLE = re.compile(r'^GATE_[A-Za-z0-9_]+$')
+_TELEPORT_PROBE_SYMBOL_RE = re.compile(
+    r'(?:teleport|npc|gate|recall|location|script)',
+    re.IGNORECASE,
+)
+MAX_TELEPORT_PROBE_PAIR_CALLS = 16
+_MAX_TELEPORT_ROUTES_PER_GATE = 32
+_MAX_TELEPORT_ROUTE_PROBE_CALLS = 64
+_TELEPORT_ROUTE_CACHE_TTL_SECONDS = 120.0
+_TELEPORT_PROBE_UNKNOWN_DEST = '__phmon_probe_unknown_destination__'
+# Bounded labels probed via get_teleport_data; only successful pairs are published.
+_TELEPORT_DESTINATION_CANDIDATES = (
+    'Jangan', 'Hotan', 'Donwhang', 'Samarkand', 'Constantinople',
+    'Alexandria (North)', 'Alexandria (South)',
+    'Tiger Mountain', 'Baghdad', 'Alexandria', 'Constantinople Fortress',
+    'GATE_CH', 'GATE_KT', 'GATE_HWANG', 'GATE_CA',
+    # Special links use the exact phBot menu label, including the [teleport] suffix.
+    'Soldier Choiyoung [teleport]', 'Jupiter Room',
+)
+_teleport_route_cache = {}
+# Documented phBot examples (Hotan gate → Jangan); read-only in probe, optional operator script test.
+_TELEPORT_PROBE_REFERENCE_PAIRS = (
+    ('Hotan', 'Jangan', 'hotan_to_jangan'),
+    ('GATE_KT', 'GATE_CH', 'gate_kt_to_jangan_gate'),
+)
+_HOTAN_JANGAN_SCRIPT_PAIRS = (
+    ('Hotan', 'Jangan'),
+    ('GATE_KT', 'GATE_CH'),
+)
 MAX_MOB_SPOOL_ITEMS = 2048
 MAX_MOB_SPOOL_BYTES = 8 * 1024 * 1024
 MOB_POLL_INTERVAL_SECONDS = 0.1
@@ -182,9 +210,9 @@ def _read_botting_state(character_data, status_getter=None, timing=None):
     # means stopped. Do not turn missing status into a guessed false value.
     return _normalize_botting_status(value)
 
-_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','generate_path','set_training_position',
-              'set_training_radius','set_training_area','get_training_area','move_to_region',
-              'generate_script','start_script','stop_script','use_return_scroll','disconnect')
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','get_teleport_data',
+              'generate_path','set_training_position','set_training_radius','set_training_area','get_training_area',
+              'move_to_region','generate_script','start_script','stop_script','use_return_scroll','disconnect')
 
 _CHAT_METHODS = {
     'general': ('All',),
@@ -341,6 +369,7 @@ def collect_player_observation(api=None):
     truncated = len(raw) > MAX_PLAYERS_PER_SNAPSHOT
     players = []
     seen = set()
+    zone_cache = {}
     for index, (identifier, value) in enumerate(raw.items()):
         if index >= MAX_PLAYERS_PER_SNAPSHOT:
             break
@@ -381,6 +410,9 @@ def collect_player_observation(api=None):
             row['level'] = level
         if _valid_position_region(region):
             row['region'] = region
+            zone = _cached_player_zone(region, zone_cache)
+            if zone:
+                row['zone'] = zone
         encoded = json.dumps(players + [row], separators=(',', ':'), sort_keys=True, allow_nan=False).encode('utf-8')
         if len(encoded) > MAX_PLAYERS_SNAPSHOT_BYTES:
             truncated = True
@@ -395,7 +427,8 @@ def _player_snapshot_signature(status, region, observer_z, players):
     for player in players:
         rows.append((
             player.get('player_id'), player.get('name'), player.get('guild'), player.get('grant'),
-            player.get('dead'), player.get('level'), player.get('region'), player.get('x'), player.get('y'),
+            player.get('dead'), player.get('level'), player.get('region'), player.get('zone'),
+            player.get('x'), player.get('y'),
         ))
     rows.sort()
     return (status, region, observer_z, tuple(rows))
@@ -524,15 +557,400 @@ def collect_npc_observation(api=None):
     return ('truncated' if truncated else 'observed'), npcs, truncated
 
 
+def _teleport_probe_label(value, limit=64):
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text or ',' in text or '\n' in text or '\r' in text:
+        return None
+    return _bounded_text(text, limit)
+
+
+def _teleport_routes_for_gate(source_label, gate_servername, adapter):
+    """Discover live routes for one gate via bounded get_teleport_data probes."""
+    if adapter is None or not adapter.has('get_teleport_data'):
+        return []
+    source_label = _teleport_probe_label(source_label)
+    gate_key = gate_servername.strip().lower() if isinstance(gate_servername, str) else ''
+    if not source_label:
+        return []
+    cache_key = (source_label.lower(), gate_key)
+    now = _monotonic()
+    cached = _teleport_route_cache.get(cache_key)
+    if cached and cached[0] > now:
+        return list(cached[1])
+    routes = []
+    attempts = 0
+    for candidate in _TELEPORT_DESTINATION_CANDIDATES:
+        if attempts >= _MAX_TELEPORT_ROUTE_PROBE_CALLS or len(routes) >= _MAX_TELEPORT_ROUTES_PER_GATE:
+            break
+        destination_label = _teleport_probe_label(candidate)
+        if not destination_label or destination_label.lower() == source_label.lower():
+            continue
+        attempts += 1
+        try:
+            observed = adapter.call('get_teleport_data', source_label, destination_label)
+        except Exception:
+            continue
+        classification = _classify_teleport_data_result(observed)
+        if classification.get('result') != 'tuple':
+            continue
+        entry = {'destination': destination_label}
+        code = classification.get('code')
+        if isinstance(code, int) and not isinstance(code, bool):
+            entry['teleport_code'] = code
+        routes.append(entry)
+    routes.sort(key=lambda item: item['destination'].lower())
+    _teleport_route_cache[cache_key] = (now + _TELEPORT_ROUTE_CACHE_TTL_SECONDS, tuple(routes))
+    return list(routes)
+
+
+def _attach_teleporter_routes(npc_list, adapter):
+    if not isinstance(npc_list, list) or adapter is None:
+        return
+    for npc in npc_list:
+        if not isinstance(npc, dict) or npc.get('role') != 'teleporter':
+            continue
+        source = npc.get('name') or npc.get('servername')
+        routes = _teleport_routes_for_gate(source, npc.get('servername'), adapter)
+        if routes:
+            npc['teleport_routes'] = routes
+
+
+def _classify_teleport_data_result(value):
+    if value is None:
+        return {'result': 'none'}
+    if isinstance(value, tuple):
+        elements = []
+        for item in value:
+            if isinstance(item, bool):
+                elements.append({'type': 'bool'})
+            elif isinstance(item, int):
+                elements.append({'type': 'int', 'value': item})
+            elif isinstance(item, float):
+                elements.append({'type': 'float'})
+            elif isinstance(item, str):
+                bounded = _teleport_probe_label(item)
+                elements.append({'type': 'str', 'length': len(bounded or '')})
+            else:
+                elements.append({'type': type(item).__name__})
+        code = None
+        if len(value) > 1 and isinstance(value[1], int) and not isinstance(value[1], bool):
+            code = value[1]
+        return {'result': 'tuple', 'length': len(value), 'elements': elements, 'code': code}
+    return {'result': 'unexpected', 'type': type(value).__name__}
+
+
+def _discover_teleport_probe_symbols(api_module):
+    symbols = []
+    if api_module is None:
+        return symbols
+    try:
+        names = sorted(set(dir(api_module)))
+    except Exception:
+        return symbols
+    for name in names:
+        if name.startswith('_') or not _TELEPORT_PROBE_SYMBOL_RE.search(name):
+            continue
+        try:
+            attr = getattr(api_module, name, None)
+        except Exception:
+            continue
+        symbols.append({'name': name, 'callable': callable(attr)})
+    return symbols
+
+
+def _teleport_probe_gate_rows(npcs):
+    gates = []
+    if not isinstance(npcs, list):
+        return gates
+    for row in npcs:
+        if not isinstance(row, dict) or row.get('role') != 'teleporter':
+            continue
+        gates.append({
+            'id': row.get('id'),
+            'name': row.get('name'),
+            'servername': row.get('servername'),
+        })
+    return gates
+
+
+def _teleport_probe_pair_plan(gates):
+    pairs = []
+    seen = set()
+
+    def add(source, destination, gate_id=None, tag=None):
+        source_label = _teleport_probe_label(source) if isinstance(source, str) else None
+        destination_label = _teleport_probe_label(destination) if isinstance(destination, str) else None
+        if destination == _TELEPORT_PROBE_UNKNOWN_DEST:
+            destination_label = _TELEPORT_PROBE_UNKNOWN_DEST
+        if source_label is None or destination_label is None:
+            return
+        key = (source_label, destination_label)
+        if key in seen:
+            return
+        seen.add(key)
+        entry = {
+            'source': source_label,
+            'destination': destination_label,
+            'gate_id': gate_id,
+        }
+        if tag:
+            entry['tag'] = tag
+        pairs.append(entry)
+
+    if gates:
+        first = gates[0]
+        control_source = first.get('name') or first.get('servername')
+        add(control_source, _TELEPORT_PROBE_UNKNOWN_DEST, first.get('id'))
+        gate_id = first.get('id')
+        for source, destination, tag in _TELEPORT_PROBE_REFERENCE_PAIRS:
+            add(source, destination, gate_id, tag=tag)
+            if len(pairs) >= MAX_TELEPORT_PROBE_PAIR_CALLS:
+                return pairs[:MAX_TELEPORT_PROBE_PAIR_CALLS]
+
+    labels = []
+    for gate in gates:
+        for label in (gate.get('name'), gate.get('servername')):
+            bounded = _teleport_probe_label(label) if isinstance(label, str) else None
+            if bounded and bounded not in labels:
+                labels.append(bounded)
+    for index, source in enumerate(labels):
+        for destination in labels[index + 1:]:
+            add(source, destination)
+            if len(pairs) >= MAX_TELEPORT_PROBE_PAIR_CALLS:
+                return pairs[:MAX_TELEPORT_PROBE_PAIR_CALLS]
+    for gate in gates:
+        for label in (gate.get('name'), gate.get('servername')):
+            add(label, _TELEPORT_PROBE_UNKNOWN_DEST, gate.get('id'))
+            if len(pairs) >= MAX_TELEPORT_PROBE_PAIR_CALLS:
+                return pairs[:MAX_TELEPORT_PROBE_PAIR_CALLS]
+    return pairs[:MAX_TELEPORT_PROBE_PAIR_CALLS]
+
+
+def probe_teleporter_capabilities(api=None, npcs=None, api_module=None):
+    """Read-only teleporter investigation probe. Never injects packets or starts scripts."""
+    result = {
+        'status': 'ok',
+        'plugin_version': pVersion,
+        'npc_observation': 'unknown',
+        'symbols': [],
+        'gates': [],
+        'pair_tests': [],
+        'capabilities': {
+            'get_npcs': False,
+            'get_teleport_data': False,
+            'start_script': False,
+        },
+        'enumeration': 'unsupported',
+        'recall': 'unsupported',
+        'execution': 'documented_script_command_unverified',
+        'errors': [],
+    }
+    module = api_module
+    if module is None and api is None:
+        try:
+            import phBot as module
+        except Exception:
+            module = None
+
+    if isinstance(api, dict):
+        get_npcs = api.get('get_npcs')
+        get_teleport_data = api.get('get_teleport_data')
+        start_script = api.get('start_script')
+    else:
+        get_npcs = _optional_phbot_api('get_npcs')
+        get_teleport_data = _optional_phbot_api('get_teleport_data')
+        start_script = _optional_phbot_api('start_script')
+
+    result['capabilities']['get_npcs'] = callable(get_npcs)
+    result['capabilities']['get_teleport_data'] = callable(get_teleport_data)
+    result['capabilities']['start_script'] = callable(start_script)
+    result['symbols'] = _discover_teleport_probe_symbols(module)
+
+    if npcs is None and callable(get_npcs):
+        npc_status, collected, _ = collect_npc_observation({'get_npcs': get_npcs})
+        result['npc_observation'] = npc_status
+        npcs = collected
+    elif isinstance(npcs, list):
+        result['npc_observation'] = 'provided'
+    else:
+        result['npc_observation'] = 'unavailable'
+        npcs = []
+
+    gates = _teleport_probe_gate_rows(npcs)
+    result['gates'] = gates
+
+    if not callable(get_teleport_data):
+        result['status'] = 'unavailable'
+        result['errors'].append('get_teleport_data_missing')
+        return result
+
+    pair_plan = _teleport_probe_pair_plan(gates)
+    for planned in pair_plan:
+        entry = {
+            'source': planned['source'],
+            'destination': planned['destination'],
+            'gate_id': planned.get('gate_id'),
+        }
+        if planned.get('tag'):
+            entry['tag'] = planned['tag']
+        try:
+            observed = get_teleport_data(planned['source'], planned['destination'])
+        except Exception as error:
+            entry['classification'] = {'result': 'error', 'type': error.__class__.__name__}
+            result['pair_tests'].append(entry)
+            continue
+        entry['classification'] = _classify_teleport_data_result(observed)
+        result['pair_tests'].append(entry)
+
+    if len(result['pair_tests']) > MAX_TELEPORT_PROBE_PAIR_CALLS:
+        result['errors'].append('pair_test_overflow')
+        result['pair_tests'] = result['pair_tests'][:MAX_TELEPORT_PROBE_PAIR_CALLS]
+    for test in result['pair_tests']:
+        if test.get('tag') == 'hotan_to_jangan' and test.get('classification', {}).get('result') == 'tuple':
+            result['execution'] = 'documented_script_command_verified_hotan_jangan'
+            break
+    return result
+
+
+def summarize_teleport_probe(result):
+    if not isinstance(result, dict):
+        return 'Teleporter probe failed.'
+    gates = len(result.get('gates') or [])
+    pairs = len(result.get('pair_tests') or [])
+    caps = result.get('capabilities') or {}
+    teleport_api = 'yes' if caps.get('get_teleport_data') else 'no'
+    return (
+        'Teleporter probe: {gates} gate(s), get_teleport_data={api}, '
+        '{pairs} pair test(s), enumeration unsupported.'
+    ).format(gates=gates, api=teleport_api, pairs=pairs)
+
+
+def _teleporter_source_matches(row, source_label):
+    if not source_label or not isinstance(row, dict):
+        return False
+    name = row.get('name')
+    servername = row.get('servername')
+    if isinstance(name, str) and name == source_label:
+        return True
+    return isinstance(servername, str) and servername == source_label
+
+
+def _session_teleporter_gate(npcs, gate_servername, source):
+    if not isinstance(npcs, list):
+        return None
+    gate_servername = gate_servername.strip() if isinstance(gate_servername, str) else ''
+    source_label = _teleport_probe_label(source) if isinstance(source, str) else None
+    if not gate_servername or not source_label or not _NPC_GATE_ROLE.fullmatch(gate_servername):
+        return None
+    for row in npcs:
+        if not isinstance(row, dict) or row.get('role') != 'teleporter':
+            continue
+        if row.get('servername') != gate_servername:
+            continue
+        if _teleporter_source_matches(row, source_label):
+            return row
+    return None
+
+
+def _hotan_gate_row(npcs):
+    for row in _teleport_probe_gate_rows(npcs):
+        name = row.get('name')
+        servername = row.get('servername')
+        if isinstance(name, str) and name.lower() == 'hotan':
+            return row
+        if servername == 'GATE_KT':
+            return row
+    return None
+
+
+def test_teleport_hotan_jangan():
+    """Operator-only Hotan→Jangan check: get_teleport_data then one teleport script line."""
+    if not _PHBOT_AVAILABLE:
+        _set_gui_status('Hotan→Jangan test requires the phBot runtime.')
+        return
+    get_teleport_data = _optional_phbot_api('get_teleport_data')
+    start_script = _optional_phbot_api('start_script')
+    if not callable(get_teleport_data) or not callable(start_script):
+        _set_gui_status('Hotan→Jangan test needs get_teleport_data and start_script.')
+        return
+    _, npcs, _ = collect_npc_observation()
+    if _hotan_gate_row(npcs) is None:
+        _set_gui_status('Hotan gate (GATE_KT) not in current get_npcs() snapshot.')
+        return
+    chosen = None
+    for source, destination in _HOTAN_JANGAN_SCRIPT_PAIRS:
+        try:
+            observed = get_teleport_data(source, destination)
+        except Exception as error:
+            _log('PhMon Hotan→Jangan test get_teleport_data error: ' + error.__class__.__name__)
+            continue
+        if observed is not None and isinstance(observed, tuple):
+            chosen = (source, destination, observed)
+            break
+    if chosen is None:
+        _log('PhMon Hotan→Jangan test: get_teleport_data returned none for all pairs')
+        _set_gui_status('No Hotan→Jangan route from get_teleport_data.')
+        return
+    source, destination, observed = chosen
+    line = 'teleport,{0},{1}'.format(source, destination)
+    try:
+        started = start_script(line)
+    except Exception as error:
+        _set_gui_status('Hotan→Jangan start_script failed: ' + error.__class__.__name__)
+        return
+    code = observed[1] if len(observed) > 1 else None
+    _log(
+        'PhMon Hotan→Jangan test line=' + line
+        + ' code=' + str(code)
+        + ' start_script=' + str(started)
+    )
+    _set_gui_status(
+        'Hotan→Jangan test: ' + line + ' (start_script=' + str(started) + ')'
+    )
+
+
+def probe_teleporters():
+    """Operator-triggered read-only teleporter capability probe."""
+    if not _PHBOT_AVAILABLE:
+        _set_gui_status('Teleporter probe requires the phBot runtime.')
+        return
+    result = probe_teleporter_capabilities()
+    summary = summarize_teleport_probe(result)
+    try:
+        payload = json.dumps(result, sort_keys=True, separators=(',', ':'))
+    except Exception:
+        payload = summary
+    if len(payload) > 4000:
+        payload = payload[:4000] + '...'
+    _log('PhMon teleporter probe ' + payload)
+    _set_gui_status(summary)
+
+
 def _npc_snapshot_signature(status, region, npcs):
     rows = []
     for npc in npcs:
+        route_sig = ()
+        routes = npc.get('teleport_routes')
+        if isinstance(routes, list):
+            route_sig = tuple(
+                (item.get('destination'), item.get('teleport_code'))
+                for item in routes
+                if isinstance(item, dict) and item.get('destination')
+            )
         rows.append((
             npc.get('id'), npc.get('name'), npc.get('servername'), npc.get('model_id'),
-            npc.get('role'), npc.get('region'), npc.get('x'), npc.get('y'),
+            npc.get('role'), npc.get('region'), npc.get('x'), npc.get('y'), route_sig,
         ))
     rows.sort()
     return (status, region, tuple(rows))
+
+
+def _cached_player_zone(region, cache):
+    if region not in cache:
+        cache[region] = _zone_name_for_region(region)
+    return cache[region]
 
 
 def _zone_name_for_region(region, limit=80):
@@ -3240,6 +3658,7 @@ class AgentWorker(object):
             'character.walk': ('move_to_region', 'unsupported_runtime_primitive'),
             'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
             'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
+            'character.teleport': (None, 'unsupported_runtime_primitive'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
             'client.clientless': (None, 'unsupported_runtime_primitive'),
@@ -3262,6 +3681,8 @@ class AgentWorker(object):
                 supported = self.api.has('generate_script') and self.api.has('start_script')
             if name == 'character.navigate.stop':
                 supported = self.api.has('stop_script') and self.api.has('start_script')
+            if name == 'character.teleport':
+                supported = all(self.api.has(symbol) for symbol in ('get_npcs', 'get_teleport_data', 'start_script'))
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
         chat_modes = self.api.chat_modes()
@@ -3793,6 +4214,36 @@ class AgentWorker(object):
             result=self.api.call('set_training_radius',float(radius)); observed=self.api.call('get_training_area') if self.api.has('get_training_area') else None
             confirmed=isinstance(observed,dict) and observed.get('radius')==float(radius)
             return result,{'radius':float(radius)},self._safe_area(observed),'observed' if confirmed else ('api_confirmed' if isinstance(result,bool) else 'unverified')
+        if name == 'character.teleport':
+            exact(('source', 'destination', 'gate_servername'))
+            source = _teleport_probe_label(args.get('source'))
+            destination = _teleport_probe_label(args.get('destination'))
+            gate_servername = args.get('gate_servername')
+            if (not source or not destination or not isinstance(gate_servername, str) or
+                    not _NPC_GATE_ROLE.fullmatch(gate_servername.strip())):
+                raise ValueError('invalid_arguments')
+            gate_servername = gate_servername.strip()
+            npc_status, npcs, _ = collect_npc_observation()
+            if npc_status != 'observed':
+                raise ValueError('teleporter_gate_not_observed')
+            gate = _session_teleporter_gate(npcs, gate_servername, source)
+            if gate is None:
+                raise ValueError('teleporter_gate_not_observed')
+            observed = self.api.call('get_teleport_data', source, destination)
+            if _classify_teleport_data_result(observed).get('result') != 'tuple':
+                raise ValueError('teleport_route_unavailable')
+            line = 'teleport,{0},{1}'.format(source, destination)
+            result = self.api.call('start_script', line)
+            code = observed[1] if isinstance(observed, tuple) and len(observed) > 1 else None
+            effective = {
+                'source': source,
+                'destination': destination,
+                'gate_servername': gate_servername,
+                'gate_npc_id': gate.get('id'),
+                'script_line': line,
+                'teleport_code': code,
+            }
+            return result, effective, None, 'api_confirmed' if isinstance(result, bool) else 'unverified'
         if name == 'character.navigate':
             raise ValueError('navigation_requires_callback_path')
         if name == 'character.walk':
@@ -4512,6 +4963,8 @@ def _sample_npcs(identity, state, position, now=None):
         truncated = True
     if truncated:
         status = 'truncated'
+    if _worker is not None:
+        _attach_teleporter_routes(matching, getattr(_worker, 'api', None))
     signature = _npc_snapshot_signature(status, region, matching)
     changed = signature != _last_npc_signature
     refresh_due = (_last_npc_publish_at == 0.0 or
@@ -4550,6 +5003,13 @@ def _sample_players(identity, state, position, now=None):
         truncated = True
     if truncated:
         status = 'truncated'
+    if any(not player.get('zone') and not _valid_position_region(player.get('region'))
+           for player in matching):
+        observer_zone = _zone_name_for_region(region)
+        if observer_zone:
+            for player in matching:
+                if not player.get('zone') and not _valid_position_region(player.get('region')):
+                    player['zone'] = observer_zone
     signature = _player_snapshot_signature(status, region, normalized_z, matching)
     changed = signature != _last_player_signature
     refresh_due = (_last_player_publish_at == 0.0 or
@@ -4578,11 +5038,13 @@ if _PHBOT_AVAILABLE and _QtBind is not None:
     _QtBind.createLabel(_gui, 'Agent token (paste to set or replace)', 10, 110)
     _gui_agent_token = _QtBind.createLineEdit(_gui, '', 10, 130, 360, 20)
     _QtBind.createButton(_gui, 'save_config', 'Save & Connect', 10, 165)
+    _QtBind.createButton(_gui, 'probe_teleporters', 'Probe teleporters', 10, 195)
+    _QtBind.createButton(_gui, 'test_teleport_hotan_jangan', 'Test Hotan→Jangan', 180, 195)
     _gui_status = _QtBind.createLabel(
         _gui,
         'Join the game to select a bot profile.',
         10,
-        200,
+        260,
     )
     try:
         _load_active_profile(force=True)

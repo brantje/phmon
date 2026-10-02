@@ -143,8 +143,9 @@ metadata only, not player identities, equipment records or sighting history.
 Plugin **1.8.0** removes the manual probe buttons and publishes bounded
 `map.players` snapshots on the existing worker path (operator-tuned **1 s** poll,
 **2 s** unchanged refresh; signature includes observer Z). Rows copy canonical decimal-string IDs,
-name, guild, grant, dead, level, region and X/Y only. Equipment and player Z are
-omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
+name, guild, grant, dead, level, region, X/Y, and optional `zone` from
+`get_zone_name` for that player's region (observer region when the row has none).
+Equipment and player Z are omitted. The Go backend keeps ephemeral per-session snapshots with 35 s TTL,
 generation-scoped disconnect cleanup, and map projection with party-style dedup.
 The PhMon Map **Other players** layer is fixture-tested separately from installed
 phBot validation; cross-observer identity and cave placement semantics remain
@@ -1262,3 +1263,25 @@ return a trace target name. `trace_requested_name` comes only from the admitted
 There is no documented navigation progress or ETA API; PhMon derives progress from
 its observation cursor and approximate ETA from recent accepted movement on the
 active route.
+
+### Issue #32 teleporter investigation — plugin 1.9.2 probe — 2026-10-02
+
+**Status:** [#32](https://github.com/brantje/phmon/issues/32) investigation complete; [#33](https://github.com/brantje/phmon/issues/33) **character.teleport** fan-out and map **Teleport to…** UI implemented in plugin **1.9.4** (no packet injection, no destination menu enumeration).
+
+**Live gate identity:** Documented `get_npcs()` per session; `GATE_*` → teleporter; runtime id is the API dictionary key. Already shipped as protocol v9 `map.npcs` (issue #24).
+
+**Destination enumeration:** **Unsupported.** Public phBot docs expose only `get_teleport_data(source, destination)` for a **known** pair. Inspected community plugins ([xControl](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xControl.py), [EnterVicious](https://github.com/Bunker141/Phbot-Plugins/blob/master/EnterVicious.py), [xNPC](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xNPC.py)) do not list a gate’s menu. phBot’s [map guide](https://guide.phbot.org/phbot/map) shows grouped destinations in the client UI without a matching plugin API. Exporter `teleportdata` / `teleportlink` and phBot locale SQLite `teleport` tables are static client data and are **rejected** as PhMon menus (issue #33 also forbids a persistent catalog).
+
+**Pair resolution:** `get_teleport_data` with source from the character’s own gate `name` or `servername` and an explicit destination label. `None` → no route (including custom servers per [forum evidence](https://forum.projecthax.com/t/get-teleport-data-does-not-return-anything/7854)). Tuple element `1` is the reference teleport id used by community `0x705A` type-2 packets ([SilkroadDoc](https://github.com/DummkopfOfHachtenduden/SilkroadDoc/wiki/AGENT_TELEPORT_USE)).
+
+**Execution plan for #33:** After live-gate and pair checks, one plugin-built script line `teleport,{source},{destination}` passed to `start_script` (documented [script command](https://guide.phbot.org/phbot/script-commands)). Community flow uses `0x7045` select then `0x705A`; PhMon does **not** adopt that injection path. **Live evidence (2026-10-02, plugin 1.9.3):** operator **Test Hotan→Jangan** at `GATE_KT` — `get_teleport_data` code `1`, `start_script=True`, phBot log `Script: Teleporting` for `teleport,Hotan,Jangan`. Other pairs/servers and PhMon remote commands remain unimplemented.
+
+**Designate Recall Point:** **Unsupported.** Community candidate: `inject_joymax(0x7059, struct.pack('I', npc_uid))` after name match in `get_npcs()` ([xControl](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xControl.py)). Script command `recall` is pick-pet only. No authorized PhMon packet capture in this spike.
+
+**Operator probe:** Plugin **1.9.2** QtBind **Probe teleporters** calls `probe_teleporter_capabilities()` — symbol name discovery, at most 16 read-only `get_teleport_data` tests, no `inject_joymax` / `start_script`. Full report: [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
+
+**Live probe (2026-10-02):** Operator ran **Probe teleporters** on plugin 1.9.2 at the Hotan gate (`GATE_KT`, runtime npc id `4`). Symbol scan found no destination-menu or recall API. Early probe JSON lacked tagged `Hotan`→`Jangan` pairs (added in 1.9.3). See [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md) § Operator live probe.
+
+**Live script test (2026-10-02, plugin 1.9.3):** **Test Hotan→Jangan** — `teleport,Hotan,Jangan`, `get_teleport_data` code `1`, `start_script=True`, phBot `Script: Teleporting`. Documented in investigation doc § Operator script test.
+
+**Simulator/runtime:** Plugin unit tests cover the probe in CI; Hotan→Jangan script path verified on operator phBot for one pair; #33 remote/fan-out not built.

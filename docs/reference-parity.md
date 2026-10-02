@@ -13,7 +13,8 @@ Production delivery uses plugin **1.8.0** / agent protocol **10** `map.players`
 snapshots (operator-tuned 1 s poll / 2 s unchanged refresh, 128-row / 64 KiB bounds, observer Z
 in the signature, generation-scoped backend cleanup). The Map page adds **Other
 players** (default on) with `mm_sign_otherplayer.png` markers, name labels,
-alive/dead popup fields, and precedence over managed-character names and party
+alive/dead popup fields, a zone name from the player row or the same-region
+character/event lookup, and precedence over managed-character names and party
 runtime IDs when Characters/Party layers are enabled. No navigate, equipment,
 player history, or packet fallback. Installed-runtime map validation remains
 separate from simulator/fixture evidence recorded after CI on this branch.
@@ -203,6 +204,15 @@ This entry records implementation and fixture semantics. A live phBot `get_npcs(
 observation still requires plugin 1.7.0 on the operator's runtime.
 A same-viewport runtime check with a spawned party member, duplicate observers and
 a cave floor remains open.
+
+## Issue #32 / #33 teleporter — 2026-10-02
+
+Issue #32 investigation and operator Hotan→Jangan script verification are recorded in
+[issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
+Issue #33 adds `character.teleport` fan-out and a map teleporter **Teleport to…**
+dialog (operator-entered destination only; no menu enumeration). Plugin **1.9.4**
+reuses `get_teleport_data` plus one `teleport,source,destination` script line per
+character. Designate Recall Point and destination lists remain unsupported.
 
 ## Cave-floor map reference inspection — 2026-09-28
 

@@ -113,6 +113,16 @@ const emit = defineEmits<{
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
   navigateto: [point: RasterPosition, anchor: { x: number; y: number }]
+  teleportto: [
+    npc: NonNullable<MapCanvasMarker['npc']>,
+    point: RasterPosition,
+    anchor: { x: number; y: number },
+  ]
+  teleportercontext: [
+    npc: NonNullable<MapCanvasMarker['npc']>,
+    point: RasterPosition,
+    anchor: { x: number; y: number },
+  ]
   mapdrag: []
   opencharacter: [characterID: string]
   inspectcharacter: [characterID: string]
@@ -987,7 +997,7 @@ function markerPopup(marker: MapCanvasMarker) {
       .filter(Boolean)
       .join(', ')
     details.append(
-      detailRow('Region', String(other.region)),
+      detailRow('Zone', marker.zoneLabel || 'Unknown zone'),
       detailRow('Position', positionText(other.x, other.y, other.observer_z)),
       detailRow('Observed by', observers || '—'),
     )
@@ -1027,6 +1037,20 @@ function markerPopup(marker: MapCanvasMarker) {
       emit('navigateto', marker.position, { x: rect.left, y: rect.bottom })
     })
     actions.append(navigate)
+    if (npc.role === 'teleporter') {
+      const teleport = document.createElement('button')
+      teleport.type = 'button'
+      teleport.textContent = 'Teleport to…'
+      teleport.addEventListener('click', (event) => {
+        event.stopPropagation()
+        const rect = teleport.getBoundingClientRect()
+        emit('teleportto', npc, marker.position, {
+          x: rect.left,
+          y: rect.bottom,
+        })
+      })
+      actions.append(teleport)
+    }
     panel.append(header, details, actions)
   } else if (marker.kind === 'monster' && marker.monster) {
     const monster = marker.monster
@@ -1407,6 +1431,7 @@ onMounted(async () => {
       marker.npc ? npcDisplayLabel(marker.npc) : '',
       marker.npc?.role,
       marker.npc?.servername,
+      marker.npc?.teleport_routes?.map((route) => route.destination),
       type?.code,
       type?.scale,
       type?.party,
@@ -1476,6 +1501,20 @@ onMounted(async () => {
     })
     if (!props.compact && marker.kind === 'character')
       rendered.on('click', () => emit('inspectcharacter', marker.id))
+    if (
+      !props.compact &&
+      marker.kind === 'npc' &&
+      marker.npc?.role === 'teleporter'
+    ) {
+      rendered.on('contextmenu', (event: L.LeafletMouseEvent) => {
+        L.DomEvent.preventDefault(event.originalEvent)
+        L.DomEvent.stopPropagation(event.originalEvent)
+        emit('teleportercontext', marker.npc!, marker.position, {
+          x: event.originalEvent.clientX,
+          y: event.originalEvent.clientY,
+        })
+      })
+    }
     if (!props.compact && marker.kind !== 'character')
       rendered.bindPopup(markerPopup(marker), {
         className: 'phmon-map-popup',

@@ -13,6 +13,16 @@ export interface PlayerMapMarker {
 const normalizedName = (value: string | undefined) =>
   value?.trim().toLocaleLowerCase() || ''
 
+export function playerZoneLabel(
+  zone: string | undefined,
+  region: number,
+  zoneNameForRegion: (region?: number | null) => string,
+): string {
+  const named = zone?.trim()
+  if (named) return named
+  return zoneNameForRegion(region)
+}
+
 export function playerMapMarkers(
   profile: MapProfile,
   areaID: string,

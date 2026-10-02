@@ -250,6 +250,15 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-02 other-player zone names
+
+Plugin **1.9.8** / protocol **13** adds optional `zone` on `map.players` rows from
+`get_zone_name` for the player's region, or the observer region when the row has
+none. The map popup shows that name, and otherwise the zone already known for the
+same region from a character or event. Older plugins omit `zone` and still use the
+lookup. No deployment was performed. Exact next action: load 1.9.8 against a
+protocol-13 backend and confirm a nearby player popup shows the zone name.
+
 ### Resume — 2026-10-01 Issue #36 Other players map layer
 
 Branch `codex/issue-36-get-players-probe` replaces the manual get_players/equipment
@@ -328,6 +337,41 @@ passed; browser checks confirmed equal-width dropdowns, 26 × 14 px switches,
 36 px rows, the compact footer, custom dates, rank filter and scoped reset Cancel.
 Mobile at 390 × 844 has no horizontal overflow. Evidence:
 `docs/reference/issue55/historical-heatmaps-panel.png`.
+
+### Resume — 2026-10-02 Issue #32 teleporter investigation
+
+Completed the issue #32 investigation spike (no #33 UI/commands). Plugin **1.9.2**
+adds operator QtBind **Probe teleporters** and `probe_teleporter_capabilities()`:
+symbol-name discovery, at most sixteen read-only `get_teleport_data` pair checks
+from the current `GATE_*` snapshot, no `inject_joymax` / `start_script` /
+`generate_script`. Four plugin unit tests cover caps, missing API, errors, and
+summary text.
+
+Documentation: [docs/reference/issue32-teleporter-investigation.md](docs/reference/issue32-teleporter-investigation.md)
+(decision contract for #33) and `docs/phbot-capabilities.md` § Issue #32.
+Findings: live gates remain protocol v9 `map.npcs`; **destination enumeration
+unsupported** (no public API; community plugins require known pairs); resolution
+via `get_teleport_data`; planned #33 execution via one validated
+`teleport,source,destination` script line (unverified on Windows/phBot);
+**Designate Recall Point unsupported** (community `0x7059` candidate only);
+exporter/SQLite catalogs rejected.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
+`docs/reference/issue32-teleporter-investigation.md`, `docs/phbot-capabilities.md`,
+and this resume entry. No protocol bump, Go/web changes, or character teleports.
+
+Validation: `python3 -m unittest plugin.test_phmon.TeleporterProbeTests` and full
+`plugin.test_phmon` on the PR branch. Operator **2026-10-02**: probe at Hotan
+(`GATE_KT`, id `4`); plugin **1.9.3** **Test Hotan→Jangan** succeeded —
+`teleport,Hotan,Jangan`, `get_teleport_data` code `1`, `start_script=True`, phBot
+`Script: Teleporting`. Enumeration/recall still unsupported. Evidence:
+`docs/reference/issue32-teleporter-investigation.md`. PR [#61](https://github.com/brantje/phmon/pull/61).
+Issue #33 follow-up (plugin **1.9.4**): `character.teleport` command, map teleporter
+**Teleport to…** fan-out, probe `execution` flag when `hotan_to_jangan` resolves.
+Operator should re-run **Probe teleporters** at Hotan to confirm tagged pair tuple in
+JSON; use map UI or remote command for multi-character teleports. Arrival evidence
+remains separate. Recall stays open until authorized `0x7059` capture. Validate CI;
+do not merge without review.
 
 ### Resume — 2026-10-02 Issue #57 map navigation stop and trace state
 

@@ -24,19 +24,25 @@ type mapNPCObserver struct {
 	Name        string `json:"name"`
 }
 
+type mapTeleportRoute struct {
+	Destination  string `json:"destination"`
+	TeleportCode *int64 `json:"teleport_code,omitempty"`
+}
+
 type mapNPC struct {
-	ID         string           `json:"id"`
-	Name       string           `json:"name,omitempty"`
-	ServerName string           `json:"servername,omitempty"`
-	Model      *int64           `json:"model_id,omitempty"`
-	Role       string           `json:"role"`
-	Region     int              `json:"region"`
-	X          float64          `json:"x"`
-	Y          float64          `json:"y"`
-	ObserverZ  *float64         `json:"observer_z,omitempty"`
-	ObservedAt string           `json:"observed_at"`
-	Observers  []mapNPCObserver `json:"observers"`
-	observedAt time.Time
+	ID             string             `json:"id"`
+	Name           string             `json:"name,omitempty"`
+	ServerName     string             `json:"servername,omitempty"`
+	Model          *int64             `json:"model_id,omitempty"`
+	Role           string             `json:"role"`
+	Region         int                `json:"region"`
+	X              float64            `json:"x"`
+	Y              float64            `json:"y"`
+	ObserverZ      *float64           `json:"observer_z,omitempty"`
+	ObservedAt     string             `json:"observed_at"`
+	TeleportRoutes []mapTeleportRoute `json:"teleport_routes,omitempty"`
+	Observers      []mapNPCObserver   `json:"observers"`
+	observedAt     time.Time
 }
 
 type mapNPCSnapshot struct {
@@ -84,6 +90,7 @@ func projectNPCs(profile mapprofile.Profile, snapshots []npcs.LiveSnapshot, area
 				Name: npc.Name, ServerName: npc.ServerName, Model: npc.Model, Role: npc.Role,
 				Region: npc.Region, X: npc.X, Y: npc.Y, ObserverZ: snapshot.ObserverZ,
 				ObservedAt: snapshot.ObservedAt.UTC().Format(time.RFC3339Nano), observedAt: snapshot.ObservedAt,
+				TeleportRoutes: copyMapTeleportRoutes(npc.TeleportRoutes),
 				Observers: []mapNPCObserver{{
 					CharacterID: snapshot.CharacterID, SessionID: snapshot.SessionID, Name: snapshot.Character,
 				}},
@@ -113,9 +120,11 @@ func projectNPCs(profile mapprofile.Profile, snapshots []npcs.LiveSnapshot, area
 			if candidate.observedAt.After(current.observedAt) {
 				candidate.ID = current.ID
 				candidate.Observers = append(current.Observers, candidate.Observers...)
+				candidate.TeleportRoutes = mergeMapTeleportRoutes(current.TeleportRoutes, candidate.TeleportRoutes)
 				clusters[matched].item = candidate
 			} else {
 				current.Observers = append(current.Observers, candidate.Observers...)
+				current.TeleportRoutes = mergeMapTeleportRoutes(current.TeleportRoutes, candidate.TeleportRoutes)
 				clusters[matched].item = current
 			}
 		}
@@ -185,4 +194,52 @@ func npcMarkerID(server string, npc npcs.NPC) string {
 		model = fmt.Sprintf("%d", *npc.Model)
 	}
 	return fmt.Sprintf("npc:%s:%d:%s:%s:%s:%.1f:%.1f", strings.ToLower(strings.TrimSpace(server)), npc.Region, npc.ServerName, model, npc.ID, npc.X, npc.Y)
+}
+
+func copyMapTeleportRoutes(routes []npcs.TeleportRoute) []mapTeleportRoute {
+	if len(routes) == 0 {
+		return nil
+	}
+	out := make([]mapTeleportRoute, 0, len(routes))
+	for _, route := range routes {
+		out = append(out, mapTeleportRoute{Destination: route.Destination, TeleportCode: route.TeleportCode})
+	}
+	return out
+}
+
+func mergeMapTeleportRoutes(existing, incoming []mapTeleportRoute) []mapTeleportRoute {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+	merged := make([]mapTeleportRoute, 0, len(existing)+len(incoming))
+	seen := make(map[string]struct{}, len(existing)+len(incoming))
+	for _, route := range existing {
+		key := strings.ToLower(strings.TrimSpace(route.Destination))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, route)
+	}
+	for _, route := range incoming {
+		key := strings.ToLower(strings.TrimSpace(route.Destination))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, route)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].Destination < merged[j].Destination
+	})
+	return merged
 }
