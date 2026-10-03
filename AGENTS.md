@@ -5142,7 +5142,8 @@ Files affected: exporter and fixtures, Go resource/API/ingestion/migration code,
 map profile and packaged dataset, frontend API/types/map component, generated
 public index and monster images, capability/parity/format notes.
 
-Exact next action: commit and push the parity/format/resume documentation update to
-PR #67, update its description with the final validation results, then review the
-remaining PostgreSQL and real-phBot validation gates. Keep the PR open; do not
-merge, deploy or operate real bot characters without authorization.
+Exact next action: when a PostgreSQL test service/`TEST_DATABASE_URL` becomes
+available, run the migration and ingestion integration tests; when a real phBot
+runtime is available, validate the plugin/backend flow and record it separately
+from simulator results. PR #67 is updated and should remain open until those gates
+are resolved. Do not merge, deploy or operate real bot characters without authorization.
