@@ -1,7 +1,6 @@
 package events
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -134,7 +133,14 @@ func TestPetPickupsJoinOnlyTheirClassifiedDropFeedAndCountAsRecords(t *testing.T
 	if err != nil || combined.Total != 3 || combined.Events[0].ID != owned.ID || combined.Events[0].ItemDropClass != "normal" {
 		t.Fatalf("normal drop feed omitted recipient-owned gain: %+v, %v", combined, err)
 	}
-	if !json.Valid(combined.Events[0].Payload) || !bytes.Contains(combined.Events[0].Payload, []byte(`"9":5`)) {
+	var observed struct {
+		Item struct {
+			APIFields struct {
+				Blues map[string]int `json:"blues"`
+			} `json:"api_fields"`
+		} `json:"item"`
+	}
+	if json.Unmarshal(combined.Events[0].Payload, &observed) != nil || observed.Item.APIFields.Blues["9"] != 5 {
 		t.Fatalf("recipient item rolls were lost: %s", combined.Events[0].Payload)
 	}
 }
