@@ -1067,19 +1067,38 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['observed_items'], 0)
         self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'not_observed')
         self.assertEqual(resources['item_enrichment']['pet_inventory_decoder_build'],
-                         'disabled_runtime_layout_unverified')
+                         'vsro_pet_packet_probe_r1')
+        self.assertFalse(resources['item_enrichment']['pet_packet_probe']['packet_bytes_retained'])
 
-    def test_unverified_pet_operation_is_counted_without_capturing_packet_bytes(self):
+    def test_pet_packet_probe_reports_counts_and_lengths_without_packet_bytes(self):
         tracker = plugin.PassiveItemTracker(capture_enabled=True)
+        tracker.enqueue(0x30C8, b'pet-snapshot')
         tracker.enqueue(0xB034, b'private-packet-bytes')
         resources = {'equipment': {'availability': 'observed', 'slots': []},
                      'inventory': {'availability': 'observed', 'slots': []}}
         tracker.decorate(resources, 'session-one')
         self.assertEqual(resources['item_enrichment']['pet_inventory_packet_count'], 1)
-        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'runtime_layout_unverified')
+        self.assertEqual(resources['item_enrichment']['pet_snapshot_packet_count'], 1)
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'candidate_layout_unverified')
+        probe = resources['item_enrichment']['pet_packet_probe']
+        self.assertEqual(probe['mode'], 'presence_and_size_only')
+        self.assertFalse(probe['packet_bytes_retained'])
+        self.assertEqual(probe['opcodes']['0x30C8']['last_bytes'], len(b'pet-snapshot'))
+        self.assertEqual(probe['opcodes']['0xB034']['last_bytes'], len(b'private-packet-bytes'))
+        self.assertEqual(probe['opcodes']['0xB034']['count'], 1)
         capture = tracker.sanitized_capture()
-        self.assertEqual(capture['records'][0]['result'], 'pet_decoder_disabled')
+        self.assertEqual(capture['records'][0]['result'], 'presence_and_size_only')
         self.assertNotIn('private-packet-bytes', json.dumps(capture))
+        self.assertNotIn('pet-snapshot', json.dumps(capture))
+
+        # 0xB034 carries general inventory operations, so its presence alone
+        # cannot be labelled as pet traffic without decoding its operation.
+        operation_only = plugin.PassiveItemTracker()
+        operation_only.enqueue(0xB034, b'operation')
+        operation_resources = {'equipment': {'availability': 'observed', 'slots': []},
+                               'inventory': {'availability': 'observed', 'slots': []}}
+        operation_only.decorate(operation_resources, 'session-one')
+        self.assertEqual(operation_resources['item_enrichment']['pet_inventory_status'], 'not_observed')
 
     def test_queue_overflow_invalidates_all_item_instances(self):
         tracker = plugin.PassiveItemTracker()

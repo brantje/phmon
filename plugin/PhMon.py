@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.13'
+pVersion = '1.9.14'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -106,10 +106,10 @@ MAX_ITEM_MAGIC_OPTIONS = 32
 MAX_ITEM_CAPTURE_RECORDS = 100
 MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # Enable only for a bounded, local diagnostic capture. Captured records contain
-# decoded item fields only; the live callback never writes to disk.
+# parsed item fields or packet sizes only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
-PET_INVENTORY_DECODER_BUILD = 'disabled_runtime_layout_unverified'
+PET_INVENTORY_DECODER_BUILD = 'vsro_pet_packet_probe_r1'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -1596,7 +1596,7 @@ def parse_item_durability_update(data):
 
 class PassiveItemTracker(object):
     """Bounded packet queue plus session-local, fail-closed item observations."""
-    ALLOWED_OPCODES = (0x3040, 0x3052, 0xB034)
+    ALLOWED_OPCODES = (0x3040, 0x3052, 0x30C8, 0xB034)
 
     def __init__(self, capture_enabled=None):
         self.capture_enabled = ITEM_PACKET_CAPTURE_ENABLED if capture_enabled is None else bool(capture_enabled)
@@ -1614,6 +1614,13 @@ class PassiveItemTracker(object):
         self._capture_bytes = 0
         self.capture_overflow = False
         self._pet_packet_count = 0
+        self._pet_snapshot_packet_count = 0
+        self._pet_packet_sizes = {
+            '0x30C8': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+            '0xB034': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+        }
 
     def enqueue(self, opcode, data):
         if opcode not in self.ALLOWED_OPCODES:
@@ -1655,6 +1662,13 @@ class PassiveItemTracker(object):
         self._sequence = 0
         self._last_invalidation = reason
         self._pet_packet_count = 0
+        self._pet_snapshot_packet_count = 0
+        self._pet_packet_sizes = {
+            '0x30C8': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+            '0xB034': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+        }
         if protocol is not None:
             self._protocol = protocol
         with self._lock:
@@ -1695,17 +1709,35 @@ class PassiveItemTracker(object):
         self._capture_bytes += len(encoded)
 
     def sanitized_capture(self):
-        """Return item-only decoded evidence suitable for a local fixture file."""
+        """Return bounded item observations and packet metadata without packet bytes."""
         return {'schema_version': 1, 'overflow': self.capture_overflow,
                 'records': list(self._capture_records)}
 
     def _process(self, opcode, payload):
         self._sequence += 1
-        if opcode == 0xB034:
-            self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
-            self._invalidate('inventory_operation_unclassified')
-            self._capture({'opcode': '0xB034', 'sequence': str(self._sequence),
-                           'result': 'pet_decoder_disabled',
+        if opcode in (0x30C8, 0xB034):
+            opcode_name = '0x%04X' % opcode
+            diagnostic = self._pet_packet_sizes[opcode_name]
+            diagnostic['count'] = min(diagnostic['count'] + 1, 2147483647)
+            packet_size = len(payload)
+            diagnostic['min_bytes'] = packet_size if diagnostic['min_bytes'] is None else min(
+                diagnostic['min_bytes'], packet_size)
+            diagnostic['max_bytes'] = packet_size if diagnostic['max_bytes'] is None else max(
+                diagnostic['max_bytes'], packet_size)
+            diagnostic['last_bytes'] = packet_size
+            diagnostic['last_sequence'] = str(self._sequence)
+            if opcode == 0x30C8:
+                self._pet_snapshot_packet_count = min(
+                    self._pet_snapshot_packet_count + 1, 2147483647)
+            else:
+                self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
+                # This operation stream can change character inventory state;
+                # discard character-slot enrichment until a verified handler
+                # can reconcile the specific operation.
+                self._invalidate('inventory_operation_unclassified')
+            self._capture({'opcode': opcode_name, 'sequence': str(self._sequence),
+                           'result': 'presence_and_size_only',
+                           'packet_bytes': packet_size,
                            'decoder_build': PET_INVENTORY_DECODER_BUILD})
             return
         try:
@@ -1812,13 +1844,22 @@ class PassiveItemTracker(object):
             'capture_overflow': self.capture_overflow,
             'pet_inventory_decoder_build': PET_INVENTORY_DECODER_BUILD,
             'pet_inventory_packet_count': self._pet_packet_count,
+            'pet_snapshot_packet_count': self._pet_snapshot_packet_count,
             'pet_inventory_status': (
-                'runtime_layout_unverified' if self._pet_packet_count else 'not_observed'),
+                'candidate_layout_unverified'
+                if self._pet_snapshot_packet_count else 'not_observed'),
+            'pet_packet_probe': {
+                'mode': 'presence_and_size_only',
+                'packet_bytes_retained': False,
+                'opcodes': {
+                    key: dict(value) for key, value in self._pet_packet_sizes.items()
+                },
+            },
         }
         return resources
 
     def persist_sanitized_capture(self, path):
-        """Write only parsed item records; callers must run off the phBot callback."""
+        """Write only parsed item observations and packet metadata off the callback."""
         if not self.capture_enabled or not isinstance(path, str) or not path:
             return False
         payload = json.dumps(self.sanitized_capture(), separators=(',', ':'), sort_keys=True)
@@ -5227,7 +5268,7 @@ def finished():
 
 if _PHBOT_AVAILABLE and _QtBind is not None:
     _gui = _QtBind.init(__name__, pName)
-    _QtBind.createLabel(_gui, 'Loaded: ' + pName + ' v' + pVersion + ' (item decoder r2)', 390, 10)
+    _QtBind.createLabel(_gui, 'Loaded: ' + pName + ' v' + pVersion + ' (pet packet probe r1)', 390, 10)
     _QtBind.createLabel(_gui, 'Backend WebSocket URL', 10, 10)
     _gui_backend_url = _QtBind.createLineEdit(_gui, '', 10, 30, 360, 20)
     _QtBind.createLabel(_gui, 'Agent ID', 10, 60)

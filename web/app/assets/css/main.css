@@ -2804,6 +2804,22 @@ select:focus-visible {
   display: grid;
   gap: 0.55rem;
 }
+.pet-packet-probe {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #29374a;
+  border-radius: 4px;
+  background: rgba(16, 27, 41, 0.65);
+  color: #b3c1d4;
+  font-size: 0.68rem;
+}
+.pet-packet-probe strong {
+  color: #f0cc8b;
+}
+.pet-packet-probe small {
+  color: #8997aa;
+}
 .pet-card {
   padding: 0.55rem;
   border: 1px solid #29374a;

@@ -5419,3 +5419,25 @@ branch/alignment and exact pet-to-bag quantity deltas against independent API
 observations, then implement only those proven layouts and complete real
 PostgreSQL/API/UI restart-and-retry acceptance. Until that evidence is available,
 detailed pet packet values and production pickup receipts remain unimplemented.
+
+### Resume — 2026-10-03 pet packet presence probe
+
+The operator authorized trying the protocol-14 pet packet path and will restart
+the containers and upload the plugin. Plugin **1.9.14** / agent protocol **14**
+now allowlists `0x30C8` as well as `0xB034` and reports per-session counts and
+packet-size min/max/latest values through `item_enrichment`; the Stats Pet tab
+shows them. This is a count/size probe only: no packet bytes are retained, no
+candidate field is decoded, and `0xB034` still invalidates character packet
+enrichment. The design remains fail-closed until runtime evidence verifies the
+branch/layout. The pinned RSBot handlers and official phBot API pages were checked
+again; their corroborating shapes do not establish the installed runtime layout.
+
+Files affected: `plugin/{PhMon.py,test_phmon.py}`, Pet-tab subscription/status UI
+and CSS, `docs/{phbot-capabilities,item-instance-evidence,reference-parity}.md`,
+and this ledger. Validation: 167 plugin tests, protocol contract check, live
+transport audit, 177 frontend tests on Node 24.20.0, Nuxt typecheck, lint (0
+errors, 67 existing warnings), production build, Prettier, and `git diff --check`
+passed. Next: push this increment to PR #69 so the operator can install 1.9.14.
+After operator upload and container restart, inspect the live Pet-tab probe counts
+and only then select the packet branch work justified by naturally observed
+traffic. Do not claim decoding or pickup-event validation.

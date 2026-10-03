@@ -82,7 +82,7 @@ const activeResourceKeys = computed(() => {
   if (selectedTab.value === 'Info') return ['equipment']
   if (selectedTab.value === 'Inventory') return ['inventory']
   if (selectedTab.value === 'Storage') return [selectedContainer.value]
-  if (selectedTab.value === 'Pet') return ['pets']
+  if (selectedTab.value === 'Pet') return ['pets', 'item_enrichment']
   if (selectedTab.value === 'Party') return ['party', 'party_setup']
   if (selectedTab.value === 'Academy') return ['academy']
   return []
@@ -133,6 +133,27 @@ function petDetailStatus(pet: PetInventoryRecord) {
   return raw
     ? 'Instance evidence is present, but its detail interpretation is still pending.'
     : 'Current slots show basic item facts; detailed attributes await verified API or packet evidence.'
+}
+const petPacketProbe = computed(() => {
+  const value = payload('item_enrichment').pet_packet_probe
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const probe = value as Record<string, unknown>
+  if (probe.mode !== 'presence_and_size_only') return null
+  const opcodes = probe.opcodes
+  if (!opcodes || typeof opcodes !== 'object' || Array.isArray(opcodes))
+    return null
+  return opcodes as Record<string, unknown>
+})
+function petPacketProbeSummary(opcode: string) {
+  const value = petPacketProbe.value?.[opcode]
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return `${opcode}: waiting`
+  const detail = value as Record<string, unknown>
+  const count = typeof detail.count === 'number' ? detail.count : 0
+  const minimum = typeof detail.min_bytes === 'number' ? detail.min_bytes : null
+  const maximum = typeof detail.max_bytes === 'number' ? detail.max_bytes : null
+  const sizeRange = minimum === null ? '' : ` · ${minimum}–${maximum} bytes`
+  return `${opcode}: ${count} packet${count === 1 ? '' : 's'}${sizeRange}`
 }
 function memberNumber(member: Record<string, unknown>, key: string) {
   const value = member[key]
@@ -501,6 +522,15 @@ onBeforeUnmount(() => {
             ? `Last contents observed ${formatTimestamp(observation('pets')?.observed_at)}`
             : 'phBot has not supplied a current pet observation.'
         }}</span>
+      </div>
+      <div v-if="petPacketProbe" class="pet-packet-probe" role="status">
+        <strong>Passive packet probe · V14</strong>
+        <span>{{ petPacketProbeSummary('0x30C8') }}</span>
+        <span>{{ petPacketProbeSummary('0xB034') }}</span>
+        <small
+          >This build reports packet counts and sizes only. It does not decode
+          packet contents or change pet items.</small
+        >
       </div>
       <article v-for="pet in pets" :key="String(pet.pet_id)" class="pet-card">
         <div class="pet-card-heading">

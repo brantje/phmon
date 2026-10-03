@@ -1394,12 +1394,17 @@ no family-specific packet layout is inferred from the shared field name.
 
 Pinned RSBot handlers support investigating Joymax `0x30C8` as a pet data response
 and `0xB034` as item operations, but are corroboration only, not evidence for the
-installed phBot protocol. Pet snapshot and operation decoding therefore remain
-disabled in production. The workspace plugin **1.9.13** / protocol **14** reports the disabled
-build identifier and bounded `0xB034` count; the callback still queues only
-allowlisted observations for the worker and invalidates affected packet enrichment.
-No packet bytes or item payloads are exposed by diagnostics. API slots remain
-persisted separately as basic facts.
+installed phBot protocol. Plugin **1.9.14** / protocol **14** adds a presence probe
+for both opcodes. Its resource diagnostic reports per-session counts and packet
+length ranges; it retains no payload bytes and decodes no pet details or operation
+semantics. `0xB034` still invalidates character item enrichment. The Pet tab shows
+these probe counts so natural runtime traffic can establish which packet families
+arrive. API slots remain persisted separately as basic facts.
+
+This upload is an evidence-gathering build, not an enabled candidate decoder. The
+runtime protocol, pet-family branches, item rental/binding variants, and packet
+ordering still need to be established from operator runtime evidence before any
+packet-derived fields or pickup events are produced.
 
 The protocol-14 event validator accepts `joymax.pet_inventory` only for bounded,
 positive `item.acquired` pet receipts carrying pet/slot destination and packet

@@ -2159,6 +2159,7 @@ character/item data, so they remain outside the repository under `/tmp`.
 Collection and event completion limits are recorded in
 [`phbot-capabilities.md`](phbot-capabilities.md) and
 [`item-instance-evidence.md`](item-instance-evidence.md): no matching sanitized
-`0x30C8`/`0xB034` runtime fixtures were available, so the production pet packet
-decoder remains disabled and no real pet-pickup receipt has yet been emitted. This
-is an open acceptance gate, not parity evidence.
+`0x30C8`/`0xB034` runtime fixtures were available, so plugin 1.9.14 now exposes a
+passive count/size probe in the Pet tab while the production pet packet decoder
+remains disabled and no real pet-pickup receipt has yet been emitted. This is an
+open acceptance gate, not parity evidence.
