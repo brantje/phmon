@@ -356,9 +356,19 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				// State and snapshot can arrive out of order at a region seam; drop only this snapshot.
 				continue
 			}
+			var dataset string
+			var lookup mobs.LevelLookup
+			if h.resources != nil {
+				dataset, _ = h.resources.DatasetIDForServer(character.Server)
+				lookup = h.resources.MonsterLevel
+			}
+			resolvedMonsters := make([]mobs.Monster, len(frame.Monsters))
+			for i, monster := range frame.Monsters {
+				resolvedMonsters[i] = mobs.ResolveLevel(monster, dataset, lookup)
+			}
 			h.mobLive.Apply(mobs.LiveSnapshot{Server: character.Server, AgentID: hello.AgentID, CharacterID: frame.CharacterID, SessionID: frame.SessionID,
 				Character: character.Name, Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
-				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Monsters: frame.Monsters})
+				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Monsters: resolvedMonsters})
 			h.live.Invalidate()
 		case "map.npcs":
 			frame := message.MapSnapshot

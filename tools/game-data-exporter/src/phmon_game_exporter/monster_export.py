@@ -136,7 +136,13 @@ def collect_monster_targets(rows, *, uniques_only=False, invalid=None):
         base, visited = row, set()
         while base[52].strip().casefold() in ("", "xxx", "null", "0"):
             if base[2] in visited:
-                raise ModelError("Cyclic monster base resource reference")
+                if invalid is None:
+                    raise ModelError("Cyclic monster base resource reference")
+                invalid.append({"modelName": None, "resources": [],
+                                "referenceIds": [int(row[1])], "codes": [row[2]],
+                                "status": "invalid", "reason": "Cyclic monster base resource reference"})
+                base = None
+                break
             visited.add(base[2])
             base = by_code.get(base[4])
             if base is None:

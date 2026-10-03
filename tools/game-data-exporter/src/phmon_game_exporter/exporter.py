@@ -21,12 +21,13 @@ from .cli import ARCHIVES, _json_write
 from .mapgrid import infer_tile_grid_orientation
 from .monster_icons import MONSTER_ICONS
 from .monster_export import MODEL_NAME, collect_monster_targets, export_monsters
+from .monster_reference import build_monster_reference
 from .item_metadata import item_metadata, magic_option_definitions
 from .portrait_mapping import PORTRAIT_MODEL_RANGES, portrait_for_model, portrait_source_path
 from .pk2 import Entry, PK2Archive, PK2Error, sha256_file
 from .textures import TextureError, ddj_to_png
 
-SCHEMA_VERSION = "1.2.2"
+SCHEMA_VERSION = "1.2.3"
 TEXT_ROOT = "server_dep/silkroad/textdata/"
 ITEM_COMMON_FIELDS = 55
 ENTITY_COMMON_FIELDS = 55
@@ -565,6 +566,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             # icons. It does not establish that those icons are portrait/card art.
             entity_records: list[dict[str, Any]] = []
             monster_source_rows: list[list[str]] = []
+            monster_reference_rows: list[tuple[list[str], str, int]] = []
             entity_audit: list[dict[str, Any]] = []
             missing_entity_names = missing_entity_icons = 0
             verified_portrait_joins = 0
@@ -600,6 +602,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                         entity_ids.add(identity)
                         if fields[2].startswith("MOB_"):
                             monster_source_rows.append(fields)
+                            monster_reference_rows.append((fields, table_path, line_number))
                         token = fields[5]
                         names = sorted(set(object_text.get(token, [])))
                         display_name = names[0] if len(names) == 1 else None
@@ -659,6 +662,18 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             unresolved.append({"family": "entities", "reason": "pet class and full-body artwork roles remain unresolved; character portraits use only the explicit phMonitor v0.5.0 model mapping"})
             entity_records.sort(key=lambda row: row["referenceId"])
             _json_write(bundle / "catalogs" / "entities.json", _catalog(dataset_id, "entities", "partial", entity_records, recordCount=len(entity_records), locales=["en"]))
+            reference_tables = {}
+            for name in ("npcpos.txt", "worldmapguidedata.txt", "worldmapguidedata_region.txt"):
+                entry = media_index.get(f"{TEXT_ROOT}{name}".casefold())
+                if entry is not None:
+                    reference_tables[name] = media.read_payload(entry)
+            monster_reference, monster_reference_audit = build_monster_reference(
+                dataset_id, monster_reference_rows, object_text, reference_tables, SCHEMA_VERSION,
+            )
+            _json_write(bundle / "catalogs" / "monsterReference.json", monster_reference)
+            _json_write(audit / "tables" / "monster-reference.json", monster_reference_audit)
+            if monster_reference["status"] != "parsed":
+                unresolved.append({"family": "monsterReference", "reason": "partial client reference coverage; see private monster-reference audit", "coverage": monster_reference["coverage"]})
             monster_collection_errors = []
             monster_targets = collect_monster_targets(monster_source_rows, uniques_only=unique_monsters,
                                                       invalid=monster_collection_errors)
@@ -1340,6 +1355,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "interfaceSymbols": {"candidateImages": len(interface_records), "buttonStatesIncluded": False},
                     "monsterTypes": {"icons": monster_icon_count, "missingTypeCodes": missing_monster_icons, "sharedPartyBadgeTypeCodes": [16, 17, 20]},
                     "monsters": monster_coverage,
+                    "monsterReference": monster_reference["coverage"],
                     "maps": {"tiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "gridOrientations": {row["tileSetId"]: row["status"] for row in tile_set_orientations}, "worldTransformsValidated": False},
                     "regions": {"records": len(region_records)},
                     "teleports": {"records": len(teleport_records), "namesResolved": len(teleport_records) - missing_teleport_names, "regionJoinsResolved": len(teleport_records) - missing_teleport_regions, "links": len(teleport_links), "unresolvedLinks": bad_teleport_links},
@@ -1368,6 +1384,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                     "interfaceSymbols": {"candidateImagesConverted": len(interface_records), "groups": dict(sorted(Counter(row["symbolGroup"] for row in interface_records).items()))},
                     "monsterTypes": {"iconsConverted": monster_icon_count, "missingTypeCodes": missing_monster_icons},
                     "monsters": monster_coverage,
+                    "monsterReference": monster_reference["coverage"],
                     "maps": {"minimapTiles": len(tile_records), "tileSets": len(group_ids), "uniformOpaqueBlackTiles": len(uniform_black_tiles), "tileSetOrientations": tile_set_orientations, "MapPk2Tile2dMetadataEntries": map_metadata_count, "rootTileSetId": root_tile_set_id, "regionGridMatchedRecords": matched_region_tile_count, "regionRecordsWithoutExactRootTile": len(missing_region_tile_rows), "worldCoordinateTransforms": "unvalidated"},
                     "regions": {"parsed": len(region_records), "encoding": region_encoding},
                     "teleports": {"parsed": len(teleport_records), "namesResolved": len(teleport_records) - missing_teleport_names, "regionReferencesResolved": len(teleport_records) - missing_teleport_regions, "linksParsed": len(teleport_links), "linksUnresolved": bad_teleport_links, "status": teleport_status},

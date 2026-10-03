@@ -15,6 +15,11 @@ import type {
   MapPartyMember,
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
+import type {
+  MonsterReferenceArea,
+  MonsterReferenceBounds,
+  MonsterReferencePoint,
+} from '~~/shared/types/monsterReference'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
 import type { MapHeatLayer } from '~/utils/mapHeatmap'
 import type { MapRouteOverlay } from '~/utils/mapNavigationRoutes'
@@ -94,6 +99,9 @@ const props = defineProps<{
   initialTile?: { x: number; y: number }
   markers?: MapCanvasMarker[]
   heatLayers?: MapHeatLayer[]
+  referenceAreas?: MonsterReferenceArea[]
+  referencePoints?: MonsterReferencePoint[]
+  referenceFocus?: MonsterReferenceBounds & { sequence: number }
   navigationRoutes?: MapRouteOverlay[]
   trainingAreas?: TrainingAreaOverlay[]
   trainingEditable?: boolean
@@ -102,7 +110,7 @@ const props = defineProps<{
   trainingAcceptTitle?: string
 }>()
 const emit = defineEmits<{
-  viewchange: [view: { tileX: number; tileY: number; zoomPercent: number }]
+  viewchange: [view: { tileX: number; tileY: number; zoomPercent: number; bounds: MonsterReferenceBounds }]
   trainingselect: [characterID: string]
   trainingmove: [characterID: string, point: RasterPosition]
   trainingresize: [characterID: string, radiusPixels: number]
@@ -130,6 +138,9 @@ const emit = defineEmits<{
 const element = ref<HTMLDivElement | null>(null)
 let map: LeafletMap | undefined
 let heatLayerGroup: LayerGroup | undefined
+let referenceAreaLayer: LayerGroup | undefined
+let referenceLabelLayer: LayerGroup | undefined
+let referencePointLayer: LayerGroup | undefined
 let markerLayer: LayerGroup | undefined
 let navigationLayerGroup: LayerGroup | undefined
 let trainingLayerGroup: LayerGroup | undefined
@@ -232,9 +243,18 @@ function setInitialView() {
 
 function publishView() {
   if (!map) return
+  const visible = map.getBounds()
+  const northWest = indexAt(visible.getNorthWest())
+  const southEast = indexAt(visible.getSouthEast())
   emit('viewchange', {
     ...indexAt(map.getCenter()),
     zoomPercent: mapZoomPercentForLevel(map.getZoom()),
+    bounds: {
+      min_x: Math.max(props.profile.tiles.min_x, northWest.tileX),
+      max_x: Math.min(props.profile.tiles.max_x, southEast.tileX),
+      min_y: Math.max(props.profile.tiles.min_y, southEast.tileY),
+      max_y: Math.min(props.profile.tiles.max_y, northWest.tileY),
+    },
   })
 }
 
@@ -1256,6 +1276,124 @@ function markerIconContent(
   return content
 }
 
+function referenceLatLng(position: { tile_x: number; tile_y: number; pixel_x: number; pixel_y: number }) {
+  return leaflet!.latLng(
+    -((props.profile.tiles.max_y - position.tile_y) * 256 + position.pixel_y),
+    (position.tile_x - props.profile.tiles.min_x) * 256 + position.pixel_x,
+  )
+}
+
+function referenceCellBounds(cell: { x: number; y: number; width: number; height: number }) {
+  const west = (cell.x - props.profile.tiles.min_x) * 256
+  const east = west + cell.width * 256
+  const north = -(props.profile.tiles.max_y - (cell.y + cell.height - 1)) * 256
+  const south = -(props.profile.tiles.max_y - cell.y + 1) * 256
+  return leaflet!.latLngBounds([south, west], [north, east])
+}
+
+function referencePopup(rows: Array<{ name: string; code: string; level?: number }>, kind: 'area' | 'point') {
+  const panel = document.createElement('section')
+  panel.className = 'phmon-monster-reference-popup'
+  const heading = document.createElement('strong')
+  heading.textContent = kind === 'area' ? 'Mob area · client guide' : 'Exact spawn · client reference point'
+  panel.append(heading)
+  for (const row of rows) {
+    const line = document.createElement('div')
+    line.textContent = `${row.name || row.code} · ${row.level == null ? 'Level unavailable' : `Lv ${row.level}`}`
+    const code = document.createElement('small')
+    code.textContent = row.code
+    line.append(code)
+    panel.append(line)
+  }
+  const source = document.createElement('p')
+  source.textContent = `Dataset ${props.profile.dataset_id}. Reference coverage; current presence is unverified.`
+  panel.append(source)
+  return panel
+}
+
+function syncMonsterReferences() {
+  if (!map || !leaflet || !referenceAreaLayer || !referenceLabelLayer || !referencePointLayer) return
+  const L = leaflet
+  referenceAreaLayer.clearLayers()
+  referenceLabelLayer.clearLayers()
+  referencePointLayer.clearLayers()
+  const areas = props.referenceAreas || []
+  for (const area of areas) {
+    for (const cell of area.cells) {
+      L.rectangle(referenceCellBounds(cell), {
+        color: '#e4dba8', weight: 1, opacity: 0.42,
+        fillColor: '#fef6c3', fillOpacity: 0.18, interactive: true,
+      }).bindPopup(referencePopup([area], 'area'), { className: 'phmon-map-popup phmon-monster-reference-frame', maxWidth: 280 }).addTo(referenceAreaLayer)
+    }
+  }
+  const labelCandidates = areas.flatMap((area) => area.cells.map((cell) => {
+    const center = L.latLng(
+      -(props.profile.tiles.max_y - cell.y - cell.height / 2 + 1) * 256,
+      (cell.x - props.profile.tiles.min_x + cell.width / 2) * 256,
+    )
+    return { area, center, pixel: map!.latLngToContainerPoint(center) }
+  })).filter(({ pixel }) => pixel.x >= -130 && pixel.y >= -58 &&
+    pixel.x <= map!.getSize().x + 130 && pixel.y <= map!.getSize().y + 58)
+  const groups = new Map<string, typeof labelCandidates>()
+  const compact = mapZoomPercentForLevel(map.getZoom()) < 100
+  for (const candidate of labelCandidates) {
+    const x = Math.floor(candidate.pixel.x / (compact ? 90 : 130))
+    const y = Math.floor(candidate.pixel.y / (compact ? 45 : 58))
+    const key = `${x}:${y}`
+    const group = groups.get(key) || []
+    if (!group.some((entry) => entry.area.model_id === candidate.area.model_id)) group.push(candidate)
+    groups.set(key, group)
+  }
+  for (const group of groups.values()) {
+    const label = document.createElement('span')
+    label.className = 'phmon-monster-area-label'
+    if (compact) {
+      label.textContent = `${group.length} mob${group.length === 1 ? '' : 's'}`
+    } else {
+      for (const entry of group.slice(0, 3)) {
+        const line = document.createElement('span')
+        line.textContent = `${entry.area.name || entry.area.code} · ${entry.area.level == null ? 'Lv —' : `Lv ${entry.area.level}`}`
+        label.append(line)
+      }
+      if (group.length > 3) {
+        const more = document.createElement('span')
+        more.textContent = `+${group.length - 3} more`
+        label.append(more)
+      }
+    }
+    const icon = L.divIcon({ html: label, className: 'phmon-monster-area-label-icon', iconSize: [130, 36], iconAnchor: [65, 18] })
+    L.marker(group[0]!.center, { icon, keyboard: true, zIndexOffset: -300 })
+      .bindPopup(referencePopup(group.map((entry) => entry.area), 'area'), { className: 'phmon-map-popup phmon-monster-reference-frame', maxWidth: 280 })
+      .addTo(referenceLabelLayer)
+  }
+  const pointGroups = new Map<string, MonsterReferencePoint[]>()
+  for (const point of props.referencePoints || []) {
+    const position = referenceLatLng(point.position)
+    const pixel = map.latLngToContainerPoint(position)
+    const key = `${Math.floor(pixel.x / 22)}:${Math.floor(pixel.y / 22)}`
+    const group = pointGroups.get(key) || []
+    group.push(point)
+    pointGroups.set(key, group)
+  }
+  for (const group of pointGroups.values()) {
+    const first = group[0]!
+    const marker = L.circleMarker(referenceLatLng(first.position), {
+      renderer: heatRenderer, radius: group.length > 1 ? 7 : 4,
+      color: '#fef6c3', weight: 1.5, fillColor: '#597b9c', fillOpacity: 0.92,
+    })
+    marker.bindPopup(referencePopup(group, 'point'), { className: 'phmon-map-popup phmon-monster-reference-frame', maxWidth: 280 }).addTo(referencePointLayer)
+    if (group.length > 1) marker.bindTooltip(String(group.length), { permanent: true, direction: 'center', className: 'phmon-monster-point-count' })
+  }
+}
+
+function focusReferenceBounds() {
+  if (!map || !leaflet || !props.referenceFocus) return
+  const bounds = props.referenceFocus
+  const southWest = referenceCellBounds({ x: bounds.min_x, y: bounds.min_y, width: 1, height: 1 }).getSouthWest()
+  const northEast = referenceCellBounds({ x: bounds.max_x, y: bounds.max_y, width: 1, height: 1 }).getNorthEast()
+  map.fitBounds(leaflet.latLngBounds(southWest, northEast), { padding: [32, 32], maxZoom: mapZoomLevelForPercent(225) })
+}
+
 onMounted(async () => {
   if (
     !element.value ||
@@ -1398,7 +1536,10 @@ onMounted(async () => {
     },
   })
   new tiles().addTo(map)
+  referenceAreaLayer = L.layerGroup().addTo(map)
   heatLayerGroup = L.layerGroup().addTo(map)
+  referencePointLayer = L.layerGroup().addTo(map)
+  referenceLabelLayer = L.layerGroup().addTo(map)
   trainingLayerGroup = L.layerGroup().addTo(map)
   navigationLayerGroup = L.layerGroup().addTo(map)
   markerLayer = L.layerGroup().addTo(map)
@@ -1529,6 +1670,7 @@ onMounted(async () => {
   }
 
   setInitialView()
+  focusReferenceBounds()
   const selectPoint = (position: LatLng) =>
     emit('pointselect', indexAt(position))
   const onKeydown = (event: KeyboardEvent) => {
@@ -1589,8 +1731,10 @@ onMounted(async () => {
   map.on('zoomend', layoutTrainingLabels)
   map.on('moveend zoomend', publishView)
   map.on('moveend zoomend', layoutCharacterLabels)
+  map.on('zoomend', syncMonsterReferences)
   publishView()
   syncHeatLayers()
+  syncMonsterReferences()
   syncTrainingAreas()
   syncNavigationRoutes()
   syncMarkers()
@@ -1625,6 +1769,8 @@ watch(
 )
 watch(() => props.markers, syncMarkers, { deep: true })
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
+watch([() => props.referenceAreas, () => props.referencePoints], syncMonsterReferences, { deep: true })
+watch(() => props.referenceFocus, focusReferenceBounds, { deep: true })
 watch(() => props.navigationRoutes, syncNavigationRoutes, { deep: true })
 watch(
   [
@@ -1682,6 +1828,9 @@ onBeforeUnmount(() => {
   map?.remove()
   map = undefined
   heatLayerGroup = undefined
+  referenceAreaLayer = undefined
+  referenceLabelLayer = undefined
+  referencePointLayer = undefined
   markerLayer = undefined
   navigationLayerGroup = undefined
   trainingLayerGroup = undefined
@@ -1744,6 +1893,32 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+ :global(.phmon-monster-area-label-icon.leaflet-div-icon) {
+  border: 0;
+  background: transparent;
+ }
+ :global(.phmon-monster-area-label) {
+  display: grid;
+  gap: 1px;
+  min-width: 92px;
+  max-width: 180px;
+  padding: 3px 6px;
+  color: #fef6c3;
+  background: rgb(13 19 29 / 84%);
+  border: 1px solid rgb(254 246 195 / 58%);
+  border-radius: 4px;
+  font: 600 11px/1.2 'Segoe UI', Tahoma, Arial, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 5px rgb(0 0 0 / 35%);
+ }
+ :global(.phmon-monster-area-label > span) { overflow: hidden; text-overflow: ellipsis; }
+ :global(.phmon-monster-reference-popup) { display: grid; gap: 4px; min-width: 190px; color: #eaf1ff; }
+ :global(.phmon-monster-reference-frame .leaflet-popup-content) { box-sizing: border-box; padding: 12px; }
+ :global(.phmon-monster-reference-popup strong) { color: #fef6c3; }
+ :global(.phmon-monster-reference-popup small) { display: block; opacity: .7; }
+ :global(.phmon-monster-reference-popup p) { margin: 4px 0 0; font-size: 11px; opacity: .8; }
+ :global(.phmon-monster-point-count) { border: 0; background: transparent; color: #fff; box-shadow: none; font-weight: 700; }
 .map-canvas {
   width: 100%;
   height: 100%;

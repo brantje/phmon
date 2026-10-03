@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const GreatestDatasetID = "gamedata-17f8847c77edd7c7fadd"
+const GreatestDatasetID = "gamedata-e184cceb0b359ca140c1"
 
 var ErrUnknownServer = errors.New("map profile unavailable for server")
 
