@@ -1927,3 +1927,47 @@ animation props. The native batch regenerates 105 pictures; only
 tests and native bundle/public validation pass. All 12,069 unrelated public
 records are preserved. The one unsupported `volkoft` resource and existing UI
 parity scope remain documented in [export evidence](monster-art-export.md).
+
+### Issue #65 monster reference layers — 2026-10-03
+
+The Map Layers tab now has independent, persisted, default-off **Exact spawns**
+and **Mob areas** switches. Exact points come from the active dataset's `npcpos`;
+areas tint only the guide-listed cells from `worldmapguidedata` and its region
+table. Labels show the monster name and `Lv N`, group collisions at low zoom, and
+open an accessible list. Selecting a search result changes area/floor, focuses its
+locations and offers individual point/cell jumps. The UI states that this is
+client reference data and does not establish live spawn presence or precise
+boundaries. Live level resolution uses runtime data first and dataset-local
+catalog data only for a matching model/code identity.
+
+The active GreatestSRO data was rebuilt as
+`gamedata-e184cceb0b359ca140c1`; the server mapping, map profile, monster/item
+catalogs and public asset index now use that same ID. Export coverage is 8,112
+definitions, 238 guide groups, 2,198 guide cells and 6,756 joined points. The
+catalog records 82 missing English names, 2 ambiguous names, 30 disabled guide
+rows, 4 duplicate point rows and 9,766 `npcpos` model joins excluded because most
+rows belong to non-monster records. Tiger Girl is Lv 20, Shakram Lv 61 and Edimmu
+Lv 63. Projection tests place 6,451 points on supported maps; 305 remain excluded
+for unsupported/ambiguous interior mappings or failed floor/bounds checks. The
+shared Job Temple region remains deliberately unmapped for exact points. Cave
+guide cells use verified manager cell dimensions; exact placement is omitted
+where the current profile cannot identify a supported floor.
+
+Local browser fixture validation at 1440×1000, 1280×800 and 390×844 confirmed
+default-off switches, persistence across reload, independent layer toggles,
+name/level filtering, search and result focus, grouped labels at low zoom, and
+names/Lv at 100% zoom. At mobile width the page had no horizontal document
+overflow (375 CSS px document width inside a 390 px viewport). Popups use the
+dark map treatment for readable contrast. Screenshots were inspected in the
+browser session; they are retained in that task's visual history rather than as
+repository assets. The backend fixture loaded the packaged catalog and map
+profile; bot data was disconnected. This is not validation against a real phBot
+process or PostgreSQL database.
+
+Go and exporter tests pass; the frontend unit suite and Nuxt typecheck pass. The
+PostgreSQL integration test now asserts runtime precedence, catalog fallback,
+unknown/mismatched identities and retry-stable stored levels, but was skipped
+because no local PostgreSQL service or `TEST_DATABASE_URL` was available. Public
+asset validation covered 12,359 files and 32,464 semantic keys with no dangling
+references. The full exporter reports incomplete overall game-data coverage for
+other families; that status is independent of the monster-reference catalog.
