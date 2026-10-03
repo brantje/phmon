@@ -246,7 +246,9 @@ export function buildItemDetail(
   }
   const scalars = instanceStats.length ? [] : scalarStatLines(item)
   const ranges =
-    instanceStats.length || scalars.length ? [] : referenceRangeLines(metadata)
+    instanceStats.length || scalars.length || item.drop_unobserved === true
+      ? []
+      : referenceRangeLines(metadata)
   const name =
     stringField(detail, 'name') ||
     stringField(item, 'servername') ||
@@ -301,7 +303,12 @@ export function buildItemDetail(
       ...instanceStats.slice(2).map((stat) => stat.text),
       ...rolls.filter((line) => !line.startsWith('Durability ')),
     ],
-    catalogNote: ranges.length ? catalogNote : '',
+    catalogNote:
+      item.drop_unobserved === true
+        ? 'Rolled stats and blue options were not observed for this drop.'
+        : ranges.length
+          ? catalogNote
+          : '',
     requirements,
     blues: blueLines(Object.keys(instance).length ? instance : null),
   }
@@ -317,7 +324,7 @@ export function itemRecordFromActivityEvent(
     | 'item_metadata'
     | 'item_details'
     | 'payload'
-  >,
+  > & { kind?: ActivityEvent['kind'] },
 ): Record<string, unknown> | null {
   const payload = asRecord(event.payload)
   const snapshot = {
@@ -326,10 +333,18 @@ export function itemRecordFromActivityEvent(
   }
   const packetObservation = asRecord(payload.packet_observation)
   const observationID = stringField(packetObservation, 'observation_id')
+  const itemObservation = asRecord(payload.item_observation)
+  const association = stringField(itemObservation, 'association')
   if (observationID) {
     snapshot.instance = {
       ...asRecord(snapshot.instance),
       observation_id: observationID,
+    }
+  }
+  if (association === 'unique_model_inventory_gain') {
+    snapshot.instance = {
+      ...asRecord(snapshot.instance),
+      association,
     }
   }
   const metadata = asRecord(event.item_metadata)
@@ -357,6 +372,10 @@ export function itemRecordFromActivityEvent(
     stringField(metadata, 'icon_url') || stringField(event, 'item_icon_url')
   return {
     ...snapshot,
+    ...((event.kind === 'drop.item' || event.kind === 'drop.rare') &&
+    !Object.keys(asRecord(payload.item)).length
+      ? { drop_unobserved: true }
+      : {}),
     ...(name ? { name } : {}),
     ...(code ? { servername: code } : {}),
     ...(model === null ? {} : { model }),

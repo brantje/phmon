@@ -250,6 +250,38 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-03 dropped-item tooltip correction
+
+The operator reported that Normal/Rare Drops still showed catalog ranges instead
+of actual item stats and blues. Static inspection of the authorized local
+`%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` found a callback-plus-later-
+inventory enrichment path; exact offsets are in
+`docs/reference/item-tooltip-investigation.md`. Plugin **1.9.15** now tracks a
+callback ID, reads a fresh inventory count at callback time and briefly samples
+resources every second. A unique new inventory
+item of the same model in the same character session links its observed snapshot
+to that drop through the existing durable acquisition event. The server validates
+the link and joins only matching agent/session/character/model/time; Events and
+Dashboard can display typed observed stats and blues. Ambiguous matches remain
+unlinked, acquisition cause remains unknown, and model-only drop tooltips no
+longer show catalog ranges as if they were the dropped item's rolls.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`,
+`server/internal/events/{store.go,store_integration_test.go,validation_test.go}`,
+`server/internal/httpapi/character_portraits_test.go`,
+`web/app/{components/ItemDetailPopup.vue,utils/itemDetailPopup.ts}`,
+`web/tests/itemDetailPopup.test.ts`, and the item capability/parity/investigation
+docs. Validation: plugin 173 tests, frontend 178 tests, all Go packages,
+Nuxt typecheck, production build, lint (zero errors; 67 warnings) and
+`git diff --check` pass. PostgreSQL integration tests
+were skipped because `TEST_DATABASE_URL` is absent and no local PostgreSQL
+service/runtime is available. Exact next action: run the PostgreSQL linked-drop
+integration test, load plugin 1.9.15 against a compatible backend, observe a
+naturally occurring drop and subsequent unique inventory gain, then compare its
+tooltip with the captured phBot item fields. Ground-only drop stats remain an
+open capability question; the official `get_drops()` example lacks whites/blues.
+Do not claim full per-drop detail parity until the real runtime confirms it.
+
 ### Resume — 2026-10-02 phMonitor mob HP behavior
 
 Completed the operator's bounded request to inspect the supplied local

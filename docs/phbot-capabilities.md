@@ -1428,3 +1428,31 @@ distinctions and captured naturally arriving `0x30C8`/`0xB034` bytes from each
 supported pet family and runtime protocol, followed by natural, exactly observed
 pet-to-bag comparisons. Until then, detailed packet stats and live pickup receipts
 are explicit runtime blockers.
+
+## Drop tooltip observation link — 2026-10-03
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) still gives
+only an equippable model ID for drop callbacks. The official
+[Drops API](https://plugins.phbot.org/phbot-api/drops) exposes nearby pickable
+items keyed by pick ID, with name/code/model/location, blue flag and plus in its
+example; it does not document actual white rolls or option values. Static
+inspection of the authorized local phMonitor v0.5.0 executable shows that it
+checks later inventory snapshots for a changed item of the callback model and
+emits a linked enrichment; see
+[the investigation](reference/item-tooltip-investigation.md).
+
+Workspace plugin **1.9.15** / protocol **14** retains the callback occurrence,
+reads a fresh inventory model count, and accelerates resource sampling to one
+second for up to 30 seconds while a
+drop match is pending. It links only a unique callback model to one newly owned
+item in one inventory slot with a count above that callback baseline, within
+the same character session. The acquisition
+event keeps `acquisition_method: unknown`; the link means a nearby-in-time
+inventory gain, not proven ground pickup. The server joins the event snapshots
+only when agent, session, character, model and event ID agree. The original
+acquisition payload contains observed API/packet item details and the tooltip
+uses its existing typed resolver. Multiple same-model drops or gains stay
+unlinked. No live Windows/phBot callback-to-inventory capture or PostgreSQL
+integration result for this increment is available from this workspace; those
+are the next runtime gates. Ground-only drops may still lack exact stats when
+they never enter an observed inventory.

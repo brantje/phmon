@@ -211,6 +211,33 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || exact.Total != 1 || len(exact.Events) != 1 || exact.Events[0].ID != rareDrop.ID {
 		t.Fatalf("exact event lookup = %+v, err=%v", exact, err)
 	}
+	observedItem := AgentEvent{
+		ID: newTestEventID(t), Schema: 1, Kind: "item.acquired", Category: "item",
+		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
+		OccurredAt: databaseNow.UTC().Add(2 * time.Second), Sequence: int64Pointer64(50),
+		Source: "phbot.state_diff", SourceRef: "item_container", ItemModel: &model,
+		Payload: json.RawMessage(`{"item":{"model":777,"servername":"ITEM_TEST","plus":3,"api_fields":{"blues":{"9":5}}},"quantity_delta":1,"destination_container":{"type":"inventory","slot":13},"acquisition_method":"unknown","drop_event_id":"` + rareDrop.ID + `"}`),
+	}
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{observedItem})
+	if err != nil || !changed || len(results) != 1 || results[0].Status != "persisted" {
+		t.Fatalf("linked inventory observation = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: rareDrop.ID, Limit: 1})
+	if err != nil || len(exact.Events) != 1 {
+		t.Fatalf("linked drop lookup = %+v, err=%v", exact, err)
+	}
+	var linkedPayload struct {
+		Item struct {
+			Plus      int            `json:"plus"`
+			APIFields map[string]any `json:"api_fields"`
+		} `json:"item"`
+		Observation struct {
+			Association string `json:"association"`
+		} `json:"item_observation"`
+	}
+	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "unique_model_inventory_gain" {
+		t.Fatalf("drop did not carry its linked observed item: %s, err=%v", exact.Events[0].Payload, err)
+	}
 	conflict := rareDrop
 	conflict.Zone = "Donwhang"
 	results, _, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{conflict})

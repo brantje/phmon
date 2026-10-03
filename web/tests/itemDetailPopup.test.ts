@@ -209,3 +209,50 @@ test('event item records prefer enriched immutable details over snapshot gaps', 
     'session-5:sequence-9',
   )
 })
+
+test('drop tooltip uses linked observed stats and blues, and hides unobserved catalog ranges', () => {
+  const metadata = {
+    name: 'Test Armor',
+    type_ids: [3, 1, 2, 0],
+    reference_stats: { phy_def_pwr: { min: '40', max: '60' } },
+  }
+  const unobserved = itemRecordFromActivityEvent({
+    kind: 'drop.item',
+    item_model: 777,
+    item_metadata: metadata,
+    payload: { model: 777 },
+  })
+  assert.ok(unobserved)
+  const unknown = buildItemDetail(unobserved)
+  assert.deepEqual(unknown.statsBeforeDurability, [])
+  assert.match(unknown.catalogNote, /not observed/)
+
+  const linked = itemRecordFromActivityEvent({
+    kind: 'drop.item',
+    item_model: 777,
+    item_metadata: metadata,
+    payload: {
+      model: 777,
+      item: { model: 777, plus: 3, servername: 'ITEM_TEST' },
+      item_observation: { association: 'unique_model_inventory_gain' },
+    },
+    item_details: {
+      instance_details: {
+        sources: ['phbot_api'],
+        stats: [{ key: 'phy_def_pwr', label: 'Phy. def. pwr', value: '55' }],
+        blues: [
+          { label: 'Int increase', raw_value: '3', scale: 1, precision: 0 },
+        ],
+      },
+    },
+  })
+  assert.ok(linked)
+  const observed = buildItemDetail(linked)
+  assert.deepEqual(observed.statsBeforeDurability, ['Phy. def. pwr 55'])
+  assert.deepEqual(observed.blues, ['Int 3 Increase'])
+  assert.equal(observed.catalogNote, '')
+  assert.equal(
+    (linked.instance as Record<string, unknown>).association,
+    'unique_model_inventory_gain',
+  )
+})

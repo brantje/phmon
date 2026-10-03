@@ -1114,6 +1114,31 @@ turning catalog ranges into apparent instance values.
 Focused Go resource/API/event tests, Nuxt typecheck and 13 frontend unit tests
 passed locally. Browser and deployed-server verification remain open.
 
+### Drop instance correction — 2026-10-03
+
+The 2026-09-29 drop tooltip still substituted catalog ranges for model-only
+callbacks. That is removed: unobserved Normal/Rare drop tooltips now say their
+rolls and blues were not observed and omit static ranges. New plugin 1.9.15 drop
+callbacks retain an ID and fresh inventory model count; a unique same-model
+inventory gain above that count in the same session
+within 30 seconds links its complete observed item snapshot. Go validates and
+stores the link on the acquisition event, then scopes the read-time join by
+agent, character, session, model, ID and time. The shared item resolver supplies
+typed observed stats/blues to Events and Dashboard. The tooltip explicitly says
+the inventory association does not prove acquisition cause. Same-model ambiguity
+or an item never seen in owned inventory stays unlinked.
+
+The authorized v0.5.0 executable inspection found a callback-plus-inventory
+enrichment path and a separate `get_drops()` polling path; exact offsets and
+limitations are in [item-tooltip-investigation.md](reference/item-tooltip-investigation.md).
+The official drop API example does not establish rolled ground-item values.
+Deterministic plugin/Go/frontend tests cover a linked observed item, ambiguous
+cases and unobserved presentation. Live phBot and PostgreSQL integration/browser
+checks are still open; old model-only events cannot be backfilled with invented
+rolls. This closes the misleading catalog-range display and adds a usable
+observed-item route, but it does not prove every naturally dropped item will have
+complete detail.
+
 ## Slice 7–8 map and Stats placement — 2026-09-29
 
 The operator corrected the reference target to

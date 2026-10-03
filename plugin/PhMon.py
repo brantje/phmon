@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.14'
+pVersion = '1.9.15'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -99,6 +99,8 @@ DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
 MAX_RESOURCE_SLOTS = 2048
 RESOURCE_SAMPLE_INTERVAL_SECONDS = 15.0
+DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
+DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
 MAX_ITEM_PACKET_COUNT = 128
 MAX_ITEM_PACKET_BYTES = 2 * 1024 * 1024
 MAX_ITEM_PACKET_SIZE = 256 * 1024
@@ -973,6 +975,27 @@ def _zone_name_for_region(region, limit=80):
     except Exception:
         return None
     return _bounded_text(value, limit) if isinstance(value, str) else None
+
+
+def _inventory_model_quantity(model):
+    getter = _optional_phbot_api('get_inventory')
+    if not callable(getter):
+        return None
+    try:
+        inventory = getter()
+    except Exception:
+        return None
+    if not isinstance(inventory, dict) or not isinstance(inventory.get('items'), list):
+        return None
+    items = inventory['items']
+    start = 13 if len(items) >= 13 else 0
+    total = 0
+    for item in items[start:start + MAX_RESOURCE_SLOTS]:
+        if not isinstance(item, dict) or item.get('model') != model:
+            continue
+        quantity = item.get('quantity', 1)
+        total += quantity if isinstance(quantity, int) and not isinstance(quantity, bool) and quantity > 0 else 1
+    return total
 
 
 def _normalize_item(value):
@@ -2712,6 +2735,8 @@ class AgentWorker(object):
         self._event_diff_session = None
         self._event_diff_identity = None
         self._event_diff = None
+        self._pending_drop_lock = threading.Lock()
+        self._pending_drop_events = []
         self._event_samples = _queue.Queue(maxsize=256)
         self._death_samples = self._event_samples
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
@@ -2967,18 +2992,28 @@ class AgentWorker(object):
             self._event_baseline_required = True
             self._event_diff_identity = identity_key
             self._event_diff_session = self.session_id
+            with self._pending_drop_lock:
+                self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                             if entry['session_id'] == self.session_id and
+                                             entry['identity_key'] == identity_key]
         if self._resource_sample_gap:
             self._resource_sample_gap = False
             self._event_baseline_required = True
+            with self._pending_drop_lock:
+                self._pending_drop_events = []
         current = _event_resource_snapshot(resources)
         if current is None:
             self._event_baseline_required = True
             self._event_diff = None
+            with self._pending_drop_lock:
+                self._pending_drop_events = []
             return
         previous = self._event_diff
         if self._event_baseline_required or previous is None:
             self._event_diff = current
             self._event_baseline_required = False
+            with self._pending_drop_lock:
+                self._pending_drop_events = []
             return
         observed_at = sample.get('observed_at') if isinstance(sample, dict) else None
         position = sample.get('position') if isinstance(sample, dict) else None
@@ -3015,6 +3050,19 @@ class AgentWorker(object):
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
+        new_model_counts = {}
+        for signature in signatures:
+            old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
+            new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
+            if old_total != 0 or new_total != 1:
+                continue
+            for entries in after.values():
+                record = entries.get(signature)
+                if not record or record.get('quantity') != 1:
+                    continue
+                model = (record.get('item') or {}).get('model')
+                if isinstance(model, int) and not isinstance(model, bool) and model > 0:
+                    new_model_counts[model] = new_model_counts.get(model, 0) + 1
         for signature in sorted(signatures):
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
@@ -3074,11 +3122,69 @@ class AgentWorker(object):
                     payload = {'item': item, 'quantity_delta': amount,
                                'destination_container': _container_reference(container_key, record)}
                     payload['acquisition_method'] = 'unknown'
+                    if (kind == 'item.acquired' and container_key == 'inventory' and amount == 1 and
+                            len(record.get('slots', [])) == 1 and len(changes) == 1 and
+                            isinstance(item.get('model'), int) and
+                            new_model_counts.get(item.get('model')) == 1):
+                        inventory_quantity = sum(
+                            entry.get('quantity', 0)
+                            for entry in after.get('inventory', {}).values()
+                            if (entry.get('item') or {}).get('model') == item.get('model'))
+                        drop_event_id = self._claim_drop_for_inventory_gain(identity, item,
+                                                                              inventory_quantity)
+                        if drop_event_id:
+                            payload['drop_event_id'] = drop_event_id
                 else:
                     kind = 'item.quantity_decreased'
                     payload = {'item': item, 'quantity_delta': amount,
                                'source_container': _container_reference(container_key, record)}
                 self._queue_derived_event(identity, kind, 'item_container', payload, occurred_at, position, item)
+
+    def register_drop_for_enrichment(self, identity, model, event_id, inventory_quantity):
+        if (not isinstance(identity, dict) or not isinstance(model, int) or model <= 0 or
+                not _validate_agent_id(event_id) or not _validate_agent_id(self.session_id) or
+                not isinstance(inventory_quantity, int) or inventory_quantity < 0 or
+                self._identity_key(identity) != self._identity_key(self._current_identity)):
+            return False
+        with self._pending_drop_lock:
+            now = _monotonic()
+            self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                         if entry['expires_at'] > now and entry['session_id'] == self.session_id]
+            if len(self._pending_drop_events) >= 32:
+                return False
+            self._pending_drop_events.append({
+                'event_id': event_id, 'model': model, 'session_id': self.session_id,
+                'identity_key': self._identity_key(identity),
+                'inventory_quantity': inventory_quantity,
+                'expires_at': now + DROP_ENRICHMENT_WINDOW_SECONDS,
+            })
+        return True
+
+    def has_pending_drop_enrichment(self, identity):
+        with self._pending_drop_lock:
+            now = _monotonic()
+            key = self._identity_key(identity)
+            self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                         if entry['expires_at'] > now and entry['session_id'] == self.session_id and
+                                         entry['identity_key'] == key]
+            return bool(self._pending_drop_events)
+
+    def _claim_drop_for_inventory_gain(self, identity, item, inventory_quantity):
+        model = item.get('model') if isinstance(item, dict) else None
+        if not isinstance(model, int) or isinstance(model, bool) or model <= 0:
+            return None
+        with self._pending_drop_lock:
+            now = _monotonic()
+            key = self._identity_key(identity)
+            self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                         if entry['expires_at'] > now and entry['session_id'] == self.session_id and
+                                         entry['identity_key'] == key]
+            matches = [entry for entry in self._pending_drop_events if entry['model'] == model]
+            if len(matches) != 1 or inventory_quantity <= matches[0]['inventory_quantity']:
+                return None
+            selected = matches[0]
+            self._pending_drop_events.remove(selected)
+            return selected['event_id']
 
     def _queue_derived_event(self, identity, kind, source_ref, payload, occurred_at, position, item=None):
         event = {
@@ -4836,10 +4942,16 @@ def handle_event(event_type, data):
         payload = {}
     else:
         payload = {'value': _bounded_text(data, 512) or ''}
+    drop_event_id = str(uuid.uuid4()) if item_model is not None else None
     if _queue_canonical_event(kind, category, 'phbot.callback', source_ref, payload, identity,
-                              item_model=item_model):
+                              item_model=item_model, event_id=drop_event_id):
         if event_type == EVENT_DIED:
             _death_callback_active = True
+        if drop_event_id and _worker is not None:
+            inventory_quantity = _inventory_model_quantity(item_model)
+            if inventory_quantity is not None:
+                _worker.register_drop_for_enrichment(identity, item_model, drop_event_id,
+                                                     inventory_quantity)
 
 
 def _safe_callback_text(value, maximum=2048):
@@ -4853,9 +4965,10 @@ def _safe_callback_text(value, maximum=2048):
 
 
 def _queue_canonical_event(kind, category, source, source_ref, payload, identity=None,
-                           item_model=None, item_code=None, position=True, dedupe_key=None):
+                           item_model=None, item_code=None, position=True, dedupe_key=None,
+                           event_id=None):
     event = {
-        'event_id': str(uuid.uuid4()),
+        'event_id': event_id or str(uuid.uuid4()),
         'schema_version': 1,
         'kind': kind,
         'category': category,
@@ -5081,7 +5194,10 @@ def _sample_character(timing=None):
         return
     signature = json.dumps([identity,state],sort_keys=True,separators=(',',':'))
     now = _monotonic()
-    if now - _last_resources_sample_at >= RESOURCE_SAMPLE_INTERVAL_SECONDS:
+    resource_interval = (DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS
+                         if _worker.has_pending_drop_enrichment(identity)
+                         else RESOURCE_SAMPLE_INTERVAL_SECONDS)
+    if now - _last_resources_sample_at >= resource_interval:
         try:
             config_dir = timing.run('config_dir', _get_config_dir) if callable(_get_config_dir) else None
         except Exception:

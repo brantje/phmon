@@ -136,6 +136,14 @@ func TestValidateAgentEventRequiresObservedDropAndItemFacts(t *testing.T) {
 	if err := validateAgentEvent(acquired); err != nil {
 		t.Fatalf("unknown-cause owned gain rejected: %v", err)
 	}
+	acquired.Payload = json.RawMessage(`{"item":{"model":7,"servername":"ITEM_TEST"},"quantity_delta":1,"destination_container":{"type":"inventory","slot":13},"acquisition_method":"unknown","drop_event_id":"8d16ab39-10b8-4b26-80aa-a4be01e10f18"}`)
+	if err := validateAgentEvent(acquired); err != nil {
+		t.Fatalf("bounded inventory observation link rejected: %v", err)
+	}
+	acquired.Payload = json.RawMessage(`{"item":{"model":7},"quantity_delta":2,"destination_container":{"type":"inventory","slot":13},"acquisition_method":"unknown","drop_event_id":"8d16ab39-10b8-4b26-80aa-a4be01e10f18"}`)
+	if err := validateAgentEvent(acquired); err == nil {
+		t.Fatal("ambiguous multi-item drop association was accepted")
+	}
 	acquired.Payload = json.RawMessage(`{"item":{"model":7},"quantity_delta":2,"destination_container":{"type":"inventory"},"acquisition_method":"ground_pickup"}`)
 	if err := validateAgentEvent(acquired); err == nil {
 		t.Fatal("unverified acquisition cause was accepted")

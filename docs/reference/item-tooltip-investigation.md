@@ -124,3 +124,31 @@ observations where verified; use packet parsing for missing inputs. Then impleme
 the backend's typed API-instance conversion and verified family calculations with
 independent expected values. No real character action is needed to obtain the next
 API snapshot. Rolled tooltip completion remains open.
+
+## 2026-10-03 drop-occurrence follow-up
+
+The operator again asked why drop rows showed catalog ranges. A bounded static
+inspection of the same local executable found two additional paths at offsets
+35964589 (`queue_drop_enrichment`), 35965164 (`_find_drop_enrichment_item`),
+35966443 (`process_pending_drop_enrichments`) and 35970166
+(`emit_normal_drops_from_api`). The callback emits a model-only drop with a
+client-side ID, then compares later inventory snapshots and sends a linked
+`drop_item_enriched` event if an item of the same model appears. Its normal-drop
+poll also normalizes `get_drops()` entries, including any option/attribute fields
+that happen to be present. The reference's inventory matcher chooses a best score
+among candidates; it does not establish a guaranteed pickup identity. No source
+bundle or executable content was copied into the application.
+
+PhMon 1.9.15 independently links a callback drop to a later inventory acquisition
+only when a fresh callback-time inventory count is available, the same session
+has one pending callback of that model, and one newly owned item of that model
+appears in a single observed inventory slot within 30 seconds with a higher
+count than at callback time.
+The durable acquisition event retains its API/packet item snapshot and an explicit
+drop-event ID. The server checks session, agent, character, model and time on read;
+the tooltip shows the snapshot's verified stats/blues and marks the association
+as an inventory match with unverified acquisition cause. Ambiguous callbacks or
+gains remain unlinked. Existing model-only occurrences cannot be retroactively
+given rolls. The separate `get_drops()` path remains an investigation gate:
+official examples show basic ground fields only, and no installed-runtime capture
+establishes whether ground rows contain whites or option values.

@@ -1582,6 +1582,64 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(by_container['job_pouch']['payload']['quantity_delta'], 2)
         self.assertEqual(by_container['inventory']['region'], 25273)
 
+    def test_unique_drop_links_the_observed_inventory_item_and_its_api_evidence(self):
+        self.observe(self.resources(bag=[]))
+        drop_id = '8d16ab39-10b8-4b26-80aa-a4be01e10f18'
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77, drop_id, 0))
+        item = self.item()
+        item['plus'] = 3
+        item['api_fields'] = {'blues': {'9': 5}, 'attributes': {'1': 72}}
+        self.observe(self.resources(bag=[(13, item)]))
+        event = self.drain()[0]
+        self.assertEqual(event['kind'], 'item.acquired')
+        self.assertEqual(event['payload']['drop_event_id'], drop_id)
+        self.assertEqual(event['payload']['item']['api_fields'], item['api_fields'])
+        self.assertEqual(event['payload']['acquisition_method'], 'unknown')
+        self.assertFalse(self.worker.has_pending_drop_enrichment(self.identity))
+
+    def test_ambiguous_same_model_drops_are_not_linked(self):
+        self.observe(self.resources(bag=[]))
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77,
+                        '8d16ab39-10b8-4b26-80aa-a4be01e10f18', 0))
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77,
+                        '21a71980-c560-4bc8-b75b-8d1230d3ba9f', 0))
+        self.observe(self.resources(bag=[(13, self.item())]))
+        event = self.drain()[0]
+        self.assertNotIn('drop_event_id', event['payload'])
+
+    def test_two_new_inventory_items_with_same_model_do_not_claim_one_drop(self):
+        self.observe(self.resources(bag=[]))
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77,
+                        '8d16ab39-10b8-4b26-80aa-a4be01e10f18', 0))
+        other = self.item()
+        other['servername'] = 'ITEM_ETC_TEST_VARIANT'
+        self.observe(self.resources(bag=[(13, self.item()), (14, other)]))
+        for event in self.drain():
+            self.assertNotIn('drop_event_id', event['payload'])
+
+    def test_drop_pending_before_first_resource_baseline_is_discarded(self):
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77,
+                        '8d16ab39-10b8-4b26-80aa-a4be01e10f18', 0))
+        self.observe(self.resources(bag=[]))
+        self.assertFalse(self.worker.has_pending_drop_enrichment(self.identity))
+        self.observe(self.resources(bag=[(13, self.item())]))
+        self.assertNotIn('drop_event_id', self.drain()[0]['payload'])
+
+    def test_preexisting_gain_in_stale_resource_baseline_cannot_link_drop(self):
+        self.observe(self.resources(bag=[]))
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77,
+                        '8d16ab39-10b8-4b26-80aa-a4be01e10f18', 1))
+        self.observe(self.resources(bag=[(13, self.item())]))
+        self.assertNotIn('drop_event_id', self.drain()[0]['payload'])
+
+    def test_callback_inventory_baseline_counts_only_bag_items(self):
+        items = [None] * 13 + [self.item(1), self.item(2)]
+        items[0] = self.item(1)
+        with patch.object(plugin, '_optional_phbot_api', return_value=lambda: {'items': items}):
+            self.assertEqual(plugin._inventory_model_quantity(77), 3)
+        with patch.object(plugin, '_optional_phbot_api', return_value=None):
+            self.assertIsNone(plugin._inventory_model_quantity(77))
+
     def test_opening_storage_establishes_baseline_and_later_gain_is_recorded(self):
         self.observe(self.resources(bag=[]))
         self.observe(self.resources(bag=[], storage=[(0, self.item(9))]))

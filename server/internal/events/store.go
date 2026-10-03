@@ -493,6 +493,15 @@ func validateAgentEvent(event AgentEvent) error {
 		}
 		switch event.Kind {
 		case "item.acquired":
+			if rawLink, linked := object["drop_event_id"]; linked {
+				var dropID string
+				if event.Source != "phbot.state_diff" || json.Unmarshal(rawLink, &dropID) != nil ||
+					!agentdomain.ValidAgentID(dropID) || fields.QuantityDelta != 1 ||
+					fields.Destination["type"] != "inventory" || fields.Destination["slot"] == nil ||
+					event.ItemModel == nil || fields.Item.Model == nil {
+					return fmt.Errorf("%w: invalid drop inventory observation link", ErrInvalidEvent)
+				}
+			}
 			if event.Source == "joymax.pet_inventory" {
 				var evidence struct {
 					ObservationID string `json:"observation_id"`
@@ -995,7 +1004,13 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
-	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,'')
+	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
+		(SELECT a.payload->'item' FROM activity_events a WHERE e.kind IN ('drop.item','drop.rare')
+		AND a.kind='item.acquired' AND a.source='phbot.state_diff' AND a.source_ref='item_container'
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id AND a.session_id=e.session_id
+		AND a.item_model=e.item_model AND a.payload->>'drop_event_id'=e.event_id::text
+		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
+		ORDER BY a.occurred_at,a.event_id LIMIT 1)
 		`+base+` AND ($13::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($13::timestamptz,$14::uuid))
 ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $15`, filter.Server, filter.CharacterID, filter.CharacterQuery,
 		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, cursorAt, cursorID, filter.Limit+1)
@@ -1016,8 +1031,19 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $15`, filter.Server, filter.Ch
 	}
 	for rows.Next() {
 		var item Event
-		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID, &item.Zone, &item.ItemDropClass, &item.ItemDropClassVersion); err != nil {
+		var linkedItem []byte
+		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID, &item.Zone, &item.ItemDropClass, &item.ItemDropClassVersion, &linkedItem); err != nil {
 			return Page{}, err
+		}
+		if len(linkedItem) > 0 {
+			var payload map[string]json.RawMessage
+			if json.Unmarshal(item.Payload, &payload) == nil && payload != nil && json.Valid(linkedItem) {
+				payload["item"] = linkedItem
+				payload["item_observation"] = json.RawMessage(`{"association":"unique_model_inventory_gain"}`)
+				if enriched, marshalErr := json.Marshal(payload); marshalErr == nil {
+					item.Payload = enriched
+				}
+			}
 		}
 		page.Events = append(page.Events, item)
 	}

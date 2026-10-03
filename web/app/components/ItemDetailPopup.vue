@@ -47,10 +47,15 @@ const detailProvenance = computed(() => {
   })
   const observationID =
     typeof instance.observation_id === 'string' ? instance.observation_id : ''
-  if (!sources.length && !observationID) return ''
+  const association =
+    instance.association === 'unique_model_inventory_gain'
+      ? 'Matched inventory gain; acquisition cause unverified'
+      : ''
+  if (!sources.length && !observationID && !association) return ''
   return [
     sources.length ? `Detail source: ${[...new Set(sources)].join(' + ')}` : '',
     observationID ? `Packet observation: ${observationID}` : '',
+    association,
   ]
     .filter(Boolean)
     .join(' · ')
