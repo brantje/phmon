@@ -48,8 +48,17 @@ type monsterRefBounds struct {
 func (b monsterRefBounds) contains(x, y int) bool {
 	return x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY
 }
+
+// Guide cells are stored one square north of the terrain they describe.
+// A square is the cell's own height in map tiles.
+func placedGuideCell(c resources.MonsterGuideCell) resources.MonsterGuideCell {
+	c.Y -= c.Height
+	return c
+}
+
 func (b monsterRefBounds) intersects(c resources.MonsterGuideCell) bool {
-	return c.X <= b.MaxX && c.X+c.Width-1 >= b.MinX && c.Y <= b.MaxY && c.Y+c.Height-1 >= b.MinY
+	placed := placedGuideCell(c)
+	return placed.X <= b.MaxX && placed.X+placed.Width-1 >= b.MinX && placed.Y <= b.MaxY && placed.Y+placed.Height-1 >= b.MinY
 }
 
 func monsterRefAreaFloor(group string) (string, string, bool) {
@@ -293,8 +302,9 @@ func (h *mapHandler) monsterReferenceSearch(w http.ResponseWriter, r *http.Reque
 				continue
 			}
 			row.AreaCells++
-			row.Bounds = growMonsterRefBounds(row.Bounds, cell.X, cell.Y)
-			row.Bounds = growMonsterRefBounds(row.Bounds, cell.X+cell.Width-1, cell.Y+cell.Height-1)
+			placed := placedGuideCell(cell)
+			row.Bounds = growMonsterRefBounds(row.Bounds, placed.X, placed.Y)
+			row.Bounds = growMonsterRefBounds(row.Bounds, placed.X+placed.Width-1, placed.Y+placed.Height-1)
 		}
 	}
 	for _, point := range catalog.Points {

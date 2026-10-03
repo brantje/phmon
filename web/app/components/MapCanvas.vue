@@ -61,6 +61,7 @@ import {
 } from '~/utils/mapZoom'
 import { mapCharacterClusters } from '~/utils/mapCharacterClusters'
 import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
+import { guideCellOneSquareDown } from '~/utils/guideCells'
 
 interface MapCanvasMarker {
   id: string
@@ -1284,12 +1285,16 @@ function referenceLatLng(position: { tile_x: number; tile_y: number; pixel_x: nu
   )
 }
 
-function referenceCellBounds(cell: { x: number; y: number; width: number; height: number }) {
+function tileRectangle(cell: { x: number; y: number; width: number; height: number }) {
   const west = (cell.x - props.profile.tiles.min_x) * 256
   const east = west + cell.width * 256
   const north = -(props.profile.tiles.max_y - (cell.y + cell.height - 1)) * 256
   const south = -(props.profile.tiles.max_y - cell.y + 1) * 256
   return leaflet!.latLngBounds([south, west], [north, east])
+}
+
+function referenceCellBounds(cell: { x: number; y: number; width: number; height: number }) {
+  return tileRectangle(guideCellOneSquareDown(cell))
 }
 
 function referencePopup(rows: Array<{ name: string; code: string; level?: number }>, kind: 'area' | 'point') {
@@ -1328,9 +1333,10 @@ function syncMonsterReferences() {
     }
   }
   const labelCandidates = areas.flatMap((area) => area.cells.map((cell) => {
+    const placed = guideCellOneSquareDown(cell)
     const center = L.latLng(
-      -(props.profile.tiles.max_y - cell.y - cell.height / 2 + 1) * 256,
-      (cell.x - props.profile.tiles.min_x + cell.width / 2) * 256,
+      -(props.profile.tiles.max_y - placed.y - placed.height / 2 + 1) * 256,
+      (placed.x - props.profile.tiles.min_x + placed.width / 2) * 256,
     )
     return { area, center, pixel: map!.latLngToContainerPoint(center) }
   })).filter(({ pixel }) => pixel.x >= -130 && pixel.y >= -58 &&
@@ -1390,8 +1396,8 @@ function syncMonsterReferences() {
 function focusReferenceBounds() {
   if (!map || !leaflet || !props.referenceFocus) return
   const bounds = props.referenceFocus
-  const southWest = referenceCellBounds({ x: bounds.min_x, y: bounds.min_y, width: 1, height: 1 }).getSouthWest()
-  const northEast = referenceCellBounds({ x: bounds.max_x, y: bounds.max_y, width: 1, height: 1 }).getNorthEast()
+  const southWest = tileRectangle({ x: bounds.min_x, y: bounds.min_y, width: 1, height: 1 }).getSouthWest()
+  const northEast = tileRectangle({ x: bounds.max_x, y: bounds.max_y, width: 1, height: 1 }).getNorthEast()
   map.fitBounds(leaflet.latLngBounds(southWest, northEast), { padding: [32, 32], maxZoom: mapZoomLevelForPercent(225) })
 }
 

@@ -5342,3 +5342,13 @@ available, run the migration and ingestion integration tests; when a real phBot
 runtime is available, validate the plugin/backend flow and record it separately
 from simulator results. PR #67 is updated and should remain open until those gates
 are resolved. Do not merge, deploy or operate real bot characters without authorization.
+
+### Resume — 2026-10-03 mob area placement
+
+Mob area rectangles, labels, search focus and viewport selection now sit one
+guide square south of the stored client cell. A square is that cell's own
+height (4 map tiles on the field, 1 on cave floors). Catalog coordinates and
+the area-cell readout stay the client values. Verified on a local Nuxt dev
+server against the running backend: the desert overlay's top edge meets the
+sand instead of covering the empty row above it. The Compose web and server
+images were not rebuilt.

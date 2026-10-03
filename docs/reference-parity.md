@@ -1967,7 +1967,11 @@ Lv 63. Projection tests place 6,451 points on supported maps; 305 remain exclude
 for unsupported/ambiguous interior mappings or failed floor/bounds checks. The
 shared Job Temple region remains deliberately unmapped for exact points. Cave
 guide cells use verified manager cell dimensions; exact placement is omitted
-where the current profile cannot identify a supported floor.
+where the current profile cannot identify a supported floor. Mob area rectangles,
+labels, viewport queries and search focus are drawn one guide square south of
+the stored cell (the cell's own height: 4 field tiles, or 1 cave tile) so the
+overlay sits on the terrain it describes. The catalog and the area-cell readout
+keep the client coordinates.
 
 Local browser fixture validation at 1440×1000, 1280×800 and 390×844 confirmed
 default-off switches, persistence across reload, independent layer toggles,

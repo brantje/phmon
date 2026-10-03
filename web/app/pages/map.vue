@@ -73,6 +73,7 @@ import {
   navigationTrayProgressSummary,
 } from '~/utils/mapNavigationTray'
 import { submitNavigationStop } from '~/utils/mapNavigationStop'
+import { guideCellOneSquareDown } from '~/utils/guideCells'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTeleportAction } from '~/composables/useMapTeleportAction'
@@ -456,9 +457,10 @@ function focusMonsterReferencePoint(point: MonsterReferencePoint) {
   }
 }
 function focusMonsterReferenceCell(cell: MonsterReferenceArea['cells'][number]) {
+  const placed = guideCellOneSquareDown(cell)
   referenceFocus.value = {
-    min_x: cell.x, max_x: cell.x + cell.width - 1,
-    min_y: cell.y, max_y: cell.y + cell.height - 1,
+    min_x: placed.x, max_x: placed.x + placed.width - 1,
+    min_y: placed.y, max_y: placed.y + placed.height - 1,
     sequence: ++referenceFocusSequence,
   }
 }

@@ -60,7 +60,20 @@ func TestMonsterReferenceAPIIsDatasetScopedFilteredAndPaginated(t *testing.T) {
 		}
 	}
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/map/monster-reference/overlay?server=greatest&area=world&floor=world&min_x=168&max_x=168&min_y=96&max_y=96&areas=1&points=1&limit=1", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/map/monster-reference/search?server=greatest&q=tiger", nil))
+	var search struct {
+		Results []struct {
+			Bounds *monsterRefBounds `json:"bounds"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &search); err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Results) != 1 || search.Results[0].Bounds == nil || search.Results[0].Bounds.MinY != 92 || search.Results[0].Bounds.MaxY != 96 {
+		t.Fatalf("area focus should sit one square south of the stored cell: %+v", search.Results)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/map/monster-reference/overlay?server=greatest&area=world&floor=world&min_x=168&max_x=171&min_y=92&max_y=96&areas=1&points=1&limit=1", nil))
 	if recorder.Code != 200 {
 		t.Fatalf("overlay status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -75,6 +88,20 @@ func TestMonsterReferenceAPIIsDatasetScopedFilteredAndPaginated(t *testing.T) {
 	}
 	if len(overlay.Areas) != 1 || len(overlay.Points) != 1 || overlay.PointTotal != 2 || overlay.NextOffset == nil || *overlay.NextOffset != 1 {
 		t.Fatalf("overlay pagination=%+v", overlay)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/map/monster-reference/overlay?server=greatest&area=world&floor=world&min_x=168&max_x=171&min_y=96&max_y=99&areas=1&points=0", nil))
+	if recorder.Code != 200 {
+		t.Fatalf("stored-cell overlay status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var stored struct {
+		Areas []monsterRefArea `json:"areas"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored.Areas) != 0 {
+		t.Fatalf("stored cell square should not contain the shifted area: %+v", stored.Areas)
 	}
 }
 
