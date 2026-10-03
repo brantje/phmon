@@ -2191,7 +2191,8 @@ Hydra party line had no matching historical drop/acquisition event; the current
 nuker2 inventory confirms an instance with white rolls, but not its arrival time.
 The gain tooltip suppresses catalog ranges when no instance values are observed
 and marks ambiguous same-model copies rather than borrowing an older roll.
-Plugin, Go and UI tests cover the new path. Local PostgreSQL and deployed browser
+Plugin, Go and UI tests cover the new path. CI disposable PostgreSQL and stack
+smoke checks passed for commit `501fe922`. Live phBot and deployed browser
 verification remain pending.
 
 The existing Stats Pet tab displays each supplied pet with owner, type, API ID,

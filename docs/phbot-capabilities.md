@@ -1517,5 +1517,6 @@ acquisition cause and exact destination. The Normal/Rare feeds opt in to those
 classified gains and label them **Owned item gain**, distinct from **Drop observed**
 and verified **Pet pickup** rows. Brief items can still enter and leave between
 polls; a runtime packet/change callback with verified semantics would be needed
-to eliminate that sampling limit. Live phBot validation after installing the new
-plugin and a disposable PostgreSQL integration test remain open.
+to eliminate that sampling limit. CI validation with disposable PostgreSQL and
+the stack smoke job passed for commit `501fe922`. Live phBot validation after
+installing the new plugin remains open.

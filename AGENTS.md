@@ -5532,7 +5532,8 @@ tests, `web/app/{pages/events.vue,composables/useLiveData.ts}`,
 parity docs, this ledger. Validation: 184 plugin/protocol tests, Go
 `go test ./...`, 181 frontend unit tests, Nuxt typecheck, production build,
 lint (zero errors, 67 pre-existing warnings), and `git diff --check` pass. Disposable
-PostgreSQL unavailable (`TEST_DATABASE_URL` unset, Docker CLI absent); live
-plugin install and browser validation remain open. Next: commit/push on the
-existing branch, then have the operator load
-plugin 1.9.17 and restart the app before observing a new natural party gain.
+PostgreSQL is unavailable locally (`TEST_DATABASE_URL` unset, Docker CLI absent),
+but PR #69 CI validation against disposable PostgreSQL and the stack smoke job
+passed for commit `501fe922`. Live plugin install and browser validation remain
+open. Next: have the operator load plugin 1.9.17 and restart the app before
+observing a new natural party gain.
