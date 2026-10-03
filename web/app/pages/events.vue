@@ -21,12 +21,20 @@ const tabs = [
   {
     label: 'Rare Drops',
     key: 'drop.rare',
-    query: { kind: 'drop.rare', include_pet_pickups: 'true' },
+    query: {
+      kind: 'drop.rare',
+      include_pet_pickups: 'true',
+      include_owned_gains: 'true',
+    },
   },
   {
     label: 'Normal Drops',
     key: 'drop.item',
-    query: { kind: 'drop.item', include_pet_pickups: 'true' },
+    query: {
+      kind: 'drop.item',
+      include_pet_pickups: 'true',
+      include_owned_gains: 'true',
+    },
   },
   {
     label: 'Uniques',
@@ -53,6 +61,12 @@ const includePetPickups = computed(
     !filterCategory.value &&
     (filterKind.value === 'drop.item' || filterKind.value === 'drop.rare') &&
     route.query.include_pet_pickups !== 'false',
+)
+const includeOwnedGains = computed(
+  () =>
+    !filterCategory.value &&
+    (filterKind.value === 'drop.item' || filterKind.value === 'drop.rare') &&
+    route.query.include_owned_gains !== 'false',
 )
 const activeTabLabel = computed(() => activeTab.value?.label ?? 'All')
 const pageTitle = computed(() =>
@@ -181,6 +195,7 @@ watch(
     filterKind,
     filterCategory,
     includePetPickups,
+    includeOwnedGains,
     cursor,
     pageSize,
   ],
@@ -193,6 +208,7 @@ watch(
     kind,
     category,
     includePickups,
+    includeGains,
     pageCursor,
     size,
   ]) => {
@@ -209,6 +225,7 @@ watch(
       kind: kind || undefined,
       category: category || undefined,
       include_pet_pickups: includePickups || undefined,
+      include_owned_gains: includeGains || undefined,
       cursor: pageCursor || undefined,
       limit: size,
     })
@@ -224,6 +241,8 @@ watch(
     itemQuery,
     filterKind,
     filterCategory,
+    includePetPickups,
+    includeOwnedGains,
     pageSize,
   ],
   () => {
@@ -307,20 +326,33 @@ function eventSourceLabel(item: ActivityEvent) {
     return 'Drop observed'
   if (item.kind === 'item.acquired' && item.source === 'joymax.pet_inventory')
     return 'Pet pickup'
+  if (
+    (item.kind === 'item.acquired' ||
+      item.kind === 'item.quantity_increased') &&
+    item.source === 'phbot.state_diff'
+  )
+    return 'Owned item gain'
   return ''
 }
 function eventContainerDetail(item: ActivityEvent) {
-  if (item.source !== 'joymax.pet_inventory') return ''
   const payload = record(item.payload)
   const destination = record(payload.destination_container)
-  if (destination.type !== 'pets') return ''
-  const petID = typeof destination.id === 'string' ? destination.id : 'unknown'
+  if (
+    item.source !== 'joymax.pet_inventory' &&
+    item.source !== 'phbot.state_diff'
+  )
+    return ''
+  if (typeof destination.type !== 'string') return ''
+  const container =
+    destination.type === 'pets'
+      ? `Pet ${typeof destination.id === 'string' ? destination.id : 'unknown'}`
+      : destination.type.replaceAll('_', ' ')
   const slot =
     typeof destination.slot === 'number' ? destination.slot + 1 : null
   const quantity =
     typeof payload.quantity_delta === 'number' ? payload.quantity_delta : null
   return [
-    `Pet ${petID}`,
+    container,
     slot === null ? '' : `slot ${slot}`,
     quantity === null ? '' : `+${quantity}`,
   ]

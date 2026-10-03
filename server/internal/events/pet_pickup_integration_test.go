@@ -1,6 +1,7 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -121,5 +122,19 @@ func TestPetPickupsJoinOnlyTheirClassifiedDropFeedAndCountAsRecords(t *testing.T
 	}
 	if _, err := store.List(ctx, Filter{Server: serverName, Kind: "item.acquired", IncludePetPickups: true}); err == nil {
 		t.Fatal("pet pickup filter was accepted outside Normal/Rare Drops")
+	}
+	owned := base("item.quantity_increased", "phbot.state_diff", "item_container",
+		`{"item":{"model":848,"servername":"ITEM_NORMAL_TEST","quantity":1,"api_fields":{"blues":{"9":5}}},"quantity_delta":1,"destination_container":{"type":"inventory","slot":29},"acquisition_method":"unknown"}`, 848, 6)
+	owned.OccurredAt = occurredAt.Add(time.Second)
+	results, _, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{owned})
+	if err != nil || results[0].Status != "persisted" {
+		t.Fatalf("owned gain = %+v, %v", results, err)
+	}
+	combined, err := store.List(ctx, Filter{Server: serverName, Kind: "drop.item", IncludePetPickups: true, IncludeOwnedGains: true, Limit: 10})
+	if err != nil || combined.Total != 3 || combined.Events[0].ID != owned.ID || combined.Events[0].ItemDropClass != "normal" {
+		t.Fatalf("normal drop feed omitted recipient-owned gain: %+v, %v", combined, err)
+	}
+	if !json.Valid(combined.Events[0].Payload) || !bytes.Contains(combined.Events[0].Payload, []byte(`"9":5`)) {
+		t.Fatalf("recipient item rolls were lost: %s", combined.Events[0].Payload)
 	}
 }

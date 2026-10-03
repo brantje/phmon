@@ -31,8 +31,9 @@ type eventHandler struct {
 	resources *resources.Store
 }
 
-func validEventPetPickupFilter(filter events.Filter) bool {
-	return !filter.IncludePetPickups || (filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
+func validEventDropFeedFilter(filter events.Filter) bool {
+	return !(filter.IncludePetPickups || filter.IncludeOwnedGains) ||
+		(filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
 }
 
 func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -54,8 +55,15 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.IncludePetPickups = raw[0] == "true"
 	}
+	if raw, exists := query["include_owned_gains"]; exists {
+		if len(raw) != 1 || (raw[0] != "true" && raw[0] != "false") {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid owned gain filter"})
+			return
+		}
+		filter.IncludeOwnedGains = raw[0] == "true"
+	}
 	if !validServerFilter(filter.Server) || len(filter.CharacterQuery) > 64 || len(filter.CharacterID) > 0 && !agentdomain.ValidAgentID(filter.CharacterID) ||
-		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 || !validEventPetPickupFilter(filter) {
+		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 || !validEventDropFeedFilter(filter) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid event filter"})
 		return
 	}

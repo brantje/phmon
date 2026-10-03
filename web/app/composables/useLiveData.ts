@@ -105,6 +105,8 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.to || '') === (right.to || '') &&
     (left.include_pet_pickups || false) ===
       (right.include_pet_pickups || false) &&
+    (left.include_owned_gains || false) ===
+      (right.include_owned_gains || false) &&
     (left.channel || '') === (right.channel || '') &&
     (left.peer || '') === (right.peer || '') &&
     (left.area || '') === (right.area || '') &&

@@ -1411,8 +1411,10 @@ positive `item.acquired` pet receipts carrying pet/slot destination and packet
 observation identity. A validated worker helper freezes the item snapshot, hashes a
 stable dedupe identity and enters the existing durable spool. No production parser
 emits such receipts until a matching runtime fixture verifies packet branch, item
-identity and delta semantics. Snapshot differences remain unknown-source acquisition
-records and do not enter drop feeds as pet pickups.
+identity and delta semantics. Snapshot differences remain unknown-source item-gain
+records and are never presented as verified pet pickups. Normal/Rare feeds can
+separately include classified recipient-owned inventory/pet gains with a clear
+source label.
 
 Backend migration `000022` stores optional profile-derived normal/rare classification
 and version. REST and live feed inclusion is opt-in and valid only for Normal or Rare
@@ -1476,3 +1478,44 @@ saved observations, leaves cause unknown, and can recover the reported row after
 deployment. It does not create stats for unpicked ground drops, establish actual
 blue options from `get_drops()`, or explain why the 1.9.15 explicit gate missed
 this callback. PostgreSQL and deployed UI validation remain open.
+
+### Party distribution and recipient-owned gains — 2026-10-03
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) provides an
+equippable model for `EVENT_ITEM_DROP`/`EVENT_RARE_DROP`, not a loot recipient or
+rolled instance. The [Inventory API](https://plugins.phbot.org/phbot-api/inventory)
+returns the current character's items; the [Pets API](https://plugins.phbot.org/phbot-api/pets)
+returns summoned pet items when available. The [Party API](https://plugins.phbot.org/phbot-api/party)
+lists party members but does not document item allocation. A party distribution
+line is therefore a hint to inspect the named character, not proof that a drop
+callback belongs to that character or that an item gain was persisted.
+
+Static inspection of the authorized `%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe`
+found that its drop enrichment compares the callback observer's before/after
+inventory and emits `drop_item_enriched` for a match; it does not parse the party
+line as a recipient. Its normal diff loop defaults to 2 seconds and inventory
+snapshot sync to 15 seconds. Copying the observer-only match would preserve this
+party-sharing failure. PhMon instead compares each connected character's own
+inventory/pet snapshots at a 2-second interval, independently of callback or
+chat delivery. The gained instance is selected from the changed slot when unique,
+including when an older copy of the same model already exists. Optional pet or
+storage availability no longer suppresses an unrelated inventory gain; models
+present in an appearing/disappearing container are conservatively skipped for
+that comparison to avoid inventing an acquisition from a transfer. When several
+same-model copies change and the gained instance is ambiguous, the event keeps
+only the item identity and marks its instance unobserved; it never borrows
+another copy's rolls.
+
+An authenticated read-only check near the reported 21:17:39 local party line
+found no Hydra Gauntlet drop or gain event. A later nuker2 inventory snapshot
+contained male model 11840 in slot 29 with observed white rolls and no observed
+blues. That current snapshot does not establish when the item arrived; the
+historical event cannot be backfilled as an acquisition without an earlier
+comparable owner snapshot. A recipient's future `item.acquired` or
+`item.quantity_increased` event carries its own observed item evidence, unknown
+acquisition cause and exact destination. The Normal/Rare feeds opt in to those
+classified gains and label them **Owned item gain**, distinct from **Drop observed**
+and verified **Pet pickup** rows. Brief items can still enter and leave between
+polls; a runtime packet/change callback with verified semantics would be needed
+to eliminate that sampling limit. Live phBot validation after installing the new
+plugin and a disposable PostgreSQL integration test remain open.

@@ -2181,6 +2181,19 @@ The rest API and live stream retain the default-off optional filter for compatib
 Unknown pet classification stays in All; combined count and pagination apply the
 same predicate.
 
+The 2026-10-03 recipient-gain correction adds a separate default-off
+`include_owned_gains` filter. Normal/Rare tabs opt in and label recipient-owned
+inventory/pet observations **Owned item gain**, preserving the separate
+**Drop observed** and **Pet pickup** origins. These gain rows expose the owning
+character, destination slot and the observed item's rolled tooltip through the
+same enrichment path. An observed gain does not prove ground pickup. The reported
+Hydra party line had no matching historical drop/acquisition event; the current
+nuker2 inventory confirms an instance with white rolls, but not its arrival time.
+The gain tooltip suppresses catalog ranges when no instance values are observed
+and marks ambiguous same-model copies rather than borrowing an older roll.
+Plugin, Go and UI tests cover the new path. Local PostgreSQL and deployed browser
+verification remain pending.
+
 The existing Stats Pet tab displays each supplied pet with owner, type, API ID,
 reported inventory slot count, source and the shared item grid/tooltip. It
 distinguishes an empty list from no inventory field and marks basic items whose

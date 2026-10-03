@@ -26,12 +26,14 @@ func TestParseEventBoundAcceptsLocalRFC3339Boundaries(t *testing.T) {
 	}
 }
 
-func TestRESTPetPickupFilterOnlyAppliesToNormalAndRareDrops(t *testing.T) {
+func TestRESTAdditionalItemFeedsOnlyApplyToNormalAndRareDrops(t *testing.T) {
 	for _, filter := range []events.Filter{
 		{Kind: "drop.item", IncludePetPickups: true},
 		{Kind: "drop.rare", IncludePetPickups: true},
+		{Kind: "drop.item", IncludeOwnedGains: true},
+		{Kind: "drop.rare", IncludeOwnedGains: true},
 	} {
-		if !validEventPetPickupFilter(filter) {
+		if !validEventDropFeedFilter(filter) {
 			t.Fatalf("valid feed filter rejected: %+v", filter)
 		}
 	}
@@ -39,8 +41,10 @@ func TestRESTPetPickupFilterOnlyAppliesToNormalAndRareDrops(t *testing.T) {
 		{IncludePetPickups: true},
 		{Kind: "drop.rare", Category: "drop", IncludePetPickups: true},
 		{Kind: "item.acquired", IncludePetPickups: true},
+		{IncludeOwnedGains: true},
+		{Kind: "item.acquired", IncludeOwnedGains: true},
 	} {
-		if validEventPetPickupFilter(filter) {
+		if validEventDropFeedFilter(filter) {
 			t.Fatalf("invalid feed filter accepted: %+v", filter)
 		}
 	}

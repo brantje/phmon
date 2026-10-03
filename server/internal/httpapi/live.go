@@ -60,6 +60,7 @@ type liveFilter struct {
 	To                string   `json:"to,omitempty"`
 	Cursor            string   `json:"cursor,omitempty"`
 	IncludePetPickups bool     `json:"include_pet_pickups,omitempty"`
+	IncludeOwnedGains bool     `json:"include_owned_gains,omitempty"`
 	Channel           string   `json:"channel,omitempty"`
 	Peer              string   `json:"peer,omitempty"`
 	Area              string   `json:"area,omitempty"`
@@ -677,7 +678,8 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		}
 		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
 			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item, EventID: subscription.Filter.EventID,
-			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit, IncludePetPickups: subscription.Filter.IncludePetPickups}
+			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit, IncludePetPickups: subscription.Filter.IncludePetPickups,
+			IncludeOwnedGains: subscription.Filter.IncludeOwnedGains}
 		var err error
 		if subscription.Filter.From != "" {
 			value, parseErr := parseEventBound(subscription.Filter.From, false)
@@ -897,6 +899,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			EventID: message.Filter.EventID,
 			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 			IncludePetPickups: message.Filter.IncludePetPickups,
+			IncludeOwnedGains: message.Filter.IncludeOwnedGains,
 			Channel:           message.Filter.Channel, Peer: message.Filter.Peer,
 			Area: message.Filter.Area, Floor: message.Filter.Floor, Region: message.Filter.Region,
 		},
@@ -992,7 +995,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			!validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
 			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 || subscription.Filter.EventID != "" ||
 			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) ||
-			subscription.Filter.IncludePetPickups && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) {
+			(subscription.Filter.IncludePetPickups || subscription.Filter.IncludeOwnedGains) && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) {
 			return liveSubscription{}, false
 		}
 		var from, to *time.Time
@@ -1039,7 +1042,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			len(subscription.Filter.ResourceKeys) != 0 || subscription.Filter.Region < -32768 || subscription.Filter.Region > 65535 ||
 			len(subscription.Filter.EventID) > 64 || subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
 			len(subscription.Filter.Area) > 96 || len(subscription.Filter.Floor) > 32 || subscription.Filter.Kind != "" ||
-			subscription.Filter.Category != "" || subscription.Filter.Item != "" || subscription.Filter.Cursor != "" || subscription.Filter.IncludePetPickups {
+			subscription.Filter.Category != "" || subscription.Filter.Item != "" || subscription.Filter.Cursor != "" || subscription.Filter.IncludePetPickups || subscription.Filter.IncludeOwnedGains {
 			return liveSubscription{}, false
 		}
 		if subscription.Filter.Area == "" {
@@ -1080,7 +1083,7 @@ func hasEventFilters(filter liveFilter) bool {
 }
 
 func hasEventSpecificFilters(filter liveFilter) bool {
-	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != "" || filter.IncludePetPickups
+	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != "" || filter.IncludePetPickups || filter.IncludeOwnedGains
 }
 
 type mapEventLister interface {

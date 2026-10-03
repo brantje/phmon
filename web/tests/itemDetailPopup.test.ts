@@ -273,3 +273,69 @@ test('drop tooltip uses linked observed stats and blues, and hides unobserved ca
     'unique_temporal_inventory_gain',
   )
 })
+
+test('recipient-owned gain uses its observed instance instead of catalog ranges', () => {
+  const record = itemRecordFromActivityEvent({
+    kind: 'item.quantity_increased',
+    item_model: 11840,
+    item_metadata: {
+      name: 'Hydra Thunder Gauntlet',
+      type_ids: [3, 1, 2, 0],
+      reference_stats: { phy_def_pwr: { min: '60', max: '90' } },
+    },
+    payload: {
+      item: { model: 11840, servername: 'ITEM_EU_M_HEAVY_09_AA_B' },
+      destination_container: { type: 'inventory', slot: 29 },
+      acquisition_method: 'unknown',
+    },
+    item_details: {
+      instance_details: {
+        sources: ['phbot_api'],
+        stats: [{ key: 'phy_def_pwr', label: 'Phy. def. pwr', value: '82' }],
+        blues: [
+          { label: 'Int increase', raw_value: '3', scale: 1, precision: 0 },
+        ],
+      },
+    },
+  })
+  assert.ok(record)
+  const detail = buildItemDetail(record)
+  assert.deepEqual(detail.statsBeforeDurability, ['Phy. def. pwr 82'])
+  assert.deepEqual(detail.blues, ['Int 3 Increase'])
+  assert.equal(detail.catalogNote, '')
+})
+
+test('ambiguous owned gain hides another copy’s rolls and catalog ranges', () => {
+  const record = itemRecordFromActivityEvent({
+    kind: 'item.quantity_increased',
+    item_model: 11840,
+    item_metadata: {
+      name: 'Hydra Thunder Gauntlet',
+      reference_stats: { phy_def_pwr: { min: '60', max: '90' } },
+    },
+    payload: {
+      item: { model: 11840, servername: 'ITEM_EU_M_HEAVY_09_AA_B' },
+      item_instance_unobserved: true,
+    },
+  })
+  assert.ok(record)
+  const detail = buildItemDetail(record)
+  assert.deepEqual(detail.statsBeforeDurability, [])
+  assert.match(detail.catalogNote, /could not be identified/)
+})
+
+test('basic owned gain never shows catalog ranges as its rolled stats', () => {
+  const record = itemRecordFromActivityEvent({
+    kind: 'item.acquired',
+    item_model: 11840,
+    item_metadata: {
+      name: 'Hydra Thunder Gauntlet',
+      reference_stats: { phy_def_pwr: { min: '60', max: '90' } },
+    },
+    payload: { item: { model: 11840, servername: 'ITEM_EU_M_HEAVY_09_AA_B' } },
+  })
+  assert.ok(record)
+  const detail = buildItemDetail(record)
+  assert.deepEqual(detail.statsBeforeDurability, [])
+  assert.match(detail.catalogNote, /not observed for this item gain/)
+})

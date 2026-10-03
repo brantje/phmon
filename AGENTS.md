@@ -5503,3 +5503,36 @@ passed. Next: push this increment to PR #69 so the operator can install 1.9.14.
 After operator upload and container restart, inspect the live Pet-tab probe counts
 and only then select the packet branch work justified by naturally observed
 traffic. Do not claim decoding or pickup-event validation.
+
+### Resume — 2026-10-03 party recipient item gains
+
+The operator wants each character's own observed inventory/pet gain recorded and
+shown with that instance's stats, even if another party member saw the world drop.
+The Hydra Thunder Gauntlet party line at 21:17:39 local had no matching historical
+drop or gain event in the authenticated live Events API. A later nuker2 inventory
+snapshot had model 11840 at source slot 29 with white rolls; no blue options were
+observed. Its arrival time cannot be inferred from the current snapshot.
+
+Plugin **1.9.17** independently compares each character's item containers every
+2 seconds. Unavailable pets no longer block inventory diffs. A newly opened or
+dismissed optional container suppresses only models it contains, so unrelated
+recipient gains survive. A unique newly gained slot supplies the event's own
+item evidence even if an older copy of the model is already held. The plugin
+stores only item identity when several changed copies prevent instance selection.
+The Go event store classifies state-diff `item.acquired`/`item.quantity_increased` by the active
+profile. An opt-in `include_owned_gains` filter puts inventory/pet gains in the
+Normal/Rare feeds with a separate **Owned item gain** origin and destination;
+callback drops and verified pet receipts retain distinct origins. The gain's
+cause remains unknown. The authorized phMonitor v0.5.0 client inspection and
+official phBot documentation are recorded in `docs/phbot-capabilities.md`.
+
+Files: `plugin/{PhMon.py,test_phmon.py}`, Go events/httpapi store, filters and
+tests, `web/app/{pages/events.vue,composables/useLiveData.ts}`,
+`web/shared/types/live.ts`, `web/tests/itemDetailPopup.test.ts`, capability and
+parity docs, this ledger. Validation: 184 plugin/protocol tests, Go
+`go test ./...`, 181 frontend unit tests, Nuxt typecheck, production build,
+lint (zero errors, 67 pre-existing warnings), and `git diff --check` pass. Disposable
+PostgreSQL unavailable (`TEST_DATABASE_URL` unset, Docker CLI absent); live
+plugin install and browser validation remain open. Next: commit/push on the
+existing branch, then have the operator load
+plugin 1.9.17 and restart the app before observing a new natural party gain.

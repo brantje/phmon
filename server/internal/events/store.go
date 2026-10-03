@@ -168,6 +168,7 @@ type Filter struct {
 	Cursor             string
 	Limit              int
 	IncludePetPickups  bool
+	IncludeOwnedGains  bool
 }
 
 type Page struct {
@@ -205,7 +206,8 @@ func (s *Store) SetDropClassifier(classify func(server string, model *int64, cod
 }
 
 func validDropFeed(filter Filter) bool {
-	return !filter.IncludePetPickups || (filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
+	return !(filter.IncludePetPickups || filter.IncludeOwnedGains) ||
+		(filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
 }
 
 func ValidKind(value string) bool {
@@ -804,7 +806,9 @@ func eventDropClassification(classifyDrop func(string, *int64, string) (string, 
 	if event.Kind == "drop.item" && event.Source == "phbot.callback" {
 		return "normal", "phbot-callback-v1"
 	}
-	if event.Kind == "item.acquired" && event.Source == "joymax.pet_inventory" && classifyDrop != nil {
+	if ((event.Kind == "item.acquired" && event.Source == "joymax.pet_inventory") ||
+		((event.Kind == "item.acquired" || event.Kind == "item.quantity_increased") &&
+			event.Source == "phbot.state_diff" && event.SourceRef == "item_container")) && classifyDrop != nil {
 		class, version := classifyDrop(event.Server, event.ItemModel, event.ItemCode)
 		if (class == "normal" || class == "rare") && version != "" && len(version) <= 64 {
 			return class, version
@@ -969,7 +973,7 @@ func DecodeCursor(value string) (Cursor, error) {
 
 func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if !validDropFeed(filter) {
-		return Page{}, errors.New("pet pickups may only be included in a normal or rare drop feed")
+		return Page{}, errors.New("owned item gains may only be included in a normal or rare drop feed")
 	}
 	if filter.Limit < 1 || filter.Limit > MaxPageSize {
 		filter.Limit = 10
@@ -996,13 +1000,16 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
 	AND ($3='' OR c.character_name ILIKE '%'||$3||'%')
-		AND (($4='' OR e.kind=$4) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
+		AND (($4='' OR e.kind=$4) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))) OR
+		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
+		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
+		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
 		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
@@ -1033,9 +1040,9 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 			AND d.item_model=e.item_model
 			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at))
 		)
-		`+base+` AND ($13::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($13::timestamptz,$14::uuid))
-ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $15`, filter.Server, filter.CharacterID, filter.CharacterQuery,
-		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, cursorAt, cursorID, filter.Limit+1)
+		`+base+` AND ($14::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($14::timestamptz,$15::uuid))
+ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.CharacterID, filter.CharacterQuery,
+		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, cursorAt, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list events: %w", err)
 	}
@@ -1045,7 +1052,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $15`, filter.Server, filter.Ch
 		var summary AlchemySummary
 		var highest *int
 		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),max((e.payload->>'plus')::integer) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest

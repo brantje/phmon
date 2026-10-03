@@ -1612,6 +1612,54 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(event['payload']['destination_container'], {'type': 'inventory', 'slot': 14})
         self.assertEqual(event['payload']['item']['api_fields'], dropped['api_fields'])
 
+    def test_party_recipient_gain_keeps_its_own_rolls_without_drop_callback(self):
+        old = self.item()
+        old['api_fields'] = {'blues': {'9': 1}}
+        received = self.item()
+        received['api_fields'] = {'blues': {'9': 5}, 'attributes': {'10': 25}}
+        baseline = self.resources(bag=[(13, old)])
+        baseline['pets'] = {'availability': 'unavailable', 'reason': 'getter_returned_none'}
+        self.observe(baseline)
+        after = self.resources(bag=[(13, old), (14, received)])
+        after['pets'] = {'availability': 'unavailable', 'reason': 'getter_returned_none'}
+        self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.quantity_increased')
+        self.assertEqual(events[0]['payload']['item']['api_fields'], received['api_fields'])
+        self.assertEqual(events[0]['payload']['destination_container'],
+                         {'type': 'inventory', 'slot': 14})
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+
+    def test_unrelated_container_appearance_does_not_hide_recipient_gain(self):
+        self.observe(self.resources(bag=[]))
+        other = dict(self.item(), model=88, servername='ITEM_OTHER')
+        self.observe(self.resources(bag=[(14, self.item())], storage=[(0, other)]))
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.acquired')
+        self.assertEqual(events[0]['payload']['destination_container'],
+                         {'type': 'inventory', 'slot': 14})
+
+    def test_appearing_container_same_model_cannot_invent_an_acquisition(self):
+        self.observe(self.resources(bag=[]))
+        self.observe(self.resources(bag=[(14, self.item())], storage=[(0, self.item())]))
+        self.assertEqual(self.drain(), [])
+
+    def test_ambiguous_same_model_gain_never_borrows_an_older_copys_rolls(self):
+        old = self.item()
+        old['api_fields'] = {'blues': {'9': 1}}
+        changed = self.item()
+        changed['api_fields'] = {'blues': {'9': 2}}
+        received = self.item()
+        received['api_fields'] = {'blues': {'9': 5}}
+        self.observe(self.resources(bag=[(13, old)]))
+        self.observe(self.resources(bag=[(13, changed), (14, received)]))
+        event = self.drain()[0]
+        self.assertTrue(event['payload']['item_instance_unobserved'])
+        self.assertNotIn('api_fields', event['payload']['item'])
+        self.assertNotIn('slot', event['payload']['destination_container'])
+
     def test_drop_does_not_link_when_two_same_model_slots_appear(self):
         self.observe(self.resources(bag=[(13, self.item())]))
         self.assertTrue(self.worker.register_drop_for_enrichment(

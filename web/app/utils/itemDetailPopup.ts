@@ -245,8 +245,13 @@ export function buildItemDetail(
     }
   }
   const scalars = instanceStats.length ? [] : scalarStatLines(item)
+  const blues = blueLines(Object.keys(instance).length ? instance : null)
   const ranges =
-    instanceStats.length || scalars.length || item.drop_unobserved === true
+    instanceStats.length ||
+    scalars.length ||
+    item.drop_unobserved === true ||
+    item.instance_unobserved === true ||
+    item.owned_gain === true
       ? []
       : referenceRangeLines(metadata)
   const name =
@@ -306,11 +311,19 @@ export function buildItemDetail(
     catalogNote:
       item.drop_unobserved === true
         ? 'Rolled stats and blue options were not observed for this drop.'
-        : ranges.length
-          ? catalogNote
-          : '',
+        : item.instance_unobserved === true
+          ? 'The gained instance could not be identified among copies of this item.'
+          : item.owned_gain === true &&
+              !instanceStats.length &&
+              !scalars.length &&
+              !durability &&
+              !blues.length
+            ? 'Rolled stats and blue options were not observed for this item gain.'
+            : ranges.length
+              ? catalogNote
+              : '',
     requirements,
-    blues: blueLines(Object.keys(instance).length ? instance : null),
+    blues,
   }
 }
 
@@ -375,6 +388,13 @@ export function itemRecordFromActivityEvent(
     stringField(metadata, 'icon_url') || stringField(event, 'item_icon_url')
   return {
     ...snapshot,
+    ...(event.kind === 'item.acquired' ||
+    event.kind === 'item.quantity_increased'
+      ? { owned_gain: true }
+      : {}),
+    ...(payload.item_instance_unobserved === true
+      ? { instance_unobserved: true }
+      : {}),
     ...((event.kind === 'drop.item' || event.kind === 'drop.rare') &&
     !Object.keys(asRecord(payload.item)).length
       ? { drop_unobserved: true }

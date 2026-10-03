@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.16'
+pVersion = '1.9.17'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -98,7 +98,7 @@ DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
 MAX_RESOURCE_SLOTS = 2048
-RESOURCE_SAMPLE_INTERVAL_SECONDS = 15.0
+RESOURCE_SAMPLE_INTERVAL_SECONDS = 2.0
 DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
 DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
 MAX_ITEM_PACKET_COUNT = 128
@@ -1332,13 +1332,7 @@ def _normalize_academy(value, api_available):
 def _event_resource_snapshot(resources):
     if not isinstance(resources, dict):
         return None
-    equipment = resources.get('equipment')
-    inventory = resources.get('inventory')
     pets_resource = resources.get('pets')
-    if (not isinstance(equipment, dict) or equipment.get('availability') != 'observed' or
-            not isinstance(inventory, dict) or inventory.get('availability') != 'observed' or
-            not isinstance(pets_resource, dict) or pets_resource.get('availability') != 'observed'):
-        return None
 
     def membership(resource, collection_path):
         if not isinstance(resource, dict) or resource.get('availability') != 'observed':
@@ -1359,11 +1353,13 @@ def _event_resource_snapshot(resources):
 
     party = membership(resources.get('party'), ('members',))
     academy = membership(resources.get('academy'), ('value', 'members'))
-    pets = {}
-    for pet in pets_resource.get('pets', [])[:32]:
-        if not isinstance(pet, dict) or not pet.get('pet_id'):
-            continue
-        pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
+    pets = None
+    if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
+        pets = {}
+        for pet in pets_resource.get('pets', [])[:32]:
+            if not isinstance(pet, dict) or not pet.get('pet_id'):
+                continue
+            pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
 
     containers = {}
     for key in ('equipment', 'inventory', 'storage', 'job_pouch'):
@@ -1371,7 +1367,7 @@ def _event_resource_snapshot(resources):
         if not isinstance(container, dict) or container.get('availability') != 'observed':
             continue
         containers[key] = _event_item_quantities(container.get('slots', []))
-    for pet in pets_resource.get('pets', [])[:32]:
+    for pet in (pets_resource.get('pets', [])[:32] if pets is not None else []):
         if not isinstance(pet, dict) or not pet.get('pet_id') or not pet.get('inventory_available'):
             continue
         pet_key = 'pets:' + str(pet['pet_id'])[:64]
@@ -1406,6 +1402,36 @@ def _event_item_quantities(slots):
             record['slots'].append(slot)
             record['slot_items'][slot] = item
     return result
+
+
+def _event_gain_observation(before_record, after_record, quantity):
+    """Identify one gained instance without borrowing another copy's rolls."""
+    if quantity != 1:
+        return None
+    previous = list((before_record or {}).get('slot_items', {}).values())
+    unmatched = []
+    for slot, item in after_record.get('slot_items', {}).items():
+        try:
+            index = previous.index(item)
+        except ValueError:
+            unmatched.append((slot, item))
+        else:
+            previous.pop(index)
+    return unmatched[0] if len(unmatched) == 1 else None
+
+
+def _event_gain_item(before_record, after_record, quantity):
+    selected = _event_gain_observation(before_record, after_record, quantity)
+    if selected:
+        return selected[1], selected, False
+    item = after_record.get('item') or {}
+    if len(after_record.get('slot_items', {})) <= 1:
+        return item, None, False
+    # Multiple copies changed without one provable instance. Preserve only the
+    # item identity, never the first copy's unrelated plus/whites/blues.
+    identity = {key: item[key] for key in ('model', 'servername', 'name') if key in item}
+    identity['quantity'] = quantity
+    return identity, None, True
 
 
 def _item_has_identity(item):
@@ -3035,11 +3061,18 @@ class AgentWorker(object):
 
         old_containers = previous.get('containers', {})
         new_containers = current.get('containers', {})
-        if set(old_containers) == set(new_containers):
-            self._emit_item_deltas(identity, old_containers, new_containers, observed_at, position)
-        else:
-            # A newly opened or dismissed container establishes a new baseline.
-            pass
+        common = set(old_containers) & set(new_containers)
+        changed = set(old_containers) ^ set(new_containers)
+        # A newly available or dismissed container has no comparable baseline.
+        # Suppress its item models on this sample, since moving one of them into
+        # a stable container could otherwise look like an acquisition.
+        uncertain = set()
+        for key in changed:
+            uncertain.update((old_containers.get(key) or new_containers.get(key) or {}).keys())
+        self._emit_item_deltas(identity,
+                               {key: old_containers[key] for key in common},
+                               {key: new_containers[key] for key in common},
+                               observed_at, position, uncertain)
         self._event_diff = current
 
     def _emit_state_change(self, identity, kind, source_ref, key, value, occurred_at, position):
@@ -3048,7 +3081,7 @@ class AgentWorker(object):
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
-    def _emit_item_deltas(self, identity, before, after, occurred_at, position):
+    def _emit_item_deltas(self, identity, before, after, occurred_at, position, uncertain=()):
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
@@ -3069,6 +3102,8 @@ class AgentWorker(object):
             if isinstance(model, int) and not isinstance(model, bool) and model > 0:
                 new_model_slots.setdefault(model, []).append((slot, slot_item))
         for signature in sorted(signatures):
+            if signature in uncertain:
+                continue
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
             if old_total == new_total:
@@ -3091,11 +3126,16 @@ class AgentWorker(object):
                                                   occurred_at, position, item)
                 elif gains or losses:
                     for container_key, quantity, record in gains:
-                        item = record.get('item') or {}
+                        item, selected, ambiguous = _event_gain_item(
+                            before[container_key].get(signature), record, quantity)
                         if _item_has_identity(item):
                             payload = {'item': item, 'quantity_delta': quantity,
                                        'destination_container': _container_reference(container_key, record),
                                        'acquisition_method': 'unknown'}
+                            if selected:
+                                payload['destination_container']['slot'] = selected[0]
+                            if ambiguous:
+                                payload['item_instance_unobserved'] = True
                             self._queue_derived_event(identity, 'item.quantity_increased', 'item_container', payload,
                                                       occurred_at, position, item)
                     for container_key, quantity, record in losses:
@@ -3119,13 +3159,21 @@ class AgentWorker(object):
             for direction, container_key, quantity, record in changes:
                 amount = min(quantity, remaining)
                 remaining -= amount
-                item = record.get('item') or {}
+                if direction == 'gain':
+                    item, selected, ambiguous = _event_gain_item(
+                        before[container_key].get(signature), record, amount)
+                else:
+                    item, selected, ambiguous = record.get('item') or {}, None, False
                 if not amount or not _item_has_identity(item):
                     continue
                 if direction == 'gain':
                     kind = 'item.acquired' if old_total == 0 else 'item.quantity_increased'
                     payload = {'item': item, 'quantity_delta': amount,
                                'destination_container': _container_reference(container_key, record)}
+                    if selected:
+                        payload['destination_container']['slot'] = selected[0]
+                    if ambiguous:
+                        payload['item_instance_unobserved'] = True
                     payload['acquisition_method'] = 'unknown'
                     model = item.get('model')
                     candidates = new_model_slots.get(model, [])
@@ -3144,6 +3192,8 @@ class AgentWorker(object):
                             payload['item'] = observed_item
                             payload['destination_container'] = {'type': 'inventory', 'slot': slot}
                             payload['drop_event_id'] = drop_event_id
+                            payload.pop('item_instance_unobserved', None)
+                            item = observed_item
                 else:
                     kind = 'item.quantity_decreased'
                     payload = {'item': item, 'quantity_delta': amount,

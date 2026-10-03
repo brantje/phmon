@@ -375,6 +375,7 @@ export interface LiveFilter {
   to?: string
   cursor?: string
   include_pet_pickups?: boolean
+  include_owned_gains?: boolean
   channel?: string
   peer?: string
   area?: string

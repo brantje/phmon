@@ -191,6 +191,8 @@ func TestDropFeedPetPickupFilterIsLimitedToNormalAndRareTabs(t *testing.T) {
 	for _, filter := range []Filter{
 		{Kind: "drop.item", IncludePetPickups: true},
 		{Kind: "drop.rare", IncludePetPickups: true},
+		{Kind: "drop.item", IncludeOwnedGains: true},
+		{Kind: "drop.rare", IncludeOwnedGains: true},
 	} {
 		if !validDropFeed(filter) {
 			t.Fatalf("valid drop feed rejected: %+v", filter)
@@ -200,6 +202,8 @@ func TestDropFeedPetPickupFilterIsLimitedToNormalAndRareTabs(t *testing.T) {
 		{IncludePetPickups: true},
 		{Kind: "drop.rare", Category: "drop", IncludePetPickups: true},
 		{Kind: "item.acquired", IncludePetPickups: true},
+		{IncludeOwnedGains: true},
+		{Kind: "item.acquired", IncludeOwnedGains: true},
 	} {
 		if validDropFeed(filter) {
 			t.Fatalf("invalid pet pickup feed accepted: %+v", filter)

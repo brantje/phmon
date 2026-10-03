@@ -590,6 +590,14 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "rare-drops", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.rare", IncludePetPickups: true}},
 			valid:   true,
 		},
+		"normal drops include recipient gains": {
+			message: liveClientMessage{SubscriptionID: "normal-owned", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", IncludeOwnedGains: true}},
+			valid:   true,
+		},
+		"owned gain inclusion requires a drop kind": {
+			message: liveClientMessage{SubscriptionID: "bad-owned", Revision: 1, Stream: "events", Filter: liveFilter{IncludeOwnedGains: true}},
+			valid:   false,
+		},
 		"pet pickup inclusion requires a drop kind": {
 			message: liveClientMessage{SubscriptionID: "bad-pet-feed", Revision: 1, Stream: "events", Filter: liveFilter{IncludePetPickups: true}},
 			valid:   false,
