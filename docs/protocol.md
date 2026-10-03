@@ -874,6 +874,16 @@ terminal rejection while valid siblings can commit in the same transaction. Stab
 event ID, optional source-scoped dedupe key and per-session sequence enforce
 idempotence.
 
+Unique spawn and kill notices use the same `event.batch` envelope with
+`source` `joymax.unique_notice` and `source_ref` `0x300C`. The payload is
+`model`, `notice` (`spawn` or `kill`) and, for a kill, an optional `killer`.
+The observing character is attribution only, so the event does not copy that
+character's position. A second notice for the same server, model and notice
+type within 15 seconds is acknowledged as a duplicate. The documented
+`EVENT_UNIQUE_SPAWN` callback remains a separate `phbot.callback` event whose
+payload is the monster name. Read responses add a `unique` portrait when the
+active dataset catalog recognizes the model or name. Protocol version stays 13.
+
 Migration `000007_event_pipeline.sql` generalizes `activity_events` for nullable
 agent-level context and adds sequence, dedupe key and indexed item model/code. Event
 queries retain deterministic `(occurred_at DESC,event_id DESC)` order and an opaque

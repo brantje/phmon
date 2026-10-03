@@ -61,6 +61,14 @@ export interface ActivityEvent {
   z?: number
   model_id?: number
   portrait_url?: string
+  unique?: {
+    name?: string
+    level?: number
+    image_url?: string
+    notice?: string
+    killer?: string
+    model_id?: number
+  }
   payload: Record<string, unknown>
 }
 

@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.11** (`vsro_1188_passive_r2`, API
+The current plugin development release is **1.9.12** (`vsro_1188_passive_r2`, API
 evidence schema 2), using agent protocol v13 over the existing authenticated
 connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
 membership/container deltas and bounded v6 event batches. It adds current nearby
@@ -27,7 +27,10 @@ and accepts bounded `chat.send` commands through the existing callback-thread
 dispatcher. A boolean API result records phBot acceptance only, not delivery. No real
 chat callback or send was exercised in the simulator tests.
 
-Version 1.9.11 supports confirmed `character.reverse_return` (issue #34), retaining
+Version 1.9.12 keeps protocol 13 and records unique spawn/kill notices from
+Joymax opcode `0x300C` (type byte 5 or 6, then the model ID). The documented
+`EVENT_UNIQUE_SPAWN` callback is unchanged. The notice does not copy the
+observer's position. Version 1.9.11 supports confirmed `character.reverse_return` (issue #34), retaining
 protocol 13. A callable `reverse_return` enables last Return Scroll and death
 locations. Party mode also requires `get_party` and rechecks the chosen observed
 member immediately before using a scroll; self-targets are rejected. Named
