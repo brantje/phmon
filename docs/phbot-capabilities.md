@@ -1456,3 +1456,23 @@ unlinked. No live Windows/phBot callback-to-inventory capture or PostgreSQL
 integration result for this increment is available from this workspace; those
 are the next runtime gates. Ground-only drops may still lack exact stats when
 they never enter an observed inventory.
+
+### Live necklace drop correlation — 2026-10-03
+
+The active nuker4 agent reports plugin 1.9.15. An authenticated read-only Events
+API check found a model-1895 `EVENT_ITEM_DROP` at 18:44:10Z and one
+`item.acquired` at 18:44:11Z for the same agent, character, session, region and
+coordinates. The acquisition held API white percentages 87/32 and resolved
+physical/magical absorption 23.4/23.1; no blue options were observed. The
+acquisition lacked `drop_event_id`. The exact plugin gate that rejected or missed
+the link cannot be recovered from the persisted events.
+
+Plugin 1.9.16 fixes a separate verified code gap for an already owned same-model
+item: a uniquely new inventory slot may now link an `item.quantity_increased`
+event with that slot's own item evidence. The server also provides a conservative
+read-time temporal match for a sole unlinked one-item acquisition within three
+seconds and 24 XY / 32 Z units, with no competing drop of that model. This uses
+saved observations, leaves cause unknown, and can recover the reported row after
+deployment. It does not create stats for unpicked ground drops, establish actual
+blue options from `get_drops()`, or explain why the 1.9.15 explicit gate missed
+this callback. PostgreSQL and deployed UI validation remain open.

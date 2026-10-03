@@ -140,6 +140,11 @@ func TestValidateAgentEventRequiresObservedDropAndItemFacts(t *testing.T) {
 	if err := validateAgentEvent(acquired); err != nil {
 		t.Fatalf("bounded inventory observation link rejected: %v", err)
 	}
+	acquired.Kind = "item.quantity_increased"
+	if err := validateAgentEvent(acquired); err != nil {
+		t.Fatalf("existing-model inventory observation link rejected: %v", err)
+	}
+	acquired.Kind = "item.acquired"
 	acquired.Payload = json.RawMessage(`{"item":{"model":7},"quantity_delta":2,"destination_container":{"type":"inventory","slot":13},"acquisition_method":"unknown","drop_event_id":"8d16ab39-10b8-4b26-80aa-a4be01e10f18"}`)
 	if err := validateAgentEvent(acquired); err == nil {
 		t.Fatal("ambiguous multi-item drop association was accepted")

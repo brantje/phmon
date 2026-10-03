@@ -1597,6 +1597,28 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(event['payload']['acquisition_method'], 'unknown')
         self.assertFalse(self.worker.has_pending_drop_enrichment(self.identity))
 
+    def test_drop_links_new_slot_when_same_model_is_already_owned(self):
+        existing = self.item()
+        existing['api_fields'] = {'blues': {'9': 1}}
+        self.observe(self.resources(bag=[(13, existing)]))
+        drop_id = '8d16ab39-10b8-4b26-80aa-a4be01e10f18'
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77, drop_id, 1))
+        dropped = self.item()
+        dropped['api_fields'] = {'blues': {'9': 5}}
+        self.observe(self.resources(bag=[(13, existing), (14, dropped)]))
+        event = self.drain()[0]
+        self.assertEqual(event['kind'], 'item.quantity_increased')
+        self.assertEqual(event['payload']['drop_event_id'], drop_id)
+        self.assertEqual(event['payload']['destination_container'], {'type': 'inventory', 'slot': 14})
+        self.assertEqual(event['payload']['item']['api_fields'], dropped['api_fields'])
+
+    def test_drop_does_not_link_when_two_same_model_slots_appear(self):
+        self.observe(self.resources(bag=[(13, self.item())]))
+        self.assertTrue(self.worker.register_drop_for_enrichment(
+            self.identity, 77, '8d16ab39-10b8-4b26-80aa-a4be01e10f18', 1))
+        self.observe(self.resources(bag=[(13, self.item()), (14, self.item()), (15, self.item())]))
+        self.assertNotIn('drop_event_id', self.drain()[0]['payload'])
+
     def test_ambiguous_same_model_drops_are_not_linked(self):
         self.observe(self.resources(bag=[]))
         self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77,

@@ -148,7 +148,33 @@ The durable acquisition event retains its API/packet item snapshot and an explic
 drop-event ID. The server checks session, agent, character, model and time on read;
 the tooltip shows the snapshot's verified stats/blues and marks the association
 as an inventory match with unverified acquisition cause. Ambiguous callbacks or
-gains remain unlinked. Existing model-only occurrences cannot be retroactively
-given rolls. The separate `get_drops()` path remains an investigation gate:
+gains remain unlinked by that explicit ID. Existing model-only occurrences need a
+saved, uniquely matching inventory observation to recover their rolls. The separate
+`get_drops()` path remains an investigation gate:
 official examples show basic ground fields only, and no installed-runtime capture
 establishes whether ground rows contain whites or option values.
+
+## 2026-10-03 live necklace counterexample
+
+The operator reported the Normal Drops row for nuker4, Hundred Nights Gem Necklace
+model 1895, at 18:44:10Z. Authenticated read-only API inspection found a model-only
+`EVENT_ITEM_DROP` callback and, at 18:44:11Z, one `item.acquired` state-diff event
+for the same agent, character, session, model and exact observer position. The
+acquisition was one item in inventory slot 37. Its saved API evidence contains
+white IDs 11=87 and 12=32 and typed physical/magical absorption 23.4/23.1. It
+contains no observed blue options. The callback had no `drop_event_id` link, so
+the existing Events read path could not show this saved item. Plugin 1.9.15 was
+installed; the specific reason its explicit link gate failed is not recorded.
+
+Plugin 1.9.16 additionally preserves a newly occupied item's own slot snapshot
+when the same model was already owned; previously such a gain became
+`item.quantity_increased` and was never eligible for a drop link. The server
+accepts that event kind for an explicit link. For already saved callback-only
+rows, it also infers a read-time **temporal inventory match** only when there is
+exactly one unlinked, one-item `item.acquired` within three seconds, same agent,
+character, session and model, a matching region and nearby coordinates, and no
+other same-model drop within that acquisition's three-second window. The saved
+events remain immutable and the UI labels the association as an inventory match,
+not proven pickup. This rule matches the reported row from its stored facts; it
+still needs deployment and PostgreSQL/browser confirmation. Ground-only drops
+without an inventory observation remain unresolved.

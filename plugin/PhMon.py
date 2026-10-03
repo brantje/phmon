@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.15'
+pVersion = '1.9.16'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -1399,10 +1399,12 @@ def _event_item_quantities(slots):
         if not _number(quantity) or quantity < 0:
             quantity = 1
         slot = row.get('source_slot')
-        record = result.setdefault(signature, {'quantity': 0, 'item': item, 'slots': []})
+        record = result.setdefault(signature, {'quantity': 0, 'item': item, 'slots': [],
+                                               'slot_items': {}})
         record['quantity'] += quantity
         if isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0:
             record['slots'].append(slot)
+            record['slot_items'][slot] = item
     return result
 
 
@@ -3050,19 +3052,22 @@ class AgentWorker(object):
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
-        new_model_counts = {}
-        for signature in signatures:
-            old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
-            new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
-            if old_total != 0 or new_total != 1:
+        def inventory_slots(containers):
+            slots = {}
+            for record in containers.get('inventory', {}).values():
+                slots.update(record.get('slot_items', {}))
+            return slots
+
+        before_slots = inventory_slots(before)
+        after_slots = inventory_slots(after)
+        new_model_slots = {}
+        for slot, slot_item in after_slots.items():
+            # Only a formerly empty bag slot can identify one particular item.
+            if slot in before_slots:
                 continue
-            for entries in after.values():
-                record = entries.get(signature)
-                if not record or record.get('quantity') != 1:
-                    continue
-                model = (record.get('item') or {}).get('model')
-                if isinstance(model, int) and not isinstance(model, bool) and model > 0:
-                    new_model_counts[model] = new_model_counts.get(model, 0) + 1
+            model = slot_item.get('model')
+            if isinstance(model, int) and not isinstance(model, bool) and model > 0:
+                new_model_slots.setdefault(model, []).append((slot, slot_item))
         for signature in sorted(signatures):
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
@@ -3122,17 +3127,22 @@ class AgentWorker(object):
                     payload = {'item': item, 'quantity_delta': amount,
                                'destination_container': _container_reference(container_key, record)}
                     payload['acquisition_method'] = 'unknown'
-                    if (kind == 'item.acquired' and container_key == 'inventory' and amount == 1 and
-                            len(record.get('slots', [])) == 1 and len(changes) == 1 and
-                            isinstance(item.get('model'), int) and
-                            new_model_counts.get(item.get('model')) == 1):
+                    model = item.get('model')
+                    candidates = new_model_slots.get(model, [])
+                    if (container_key == 'inventory' and amount == 1 and len(changes) == 1 and
+                            isinstance(model, int) and len(candidates) == 1 and
+                            candidates[0][0] in record.get('slots', []) and
+                            candidates[0][1].get('quantity', 1) == 1):
+                        slot, observed_item = candidates[0]
                         inventory_quantity = sum(
                             entry.get('quantity', 0)
                             for entry in after.get('inventory', {}).values()
-                            if (entry.get('item') or {}).get('model') == item.get('model'))
-                        drop_event_id = self._claim_drop_for_inventory_gain(identity, item,
+                            if (entry.get('item') or {}).get('model') == model)
+                        drop_event_id = self._claim_drop_for_inventory_gain(identity, observed_item,
                                                                               inventory_quantity)
                         if drop_event_id:
+                            payload['item'] = observed_item
+                            payload['destination_container'] = {'type': 'inventory', 'slot': slot}
                             payload['drop_event_id'] = drop_event_id
                 else:
                     kind = 'item.quantity_decreased'

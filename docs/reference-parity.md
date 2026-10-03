@@ -1139,6 +1139,18 @@ rolls. This closes the misleading catalog-range display and adds a usable
 observed-item route, but it does not prove every naturally dropped item will have
 complete detail.
 
+The 2026-10-03 18:44:10Z model-1895 necklace row exposed a recoverable missing
+join: the live 1.9.15 agent saved a same-session, same-position `item.acquired`
+one second later with exact physical/magical absorption 23.4/23.1 and white rolls
+87%/32%, but no explicit drop link. A read-time, unique three-second inventory
+match now supplies that saved snapshot without rewriting either occurrence; the
+UI labels it as an inferred match with unverified pickup cause. A separate plugin
+1.9.16 fix covers a newly acquired slot when another item of that model is
+already owned. This restores applicable item details after backend deployment;
+the specific live row, PostgreSQL path and deployed UI still need verification.
+This necklace snapshot has no observed blue options, and ground-only drops remain
+without exact rolls.
+
 ## Slice 7–8 map and Stats placement — 2026-09-29
 
 The operator corrected the reference target to

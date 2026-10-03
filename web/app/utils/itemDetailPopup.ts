@@ -341,7 +341,10 @@ export function itemRecordFromActivityEvent(
       observation_id: observationID,
     }
   }
-  if (association === 'unique_model_inventory_gain') {
+  if (
+    association === 'unique_model_inventory_gain' ||
+    association === 'unique_temporal_inventory_gain'
+  ) {
     snapshot.instance = {
       ...asRecord(snapshot.instance),
       association,

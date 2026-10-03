@@ -255,4 +255,21 @@ test('drop tooltip uses linked observed stats and blues, and hides unobserved ca
     (linked.instance as Record<string, unknown>).association,
     'unique_model_inventory_gain',
   )
+
+  const nearby = itemRecordFromActivityEvent({
+    kind: 'drop.item',
+    item_model: 777,
+    item_metadata: metadata,
+    payload: {
+      model: 777,
+      item: { model: 777, plus: 0, servername: 'ITEM_TEST' },
+      item_observation: { association: 'unique_temporal_inventory_gain' },
+    },
+    item_details: linked,
+  })
+  assert.ok(nearby)
+  assert.equal(
+    (nearby.instance as Record<string, unknown>).association,
+    'unique_temporal_inventory_gain',
+  )
 })

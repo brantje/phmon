@@ -252,6 +252,36 @@ only the visible easy-mode flows were exercised during the initial inspection.
 
 ### Resume — 2026-10-03 dropped-item tooltip correction
 
+#### Follow-up — live necklace still lacked details
+
+The operator supplied the 18:44:10Z nuker4 Normal Drops necklace row and
+confirmed plugin 1.9.15 is installed. Authenticated read-only Events inspection
+found its model-only callback and one `item.acquired` at 18:44:11Z, same agent,
+character, session, model and exact region/coordinates. The acquired item was in
+inventory slot 37 and retained observed physical/magical absorption 23.4/23.1
+and white percentages 87/32; no blue options were observed. It lacked
+`drop_event_id`. The exact plugin gate failure is not persisted.
+
+Current increment: plugin **1.9.16** keeps per-slot snapshots when a newly
+occupied slot increases an already owned model, allowing a unique
+`item.quantity_increased` link with that new item's own evidence. The server
+accepts that explicit link and uses a conservative read-time fallback for one
+unlinked `item.acquired` within three seconds, same agent/session/character/
+model and nearby coordinates, with no competing same-model drop. Events/Dashboard
+show the item's observed stats after deployment; the association is marked
+inferred and acquisition cause remains unknown. Saved events are not mutated.
+No ground-only roll/blue data is invented.
+
+Files: plugin, Go event store/validation/integration tests, shared item tooltip,
+protocol/capability/item-evidence/reference-parity/investigation docs and this
+guide. Validation: 175 plugin tests, 178 frontend tests, all Go packages,
+Nuxt typecheck, production build, lint (zero errors; 67 existing warnings),
+focused Prettier and `git diff --check` pass. PostgreSQL integration is skipped
+because no local service or `TEST_DATABASE_URL` is available. Exact next action:
+deploy the backend and plugin only with operator authorization;
+read the same event through the authenticated API and browser afterward.
+The current live backend does not yet contain this fallback.
+
 The operator reported that Normal/Rare Drops still showed catalog ranges instead
 of actual item stats and blues. Static inspection of the authorized local
 `%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` found a callback-plus-later-
@@ -276,7 +306,7 @@ Nuxt typecheck, production build, lint (zero errors; 67 warnings) and
 `git diff --check` pass. PostgreSQL integration tests
 were skipped because `TEST_DATABASE_URL` is absent and no local PostgreSQL
 service/runtime is available. Exact next action: run the PostgreSQL linked-drop
-integration test, load plugin 1.9.15 against a compatible backend, observe a
+integration test, load plugin 1.9.16 against a compatible backend, observe a
 naturally occurring drop and subsequent unique inventory gain, then compare its
 tooltip with the captured phBot item fields. Ground-only drop stats remain an
 open capability question; the official `get_drops()` example lacks whites/blues.
