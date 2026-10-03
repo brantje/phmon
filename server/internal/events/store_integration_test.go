@@ -93,7 +93,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, projectionErr := appendOne(ctx, projectionTx, credential.AgentID, invalidProjection)
+	_, _, projectionErr := appendOne(ctx, projectionTx, credential.AgentID, invalidProjection, nil)
 	if !errors.Is(projectionErr, ErrInvalidEvent) {
 		_ = projectionTx.Rollback(ctx)
 		t.Fatalf("invalid chat projection error = %v", projectionErr)
@@ -210,6 +210,83 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	exact, err := store.List(ctx, Filter{Server: server, EventID: rareDrop.ID, Limit: 1})
 	if err != nil || exact.Total != 1 || len(exact.Events) != 1 || exact.Events[0].ID != rareDrop.ID {
 		t.Fatalf("exact event lookup = %+v, err=%v", exact, err)
+	}
+	observedItem := AgentEvent{
+		ID: newTestEventID(t), Schema: 1, Kind: "item.quantity_increased", Category: "item",
+		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
+		OccurredAt: databaseNow.UTC().Add(2 * time.Second), Sequence: int64Pointer64(50),
+		Source: "phbot.state_diff", SourceRef: "item_container", ItemModel: &model,
+		Payload: json.RawMessage(`{"item":{"model":777,"servername":"ITEM_TEST","plus":3,"api_fields":{"blues":{"9":5}}},"quantity_delta":1,"destination_container":{"type":"inventory","slot":13},"acquisition_method":"unknown","drop_event_id":"` + rareDrop.ID + `"}`),
+	}
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{observedItem})
+	if err != nil || !changed || len(results) != 1 || results[0].Status != "persisted" {
+		t.Fatalf("linked inventory observation = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: rareDrop.ID, Limit: 1})
+	if err != nil || len(exact.Events) != 1 {
+		t.Fatalf("linked drop lookup = %+v, err=%v", exact, err)
+	}
+	var linkedPayload struct {
+		Item struct {
+			Plus      int            `json:"plus"`
+			APIFields map[string]any `json:"api_fields"`
+		} `json:"item"`
+		Observation struct {
+			Association string `json:"association"`
+		} `json:"item_observation"`
+	}
+	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "unique_model_inventory_gain" {
+		t.Fatalf("drop did not carry its linked observed item: %s, err=%v", exact.Events[0].Payload, err)
+	}
+	lateDrop := rareDrop
+	lateDrop.ID = newTestEventID(t)
+	lateDrop.Kind = "drop.item"
+	lateDrop.SourceRef = "EVENT_ITEM_DROP"
+	lateDrop.OccurredAt = databaseNow.UTC().Add(10 * time.Second)
+	lateDrop.Sequence = int64Pointer64(51)
+	lateDrop.Region = intPointer(25273)
+	lateDrop.X, lateDrop.Y, lateDrop.Z = floatPointer(10), floatPointer(20), floatPointer(30)
+	unlinkedGain := observedItem
+	unlinkedGain.ID = newTestEventID(t)
+	unlinkedGain.Kind = "item.acquired"
+	unlinkedGain.OccurredAt = databaseNow.UTC().Add(11 * time.Second)
+	unlinkedGain.Sequence = int64Pointer64(52)
+	unlinkedGain.Region = lateDrop.Region
+	unlinkedGain.X, unlinkedGain.Y, unlinkedGain.Z = floatPointer(10), floatPointer(20), floatPointer(30)
+	unlinkedGain.Payload = json.RawMessage(`{"item":{"model":777,"servername":"ITEM_TEST","plus":4},"quantity_delta":1,"destination_container":{"type":"inventory","slot":14},"acquisition_method":"unknown"}`)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{lateDrop, unlinkedGain})
+	if err != nil || !changed || results[0].Status != "persisted" || results[1].Status != "persisted" {
+		t.Fatalf("unlinked drop and gain = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: lateDrop.ID, Limit: 1})
+	var temporalPayload struct {
+		Item struct {
+			Plus int `json:"plus"`
+		} `json:"item"`
+		Observation struct {
+			Association string `json:"association"`
+		} `json:"item_observation"`
+	}
+	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &temporalPayload) != nil ||
+		temporalPayload.Item.Plus != 4 || temporalPayload.Observation.Association != "unique_temporal_inventory_gain" {
+		t.Fatalf("unique nearby inventory gain was not shown: %+v, err=%v", exact, err)
+	}
+	competingDrop := lateDrop
+	competingDrop.ID = newTestEventID(t)
+	competingDrop.Sequence = int64Pointer64(53)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{competingDrop})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("competing drop = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: lateDrop.ID, Limit: 1})
+	var ambiguousPayload struct {
+		Observation struct {
+			Association string `json:"association"`
+		} `json:"item_observation"`
+	}
+	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &ambiguousPayload) != nil ||
+		ambiguousPayload.Observation.Association != "" {
+		t.Fatalf("ambiguous nearby drop was still linked: %+v, err=%v", exact, err)
 	}
 	conflict := rareDrop
 	conflict.Zone = "Donwhang"

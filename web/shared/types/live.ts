@@ -52,6 +52,9 @@ export interface ActivityEvent {
   item_model?: number
   item_code?: string
   item_metadata?: Record<string, unknown>
+  item_details?: Record<string, unknown>
+  item_drop_class?: 'normal' | 'rare'
+  item_drop_class_version?: string
   item_icon_url?: string
   item_name?: string
   region?: number
@@ -371,6 +374,8 @@ export interface LiveFilter {
   from?: string
   to?: string
   cursor?: string
+  include_pet_pickups?: boolean
+  include_owned_gains?: boolean
   channel?: string
   peer?: string
   area?: string
@@ -420,6 +425,57 @@ export interface ResourceObservation {
   payload: Record<string, unknown>
   observed_at?: string
   checked_at?: string
+}
+
+export interface PacketBackedItemInstance {
+  availability: 'observed' | 'not_observed' | 'unavailable'
+  source: string
+  observation_id: string
+  capture_epoch?: string
+  observation_sequence?: string
+  model: string
+  plus?: number
+  variance?: string
+  durability?: number
+  quantity?: number
+  magic_options_availability?: 'observed' | 'not_observed'
+  magic_options?: { id: string; value: string }[]
+}
+
+export interface PetInventoryItem extends Record<string, unknown> {
+  model?: number
+  servername?: string
+  name?: string
+  quantity?: number
+  plus?: number
+  durability?: number
+  api_fields?: Record<string, unknown>
+  instance?: PacketBackedItemInstance
+  instance_details?: Record<string, unknown>
+}
+
+export interface PetInventorySlot {
+  source_slot: number
+  displayed_slot?: number
+  item: PetInventoryItem
+}
+
+export interface PetInventoryRecord {
+  pet_id: string
+  name?: string
+  servername?: string
+  type?: string
+  model?: number
+  hp?: number
+  mounted?: boolean
+  inventory_available: boolean
+  slots?: (PetInventorySlot | null)[]
+}
+
+export interface PetInventoryObservation {
+  availability: 'observed' | 'unavailable' | 'not_observed'
+  reason?: string
+  pets: PetInventoryRecord[]
 }
 
 export interface CharacterResourcesView {

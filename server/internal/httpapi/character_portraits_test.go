@@ -63,11 +63,16 @@ func TestDropEventsResolveStaticItemPresentation(t *testing.T) {
 	page := eventsWithPortraits(events.Page{Events: []events.Event{
 		{Kind: "drop.rare", Server: "Greatest", ItemModel: &itemModel},
 		{Kind: "drop.item", Server: "Other", ItemModel: &itemModel},
+		{Kind: "drop.item", Server: "Greatest", ItemModel: &itemModel,
+			Payload: []byte(`{"model":847,"item":{"model":847,"servername":"ITEM_TEST","plus":3,"api_fields":{"blues":{"9":5}}}}`)},
 	}}, metadata)
 	if page.Events[0].ItemMetadata["name"] != "Gold Armor" || page.Events[0].ItemMetadata["reference_stats"] == nil {
 		t.Fatalf("rare drop lacked catalog name and reference ranges: %+v", page.Events[0])
 	}
 	if page.Events[1].ItemMetadata != nil {
 		t.Fatalf("model from an unmapped server was guessed: %+v", page.Events[1])
+	}
+	if page.Events[2].ItemDetails == nil || page.Events[2].ItemDetails["plus"] != float64(3) {
+		t.Fatalf("observed drop item was not enriched: %+v", page.Events[2])
 	}
 }

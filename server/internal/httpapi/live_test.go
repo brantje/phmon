@@ -582,6 +582,34 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Server: "Example", Kind: events.DeathKind, From: "2026-09-01", To: "2026-09-28", Limit: 25}},
 			valid:   true,
 		},
+		"normal drops include pet pickups": {
+			message: liveClientMessage{SubscriptionID: "normal-drops", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", IncludePetPickups: true}},
+			valid:   true,
+		},
+		"rare drops include pet pickups": {
+			message: liveClientMessage{SubscriptionID: "rare-drops", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.rare", IncludePetPickups: true}},
+			valid:   true,
+		},
+		"normal drops include recipient gains": {
+			message: liveClientMessage{SubscriptionID: "normal-owned", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", IncludeOwnedGains: true}},
+			valid:   true,
+		},
+		"owned gain inclusion requires a drop kind": {
+			message: liveClientMessage{SubscriptionID: "bad-owned", Revision: 1, Stream: "events", Filter: liveFilter{IncludeOwnedGains: true}},
+			valid:   false,
+		},
+		"pet pickup inclusion requires a drop kind": {
+			message: liveClientMessage{SubscriptionID: "bad-pet-feed", Revision: 1, Stream: "events", Filter: liveFilter{IncludePetPickups: true}},
+			valid:   false,
+		},
+		"pet pickup inclusion rejects category filters": {
+			message: liveClientMessage{SubscriptionID: "bad-pet-feed", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.rare", Category: "drop", IncludePetPickups: true}},
+			valid:   false,
+		},
+		"other feeds reject pet pickup inclusion": {
+			message: liveClientMessage{SubscriptionID: "bad-chat", Revision: 1, Stream: "chat", Filter: liveFilter{IncludePetPickups: true}},
+			valid:   false,
+		},
 		"signed cave map region": {
 			message: liveClientMessage{SubscriptionID: "map", Revision: 1, Stream: "map", Filter: liveFilter{Server: "Greatest", Area: "donwhang-stone-cave", Floor: "1F", Region: -32767}},
 			valid:   true,

@@ -1114,6 +1114,43 @@ turning catalog ranges into apparent instance values.
 Focused Go resource/API/event tests, Nuxt typecheck and 13 frontend unit tests
 passed locally. Browser and deployed-server verification remain open.
 
+### Drop instance correction — 2026-10-03
+
+The 2026-09-29 drop tooltip still substituted catalog ranges for model-only
+callbacks. That is removed: unobserved Normal/Rare drop tooltips now say their
+rolls and blues were not observed and omit static ranges. New plugin 1.9.15 drop
+callbacks retain an ID and fresh inventory model count; a unique same-model
+inventory gain above that count in the same session
+within 30 seconds links its complete observed item snapshot. Go validates and
+stores the link on the acquisition event, then scopes the read-time join by
+agent, character, session, model, ID and time. The shared item resolver supplies
+typed observed stats/blues to Events and Dashboard. The tooltip explicitly says
+the inventory association does not prove acquisition cause. Same-model ambiguity
+or an item never seen in owned inventory stays unlinked.
+
+The authorized v0.5.0 executable inspection found a callback-plus-inventory
+enrichment path and a separate `get_drops()` polling path; exact offsets and
+limitations are in [item-tooltip-investigation.md](reference/item-tooltip-investigation.md).
+The official drop API example does not establish rolled ground-item values.
+Deterministic plugin/Go/frontend tests cover a linked observed item, ambiguous
+cases and unobserved presentation. Live phBot and PostgreSQL integration/browser
+checks are still open; old model-only events cannot be backfilled with invented
+rolls. This closes the misleading catalog-range display and adds a usable
+observed-item route, but it does not prove every naturally dropped item will have
+complete detail.
+
+The 2026-10-03 18:44:10Z model-1895 necklace row exposed a recoverable missing
+join: the live 1.9.15 agent saved a same-session, same-position `item.acquired`
+one second later with exact physical/magical absorption 23.4/23.1 and white rolls
+87%/32%, but no explicit drop link. A read-time, unique three-second inventory
+match now supplies that saved snapshot without rewriting either occurrence; the
+UI labels it as an inferred match with unverified pickup cause. A separate plugin
+1.9.16 fix covers a newly acquired slot when another item of that model is
+already owned. This restores applicable item details after backend deployment;
+the specific live row, PostgreSQL path and deployed UI still need verification.
+This necklace snapshot has no observed blue options, and ground-only drops remain
+without exact rolls.
+
 ## Slice 7–8 map and Stats placement — 2026-09-29
 
 The operator corrected the reference target to
@@ -2122,3 +2159,58 @@ Cave or another floor, or choosing a world region, does not remove rows.
 Character pins still appear only where the current floor can place them, and a
 selected world region still limits those pins. Monsters, events, NPCs, party
 members and training areas keep their floor and region scope.
+
+## Pet item details and combined drop feeds — 2026-10-03
+
+The public demo was reopened in a real browser at 1440×1000 before this increment.
+Its Rare Drops table has **Item, Time, Character, Location, Map** columns; Normal
+Drops has **Item, Time, Character, Location**, a separate All normal drops count and
+the same compact pagination. Both feeds displayed their empty states because the
+demo was disconnected. The connection-error modal returned after navigation and was
+hidden only in the inspection tab. The demo Stats page currently says “Connect your
+first character”, so its Pet tab could not be inspected in this session. Existing
+supplied Stats/item tooltip images and the 2026-09-27 LAN Stats inspection remain
+the Pet presentation baseline.
+
+PhMon now keeps the reference drop-feed column order and Normal/Rare-specific Map
+column. Item tooltips use the shared inventory popup. A source line distinguishes
+**Drop observed** callbacks from **Pet pickup** receipts; a verified pet receipt
+also names its pet/slot and observed positive quantity delta. Both drop tabs opt in
+to classified pet receipts, including side-nav URLs without an explicit query flag.
+The rest API and live stream retain the default-off optional filter for compatibility.
+Unknown pet classification stays in All; combined count and pagination apply the
+same predicate.
+
+The 2026-10-03 recipient-gain correction adds a separate default-off
+`include_owned_gains` filter. Normal/Rare tabs opt in and label recipient-owned
+inventory/pet observations **Owned item gain**, preserving the separate
+**Drop observed** and **Pet pickup** origins. These gain rows expose the owning
+character, destination slot and the observed item's rolled tooltip through the
+same enrichment path. An observed gain does not prove ground pickup. The reported
+Hydra party line had no matching historical drop/acquisition event; the current
+nuker2 inventory confirms an instance with white rolls, but not its arrival time.
+The gain tooltip suppresses catalog ranges when no instance values are observed
+and marks ambiguous same-model copies rather than borrowing an older roll.
+Plugin, Go and UI tests cover the new path. CI disposable PostgreSQL and stack
+smoke checks passed for commit `501fe922`. Live phBot and deployed browser
+verification remain pending.
+
+The existing Stats Pet tab displays each supplied pet with owner, type, API ID,
+reported inventory slot count, source and the shared item grid/tooltip. It
+distinguishes an empty list from no inventory field and marks basic items whose
+detailed API/packet evidence has not arrived. Local read-only browser checks at
+1440×1000, 1280×800 and 390×844 found no horizontal document overflow or console
+errors. At check time, the local Pick inventory had 56 reported slots and two
+occupied items; the Horse inventory was explicitly empty. Rare/Normal UI shells and
+column sets rendered, but the live event stream was reconnecting and showed its
+loading state. Combined feed rows and cursor counts were instead verified through
+the disposable PostgreSQL integration test. Local screenshots contain live
+character/item data, so they remain outside the repository under `/tmp`.
+
+Collection and event completion limits are recorded in
+[`phbot-capabilities.md`](phbot-capabilities.md) and
+[`item-instance-evidence.md`](item-instance-evidence.md): no matching sanitized
+`0x30C8`/`0xB034` runtime fixtures were available, so plugin 1.9.14 now exposes a
+passive count/size probe in the Pet tab while the production pet packet decoder
+remains disabled and no real pet-pickup receipt has yet been emitted. This is an
+open acceptance gate, not parity evidence.

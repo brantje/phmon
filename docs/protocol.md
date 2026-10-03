@@ -910,8 +910,19 @@ There is a short process-crash window after callback queueing but before the wor
 commits the event to disk.
 
 Normal drops (`drop.item`) and rare drops (`drop.rare`) remain distinct. The published
-callbacks supply an equippable item model ID only; the pipeline does not turn that into
-an item-instance snapshot. Inbound chat preserves bounded message text and raw chat
+callbacks supply an equippable item model ID only; the callback event itself does
+not claim an item-instance snapshot. Plugin 1.9.16 may add `drop_event_id` to a
+later `item.acquired` or `item.quantity_increased` state-diff payload when one same-model inventory gain is
+uniquely observed after a fresh callback-time inventory count in the same session.
+This optional protocol-14 field is validated as a UUID with quantity one, an
+inventory slot and unknown acquisition cause. REST reads join only matching
+agent/session/character/model/time rows; the saved callback payload is unchanged.
+If that explicit link is missing, REST may show one otherwise unlinked
+`item.acquired` snapshot only when it is the sole same-model gain within three
+seconds of the callback, in the same agent/character/session and nearby map
+position, with no competing same-model drop. This is labeled a temporal inventory
+match; it does not mutate stored events or assert a pickup cause.
+Inbound chat preserves bounded message text and raw chat
 type. Explicit channel names are normalized (`all`/`general`, `private`, `party`,
 `guild`, `union`, `global`). On 2026-09-28 the operator confirmed these numeric
 `handle_chat` mappings from the active phBot 20.1.2 runtime: `1` is General/All, `2`

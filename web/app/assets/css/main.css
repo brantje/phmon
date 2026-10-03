@@ -2174,6 +2174,20 @@ select:focus-visible {
   font-size: 11px;
 }
 
+.drop-event-table {
+  min-width: 620px;
+}
+
+.drop-event-table td {
+  height: auto;
+  min-height: 48px;
+  white-space: normal;
+}
+
+.drop-event-table td:first-child {
+  min-width: 210px;
+}
+
 .event-table thead {
   background: linear-gradient(180deg, #222a34, #171e28);
   color: #d8d5c1;
@@ -2192,6 +2206,13 @@ select:focus-visible {
   padding: 6px 8px;
   color: #cbd5e3;
   white-space: nowrap;
+}
+
+.event-origin {
+  display: block;
+  margin-top: 3px;
+  color: #aebbd0;
+  font-size: 0.64rem;
 }
 
 .event-character-link {
@@ -2561,6 +2582,14 @@ select:focus-visible {
   letter-spacing: 0;
   text-decoration: none;
 }
+button.item-detail-name {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
 .item-detail-name:hover {
   text-decoration: underline;
 }
@@ -2595,6 +2624,11 @@ select:focus-visible {
 .item-tooltip-name {
   color: #f1f4fa;
   font-size: 0.84rem;
+}
+.item-tooltip-provenance {
+  overflow-wrap: anywhere;
+  color: #aab7ca;
+  font-size: 0.62rem;
 }
 .item-tooltip-seal {
   color: #ffd76b;
@@ -2778,6 +2812,22 @@ select:focus-visible {
   display: grid;
   gap: 0.55rem;
 }
+.pet-packet-probe {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #29374a;
+  border-radius: 4px;
+  background: rgba(16, 27, 41, 0.65);
+  color: #b3c1d4;
+  font-size: 0.68rem;
+}
+.pet-packet-probe strong {
+  color: #f0cc8b;
+}
+.pet-packet-probe small {
+  color: #8997aa;
+}
 .pet-card {
   padding: 0.55rem;
   border: 1px solid #29374a;
@@ -2800,6 +2850,9 @@ select:focus-visible {
   margin: 0.35rem 0 0.5rem;
   color: #929fb2;
   font-size: 0.68rem;
+}
+.pet-card .pet-detail-status {
+  color: #c3bd9e;
 }
 .party-view,
 .academy-view {
