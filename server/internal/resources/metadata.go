@@ -20,6 +20,7 @@ import (
 type ItemMetadata struct {
 	Servers             map[string]string
 	Catalogs            map[string]ItemCatalog
+	MonsterReferences   map[string]*MonsterReference
 	UniqueCatalogs      map[string]*UniqueCatalog
 	SharedIcons         map[string]string
 	SharedPresentations map[string]map[string]any
@@ -74,6 +75,7 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 	m := &ItemMetadata{
 		Servers:             map[string]string{},
 		Catalogs:            map[string]ItemCatalog{},
+		MonsterReferences:   map[string]*MonsterReference{},
 		UniqueCatalogs:      map[string]*UniqueCatalog{},
 		SharedIcons:         map[string]string{},
 		SharedPresentations: map[string]map[string]any{},
@@ -182,6 +184,13 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 			}
 		}
 		m.Catalogs[dataset] = catalog
+		reference, err := loadMonsterReference(filepath.Join(directory, dataset+"-monster-reference.json"), dataset)
+		if err != nil {
+			return nil, err
+		}
+		if reference != nil {
+			m.MonsterReferences[dataset] = reference
+		}
 	}
 	uniqueCatalog, err := loadUniqueCatalog(filepath.Join(directory, "unique-monsters.json"))
 	if err != nil {

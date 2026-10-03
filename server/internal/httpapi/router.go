@@ -134,6 +134,8 @@ func New(deps Dependencies) http.Handler {
 		if deps.Resources != nil {
 			mapAPI := &mapHandler{resources: deps.Resources, mobs: deps.Mobs, analytics: deps.MapAnalytics}
 			register("GET /api/map/profile", false, mapAPI.profile)
+			register("GET /api/map/monster-reference/search", false, mapAPI.monsterReferenceSearch)
+			register("GET /api/map/monster-reference/overlay", false, mapAPI.monsterReferenceOverlay)
 			if deps.Mobs != nil {
 				register("GET /api/map/density", false, mapAPI.density)
 			}

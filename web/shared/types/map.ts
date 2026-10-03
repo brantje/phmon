@@ -8,6 +8,7 @@ export interface MapFloorProfile {
   min_z?: number
   max_z?: number
   auto_detect?: boolean
+  guide_origin_y?: number
 }
 
 export interface MapAreaProfile {
@@ -43,6 +44,7 @@ export interface MapProfile {
   view_presets: MapViewPreset[]
   areas: MapAreaProfile[]
   validation_requirements: string[]
+  guide_origin_y?: number
 }
 
 export interface MapQuickDestination {

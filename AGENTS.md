@@ -5307,6 +5307,59 @@ Ignored evidence: `exports/uniques-render/review-{export-result,validation}.json
 and `review-export/`. Commit/push and replies to the two review comments are
 authorized. Exact next action: monitor PR #62 validation and reviewer follow-up;
 keep the PR open and do not merge or deploy without authorization.
+### Resume — 2026-10-03 Issue #65 monster reference layers
+
+Active work: Issue #65 implementation on branch
+`codex/issue-65-monster-reference`, PR #67. The operator explicitly requested
+branch/push/PR before continuing; PR #67 is open. No worktree was created.
+
+Completed increment: exporter 0.6.2/schema 1.2.3 emits a dataset-local monster
+reference catalog from CharacterData, English object text, `npcpos`, and guide
+cells. GreatestSRO was regenerated as `gamedata-e184cceb0b359ca140c1`; active
+server mapping, map profile, item/monster catalogs and public assets now match.
+Go adds authenticated read-only search/overlay APIs, bounded point pagination,
+dataset-local level enrichment, migration 000021 and exact raw-sample retry
+behavior. Map Layers has independent persisted default-off Exact spawns and Mob
+areas controls with search/filter, result focus, grouped name/Lv labels and
+individual locations. See `docs/reference-parity.md` and exporter `format-notes.md`.
+
+Validation completed: `go test ./...`; exporter suite (82 passed); frontend unit
+suite (154 passed); Nuxt typecheck; public bundle/index validation (22 catalogs,
+10,324 assets, 12,359 public files, zero dangling refs); local fixture browser
+checks at 1440×1000, 1280×800 and 390×844. The suite skips the PostgreSQL
+integration test because no service/`TEST_DATABASE_URL` is available. No real
+phBot process was used. Coverage: 6,451/6,756 points project to supported maps;
+305 are excluded for unsupported/ambiguous interior placement or floor/bounds
+checks. Full dataset export remains `incomplete` because of unrelated families.
+
+Files affected: exporter and fixtures, Go resource/API/ingestion/migration code,
+map profile and packaged dataset, frontend API/types/map component, generated
+public index and monster images, capability/parity/format notes.
+
+Exact next action: when a PostgreSQL test service/`TEST_DATABASE_URL` becomes
+available, run the migration and ingestion integration tests; when a real phBot
+runtime is available, validate the plugin/backend flow and record it separately
+from simulator results. PR #67 is updated and should remain open until those gates
+are resolved. Do not merge, deploy or operate real bot characters without authorization.
+
+### Resume — 2026-10-03 map character roster
+
+The map Characters list is the full selected-server roster. Cave floor and
+region filters no longer remove rows, so a character in Jangan Cave stays
+listed on every floor and on the world map. Pins still follow the open floor,
+and a selected world region still limits character pins. Other map layers keep
+their floor and region scope.
+
+### Resume — 2026-10-03 mob area placement
+
+Mob area rectangles, labels, search focus and viewport selection now sit one
+guide square south of the stored client cell. A square is that cell's own
+height (4 map tiles on the field, 1 on cave floors). Catalog coordinates and
+the area-cell readout stay the client values. Verified on a local Nuxt dev
+server against the running backend: the desert overlay's top edge meets the
+sand instead of covering the empty row above it. The Compose web and server
+images were not rebuilt.
+
 ### Resume — 2026-10-03 unique spawn notices
 
 Unique events were missing because live history has no real `EVENT_UNIQUE_SPAWN`

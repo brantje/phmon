@@ -1303,6 +1303,26 @@ active route.
 
 **Simulator/runtime:** Plugin unit tests cover the probe in CI; Hotan→Jangan script path verified on operator phBot for one pair; #33 remote/fan-out not built.
 
+### Issue #65 monster levels and client reference data — 2026-10-03
+
+The official phBot [`get_monsters()` response](https://plugins.phbot.org/phbot-api/monsters)
+documents nearby monster ID, model/type/name/position and combat state, but does
+not promise a level field. Existing protocol 13 therefore needs no new plugin
+request or version bump. Go accepts a valid runtime `level` if one is actually
+reported; otherwise it resolves by model and matching code within the observation
+sample's dataset. A conflicting model/code pair stays unknown. Runtime validation
+on a real phBot process remains outstanding; fixture/API tests do not establish
+that this phBot version reports levels.
+
+`npcpos.txt` and `worldmapguidedata*.txt` are static client export inputs, not
+phBot observations. Loading their catalog creates no observation row and does not
+assert current spawn presence. The installed GreatestSRO export
+`gamedata-e184cceb0b359ca140c1` has 6,756 joined points; 6,451 pass the
+supported map transforms. The 305 excluded points include unsupported interior
+regions and 46 Donwhang points that fail bounds/floor placement. Job Temple's
+shared-region floor ambiguity remains a placement blocker. No plugin or live bot
+was operated for this issue.
+
 ## Issue #34 — Reverse return (2026-10-02)
 
 Source: official [Inventory API](https://plugins.phbot.org/phbot-api/inventory),

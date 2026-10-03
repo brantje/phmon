@@ -38,20 +38,22 @@ type Position struct {
 }
 
 type Monster struct {
-	ID         string   `json:"id"`
-	Model      *int64   `json:"model_id,omitempty"`
-	Type       string   `json:"type,omitempty"`
-	TypeCode   *int     `json:"type_code,omitempty"`
-	Name       string   `json:"name,omitempty"`
-	ServerName string   `json:"servername,omitempty"`
-	Level      *int     `json:"level,omitempty"`
-	HP         *int64   `json:"hp,omitempty"`
-	MaxHP      *int64   `json:"max_hp,omitempty"`
-	Attacking  bool     `json:"attacking,omitempty"`
-	Region     int      `json:"region"`
-	X          float64  `json:"x"`
-	Y          float64  `json:"y"`
-	Z          *float64 `json:"z,omitempty"`
+	ID             string   `json:"id"`
+	Model          *int64   `json:"model_id,omitempty"`
+	Type           string   `json:"type,omitempty"`
+	TypeCode       *int     `json:"type_code,omitempty"`
+	Name           string   `json:"name,omitempty"`
+	ServerName     string   `json:"servername,omitempty"`
+	Level          *int     `json:"level,omitempty"`
+	LevelSource    string   `json:"level_source,omitempty"`
+	LevelDatasetID string   `json:"level_dataset_id,omitempty"`
+	HP             *int64   `json:"hp,omitempty"`
+	MaxHP          *int64   `json:"max_hp,omitempty"`
+	Attacking      bool     `json:"attacking,omitempty"`
+	Region         int      `json:"region"`
+	X              float64  `json:"x"`
+	Y              float64  `json:"y"`
+	Z              *float64 `json:"z,omitempty"`
 }
 
 // Sample contains only eligible, complete observations. unavailable and
@@ -68,9 +70,33 @@ type Sample struct {
 	Monsters    []Monster `json:"monsters"`
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type LevelLookup func(dataset string, model *int64, code string) (int, bool)
+
+type Store struct {
+	pool        *pgxpool.Pool
+	levelLookup LevelLookup
+}
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+func (s *Store) SetLevelLookup(lookup LevelLookup) { s.levelLookup = lookup }
+
+func ResolveLevel(monster Monster, dataset string, lookup LevelLookup) Monster {
+	monster.LevelSource = ""
+	monster.LevelDatasetID = ""
+	if monster.Level != nil {
+		monster.LevelSource = "runtime"
+		return monster
+	}
+	if lookup != nil {
+		if level, ok := lookup(dataset, monster.Model, monster.ServerName); ok && level >= 1 && level <= 255 {
+			monster.Level = &level
+			monster.LevelSource = "catalog"
+			monster.LevelDatasetID = dataset
+		}
+	}
+	return monster
+}
 
 func ValidateSample(sample Sample, now time.Time) error {
 	if !agentdomain.ValidAgentID(sample.ID) || !agentdomain.ValidAgentID(sample.CharacterID) ||
@@ -111,6 +137,7 @@ func validMonsterDetails(monster Monster) bool {
 		len(monster.Name) <= 128 && !strings.ContainsRune(monster.Name, 0) &&
 		len(monster.ServerName) <= 128 && !strings.ContainsRune(monster.ServerName, 0) &&
 		(monster.Level == nil || *monster.Level >= 1 && *monster.Level <= 255) &&
+		monster.LevelSource == "" && monster.LevelDatasetID == "" &&
 		(monster.HP == nil || *monster.HP >= 0 && *monster.HP <= maxSafeJSONInteger) &&
 		(monster.MaxHP == nil || *monster.MaxHP >= 0 && *monster.MaxHP <= maxSafeJSONInteger)
 }
@@ -221,7 +248,7 @@ func (s *Store) Append(ctx context.Context, agentID string, datasetID string, sa
 			return false, err
 		}
 		if existingCharacter != sample.CharacterID || existingSession != sample.SessionID || !strings.EqualFold(existingServer, server) ||
-			existingDataset != datasetID || existingArea != sample.AreaID || existingFloor != sample.FloorID || existingRegion != sample.Region ||
+			!validDatasetID(existingDataset) || existingArea != sample.AreaID || existingFloor != sample.FloorID || existingRegion != sample.Region ||
 			!bytes.Equal(existingHash, sampleHash[:]) {
 			return false, ErrConflict
 		}
@@ -238,9 +265,14 @@ func (s *Store) Append(ctx context.Context, agentID string, datasetID string, sa
 		return false, err
 	}
 	for ordinal, monster := range sample.Monsters {
-		_, err = tx.Exec(ctx, `INSERT INTO mob_observations(sample_id,ordinal,monster_id,model_id,monster_type,region,x,y,z)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, sample.ID, ordinal, monster.ID, monster.Model,
-			monster.Type, monster.Region, monster.X, monster.Y, monster.Z)
+		resolved := ResolveLevel(monster, datasetID, s.levelLookup)
+		var levelSource any
+		if resolved.LevelSource != "" {
+			levelSource = resolved.LevelSource
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO mob_observations(sample_id,ordinal,monster_id,model_id,monster_type,region,x,y,z,resolved_level,level_source)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, sample.ID, ordinal, monster.ID, monster.Model,
+			monster.Type, monster.Region, monster.X, monster.Y, monster.Z, resolved.Level, levelSource)
 		if err != nil {
 			return false, err
 		}

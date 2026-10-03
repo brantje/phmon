@@ -283,3 +283,32 @@ independent accessories use their BSR attachment bone. Invalid or unsupported bi
 data falls back to the resource's unchanged rest geometry with a pose warning.
 Ignored skeleton origin/local transforms are skipped rather than rejecting their
 unused NaNs. Missing named material joins remain unsupported.
+
+## Monster reference catalog — exporter 0.6.2 / schema 1.2.3
+
+`catalogs/monsterReference.json` joins enabled and disabled `CharacterData`
+monster rows to English `textdata_object.txt` names and the level field at
+zero-based column 57. Model IDs are meaningful only inside the bundle's dataset;
+variants remain separate definitions. The string `0` is a missing localization,
+not a display name. Duplicate codes remain separate definitions, and a code-based
+runtime level lookup is accepted only when it resolves to one enabled model.
+
+Enabled `MONSTER` rows in `worldmapguidedata.txt` join by exact code to
+`worldmapguidedata_region.txt` cell lists. `MAP_MANAGER` supplies cell dimensions
+(the field uses 4×4 map tiles; supported cave groups use their exported 1×1
+manager cells). Repeated guide and region rows are merged and counted in the
+private audit. Disabled guides, missing/ambiguous definitions, missing managers,
+bad cells and empty region lists do not become area overlays.
+
+`npcpos.txt` columns are model ID, region, local X, height/Z and local Y. Outdoor
+local X/Y use client units with 1,920 units per 192-world-unit region tile;
+interior positions are divided by ten and projected only through a validated,
+supported cave transform and floor. These points are reference positions, not
+observed spawns. Invalid coordinates, duplicate rows and unresolved/non-monster
+model joins are audited. No raw textdata or row-level audit ships to the browser.
+
+The active GreatestSRO export contains 8,112 definitions, 238 guide groups,
+2,198 guide cells and 6,756 joined points. The private audit preserves source
+table/row, raw coordinates, join outcome, disabled/duplicate/malformed counts
+and excluded records. Names and levels remain compact fields; the browser gets
+only the versioned catalog associated with the active server dataset.

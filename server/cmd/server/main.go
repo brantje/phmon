@@ -84,6 +84,7 @@ func run() error {
 		return fmt.Errorf("load item metadata: %w", metadataErr)
 	}
 	resourceStore.SetItemMetadata(metadata)
+	mobStore.SetLevelLookup(metadata.MonsterLevel)
 	reconcileCtx, reconcileCancel := context.WithTimeout(ctx, 5*time.Second)
 	if err := characterStore.ReconcileSessions(reconcileCtx); err != nil {
 		reconcileCancel()

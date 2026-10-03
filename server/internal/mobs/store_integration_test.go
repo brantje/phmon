@@ -67,6 +67,12 @@ func TestSamplesReplayOnceEnforceStationaryRateAndAggregateObservers(t *testing.
 	}
 	sampledAt := dbNow.UTC().Truncate(time.Microsecond)
 	store := NewStore(pool)
+	store.SetLevelLookup(func(dataset string, model *int64, code string) (int, bool) {
+		if dataset == mapprofile.GreatestDatasetID && model != nil && *model == 500 && code == "MOB_TEST" {
+			return 61, true
+		}
+		return 0, false
+	})
 	first := Sample{ID: "00000000-0000-4000-8000-000000000011", CharacterID: firstCharacter, SessionID: firstSession,
 		AreaID: "region:25273", FloorID: "unmapped", Region: 25273, SampledAt: sampledAt,
 		Observer: Position{X: 10, Y: 20}, Monsters: []Monster{}}
@@ -76,11 +82,38 @@ func TestSamplesReplayOnceEnforceStationaryRateAndAggregateObservers(t *testing.
 	}
 	second := Sample{ID: "00000000-0000-4000-8000-000000000012", CharacterID: secondCharacter, SessionID: secondSession,
 		AreaID: "region:25273", FloorID: "unmapped", Region: 25273, SampledAt: sampledAt,
-		Observer: Position{X: 12, Y: 18}, Monsters: []Monster{{ID: "900", Model: int64Pointer(500), Type: "1", Region: 25273, X: 400, Y: 21}}}
+		Observer: Position{X: 12, Y: 18}, Monsters: []Monster{
+			{ID: "900", Model: int64Pointer(500), ServerName: "MOB_TEST", Type: "1", Region: 25273, X: 400, Y: 21},
+			{ID: "901", Model: int64Pointer(500), ServerName: "MOB_TEST", Level: intPointer(73), Type: "1", Region: 25273, X: 401, Y: 21},
+			{ID: "902", Model: int64Pointer(501), ServerName: "MOB_UNKNOWN", Type: "1", Region: 25273, X: 402, Y: 21},
+			{ID: "903", Model: int64Pointer(500), ServerName: "MOB_WRONG_CODE", Type: "1", Region: 25273, X: 403, Y: 21},
+		}}
 	inserted, err = store.Append(ctx, credential.AgentID, mapprofile.GreatestDatasetID, second, dbNow)
 	if err != nil || !inserted {
 		t.Fatalf("second observer sample inserted=%v err=%v", inserted, err)
 	}
+	levels, err := pool.Query(ctx, `SELECT resolved_level, level_source FROM mob_observations WHERE sample_id=$1 ORDER BY ordinal`, second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotLevels []*int
+	var gotSources []*string
+	for levels.Next() {
+		var level *int
+		var source *string
+		if err := levels.Scan(&level, &source); err != nil {
+			t.Fatal(err)
+		}
+		gotLevels = append(gotLevels, level)
+		gotSources = append(gotSources, source)
+	}
+	levels.Close()
+	if len(gotLevels) != 4 || gotLevels[0] == nil || *gotLevels[0] != 61 || gotSources[0] == nil || *gotSources[0] != "catalog" ||
+		gotLevels[1] == nil || *gotLevels[1] != 73 || gotSources[1] == nil || *gotSources[1] != "runtime" ||
+		gotLevels[2] != nil || gotSources[2] != nil || gotLevels[3] != nil || gotSources[3] != nil {
+		t.Fatalf("resolved levels=%v sources=%v", gotLevels, gotSources)
+	}
+	store.SetLevelLookup(func(string, *int64, string) (int, bool) { return 99, true })
 	inserted, err = store.Append(ctx, credential.AgentID, mapprofile.GreatestDatasetID, second, dbNow)
 	if err != nil || inserted {
 		t.Fatalf("replay inserted=%v err=%v", inserted, err)
@@ -110,7 +143,7 @@ func TestSamplesReplayOnceEnforceStationaryRateAndAggregateObservers(t *testing.
 		t.Fatalf("observer-local metric or cross-cell groups missing: %+v", result)
 	}
 	observerCell := result.Cells[0]
-	if observerCell.ObserverCellX != 0 || observerCell.ObserverCellY != 0 || observerCell.EligibleSamples != 2 || observerCell.MonsterRows != 1 || observerCell.AverageObserved != 0.5 {
+	if observerCell.ObserverCellX != 0 || observerCell.ObserverCellY != 0 || observerCell.EligibleSamples != 2 || observerCell.MonsterRows != 4 || observerCell.AverageObserved != 2 {
 		t.Fatalf("monster row should remain associated with the observer-local samples: %+v", observerCell)
 	}
 	monsterCell := result.Cells[1]
@@ -120,3 +153,4 @@ func TestSamplesReplayOnceEnforceStationaryRateAndAggregateObservers(t *testing.
 }
 
 func int64Pointer(value int64) *int64 { return &value }
+func intPointer(value int) *int       { return &value }

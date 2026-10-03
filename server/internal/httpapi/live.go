@@ -736,28 +736,11 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if selectedArea == nil || !floorFound {
 			return nil, errors.New("map area or floor is unavailable in the selected profile")
 		}
-		charRows, err := h.characters.ListScoped(ctx, "", "", subscription.Filter.Server)
+		// The Characters roster is the full selected server. Floor and region
+		// scope stay on markers and the other map layers.
+		charRows, err := h.characters.ListServerRoster(ctx, subscription.Filter.Server)
 		if err != nil {
 			return nil, err
-		}
-		if selectedArea.Kind == "cave" {
-			filtered := make([]characters.Character, 0, len(charRows))
-			for _, character := range charRows {
-				area, floor, ok := mapprofile.ClassifyCave(profile, character.Region, character.Z)
-				if ok && area == subscription.Filter.Area && floor == subscription.Filter.Floor {
-					filtered = append(filtered, character)
-				}
-			}
-			charRows = filtered
-		}
-		if subscription.Filter.Region != 0 {
-			filtered := make([]characters.Character, 0, len(charRows))
-			for _, character := range charRows {
-				if character.Region != nil && *character.Region == subscription.Filter.Region {
-					filtered = append(filtered, character)
-				}
-			}
-			charRows = filtered
 		}
 		charRows = mapCharactersWithPortraits(charRows, h.resources)
 		partyObservations, partySourceTruncated, err := h.resources.CurrentPartyObservations(ctx, subscription.Filter.Server)

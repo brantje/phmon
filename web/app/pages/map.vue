@@ -11,6 +11,15 @@ import type {
 } from '~~/shared/types/live'
 import type { MapAreaProfile, MapProfile } from '~~/shared/types/map'
 import type { HeatmapLayerID } from '~~/shared/types/mapAnalytics'
+import type {
+  MonsterReferenceArea,
+  MonsterReferenceBounds,
+  MonsterReferenceGuideRow,
+  MonsterReferenceOverlayResponse,
+  MonsterReferencePoint,
+  MonsterReferenceSearchResponse,
+  MonsterReferenceSearchRow,
+} from '~~/shared/types/monsterReference'
 import {
   caveFloorForPosition,
   tileCatalogForFloor,
@@ -65,6 +74,7 @@ import {
   navigationTrayProgressSummary,
 } from '~/utils/mapNavigationTray'
 import { submitNavigationStop } from '~/utils/mapNavigationStop'
+import { placedGuideCell } from '~/utils/guideCells'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTeleportAction } from '~/composables/useMapTeleportAction'
@@ -261,6 +271,35 @@ const layerPlayers = ref(true)
 const layerNPCs = ref(true)
 const layerTraining = ref(true)
 const layerMonsters = ref(true)
+const layerExactSpawns = useCookie<boolean>('phmon-map-exact-spawns', {
+  default: () => false,
+  sameSite: 'lax',
+})
+const layerMobAreas = useCookie<boolean>('phmon-map-mob-areas', {
+  default: () => false,
+  sameSite: 'lax',
+})
+const referenceQuery = useCookie<string>('phmon-map-monster-query', {
+  default: () => '',
+  sameSite: 'lax',
+  decode: (value) => {
+    if (typeof value !== 'string') return ''
+    try {
+      return decodeURIComponent(value)
+    } catch {
+      return value
+    }
+  },
+  encode: (value) => encodeURIComponent(String(value ?? '')),
+})
+const referenceMinLevel = useCookie<string>('phmon-map-monster-min-level', {
+  default: () => '',
+  sameSite: 'lax',
+})
+const referenceMaxLevel = useCookie<string>('phmon-map-monster-max-level', {
+  default: () => '',
+  sameSite: 'lax',
+})
 const showNearbyMonsterNames = ref(DEFAULT_SHOW_NEARBY_MONSTER_NAMES)
 const layerDeaths = ref(false)
 const layerDrops = ref(false)
@@ -268,6 +307,306 @@ const mapProfile = ref<MapProfile | null>(null)
 const profileLoading = ref(false)
 const profileError = ref('')
 const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
+const referenceViewport = ref<MonsterReferenceBounds | null>(null)
+const referenceAreas = ref<MonsterReferenceArea[]>([])
+const referenceGuideRows = ref<MonsterReferenceGuideRow[]>([])
+const referencePoints = ref<MonsterReferencePoint[]>([])
+const referenceSearchRows = ref<MonsterReferenceSearchRow[]>([])
+const referenceSearchNext = ref<number | null>(null)
+const referenceSearchTotal = ref(0)
+const referenceSelected = ref<MonsterReferenceSearchRow | null>(null)
+const referenceLocations = ref<MonsterReferencePoint[]>([])
+const referenceSelectedCells = ref<MonsterReferenceArea['cells']>([])
+const referenceLocationsVisible = ref(50)
+const referenceSelectedRegions = computed(() =>
+  [...new Set(referenceLocations.value.map((point) => point.region))].sort(
+    (a, b) => a - b,
+  ),
+)
+const referenceFocus = ref<
+  | (MonsterReferenceBounds & {
+      sequence: number
+      area_id: string
+      floor_id: string
+    })
+  | undefined
+>()
+const referenceLoading = ref(false)
+const referenceSearchLoading = ref(false)
+const referenceError = ref('')
+const referenceSearchError = ref('')
+const referenceStatus = ref<'available' | 'unavailable'>('unavailable')
+let referenceRequestID = 0
+let referenceSearchRequestID = 0
+let referenceLocationRequestID = 0
+let referenceSearchDebounce: ReturnType<typeof setTimeout> | undefined
+let referenceOverlayDebounce: ReturnType<typeof setTimeout> | undefined
+let referenceFocusSequence = 0
+const referenceFiltersValid = computed(() => {
+  const min = referenceMinLevel.value ? Number(referenceMinLevel.value) : 0
+  const max = referenceMaxLevel.value ? Number(referenceMaxLevel.value) : 255
+  return (
+    Number.isInteger(min) &&
+    Number.isInteger(max) &&
+    (referenceMinLevel.value === '' || (min >= 1 && min <= 255)) &&
+    (referenceMaxLevel.value === '' || (max >= 1 && max <= 255)) &&
+    min <= max
+  )
+})
+function referenceFilterQuery() {
+  return {
+    q: String(referenceQuery.value ?? '').trim(),
+    min_level: referenceMinLevel.value || undefined,
+    max_level: referenceMaxLevel.value || undefined,
+  }
+}
+const visibleReferenceFocus = computed(() => {
+  const focus = referenceFocus.value
+  if (
+    !focus ||
+    focus.area_id !== areaID.value ||
+    focus.floor_id !== floorID.value
+  )
+    return undefined
+  return focus
+})
+function rememberReferenceFocus(bounds: MonsterReferenceBounds) {
+  referenceFocus.value = {
+    ...bounds,
+    area_id: areaID.value,
+    floor_id: floorID.value,
+    sequence: ++referenceFocusSequence,
+  }
+}
+function referenceCurrent(
+  dataset: string,
+  requestID: number,
+  kind: 'overlay' | 'search' | 'locations',
+) {
+  const current =
+    kind === 'overlay'
+      ? referenceRequestID
+      : kind === 'search'
+        ? referenceSearchRequestID
+        : referenceLocationRequestID
+  return (
+    requestID === current &&
+    mapProfile.value?.dataset_id === dataset &&
+    server.value.toLowerCase() === mapProfile.value.server.toLowerCase()
+  )
+}
+function onMapViewChange(view: {
+  tileX: number
+  tileY: number
+  zoomPercent: number
+  bounds: MonsterReferenceBounds
+}) {
+  mapView.value = view
+  referenceViewport.value = view.bounds
+}
+function resetMonsterReferenceFilters() {
+  referenceQuery.value = ''
+  referenceMinLevel.value = ''
+  referenceMaxLevel.value = ''
+}
+async function loadMonsterReferenceSearch(append = false) {
+  const profile = mapProfile.value
+  if (!profile || !referenceFiltersValid.value) {
+    referenceSearchLoading.value = false
+    referenceSearchRows.value = []
+    referenceSearchError.value = referenceFiltersValid.value
+      ? ''
+      : 'Enter a valid level range from 1 to 255.'
+    return
+  }
+  const requestID = ++referenceSearchRequestID
+  if (!append) {
+    referenceSearchRows.value = []
+    referenceSearchNext.value = null
+  }
+  referenceSearchLoading.value = true
+  referenceSearchError.value = ''
+  try {
+    const response = await $fetch<MonsterReferenceSearchResponse>(
+      '/api/map/monster-reference/search',
+      {
+        query: {
+          server: server.value,
+          ...referenceFilterQuery(),
+          limit: 50,
+          offset: append ? referenceSearchNext.value || 0 : 0,
+        },
+      },
+    )
+    if (!referenceCurrent(profile.dataset_id, requestID, 'search')) return
+    referenceStatus.value = response.status
+    if (response.status === 'unavailable') {
+      referenceSearchError.value =
+        response.reason || 'Monster reference catalog unavailable.'
+      return
+    }
+    referenceSearchRows.value = append
+      ? [...referenceSearchRows.value, ...(response.results || [])]
+      : response.results || []
+    referenceSearchNext.value = response.next_offset ?? null
+    referenceSearchTotal.value = response.total || 0
+  } catch {
+    if (referenceCurrent(profile.dataset_id, requestID, 'search'))
+      referenceSearchError.value = 'Could not load monster reference search.'
+  } finally {
+    if (referenceCurrent(profile.dataset_id, requestID, 'search'))
+      referenceSearchLoading.value = false
+  }
+}
+async function loadMonsterReferenceOverlay() {
+  const profile = mapProfile.value
+  const bounds = referenceViewport.value
+  const requestID = ++referenceRequestID
+  referenceAreas.value = []
+  referenceGuideRows.value = []
+  referencePoints.value = []
+  referenceError.value = ''
+  if (
+    !profile ||
+    !bounds ||
+    (!layerExactSpawns.value && !layerMobAreas.value)
+  ) {
+    referenceLoading.value = false
+    return
+  }
+  if (!referenceFiltersValid.value) {
+    referenceLoading.value = false
+    referenceError.value = 'Enter a valid level range from 1 to 255.'
+    return
+  }
+  if (bounds.min_x > bounds.max_x || bounds.min_y > bounds.max_y) {
+    referenceLoading.value = false
+    return
+  }
+  referenceLoading.value = true
+  try {
+    let offset = 0
+    const points: MonsterReferencePoint[] = []
+    let areas: MonsterReferenceArea[] = []
+    do {
+      const response = await $fetch<MonsterReferenceOverlayResponse>(
+        '/api/map/monster-reference/overlay',
+        {
+          query: {
+            server: server.value,
+            area: areaID.value,
+            floor: floorID.value,
+            ...referenceFilterQuery(),
+            ...bounds,
+            areas: layerMobAreas.value ? 1 : 0,
+            points: layerExactSpawns.value ? 1 : 0,
+            limit: 500,
+            offset,
+          },
+        },
+      )
+      if (!referenceCurrent(profile.dataset_id, requestID, 'overlay')) return
+      referenceStatus.value = response.status
+      if (response.status === 'unavailable') {
+        referenceError.value =
+          response.reason || 'Monster reference catalog unavailable.'
+        return
+      }
+      if (response.dataset_id !== profile.dataset_id)
+        throw new Error('dataset mismatch')
+      if (offset === 0) {
+        areas = response.areas || []
+        referenceGuideRows.value = response.guide_rows || []
+      }
+      points.push(...(response.points || []))
+      offset = response.next_offset ?? -1
+    } while (offset >= 0)
+    if (!referenceCurrent(profile.dataset_id, requestID, 'overlay')) return
+    referenceAreas.value = areas
+    referencePoints.value = points
+  } catch {
+    if (referenceCurrent(profile.dataset_id, requestID, 'overlay'))
+      referenceError.value = 'Could not load monster reference layers.'
+  } finally {
+    if (referenceCurrent(profile.dataset_id, requestID, 'overlay'))
+      referenceLoading.value = false
+  }
+}
+async function selectMonsterReference(row: MonsterReferenceSearchRow) {
+  referenceSelected.value = row
+  referenceLocations.value = []
+  referenceSelectedCells.value = []
+  referenceLocationsVisible.value = 50
+  const profile = mapProfile.value
+  const requestID = ++referenceLocationRequestID
+  if (!profile || !row.bounds || row.location_status !== 'placed') return
+  areaID.value = row.area_id
+  floorID.value = row.floor_id
+  regionID.value = 0
+  rememberReferenceFocus(row.bounds)
+  try {
+    let offset = 0
+    const points: MonsterReferencePoint[] = []
+    do {
+      const response = await $fetch<MonsterReferenceOverlayResponse>(
+        '/api/map/monster-reference/overlay',
+        {
+          query: {
+            server: server.value,
+            area: row.area_id,
+            floor: row.floor_id,
+            q: row.code,
+            ...row.bounds,
+            areas: offset === 0 ? 1 : 0,
+            points: 1,
+            limit: 500,
+            offset,
+          },
+        },
+      )
+      if (!referenceCurrent(profile.dataset_id, requestID, 'locations')) return
+      if (offset === 0)
+        referenceSelectedCells.value = (response.areas || [])
+          .filter((area) => area.model_id === row.model_id)
+          .flatMap((area) => area.cells)
+      points.push(
+        ...(response.points || []).filter(
+          (point) => point.model_id === row.model_id,
+        ),
+      )
+      offset = response.next_offset ?? -1
+    } while (offset >= 0)
+    if (referenceCurrent(profile.dataset_id, requestID, 'locations'))
+      referenceLocations.value = points
+  } catch {
+    /* The result still has its guide and point counts. */
+  }
+}
+function focusMonsterReferencePoint(point: MonsterReferencePoint) {
+  rememberReferenceFocus({
+    min_x: point.position.tile_x,
+    max_x: point.position.tile_x,
+    min_y: point.position.tile_y,
+    max_y: point.position.tile_y,
+  })
+}
+function focusMonsterReferenceCell(
+  cell: MonsterReferenceArea['cells'][number],
+) {
+  const floor = profileArea.value?.floors.find(
+    (item) => item.id === floorID.value,
+  )
+  const placed = placedGuideCell(cell, {
+    floorMaxY: floor?.tiles?.max_y,
+    guideOriginY: floor?.guide_origin_y,
+  })
+  rememberReferenceFocus({
+    min_x: placed.x,
+    max_x: placed.x + placed.width - 1,
+    min_y: placed.y,
+    max_y: placed.y + placed.height - 1,
+  })
+}
 const jumpSequence = ref(0)
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
@@ -536,7 +875,10 @@ const canvasProfile = computed(() => {
   const profile = mapProfile.value
   if (!profile) return null
   const tiles = tileCatalogForFloor(profile, areaID.value, floorID.value)
-  return tiles ? { ...profile, tiles } : null
+  const guideOriginY = profile.areas
+    .find((area) => area.id === areaID.value)
+    ?.floors.find((floor) => floor.id === floorID.value)?.guide_origin_y
+  return tiles ? { ...profile, tiles, guide_origin_y: guideOriginY } : null
 })
 const linkedEventLocation = computed(() =>
   mapProfile.value && linkedEvent.value
@@ -1036,14 +1378,16 @@ watch(
     if (!open) clearTeleportSubmenus()
   },
 )
-const scopedCharacters = computed(() => {
-  const items = mapSnapshotInFeedScope.value
-    ? mapSnapshot.value?.characters || []
-    : []
-  if (regionID.value !== 0)
-    return items.filter((character) => character.region === regionID.value)
-  return items
-})
+const scopedCharacters = computed(() =>
+  mapSnapshotInFeedScope.value ? mapSnapshot.value?.characters || [] : [],
+)
+const markerCharacters = computed(() =>
+  regionID.value === 0
+    ? scopedCharacters.value
+    : scopedCharacters.value.filter(
+        (character) => character.region === regionID.value,
+      ),
+)
 const mapActivityFeed = computed(
   () => commandFanOutFeeds.value[MAP_ACTIVITY_OWNER],
 )
@@ -1180,13 +1524,6 @@ async function focusMapCharacter(id: string) {
   await nextTick()
   await jumpToCharacter()
 }
-const outsideZoneCount = computed(() =>
-  regionID.value
-    ? (mapSnapshot.value?.characters || []).filter(
-        (item) => item.online && item.region !== regionID.value,
-      ).length
-    : 0,
-)
 function chooseGoTo(id: string) {
   if (id.startsWith('character:')) {
     void focusMapCharacter(id.slice('character:'.length))
@@ -1371,7 +1708,7 @@ const mapMarkers = computed(() => {
         areaID.value,
         floorID.value,
         displayableMapCharacters(
-          scopedCharacters.value,
+          markerCharacters.value,
           freshnessNow.value,
         ).map((character) => ({
           ...character,
@@ -1990,6 +2327,69 @@ watch(mapProfile, (profile) => {
     updateRouteQuery()
   }
 })
+watch([server, mapProfile], () => {
+  referenceRequestID++
+  referenceSearchRequestID++
+  referenceLocationRequestID++
+  referenceAreas.value = []
+  referenceGuideRows.value = []
+  referencePoints.value = []
+  referenceSearchRows.value = []
+  referenceLocations.value = []
+  referenceSelectedCells.value = []
+  referenceSelected.value = null
+  referenceViewport.value = null
+  referenceStatus.value = 'unavailable'
+})
+watch([areaID, floorID], () => {
+  referenceRequestID++
+  referenceAreas.value = []
+  referenceGuideRows.value = []
+  referencePoints.value = []
+  referenceViewport.value = null
+  const focus = referenceFocus.value
+  if (
+    focus &&
+    (focus.area_id !== areaID.value || focus.floor_id !== floorID.value)
+  )
+    referenceFocus.value = undefined
+})
+watch(
+  [mapProfile, referenceQuery, referenceMinLevel, referenceMaxLevel],
+  () => {
+    referenceSearchRequestID++
+    referenceLocationRequestID++
+    referenceSelected.value = null
+    referenceLocations.value = []
+    referenceSelectedCells.value = []
+    if (referenceSearchDebounce) clearTimeout(referenceSearchDebounce)
+    referenceSearchDebounce = setTimeout(() => {
+      void loadMonsterReferenceSearch()
+    }, 220)
+  },
+  { immediate: true },
+)
+watch(
+  [
+    mapProfile,
+    areaID,
+    floorID,
+    referenceViewport,
+    layerExactSpawns,
+    layerMobAreas,
+    referenceQuery,
+    referenceMinLevel,
+    referenceMaxLevel,
+  ],
+  () => {
+    referenceRequestID++
+    if (referenceOverlayDebounce) clearTimeout(referenceOverlayDebounce)
+    referenceOverlayDebounce = setTimeout(() => {
+      void loadMonsterReferenceOverlay()
+    }, 220)
+  },
+  { immediate: true },
+)
 watch(
   [
     server,
@@ -2076,6 +2476,11 @@ onMounted(() => {
   }, 30_000)
 })
 onBeforeUnmount(() => {
+  if (referenceSearchDebounce) clearTimeout(referenceSearchDebounce)
+  if (referenceOverlayDebounce) clearTimeout(referenceOverlayDebounce)
+  referenceRequestID++
+  referenceSearchRequestID++
+  referenceLocationRequestID++
   if (eventWindowTimer) clearInterval(eventWindowTimer)
   if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
   profileRequestID++
@@ -2223,6 +2628,10 @@ useHead({ title: 'Map · PhMon' })
               :initial-tile="mapInitialTile"
               :markers="mapMarkers"
               :heat-layers="renderedHeatLayers"
+              :reference-areas="referenceAreas"
+              :reference-guide-rows="referenceGuideRows"
+              :reference-points="referencePoints"
+              :reference-focus="visibleReferenceFocus"
               :navigation-routes="mapNavigationRoutes"
               :training-areas="renderedTrainingAreas"
               :training-editable="trainingEditor.editable.value"
@@ -2232,7 +2641,7 @@ useHead({ title: 'Map · PhMon' })
               :training-discard-disabled="trainingEditor.applying.value"
               :training-accept-title="trainingEditor.applyReason.value"
               @inspectcharacter="inspectCharacter"
-              @viewchange="mapView = $event"
+              @viewchange="onMapViewChange"
               @pointselect="selectMapPoint"
               @trainingselect="selectTrainingArea"
               @trainingmove="trainingEditor.moveCenter"
@@ -3352,13 +3761,9 @@ useHead({ title: 'Map · PhMon' })
                 @focus="focusMapCharacter(character.character_id)"
               />
               <p v-if="!scopedCharacters.length" class="map-empty-copy">
-                No characters in this server and zone scope.
+                No characters on this server.
               </p>
             </section>
-            <p v-if="outsideZoneCount" class="map-empty-copy">
-              {{ outsideZoneCount }} online characters are outside
-              {{ zoneNameForRegion(regionID) }}.
-            </p>
             <details class="map-training-list">
               <summary>Training areas</summary>
               <div class="map-list-heading">
@@ -3718,6 +4123,211 @@ useHead({ title: 'Map · PhMon' })
                     .length
                 }}</span></label
               >
+            </section>
+            <section class="map-monster-reference">
+              <h2>Monster reference</h2>
+              <p class="map-empty-copy">
+                Client dataset locations. These do not show monsters currently
+                spawned.
+              </p>
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerExactSpawns"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerExactSpawns"
+                />Exact spawns <span>{{ referencePoints.length }}</span></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerMobAreas"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerMobAreas"
+                />Mob areas <span>{{ referenceAreas.length }}</span></label
+              >
+              <div class="map-monster-reference-filters">
+                <label
+                  >Monster name or code<input
+                    v-model="referenceQuery"
+                    type="search"
+                    maxlength="128"
+                    placeholder="Search monsters"
+                /></label>
+                <label
+                  >Min Lv<input
+                    v-model="referenceMinLevel"
+                    type="number"
+                    min="1"
+                    max="255"
+                    inputmode="numeric"
+                /></label>
+                <label
+                  >Max Lv<input
+                    v-model="referenceMaxLevel"
+                    type="number"
+                    min="1"
+                    max="255"
+                    inputmode="numeric"
+                /></label>
+                <button
+                  class="compact-button"
+                  type="button"
+                  @click="resetMonsterReferenceFilters"
+                >
+                  Reset
+                </button>
+              </div>
+              <p v-if="referenceLoading" class="map-empty-copy" role="status">
+                Loading reference overlays…
+              </p>
+              <p
+                v-if="referenceError || referenceSearchError"
+                class="map-empty-copy"
+                role="alert"
+              >
+                {{ referenceError || referenceSearchError }}
+              </p>
+              <p
+                v-if="
+                  referenceStatus === 'unavailable' &&
+                  !referenceSearchLoading &&
+                  !referenceSearchError
+                "
+                class="map-empty-copy"
+              >
+                Reference catalog unavailable for this server dataset.
+              </p>
+              <div class="map-list-heading">
+                <h3>Hunting locations</h3>
+                <span>{{ referenceSearchTotal }} results</span>
+              </div>
+              <div class="map-monster-reference-results" role="list">
+                <button
+                  v-for="row in referenceSearchRows"
+                  :key="`${row.model_id}:${row.area_id}:${row.floor_id}`"
+                  type="button"
+                  role="listitem"
+                  class="map-monster-reference-result"
+                  :class="{
+                    selected:
+                      referenceSelected?.model_id === row.model_id &&
+                      referenceSelected?.area_id === row.area_id &&
+                      referenceSelected?.floor_id === row.floor_id,
+                  }"
+                  @click="selectMonsterReference(row)"
+                >
+                  <strong
+                    >{{ row.name || row.code }}
+                    <small>{{
+                      row.level == null ? 'Lv —' : `Lv ${row.level}`
+                    }}</small></strong
+                  >
+                  <small
+                    >{{
+                      row.area_id
+                        ? `${row.area_id} / ${row.floor_id}`
+                        : 'Location unavailable'
+                    }}
+                    · {{ row.area_cells }} guide cells ·
+                    {{ row.point_count }} points</small
+                  >
+                </button>
+              </div>
+              <button
+                v-if="referenceSearchNext != null"
+                class="compact-button"
+                type="button"
+                :disabled="referenceSearchLoading"
+                @click="loadMonsterReferenceSearch(true)"
+              >
+                Load more
+              </button>
+              <p
+                v-if="
+                  referenceStatus === 'available' &&
+                  !referenceSearchLoading &&
+                  !referenceSearchRows.length
+                "
+                class="map-empty-copy"
+              >
+                No reference locations match these filters.
+              </p>
+              <div
+                v-if="referenceSelected"
+                class="map-monster-reference-detail"
+              >
+                <strong
+                  >{{ referenceSelected.name || referenceSelected.code }} ·
+                  {{
+                    referenceSelected.level == null
+                      ? 'Level unavailable'
+                      : `Lv ${referenceSelected.level}`
+                  }}</strong
+                >
+                <small
+                  >{{ referenceSelected.code }} · Dataset
+                  {{ mapProfile?.dataset_id }}</small
+                >
+                <small v-if="referenceSelected.area_id"
+                  >{{ referenceSelected.area_id }} /
+                  {{ referenceSelected.floor_id }} · Regions
+                  {{
+                    referenceSelectedRegions.length
+                      ? referenceSelectedRegions.join(', ')
+                      : 'unresolved or guide-only'
+                  }}</small
+                >
+                <small
+                  >Client guide cells: {{ referenceSelected.area_cells }} ·
+                  Reference points: {{ referenceSelected.point_count }}</small
+                >
+                <p>
+                  Client reference data does not establish current spawn
+                  presence or a precise hunting boundary.
+                </p>
+                <div class="map-monster-reference-locations">
+                  <button
+                    v-for="(cell, index) in referenceSelectedCells.slice(
+                      0,
+                      referenceLocationsVisible,
+                    )"
+                    :key="`cell:${index}`"
+                    type="button"
+                    class="map-text-action"
+                    @click="focusMonsterReferenceCell(cell)"
+                  >
+                    Area cell {{ cell.x }}×{{ cell.y }} ({{ cell.width }}×{{
+                      cell.height
+                    }})
+                  </button>
+                  <button
+                    v-for="(point, index) in referenceLocations.slice(
+                      0,
+                      referenceLocationsVisible,
+                    )"
+                    :key="`point:${index}`"
+                    type="button"
+                    class="map-text-action"
+                    @click="focusMonsterReferencePoint(point)"
+                  >
+                    Point {{ index + 1 }} · region {{ point.region }} ·
+                    {{ point.position.tile_x }}×{{ point.position.tile_y }}
+                  </button>
+                  <button
+                    v-if="
+                      referenceSelectedCells.length >
+                        referenceLocationsVisible ||
+                      referenceLocations.length > referenceLocationsVisible
+                    "
+                    type="button"
+                    class="compact-button"
+                    @click="referenceLocationsVisible += 50"
+                  >
+                    More locations
+                  </button>
+                </div>
+              </div>
             </section>
             <section class="heatmap-controls">
               <button
@@ -4976,18 +5586,112 @@ useHead({ title: 'Map · PhMon' })
 }
 .map-floor-bar {
   position: absolute;
-  top: 10px;
+  top: auto;
+  right: auto;
+  bottom: 10px;
   left: 10px;
   z-index: 850;
+  width: fit-content;
+  height: fit-content;
+  max-width: calc(100% - 160px);
   padding: 0;
   background: transparent;
   border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.map-floor-bar button {
+  pointer-events: auto;
 }
 .map-canvas-frame {
   min-height: 300px;
 }
 .map-panel-scroll {
   overflow-x: hidden;
+}
+.map-monster-reference {
+  display: grid;
+  gap: 7px;
+  padding: 10px 0;
+  border-top: 1px solid var(--ph-border);
+}
+.map-monster-reference h2,
+.map-monster-reference h3 {
+  margin: 0;
+}
+.map-monster-reference-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.map-monster-reference-filters label:first-child {
+  grid-column: 1 / -1;
+}
+.map-monster-reference-filters label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--ph-muted);
+}
+.map-monster-reference-filters input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--ph-border);
+  border-radius: 4px;
+  background: var(--ph-panel-soft);
+  color: var(--ph-text);
+}
+.map-monster-reference-results,
+.map-monster-reference-locations {
+  display: grid;
+  gap: 3px;
+  max-height: 260px;
+  overflow: auto;
+}
+.map-monster-reference-result {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+  border: 1px solid var(--ph-border);
+  border-radius: 4px;
+  background: var(--ph-panel-soft);
+  color: var(--ph-text);
+  cursor: pointer;
+}
+.map-monster-reference-result.selected {
+  border-color: var(--ph-primary);
+}
+.map-monster-reference-result strong,
+.map-monster-reference-result small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-monster-reference-result small,
+.map-monster-reference-detail small {
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.map-monster-reference-detail {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--ph-border);
+  border-radius: 4px;
+  background: var(--ph-panel-soft);
+  font-size: 12px;
+}
+.map-monster-reference-detail p {
+  margin: 0;
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.map-monster-reference-locations .map-text-action {
+  text-align: left;
 }
 @media (max-width: 899px) {
   .map-side-panel {
