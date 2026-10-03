@@ -34,7 +34,22 @@ func eventsWithPortraits(page events.Page, metadata *resources.Store) events.Pag
 		if metadata != nil {
 			page.Events[i].PortraitURL = metadata.PortraitURL(page.Events[i].Server, page.Events[i].ModelID)
 			page.Events[i].ItemMetadata = metadata.ItemPresentation(page.Events[i].Server, page.Events[i].ItemModel, page.Events[i].ItemCode)
+			page.Events[i].Unique = uniqueInfo(metadata, page.Events[i])
 		}
 	}
 	return page
+}
+
+func uniqueInfo(metadata *resources.Store, event events.Event) *events.UniqueInfo {
+	if metadata == nil || event.Kind != "world.unique_spawned" {
+		return nil
+	}
+	info := metadata.UniqueInfo(event.Server, event.Payload)
+	if info == nil {
+		return nil
+	}
+	return &events.UniqueInfo{
+		Name: info.Name, Level: info.Level, ImageURL: info.ImageURL,
+		Notice: info.Notice, Killer: info.Killer, ModelID: info.ModelID,
+	}
 }

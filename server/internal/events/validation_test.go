@@ -31,6 +31,14 @@ func TestValidateAgentEventAcceptsPublishedCallbackCatalog(t *testing.T) {
 		{"world.gm_spawned", "world", "EVENT_GM_SPAWNED", `{"value":"GM"}`, nil},
 		{"character.level_up", "character", "EVENT_LEVEL_UP", `{"level":1}`, nil},
 	}
+	notice := validTestEvent("world.unique_spawned", "world", "joymax.unique_notice", "0x300C", `{"model":1954,"notice":"spawn"}`)
+	if err := validateAgentEvent(notice); err != nil {
+		t.Fatalf("unique notice rejected: %v", err)
+	}
+	notice.Payload = json.RawMessage(`{"model":1954,"notice":"other"}`)
+	if err := validateAgentEvent(notice); err == nil {
+		t.Fatal("unique notice accepted an unknown notice type")
+	}
 	for _, test := range tests {
 		t.Run(test.sourceRef, func(t *testing.T) {
 			event := validTestEvent(test.kind, test.category, "phbot.callback", test.sourceRef, test.payload)

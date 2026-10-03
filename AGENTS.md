@@ -5307,3 +5307,13 @@ Ignored evidence: `exports/uniques-render/review-{export-result,validation}.json
 and `review-export/`. Commit/push and replies to the two review comments are
 authorized. Exact next action: monitor PR #62 validation and reviewer follow-up;
 keep the PR open and do not merge or deploy without authorization.
+### Resume — 2026-10-03 unique spawn notices
+
+Unique events were missing because live history has no real `EVENT_UNIQUE_SPAWN`
+callback. phMonitor v0.5.0 records opcode `0x300C` (type 5 spawn, type 6 kill)
+and shows `/game-assets/monsters/` portraits. Plugin 1.9.12 queues that notice
+without the observer position. The server dedupes the same server, model and
+notice for 15 seconds and attaches catalog name, level and portrait on read.
+Events Uniques and Dashboard recent activity render that portrait. Catalog HP
+is not in the exported monster reference, so the card does not show HP. No
+plugin was loaded into phBot and no character was operated.

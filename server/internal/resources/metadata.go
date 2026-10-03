@@ -20,6 +20,7 @@ import (
 type ItemMetadata struct {
 	Servers             map[string]string
 	Catalogs            map[string]ItemCatalog
+	UniqueCatalogs      map[string]*UniqueCatalog
 	SharedIcons         map[string]string
 	SharedPresentations map[string]map[string]any
 	SharedMagicOptions  map[string]MagicOptionDefinition
@@ -73,6 +74,7 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 	m := &ItemMetadata{
 		Servers:             map[string]string{},
 		Catalogs:            map[string]ItemCatalog{},
+		UniqueCatalogs:      map[string]*UniqueCatalog{},
 		SharedIcons:         map[string]string{},
 		SharedPresentations: map[string]map[string]any{},
 		SharedMagicOptions:  map[string]MagicOptionDefinition{},
@@ -180,6 +182,16 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 			}
 		}
 		m.Catalogs[dataset] = catalog
+	}
+	uniqueCatalog, err := loadUniqueCatalog(filepath.Join(directory, "unique-monsters.json"))
+	if err != nil {
+		return nil, err
+	}
+	if uniqueCatalog != nil {
+		if _, ok := m.Catalogs[uniqueCatalog.DatasetID]; !ok {
+			return nil, fmt.Errorf("unique monster catalog dataset is not loaded")
+		}
+		m.UniqueCatalogs[uniqueCatalog.DatasetID] = uniqueCatalog
 	}
 	return m, nil
 }

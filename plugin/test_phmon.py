@@ -1695,6 +1695,23 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(event['kind'], 'alchemy.finished')
         self.assertEqual(event['payload'], {})
 
+    def test_unique_notice_records_spawn_and_kill_without_observer_position(self):
+        spawn = struct.pack('<BBI', 5, 0, 1954)
+        event = self.callback(plugin.handle_joymax, 0x300C, spawn)
+        self.assertEqual(event['kind'], 'world.unique_spawned')
+        self.assertEqual(event['source'], 'joymax.unique_notice')
+        self.assertEqual(event['source_ref'], '0x300C')
+        self.assertEqual(event['payload'], {'model': 1954, 'notice': 'spawn'})
+        self.assertNotIn('region', event)
+        killer = 'nuker1'.encode('ascii')
+        kill = struct.pack('<BBIH', 6, 0, 1954, len(killer)) + killer
+        killed = self.callback(plugin.handle_joymax, 0x300C, kill)
+        self.assertEqual(killed['payload'], {'model': 1954, 'notice': 'kill', 'killer': 'nuker1'})
+        with patch.object(plugin, '_get_character_data', return_value=self.identity):
+            plugin.handle_joymax(0x3040, b'')
+            plugin.handle_joymax(0x300C, struct.pack('<BBI', 1, 0, 1954))
+        self.assertTrue(self.worker._event_samples.empty())
+
     def test_handle_event_buffers_when_worker_is_not_ready(self):
         previous_worker = plugin._worker
         previous_pending = plugin._pending_callback_events

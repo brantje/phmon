@@ -55,6 +55,7 @@ var validEventSources = map[string]map[string]bool{
 	"phbot.chat_callback":      {"handle_chat": true},
 	"phbot.alchemy_callback":   {"alchemy_update": true},
 	"phbot.state_diff":         {"party": true, "academy": true, "pet": true, "item_container": true},
+	"joymax.unique_notice":     {"0x300C": true},
 }
 
 type AgentDeath struct {
@@ -98,6 +99,18 @@ type Event struct {
 	ItemMetadata map[string]any  `json:"item_metadata,omitempty"`
 	ItemName     string          `json:"item_name,omitempty"`
 	ItemIconURL  string          `json:"item_icon_url,omitempty"`
+	Unique       *UniqueInfo     `json:"unique,omitempty"`
+}
+
+// UniqueInfo is the catalog portrait attached when an event is read.
+// It is not part of the agent envelope.
+type UniqueInfo struct {
+	Name     string `json:"name,omitempty"`
+	Level    *int   `json:"level,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+	Notice   string `json:"notice,omitempty"`
+	Killer   string `json:"killer,omitempty"`
+	ModelID  int64  `json:"model_id,omitempty"`
 }
 
 // AgentEvent is the bounded occurrence envelope submitted over an authenticated
@@ -407,6 +420,17 @@ func validateAgentEvent(event AgentEvent) error {
 			}
 		}
 	}
+	if event.Source == "joymax.unique_notice" {
+		var fields struct {
+			Model  int64  `json:"model"`
+			Notice string `json:"notice"`
+			Killer string `json:"killer"`
+		}
+		if json.Unmarshal(payload, &fields) != nil || fields.Model < 1 || fields.Model > 4294967295 ||
+			(fields.Notice != "spawn" && fields.Notice != "kill") || utf8.RuneCountInString(fields.Killer) > 64 {
+			return fmt.Errorf("%w: invalid unique notice", ErrInvalidEvent)
+		}
+	}
 	if strings.HasPrefix(event.Kind, "party.") || strings.HasPrefix(event.Kind, "academy.") {
 		var fields struct {
 			MemberID string         `json:"member_id"`
@@ -509,6 +533,8 @@ func validKindSource(event AgentEvent) bool {
 		return event.SourceRef == "handle_chat" && event.Kind == "chat.message_received"
 	case "phbot.alchemy_callback":
 		return event.SourceRef == "alchemy_update" && event.Kind == "alchemy.attempt"
+	case "joymax.unique_notice":
+		return event.Kind == "world.unique_spawned" && event.SourceRef == "0x300C"
 	case "phbot.state_diff":
 		want := map[string][]string{
 			"party":          {"party.member_joined", "party.member_left"},
@@ -567,6 +593,27 @@ func validatePayloadBounds(value any, depth int, nodes *int) error {
 		}
 	}
 	return nil
+}
+
+func duplicateUniqueNotice(ctx context.Context, tx pgx.Tx, event AgentEvent) (bool, error) {
+	if event.Kind != "world.unique_spawned" || event.Source != "joymax.unique_notice" || event.Server == "" {
+		return false, nil
+	}
+	var fields struct {
+		Model  int64  `json:"model"`
+		Notice string `json:"notice"`
+	}
+	if json.Unmarshal(event.Payload, &fields) != nil || fields.Model < 1 || (fields.Notice != "spawn" && fields.Notice != "kill") {
+		return false, nil
+	}
+	var observed bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(
+SELECT 1 FROM activity_events
+WHERE kind='world.unique_spawned' AND source='joymax.unique_notice'
+AND lower(server_name)=lower($1) AND payload->>'notice'=$2 AND payload->>'model'=$3
+AND occurred_at BETWEEN $4 AND $5)`, event.Server, fields.Notice, fmt.Sprintf("%d", fields.Model),
+		event.OccurredAt.UTC().Add(-15*time.Second), event.OccurredAt.UTC().Add(15*time.Second)).Scan(&observed)
+	return observed, err
 }
 
 func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent) (inserted, duplicate bool, err error) {
@@ -631,6 +678,11 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 		if same {
 			return false, true, nil
 		}
+	}
+	if duplicate, err := duplicateUniqueNotice(ctx, tx, event); err != nil {
+		return false, false, err
+	} else if duplicate {
+		return false, true, nil
 	}
 	if event.Sequence != nil && event.SessionID != "" {
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM activity_events WHERE session_id=$1::uuid AND sequence=$2)`, event.SessionID, *event.Sequence).Scan(&same); err != nil {
