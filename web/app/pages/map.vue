@@ -282,6 +282,7 @@ const referenceQuery = useCookie<string>('phmon-map-monster-query', {
   default: () => '',
   sameSite: 'lax',
   decode: (value) => {
+    if (typeof value !== 'string') return ''
     try {
       return decodeURIComponent(value)
     } catch {
