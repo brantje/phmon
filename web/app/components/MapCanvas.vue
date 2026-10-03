@@ -18,6 +18,7 @@ import type { MapProfile } from '~~/shared/types/map'
 import type {
   MonsterReferenceArea,
   MonsterReferenceBounds,
+  MonsterReferenceGuideRow,
   MonsterReferencePoint,
 } from '~~/shared/types/monsterReference'
 import type { CharacterMarkerInput } from '~/utils/mapCharacterMarkers'
@@ -103,6 +104,7 @@ const props = defineProps<{
   markers?: MapCanvasMarker[]
   heatLayers?: MapHeatLayer[]
   referenceAreas?: MonsterReferenceArea[]
+  referenceGuideRows?: MonsterReferenceGuideRow[]
   referencePoints?: MonsterReferencePoint[]
   referenceFocus?: MonsterReferenceBounds & { sequence: number }
   navigationRoutes?: MapRouteOverlay[]
@@ -1385,6 +1387,11 @@ function syncMonsterReferences() {
       maxY: props.profile.tiles.max_y,
       guideOriginY: props.profile.guide_origin_y,
     },
+    props.referenceGuideRows?.map((row) => ({
+      y: row.y,
+      minX: row.min_x,
+      maxX: row.max_x,
+    })),
   )
   const drawn = indexed.map((item, index) => ({
     area: item.area,
@@ -1912,7 +1919,11 @@ watch(
 watch(() => props.markers, syncMarkers, { deep: true })
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
 watch(
-  [() => props.referenceAreas, () => props.referencePoints],
+  [
+    () => props.referenceAreas,
+    () => props.referenceGuideRows,
+    () => props.referencePoints,
+  ],
   syncMonsterReferences,
   { deep: true },
 )

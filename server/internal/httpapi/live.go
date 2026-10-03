@@ -738,7 +738,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		}
 		// The Characters roster is the full selected server. Floor and region
 		// scope stay on markers and the other map layers.
-		charRows, err := h.characters.ListScoped(ctx, "", "", subscription.Filter.Server)
+		charRows, err := h.characters.ListServerRoster(ctx, subscription.Filter.Server)
 		if err != nil {
 			return nil, err
 		}

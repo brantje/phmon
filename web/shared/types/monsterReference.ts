@@ -59,12 +59,19 @@ export interface MonsterReferenceSearchResponse {
   reason?: string
 }
 
+export interface MonsterReferenceGuideRow {
+  y: number
+  min_x: number
+  max_x: number
+}
+
 export interface MonsterReferenceOverlayResponse {
   status: 'available' | 'unavailable'
   dataset_id: string
   area_id?: string
   floor_id?: string
   areas?: MonsterReferenceArea[]
+  guide_rows?: MonsterReferenceGuideRow[]
   points?: MonsterReferencePoint[]
   point_total?: number
   next_offset?: number | null

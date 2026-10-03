@@ -70,6 +70,24 @@ type guideFloorEdge struct {
 	rows map[int]guideAxisEdge
 }
 
+type guideRowEdge struct {
+	Y    int `json:"y"`
+	MinX int `json:"min_x"`
+	MaxX int `json:"max_x"`
+}
+
+func guideRowEdges(edge guideFloorEdge) []guideRowEdge {
+	rows := make([]guideRowEdge, 0, len(edge.rows))
+	for y, row := range edge.rows {
+		if !row.set {
+			continue
+		}
+		rows = append(rows, guideRowEdge{Y: y, MinX: row.min, MaxX: row.max})
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Y < rows[j].Y })
+	return rows
+}
+
 func guideFloorEdgeFor(catalog *resources.MonsterReference, areaID, floorID string, grid mapprofile.TileCatalog, originY *int) guideFloorEdge {
 	edge := guideFloorEdge{rows: map[int]guideAxisEdge{}}
 	if catalog == nil || originY == nil {
@@ -503,6 +521,9 @@ func (h *mapHandler) monsterReferenceOverlay(w http.ResponseWriter, r *http.Requ
 	}
 	areas := make([]monsterRefArea, 0)
 	areaCellTotal := 0
+	originY := monsterRefGuideOrigin(profile, areaID, floorID)
+	edge := guideFloorEdgeFor(catalog, areaID, floorID, grid, originY)
+	guideRows := guideRowEdges(edge)
 	if includeAreas {
 		for _, area := range catalog.Areas {
 			def, exists := definitions[area.ModelID]
@@ -513,8 +534,6 @@ func (h *mapHandler) monsterReferenceOverlay(w http.ResponseWriter, r *http.Requ
 			if !known || a != areaID || f != floorID {
 				continue
 			}
-			originY := monsterRefGuideOrigin(profile, areaID, floorID)
-			edge := guideFloorEdgeFor(catalog, areaID, floorID, grid, originY)
 			cells := make([]resources.MonsterGuideCell, 0)
 			for _, cell := range area.Cells {
 				placed := applyGuideFloorEdge(placedGuideCell(cell, grid, originY), edge)
@@ -556,7 +575,7 @@ func (h *mapHandler) monsterReferenceOverlay(w http.ResponseWriter, r *http.Requ
 		end = total
 	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "available", "dataset_id": catalog.DatasetID, "area_id": areaID, "floor_id": floorID,
-		"areas": areas, "area_cell_total": areaCellTotal, "areas_complete": true, "points": points[offset:end], "point_total": total, "next_offset": func() *int {
+		"areas": areas, "guide_rows": guideRows, "area_cell_total": areaCellTotal, "areas_complete": true, "points": points[offset:end], "point_total": total, "next_offset": func() *int {
 			if end < total {
 				return &end
 			}

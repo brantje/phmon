@@ -160,6 +160,10 @@ func TestTombB2EdgeCellsCoverTheOuterRooms(t *testing.T) {
 	if left.X != 117 || left.Width != 4 || inner.X != 128 || inner.Width != 1 || right.X != 135 || right.Width != 4 {
 		t.Fatalf("tomb edges left=%+v inner=%+v right=%+v", left, inner, right)
 	}
+	rows := guideRowEdges(edge)
+	if len(rows) != 2 || rows[0].Y != 123 || rows[1].Y != 125 || rows[1].MinX != 120 || rows[1].MaxX != 135 {
+		t.Fatalf("guide rows = %+v", rows)
+	}
 }
 
 func TestJobTempleGuideCellsMoveOntoTheFloorWithoutTheFieldShift(t *testing.T) {

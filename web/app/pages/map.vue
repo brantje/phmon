@@ -14,6 +14,7 @@ import type { HeatmapLayerID } from '~~/shared/types/mapAnalytics'
 import type {
   MonsterReferenceArea,
   MonsterReferenceBounds,
+  MonsterReferenceGuideRow,
   MonsterReferenceOverlayResponse,
   MonsterReferencePoint,
   MonsterReferenceSearchResponse,
@@ -308,6 +309,7 @@ const profileError = ref('')
 const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
 const referenceViewport = ref<MonsterReferenceBounds | null>(null)
 const referenceAreas = ref<MonsterReferenceArea[]>([])
+const referenceGuideRows = ref<MonsterReferenceGuideRow[]>([])
 const referencePoints = ref<MonsterReferencePoint[]>([])
 const referenceSearchRows = ref<MonsterReferenceSearchRow[]>([])
 const referenceSearchNext = ref<number | null>(null)
@@ -461,6 +463,7 @@ async function loadMonsterReferenceOverlay() {
   const bounds = referenceViewport.value
   const requestID = ++referenceRequestID
   referenceAreas.value = []
+  referenceGuideRows.value = []
   referencePoints.value = []
   referenceError.value = ''
   if (
@@ -511,7 +514,10 @@ async function loadMonsterReferenceOverlay() {
       }
       if (response.dataset_id !== profile.dataset_id)
         throw new Error('dataset mismatch')
-      if (offset === 0) areas = response.areas || []
+      if (offset === 0) {
+        areas = response.areas || []
+        referenceGuideRows.value = response.guide_rows || []
+      }
       points.push(...(response.points || []))
       offset = response.next_offset ?? -1
     } while (offset >= 0)
@@ -2326,6 +2332,7 @@ watch([server, mapProfile], () => {
   referenceSearchRequestID++
   referenceLocationRequestID++
   referenceAreas.value = []
+  referenceGuideRows.value = []
   referencePoints.value = []
   referenceSearchRows.value = []
   referenceLocations.value = []
@@ -2337,6 +2344,7 @@ watch([server, mapProfile], () => {
 watch([areaID, floorID], () => {
   referenceRequestID++
   referenceAreas.value = []
+  referenceGuideRows.value = []
   referencePoints.value = []
   referenceViewport.value = null
   const focus = referenceFocus.value
@@ -2621,6 +2629,7 @@ useHead({ title: 'Map · PhMon' })
               :markers="mapMarkers"
               :heat-layers="renderedHeatLayers"
               :reference-areas="referenceAreas"
+              :reference-guide-rows="referenceGuideRows"
               :reference-points="referencePoints"
               :reference-focus="visibleReferenceFocus"
               :navigation-routes="mapNavigationRoutes"

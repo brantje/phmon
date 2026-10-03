@@ -31,12 +31,20 @@ export interface GuideFloorPlacement {
   guideOriginY?: number
 }
 
+export interface GuideRowEdge {
+  y: number
+  minX: number
+  maxX: number
+}
+
 /** Some cave rows list cells a few tiles inside the floor while the same
- * rooms continue to the edge. On each row and column, stretch only the outer
- * listed cells across a gap of at most three tiles. */
+ * rooms continue to the edge. Stretch only the outer cell on each row, by at
+ * most three tiles. Full-floor edges come from the server so a viewport that
+ * dropped the real outer cell cannot promote an inner one. */
 export function displayedGuideCells<T extends GuideCellSquare>(
   cells: readonly T[],
   floor: GuideFloorPlacement,
+  rowEdges?: readonly GuideRowEdge[],
 ): T[] {
   const placed = cells.map((cell) =>
     placedGuideCell(cell, {
@@ -47,27 +55,27 @@ export function displayedGuideCells<T extends GuideCellSquare>(
   if (floor.guideOriginY == null || placed.length === 0) return placed
   const extension = (gap: number) => Math.max(0, Math.min(3, gap))
   const displayed = placed.map((cell) => ({ ...cell }))
-  const rows = new Map<number, number[]>()
-  displayed.forEach((cell, index) => {
-    rows.set(cell.y, [...(rows.get(cell.y) || []), index])
-  })
-  for (const indexes of rows.values()) {
-    let minX = Infinity
-    let maxX = -Infinity
-    for (const index of indexes) {
-      const cell = displayed[index]!
-      minX = Math.min(minX, cell.x)
-      maxX = Math.max(maxX, cell.x + cell.width - 1)
-    }
-    const left = extension(minX - floor.minX)
-    const right = extension(floor.maxX - maxX)
-    for (const index of indexes) {
-      const cell = displayed[index]!
-      if (left > 0 && cell.x === minX) {
+  const rows =
+    rowEdges ??
+    [...new Map(displayed.map((cell) => [cell.y, cell])).keys()].map((y) => {
+      const row = displayed.filter((cell) => cell.y === y)
+      return {
+        y,
+        minX: Math.min(...row.map((cell) => cell.x)),
+        maxX: Math.max(...row.map((cell) => cell.x + cell.width - 1)),
+      }
+    })
+  for (const edge of rows) {
+    const left = extension(edge.minX - floor.minX)
+    const right = extension(floor.maxX - edge.maxX)
+    for (const cell of displayed) {
+      if (cell.y !== edge.y) continue
+      if (left > 0 && cell.x === edge.minX) {
         cell.x -= left
         cell.width += left
       }
-      if (right > 0 && cell.x + cell.width - 1 === maxX) cell.width += right
+      if (right > 0 && cell.x + cell.width - 1 === edge.maxX)
+        cell.width += right
     }
   }
   return displayed

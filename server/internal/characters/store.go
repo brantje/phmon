@@ -333,7 +333,25 @@ func (s *Store) List(ctx context.Context, query string, groupID string) ([]Chara
 }
 
 func (s *Store) ListScoped(ctx context.Context, query string, groupID, server string) ([]Character, error) {
-	q := selectCharacters + ` WHERE ($1='' OR c.character_name ILIKE '%'||$1||'%' OR COALESCE(c.guild_name,'') ILIKE '%'||$1||'%' OR c.server_name ILIKE '%'||$1||'%' OR COALESCE(c.zone_name,'') ILIKE '%'||$1||'%') AND ($2='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=c.character_id AND m.group_id=$2::uuid)) AND ($3='' OR lower(c.server_name)=lower($3)) ORDER BY c.server_name,c.character_name LIMIT 500`
+	return s.listCharacters(ctx, query, groupID, server, true)
+}
+
+// ListServerRoster returns every character on one server. The map roster uses
+// this instead of ListScoped, whose 500-row search cap would hide the rest.
+func (s *Store) ListServerRoster(ctx context.Context, server string) ([]Character, error) {
+	server = strings.TrimSpace(server)
+	if server == "" {
+		return []Character{}, nil
+	}
+	return s.listCharacters(ctx, "", "", server, false)
+}
+
+func (s *Store) listCharacters(ctx context.Context, query string, groupID, server string, capped bool) ([]Character, error) {
+	limit := ""
+	if capped {
+		limit = " LIMIT 500"
+	}
+	q := selectCharacters + ` WHERE ($1='' OR c.character_name ILIKE '%'||$1||'%' OR COALESCE(c.guild_name,'') ILIKE '%'||$1||'%' OR c.server_name ILIKE '%'||$1||'%' OR COALESCE(c.zone_name,'') ILIKE '%'||$1||'%') AND ($2='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=c.character_id AND m.group_id=$2::uuid)) AND ($3='' OR lower(c.server_name)=lower($3)) ORDER BY c.server_name,c.character_name` + limit
 	rows, err := s.pool.Query(ctx, q, strings.TrimSpace(query), groupID, strings.TrimSpace(server))
 	if err != nil {
 		return nil, err

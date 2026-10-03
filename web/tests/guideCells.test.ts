@@ -37,6 +37,28 @@ test('tomb edge cells stretch across the unlisted rooms to the floor edge', () =
   assert.deepEqual(displayed[3], { x: 125, y: 123, width: 7, height: 1 })
 })
 
+test('a visible inner cell keeps the server row edge', () => {
+  const floor = {
+    minX: 117,
+    maxX: 138,
+    minY: 123,
+    maxY: 132,
+    guideOriginY: 132,
+  }
+  assert.deepEqual(
+    displayedGuideCells([{ x: 128, y: 125, width: 1, height: 1 }], floor, [
+      { y: 125, minX: 120, maxX: 135 },
+    ]),
+    [{ x: 128, y: 125, width: 1, height: 1 }],
+  )
+  assert.deepEqual(
+    displayedGuideCells([{ x: 120, y: 125, width: 1, height: 1 }], floor, [
+      { y: 125, minX: 120, maxX: 135 },
+    ]),
+    [{ x: 117, y: 125, width: 4, height: 1 }],
+  )
+})
+
 test('cave mob areas use the floor guide origin instead of the field shift', () => {
   const cell = { x: 126, y: 123, width: 1, height: 1 }
   assert.deepEqual(
