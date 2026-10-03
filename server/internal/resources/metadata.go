@@ -255,6 +255,57 @@ func (m *ItemMetadata) ItemPresentation(server string, model *int64, code string
 	return nil
 }
 
+// ItemDropClassification uses the active server profile's explicit rarity
+// boolean. Missing or unmapped definitions stay unknown.
+func (m *ItemMetadata) ItemDropClassification(server string, model *int64, code string) (string, string) {
+	presentation := m.ItemPresentation(server, model, code)
+	rare, ok := presentation["rare"].(bool)
+	if !ok {
+		return "", ""
+	}
+	if rare {
+		return "rare", "item-profile-rarity-v1"
+	}
+	return "normal", "item-profile-rarity-v1"
+}
+
+// EnrichItemRecord resolves a historical item snapshot through the same
+// resolver as current resources without changing the stored occurrence.
+func (m *ItemMetadata) EnrichItemRecord(server string, item map[string]any) map[string]any {
+	if m == nil || len(item) == 0 {
+		return cloneAnyMap(item)
+	}
+	wrapper, err := json.Marshal(map[string]any{"slots": []any{map[string]any{"source_slot": 0, "item": item}}})
+	if err != nil {
+		return cloneAnyMap(item)
+	}
+	var enriched map[string]any
+	if json.Unmarshal(m.enrich(server, wrapper), &enriched) != nil {
+		return cloneAnyMap(item)
+	}
+	slots, _ := enriched["slots"].([]any)
+	if len(slots) != 1 {
+		return cloneAnyMap(item)
+	}
+	row, _ := slots[0].(map[string]any)
+	resolved, _ := row["item"].(map[string]any)
+	if len(resolved) == 0 {
+		return cloneAnyMap(item)
+	}
+	return resolved
+}
+
+func cloneAnyMap(source map[string]any) map[string]any {
+	if source == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
+}
+
 // MapItemPresentation uses the selected server's model catalog first. A stable
 // item code is used only when its shared presentation is unambiguous.
 func (m *ItemMetadata) MapItemPresentation(server string, model *int64, code string) (name, iconURL string) {
@@ -411,10 +462,13 @@ func (m *ItemMetadata) enrich(server string, payload json.RawMessage) json.RawMe
 				if matchedServerDefinition {
 					options = catalog.MagicOptions
 				}
-				if details := resolveAPIItemDetails(item, metadata, options); details != nil {
+				apiDetails := resolveAPIItemDetails(item, metadata, options)
+				var packetDetails map[string]any
+				if instance, ok := item["instance"].(map[string]any); ok {
+					packetDetails = resolveInstanceDetails(instance, metadata, options)
+				}
+				if details := mergeItemDetails(apiDetails, packetDetails); details != nil {
 					item["instance_details"] = details
-				} else if instance, ok := item["instance"].(map[string]any); ok {
-					item["instance_details"] = resolveInstanceDetails(instance, metadata, options)
 				}
 			}
 		}
@@ -432,6 +486,131 @@ func (m *ItemMetadata) enrich(server string, payload json.RawMessage) json.RawMe
 		return payload
 	}
 	return result
+}
+
+func mergeItemDetails(api, packet map[string]any) map[string]any {
+	if api == nil {
+		return packet
+	}
+	if packet == nil {
+		return api
+	}
+	merged := make(map[string]any, len(api)+len(packet))
+	for key, value := range api {
+		merged[key] = value
+	}
+	conflicts := make([]any, 0)
+	for key, value := range packet {
+		if key == "source" || key == "percentages" || key == "blues" || key == "blues_status" || key == "status" {
+			continue
+		}
+		if apiValue, exists := api[key]; !exists {
+			merged[key] = value
+		} else if !reflect.DeepEqual(apiValue, value) && value != nil {
+			conflicts = append(conflicts, map[string]any{"field": key, "api": apiValue, "packet": value})
+		}
+	}
+	merged["sources"] = []any{"phbot_api", "vsro_1188_packet"}
+	percentages, rowConflicts := mergeDetailRows(api["percentages"], packet["percentages"])
+	merged["percentages"] = percentages
+	conflicts = append(conflicts, rowConflicts...)
+	apiBlueStatus, _ := api["blues_status"].(string)
+	packetBlueStatus, _ := packet["blues_status"].(string)
+	mergedBlues, blueConflicts := mergeBlueRows(api["blues"], packet["blues"])
+	merged["blues"] = mergedBlues
+	conflicts = append(conflicts, blueConflicts...)
+	if len(mergedBlues) == 0 {
+		if apiBlueStatus == "observed_empty" || apiBlueStatus == "unavailable_definitions" {
+			merged["blues_status"] = apiBlueStatus
+		} else if packetBlueStatus != "" {
+			merged["blues_status"] = packetBlueStatus
+		}
+	} else if apiBlueStatus == "partial" || packetBlueStatus == "partial" || apiBlueStatus == "unavailable_definitions" {
+		merged["blues_status"] = "partial"
+	} else {
+		merged["blues_status"] = "observed"
+	}
+	if len(conflicts) > 0 {
+		merged["conflicts"] = conflicts
+	}
+	return merged
+}
+
+func mergeBlueRows(apiValue, packetValue any) ([]any, []any) {
+	apiRows, _ := apiValue.([]any)
+	packetRows, _ := packetValue.([]any)
+	result := make([]any, len(apiRows))
+	apiCounts := make(map[string]int)
+	positions := make(map[string][]int)
+	conflicts := make([]any, 0)
+	blueKey := func(row map[string]any) string {
+		id, _ := row["id"].(string)
+		value, _ := row["raw_value"].(string)
+		if id == "" || value == "" {
+			return ""
+		}
+		return id + "\x00" + value
+	}
+	for index, row := range apiRows {
+		entry, _ := row.(map[string]any)
+		result[index] = row
+		key := blueKey(entry)
+		if key != "" {
+			apiCounts[key]++
+			positions[key] = append(positions[key], index)
+		}
+	}
+	packetCounts := make(map[string]int)
+	for _, row := range packetRows {
+		entry, _ := row.(map[string]any)
+		key := blueKey(entry)
+		if key == "" {
+			result = append(result, row)
+			continue
+		}
+		packetCounts[key]++
+		if packetCounts[key] <= apiCounts[key] {
+			position := positions[key][packetCounts[key]-1]
+			merged, _ := result[position].(map[string]any)
+			for field, value := range entry {
+				if existing, exists := merged[field]; !exists {
+					merged[field] = value
+				} else if !reflect.DeepEqual(existing, value) && value != nil {
+					conflicts = append(conflicts, map[string]any{"field": "blue." + field, "api": existing, "packet": value})
+				}
+			}
+			continue
+		}
+		result = append(result, row)
+	}
+	return result, conflicts
+}
+
+func mergeDetailRows(first, second any) ([]any, []any) {
+	result := make([]any, 0)
+	conflicts := make([]any, 0)
+	positions := make(map[string]int)
+	for _, list := range []any{first, second} {
+		rows, _ := list.([]any)
+		for _, row := range rows {
+			entry, _ := row.(map[string]any)
+			key, _ := entry["key"].(string)
+			if key == "" {
+				result = append(result, row)
+				continue
+			}
+			if position, exists := positions[key]; exists {
+				prior, _ := result[position].(map[string]any)
+				if !reflect.DeepEqual(prior["value"], entry["value"]) {
+					conflicts = append(conflicts, map[string]any{"field": key, "api": prior["value"], "packet": entry["value"]})
+				}
+				continue
+			}
+			positions[key] = len(result)
+			result = append(result, row)
+		}
+	}
+	return result, conflicts
 }
 
 type varianceField struct {
@@ -584,6 +763,20 @@ func (s *Store) ItemPresentation(server string, model *int64, code string) map[s
 		return nil
 	}
 	return s.metadata.ItemPresentation(server, model, code)
+}
+
+func (s *Store) ItemDropClassification(server string, model *int64, code string) (string, string) {
+	if s == nil || s.metadata == nil {
+		return "", ""
+	}
+	return s.metadata.ItemDropClassification(server, model, code)
+}
+
+func (s *Store) EnrichItemRecord(server string, item map[string]any) map[string]any {
+	if s == nil || s.metadata == nil {
+		return cloneAnyMap(item)
+	}
+	return s.metadata.EnrichItemRecord(server, item)
 }
 
 func (s *Store) MapItemPresentation(server string, model *int64, code string) (name, iconURL string) {

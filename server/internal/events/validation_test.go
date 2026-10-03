@@ -142,6 +142,77 @@ func TestValidateAgentEventRequiresObservedDropAndItemFacts(t *testing.T) {
 	}
 }
 
+func TestValidatedPetPickupRequiresBoundedPacketReceipt(t *testing.T) {
+	model := int64(847)
+	event := validTestEvent("item.acquired", "item", "joymax.pet_inventory", "0xB034", `{"item":{"model":847,"servername":"ITEM_TEST","plus":0,"quantity":4},"quantity_delta":2,"destination_container":{"type":"pets","id":"17","slot":3},"acquisition_method":"pet_pickup","packet_observation":{"observation_id":"session-a:seq-12","sequence":"12","decoder_version":"pet-v1"}}`)
+	event.ItemModel = &model
+	event.ItemCode = "ITEM_TEST"
+	if err := validateAgentEvent(event); err != nil {
+		t.Fatalf("verified pet pickup rejected: %v", err)
+	}
+
+	for name, replacement := range map[string]string{
+		"missing evidence":   `{"item":{"model":847},"quantity_delta":2,"destination_container":{"type":"pets","id":"17","slot":3},"acquisition_method":"pet_pickup"}`,
+		"wrong destination":  `{"item":{"model":847},"quantity_delta":2,"destination_container":{"type":"inventory","slot":3},"acquisition_method":"pet_pickup","packet_observation":{"observation_id":"seq-12","sequence":"12","decoder_version":"pet-v1"}}`,
+		"zero sequence":      `{"item":{"model":847},"quantity_delta":2,"destination_container":{"type":"pets","id":"17","slot":3},"acquisition_method":"pet_pickup","packet_observation":{"observation_id":"seq-12","sequence":"0","decoder_version":"pet-v1"}}`,
+		"wrong method":       `{"item":{"model":847},"quantity_delta":2,"destination_container":{"type":"pets","id":"17","slot":3},"acquisition_method":"unknown","packet_observation":{"observation_id":"seq-12","sequence":"12","decoder_version":"pet-v1"}}`,
+		"unbounded quantity": `{"item":{"model":847},"quantity_delta":1000000001,"destination_container":{"type":"pets","id":"17","slot":3},"acquisition_method":"pet_pickup","packet_observation":{"observation_id":"seq-12","sequence":"12","decoder_version":"pet-v1"}}`,
+		"control in pet ID":  `{"item":{"model":847},"quantity_delta":2,"destination_container":{"type":"pets","id":"17\n","slot":3},"acquisition_method":"pet_pickup","packet_observation":{"observation_id":"seq-12","sequence":"12","decoder_version":"pet-v1"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := event
+			invalid.Payload = json.RawMessage(replacement)
+			if err := validateAgentEvent(invalid); err == nil {
+				t.Fatal("unverified pet pickup accepted")
+			}
+		})
+	}
+
+	legacy := validTestEvent("item.acquired", "item", "phbot.state_diff", "item_container", string(event.Payload))
+	if err := validateAgentEvent(legacy); err == nil {
+		t.Fatal("state-diff event promoted itself to a verified pet pickup")
+	}
+}
+
+func TestDropFeedPetPickupFilterIsLimitedToNormalAndRareTabs(t *testing.T) {
+	for _, filter := range []Filter{
+		{Kind: "drop.item", IncludePetPickups: true},
+		{Kind: "drop.rare", IncludePetPickups: true},
+	} {
+		if !validDropFeed(filter) {
+			t.Fatalf("valid drop feed rejected: %+v", filter)
+		}
+	}
+	for _, filter := range []Filter{
+		{IncludePetPickups: true},
+		{Kind: "drop.rare", Category: "drop", IncludePetPickups: true},
+		{Kind: "item.acquired", IncludePetPickups: true},
+	} {
+		if validDropFeed(filter) {
+			t.Fatalf("invalid pet pickup feed accepted: %+v", filter)
+		}
+	}
+}
+
+func TestDropClassificationUsesCallbackClassOrVerifiedPetClassifier(t *testing.T) {
+	store := NewStore(nil)
+	store.SetDropClassifier(func(server string, model *int64, code string) (string, string) {
+		if server == "Silkroad" && model != nil && *model == 847 {
+			return "rare", "item-profile-rarity-v1"
+		}
+		return "", ""
+	})
+	model := int64(847)
+	if class, version := eventDropClassification(store.classifyDrop, validTestEvent("drop.item", "drop", "phbot.callback", "EVENT_ITEM_DROP", `{"model":847}`)); class != "normal" || version != "phbot-callback-v1" {
+		t.Fatalf("normal callback classification = %q %q", class, version)
+	}
+	pickup := validTestEvent("item.acquired", "item", "joymax.pet_inventory", "0xB034", `{}`)
+	pickup.ItemModel = &model
+	if class, version := eventDropClassification(store.classifyDrop, pickup); class != "rare" || version != "item-profile-rarity-v1" {
+		t.Fatalf("pet pickup classification = %q %q", class, version)
+	}
+}
+
 func validTestEvent(kind, category, source, sourceRef, payload string) AgentEvent {
 	return AgentEvent{
 		ID: testEventID, Schema: 1, Kind: kind, Category: category,

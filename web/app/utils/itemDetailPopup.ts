@@ -315,12 +315,25 @@ export function itemRecordFromActivityEvent(
     | 'item_name'
     | 'item_icon_url'
     | 'item_metadata'
+    | 'item_details'
     | 'payload'
   >,
 ): Record<string, unknown> | null {
   const payload = asRecord(event.payload)
-  const snapshot = asRecord(payload.item)
+  const snapshot = {
+    ...asRecord(payload.item),
+    ...asRecord(event.item_details),
+  }
+  const packetObservation = asRecord(payload.packet_observation)
+  const observationID = stringField(packetObservation, 'observation_id')
+  if (observationID) {
+    snapshot.instance = {
+      ...asRecord(snapshot.instance),
+      observation_id: observationID,
+    }
+  }
   const metadata = asRecord(event.item_metadata)
+  const snapshotMetadata = asRecord(snapshot.metadata)
   const name =
     stringField(metadata, 'name') ||
     stringField(snapshot, 'name') ||
@@ -352,6 +365,7 @@ export function itemRecordFromActivityEvent(
       ? { plus: numberField(payload, 'plus') }
       : {}),
     metadata: {
+      ...snapshotMetadata,
       ...metadata,
       ...(name ? { name } : {}),
       ...(icon ? { icon_url: icon } : {}),

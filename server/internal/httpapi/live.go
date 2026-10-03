@@ -42,28 +42,29 @@ const (
 )
 
 type liveFilter struct {
-	Query           string   `json:"q,omitempty"`
-	GroupID         string   `json:"group_id,omitempty"`
-	CharacterID     string   `json:"character_id,omitempty"`
-	CharacterIDs    []string `json:"character_ids,omitempty"`
-	IdempotencyKeys []string `json:"idempotency_keys,omitempty"`
-	CommandName     string   `json:"command_name,omitempty"`
-	CommandState    string   `json:"command_state,omitempty"`
-	Limit           int      `json:"limit,omitempty"`
-	ResourceKeys    []string `json:"resource_keys,omitempty"`
-	Server          string   `json:"server,omitempty"`
-	Kind            string   `json:"kind,omitempty"`
-	Category        string   `json:"category,omitempty"`
-	Item            string   `json:"item,omitempty"`
-	EventID         string   `json:"event_id,omitempty"`
-	From            string   `json:"from,omitempty"`
-	To              string   `json:"to,omitempty"`
-	Cursor          string   `json:"cursor,omitempty"`
-	Channel         string   `json:"channel,omitempty"`
-	Peer            string   `json:"peer,omitempty"`
-	Area            string   `json:"area,omitempty"`
-	Floor           string   `json:"floor,omitempty"`
-	Region          int      `json:"region,omitempty"`
+	Query             string   `json:"q,omitempty"`
+	GroupID           string   `json:"group_id,omitempty"`
+	CharacterID       string   `json:"character_id,omitempty"`
+	CharacterIDs      []string `json:"character_ids,omitempty"`
+	IdempotencyKeys   []string `json:"idempotency_keys,omitempty"`
+	CommandName       string   `json:"command_name,omitempty"`
+	CommandState      string   `json:"command_state,omitempty"`
+	Limit             int      `json:"limit,omitempty"`
+	ResourceKeys      []string `json:"resource_keys,omitempty"`
+	Server            string   `json:"server,omitempty"`
+	Kind              string   `json:"kind,omitempty"`
+	Category          string   `json:"category,omitempty"`
+	Item              string   `json:"item,omitempty"`
+	EventID           string   `json:"event_id,omitempty"`
+	From              string   `json:"from,omitempty"`
+	To                string   `json:"to,omitempty"`
+	Cursor            string   `json:"cursor,omitempty"`
+	IncludePetPickups bool     `json:"include_pet_pickups,omitempty"`
+	Channel           string   `json:"channel,omitempty"`
+	Peer              string   `json:"peer,omitempty"`
+	Area              string   `json:"area,omitempty"`
+	Floor             string   `json:"floor,omitempty"`
+	Region            int      `json:"region,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -676,7 +677,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		}
 		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
 			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item, EventID: subscription.Filter.EventID,
-			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit}
+			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit, IncludePetPickups: subscription.Filter.IncludePetPickups}
 		var err error
 		if subscription.Filter.From != "" {
 			value, parseErr := parseEventBound(subscription.Filter.From, false)
@@ -895,7 +896,8 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			Server:          strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
 			EventID: message.Filter.EventID,
 			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
-			Channel: message.Filter.Channel, Peer: message.Filter.Peer,
+			IncludePetPickups: message.Filter.IncludePetPickups,
+			Channel:           message.Filter.Channel, Peer: message.Filter.Peer,
 			Area: message.Filter.Area, Floor: message.Filter.Floor, Region: message.Filter.Region,
 		},
 	}
@@ -989,7 +991,8 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		if len(subscription.Filter.Query) > 64 || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || len(subscription.Filter.ResourceKeys) != 0 ||
 			!validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
 			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 || subscription.Filter.EventID != "" ||
-			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) {
+			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) ||
+			subscription.Filter.IncludePetPickups && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) {
 			return liveSubscription{}, false
 		}
 		var from, to *time.Time
@@ -1036,7 +1039,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			len(subscription.Filter.ResourceKeys) != 0 || subscription.Filter.Region < -32768 || subscription.Filter.Region > 65535 ||
 			len(subscription.Filter.EventID) > 64 || subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
 			len(subscription.Filter.Area) > 96 || len(subscription.Filter.Floor) > 32 || subscription.Filter.Kind != "" ||
-			subscription.Filter.Category != "" || subscription.Filter.Item != "" || subscription.Filter.Cursor != "" {
+			subscription.Filter.Category != "" || subscription.Filter.Item != "" || subscription.Filter.Cursor != "" || subscription.Filter.IncludePetPickups {
 			return liveSubscription{}, false
 		}
 		if subscription.Filter.Area == "" {
@@ -1077,7 +1080,7 @@ func hasEventFilters(filter liveFilter) bool {
 }
 
 func hasEventSpecificFilters(filter liveFilter) bool {
-	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != ""
+	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != "" || filter.IncludePetPickups
 }
 
 type mapEventLister interface {

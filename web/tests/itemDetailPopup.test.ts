@@ -178,3 +178,34 @@ test('activity events become item records only when an item is present', () => {
     null,
   )
 })
+
+test('event item records prefer enriched immutable details over snapshot gaps', () => {
+  const record = itemRecordFromActivityEvent({
+    item_model: 847,
+    payload: {
+      item: { model: 847, servername: 'ITEM_TEST', quantity: 2 },
+      packet_observation: { observation_id: 'session-5:sequence-9' },
+    },
+    item_details: {
+      model: 847,
+      servername: 'ITEM_TEST',
+      quantity: 2,
+      plus: 5,
+      metadata: { name: 'Test Armor', type_ids: [3, 1, 2, 0] },
+      instance_details: {
+        source: 'phbot_api',
+        status: 'partial',
+        stats: [{ key: 'phy_def_pwr', label: 'Phy. def. pwr', value: '55' }],
+      },
+    },
+  })
+  assert.ok(record)
+  const detail = buildItemDetail(record)
+  assert.equal(detail.name, 'Test Armor')
+  assert.equal(detail.plus, 5)
+  assert.deepEqual(detail.statsBeforeDurability, ['Phy. def. pwr 55'])
+  assert.equal(
+    (record.instance as Record<string, unknown>).observation_id,
+    'session-5:sequence-9',
+  )
+})

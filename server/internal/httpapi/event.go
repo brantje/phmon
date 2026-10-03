@@ -31,6 +31,10 @@ type eventHandler struct {
 	resources *resources.Store
 }
 
+func validEventPetPickupFilter(filter events.Filter) bool {
+	return !filter.IncludePetPickups || (filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
+}
+
 func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	filter := events.Filter{
@@ -43,8 +47,15 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		Cursor:         strings.TrimSpace(query.Get("cursor")),
 		Limit:          10,
 	}
+	if raw, exists := query["include_pet_pickups"]; exists {
+		if len(raw) != 1 || (raw[0] != "true" && raw[0] != "false") {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pet pickup filter"})
+			return
+		}
+		filter.IncludePetPickups = raw[0] == "true"
+	}
 	if !validServerFilter(filter.Server) || len(filter.CharacterQuery) > 64 || len(filter.CharacterID) > 0 && !agentdomain.ValidAgentID(filter.CharacterID) ||
-		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 {
+		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 || !validEventPetPickupFilter(filter) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid event filter"})
 		return
 	}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"phmon/server/internal/events"
 	"testing"
 	"time"
 )
@@ -22,6 +23,26 @@ func TestParseEventBoundAcceptsLocalRFC3339Boundaries(t *testing.T) {
 	wantEnd := time.Date(2026, 9, 29, 20, 0, 0, 0, time.UTC)
 	if !end.Equal(wantEnd) {
 		t.Fatalf("parsed exclusive local end = %s, want %s", end, wantEnd)
+	}
+}
+
+func TestRESTPetPickupFilterOnlyAppliesToNormalAndRareDrops(t *testing.T) {
+	for _, filter := range []events.Filter{
+		{Kind: "drop.item", IncludePetPickups: true},
+		{Kind: "drop.rare", IncludePetPickups: true},
+	} {
+		if !validEventPetPickupFilter(filter) {
+			t.Fatalf("valid feed filter rejected: %+v", filter)
+		}
+	}
+	for _, filter := range []events.Filter{
+		{IncludePetPickups: true},
+		{Kind: "drop.rare", Category: "drop", IncludePetPickups: true},
+		{Kind: "item.acquired", IncludePetPickups: true},
+	} {
+		if validEventPetPickupFilter(filter) {
+			t.Fatalf("invalid feed filter accepted: %+v", filter)
+		}
 	}
 }
 

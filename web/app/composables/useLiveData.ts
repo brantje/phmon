@@ -103,6 +103,8 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.item || '') === (right.item || '') &&
     (left.from || '') === (right.from || '') &&
     (left.to || '') === (right.to || '') &&
+    (left.include_pet_pickups || false) ===
+      (right.include_pet_pickups || false) &&
     (left.channel || '') === (right.channel || '') &&
     (left.peer || '') === (right.peer || '') &&
     (left.area || '') === (right.area || '') &&

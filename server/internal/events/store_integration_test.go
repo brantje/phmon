@@ -93,7 +93,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, projectionErr := appendOne(ctx, projectionTx, credential.AgentID, invalidProjection)
+	_, _, projectionErr := appendOne(ctx, projectionTx, credential.AgentID, invalidProjection, nil)
 	if !errors.Is(projectionErr, ErrInvalidEvent) {
 		_ = projectionTx.Rollback(ctx)
 		t.Fatalf("invalid chat projection error = %v", projectionErr)

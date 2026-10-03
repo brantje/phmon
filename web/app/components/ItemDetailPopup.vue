@@ -25,6 +25,36 @@ const placed = ref(false)
 const iconFailed = ref(false)
 const tooltipStyle = ref<Record<string, string>>({})
 const model = computed(() => buildItemDetail(props.item))
+const detailProvenance = computed(() => {
+  const instance =
+    props.item.instance && typeof props.item.instance === 'object'
+      ? (props.item.instance as Record<string, unknown>)
+      : {}
+  const details =
+    props.item.instance_details &&
+    typeof props.item.instance_details === 'object'
+      ? (props.item.instance_details as Record<string, unknown>)
+      : {}
+  const rawSources = Array.isArray(details.sources)
+    ? details.sources
+    : typeof details.source === 'string'
+      ? [details.source]
+      : []
+  const sources = rawSources.flatMap((source) => {
+    if (source === 'phbot_api') return ['phBot API']
+    if (source === 'vsro_1188_packet') return ['Joymax packet']
+    return typeof source === 'string' ? [source] : []
+  })
+  const observationID =
+    typeof instance.observation_id === 'string' ? instance.observation_id : ''
+  if (!sources.length && !observationID) return ''
+  return [
+    sources.length ? `Detail source: ${[...new Set(sources)].join(' + ')}` : '',
+    observationID ? `Packet observation: ${observationID}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
 const narrow = () => window.matchMedia('(max-width: 640px)').matches
 let listening = false
 
@@ -181,6 +211,9 @@ const slotLabel = computed(() => {
             (+{{ model.plus }})</template
           >
         </strong>
+        <span v-if="detailProvenance" class="item-tooltip-provenance">
+          {{ detailProvenance }}
+        </span>
         <span v-if="model.seal" class="item-tooltip-seal">{{
           model.seal
         }}</span>

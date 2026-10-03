@@ -782,6 +782,34 @@ class ResourceCollectorTests(unittest.TestCase):
         })
         self.assertEqual(result['party_setup']['mode'], 'read_only_unverified')
 
+    def test_pet_inventories_keep_per_pet_slots_empty_and_missing_distinct(self):
+        result = plugin.collect_resources(api={
+            'get_pets': lambda: {
+                101: {'name': 'Wolf', 'type': 'wolf', 'items': [None, {
+                    'model': 70, 'servername': 'ITEM_ATTACK', 'quantity': 1,
+                    'plus': 0, 'durability': 0,
+                    'blues': {0: 0, 3: 12},
+                }]},
+                102: {'name': 'Porter', 'type': 'transport', 'items': [None, {
+                    'model': 71, 'servername': 'ITEM_TRANSPORT', 'quantity': 5,
+                }]},
+                103: {'name': 'Companion', 'type': 'fellow', 'items': []},
+                104: {'name': 'Picker', 'type': 'pick'},
+            },
+        })['pets']
+        by_id = {pet['pet_id']: pet for pet in result['pets']}
+        self.assertEqual(by_id['101']['slots'][1]['source_slot'], 1)
+        self.assertEqual(by_id['101']['slots'][1]['item']['plus'], 0)
+        self.assertEqual(by_id['101']['slots'][1]['item']['durability'], 0)
+        blues = by_id['101']['slots'][1]['item']['api_fields']['blues']
+        self.assertEqual([entry['key'] for entry in blues['mapping_entries']], ['0', '3'])
+        self.assertEqual(by_id['102']['slots'][1]['source_slot'], 1)
+        self.assertEqual(by_id['102']['slots'][1]['item']['model'], 71)
+        self.assertEqual(by_id['103']['inventory_available'], True)
+        self.assertEqual(by_id['103']['slots'], [])
+        self.assertEqual(by_id['104']['inventory_available'], False)
+        self.assertNotIn('slots', by_id['104'])
+
     def test_party_normalization_rejects_malformed_nonfinite_and_out_of_range_coordinates(self):
         result = plugin.collect_resources(api={
             'get_party': lambda: {
@@ -1037,6 +1065,21 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['source'], 'vsro_1188_packet')
         self.assertEqual(resources['item_enrichment']['decoder_build'], 'vsro_1188_passive_r2')
         self.assertEqual(resources['item_enrichment']['observed_items'], 0)
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'not_observed')
+        self.assertEqual(resources['item_enrichment']['pet_inventory_decoder_build'],
+                         'disabled_runtime_layout_unverified')
+
+    def test_unverified_pet_operation_is_counted_without_capturing_packet_bytes(self):
+        tracker = plugin.PassiveItemTracker(capture_enabled=True)
+        tracker.enqueue(0xB034, b'private-packet-bytes')
+        resources = {'equipment': {'availability': 'observed', 'slots': []},
+                     'inventory': {'availability': 'observed', 'slots': []}}
+        tracker.decorate(resources, 'session-one')
+        self.assertEqual(resources['item_enrichment']['pet_inventory_packet_count'], 1)
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'runtime_layout_unverified')
+        capture = tracker.sanitized_capture()
+        self.assertEqual(capture['records'][0]['result'], 'pet_decoder_disabled')
+        self.assertNotIn('private-packet-bytes', json.dumps(capture))
 
     def test_queue_overflow_invalidates_all_item_instances(self):
         tracker = plugin.PassiveItemTracker()
@@ -1556,6 +1599,58 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, self.item(20))]))
         self.assertEqual(self.drain(), [])
 
+    def test_verified_pet_pickup_receipt_keeps_snapshot_and_delta_separate(self):
+        worker = self.worker
+        item = self.item(4)
+        receipt = {
+            'observation_id': 'session-fixture:seq-12:pet-1234:slot-3',
+            'sequence': '12', 'decoder_version': 'pet-fixture-v1',
+            'occurred_at': '2026-10-03T12:00:00Z',
+        }
+        position = {'region': 25273, 'x': 1.0, 'y': 2.0, 'z': 0.0}
+        self.assertTrue(worker._queue_verified_pet_pickup(
+            self.identity, item, 2, '1234', 3, receipt, position))
+        item['quantity'] = 99
+        event = worker._event_samples.get_nowait()
+        self.assertEqual(event['source'], 'joymax.pet_inventory')
+        self.assertEqual(event['source_ref'], '0xB034')
+        self.assertEqual(event['payload']['item']['quantity'], 4)
+        self.assertEqual(event['payload']['quantity_delta'], 2)
+        self.assertEqual(event['payload']['destination_container'],
+                         {'type': 'pets', 'id': '1234', 'slot': 3})
+        self.assertTrue(plugin._event_is_critical(event))
+        self.assertTrue(worker._queue_verified_pet_pickup(
+            self.identity, self.item(4), 2, '1234', 3, receipt, position))
+        retry = worker._event_samples.get_nowait()
+        self.assertEqual(retry['event_id'], event['event_id'])
+        self.assertEqual(retry['payload'], event['payload'])
+        worker.session_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.assertTrue(worker._queue_verified_pet_pickup(
+            self.identity, self.item(4), 2, '1234', 3, receipt, position))
+        next_session = worker._event_samples.get_nowait()
+        self.assertNotEqual(next_session['event_id'], event['event_id'])
+        self.assertNotEqual(next_session['dedupe_key'], event['dedupe_key'])
+
+    def test_pet_receipt_rejects_unbounded_or_nonpositive_delta(self):
+        invalids = [
+            (0, '1234', 0, {'observation_id': 'x', 'sequence': '1', 'decoder_version': 'fixture-v1'}),
+            (1, '', 0, {'observation_id': 'x', 'sequence': '1', 'decoder_version': 'fixture-v1'}),
+            (1, '1234', -1, {'observation_id': 'x', 'sequence': '1', 'decoder_version': 'fixture-v1'}),
+            (1, '1234', 0, {'observation_id': 'x', 'sequence': '0', 'decoder_version': 'fixture-v1'}),
+        ]
+        for quantity, pet_id, slot, evidence in invalids:
+            with self.subTest(quantity=quantity, pet_id=pet_id, slot=slot):
+                self.assertFalse(self.worker._queue_verified_pet_pickup(
+                    self.identity, self.item(1), quantity, pet_id, slot, evidence))
+        self.assertEqual(self.drain(), [])
+
+    def test_pet_receipt_requires_a_current_session(self):
+        self.worker.session_id = None
+        self.assertFalse(self.worker._queue_verified_pet_pickup(
+            self.identity, self.item(1), 1, '1234', 0,
+            {'observation_id': 'x', 'sequence': '1', 'decoder_version': 'fixture-v1'}))
+        self.assertEqual(self.drain(), [])
+
 
 class CanonicalCallbackTests(unittest.TestCase):
     def setUp(self):
@@ -1598,6 +1693,41 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(rare['item_model'], 77)
         self.assertNotIn('item', rare['payload'])
         self.assertEqual(normal['payload'], {'model': 78})
+
+    def test_verified_pet_pickup_receipt_replays_exactly_from_durable_spool(self):
+        evidence = {
+            'observation_id': 'session-fixture:sequence-19:pet-1234:slot-7',
+            'sequence': '19', 'decoder_version': 'simulator-pet-v1',
+            'occurred_at': '2026-10-03T12:00:00Z',
+        }
+        item = {'model': 847, 'servername': 'ITEM_TEST', 'quantity': 3, 'plus': 0}
+        self.assertTrue(self.worker._queue_verified_pet_pickup(
+            self.identity, item, 1, '1234', 7, evidence,
+            {'region': 25273, 'x': 1.0, 'y': 2.0, 'z': 0.0}))
+        frames = []
+        client = type('Client', (), {'send_json': lambda _, frame: frames.append(frame)})()
+        self.worker._flush_events(client)
+        original = frames[-1]['events'][0]
+        self.assertEqual(original['source'], 'joymax.pet_inventory')
+        self.assertEqual(original['payload']['quantity_delta'], 1)
+        self.assertEqual(original['payload']['item']['quantity'], 3)
+        self.assertEqual(len(plugin.DeathEventSpool(self.spool_path).pending()), 1)
+
+        replay_worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_test_token',
+            'death_spool_path': self.spool_path,
+        }, 'fixture')
+        retry_frames = []
+        replay_worker._flush_events(type(
+            'Client', (), {'send_json': lambda _, frame: retry_frames.append(frame)})())
+        self.assertEqual(retry_frames[0]['events'][0], original)
+        replay_worker._handle_server_message({
+            'type': 'event.batch.ack', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'results': [{'event_id': original['event_id'], 'status': 'persisted'}],
+        })
+        self.assertEqual(plugin.DeathEventSpool(self.spool_path).pending(), [])
 
     def test_canonical_event_captures_bounded_zone_for_observed_region(self):
         with patch.object(plugin, '_get_zone_name', return_value=' Jangan ') as get_zone:

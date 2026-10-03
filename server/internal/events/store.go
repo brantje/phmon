@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
@@ -56,6 +57,10 @@ var validEventSources = map[string]map[string]bool{
 	"phbot.alchemy_callback":   {"alchemy_update": true},
 	"phbot.state_diff":         {"party": true, "academy": true, "pet": true, "item_container": true},
 	"joymax.unique_notice":     {"0x300C": true},
+	// Pet inventory events are accepted only when the agent's versioned passive
+	// decoder supplies a complete operation receipt. Runtime decoding remains
+	// fail closed until matching phBot packet fixtures are verified.
+	"joymax.pet_inventory": {"0xB034": true},
 }
 
 type AgentDeath struct {
@@ -71,35 +76,38 @@ type AgentDeath struct {
 }
 
 type Event struct {
-	ID           string          `json:"event_id"`
-	Schema       int             `json:"schema_version"`
-	Kind         string          `json:"kind"`
-	Category     string          `json:"category"`
-	AgentID      string          `json:"agent_id"`
-	CharacterID  string          `json:"character_id"`
-	SessionID    string          `json:"session_id"`
-	Server       string          `json:"server"`
-	Character    string          `json:"character"`
-	OccurredAt   time.Time       `json:"occurred_at"`
-	ReceivedAt   time.Time       `json:"received_at"`
-	Source       string          `json:"source"`
-	SourceRef    string          `json:"source_ref"`
-	Region       *int            `json:"region,omitempty"`
-	Zone         string          `json:"zone,omitempty"`
-	X            *float64        `json:"x,omitempty"`
-	Y            *float64        `json:"y,omitempty"`
-	Z            *float64        `json:"z,omitempty"`
-	ModelID      *int64          `json:"model_id,omitempty"`
-	PortraitURL  string          `json:"portrait_url,omitempty"`
-	Payload      json.RawMessage `json:"payload"`
-	Sequence     *int64          `json:"sequence,omitempty"`
-	DedupeKey    string          `json:"dedupe_key,omitempty"`
-	ItemModel    *int64          `json:"item_model,omitempty"`
-	ItemCode     string          `json:"item_code,omitempty"`
-	ItemMetadata map[string]any  `json:"item_metadata,omitempty"`
-	ItemName     string          `json:"item_name,omitempty"`
-	ItemIconURL  string          `json:"item_icon_url,omitempty"`
-	Unique       *UniqueInfo     `json:"unique,omitempty"`
+	ID                   string          `json:"event_id"`
+	Schema               int             `json:"schema_version"`
+	Kind                 string          `json:"kind"`
+	Category             string          `json:"category"`
+	AgentID              string          `json:"agent_id"`
+	CharacterID          string          `json:"character_id"`
+	SessionID            string          `json:"session_id"`
+	Server               string          `json:"server"`
+	Character            string          `json:"character"`
+	OccurredAt           time.Time       `json:"occurred_at"`
+	ReceivedAt           time.Time       `json:"received_at"`
+	Source               string          `json:"source"`
+	SourceRef            string          `json:"source_ref"`
+	Region               *int            `json:"region,omitempty"`
+	Zone                 string          `json:"zone,omitempty"`
+	X                    *float64        `json:"x,omitempty"`
+	Y                    *float64        `json:"y,omitempty"`
+	Z                    *float64        `json:"z,omitempty"`
+	ModelID              *int64          `json:"model_id,omitempty"`
+	PortraitURL          string          `json:"portrait_url,omitempty"`
+	Payload              json.RawMessage `json:"payload"`
+	Sequence             *int64          `json:"sequence,omitempty"`
+	DedupeKey            string          `json:"dedupe_key,omitempty"`
+	ItemModel            *int64          `json:"item_model,omitempty"`
+	ItemCode             string          `json:"item_code,omitempty"`
+	ItemMetadata         map[string]any  `json:"item_metadata,omitempty"`
+	ItemDetails          map[string]any  `json:"item_details,omitempty"`
+	ItemDropClass        string          `json:"item_drop_class,omitempty"`
+	ItemDropClassVersion string          `json:"item_drop_class_version,omitempty"`
+	ItemName             string          `json:"item_name,omitempty"`
+	ItemIconURL          string          `json:"item_icon_url,omitempty"`
+	Unique               *UniqueInfo     `json:"unique,omitempty"`
 }
 
 // UniqueInfo is the catalog portrait attached when an event is read.
@@ -159,6 +167,7 @@ type Filter struct {
 	To                 *time.Time
 	Cursor             string
 	Limit              int
+	IncludePetPickups  bool
 }
 
 type Page struct {
@@ -180,9 +189,24 @@ type Cursor struct {
 	EventID    string
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool         *pgxpool.Pool
+	classifyDrop func(server string, model *int64, code string) (string, string)
+}
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+// SetDropClassifier installs the active server/profile classifier. A nil or
+// unknown result deliberately leaves the persisted classification NULL.
+func (s *Store) SetDropClassifier(classify func(server string, model *int64, code string) (string, string)) {
+	if s != nil {
+		s.classifyDrop = classify
+	}
+}
+
+func validDropFeed(filter Filter) bool {
+	return !filter.IncludePetPickups || (filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
+}
 
 func ValidKind(value string) bool {
 	if value == "" {
@@ -239,7 +263,7 @@ func (s *Store) AppendBatch(ctx context.Context, agentID string, incoming []Agen
 		if results[i].Status == "rejected" {
 			continue
 		}
-		inserted, duplicate, err := appendOne(ctx, tx, agentID, event)
+		inserted, duplicate, err := appendOne(ctx, tx, agentID, event, s.classifyDrop)
 		if errors.Is(err, ErrUnauthorizedSession) || errors.Is(err, ErrEventConflict) || errors.Is(err, ErrInvalidEvent) {
 			results[i].Status = "rejected"
 			results[i].Reason = "session_or_event_rejected"
@@ -469,7 +493,26 @@ func validateAgentEvent(event AgentEvent) error {
 		}
 		switch event.Kind {
 		case "item.acquired":
-			if !validContainerReference(fields.Destination) || fields.Acquisition != "unknown" {
+			if event.Source == "joymax.pet_inventory" {
+				var evidence struct {
+					ObservationID string `json:"observation_id"`
+					Sequence      string `json:"sequence"`
+					Decoder       string `json:"decoder_version"`
+				}
+				var destination struct {
+					Type string `json:"type"`
+					ID   string `json:"id"`
+					Slot *int   `json:"slot"`
+				}
+				if json.Unmarshal(object["packet_observation"], &evidence) != nil ||
+					json.Unmarshal(object["destination_container"], &destination) != nil ||
+					fields.Acquisition != "pet_pickup" || fields.QuantityDelta > 1000000000 || !validContainerReference(fields.Destination) ||
+					destination.Type != "pets" || destination.ID == "" || strings.ContainsFunc(destination.ID, unicode.IsControl) || destination.Slot == nil || *destination.Slot < 0 || *destination.Slot > 65535 ||
+					len(evidence.ObservationID) == 0 || len(evidence.ObservationID) > 160 || !positiveDecimal(evidence.Sequence) ||
+					len(evidence.Decoder) == 0 || len(evidence.Decoder) > 64 {
+					return fmt.Errorf("%w: pet acquisition lacks bounded packet evidence", ErrInvalidEvent)
+				}
+			} else if !validContainerReference(fields.Destination) || fields.Acquisition != "unknown" {
 				return fmt.Errorf("%w: acquisition lacks destination or uses unverified provenance", ErrInvalidEvent)
 			}
 		case "item.transferred":
@@ -515,6 +558,20 @@ func validContainerReference(value map[string]any) bool {
 	return true
 }
 
+func positiveDecimal(value string) bool {
+	if len(value) == 0 || len(value) > 20 {
+		return false
+	}
+	nonzero := false
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+		nonzero = nonzero || value[i] != '0'
+	}
+	return nonzero
+}
+
 func validKindSource(event AgentEvent) bool {
 	switch event.Source {
 	case "phbot.callback":
@@ -548,6 +605,8 @@ func validKindSource(event AgentEvent) bool {
 			}
 		}
 		return false
+	case "joymax.pet_inventory":
+		return event.Kind == "item.acquired" && event.SourceRef == "0xB034"
 	default:
 		return false
 	}
@@ -616,7 +675,7 @@ AND occurred_at BETWEEN $4 AND $5)`, event.Server, fields.Notice, fmt.Sprintf("%
 	return observed, err
 }
 
-func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent) (inserted, duplicate bool, err error) {
+func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent, classifyDrop func(string, *int64, string) (string, string)) (inserted, duplicate bool, err error) {
 	if event.Payload == nil {
 		event.Payload = json.RawMessage(`{}`)
 	}
@@ -698,8 +757,9 @@ func appendOne(ctx context.Context, tx pgx.Tx, agentID string, event AgentEvent)
 			return false, false, fmt.Errorf("create chat projection savepoint: %w", err)
 		}
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload,sequence,dedupe_key,item_model,item_code,zone_name)
-VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19,NULLIF($20,''))`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode), event.Zone)
+	itemDropClass, itemDropClassVersion := eventDropClassification(classifyDrop, event)
+	_, err = tx.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload,sequence,dedupe_key,item_model,item_code,zone_name,item_drop_class,item_drop_class_version)
+VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF($7,''),$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18,$19,NULLIF($20,''),NULLIF($21,''),NULLIF($22,''))`, event.ID, event.Kind, event.Category, agentID, event.CharacterID, event.SessionID, event.Server, event.OccurredAt.UTC(), event.Source, event.SourceRef, event.Region, event.X, event.Y, event.Z, string(event.Payload), event.Sequence, nullIfEmpty(event.DedupeKey), itemModel(event.ItemModel), nullIfEmpty(event.ItemCode), event.Zone, itemDropClass, itemDropClassVersion)
 	if err != nil {
 		return false, false, err
 	}
@@ -725,6 +785,22 @@ VALUES($1::uuid,1,$2,$3,$4::uuid,NULLIF($5,'')::uuid,NULLIF($6,'')::uuid,NULLIF(
 		}
 	}
 	return true, false, nil
+}
+
+func eventDropClassification(classifyDrop func(string, *int64, string) (string, string), event AgentEvent) (string, string) {
+	if event.Kind == "drop.rare" && event.Source == "phbot.callback" {
+		return "rare", "phbot-callback-v1"
+	}
+	if event.Kind == "drop.item" && event.Source == "phbot.callback" {
+		return "normal", "phbot-callback-v1"
+	}
+	if event.Kind == "item.acquired" && event.Source == "joymax.pet_inventory" && classifyDrop != nil {
+		class, version := classifyDrop(event.Server, event.ItemModel, event.ItemCode)
+		if (class == "normal" || class == "rare") && version != "" && len(version) <= 64 {
+			return class, version
+		}
+	}
+	return "", ""
 }
 
 func deferredBinding(payload json.RawMessage) string {
@@ -882,6 +958,9 @@ func DecodeCursor(value string) (Cursor, error) {
 }
 
 func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
+	if !validDropFeed(filter) {
+		return Page{}, errors.New("pet pickups may only be included in a normal or rare drop feed")
+	}
 	if filter.Limit < 1 || filter.Limit > MaxPageSize {
 		filter.Limit = 10
 	}
@@ -906,19 +985,20 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	}
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
-	AND ($3='' OR c.character_name ILIKE '%'||$3||'%') AND ($4='' OR e.kind=$4)
+	AND ($3='' OR c.character_name ILIKE '%'||$3||'%')
+		AND (($4='' OR e.kind=$4) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
 		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
-	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,'')
-		`+base+` AND ($12::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($12::timestamptz,$13::uuid))
-ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $14`, filter.Server, filter.CharacterID, filter.CharacterQuery,
-		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, cursorAt, cursorID, filter.Limit+1)
+	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,'')
+		`+base+` AND ($13::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($13::timestamptz,$14::uuid))
+ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $15`, filter.Server, filter.CharacterID, filter.CharacterQuery,
+		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, cursorAt, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list events: %w", err)
 	}
@@ -928,7 +1008,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $14`, filter.Server, filter.Ch
 		var summary AlchemySummary
 		var highest *int
 		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),max((e.payload->>'plus')::integer) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest
@@ -936,7 +1016,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $14`, filter.Server, filter.Ch
 	}
 	for rows.Next() {
 		var item Event
-		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID, &item.Zone); err != nil {
+		if err := rows.Scan(&item.ID, &item.Schema, &item.Kind, &item.Category, &item.AgentID, &item.CharacterID, &item.SessionID, &item.Server, &item.Character, &item.OccurredAt, &item.ReceivedAt, &item.Source, &item.SourceRef, &item.Region, &item.X, &item.Y, &item.Z, &item.Payload, &item.Sequence, &item.DedupeKey, &item.ItemModel, &item.ItemCode, &item.ModelID, &item.Zone, &item.ItemDropClass, &item.ItemDropClassVersion); err != nil {
 			return Page{}, err
 		}
 		page.Events = append(page.Events, item)

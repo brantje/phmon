@@ -18,8 +18,16 @@ const tabs = [
   },
   { label: 'Custom', key: 'custom', query: { category: 'custom' } },
   { label: 'Deaths', key: 'character.died', query: { kind: 'character.died' } },
-  { label: 'Rare Drops', key: 'drop.rare', query: { kind: 'drop.rare' } },
-  { label: 'Normal Drops', key: 'drop.item', query: { kind: 'drop.item' } },
+  {
+    label: 'Rare Drops',
+    key: 'drop.rare',
+    query: { kind: 'drop.rare', include_pet_pickups: 'true' },
+  },
+  {
+    label: 'Normal Drops',
+    key: 'drop.item',
+    query: { kind: 'drop.item', include_pet_pickups: 'true' },
+  },
   {
     label: 'Uniques',
     key: 'world.unique_spawned',
@@ -39,6 +47,12 @@ const filterKind = computed(() =>
 )
 const filterCategory = computed(() =>
   route.query.category === 'custom' ? 'custom' : undefined,
+)
+const includePetPickups = computed(
+  () =>
+    !filterCategory.value &&
+    (filterKind.value === 'drop.item' || filterKind.value === 'drop.rare') &&
+    route.query.include_pet_pickups !== 'false',
 )
 const activeTabLabel = computed(() => activeTab.value?.label ?? 'All')
 const pageTitle = computed(() =>
@@ -78,6 +92,10 @@ const itemTab = computed(
       'item.transferred',
     ].includes(filterKind.value || '') || activeTabLabel.value === 'All',
 )
+const dropFeed = computed(
+  () => filterKind.value === 'drop.item' || filterKind.value === 'drop.rare',
+)
+const rareDropFeed = computed(() => filterKind.value === 'drop.rare')
 const hasReliableMapLocation = (event: ActivityEvent) => {
   const profile = eventMapProfiles.value[event.server.toLowerCase()]
   return Boolean(
@@ -162,10 +180,22 @@ watch(
     itemQuery,
     filterKind,
     filterCategory,
+    includePetPickups,
     cursor,
     pageSize,
   ],
-  ([server, from, to, character, item, kind, category, pageCursor, size]) => {
+  ([
+    server,
+    from,
+    to,
+    character,
+    item,
+    kind,
+    category,
+    includePickups,
+    pageCursor,
+    size,
+  ]) => {
     if (from && to && from > to) {
       clearEventFeed(feedID)
       return
@@ -178,6 +208,7 @@ watch(
       item: itemTab.value ? item || undefined : undefined,
       kind: kind || undefined,
       category: category || undefined,
+      include_pet_pickups: includePickups || undefined,
       cursor: pageCursor || undefined,
       limit: size,
     })
@@ -270,6 +301,31 @@ function eventSummary(item: ActivityEvent) {
     default:
       return item.kind.replaceAll('.', ' ')
   }
+}
+function eventSourceLabel(item: ActivityEvent) {
+  if (item.kind === 'drop.item' || item.kind === 'drop.rare')
+    return 'Drop observed'
+  if (item.kind === 'item.acquired' && item.source === 'joymax.pet_inventory')
+    return 'Pet pickup'
+  return ''
+}
+function eventContainerDetail(item: ActivityEvent) {
+  if (item.source !== 'joymax.pet_inventory') return ''
+  const payload = record(item.payload)
+  const destination = record(payload.destination_container)
+  if (destination.type !== 'pets') return ''
+  const petID = typeof destination.id === 'string' ? destination.id : 'unknown'
+  const slot =
+    typeof destination.slot === 'number' ? destination.slot + 1 : null
+  const quantity =
+    typeof payload.quantity_delta === 'number' ? payload.quantity_delta : null
+  return [
+    `Pet ${petID}`,
+    slot === null ? '' : `slot ${slot}`,
+    quantity === null ? '' : `+${quantity}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 function eventItemName(item: ActivityEvent) {
   const payload = record(item.payload)
@@ -422,6 +478,99 @@ function localDateBoundary(value: string, addDays: number) {
           }}</span>
         </div>
       </div>
+      <div v-else-if="dropFeed" class="event-table-scroll">
+        <table class="event-table drop-event-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Time</th>
+              <th>Character</th>
+              <th>Location</th>
+              <th v-if="rareDropFeed">Map</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in page?.events || []" :key="item.event_id">
+              <td :class="{ 'rare-drop-event': item.kind === 'drop.rare' }">
+                <ItemDetailPopup
+                  v-if="itemRecordFromActivityEvent(item)"
+                  :item="itemRecordFromActivityEvent(item)!"
+                  :to="eventItemTarget(item)"
+                />
+                <span v-else>—</span>
+                <small v-if="eventSourceLabel(item)" class="event-origin">
+                  {{ eventSourceLabel(item) }}
+                  <template v-if="eventContainerDetail(item)">
+                    · {{ eventContainerDetail(item) }}
+                  </template>
+                </small>
+              </td>
+              <td>
+                <time :datetime="item.occurred_at">{{
+                  formatTimestamp(item.occurred_at)
+                }}</time>
+              </td>
+              <td>
+                <NuxtLink
+                  v-if="item.character_id"
+                  class="event-character-link"
+                  :to="`/characters/${item.character_id}`"
+                >
+                  <CharacterPortrait
+                    :name="item.character"
+                    :portrait-url="item.portrait_url"
+                    size="small"
+                  />
+                  {{ item.character }}
+                </NuxtLink>
+                <span v-else>{{ item.character || '—' }}</span>
+              </td>
+              <td>
+                {{ eventLocationText(item) }}
+                <NuxtLink
+                  v-if="!rareDropFeed && hasReliableMapLocation(item)"
+                  class="compact-button map-event-link"
+                  :to="eventMapTarget(item)"
+                  aria-label="Open event location on map"
+                >
+                  <UIcon name="i-lucide-map-pin" />
+                </NuxtLink>
+              </td>
+              <td v-if="rareDropFeed">
+                <NuxtLink
+                  v-if="hasReliableMapLocation(item)"
+                  class="compact-button map-event-link"
+                  :to="eventMapTarget(item)"
+                  aria-label="Open event location on map"
+                >
+                  <UIcon name="i-lucide-map-pin" />
+                </NuxtLink>
+                <button
+                  v-else
+                  class="compact-button map-event-link"
+                  type="button"
+                  disabled
+                  title="Map transforms are not yet validated for this region"
+                >
+                  <UIcon name="i-lucide-map-pin" />
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="!page?.events.length" class="event-empty-state">
+          <strong>{{
+            connectionState === 'current'
+              ? 'No events found'
+              : 'Loading event history'
+          }}</strong>
+          <span>{{
+            connectionState === 'current'
+              ? 'No events match this server, character, item and date range.'
+              : 'Waiting for a current event snapshot.'
+          }}</span>
+        </div>
+      </div>
       <div v-else class="event-table-scroll">
         <table class="event-table">
           <thead>
@@ -442,7 +591,13 @@ function localDateBoundary(value: string, addDays: number) {
                 }}</time>
               </td>
               <td :class="{ 'rare-drop-event': item.kind === 'drop.rare' }">
-                {{ eventSummary(item) }}
+                <span>{{ eventSummary(item) }}</span>
+                <small v-if="eventSourceLabel(item)" class="event-origin">
+                  {{ eventSourceLabel(item) }}
+                  <template v-if="eventContainerDetail(item)">
+                    · {{ eventContainerDetail(item) }}
+                  </template>
+                </small>
               </td>
               <td>
                 <NuxtLink

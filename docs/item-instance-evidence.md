@@ -244,3 +244,29 @@ read-only blocker. A temporary 1440×1000 browser viewport could be applied to t
 reference tab, but not to the deployed PhMon tab; the displayed captures are
 therefore not a same-viewport acceptance comparison. No current plugin/browser
 reload, character action or item operation was performed to force fresh data.
+
+## Pet item-detail and pickup evidence — 2026-10-03
+
+| Path | Current implementation | Evidence boundary |
+| --- | --- | --- |
+| Pet membership and slots | `get_pets()` continues to define current pet IDs, type, provided inventory, occupied slots and basic item facts. Pet item rows share the existing resource persistence and item resolver. | Operator reports phBot 20.1.2/plugin 1.9.12/protocol 13 and a Pick pet with 56 slots/five basic items. No sanitized raw object is checked in. Missing inventory, empty inventory, unavailable observations, stale retained rows and basic contents awaiting detail remain distinct. |
+| Item detail merge | Resource and event item details merge verified fields individually. Ordered blue values retain duplicates and zeros; API and packet conflicts are not silently replaced. Historical event snapshots are enriched from the saved occurrence without reading current item state. | Go resource tests cover active-profile rarity classification, API/packet partial merges, duplicate blue options and immutable historical payloads. Numeric option meanings, unsupported family formulas and max durability remain unavailable without evidence. |
+| Pet packet layouts | Workspace plugin **1.9.13** / protocol **14** reports `disabled_runtime_layout_unverified`; `0xB034` observations invalidate packet enrichment and diagnostics expose bounded counts without bytes. No decoder attaches pet detail. | `0x30C8`/`0xB034` layouts are not verified against the installed runtime. Pinned RSBot code is corroboration only. There are no sanitized runtime packet fixtures; Pick, Transport, Fellow and other reported types have not been separately verified. |
+| Pickup event contract | The worker helper freezes the item snapshot and carries pet ID/slot, positive quantity delta, packet observation ID/sequence and decoder version through the durable exact-retry spool. Go validates protocol-14 `item.acquired` source semantics. | Tests cover receipt bounds, frozen snapshots and retry behavior. Production decoding is gated off, so no runtime pickup receipt is currently emitted; startup snapshots and state differences do not become pet-pickup events. |
+| Normal/Rare feeds | Migration `000022` stores nullable profile-derived classification/version. REST and live filters include classified pet receipts only on explicit opt-in for Normal/Rare feeds, before count/pagination. The UI opts in on both drop tabs; unknown class remains in All. | Disposable PostgreSQL integration verifies callback rows plus rare/normal/unknown pet records, combined counts, cursor pagination and filter rejection outside the two feeds. It uses synthetic test identities and is not a real pickup. |
+
+The current browser check shows the existing Pet tab rendering a mounted Horse with
+an explicitly empty inventory and a Pick inventory with two occupied slots, 56
+reported slots, owner/type/ID and pending detail status. At 1440×1000, 1280×800 and
+390×844 there was no document-width overflow and no browser console error. A later
+connection recovery gap left event rows in the intentional loading state, so the
+combined row contents are evidenced by the disposable PostgreSQL test, not by that
+browser feed capture. The public demo's 2026-10-03 Rare Drops table exposes Item,
+Time, Character, Location and Map; Normal Drops exposes Item, Time, Character and
+Location. The demo's Stats view had no character and therefore did not expose a Pet
+tab for fresh comparison. The historical supplied Stats capture remains the layout
+baseline. The screenshots from this task were stored under `/tmp` and are not added
+to the repository because they contain live local character/item data.
+
+Full detailed inventory and pickup acceptance remains open until matching Windows/
+phBot packet evidence and naturally observed pickup/retry behavior are verified.

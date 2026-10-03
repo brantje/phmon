@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useId } from 'vue'
-import type { CharacterView } from '~~/shared/types/live'
+import type { CharacterView, PetInventoryRecord } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
 
 const props = defineProps<{
@@ -54,7 +54,7 @@ const freshness = computed(() => {
 })
 const pets = computed(() => {
   const list = payload('pets').pets
-  return Array.isArray(list) ? (list as Record<string, unknown>[]) : []
+  return Array.isArray(list) ? (list as PetInventoryRecord[]) : []
 })
 const partyMembers = computed(() => {
   const list = payload('party').members
@@ -94,7 +94,7 @@ function available(key: string) {
 function itemSlots(value: unknown) {
   return Array.isArray(value) ? value : []
 }
-function petLabel(pet: Record<string, unknown>) {
+function petLabel(pet: PetInventoryRecord) {
   const type = typeof pet.type === 'string' ? pet.type : 'unknown'
   const labels: Record<string, string> = {
     wolf: 'Attack',
@@ -106,6 +106,33 @@ function petLabel(pet: Record<string, unknown>) {
     labels[type.toLowerCase()] ||
     (type === 'horse' ? 'Horse' : `Other · ${type}`)
   )
+}
+function petDetailStatus(pet: PetInventoryRecord) {
+  if (pet.inventory_available !== true || !Array.isArray(pet.slots))
+    return 'No pet inventory was supplied in this observation.'
+  const items = (pet.slots as unknown[]).flatMap((row) => {
+    if (!row || typeof row !== 'object' || !('item' in row)) return []
+    const item = (row as { item?: unknown }).item
+    return item && typeof item === 'object'
+      ? [item as Record<string, unknown>]
+      : []
+  })
+  if (items.length === 0)
+    return 'No items currently occupy this supplied inventory.'
+  const detailed = items.filter((item) => {
+    const details = item.instance_details
+    return (
+      !!details &&
+      typeof details === 'object' &&
+      (details as Record<string, unknown>).status === 'partial'
+    )
+  }).length
+  if (detailed)
+    return `${detailed} item${detailed === 1 ? '' : 's'} include interpreted instance details.`
+  const raw = items.some((item) => item.api_fields || item.instance)
+  return raw
+    ? 'Instance evidence is present, but its detail interpretation is still pending.'
+    : 'Current slots show basic item facts; detailed attributes await verified API or packet evidence.'
 }
 function memberNumber(member: Record<string, unknown>, key: string) {
   const value = member[key]
@@ -484,8 +511,20 @@ onBeforeUnmount(() => {
           ><span v-if="pet.mounted === true">Mounted</span>
         </div>
         <p>
+          Owner: {{ character.name }} · Pet ID:
+          {{ String(pet.pet_id || 'unknown') }} ·
+          {{
+            pet.inventory_available === true && Array.isArray(pet.slots)
+              ? `${pet.slots.length} inventory slots from get_pets()`
+              : 'inventory not supplied'
+          }}
+        </p>
+        <p>
           Reported type: {{ String(pet.type || 'unknown') }} · HP
           {{ pet.hp == null ? '—' : String(pet.hp) }}
+        </p>
+        <p class="pet-detail-status" role="status">
+          {{ petDetailStatus(pet) }}
         </p>
         <InventoryGrid
           v-if="pet.inventory_available === true && Array.isArray(pet.slots)"

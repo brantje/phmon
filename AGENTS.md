@@ -5370,3 +5370,52 @@ notice for 15 seconds and attaches catalog name, level and portrait on read.
 Events Uniques and Dashboard recent activity render that portrait. Catalog HP
 is not in the exported monster reference, so the card does not show HP. No
 plugin was loaded into phBot and no character was operated.
+
+### Resume — 2026-10-03 pet inventory details and Normal/Rare drop feeds
+
+Completed the implementable Pet and Events work from the operator's request. Pet
+resource rows now expose typed inventory/detail availability and preserve the
+existing authenticated resource persistence; shared item resolution merges
+verified fields individually and enriches immutable historical occurrence
+snapshots. The Pet tab shows owner, pet identity/type, source, API slot count,
+occupied inventory and empty/missing/pending/stale states. Normal/Rare tabs opt in
+to verified pet pickup rows and render the reference's per-tab column order with
+source, pet slot and observed quantity details.
+
+The workspace plugin is **1.9.13** / protocol **14**. Receipt validation, immutable snapshot
+capture and durable exact retry are implemented, but production pet packet decoding
+remains disabled as `disabled_runtime_layout_unverified`. The operator-provided
+phBot 20.1.2 / plugin 1.9.12 / protocol 13 Pick observation had 56 slots and five
+basic items without plus, whites or blues. No sanitized `get_pets()` payload or
+matching naturally arriving `0x30C8`/`0xB034` bytes were available. Do not infer a
+packet layout or claim detailed packet stats/pet-pickup emissions from the pinned
+RSBot handlers or synthetic tests. Protocol-14 receipt tests exercise only the
+future verified-decoder contract.
+
+Files affected: `plugin/{PhMon.py,test_phmon.py}`; Go event validation/storage,
+HTTP/live filters, item metadata enrichment, startup wiring and migration
+`000022_pet_pickup_classification.sql`; frontend shared types, event/character
+components, item popup, CSS and tests; `docs/{phbot-capabilities,
+item-instance-evidence,reference-parity}.md`; this ledger.
+
+Validation: 167 plugin tests; 5 protocol-contract tests and the live transport
+audit; Go events/resources/HTTP/server tests; the new pet
+pickup/classification/count/cursor test and other event/resource/HTTP integration
+tests against a disposable PostgreSQL database; 177 frontend unit tests; Nuxt
+typecheck; lint (0 errors, 67 warnings); production build; `git diff --check`.
+Public demo inspection confirmed Rare Drops columns Item/Time/Character/Location/Map
+and Normal Drops columns Item/Time/Character/Location. Local browser checks rendered
+Pet and both drop screens at 1440×1000, 1280×800 and 390×844 with no horizontal
+document overflow or console errors. The demo Stats screen had no character to
+inspect the Pet tab. The local event stream was reconnecting during the last browser
+pass, so row provenance and pagination are verified by Go/PostgreSQL tests rather
+than live browser data. No real phBot action, plugin upload, deployment, merge or
+third-party notification was performed.
+
+Exact next action: collect sanitized current `get_pets()` objects and naturally
+arriving `0x30C8`/`0xB034` packet fixtures for Pick, Transport, Fellow and every
+other inventory-bearing type on supported runtime/protocol versions. Verify packet
+branch/alignment and exact pet-to-bag quantity deltas against independent API
+observations, then implement only those proven layouts and complete real
+PostgreSQL/API/UI restart-and-retry acceptance. Until that evidence is available,
+detailed pet packet values and production pickup receipts remain unimplemented.

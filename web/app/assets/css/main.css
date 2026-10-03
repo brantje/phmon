@@ -2174,6 +2174,20 @@ select:focus-visible {
   font-size: 11px;
 }
 
+.drop-event-table {
+  min-width: 620px;
+}
+
+.drop-event-table td {
+  height: auto;
+  min-height: 48px;
+  white-space: normal;
+}
+
+.drop-event-table td:first-child {
+  min-width: 210px;
+}
+
 .event-table thead {
   background: linear-gradient(180deg, #222a34, #171e28);
   color: #d8d5c1;
@@ -2192,6 +2206,13 @@ select:focus-visible {
   padding: 6px 8px;
   color: #cbd5e3;
   white-space: nowrap;
+}
+
+.event-origin {
+  display: block;
+  margin-top: 3px;
+  color: #aebbd0;
+  font-size: 0.64rem;
 }
 
 .event-character-link {
@@ -2596,6 +2617,11 @@ select:focus-visible {
   color: #f1f4fa;
   font-size: 0.84rem;
 }
+.item-tooltip-provenance {
+  overflow-wrap: anywhere;
+  color: #aab7ca;
+  font-size: 0.62rem;
+}
 .item-tooltip-seal {
   color: #ffd76b;
   font-weight: 700;
@@ -2800,6 +2826,9 @@ select:focus-visible {
   margin: 0.35rem 0 0.5rem;
   color: #929fb2;
   font-size: 0.68rem;
+}
+.pet-card .pet-detail-status {
+  color: #c3bd9e;
 }
 .party-view,
 .academy-view {

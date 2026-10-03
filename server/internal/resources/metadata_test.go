@@ -179,6 +179,83 @@ func TestSharedSROItemMetadataFallbackUsesItemCodeAcrossServers(t *testing.T) {
 	}
 }
 
+func TestItemDropClassificationRequiresExplicitProfileRarity(t *testing.T) {
+	metadata := &ItemMetadata{
+		Servers: map[string]string{"greatest": "gamedata-test"},
+		Catalogs: map[string]ItemCatalog{"gamedata-test": {Items: map[string]ItemDefinition{
+			"847": {Code: "ITEM_RARE", Presentation: map[string]any{"rare": true}},
+			"848": {Code: "ITEM_NORMAL", Presentation: map[string]any{"rare": false}},
+			"849": {Code: "ITEM_UNKNOWN", Presentation: map[string]any{"name": "Unknown"}},
+		}}},
+	}
+	model := int64(847)
+	if class, version := metadata.ItemDropClassification("Greatest", &model, "ITEM_RARE"); class != "rare" || version != "item-profile-rarity-v1" {
+		t.Fatalf("rare class = %q, %q", class, version)
+	}
+	model = 848
+	if class, _ := metadata.ItemDropClassification("Greatest", &model, "ITEM_NORMAL"); class != "normal" {
+		t.Fatalf("normal class = %q", class)
+	}
+	model = 849
+	if class, version := metadata.ItemDropClassification("Greatest", &model, "ITEM_UNKNOWN"); class != "" || version != "" {
+		t.Fatalf("missing rarity should remain unknown, got %q %q", class, version)
+	}
+	model = 847
+	if class, _ := metadata.ItemDropClassification("Unmapped", &model, "ITEM_RARE"); class != "" {
+		t.Fatalf("unmapped server class = %q", class)
+	}
+}
+
+func TestEnrichHistoricalItemRecordAndMergePartialEvidence(t *testing.T) {
+	metadata := &ItemMetadata{
+		Servers: map[string]string{"greatest": "gamedata-test"},
+		Catalogs: map[string]ItemCatalog{"gamedata-test": {Items: map[string]ItemDefinition{
+			"847": {Code: "ITEM_TEST", Presentation: map[string]any{"name": "Test Necklace", "rare": false, "type_ids": []any{json.Number("3"), json.Number("1"), json.Number("5"), json.Number("0")}}},
+		}}},
+		SharedPresentations: map[string]map[string]any{},
+		SharedMagicOptions:  map[string]MagicOptionDefinition{},
+	}
+	item := map[string]any{
+		"model": 847, "servername": "ITEM_TEST", "quantity": 2,
+		"api_evidence_version": 2,
+		"api_fields":           map[string]any{"blues": map[string]any{}},
+		"api_field_types":      map[string]any{"blues": map[string]any{"type": "dict", "count": 0}},
+	}
+	enriched := metadata.EnrichItemRecord("Greatest", item)
+	if enriched["quantity"] != float64(2) || enriched["metadata"].(map[string]any)["name"] != "Test Necklace" {
+		t.Fatalf("historical item snapshot lost source or profile fields: %+v", enriched)
+	}
+	if details, ok := enriched["instance_details"].(map[string]any); !ok || details["source"] != "phbot_api" {
+		t.Fatalf("API evidence was not resolved on the event snapshot: %+v", enriched)
+	}
+
+	api := map[string]any{
+		"source": "phbot_api", "percentages": []any{map[string]any{"key": "durability", "value": 50}},
+		"blues": []any{}, "blues_status": "not_observed", "absolute_stats_status": "unavailable",
+	}
+	packet := map[string]any{
+		"source": "vsro_1188_packet", "percentages": []any{map[string]any{"key": "phy_def_pwr", "value": 70}},
+		"blues": []any{map[string]any{"id": "1", "raw_value": "0"}}, "blues_status": "partial",
+	}
+	merged := mergeItemDetails(api, packet)
+	if len(merged["percentages"].([]any)) != 2 || len(merged["blues"].([]any)) != 1 || len(merged["sources"].([]any)) != 2 {
+		t.Fatalf("partial evidence was not merged by field: %+v", merged)
+	}
+	apiBlues := []any{
+		map[string]any{"id": "1", "raw_value": "0", "label": "Option 1", "label_verified": false},
+		map[string]any{"id": "1", "raw_value": "0", "label": "Option 1", "label_verified": false},
+	}
+	packetBlues := []any{
+		map[string]any{"id": "1", "raw_value": "0", "label": "Option 1"},
+		map[string]any{"id": "1", "raw_value": "0", "label": "Option 1"},
+		map[string]any{"id": "2", "raw_value": "5", "label": "Option 2"},
+	}
+	blueUnion, _ := mergeBlueRows(apiBlues, packetBlues)
+	if len(blueUnion) != 3 {
+		t.Fatalf("merged blue rows did not preserve duplicate counts and packet-only options: %+v", blueUnion)
+	}
+}
+
 func TestReferenceStatCatalogValidation(t *testing.T) {
 	if !validReferenceStats(map[string]any{
 		"phy_def_pwr": map[string]any{"min": "50", "max": "60", "increment": "1.25"},

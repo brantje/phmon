@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.12'
+pVersion = '1.9.13'
 pUrl = ''
 
-PROTOCOL_VERSION = 13
+PROTOCOL_VERSION = 14
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -109,6 +109,7 @@ MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # decoded item fields only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
+PET_INVENTORY_DECODER_BUILD = 'disabled_runtime_layout_unverified'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -1612,6 +1613,7 @@ class PassiveItemTracker(object):
         self._capture_records = []
         self._capture_bytes = 0
         self.capture_overflow = False
+        self._pet_packet_count = 0
 
     def enqueue(self, opcode, data):
         if opcode not in self.ALLOWED_OPCODES:
@@ -1652,6 +1654,7 @@ class PassiveItemTracker(object):
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
+        self._pet_packet_count = 0
         if protocol is not None:
             self._protocol = protocol
         with self._lock:
@@ -1699,8 +1702,11 @@ class PassiveItemTracker(object):
     def _process(self, opcode, payload):
         self._sequence += 1
         if opcode == 0xB034:
+            self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
             self._invalidate('inventory_operation_unclassified')
-            self._capture({'opcode': '0xB034', 'sequence': str(self._sequence), 'result': 'invalidated'})
+            self._capture({'opcode': '0xB034', 'sequence': str(self._sequence),
+                           'result': 'pet_decoder_disabled',
+                           'decoder_build': PET_INVENTORY_DECODER_BUILD})
             return
         try:
             parsed = parse_item_stats_update(payload) if opcode == 0x3040 else parse_item_durability_update(payload)
@@ -1804,6 +1810,10 @@ class PassiveItemTracker(object):
             'observed_items': attached,
             'reason': None if attached else self._last_invalidation,
             'capture_overflow': self.capture_overflow,
+            'pet_inventory_decoder_build': PET_INVENTORY_DECODER_BUILD,
+            'pet_inventory_packet_count': self._pet_packet_count,
+            'pet_inventory_status': (
+                'runtime_layout_unverified' if self._pet_packet_count else 'not_observed'),
         }
         return resources
 
@@ -3056,6 +3066,71 @@ class AgentWorker(object):
     def capture_joymax_packet(self, opcode, data):
         """Copy only allowlisted packets; decoding is performed by the network worker."""
         return self._item_tracker.enqueue(opcode, data)
+
+    def _queue_verified_pet_pickup(self, identity, item, quantity_delta, pet_id,
+                                  source_slot, packet_observation, position=None):
+        """Queue a receipt emitted only by a validated pet operation reconciler."""
+        if (self._current_identity is None or not isinstance(identity, dict) or
+                self._identity_key(identity) != self._identity_key(self._current_identity) or
+                not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id) or
+                not isinstance(item, dict) or not _item_has_identity(item) or
+                not isinstance(quantity_delta, int) or isinstance(quantity_delta, bool) or
+                quantity_delta <= 0 or quantity_delta > 1000000000 or
+                not isinstance(pet_id, str) or not pet_id or len(pet_id) > 64 or
+                not isinstance(source_slot, int) or isinstance(source_slot, bool) or
+                source_slot < 0 or source_slot > 65535 or
+                not isinstance(packet_observation, dict)):
+            return False
+        observation_id = packet_observation.get('observation_id')
+        sequence = packet_observation.get('sequence')
+        decoder = packet_observation.get('decoder_version')
+        if (not isinstance(observation_id, str) or not observation_id or len(observation_id) > 160 or
+                not isinstance(sequence, str) or not sequence.isdigit() or not sequence.strip('0') or
+                len(sequence) > 20 or not isinstance(decoder, str) or not decoder or len(decoder) > 64):
+            return False
+        try:
+            snapshot = json.loads(json.dumps(item, separators=(',', ':'), ensure_ascii=False))
+            payload = {
+                'item': snapshot,
+                'quantity_delta': quantity_delta,
+                'destination_container': {'type': 'pets', 'id': pet_id, 'slot': source_slot},
+                'acquisition_method': 'pet_pickup',
+                'packet_observation': {
+                    'observation_id': observation_id,
+                    'sequence': sequence,
+                    'decoder_version': decoder,
+                },
+            }
+            if len(json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8')) > MAX_EVENT_PAYLOAD_BYTES:
+                return False
+        except Exception:
+            return False
+        model = item.get('model')
+        code = item.get('servername')
+        session = self.session_id
+        stable_identity = session + ':' + observation_id
+        event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'phmon:pet-pickup:' + stable_identity))
+        event = {
+            'event_id': event_id, 'schema_version': 1,
+            'kind': 'item.acquired', 'category': 'item',
+            'occurred_at': packet_observation.get('occurred_at') or _worker_utc_now(self),
+            'source': 'joymax.pet_inventory', 'source_ref': '0xB034',
+            'payload': payload,
+            'dedupe_key': 'pet-pickup:' + hashlib.sha256(stable_identity.encode('utf-8')).hexdigest(),
+        }
+        if isinstance(model, int) and not isinstance(model, bool) and model >= 0:
+            event['item_model'] = model
+        if isinstance(code, str) and code:
+            event['item_code'] = code[:128]
+        if isinstance(position, dict):
+            region = position.get('region')
+            if _valid_position_region(region):
+                event['region'] = region
+            for axis in ('x', 'y', 'z'):
+                value = position.get(axis)
+                if _number(value) and abs(value) <= 1000000:
+                    event[axis] = float(value)
+        return self.queue_event(identity, event)
 
     def queue_death_event(self, identity, event):
         if isinstance(event, dict):
@@ -4598,7 +4673,10 @@ _CRITICAL_EVENT_KINDS = (
 
 
 def _event_is_critical(item):
-    return isinstance(item, dict) and item.get('kind') in _CRITICAL_EVENT_KINDS
+    return isinstance(item, dict) and (
+        item.get('kind') in _CRITICAL_EVENT_KINDS or
+        (item.get('kind') == 'item.acquired' and item.get('source') == 'joymax.pet_inventory')
+    )
 
 
 def _unique_notice(opcode, data):

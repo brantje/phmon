@@ -1372,3 +1372,54 @@ true/false audited results plus an unsupported skipped target. These tests do no
 validate native Windows/phBot behavior. Runtime gate remains: load 1.9.11 against
 a protocol-13 backend, verify available primitive/modes and current party readback,
 then perform an operator-authorized scroll attempt and observe its result/position.
+
+## Pet inventory details and pickup source — 2026-10-03
+
+The official [Pets API](https://plugins.phbot.org/phbot-api/pets) documents
+`get_pets()` as the authority for current pet IDs, type, basic state and supplied
+item lists. It does not document richer per-instance fields or a packet layout.
+The official [`get_item(id)` API](https://plugins.phbot.org/phbot-api/game-data)
+provides static item definitions, not current plus, durability, whites, blues or
+rolled combat values. The official [event API](https://plugins.phbot.org/phbot-api/events)
+documents drop callbacks with a model ID only; those callbacks cannot be correlated
+to a pet pickup.
+
+The operator-provided current runtime report is phBot **20.1.2**, plugin **1.9.12**,
+agent protocol **13**. Its Pick pet reported 56 slots and five items, including two
+necklaces; those API rows did not expose plus, whites or blues. This confirms a real
+API-backed inventory and a missing-detail need, but no sanitized raw API payload or
+matching pet packet bytes were available in this task. The same API contract applies
+to Pick, Transport, Fellow and other types only where that runtime supplies `items`;
+no family-specific packet layout is inferred from the shared field name.
+
+Pinned RSBot handlers support investigating Joymax `0x30C8` as a pet data response
+and `0xB034` as item operations, but are corroboration only, not evidence for the
+installed phBot protocol. Pet snapshot and operation decoding therefore remain
+disabled in production. The workspace plugin **1.9.13** / protocol **14** reports the disabled
+build identifier and bounded `0xB034` count; the callback still queues only
+allowlisted observations for the worker and invalidates affected packet enrichment.
+No packet bytes or item payloads are exposed by diagnostics. API slots remain
+persisted separately as basic facts.
+
+The protocol-14 event validator accepts `joymax.pet_inventory` only for bounded,
+positive `item.acquired` pet receipts carrying pet/slot destination and packet
+observation identity. A validated worker helper freezes the item snapshot, hashes a
+stable dedupe identity and enters the existing durable spool. No production parser
+emits such receipts until a matching runtime fixture verifies packet branch, item
+identity and delta semantics. Snapshot differences remain unknown-source acquisition
+records and do not enter drop feeds as pet pickups.
+
+Backend migration `000022` stores optional profile-derived normal/rare classification
+and version. REST and live feed inclusion is opt-in and valid only for Normal or Rare
+Drops with no category filter. It defaults off for existing clients. PhMon's two
+drop tabs explicitly opt in, including legacy side-navigation URLs without the query
+flag. Unknown classification remains in All. Callback drop classification retains
+its existing observed callback kind.
+
+Source references: [pinned RSBot pet response](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Cos/CosDataResponse.cs)
+and [pinned inventory operations](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryOperationResponse.cs).
+Required next evidence: sanitized `get_pets()` objects with missing/zero/empty
+distinctions and captured naturally arriving `0x30C8`/`0xB034` bytes from each
+supported pet family and runtime protocol, followed by natural, exactly observed
+pet-to-bag comparisons. Until then, detailed packet stats and live pickup receipts
+are explicit runtime blockers.
