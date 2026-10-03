@@ -61,7 +61,8 @@ import {
 } from '~/utils/mapZoom'
 import { mapCharacterClusters } from '~/utils/mapCharacterClusters'
 import { interpolateMarkerPosition } from '~/utils/mapMarkerAnimation'
-import { guideCellOneSquareDown } from '~/utils/guideCells'
+import { displayedGuideCells } from '~/utils/guideCells'
+import { paddedMapPanBounds } from '~/utils/mapPanBounds'
 
 interface MapCanvasMarker {
   id: string
@@ -202,6 +203,28 @@ function indexAt(position: LatLng) {
     props.profile.tiles,
     position.lat,
     position.lng,
+  )
+}
+
+function rasterContentBounds() {
+  const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
+  const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
+  return { south: -rows * 256, west: 0, north: 0, east: columns * 256 }
+}
+
+function syncPanBounds() {
+  if (!map || !leaflet) return
+  const size = map.getSize()
+  const padded = paddedMapPanBounds(
+    rasterContentBounds(),
+    { width: size.x, height: size.y },
+    2 ** map.getZoom(),
+  )
+  map.setMaxBounds(
+    leaflet.latLngBounds(
+      leaflet.latLng(padded.south, padded.west),
+      leaflet.latLng(padded.north, padded.east),
+    ),
   )
 }
 
@@ -1310,15 +1333,6 @@ function tileRectangle(cell: {
   return leaflet!.latLngBounds([south, west], [north, east])
 }
 
-function referenceCellBounds(cell: {
-  x: number
-  y: number
-  width: number
-  height: number
-}) {
-  return tileRectangle(guideCellOneSquareDown(cell))
-}
-
 function referencePopup(
   rows: Array<{ name: string; code: string; level?: number }>,
   kind: 'area' | 'point',
@@ -1359,34 +1373,51 @@ function syncMonsterReferences() {
   referenceLabelLayer.clearLayers()
   referencePointLayer.clearLayers()
   const areas = props.referenceAreas || []
-  for (const area of areas) {
-    for (const cell of area.cells) {
-      L.rectangle(referenceCellBounds(cell), {
-        color: '#e4dba8',
-        weight: 1,
-        opacity: 0.42,
-        fillColor: '#fef6c3',
-        fillOpacity: 0.18,
-        interactive: true,
+  const indexed = areas.flatMap((area) =>
+    area.cells.map((cell) => ({ area, cell })),
+  )
+  const displayed = displayedGuideCells(
+    indexed.map((item) => item.cell),
+    {
+      minX: props.profile.tiles.min_x,
+      maxX: props.profile.tiles.max_x,
+      minY: props.profile.tiles.min_y,
+      maxY: props.profile.tiles.max_y,
+      guideOriginY: props.profile.guide_origin_y,
+    },
+  )
+  const drawn = indexed.map((item, index) => ({
+    area: item.area,
+    cell: displayed[index]!,
+  }))
+  for (const item of drawn) {
+    L.rectangle(tileRectangle(item.cell), {
+      color: '#e4dba8',
+      weight: 1,
+      opacity: 0.42,
+      fillColor: '#fef6c3',
+      fillOpacity: 0.18,
+      interactive: true,
+    })
+      .bindPopup(referencePopup([item.area], 'area'), {
+        className: 'phmon-map-popup phmon-monster-reference-frame',
+        maxWidth: 280,
       })
-        .bindPopup(referencePopup([area], 'area'), {
-          className: 'phmon-map-popup phmon-monster-reference-frame',
-          maxWidth: 280,
-        })
-        .addTo(referenceAreaLayer)
-    }
+      .addTo(referenceAreaLayer)
   }
-  const labelCandidates = areas
-    .flatMap((area) =>
-      area.cells.map((cell) => {
-        const placed = guideCellOneSquareDown(cell)
-        const center = L.latLng(
-          -(props.profile.tiles.max_y - placed.y - placed.height / 2 + 1) * 256,
-          (placed.x - props.profile.tiles.min_x + placed.width / 2) * 256,
-        )
-        return { area, center, pixel: map!.latLngToContainerPoint(center) }
-      }),
-    )
+  const labelCandidates = drawn
+    .map((item) => {
+      const placed = item.cell
+      const center = L.latLng(
+        -(props.profile.tiles.max_y - placed.y - placed.height / 2 + 1) * 256,
+        (placed.x - props.profile.tiles.min_x + placed.width / 2) * 256,
+      )
+      return {
+        area: item.area,
+        center,
+        pixel: map!.latLngToContainerPoint(center),
+      }
+    })
     .filter(
       ({ pixel }) =>
         pixel.x >= -130 &&
@@ -1510,11 +1541,10 @@ onMounted(async () => {
   makePolyline = L.polyline
   makeRouteCircle = L.circleMarker
   heatRenderer = L.canvas({ padding: 0.5 })
-  const rows = props.profile.tiles.max_y - props.profile.tiles.min_y + 1
-  const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
+  const content = rasterContentBounds()
   const bounds = L.latLngBounds(
-    L.latLng(-rows * 256, 0),
-    L.latLng(0, columns * 256),
+    L.latLng(content.south, content.west),
+    L.latLng(content.north, content.east),
   )
   map = L.map(element.value, {
     crs: L.CRS.Simple,
@@ -1836,6 +1866,7 @@ onMounted(async () => {
   map.on('movestart zoomstart', () => {
     viewAdjusted = true
   })
+  map.on('zoomend', syncPanBounds)
   map.on('zoomend', snapZoomToPercentStep)
   map.on('zoomend', layoutTrainingLabels)
   map.on('moveend zoomend', publishView)
@@ -1849,9 +1880,11 @@ onMounted(async () => {
   syncMarkers()
   canvasResizeObserver = new ResizeObserver(() => {
     map?.invalidateSize({ pan: false })
+    syncPanBounds()
     layoutCharacterLabels()
   })
   canvasResizeObserver.observe(element.value)
+  syncPanBounds()
   if (props.compact) {
     map.dragging.disable()
     map.scrollWheelZoom.disable()

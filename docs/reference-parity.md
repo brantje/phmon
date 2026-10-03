@@ -1967,11 +1967,14 @@ Lv 63. Projection tests place 6,451 points on supported maps; 305 remain exclude
 for unsupported/ambiguous interior mappings or failed floor/bounds checks. The
 shared Job Temple region remains deliberately unmapped for exact points. Cave
 guide cells use verified manager cell dimensions; exact placement is omitted
-where the current profile cannot identify a supported floor. Mob area rectangles,
-labels, viewport queries and search focus are drawn one guide square south of
-the stored cell (the cell's own height: 4 field tiles, or 1 cave tile) so the
-overlay sits on the terrain it describes. The catalog and the area-cell readout
-keep the client coordinates.
+where the current profile cannot identify a supported floor. Field mob area rectangles, labels, viewport queries and search focus are drawn
+one guide square south of the stored cell (that cell's own height, 4 map tiles).
+Cave cells are not shifted that way: Donwhang and the tomb already sit on their
+floor tiles, and Job Temple's guide origin is the southern edge, so those cells
+move north onto the floor art. On each cave row, the outer listed cells also
+stretch up to three tiles toward the floor edge, which covers the Tomb B2 cross
+rooms the guide stops short of. The catalog and the area-cell readout keep the
+client coordinates.
 
 Local browser fixture validation at 1440×1000, 1280×800 and 390×844 confirmed
 default-off switches, persistence across reload, independent layer toggles,
@@ -2104,3 +2107,11 @@ lint (zero errors / 60 existing warnings), typecheck, build and compose validati
 Final UI freshness changes also pass formatting/lint/typecheck/build. These checks
 and screenshots use local test adapters; no real character operation or deployment
 was performed.
+
+### Map character roster — 2026-10-03
+
+The Characters tab lists every character on the selected server. Opening Jangan
+Cave or another floor, or choosing a world region, does not remove rows.
+Character pins still appear only where the current floor can place them, and a
+selected world region still limits those pins. Monsters, events, NPCs, party
+members and training areas keep their floor and region scope.

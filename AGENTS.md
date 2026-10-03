@@ -5343,6 +5343,14 @@ runtime is available, validate the plugin/backend flow and record it separately
 from simulator results. PR #67 is updated and should remain open until those gates
 are resolved. Do not merge, deploy or operate real bot characters without authorization.
 
+### Resume — 2026-10-03 map character roster
+
+The map Characters list is the full selected-server roster. Cave floor and
+region filters no longer remove rows, so a character in Jangan Cave stays
+listed on every floor and on the world map. Pins still follow the open floor,
+and a selected world region still limits character pins. Other map layers keep
+their floor and region scope.
+
 ### Resume — 2026-10-03 mob area placement
 
 Mob area rectangles, labels, search focus and viewport selection now sit one

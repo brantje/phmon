@@ -73,7 +73,7 @@ import {
   navigationTrayProgressSummary,
 } from '~/utils/mapNavigationTray'
 import { submitNavigationStop } from '~/utils/mapNavigationStop'
-import { guideCellOneSquareDown } from '~/utils/guideCells'
+import { placedGuideCell } from '~/utils/guideCells'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTeleportAction } from '~/composables/useMapTeleportAction'
@@ -587,7 +587,13 @@ function focusMonsterReferencePoint(point: MonsterReferencePoint) {
 function focusMonsterReferenceCell(
   cell: MonsterReferenceArea['cells'][number],
 ) {
-  const placed = guideCellOneSquareDown(cell)
+  const floor = profileArea.value?.floors.find(
+    (item) => item.id === floorID.value,
+  )
+  const placed = placedGuideCell(cell, {
+    floorMaxY: floor?.tiles?.max_y,
+    guideOriginY: floor?.guide_origin_y,
+  })
   rememberReferenceFocus({
     min_x: placed.x,
     max_x: placed.x + placed.width - 1,
@@ -863,7 +869,10 @@ const canvasProfile = computed(() => {
   const profile = mapProfile.value
   if (!profile) return null
   const tiles = tileCatalogForFloor(profile, areaID.value, floorID.value)
-  return tiles ? { ...profile, tiles } : null
+  const guideOriginY = profile.areas
+    .find((area) => area.id === areaID.value)
+    ?.floors.find((floor) => floor.id === floorID.value)?.guide_origin_y
+  return tiles ? { ...profile, tiles, guide_origin_y: guideOriginY } : null
 })
 const linkedEventLocation = computed(() =>
   mapProfile.value && linkedEvent.value
@@ -1363,14 +1372,16 @@ watch(
     if (!open) clearTeleportSubmenus()
   },
 )
-const scopedCharacters = computed(() => {
-  const items = mapSnapshotInFeedScope.value
-    ? mapSnapshot.value?.characters || []
-    : []
-  if (regionID.value !== 0)
-    return items.filter((character) => character.region === regionID.value)
-  return items
-})
+const scopedCharacters = computed(() =>
+  mapSnapshotInFeedScope.value ? mapSnapshot.value?.characters || [] : [],
+)
+const markerCharacters = computed(() =>
+  regionID.value === 0
+    ? scopedCharacters.value
+    : scopedCharacters.value.filter(
+        (character) => character.region === regionID.value,
+      ),
+)
 const mapActivityFeed = computed(
   () => commandFanOutFeeds.value[MAP_ACTIVITY_OWNER],
 )
@@ -1507,13 +1518,6 @@ async function focusMapCharacter(id: string) {
   await nextTick()
   await jumpToCharacter()
 }
-const outsideZoneCount = computed(() =>
-  regionID.value
-    ? (mapSnapshot.value?.characters || []).filter(
-        (item) => item.online && item.region !== regionID.value,
-      ).length
-    : 0,
-)
 function chooseGoTo(id: string) {
   if (id.startsWith('character:')) {
     void focusMapCharacter(id.slice('character:'.length))
@@ -1698,7 +1702,7 @@ const mapMarkers = computed(() => {
         areaID.value,
         floorID.value,
         displayableMapCharacters(
-          scopedCharacters.value,
+          markerCharacters.value,
           freshnessNow.value,
         ).map((character) => ({
           ...character,
@@ -3748,13 +3752,9 @@ useHead({ title: 'Map · PhMon' })
                 @focus="focusMapCharacter(character.character_id)"
               />
               <p v-if="!scopedCharacters.length" class="map-empty-copy">
-                No characters in this server and zone scope.
+                No characters on this server.
               </p>
             </section>
-            <p v-if="outsideZoneCount" class="map-empty-copy">
-              {{ outsideZoneCount }} online characters are outside
-              {{ zoneNameForRegion(regionID) }}.
-            </p>
             <details class="map-training-list">
               <summary>Training areas</summary>
               <div class="map-list-heading">
@@ -5577,12 +5577,22 @@ useHead({ title: 'Map · PhMon' })
 }
 .map-floor-bar {
   position: absolute;
-  top: 10px;
+  top: auto;
+  right: auto;
+  bottom: 10px;
   left: 10px;
   z-index: 850;
+  width: fit-content;
+  height: fit-content;
+  max-width: calc(100% - 160px);
   padding: 0;
   background: transparent;
   border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.map-floor-bar button {
+  pointer-events: auto;
 }
 .map-canvas-frame {
   min-height: 300px;

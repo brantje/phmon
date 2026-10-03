@@ -49,16 +49,87 @@ func (b monsterRefBounds) contains(x, y int) bool {
 	return x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY
 }
 
-// Guide cells are stored one square north of the terrain they describe.
-// A square is the cell's own height in map tiles.
-func placedGuideCell(c resources.MonsterGuideCell) resources.MonsterGuideCell {
+// Field guide cells are stored one square north of the terrain they describe.
+// Cave cells stay on their own tile, shifted from the floor's MAP_MANAGER
+// start row onto that floor's northern edge when those differ.
+func placedGuideCell(c resources.MonsterGuideCell, grid mapprofile.TileCatalog, originY *int) resources.MonsterGuideCell {
+	if originY != nil {
+		c.Y += grid.MaxY - *originY
+		return c
+	}
 	c.Y -= c.Height
 	return c
 }
 
+type guideAxisEdge struct {
+	min, max, before, after int
+	set                     bool
+}
+
+type guideFloorEdge struct {
+	rows map[int]guideAxisEdge
+}
+
+func guideFloorEdgeFor(catalog *resources.MonsterReference, areaID, floorID string, grid mapprofile.TileCatalog, originY *int) guideFloorEdge {
+	edge := guideFloorEdge{rows: map[int]guideAxisEdge{}}
+	if catalog == nil || originY == nil {
+		return edge
+	}
+	include := func(current guideAxisEdge, start, end int) guideAxisEdge {
+		if !current.set || start < current.min {
+			current.min = start
+		}
+		if !current.set || end > current.max {
+			current.max = end
+		}
+		current.set = true
+		return current
+	}
+	for _, area := range catalog.Areas {
+		groupArea, groupFloor, known := monsterRefAreaFloor(area.Group)
+		if !known || groupArea != areaID || groupFloor != floorID {
+			continue
+		}
+		for _, cell := range area.Cells {
+			placed := placedGuideCell(cell, grid, originY)
+			edge.rows[placed.Y] = include(edge.rows[placed.Y], placed.X, placed.X+placed.Width-1)
+		}
+	}
+	extend := func(gap int) int {
+		if gap <= 0 {
+			return 0
+		}
+		if gap > 3 {
+			return 3
+		}
+		return gap
+	}
+	for y, row := range edge.rows {
+		row.before, row.after = extend(row.min-grid.MinX), extend(grid.MaxX-row.max)
+		edge.rows[y] = row
+	}
+	return edge
+}
+
+func applyGuideFloorEdge(cell resources.MonsterGuideCell, edge guideFloorEdge) resources.MonsterGuideCell {
+	if row, ok := edge.rows[cell.Y]; ok {
+		if row.before > 0 && cell.X == row.min {
+			cell.X -= row.before
+			cell.Width += row.before
+		}
+		if row.after > 0 && cell.X+cell.Width-1 == row.max {
+			cell.Width += row.after
+		}
+	}
+	return cell
+}
+
+func guideCellInside(grid mapprofile.TileCatalog, c resources.MonsterGuideCell) bool {
+	return c.X >= grid.MinX && c.Y >= grid.MinY && c.X+c.Width-1 <= grid.MaxX && c.Y+c.Height-1 <= grid.MaxY
+}
+
 func (b monsterRefBounds) intersects(c resources.MonsterGuideCell) bool {
-	placed := placedGuideCell(c)
-	return placed.X <= b.MaxX && placed.X+placed.Width-1 >= b.MinX && placed.Y <= b.MaxY && placed.Y+placed.Height-1 >= b.MinY
+	return c.X <= b.MaxX && c.X+c.Width-1 >= b.MinX && c.Y <= b.MaxY && c.Y+c.Height-1 >= b.MinY
 }
 
 func monsterRefAreaFloor(group string) (string, string, bool) {
@@ -81,6 +152,20 @@ func monsterRefAreaFloor(group string) (string, string, bool) {
 		}
 	}
 	return "", "", false
+}
+
+func monsterRefGuideOrigin(profile mapprofile.Profile, area, floor string) *int {
+	for _, candidate := range profile.Areas {
+		if candidate.ID != area {
+			continue
+		}
+		for _, level := range candidate.Floors {
+			if level.ID == floor {
+				return level.GuideOriginY
+			}
+		}
+	}
+	return nil
 }
 
 func monsterRefTileCatalog(profile mapprofile.Profile, area, floor string) (mapprofile.TileCatalog, bool) {
@@ -296,13 +381,15 @@ func (h *mapHandler) monsterReferenceSearch(w http.ResponseWriter, r *http.Reque
 		if !ok {
 			continue
 		}
+		originY := monsterRefGuideOrigin(profile, areaID, floorID)
+		edge := guideFloorEdgeFor(catalog, areaID, floorID, grid, originY)
 		row := get(def, areaID, floorID)
 		for _, cell := range area.Cells {
-			if cell.X < grid.MinX || cell.Y < grid.MinY || cell.X+cell.Width-1 > grid.MaxX || cell.Y+cell.Height-1 > grid.MaxY {
+			placed := applyGuideFloorEdge(placedGuideCell(cell, grid, originY), edge)
+			if !guideCellInside(grid, placed) {
 				continue
 			}
 			row.AreaCells++
-			placed := placedGuideCell(cell)
 			row.Bounds = growMonsterRefBounds(row.Bounds, placed.X, placed.Y)
 			row.Bounds = growMonsterRefBounds(row.Bounds, placed.X+placed.Width-1, placed.Y+placed.Height-1)
 		}
@@ -426,14 +513,15 @@ func (h *mapHandler) monsterReferenceOverlay(w http.ResponseWriter, r *http.Requ
 			if !known || a != areaID || f != floorID {
 				continue
 			}
+			originY := monsterRefGuideOrigin(profile, areaID, floorID)
+			edge := guideFloorEdgeFor(catalog, areaID, floorID, grid, originY)
 			cells := make([]resources.MonsterGuideCell, 0)
 			for _, cell := range area.Cells {
-				if cell.X < grid.MinX || cell.Y < grid.MinY || cell.X+cell.Width-1 > grid.MaxX || cell.Y+cell.Height-1 > grid.MaxY {
+				placed := applyGuideFloorEdge(placedGuideCell(cell, grid, originY), edge)
+				if !guideCellInside(grid, placed) || !bounds.intersects(placed) {
 					continue
 				}
-				if bounds.intersects(cell) {
-					cells = append(cells, cell)
-				}
+				cells = append(cells, cell)
 			}
 			if len(cells) > 0 {
 				areaCellTotal += len(cells)

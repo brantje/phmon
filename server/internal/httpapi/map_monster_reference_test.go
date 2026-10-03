@@ -134,6 +134,58 @@ func TestReferencePointProjectionUsesClientLocalUnitsAndDedicatedCaveFloors(t *t
 	}
 }
 
+func TestTombB2EdgeCellsCoverTheOuterRooms(t *testing.T) {
+	profile, err := mapprofile.ForServer("greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grid, ok := monsterRefTileCatalog(profile, "tomb-of-qin-shi", "B2")
+	if !ok {
+		t.Fatal("tomb floor missing")
+	}
+	origin := monsterRefGuideOrigin(profile, "tomb-of-qin-shi", "B2")
+	catalog := &resources.MonsterReference{Areas: []resources.MonsterGuideArea{{
+		Group: "jinsi2",
+		Cells: []resources.MonsterGuideCell{
+			{X: 120, Y: 125, Width: 1, Height: 1},
+			{X: 128, Y: 123, Width: 1, Height: 1},
+			{X: 128, Y: 125, Width: 1, Height: 1},
+			{X: 135, Y: 125, Width: 1, Height: 1},
+		},
+	}}}
+	edge := guideFloorEdgeFor(catalog, "tomb-of-qin-shi", "B2", grid, origin)
+	left := applyGuideFloorEdge(placedGuideCell(catalog.Areas[0].Cells[0], grid, origin), edge)
+	inner := applyGuideFloorEdge(placedGuideCell(catalog.Areas[0].Cells[2], grid, origin), edge)
+	right := applyGuideFloorEdge(placedGuideCell(catalog.Areas[0].Cells[3], grid, origin), edge)
+	if left.X != 117 || left.Width != 4 || inner.X != 128 || inner.Width != 1 || right.X != 135 || right.Width != 4 {
+		t.Fatalf("tomb edges left=%+v inner=%+v right=%+v", left, inner, right)
+	}
+}
+
+func TestJobTempleGuideCellsMoveOntoTheFloorWithoutTheFieldShift(t *testing.T) {
+	profile, err := mapprofile.ForServer("greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grid, ok := monsterRefTileCatalog(profile, "job-temple", "1F")
+	if !ok {
+		t.Fatal("temple floor missing")
+	}
+	origin := monsterRefGuideOrigin(profile, "job-temple", "1F")
+	placed := placedGuideCell(resources.MonsterGuideCell{X: 126, Y: 123, Width: 1, Height: 1}, grid, origin)
+	if placed.X != 126 || placed.Y != 128 || !guideCellInside(grid, placed) {
+		t.Fatalf("temple cell = %+v inside %v", placed, guideCellInside(grid, placed))
+	}
+	donwhang, ok := monsterRefTileCatalog(profile, "donwhang-stone-cave", "1F")
+	if !ok {
+		t.Fatal("donwhang floor missing")
+	}
+	kept := placedGuideCell(resources.MonsterGuideCell{X: 128, Y: 127, Width: 1, Height: 1}, donwhang, monsterRefGuideOrigin(profile, "donwhang-stone-cave", "1F"))
+	if kept.Y != 127 {
+		t.Fatalf("donwhang cell moved: %+v", kept)
+	}
+}
+
 func TestGuideGroupsMapOnlyToKnownFloors(t *testing.T) {
 	for _, example := range []struct{ group, area, floor string }{
 		{"field", "world", "world"}, {"dunhuang4", "donwhang-stone-cave", "4F"}, {"jinsi6", "tomb-of-qin-shi", "B6"}, {"temple", "job-temple", "1F"},

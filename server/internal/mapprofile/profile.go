@@ -20,6 +20,9 @@ type Floor struct {
 	MinZ            *float64     `json:"min_z,omitempty"`
 	MaxZ            *float64     `json:"max_z,omitempty"`
 	AutoDetect      bool         `json:"auto_detect"`
+	// GuideOriginY is the MAP_MANAGER start-region Y for this floor.
+	// Cave guide cells are stored relative to that row, not one field square north.
+	GuideOriginY *int `json:"guide_origin_y,omitempty"`
 }
 
 type Area struct {
@@ -289,7 +292,8 @@ func addCaveFloors(profile *Profile) {
 				TileURLFormat: fmt.Sprintf("/game-assets/minimap_d/%s/%s_{x}x{y}.png", def.directory, def.prefix),
 				MinX:          def.minX, MaxX: def.maxX, MinY: def.minY, MaxY: def.maxY, TileCount: def.count,
 				Semantics: "named cave floor grid, 192 game X/Y units per tile; destination Z comes from the selected character"},
-			RegionIDs: regions, MinZ: def.minZ, MaxZ: def.maxZ, AutoDetect: def.autoDetect}
+			RegionIDs: regions, MinZ: def.minZ, MaxZ: def.maxZ, AutoDetect: def.autoDetect,
+			GuideOriginY: caveGuideOriginY(def.area, def.floor)}
 		profile.CaveFloors = append(profile.CaveFloors, caveFloor{def.area, floor})
 		for _, region := range regions {
 			profile.CoordinateTransforms = append(profile.CoordinateTransforms, CoordinateTransform{
@@ -304,6 +308,24 @@ func addCaveFloors(profile *Profile) {
 			TileX: (def.minX + def.maxX) / 2, TileY: (def.minY + def.maxY) / 2,
 			Zoom: 0, Status: "validated"})
 	}
+}
+
+// Start-region Y from worldmapguidedata.txt MAP_MANAGER. The northern tile
+// row of each supported floor is not always that origin: Job Temple's guide
+// starts on the southern edge while the floor continues north.
+func caveGuideOriginY(area, floor string) *int {
+	origins := map[string]int{
+		"tomb-of-qin-shi/B1": 132, "tomb-of-qin-shi/B2": 132, "tomb-of-qin-shi/B3": 139,
+		"tomb-of-qin-shi/B4": 138, "tomb-of-qin-shi/B5": 137, "tomb-of-qin-shi/B6": 132,
+		"donwhang-stone-cave/1F": 128, "donwhang-stone-cave/2F": 128,
+		"donwhang-stone-cave/3F": 128, "donwhang-stone-cave/4F": 128,
+		"job-temple/1F": 125,
+	}
+	value, ok := origins[area+"/"+floor]
+	if !ok {
+		return nil
+	}
+	return &value
 }
 
 func floorIDs(prefix string, start, end int) []string {
