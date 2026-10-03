@@ -44,22 +44,47 @@ func TestAgentProtocolV3CapabilitiesAreConnectionScoped(t *testing.T) {
 		Commands: []agentCapability{
 			{Name: "bot.stop", Supported: true},
 			{Name: "client.clientless", Supported: false, Reason: "unsupported_runtime_primitive"},
+			{Name: "future.command", Supported: true, Modes: []string{"future_mode"}},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := wsjson.Write(context.Background(), conn, agentMessage{
+		Type: "heartbeat", ProtocolVersion: 3, SentAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("older server disconnected on unknown capabilities: %v", err)
+	}
 
 	waitFor(t, time.Second, func() bool {
+		store.mu.Lock()
+		seenCount := store.seenCount
+		store.mu.Unlock()
 		for generation := uint64(1); generation < 8; generation++ {
 			if supported, _ := registry.CommandSupport(testAgentID, generation, "bot.stop"); supported {
 				if clientless, reason := registry.CommandSupport(testAgentID, generation, "client.clientless"); clientless || reason != "unsupported_runtime_primitive" {
 					t.Fatalf("unexpected clientless capability %v %q", clientless, reason)
 				}
-				return true
+				if future, reason := registry.CommandSupport(testAgentID, generation, "future.command"); future || reason != "capabilities_pending" {
+					t.Fatalf("unexpected future capability %v %q", future, reason)
+				}
+				return seenCount == 1
 			}
 		}
 		return false
 	})
+}
+
+func TestValidCapabilityCommandName(t *testing.T) {
+	for _, name := range []string{"bot.stop", "character.reverse_return", "future.v2_command"} {
+		if !validCapabilityCommandName(name) {
+			t.Errorf("valid capability name %q was rejected", name)
+		}
+	}
+	for _, name := range []string{"", "Upper.case", ".leading", "trailing.", "double..dot", "bad-name", "a/b", "a..b"} {
+		if validCapabilityCommandName(name) {
+			t.Errorf("invalid capability name %q was accepted", name)
+		}
+	}
 }
 
 func newAgentTestServerWithRegistry(t *testing.T, store AgentStore, registry *agentdomain.Registry, options AgentOptions) *httptest.Server {

@@ -15,6 +15,7 @@ const actionNames: RemoteControlActionName[] = [
   'trace.start',
   'trace.stop',
   'character.return',
+  'character.reverse_return',
   'character.disconnect',
   'client.clientless',
   'training.area.set',
@@ -100,7 +101,7 @@ function prepare(
   })
 }
 
-test('remote-control catalog contains only the nine intended existing commands', () => {
+test('remote-control catalog contains the intended character-scoped commands', () => {
   assert.deepEqual(
     actionNames.map((name) => remoteControlDefinition(name).name),
     actionNames,
@@ -113,6 +114,7 @@ test('remote-control catalog contains only the nine intended existing commands',
       'Start Trace',
       'Stop Trace',
       'Return Scroll',
+      'Reverse return',
       'Disconnect',
       'Go Clientless',
       'Set Training Area',
@@ -132,6 +134,15 @@ test('intent flags remain true for return, disconnect and clientless', () => {
   for (const name of ['bot.start', 'bot.stop', 'trace.stop'] as const) {
     assert.equal(prepare(name).children[0]?.request?.confirmation, false)
   }
+})
+
+test('reverse return is blocked when the supplied map snapshot is stale', () => {
+  const definition = remoteControlDefinition(
+    'character.reverse_return',
+    {},
+    false,
+  )
+  assert.equal(definition.preEligibility?.()?.code, 'stale_map_scope')
 })
 
 test('Start and Stop Training skip only targets with a known incompatible botting state', () => {

@@ -3208,6 +3208,159 @@ class TeleporterProbeTests(unittest.TestCase):
             adapter = plugin.PhBotAdapter()
         self.assertTrue(adapter.has('get_teleport_data'))
 
+class ReverseReturnTests(unittest.TestCase):
+    def worker(self, result=True, party=None, symbols=True):
+        self.calls = []
+        def reverse(kind, name):
+            self.calls.append((kind, name))
+            if isinstance(result, Exception): raise result
+            return result
+        adapter = plugin.PhBotAdapter({'reverse_return': reverse, 'get_party': lambda: party} if symbols else {})
+        worker = plugin.AgentWorker({'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID, 'agent_token': 'fixture'}, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {'server': 'Fixture', 'name': 'Alpha'}
+        return worker
+
+    def test_modes_and_current_party_validation(self):
+        worker = self.worker(party={1: {'name': 'Member'}})
+        self.assertEqual(worker._invoke('character.reverse_return', {'type': 0}, None), (True, {'type': 0, 'name': ''}, None, 'api_confirmed'))
+        worker._invoke('character.reverse_return', {'type': 1}, None)
+        worker._invoke('character.reverse_return', {'type': 2, 'name': ' member '}, None)
+        self.assertEqual(self.calls, [(0, ''), (1, ''), (2, 'Member')])
+        for name, reason in [('Missing', 'party_member_not_found'), ('Alpha', 'party_self_target')]:
+            with self.assertRaisesRegex(ValueError, reason): worker._invoke('character.reverse_return', {'type': 2, 'name': name}, None)
+        self.assertEqual(len(self.calls), 3)
+
+    def test_bad_arguments_never_execute(self):
+        worker = self.worker()
+        for args in [{}, {'type': True}, {'type': 1.0}, {'type': -1}, {'type': 4}, {'type': 0, 'name': None}, {'type': 0, 'name': 'Member'}, {'type': 0, 'name': ' '}, {'type': 2}, {'type': 2, 'name': 'Member\n'}, {'type': 0, 'extra': True}, {'type': 2, 'name': 'é'*51}]:
+            with self.assertRaisesRegex(ValueError, 'invalid_arguments'): worker._invoke('character.reverse_return', args, None)
+        for args in [{'type': 3}, {'type': 3, 'name': ' '}, {'type': 3, 'name': 'Jangan\n'}, {'type': 3, 'name': 'é'*51}]:
+            with self.assertRaisesRegex(ValueError, 'invalid_arguments'): worker._invoke('character.reverse_return', args, None)
+        self.assertEqual(self.calls, [])
+
+    def test_named_location_uses_callback_api_without_party_dependency(self):
+        worker = self.worker()
+        worker.api = plugin.PhBotAdapter({'reverse_return': lambda kind, name: self.calls.append((kind, name)) or True})
+        self.assertEqual(worker._invoke('character.reverse_return', {'type': 3, 'name': ' Jangan '}, None), (True, {'type': 3, 'name': 'Jangan'}, None, 'api_confirmed'))
+        self.assertEqual(self.calls, [(3, 'Jangan')])
+        for result in [True, False]:
+            worker = self.worker(result=result)
+            self.assertIs(worker._invoke('character.reverse_return', {'type': 3, 'name': 'Hotan'}, None)[0], result)
+        for result in [None, 1, 'true']:
+            with self.assertRaisesRegex(ValueError, 'invalid_api_result'):
+                self.worker(result=result)._invoke('character.reverse_return', {'type': 3, 'name': 'Hotan'}, None)
+        with self.assertRaisesRegex(RuntimeError, 'native failure'):
+            self.worker(result=RuntimeError('native failure'))._invoke('character.reverse_return', {'type': 3, 'name': 'Hotan'}, None)
+
+    def test_native_result_is_authoritative(self):
+        for outcome in [True, False]:
+            worker = self.worker(result=outcome)
+            self.assertIs(worker._invoke('character.reverse_return', {'type': 0}, None)[0], outcome)
+        for outcome in [None, 1, 'true']:
+            worker = self.worker(result=outcome)
+            with self.assertRaisesRegex(ValueError, 'invalid_api_result'): worker._invoke('character.reverse_return', {'type': 0}, None)
+        worker = self.worker(result=RuntimeError('native failure'))
+        with self.assertRaisesRegex(RuntimeError, 'native failure'): worker._invoke('character.reverse_return', {'type': 0}, None)
+
+    def test_capability_modes_require_primitives(self):
+        worker = self.worker(symbols=False)
+        caps = {entry['name']: entry for entry in worker._capability_frame()['commands']}
+        self.assertFalse(caps['character.reverse_return']['supported'])
+        worker = self.worker()
+        caps = {entry['name']: entry for entry in worker._capability_frame()['commands']}
+        self.assertEqual(caps['character.reverse_return']['modes'], ['last_return', 'last_death', 'party_member', 'named_location'])
+        worker.api = plugin.PhBotAdapter({'reverse_return': lambda *_: True})
+        caps = {entry['name']: entry for entry in worker._capability_frame()['commands']}
+        self.assertEqual(caps['character.reverse_return']['modes'], ['last_return', 'last_death', 'named_location'])
+
+    def test_default_adapter_discovers_optional_reverse_and_party_apis(self):
+        reverse = lambda *_: True
+        party = lambda: {}
+        with patch.object(plugin, '_optional_phbot_api', side_effect=lambda name: {'reverse_return': reverse, 'get_party': party}.get(name)):
+            adapter = plugin.PhBotAdapter()
+        self.assertTrue(adapter.has('reverse_return'))
+        self.assertTrue(adapter.has('get_party'))
+
+    def test_callback_result_and_session_fencing(self):
+        for outcome in [True, False]:
+            worker = self.worker(result=outcome)
+            frame = {'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION, 'command_id': 'cmd_00000000-0000-4000-8000-000000000099', 'character_id': AGENT_ID, 'session_id': worker.session_id, 'name': 'character.reverse_return', 'args': {'type': 0}, 'ttl_ms': 10000, 'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
+            worker._accept_command(frame)
+            worker.process_one_command(worker._current_identity, None)
+            worker._outgoing.get_nowait()
+            result = worker._outgoing.get_nowait()
+            self.assertEqual(result['status'], 'completed' if outcome else 'failed')
+            self.assertIs(result['api_return'], outcome)
+            self.assertEqual(result['verification'], 'api_confirmed')
+            worker._accept_command(frame)
+            worker.process_one_command(worker._current_identity, None)
+            self.assertEqual(len(self.calls), 1)
+        worker = self.worker()
+        frame['session_id'] = worker.session_id
+        worker._accept_command(frame)
+        worker.session_id = AGENT_ID
+        worker.process_one_command(worker._current_identity, None)
+        self.assertEqual(self.calls, [])
+
+    def command(self, worker, args, **changes):
+        frame = {'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+                 'command_id': 'cmd_00000000-0000-4000-8000-000000000098',
+                 'character_id': AGENT_ID, 'session_id': worker.session_id,
+                 'name': 'character.reverse_return', 'args': args, 'ttl_ms': 10000,
+                 'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()+10))}
+        frame.update(changes)
+        worker._accept_command(frame)
+        return frame
+
+    def test_callback_errors_and_nonboolean_results_are_failed(self):
+        for outcome in [None, 1, 'true', RuntimeError('native failure')]:
+            worker = self.worker(result=outcome)
+            self.command(worker, {'type': 0})
+            worker.process_one_command(worker._current_identity, None)
+            worker._outgoing.get_nowait()
+            result = worker._outgoing.get_nowait()
+            self.assertEqual(result['status'], 'failed')
+            self.assertEqual(len(self.calls), 1)
+
+    def test_party_changed_after_admission_does_not_use_scroll(self):
+        party = {1: {'name': 'Member'}}
+        worker = self.worker(party=party)
+        self.command(worker, {'type': 2, 'name': 'Member'})
+        party.clear()
+        worker.process_one_command(worker._current_identity, None)
+        worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(result['reason'], 'party_member_not_found')
+        self.assertEqual(self.calls, [])
+
+    def test_expired_command_does_not_use_scroll(self):
+        worker = self.worker()
+        self.command(worker, {'type': 1}, expires_at='2000-01-01T00:00:00Z')
+        worker.process_one_command(worker._current_identity, None)
+        self.assertEqual(self.calls, [])
+        messages = []
+        while not worker._outgoing.empty():
+            messages.append(worker._outgoing.get_nowait())
+        self.assertTrue(any(m.get('status') == 'failed' and m.get('reason') == 'command_expired' for m in messages))
+
+class ReverseReturnPartyFreshnessTests(unittest.TestCase):
+    def test_unchanged_party_is_refreshed_without_resending_inventory(self):
+        worker = plugin.AgentWorker({'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID, 'agent_token': 'fixture'}, 'fixture', api_adapter=plugin.PhBotAdapter({}))
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        frames = []
+        client = SimpleNamespace(send_json=frames.append)
+        resources = {'party': {'availability': 'observed', 'members': [{'name': 'Member'}]}, 'inventory': {'availability': 'observed', 'capacity': 0, 'used_slots': 0, 'slots': []}}
+        self.assertTrue(worker._send_resource_snapshot(client, resources, refresh_party=True))
+        self.assertTrue(worker._send_resource_snapshot(client, resources))
+        self.assertEqual(len(frames), 1, 'cached resources must not refresh party checked_at')
+        self.assertTrue(worker._send_resource_snapshot(client, resources, refresh_party=True))
+        self.assertEqual(frames[-1]['type'], 'resource.delta')
+        self.assertEqual(set(frames[-1]['resources']), {'party'})
+        self.assertEqual(frames[-1]['revision'], 2)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,24 @@
+MOB_BOSS_EMP_EVOG2_DRAGON	appear	Greatest Emperor Dragon Boss	1	0	1	-61184
+MOB_BOSS_DRAGON_FIRE	appear	Reign of fire	1	0	1	-61184
+MOB_BOSS_DRAGON_ICE	appear	Reign of Ice	1	0	1	-61184
+MOB_BOSS_DRAGON_EARTH	appear	Reign of Soil	1	0	1	-61184
+MOB_DEATH_GATE	appear	Nether Portal loard	1	0	1	-61184
+MOB_BLACK_SNIPER	appear	BlacK Sniper	1	0	1	-61184
+MOB_VENUS_SPACE	appear	BlacK Sniper	1	0	1	-61184
+MOB_ANGRY_UNIQUE	appear	Venus Space	1	0	1	-61184
+MOB_SERPENT_AWFUL	appear	Angry Unique 	1	0	1	-61184
+MOB_IMMORTAL_UNIQUE	appear	Serpent Awful	1	0	1	-61184
+MOB_RIGHTS_STONE	appear	Immortal Unique	1	0	1	-61184
+MOB_TERMINATOR	appear	Rights Stone	1	0	1	-61184
+MOB_UNSTABLE_UNIQUE	appear	 Terminator	1	0	1	-61184
+MOB_STRANGELY_UNIQUE	appear	 Unstable Unique	1	0	1	-61184
+MOB_GHOST_UNIQUE	appear	 Strangely Unique	1	0	1	-61184
+MOB_WEREWOLF_UNIQUE	appear	 Ghost Unique	1	0	1	-61184
+MOB_OSTRICH_SADDLE	appear	 Werewolf Unique	1	0	1	-61184
+MOB_STRONG_ASSASSIN	appear	 Ostrich Saddle	1	0	1	-61184
+MOB_ANGRY_BEAR	appear	 Strong Assassin	1	0	1	-61184
+MOB_INVOLVEMENT_UNIQUE	appear	 Angry Bear	1	0	1	-61184
+MOB_HOUND_OF_HELL	appear	 Involvement Unique	1	0	1	-61184
+MOB_VENUS_PREDATORY	appear	 Hound of Hell	1	0	1	-61184
+MOB_LINAN_SHI	appear	 Venus predatory	1	0	1	-61184
+MOB_DARK_HELL	appear	Linan Shi	1	0	1	-61184

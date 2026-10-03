@@ -79,6 +79,20 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 1, ownerSession, ownerFull); err != nil {
 		t.Fatal(err)
 	}
+	contexts, err := store.ReverseReturnContexts(ctx, map[string]string{characterID: ownerSession, observerID: observerSession}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contexts[characterID].SessionID != ownerSession || contexts[characterID].ScrollObserved == nil || *contexts[characterID].ScrollObserved {
+		t.Fatalf("current inventory evidence: %#v", contexts)
+	}
+	mismatch, err := store.ReverseReturnContexts(ctx, map[string]string{characterID: observerSession}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mismatch[characterID].ScrollObserved != nil {
+		t.Fatal("resource context crossed a session boundary")
+	}
 	first, err := store.Character(ctx, characterID)
 	if err != nil {
 		t.Fatal(err)

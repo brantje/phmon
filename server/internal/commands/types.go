@@ -33,6 +33,7 @@ const (
 
 type Target struct {
 	CharacterID string
+	Server      string
 	SessionID   string
 	AgentID     string
 	Generation  uint64
@@ -41,6 +42,7 @@ type Target struct {
 
 type TargetControl struct {
 	CharacterID string
+	Server      string
 	SessionID   string
 	AgentID     string
 	Generation  uint64

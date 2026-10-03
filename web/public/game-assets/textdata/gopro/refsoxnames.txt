@@ -1,0 +1,2 @@
+//this will find any item that contains _C_RARE and write seal of sun to it with the default color
+//_C_RARE	PARAM_RARE_THIRD	-9901

@@ -1,7 +1,7 @@
 {
-  "assetKeyCount": 32464,
+  "assetKeyCount": 32674,
   "datasetId": "gamedata-e184cceb0b359ca140c1",
-  "fileCount": 12359,
+  "fileCount": 12569,
   "files": [
     {
       "assetKeys": [
@@ -168415,10 +168415,2322 @@
       "sizeBytes": 175864,
       "url": "game-assets/monsters/zed.png",
       "width": 512
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f6e601ae8c358e4e827a16d71da2939786b56d8e1c3349a40f0cc47932eefe3e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/Decoded_skilldata_35000enc.txt",
+      "sha256": "fe90fbd5ce8fae1345ef3bb8f72289e334098be00c67b9a9858203dc66ffa153",
+      "sizeBytes": 3178518,
+      "url": "game-assets/textdata/Decoded_skilldata_35000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a2a6fefa644ad8c85552f3680408571130c6cae93a1058e356eb0b5116384d56"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/RegionName.txt",
+      "sha256": "8f522f7ed2db1fb0b992a2c34a0c88762a857e34841954640e2fdc60dc229a80",
+      "sizeBytes": 956,
+      "url": "game-assets/textdata/RegionName.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:39c87718ea0a330a23e24f9a6c71fecb0327379348516b5dacbe0d8e4f02eecc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/Vsro Script Crypter v1.0.exe",
+      "sha256": "449ecd87aa8a3763d8998a6e06ba05500716176a30ad1dd377e75907994e1d60",
+      "sizeBytes": 24064,
+      "url": "game-assets/textdata/Vsro Script Crypter v1.0.exe"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:319eb52a88d4e4fd4bb9045a1ad0eadcf3b814cd960e612b57952c0d9717c1c5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/aaa.txt",
+      "sha256": "5b36433f31b4ee6aac74147aab4f87bf1b68558d9d7cfa0bcd0c9de22449ef7a",
+      "sizeBytes": 180,
+      "url": "game-assets/textdata/aaa.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:01154aa3e8837720687e11bad987ce4def886fb990c232544e2472d4bda79946"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/abusefilter.txt",
+      "sha256": "998b29be74a1458e93d9e1248d2d784effcfa5ac81445a11b7a47b42fae090ff",
+      "sizeBytes": 247842,
+      "url": "game-assets/textdata/abusefilter.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:ec9ed8dfa6065e9b567be19672e4715e33848e5842e2f75e0834326df77801c9"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/actionwnddata.txt",
+      "sha256": "098c30e9bbb2f71574bb20c1c5f41a1714bedefb71ce005ae954b58bedb07da1",
+      "sizeBytes": 3744,
+      "url": "game-assets/textdata/actionwnddata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:04558762f86dbcea1f553d7de93657829e9ba4278d417263de6c45b558d01804"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/actionwnddata.txt.bak",
+      "sha256": "9577143e5e1a77e69bf88650e7958d805c3ace41dd6455674be528d0d6347e70",
+      "sizeBytes": 4026,
+      "url": "game-assets/textdata/actionwnddata.txt.bak"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0481b470b9fcc41ae5a022bb2baf2ba28fb0bfe1132a393cf3fae65da3bb757b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/agreement.txt",
+      "sha256": "7138f570e166e5463f6c0ffc5b631d2644766aa7873a206e522157713f14e68f",
+      "sizeBytes": 37206,
+      "url": "game-assets/textdata/agreement.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:7e8a85ecabfdc494eedd78ba35c11fe4478412a3c4eaeafef1f72bb504f2b4b9"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/as.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "url": "game-assets/textdata/as.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e3236367edc59d745c4c075663515a253cb51352c86937d2a71c492222082a50"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/atstructeffect.txt",
+      "sha256": "c5a17e192bb273610631fdc63bf5c7dec07a81bc0fd1d109175b9045f51a345a",
+      "sizeBytes": 131146,
+      "url": "game-assets/textdata/atstructeffect.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:604d0d6eb002502907c193c03395eda0078db38fa945dbcb8924a731b73e3338"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata.txt",
+      "sha256": "d705e9f2ab6315f64fe4dcf0fcf13899996ceabe12b3559dca61afdbec50737e",
+      "sizeBytes": 450,
+      "url": "game-assets/textdata/characterdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:9cf956680a9734014f221f3abe369f95b0bc2c5e86cacbd89f4317dbde732788"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_10000.txt",
+      "sha256": "1e72178dd8a226fc37b8dc47bf6385876c786ce03ac0d6a4a1f77c4d7c1829fc",
+      "sizeBytes": 1584308,
+      "url": "game-assets/textdata/characterdata_10000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d52e77e18ba7dcc1417a404dfe491a8353c660bc848c85bfe70ec8fbbedf4102"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_15000.txt",
+      "sha256": "321a98719aac649622fc77a8f521493757a20d4f9bc0cf136e73e0c38868e9d1",
+      "sizeBytes": 369294,
+      "url": "game-assets/textdata/characterdata_15000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f063b5913dffccd75bdebcdadb65eea602b78dee1584cfa5a1ff5a9e8a9fb79b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_20000.txt",
+      "sha256": "e84a721a1f943f35b3814ed00a7362a548a77b8927a4c49c79e39255b679c13b",
+      "sizeBytes": 3527702,
+      "url": "game-assets/textdata/characterdata_20000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:37618b77c77ebcb34512cdac0ea261d8fadd0bd3451c6f55cf63d3ba2586a138"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_25000.txt",
+      "sha256": "c505af67967f41ac07e0554ae8da207b760721d5bc042ecc577e331b8c588bda",
+      "sizeBytes": 2848072,
+      "url": "game-assets/textdata/characterdata_25000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:088d71cdd36790b820888cc51e2ac1681d4c49fe38d16d015be006c3fd19283f"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_30000.txt",
+      "sha256": "feac11214913e90dcada2aa976c235dc1760efff98c02f01db4a0df5ec74c87b",
+      "sizeBytes": 125738,
+      "url": "game-assets/textdata/characterdata_30000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c89e0ebed110f1425f43575577e3e35c31cb0f65153bfb3ec603439658738e67"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_35000.txt",
+      "sha256": "5ba6aee4fdc133815f32043e2203f992ccc6709f97d2dbbafeba99d0bfc9212e",
+      "sizeBytes": 2036,
+      "url": "game-assets/textdata/characterdata_35000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b6660bb1bbfe2f733d3d12f10e0396381ae72523e1493fe88c1adeae72093d9c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_40000.txt",
+      "sha256": "bcf4db493c5b4a1b90bf44866f217c1486f0c7e457b1731673298f1dd52c32be",
+      "sizeBytes": 356720,
+      "url": "game-assets/textdata/characterdata_40000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:55b04006f5f35b67cde4f6356008641c41a31dea2a59f789f26c2f7a51898e0a"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_45000.txt",
+      "sha256": "302a0e6022ae4edd544803765c250edf9b5d7be0b8a258fbdd702a58368e0b3e",
+      "sizeBytes": 4152376,
+      "url": "game-assets/textdata/characterdata_45000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a8f29f84f72dc50a673ddee72133b8d676378be13e688fc1d3733561d7b3ce06"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/characterdata_5000.txt",
+      "sha256": "759c1ed024975a69261e6a03937821b0d6363149e8cafab79dbd342070fadf61",
+      "sizeBytes": 1110636,
+      "url": "game-assets/textdata/characterdata_5000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a0651e7dae0f2c92baea86a6894e35eacfef04fc72b2fea6dffbcaf29ed2b383"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/charactervisualchange.txt",
+      "sha256": "2e7576a24b573d2b6e30ff16f0de1fdcd1480d59fac67c0b97880db3a1ae4129",
+      "sizeBytes": 121284,
+      "url": "game-assets/textdata/charactervisualchange.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:2a39f84d8b834c36b168db7f0f62376b5481244a743c8051b67904b6c7c2fc80"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/chargrowdata.txt",
+      "sha256": "e8992dabf170b39f341da74375eb13316ceede33379d35b8c020cfdd0a0a1b5d",
+      "sizeBytes": 764,
+      "url": "game-assets/textdata/chargrowdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d48489bddec1e1fddd1e58de60c049615cc73feef924b7faa76981b962420c9c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/collectionbook_item.txt",
+      "sha256": "ca872ae2235d67d65aefd915d421e05b660d8592f636de726e33f5961ffe0833",
+      "sizeBytes": 11132,
+      "url": "game-assets/textdata/collectionbook_item.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:6117cf503da47d4b045d8501b9749154f63114c9e1a4c402c9a2e463af5df9cd"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/collectionbook_theme.txt",
+      "sha256": "33a17dab15bd58345230c4ca3f02c313e2e8dc04e3c03a6bed01fd09a3112723",
+      "sizeBytes": 956,
+      "url": "game-assets/textdata/collectionbook_theme.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:4c070b6d3005cab26c46d4805a6c155288133a6a882348b2d1965fa20f2cb53a"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/dg.txt",
+      "sha256": "baafc70f709466b0a23afb9fa3cb4698708643b1b8530f3228c3648a10575f3e",
+      "sizeBytes": 3362,
+      "url": "game-assets/textdata/dg.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:76e5f3f5775945f5eff80cb5526772cee5baa3b4f9d59836ec40a14c10feb2c8"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/dungeoninfo.txt",
+      "sha256": "5c69457e1dfc5ada9bfda252d87228c1213c5d2828659ac9cfdfca44bd663f21",
+      "sizeBytes": 668,
+      "url": "game-assets/textdata/dungeoninfo.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0dde88bf3b5ea9c0c1396976b8079a442624e4aa65989f20a6a932faa9ebb5a4"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/effectenvsnd.txt",
+      "sha256": "04e8655865e3077e1dd9722e240f7887b9ad452e374709b772df7f30f22b92a2",
+      "sizeBytes": 25073,
+      "url": "game-assets/textdata/effectenvsnd.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:2d849e9f26b316db7858f49c3da26fdfbb7fae1656d3ce1e8d911d140288a97d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/effectsound.txt",
+      "sha256": "a94df45d67561490d7b83266a5f5c0e99ddd46f87139b6fa23ced6c5792b8ea7",
+      "sizeBytes": 685647,
+      "url": "game-assets/textdata/effectsound.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5fd0f6d3e6c83c8c24e333f86515cfc67b486f033874efbc1e8fd014b61854e8"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/erasablemastery.txt",
+      "sha256": "80db788ab14392efd2854f82d042b8ae56f7d66d4176d2b567f9f386975a9022",
+      "sizeBytes": 142,
+      "url": "game-assets/textdata/erasablemastery.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:be840a761d3801615c9967485295427312f2e344cfebede43de8dde13794d4a8"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/erasableskill.txt",
+      "sha256": "7a15450469bd8ea0aaf91e8d6d829b8b65b6a8c92a982d19ceb2fcf79fef901e",
+      "sizeBytes": 3896,
+      "url": "game-assets/textdata/erasableskill.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b7c5b615dae7d57d3c17f92f7093485ffd44fa68ea489f8dfea79c28a9a99ed5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/eventdata.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/eventdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:992b3561c537555016e92dc309cae7d1376f4691c5da50b06d6e893d4d87982e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/eventguidedata.txt",
+      "sha256": "a1d49314240b430eeec4a31ea94180c3ea563c5417b7f6c265e86bd1580fefee",
+      "sizeBytes": 4002,
+      "url": "game-assets/textdata/eventguidedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0762e55eb97ea0cdd6fcbb65b824439110504142d2a59fee592bd604687d4116"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/eventnpcdata.txt",
+      "sha256": "929061ecb6a44c446108a5ea9d125e4c0f9479806104fc506d2f8dc593ca4127",
+      "sizeBytes": 720,
+      "url": "game-assets/textdata/eventnpcdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0831345828c14b3e3afb5a86e25853b85e4e23014700f3673742d2b9b3f65718"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/eventword.txt",
+      "sha256": "4282b8f7ae4bca2b9e5e4012b2d9a795614e5c2755dd0c32b81f66927b58b2b8",
+      "sizeBytes": 130,
+      "url": "game-assets/textdata/eventword.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f6160858340f8af43571bb66d99ed295e4063b15aa9ff0953702879320ec5174"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/eventzonedata.txt",
+      "sha256": "c6713257edbacba69273fdde9f1990328439292ff1fdfab63de2d5785b9c0b75",
+      "sizeBytes": 66584,
+      "url": "game-assets/textdata/eventzonedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:7582e42e98ad8f7fc330f41cf290dc8665e7500b100b379183e336d6126e9284"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/fmncategorytreedata.txt",
+      "sha256": "1a4f26703f5d6c5e552d5cf83869dc7acf1e6a024cae3ae8a404080fbdacd699",
+      "sizeBytes": 9642,
+      "url": "game-assets/textdata/fmncategorytreedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:aa2ad89c368b3c3214fecb5c74370502c8b6353e7d24ddf93c7916916a6ba522"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/fmntidgroupmapdata.txt",
+      "sha256": "3247000b86272179c91488169227e6ca576307a54ed2835a384aee84362571f3",
+      "sizeBytes": 3962,
+      "url": "game-assets/textdata/fmntidgroupmapdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:cc9a66737e19501c493acbe74def92eab9b5e1822e980385d4dfabbf9d5107ff"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/force_addobject.txt",
+      "sha256": "4c41be29f2ee627f1267f42491e5c2ea26cdd29d1783230545ed4dc89e3f8197",
+      "sizeBytes": 11306,
+      "url": "game-assets/textdata/force_addobject.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e14c0a71b31c52a4a34b036c5c8983ebd293fb65bbc36037bcf2f93f71e2c940"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gachaitemset.txt",
+      "sha256": "4942fe3338e63f3a4d927ecef4bb2f3596d33f3a1b274d9783a63b1a62266879",
+      "sizeBytes": 644010,
+      "url": "game-assets/textdata/gachaitemset.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:63e6c894955422ae6db58ad2b915ff9afcc5bef7f3440f54537a86ff118bcaef"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gachanpcmap.txt",
+      "sha256": "3b1a7401d6f480cb42171fa90f8560196cd12fe4d2998338db266d7cfb06e344",
+      "sizeBytes": 26,
+      "url": "game-assets/textdata/gachanpcmap.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c200643ae1fe517b6aa60debf27adab64e300b24cd62715925300bf977197ae7"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gameguidedata.txt",
+      "sha256": "7f23ce8e1878c642999517f8d43c9edc4296f159f6f2acb13b32af6c038103ad",
+      "sizeBytes": 151644,
+      "url": "game-assets/textdata/gameguidedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:72f13dae3b28c615350795183c0589665c7ef80b35c4526c8b793119efa29f9b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gameworldconfigdata.txt",
+      "sha256": "93d4d0ea6c5b1dc293550ea5c431ff9c4ac5ea98098eda701b3f124eda6321c6",
+      "sizeBytes": 120932,
+      "url": "game-assets/textdata/gameworldconfigdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:ecd39448c5b203573482c0688e4defdd42dfd21f2c527ef07eec8787d38e1dcc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gameworlddata.txt",
+      "sha256": "130afaaac5c9da2bffba86f6ff4205b55e941bc6d9c194d714e056dec7f10e2c",
+      "sizeBytes": 9792,
+      "url": "game-assets/textdata/gameworlddata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:017393aaf26725394a0e377dff23c5c872c4ae546048e1575f0bd0b495b1c6cb"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/charactericons.txt",
+      "sha256": "b32e6ff808b2f5a119d8c841793da5f40027001fc7c551020df40cc707c1fd97",
+      "sizeBytes": 184,
+      "url": "game-assets/textdata/gopro/charactericons.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:383a6b9080282c31bc27ea39e59da844108dee01241515f25b33e367cc9b8398"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/clienthash.txt",
+      "sha256": "e4fe5c8a5f5088efba0331b6829721bf04e772ffbe2cd02f88da0966553a8971",
+      "sizeBytes": 256,
+      "url": "game-assets/textdata/gopro/clienthash.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:900e0bc8d1b5cc8176ec54f4696248acb5b0d32b57e4328fd0f16faf193ee5ec"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refachievementquests.txt",
+      "sha256": "1ee3259125909be50e57246f59f1ae91672dd1a614c411c29b4a6d095908e235",
+      "sizeBytes": 1141,
+      "url": "game-assets/textdata/gopro/refachievementquests.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:cc7cb8f808caf70f021e19b969b5fc83a384b0902192134fd006ca6e198dafb1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refachievements.txt",
+      "sha256": "4133561174136c38975105c89a0bec27342eb93067f3d089daa075dabd6dcd48",
+      "sizeBytes": 1761,
+      "url": "game-assets/textdata/gopro/refachievements.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a66ece8b007ace6ff1970657a7d1b0c7f739597eddfffd156da87f65fe982ba0"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refachievementtitles.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "url": "game-assets/textdata/gopro/refachievementtitles.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:90fa402ae58960c4872b4df9923985f97d3ac96f32701e75c024c6cbef260874"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refeventregister.txt",
+      "sha256": "4773998dcfe0df4edc989f9d33d988eb70661ede2cc498a04e4f3fe0fff83a5f",
+      "sizeBytes": 784,
+      "url": "game-assets/textdata/gopro/refeventregister.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:41461b0dba7efafcaabb4ec0dcbd4578198da8adc1fd45b3f65765b60810fc5b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refgameguides.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "url": "game-assets/textdata/gopro/refgameguides.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a8cf5f1e30d2a36806401bcb203a4dc67b4971a756ab4e348919d7a3f437d393"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refhwan.txt",
+      "sha256": "4917bc6fe64f48346ef586171797da01e78c4ad218a41a95675f25e766e4e558",
+      "sizeBytes": 10092,
+      "url": "game-assets/textdata/gopro/refhwan.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e4f095c6d9bf572ee92027c6a4af6be801ae12f62a5a1e41af8dfe50ca92f26d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refmonsterconfig.txt",
+      "sha256": "622116fad1da65a6b95c45634b7fc8e9d4091e9e0de3f0d5d70c11afc163d9b6",
+      "sizeBytes": 850,
+      "url": "game-assets/textdata/gopro/refmonsterconfig.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:157132644eaa46ed2347e9953385257024856ee0c6ec0f83807d8a764ea6af99"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refranking.txt",
+      "sha256": "eebcb46f3e3e593b65e510ca7d1685fd35ae87525a185dbf976100c1184b8553",
+      "sizeBytes": 292,
+      "url": "game-assets/textdata/gopro/refranking.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:98661cb8280d7018beb6e261a6dd90871cce4778670aee163c7d01dacf5088c1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refrankingcolumns.txt",
+      "sha256": "9397e0e70db34f23d738bd471d147d8612196f10be2d18ce27234260bd6aafbf",
+      "sizeBytes": 621,
+      "url": "game-assets/textdata/gopro/refrankingcolumns.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:3b54eb14baeae466efd06c86559bbdb2db50e0dd6b4abd41a27e54fa04058271"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refrankingconfig.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "url": "game-assets/textdata/gopro/refrankingconfig.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:207d5feb148a0114ff3d8084348803e4db741946873bc758d99592de89e35ea8"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refregionconfig.txt",
+      "sha256": "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/gopro/refregionconfig.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e69e538baff311999a9802fe5c9517c821e6f63919c42dff00fd651aad09db5f"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refschedule.txt",
+      "sha256": "90e1bb7ab222e5753f63c54e86d271d433b6e1a701e605fd7010a2021f7bab2a",
+      "sizeBytes": 170,
+      "url": "game-assets/textdata/gopro/refschedule.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:687195fe37a2efcff6cb86e0ce99274c4b660ba9503c87c9878e662f549fc7ba"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refsoxnames.txt",
+      "sha256": "8a454099fe1a8b942936afff4c567700968a3b63a934cf341c7ea2b4c3885f89",
+      "sizeBytes": 132,
+      "url": "game-assets/textdata/gopro/refsoxnames.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a1fee3758f6f51837779856319817929d7356d1ba9f28a5fbf4f76273bb947e1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refuniquenotifications.txt",
+      "sha256": "24c3febc4c9848ba17c8abe0bb1488df093eef2466bb29d1d17f65437b32d2be",
+      "sizeBytes": 1295,
+      "url": "game-assets/textdata/gopro/refuniquenotifications.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:52acb9e5358e94040b8e2436b442a8b9d0d915e01e04f5dce6db064723e108ac"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/gopro/refwebinterfaces.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "url": "game-assets/textdata/gopro/refwebinterfaces.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:86de6a5e3f777aa4e405e85cbda0c4f17475519a5f73df16cbfd2731b12fd285"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/groupworld_config_forclient.txt",
+      "sha256": "f50393d8dc09f6e3d524830f2de224375d5a591d747964a450e6c48fec5a3c85",
+      "sizeBytes": 466,
+      "url": "game-assets/textdata/groupworld_config_forclient.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:3687104b1ee09a79fdb5eccf6d5aca1bd63e0d48917b8354cb79c440343b7bfc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/hwanleveldata.txt",
+      "sha256": "dc2f3e619b742256574684ab673f4519305788e52ec9637d75da8edb472c11ff",
+      "sizeBytes": 36606,
+      "url": "game-assets/textdata/hwanleveldata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e5361c90ed5f0b03b4875d3724de0d2d4cf528cf2139edca03d2e8bb681916af"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/item_grouping.txt",
+      "sha256": "fd3f0000441eb6effdd7e004ba42cce49788b216e772857b76a1add3004cfc31",
+      "sizeBytes": 32532,
+      "url": "game-assets/textdata/item_grouping.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c0fd9717b843bbf64ce10e3e3448d3bb3d41b1d0787d690ba91627bc70efe8fb"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata.txt",
+      "sha256": "6ba7ad4723c4b3da56d92bb77caacf9f5c5a7fd6c95e4ea8d4b9e0c018ceef10",
+      "sizeBytes": 360,
+      "url": "game-assets/textdata/itemdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c6326f508aba6f8729dd28c138cdbeed010f5a7c40ed7cd20fe2ffdd98bcda3b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_10000.txt",
+      "sha256": "a5b2000de56cb7e7aca8f0ab8ff2c745e20fdfed820960ad37503372b5d3319c",
+      "sizeBytes": 3109452,
+      "url": "game-assets/textdata/itemdata_10000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:063240032bf07861d1181732e1d868dd04495f18449de544c0a63bfb583c5ede"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_15000.txt",
+      "sha256": "d90078f8cfebe4fe46a438cd9f1e32ca2496a916cb15b07aaffa27a670a49a10",
+      "sizeBytes": 5650398,
+      "url": "game-assets/textdata/itemdata_15000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:7c7c9f67add1f238b0a87596b4539797606d40e1bba52cea72b875f95764cc88"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_20000.txt",
+      "sha256": "a3aa7a422f3bfde94a922456d32123935bdba028b8892cdff77b8a34e710e7e1",
+      "sizeBytes": 93840,
+      "url": "game-assets/textdata/itemdata_20000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0ff09c1258f50d01668f8de77c0a17e022679123a2d187b011c19740ba00ff67"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_25000.txt",
+      "sha256": "595ccf8fd82995faae2917784d1ea360a413657a2e6520290271316a1dc79d3a",
+      "sizeBytes": 1212970,
+      "url": "game-assets/textdata/itemdata_25000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:fbfe7621c91b25cd3d237d7a872292b28ae867de238a22dd6a653a2801bc1bc5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_30000.txt",
+      "sha256": "5fe5fe548473c4e376c05346cd527e63bdedfd44e3fac082a2ccf386184203b5",
+      "sizeBytes": 2099046,
+      "url": "game-assets/textdata/itemdata_30000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:82406b1b1ae6b5bd5890efa6c482a226c74a0ee8f776434446c20167ddc67676"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_35000.txt",
+      "sha256": "9f00d7a6897899e8be5d57dfb2980e3b70223da3bee5c3c1c4474c7b05253f45",
+      "sizeBytes": 135342,
+      "url": "game-assets/textdata/itemdata_35000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:52384a158d8d06fcc4f34a600d61115edef902cffe29cc0330c625e60971c130"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_40000.txt",
+      "sha256": "9f5c8d38f6938d03a8838a1bc6dc3c0a11f6b54fbe18a56fda1f0eaa7fe44436",
+      "sizeBytes": 1092288,
+      "url": "game-assets/textdata/itemdata_40000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:08b458270c4789dd8c91ccdc1b83db314b8540ee06e346e02731e0888c1d4d45"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_45000.txt",
+      "sha256": "57e09d17025feeae5d032742b249f81e973c47f545c02dd50b4aca164955dc30",
+      "sizeBytes": 1755704,
+      "url": "game-assets/textdata/itemdata_45000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5a8b74ef2ba29115d2ecacd27858bce2777ec0854334d2557ea4250ef9cfb044"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemdata_5000.txt",
+      "sha256": "863b9d7ac82a6b3ba2c14aa7986859b4d21005229e7941d6504d9f01271e5463",
+      "sizeBytes": 3958202,
+      "url": "game-assets/textdata/itemdata_5000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:135afc0cf32842d11fc92bca3e4c26320e783c87925cbf8a26afd9a86adc82d6"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemeffect.txt",
+      "sha256": "547c22986da25d6529e9308c281580ae101221df15145c2e0ee4782632d921ce",
+      "sizeBytes": 6092,
+      "url": "game-assets/textdata/itemeffect.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:2c524f8bce28dbaf1be8fcdb111b5e51e2404ad0986acd3039c3f3109ea2e47d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemoption.txt",
+      "sha256": "ed967029ab0840883a52facb0df8b32eaac9bfa9c85e25a9495b7c8c7c87af78",
+      "sizeBytes": 38558,
+      "url": "game-assets/textdata/itemoption.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:278424048b55d52fe596309487f49c4f4c1fd52313d550c897e8797928550d78"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemoptionefp.txt",
+      "sha256": "add9f60423e97c175827e18369c27903a57a9d0361eb141b49015b192bdafe81",
+      "sizeBytes": 117213,
+      "url": "game-assets/textdata/itemoptionefp.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:44fda9b58d0bf93cb22331a3c51ccf4b8503827bc0444b9bfcde864e8cf8b893"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemrare.txt",
+      "sha256": "40f8834a53ee0cef809b0b4626e598bbf8033bf6461fbbcb68fd2ea615506623",
+      "sizeBytes": 75652,
+      "url": "game-assets/textdata/itemrare.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:dfce223ee505bf18c6776636bad494fe663fd06aef1204bf73dbf1ea12977a7c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/itemtypenumber.txt",
+      "sha256": "57d4c71916e5458d101fb3153e44ddcefbf2174b9ef3534d464d375dfd8ae9ab",
+      "sizeBytes": 3772,
+      "url": "game-assets/textdata/itemtypenumber.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d538177e0cd0e0855a478205182845f3ac40fc8aea5fca5bba3d0b29576a494e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/learnablemastery.txt",
+      "sha256": "dd7a874669fc156d439ef33d661724a59f21a4e551da1df523a223f773b7631c",
+      "sizeBytes": 282,
+      "url": "game-assets/textdata/learnablemastery.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b2a976711c70b52ebbc2cbe61d84d9aa1d07baad839274adaf8b5c9e000f5eb0"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/learnableskill.txt",
+      "sha256": "7be1f8dbda367e4aa9838b3f6d653f6e50b54a89c07c66266fe6d496684d0451",
+      "sizeBytes": 3896,
+      "url": "game-assets/textdata/learnableskill.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:96e97394e43d471abc9cffdd5c534cad849c99f09e7a6b16643da52656a7252b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/leveldata.txt",
+      "sha256": "64c1ac74f95edc6358feb901544d17852ea280bc5bd40311e69c3e23a0a61049",
+      "sizeBytes": 10388,
+      "url": "game-assets/textdata/leveldata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:54041163bfb8a13643de10b765b1bf64a45e9657d99dbe809cca69dfc879eca7"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/levelgold.txt",
+      "sha256": "950b8f7c84e5d52f45fef80f722ef2ca255d1c58e5343c50b0b785640cba2b55",
+      "sizeBytes": 3396,
+      "url": "game-assets/textdata/levelgold.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:aa2f8a451d69f6fce40d3e1cffb26db8c424c9e3b82ff53045a815980ff95139"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/magicoption.txt",
+      "sha256": "8c40f9aef2d2536c2ef12e8bb2f67096ca3a2bcac042082af4d5537e0b64949c",
+      "sizeBytes": 219588,
+      "url": "game-assets/textdata/magicoption.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b851a9758363e350951dde2e6402990be3db19e78f37807c68738cb3f4e8fa58"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/magicoptionassign.txt",
+      "sha256": "68cedf4affd6c6a560732ce019b3d0d25450c9b7c1dacc2276794657715ccf54",
+      "sizeBytes": 25202,
+      "url": "game-assets/textdata/magicoptionassign.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:655687e3263f16ebca3eb41815dc5e24566af2432e9a03e13e74fb7a644eec56"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/magicoptionassignfortradeequip.txt",
+      "sha256": "8341e2b39ebb7eb5656f4f96191804f8aa0c46322030fb01ab193e7ddefa71a1",
+      "sizeBytes": 8450,
+      "url": "game-assets/textdata/magicoptionassignfortradeequip.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:790373757915b354081335afac8de27eaf3215dfad9e3851dc95fa624b501dbc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/mallitemmenulistdata.txt",
+      "sha256": "edec4cf562d006a29267bc1cceed79cc72eb2748936073f7d7199e48d8d1967e",
+      "sizeBytes": 2838,
+      "url": "game-assets/textdata/mallitemmenulistdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:88164d9940171a595b81fa06a9263eac4cfaa201a9e9eebde079cef805151639"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/maxtradescaledata.txt",
+      "sha256": "a3ace0af60b55af1745ad4d2fa4f72f05735caec4af987406039d354f34c0ed4",
+      "sizeBytes": 64,
+      "url": "game-assets/textdata/maxtradescaledata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:712978f0b989212040098466624f554b42264a09b59b8a621e7a19086958d104"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/messagetipdata.txt",
+      "sha256": "c62bf011fe971d14f6061ff36c219648a38fff1e048291500e0266c9f3e7366e",
+      "sizeBytes": 10770,
+      "url": "game-assets/textdata/messagetipdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c41ab8eb8e99fc8a300723f3e4a30488cb2c397e257047fdcd7009f51480f2bb"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/npcchat.txt",
+      "sha256": "149c9f76f1c31c2466d3e24a2ae607e31b3b8f72223d9c9bffa1807e32aa5aed",
+      "sizeBytes": 71888,
+      "url": "game-assets/textdata/npcchat.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a89d9e90922bb00e8593e21438c47438456a44833c82e046f7f5bc35af610b45"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/npcpos.txt",
+      "sha256": "938b765800343c0f69fc066c24afc8861481aba847f5ec8cbe93ad1349e7bb5e",
+      "sizeBytes": 1271910,
+      "url": "game-assets/textdata/npcpos.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c6bbbd1d385ba2172434f8ada4ae84d35167db401047438e9bcf29a4a731e1e6"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/optimize_clothes.txt",
+      "sha256": "f09da8b8e111f5af87edcbe43aec255acef9450ad5daf41875f24eb64e67cfe1",
+      "sizeBytes": 1122,
+      "url": "game-assets/textdata/optimize_clothes.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:336d7bd08685e9484a1c0a4211f0197613f6bff6aff317f36bd5b779481fe964"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/parachardata.txt",
+      "sha256": "5029c8f342880ecda8a5080ec89f499493dfed0fb1d2413d791069b857583622",
+      "sizeBytes": 29311,
+      "url": "game-assets/textdata/parachardata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d4e655a6a600caa5d3e04afcbfe060fe58e9ce78a95f58ce48457300bb307249"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/paraskill.txt",
+      "sha256": "56344c20ded95aa0598f05c3b369c457e5fc0ad75a0038fe3d6193d08ca90cc7",
+      "sizeBytes": 3276,
+      "url": "game-assets/textdata/paraskill.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:9cfbc92fbbb71aa19ab8752361d4c8b80e99a6e297739301856db9c889e44e58"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/questcontentsdata.txt",
+      "sha256": "205cd646065585ffff1d12189b7a33b6927f4aae9f6ba624e0dbddeb61249d8d",
+      "sizeBytes": 233674,
+      "url": "game-assets/textdata/questcontentsdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:908e3690678ee784560b387c13a9e2378e2784d0f0a2df4d8eb53fc2a64f6a91"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/questdata.txt",
+      "sha256": "7ef62c77b7b4178437f861b5f12d7341a2a3bfb8bbc3a418c9eb303ade56f6cd",
+      "sizeBytes": 224286,
+      "url": "game-assets/textdata/questdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:9bd4b2bcfc86f87b4b39d25a03f4f79029c723b963e3229053d0a920352e22bd"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/questdata_origin.txt",
+      "sha256": "972d76d5be68f1b6cdb3246a481671525382bfb408b0818cdd705de974fffcff",
+      "sizeBytes": 16340,
+      "url": "game-assets/textdata/questdata_origin.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:49b8f896829bddb26320072af6be554f3a1aadedd284b11b716c5b1c7d902a60"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refabilitybyitemoptleveldata.txt",
+      "sha256": "63529f402798fc6e74032208050673134e3cbf825d2630edf4616c0bac30ea1d",
+      "sizeBytes": 4494,
+      "url": "game-assets/textdata/refabilitybyitemoptleveldata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b913ce8bf915482ac7a2f70e17b58684d21a8ac45f3835dde17fb606b8cb3ef0"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refaccesspermissionofshop.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refaccesspermissionofshop.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:29d4b6a1133d3d3d66dd4931495dad1a3a4f2f9dc4a2a3cb458da8e48929a7ae"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refalchemy_mk_materialgroup.txt",
+      "sha256": "4c46fb3b4afa7383b20b7e7ddfe7dbea8761815eb12dd8c750b7134339e6659c",
+      "sizeBytes": 182174,
+      "url": "game-assets/textdata/refalchemy_mk_materialgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f7571771f880da8adee76d8c491d498a0b218e1e4a1d002006173e4b6a158b14"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refalchemy_mk_recipedata.txt",
+      "sha256": "d6eb59d668a1527ae3fa712b7516820bd391a629ab1731069afc9185b1128bab",
+      "sizeBytes": 84742,
+      "url": "game-assets/textdata/refalchemy_mk_recipedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c62e310a8d9ae5c0329a92755f3071c2121993cbd8662962b058b276973181f4"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refalchemy_mk_recipeshopdata.txt",
+      "sha256": "298658e9e37b08ba0fd7ba18ccf78c48cf9257cd96167b4a177546f74f298f0f",
+      "sizeBytes": 14726,
+      "url": "game-assets/textdata/refalchemy_mk_recipeshopdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:182a98f13c6ca3e0b1147aecf3f23cf2cdf435884c199a6ca8fc4117a2a4fc7b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refalchemy_mk_resultgroup.txt",
+      "sha256": "288cbb931f00409537fc69157dd4a91e7a8f95eead24c8e3900f2f9d11c73c05",
+      "sizeBytes": 156486,
+      "url": "game-assets/textdata/refalchemy_mk_resultgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:057f48d603d4bc7beefd44488934364d2fd1bc0d255486bb17f56ed545cfc3a0"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refalchemy_mk_ui.txt",
+      "sha256": "9d2c8fed1710f425feff4977575dd8b3e805bc3fb92e08787272d3f1e6445ac2",
+      "sizeBytes": 556,
+      "url": "game-assets/textdata/refalchemy_mk_ui.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5d70020827643d0127656b02a78e5f3a037ed8a69db23e7faa867a2f3e4c3e78"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refcartcosinfo.txt",
+      "sha256": "cd57fcde330afd7e53e40b34f96484d62685364e2e87004ca55d9786b9460adb",
+      "sizeBytes": 570,
+      "url": "game-assets/textdata/refcartcosinfo.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d4ec59ea766fb2040b7833ca45445f52a7e110e5651c8f3c5f86c383ee4e552f"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refconditiontobuyscrapitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refconditiontobuyscrapitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:013aba5710f7a839d27f30725c8ff51ffdc777f9fcbc9944ad31e12579d7dff2"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refconditiontosellpackageitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refconditiontosellpackageitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:79233c2c75c1fc35cf8b16a5091b17c7028d92124e502ce035f1adf2ba5d49b6"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refconditiontosellscrapitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refconditiontosellscrapitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e418ec79b62ba5cb0ab398937c25646c8f9e92549114a85a529fd4487dfd15b7"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refentryticket.txt",
+      "sha256": "301d2f5a4d413259f3543d78215d7f72fb5226feb821c3d434c7cb5039d1dbe2",
+      "sizeBytes": 9318,
+      "url": "game-assets/textdata/refentryticket.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:8ec751d715107e1df67be2afc486c2dabf80500544b00852786356f6b19ad18b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refequipitempenalty.txt",
+      "sha256": "81ce92889357301234601746d335ea347d839e49f1a59be20d54ccd896c9f811",
+      "sizeBytes": 2378,
+      "url": "game-assets/textdata/refequipitempenalty.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:2fe934ff95c30e6759029df6de32b4daffa116029d18cce224175b2d76d36a3b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refequipitempenaltybalance.txt",
+      "sha256": "76cd4128b0b4436d74118daa3a739cfa803ef07502676719d5a624c5f19ec229",
+      "sizeBytes": 43078,
+      "url": "game-assets/textdata/refequipitempenaltybalance.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5b8137a35d0c2c41ced957df4fc5fcc270c4579ac44dc2a5692df31db9dc6208"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refeventreward.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refeventreward.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:4e0bc48de638358bb587e86df130cd44671ce5524c665b8bc60f9c06adc1d9fa"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refeventrewarditems.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refeventrewarditems.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f6566b7a7ad85a2751fcba9b64d527a827a9d5fc1a34975eb58adcf50b99caa6"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refextraabilitybyequipitemoptlevel.txt",
+      "sha256": "2b2fd5d214b55dfeb5f9dd7831af39919a705c62db28071144e85f7675316109",
+      "sizeBytes": 2521346,
+      "url": "game-assets/textdata/refextraabilitybyequipitemoptlevel.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:872a98e38192abdd04f078be1dde9bd8749e59b954f2ee256edbd439fa406e6b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refgachatreeforclientuidata.txt",
+      "sha256": "0c8924e69e1a7c64012440fc1617811d791415a7ca8e011e8b64fc1594da470a",
+      "sizeBytes": 9450,
+      "url": "game-assets/textdata/refgachatreeforclientuidata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f66bd573b853aabc2c50615f386355c3d6639a5651e0cc480720f4478a119904"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refgift_exchangecoupon.txt",
+      "sha256": "979a8a581a98b3c7b8d0a25c52cd99500c6211bf9fd40439854b4b829f26d812",
+      "sizeBytes": 768,
+      "url": "game-assets/textdata/refgift_exchangecoupon.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:4f9f3b088e12be035f4e4b4ccd384fbd77702b4e66154c11074502938561ce14"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refgift_exchangeitem.txt",
+      "sha256": "79bede1d22027199fd20cbece3074023bc7388d6eba3f841a1661ac781f1c6ec",
+      "sizeBytes": 18258,
+      "url": "game-assets/textdata/refgift_exchangeitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:19d7ae7edba20ce503a15a8b7dba86b4025d15bed7c9b176998fdc3a13661037"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refitemupgradenreinforceratio.txt",
+      "sha256": "7383c7b9a26f8702a695e9ce17a698464cf1c39bcfa30ffdb22eafb3d99f082f",
+      "sizeBytes": 586,
+      "url": "game-assets/textdata/refitemupgradenreinforceratio.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0cb8e6e8c4e2c5b5718b8b2c793d1ce5756120f6085a5a8017df7fc55ef28a93"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refmagicoptbyitemoptleveldata.txt",
+      "sha256": "ce62b753af335d16ee50383070c70fef28800e42ed1270776e031430884a39c3",
+      "sizeBytes": 14650,
+      "url": "game-assets/textdata/refmagicoptbyitemoptleveldata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:586fd84c3ff7e7dca3bed9cbefbc4b41a1da6f981a8b89a6a6f9ae14d9721211"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refmagicoptgroup.txt",
+      "sha256": "9129ae127e661e4210e0f14319552e91fe18a68ed3544ce0ae387b14f955734e",
+      "sizeBytes": 8778,
+      "url": "game-assets/textdata/refmagicoptgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f8f16bd51ecc8ba6e7838b57b2eb7c0951ff38002bcc25440065c11eaea9b731"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refmappingshopgroup.txt",
+      "sha256": "aae6b3e21e58b6be954e96349d6e6a0454a951f464a7d5b59bb41060aad2959a",
+      "sizeBytes": 9900,
+      "url": "game-assets/textdata/refmappingshopgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:26e1f6d4fe2f52bc297c88e565e96fca2c439b8bbd36b387960d997d2e636e1e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refmappingshopwithtab.txt",
+      "sha256": "af5d7c13133d15142f14bb47e42a4d5b9e301ce19ca17ea3b9dde7dcf1a5e16b",
+      "sizeBytes": 9434,
+      "url": "game-assets/textdata/refmappingshopwithtab.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:6947c5e1554cc9d6cbb829060495335c36af803bbfac7a3825338d6aaf155909"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refoptionalteleport.txt",
+      "sha256": "9697f72ba7a12f2d12907aceb5edade774fabe0415a6a28ab27bf0245ea917df",
+      "sizeBytes": 6656,
+      "url": "game-assets/textdata/refoptionalteleport.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:ac6c55f7b04a6a213dcd1da3f56972cc2d912d7d4e388e8e60e97f479543cba4"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refpackageitem.txt",
+      "sha256": "b5855990d8ae9ed09043c94dc917f9b1d8f10b1450cb139d12559d844003b4da",
+      "sizeBytes": 1099074,
+      "url": "game-assets/textdata/refpackageitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:18b8f3dec89c3d115fabec954aba5730aa6f5de4ec278c50cfb58d6501a22024"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refpricepolicyofitem.txt",
+      "sha256": "6028b7d9414fd7041b8b7fc33a6159794e98d3fe63aee4f385360f218c6020a7",
+      "sizeBytes": 552896,
+      "url": "game-assets/textdata/refpricepolicyofitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:071f0a468ad814c736096dc035afba5a23d2be8874d298a5f0a5cf68e5206919"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refquestrewarditems.txt",
+      "sha256": "02eab4fea9cc9ce2c2cc4830bfd00640a7280b571cbdac761576bf0867ce8e58",
+      "sizeBytes": 52534,
+      "url": "game-assets/textdata/refquestrewarditems.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:7f58ef558e11b8b4cccd98e86405347719cbaa3048d9e45a661f1730b143d1cc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refqusetreward.txt",
+      "sha256": "f40a7af950d1508f4fb16f4dc63dd8e702ea64c30ea4eaaf1013ea47f2243f79",
+      "sizeBytes": 120532,
+      "url": "game-assets/textdata/refqusetreward.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5ee3de8e504a53ced18f266594ecaca97ab369a872ea36b56d048f32ede9ea82"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refregion.txt",
+      "sha256": "e3466208e5c9fe4fa3afb888e23bfcd6c564c9b19f691ed09cd05a4e80262e2f",
+      "sizeBytes": 483624,
+      "url": "game-assets/textdata/refregion.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:290e7a9ea753849b9cb922393f97b63a85f91e664e845203f07022e761c7bc52"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refregionbindoptionalfunction.txt",
+      "sha256": "ffdcbdfedb3924ea23bf3422fee662cfd539afc58b8e04c22880fb55cfbcb9ce",
+      "sizeBytes": 13994,
+      "url": "game-assets/textdata/refregionbindoptionalfunction.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a4ba844d611fe227603b06cbca8cb702e2caae38e320f041d1d1bd2587f77028"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refrentitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refrentitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:4ee333f16a12d99e6cd7a74c9ad21987dfd05c792f9d92d061779a67c2ba98e7"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refrewardpolicytobuyscrapitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refrewardpolicytobuyscrapitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:ebf4b728a15b7f46ec58ebde73b3402f7d4c9dbc0cfad9f7c72e43becccf7f4f"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refrewardpolicytosellpackageitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refrewardpolicytosellpackageitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b02f90a6399ce15c3d5a6c49d77a868f3564970151c63cebb86e5de33184c30c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refrewardpolicytosellscrapitem.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/refrewardpolicytosellscrapitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0d5ca41fcc363470bacec007d15f61121e2fe2b9b1c55d0107679bb765c05ea9"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refrollbook.txt",
+      "sha256": "79afc33373eb42945fba6f992b61eb5b144324f7bff4681abe2ccb6d3bab933c",
+      "sizeBytes": 4216,
+      "url": "game-assets/textdata/refrollbook.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:166fe76ce7240a1219eb8d8ec77a70dd3e04480f2421930b813dfca8e89ca3cf"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refscrapofpackageitem.txt",
+      "sha256": "e4b992a41a518a5652bd4dca144c0f588ec1f696229540a48c7fc16b3e898ab4",
+      "sizeBytes": 766034,
+      "url": "game-assets/textdata/refscrapofpackageitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5efed8b731d57b9085434d19a1dad03507d0905bbb38bf10ca56adf028f6d5c6"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refservereventid.txt",
+      "sha256": "babf641c20de1e07273db067109de30725ea2f92e1c76f7d848f3e3e42eaf725",
+      "sizeBytes": 58,
+      "url": "game-assets/textdata/refservereventid.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0921937d0a424292c706b7312b57de5859d556528df1731787d1856d28724f92"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refsetitemgroup.txt",
+      "sha256": "7919229df2c622c396c6a9a0d9a6554ae92351ae31770172813ec14005f19df5",
+      "sizeBytes": 8488,
+      "url": "game-assets/textdata/refsetitemgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:404bdd028d14a5942798b2a813daf9a18208772b7b9750dada471134e0a2a364"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refshop.txt",
+      "sha256": "a442726552f89df253a9afd9d1ccaa1017436125a0262be8f4a5f43f6acbb435",
+      "sizeBytes": 9664,
+      "url": "game-assets/textdata/refshop.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:6f738ef9a3220f69960e3c95afa99bf436703773a9987861548306e47f0fa04d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refshopgoods.txt",
+      "sha256": "1004e1a9b2c753fb452977b77682a064b57fab740363724c9e4ade848aed6794",
+      "sizeBytes": 577708,
+      "url": "game-assets/textdata/refshopgoods.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:74bbef32ebe643cff9ce47da61e723e23fc7ef93ffe3d67d6d8e80a2e793a89c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refshopgroup.txt",
+      "sha256": "e0004a724d43d50ca97a2132e629d42f4dfc65504a59bff4fa50733f1531a791",
+      "sizeBytes": 17342,
+      "url": "game-assets/textdata/refshopgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0456f1a4695ac33ebbedc3f9a5cc85cfbc1ab4a96d28935440d0f0559799e554"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refshopitemstockperiod.txt",
+      "sha256": "2ac5e1e2c3c7c2ed7c2f029e3fa2352623b1d8a917e81934001825924369f5c6",
+      "sizeBytes": 26910,
+      "url": "game-assets/textdata/refshopitemstockperiod.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:69dc60578dadb4a94aea1f48426dd8bc40ca6e2d914904fb3521b2c11045fb1c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refshoptab.txt",
+      "sha256": "5615c2e8ce45a24de9114c2cbd07b6562aff2c100b3dfe04537671541abb47f1",
+      "sizeBytes": 35628,
+      "url": "game-assets/textdata/refshoptab.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:6c68cd01ef9d509b3575c47dcf21b7d5927e9b1f456049e674c965f44c59e73d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refshoptabgroup.txt",
+      "sha256": "d71618c5839533a66b868f9f8a31f2735c1bc7407bc6af2fb8ed5d53304e6265",
+      "sizeBytes": 12088,
+      "url": "game-assets/textdata/refshoptabgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:20fd04c24f110b692fad670665cae5ee5a5523208e00eb2344c85aa0642c669d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refsiegeblessbuff.txt",
+      "sha256": "4f8e3a387ed52d858c82cc123f312355cf288d0e9227c2885edd5427be318c7c",
+      "sizeBytes": 396,
+      "url": "game-assets/textdata/refsiegeblessbuff.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:240af81d41a0cc64f7c83029609307e7e5736756f1393b31e0666e1b2cb419df"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refsiegedungeon.txt",
+      "sha256": "7094604ce89901e9f049030dad9d7028b5c22e6f2a64ecb5ce459bb34c397405",
+      "sizeBytes": 134,
+      "url": "game-assets/textdata/refsiegedungeon.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:955dce6ac1cf6e34ec5b0b6d9e45bd2364a3c82846fad0e8778cced28a21ea08"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refskillbyitemoptleveldata.txt",
+      "sha256": "07d2553618cb62ec9aaeff3e48bee8138711a85df11c69f9c3902d5d035a7fb6",
+      "sizeBytes": 4482,
+      "url": "game-assets/textdata/refskillbyitemoptleveldata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:edbead0c31e65b132c052cc89a7787a075dd4cf29a4a331a61d4d79194f5c075"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/reftreatitemofshop.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/reftreatitemofshop.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5acd404d8241bebe4dbd23185469affe4f747900ab4c42299ff9c3d7d552a4df"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/refupgradeequipitem.txt",
+      "sha256": "876ed4992c6064bc13d5b243ec66157a045a2de8cb1cfe5c06a3d1a63ad23ce5",
+      "sizeBytes": 31116,
+      "url": "game-assets/textdata/refupgradeequipitem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:53a291f23094d51723786023be9ea009e969101a173dfae39314a57ca8751b24"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/regioncode.txt",
+      "sha256": "af401463828a82d59232926ab6174a49d8821c4893e1f40bf0e6ce0ada492ed0",
+      "sizeBytes": 80269,
+      "url": "game-assets/textdata/regioncode.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:4e008921d1ba481f528cc645023bd90c683a20d78b74b5faf98d03b47155821f"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/regioninfo.txt",
+      "sha256": "7a9ae22eb6f386bd9ddd28909e9faaaffdfad364226c9525c185966565a112a2",
+      "sizeBytes": 44252,
+      "url": "game-assets/textdata/regioninfo.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:71c1f74212d589c7b288c3cd8e663de306fceacdfeaae117590c1d8f4c4ec6a5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/roc_entrance.txt",
+      "sha256": "e10a65bb68c394dc2b762e505bdfeed366d20ad468460c5a2d81419a29ffbbdb",
+      "sizeBytes": 17600,
+      "url": "game-assets/textdata/roc_entrance.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c0a4eef663a783a67870e28a779eb102dd5d68e993bcfc302b2721d6b473f1b4"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/shopdata.txt",
+      "sha256": "b5749246136922778381fd392a569bed8cfa46d3dc95e20b5a96e468bfd0e649",
+      "sizeBytes": 7608,
+      "url": "game-assets/textdata/shopdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:386f63320ed1877ff51c7592a64d21e45abd60b3b95d1ba802dfb035d6b9bbbb"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/shopgroupdata.txt",
+      "sha256": "66ca66cd987d7f3711269a58c190ce2791d1d6541224caf19b2a7a058f97867b",
+      "sizeBytes": 7918,
+      "url": "game-assets/textdata/shopgroupdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b4fa2173fc6238f4362c1b0dbc3a3b5553fa8242bfcae7ada27fc5cc36d06537"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/shopitemdata.txt",
+      "sha256": "18c46f4e68838332c5a57d95ba8313b6a1a57555ef2e05da99d30a386436d8b8",
+      "sizeBytes": 106402,
+      "url": "game-assets/textdata/shopitemdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:031a9668f60276d7ebeb5446419986e53a4afebba9bcf34b33cd37000bd778a7"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/shopitemstockquantity.txt",
+      "sha256": "b3d510ef04275ca8e698e5b3cbb0ece3949ef9252f0cdc839e9ee347409a2209",
+      "sizeBytes": 2,
+      "url": "game-assets/textdata/shopitemstockquantity.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c6a43c7284102f15a183e064e284580af322c8e15c3fc5683e92ed702284a1cc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/shoptabdata.txt",
+      "sha256": "aa172d5f57428f46af6fe4209720de8c7cc1374153294437598b0bc725f2ca3d",
+      "sizeBytes": 15136,
+      "url": "game-assets/textdata/shoptabdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a27ce60193a289cde836ebfb708f774e22a648a7866dd0092ae28ec886415d25"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/siegefortress.txt",
+      "sha256": "7188c24da34782afadb60a43934989e397332270a985ba94f7789b0d76b557a8",
+      "sizeBytes": 740,
+      "url": "game-assets/textdata/siegefortress.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:790f736fe334e83bf81bf4bd8dd97906fb21bda9f9d9aea7e53078f924c756b5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/siegefortressbattlerank.txt",
+      "sha256": "8c0b20e43d2847ceac976a2953f99d0e5b3fb2e0b30a2e1202800b7fdca39dfe",
+      "sizeBytes": 580,
+      "url": "game-assets/textdata/siegefortressbattlerank.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b9ef19afadea398950f50c60efa8e72b8d5bb0f178111e1445553d90273afaf1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/siegefortressguard.txt",
+      "sha256": "85cf4f1126363d3bd7e03b0e06cb54626480d19a386ff9e23d2d87d43c3e969c",
+      "sizeBytes": 80082,
+      "url": "game-assets/textdata/siegefortressguard.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:06a88c0d0ce36f34a7739daaed4da44a58084805b20f63f3ddac16302acc871f"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/siegefortressitemforge.txt",
+      "sha256": "7e109cafb235066dafc62235849ce3b169199fded6c364d53d3bc694ee9bd462",
+      "sizeBytes": 1546,
+      "url": "game-assets/textdata/siegefortressitemforge.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:3a066ad86d3251298a0f71ef5665270cad94deff8eb88d7e97961800c9d46725"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/siegefortressreward.txt",
+      "sha256": "555b3add1946d9126e1040f579a3bd2029c29d4770f5891034ab6e90e18040d6",
+      "sizeBytes": 578,
+      "url": "game-assets/textdata/siegefortressreward.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:7d425f4f532a38e6b13bbad5050e095141c7b397ae040182c98f9826b058269b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/siegestructupgradedata.txt",
+      "sha256": "e0104014977de573e090c9cb734ed2fc997f6bc08ad1b792daf83bfb42761211",
+      "sizeBytes": 12966,
+      "url": "game-assets/textdata/siegestructupgradedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:3505b0cd423a6608e163d8c11231320d77329fc3f0607960982f4b08e61d7d3e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata.txt",
+      "sha256": "1ffc41e002726a3a5ab860a57c9f0ae15d74c7fa3b37390b20925a0cf08372ba",
+      "sizeBytes": 302,
+      "url": "game-assets/textdata/skilldata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b8814ec9cec2f469f1ee6595de86bf2a8b2c1579905d2eb809e90fd8ea600abd"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_10000.txt",
+      "sha256": "27fb37265b3d376b6a14374e69c550e506408c1c0bcde2094d79ffe576e51fdd",
+      "sizeBytes": 3421884,
+      "url": "game-assets/textdata/skilldata_10000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:9a585bf00a12c9f70559dc47d4ce2ec373cc3508637d1859a174ff74bdb149ce"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_10000enc.txt",
+      "sha256": "7f5c15320bbafdabe1ecbdf44ff7005533c1ce623c797e0f2ee60d1581e1a440",
+      "sizeBytes": 4998168,
+      "url": "game-assets/textdata/skilldata_10000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:25572c9bad74469af3793cf14077078a1959966998e66b815e44b69aacecbcb6"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_15000.txt",
+      "sha256": "03a50d7c75ca9be933d343384c9097e8af0b05917d2ff8587bca2cc0975d5490",
+      "sizeBytes": 3835040,
+      "url": "game-assets/textdata/skilldata_15000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d568027335760181b62ae3956e4f53de4d3a4c777868e03fde9677f8212b0df1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_15000enc.txt",
+      "sha256": "2ddb835e169222f04c6fd9ca94096250c22ff1cd9a92d3ec91598a028233a3e0",
+      "sizeBytes": 4057208,
+      "url": "game-assets/textdata/skilldata_15000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:21fe27741d817f45e77edcde085f906a5c932c3e1b9d145013c40303f5cd6ba1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_20000.txt",
+      "sha256": "476f6d1b735b7ac983049eab4509bffba0ecf4d1119f9d5b2eadc820fb741cf1",
+      "sizeBytes": 3498896,
+      "url": "game-assets/textdata/skilldata_20000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:66d3d6e37a21d629c71335304fe88e6d38c44cb19e6a23f49b9af1b6efaf52a0"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_20000enc.txt",
+      "sha256": "611bc43705f7f524aa2585ed25d0270b93c6e32500e84d65b1d4b5102a614cbf",
+      "sizeBytes": 3498918,
+      "url": "game-assets/textdata/skilldata_20000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f6e5607f398a5f644eafdbbdb10aba45100e96d8c3d3e15102f7cc6706deb04d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_25000.txt",
+      "sha256": "ec7af3553901cf56c2bde0d227e53b462dc0e6d53109a80f8ef607c5d13161d2",
+      "sizeBytes": 3526764,
+      "url": "game-assets/textdata/skilldata_25000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:832adc82177a41fce7d6ad34048e2c7bcfb758c158219610f3fb845e3853d141"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_25000enc.txt",
+      "sha256": "ce3e5c9c89f437e3a55270ba28503d82b6167d55e8bd2ecc0bcc35e769147dff",
+      "sizeBytes": 3544408,
+      "url": "game-assets/textdata/skilldata_25000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0c0fd13beeb71a247312febc79ffa03f9c18c606645ebeb14e1f76d84fff1f0d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_30000.txt",
+      "sha256": "b716d9861d74e6ab3ab5dcd6153206149a353e28ee32f32089de4c46fd33df00",
+      "sizeBytes": 3697512,
+      "url": "game-assets/textdata/skilldata_30000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5e9721a077f2396d5660440f7f7485061fd3b9cbfee55e27499f7f034f68b59b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_30000enc.txt",
+      "sha256": "622e69709a450bedd11aface49905da7b93fd490b35111b7cd7a26fb0ad82539",
+      "sizeBytes": 3702346,
+      "url": "game-assets/textdata/skilldata_30000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:02c41f8c1989d633762798f0fce024e89c3b29c144f6f9885d4fe339228995f5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_35000.txt",
+      "sha256": "86673a3ac8d8dd964696f1eaa3cd16a393e5f911c7b6cbce1e09b34ddf323195",
+      "sizeBytes": 1192568,
+      "url": "game-assets/textdata/skilldata_35000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f34e9251a730111d7bc54d049384bebf6c7549b7cd142b5382e8665397bc90bf"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_35000enc.txt",
+      "sha256": "1a4cbc5b2f5f734bb798fcd436800e305fc8ddaa2694d8e9a64e8e8f5c6edf08",
+      "sizeBytes": 8187790,
+      "url": "game-assets/textdata/skilldata_35000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:17c969536649a04f6698ccd89d410b5863081d02823aff7b89bf11bb0d45a0cb"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_40000.txt",
+      "sha256": "b5e55d915462a817ac2dbfbb74416f8a46a19787e76ecc464764e577697410a1",
+      "sizeBytes": 97994,
+      "url": "game-assets/textdata/skilldata_40000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0d244cb4fac9f8ee6749978eb8a257216ea15f9da2397b88d80f5f458f83ddca"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_40000enc.txt",
+      "sha256": "20331ff11a51430a97ca9e278b3c82c521be5e5b945bde4682a9e1c234b3d006",
+      "sizeBytes": 98016,
+      "url": "game-assets/textdata/skilldata_40000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:add2189ddc3c825fd6c0f08d13b91d747a51ad2a6cd7fe34748d5b8902ed4689"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_5000.txt",
+      "sha256": "6ba1bb09a5c46af0343a4644fafaa6e484cd4e7f5af8c8688057c76eea7379f4",
+      "sizeBytes": 3722400,
+      "url": "game-assets/textdata/skilldata_5000.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:e4efd4f83574f2ec0fcb75b60dda44fb5ac5285864b4b38bd7f03ba601965747"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_5000enc.txt",
+      "sha256": "c54c9e13538739cc3ef6d735bfab4e5f2c68050d4e3a7607a07b785df7b64b69",
+      "sizeBytes": 3767966,
+      "url": "game-assets/textdata/skilldata_5000enc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:0cace21264d9aa177728fd0570056a29b827e659dff7dcdde7a5e47d6c5ee68d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldata_virtual.txt",
+      "sha256": "2e08d1f6000aef541797d008c05ac36f4dbebfb36cbac5615788e6fcc5b300a7",
+      "sizeBytes": 6,
+      "url": "game-assets/textdata/skilldata_virtual.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f4f9f28dc8275cb758bf037773f4db885dff80aab553a148140b7f9bd139f347"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilldataenc.txt",
+      "sha256": "903915670d2f932631a053a7a8592cbf5e125417d6f30a27fde168ddbff35407",
+      "sizeBytes": 336,
+      "url": "game-assets/textdata/skilldataenc.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:79b97d03d0b3b1467dd3ad2d311cf655cd6db9c4bfb63ef7e38e57fffeb9fa9b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skilleffect.txt",
+      "sha256": "cdf1af4b8068d5c2a3cafed863c97d019f432ef8d290db783b39ffeaea63217a",
+      "sizeBytes": 5340658,
+      "url": "game-assets/textdata/skilleffect.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:323d73d156949d3c82273384f2847b3415befe5e49919f30338c70884545a0ba"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skillgroup.txt",
+      "sha256": "f30988fcad185313e8b2860dc5cfa665d917c8461003a3483add7228cddb6e0a",
+      "sizeBytes": 25204,
+      "url": "game-assets/textdata/skillgroup.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d89db21d8efe6105c2a66772c97ac0c6eaa596b3d69b230c1a751b4340973c93"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/skillmasterydata.txt",
+      "sha256": "280995563f6c8b98c410d6c1d2c28bf15cc34590c38bd68ec3222937dc206ba5",
+      "sizeBytes": 6016,
+      "url": "game-assets/textdata/skillmasterydata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:2d7a9d18e4ecddfd26dde14dada203fa5bedca33ba7ee24d7e4e362c7c7d9c8e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/specialnpcdata.txt",
+      "sha256": "a6f121b753ac17979551ae41ac12c4ae3b8387e637f57d25f3f5a86b38338bbb",
+      "sizeBytes": 604,
+      "url": "game-assets/textdata/specialnpcdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:6fa66a2d863213172dd8bab0b6ee7ac143c9d2445d3c1453309b398bc51ded2e"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/teleportbuilding.txt",
+      "sha256": "59e453e36f45704203141cdfd51ce6c42e85522d0981f871f519c72f70a49b85",
+      "sizeBytes": 40150,
+      "url": "game-assets/textdata/teleportbuilding.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:bbe27823ee250f4796f3a954ea8cc13c9fb43c7286f47ccb92f657afa0d2010b"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/teleportdata.txt",
+      "sha256": "036251617c44fbdf90cef9b9d3ed3dea28fcf08ef7fa258e2517aabcfbbd6676",
+      "sizeBytes": 33696,
+      "url": "game-assets/textdata/teleportdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:20cb20cc2f515628602cbd1dc200799645bcb4686c5dba6ba8b6167d958687ee"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/teleportlink.txt",
+      "sha256": "08049b96fd1cdcd2bb92a814ecabccac0e92800ce840cbc9cf4f92afe4f7c609",
+      "sizeBytes": 29504,
+      "url": "game-assets/textdata/teleportlink.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:f8f733460251332d6439dca9ace1e8ff411dc9ae52e7c0d402b0fbb95b942c87"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/testsml.txt",
+      "sha256": "9a4122e49fdd4b4dcba965bff1cc2b71bdceaeec9529e61130639207caa63c15",
+      "sizeBytes": 842,
+      "url": "game-assets/textdata/testsml.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:593316ba4c19de460667768b2e893ff2c75ef3fac8611c86986ff03e6846f8f4"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textdata_equip&skill.txt",
+      "sha256": "680a11e52ebc8f71a4dd0f3b5fdf1424a91ea5d8d18c65e72fc48a2c123e8c3c",
+      "sizeBytes": 3542798,
+      "url": "game-assets/textdata/textdata_equip&skill.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:2eb3518ab083aa158dd4d315e06893e0bcdff765afc734174c56752b23d4a1f5"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textdata_object.txt",
+      "sha256": "22a3ac5a3674ee464289c07bccf36ca8841f030f8888ef1d8cbe80b565dd8f23",
+      "sizeBytes": 8179126,
+      "url": "game-assets/textdata/textdata_object.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:ad4742ea6fde13c9110dd21206385011fff0ef79f0cc3ededf6d63b4734c856c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textdataname.txt",
+      "sha256": "657c392ce298526d5c7e3dc28d8dae74ee07538f38093ee246c57319841777b5",
+      "sizeBytes": 96,
+      "url": "game-assets/textdata/textdataname.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:41a53a681c0792f32c82fd37f40d05bd02f3628c2fbd310ba1a0a3dc1df9e8cd"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textevent.txt",
+      "sha256": "409962987d1e8a8e1d967fd176f03dd1ca07d51b2a3d35cb20c1526b4d99c75f",
+      "sizeBytes": 656914,
+      "url": "game-assets/textdata/textevent.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5fe5861feb853e07d24159e56c25a1a05fb05870df31cfee90a2981d8bb1e1f3"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/texthelp.txt",
+      "sha256": "6b9d27290c5a73a2438f3f8964157fe684e78641b04d7181d96646e2aeeebe66",
+      "sizeBytes": 453196,
+      "url": "game-assets/textdata/texthelp.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:941151f3f0d9719a2d119f03b6e94038d6053666933fd19f3c68b833017dc1bb"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textquest.txt",
+      "sha256": "415a9c8284900f60a53bdf2f3a0906cbdcf3820c5135c6858134876fa08c261b",
+      "sizeBytes": 164,
+      "url": "game-assets/textdata/textquest.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a48e807f3efc41aa46e5eec11bf4e23df30274974966963924bdb32619d6a78a"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textquest_otherstring.txt",
+      "sha256": "69c8bb201e4f75d67802cfab2abe6b3675490a39320f1133c21c828f82d23510",
+      "sizeBytes": 3702332,
+      "url": "game-assets/textdata/textquest_otherstring.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:ab26f204cbc72bd03bca970027288739fe810f03c4e7a6ac546e883520ff219c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textquest_queststring.txt",
+      "sha256": "a966b23bfba863ccc740f3a57ba3a84052b26c6293701def41811324c1a1874c",
+      "sizeBytes": 7572056,
+      "url": "game-assets/textdata/textquest_queststring.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a372de682995b2ff39549fc8d413b87e037312f3dcbd8814cfdb8293a23374ec"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textquest_speech&name.txt",
+      "sha256": "639b9d8b7a57ab09e6d5bd12afb733ef0f8b8a48c0416340f452b02b8881a752",
+      "sizeBytes": 1507988,
+      "url": "game-assets/textdata/textquest_speech&name.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:4065dc5cc3ea2638b603876dc69684c86966f9ce355f70879c84f4d2ab442b84"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/texttooltipdata.txt",
+      "sha256": "c23f096dad337a473d22cf6c990fb400ecc73ea930ea7482b60724a4c4f3d67c",
+      "sizeBytes": 1460,
+      "url": "game-assets/textdata/texttooltipdata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:6483a5d6f4d250fc053ca2e94113e377bdf377542c176ce6a2348fb93600bff1"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textuisystem.txt",
+      "sha256": "5a60e3e013b146b8b28ddb22669f07db7c059d33314c01a079621ca5fabe438c",
+      "sizeBytes": 7962464,
+      "url": "game-assets/textdata/textuisystem.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:d7fd6984ee9627a9b1597282bd512f9c0023a04855475009923ff71681dda3a3"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/textzonename.txt",
+      "sha256": "f93fa2a776f6570e06dadd5fdcfeaaa35485b16a5fdf3a4f6367bd0c29cba0f1",
+      "sizeBytes": 558902,
+      "url": "game-assets/textdata/textzonename.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:5c9021f96b4b0f6cb6ec85f2d741f49e77d8459bfe5a4d5dd606528dd4456ce7"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/tradeconflict_joblevel.txt",
+      "sha256": "82c9e58a9c5199a4b1b3da4f90a8730cbed45dffcb8e84f46d4468268548c867",
+      "sizeBytes": 4254,
+      "url": "game-assets/textdata/tradeconflict_joblevel.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:a283660a37523c68d28828c956eed27f66d8d9933311e486cb8af6ca70ecf3d3"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/tradeconflict_promotion.txt",
+      "sha256": "e0a52594d5f4b91b40ca7eac056ca53df61821050ab83907967b21af0d58d310",
+      "sizeBytes": 564,
+      "url": "game-assets/textdata/tradeconflict_promotion.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:c7deda98bb485f8b545a59fb5eeb761b1e2fe5f9b65f67333525e05a315c404c"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/usableresobjiddata.txt",
+      "sha256": "f7f0d102432aece39674d0f3a3b050c1a60d813c5f03ab7fa175598072dcb807",
+      "sizeBytes": 1776,
+      "url": "game-assets/textdata/usableresobjiddata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:adf97adf73afddcebca0929e8ebcd34b9263b7501d3f768e525c05408424fc3d"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/worldcupitemlist.txt",
+      "sha256": "55642781c45b07d9634fbb87a03d2289b454163ad9991f656e0ef0498d2e7238",
+      "sizeBytes": 12696,
+      "url": "game-assets/textdata/worldcupitemlist.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:353c62af0a3c3f3dd24e88ec20b007bdd013c54d1e04ee35531d1914e4ae43dc"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/worldmap_instanceinfo.txt",
+      "sha256": "47aed8f037e31849c28d57a4f077a76697ed43d98c653f84850f5372173b0ad5",
+      "sizeBytes": 2156,
+      "url": "game-assets/textdata/worldmap_instanceinfo.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:7d3676d15e88812e19a76894b0a91305a9d6cf0ab98869d808c0087e7409523a"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/worldmap_localinfo.txt",
+      "sha256": "cf03b01d6010ea8504476f6b1d46dd2e7fcb029a75a121b25f5fcfce097c02d1",
+      "sizeBytes": 312148,
+      "url": "game-assets/textdata/worldmap_localinfo.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:b68972981480c297b0341a0817d31681eee1f282d4dac1ee9933dc63f1ffc0a4"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/worldmap_mapinfo.txt",
+      "sha256": "4d6fb2afb2a5b9eef2ead63f2443a7cd6e2f417bdd2063f83993fc3847927069",
+      "sizeBytes": 17632,
+      "url": "game-assets/textdata/worldmap_mapinfo.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:42cf639d6fac2f64695320e827146fe65f8734a79a5c9b589ebffbe34ce3a737"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/worldmapguidedata.txt",
+      "sha256": "ed05a113115a19481ed1ccb7efe0f2565ebabbe6b2fe631dedb41baec251c87a",
+      "sizeBytes": 157936,
+      "url": "game-assets/textdata/worldmapguidedata.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:dcce6d7fc1e41a1316af0bd1e078b2320fe87c0a73ae91fa34f7fcfc8e202eb0"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/worldmapguidedata_region.txt",
+      "sha256": "5f03311f991299c53b5acf98345dfc95454484eb9669a90f23e11a10a3e08e1d",
+      "sizeBytes": 46942,
+      "url": "game-assets/textdata/worldmapguidedata_region.txt"
+    },
+    {
+      "assetKeys": [
+        "textdata:gamedata-48ad548c98056b6c87b3:8fe02248615cc51237f32a75f59ff91ebb739616db8418a975f83cb40fa6b097"
+      ],
+      "kind": "textdata",
+      "mediaType": "application/octet-stream",
+      "path": "textdata/zeussro.us.to.txt",
+      "sha256": "bff5229f599f5735c35f95acf1c26442dede23d13c834c1e9acce03c3e7a566c",
+      "sizeBytes": 42,
+      "url": "game-assets/textdata/zeussro.us.to.txt"
     }
   ],
   "format": "phmon-game-assets-index",
   "formatVersion": 1,
   "generator": "phmon-game-data-exporter",
+  "monsterDatasetId": "gamedata-48ad548c98056b6c87b3",
+  "textdataDatasetId": "gamedata-48ad548c98056b6c87b3",
   "urlPrefix": "game-assets"
 }

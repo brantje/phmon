@@ -39,6 +39,7 @@ jobs:
           import os
           import re
           import subprocess
+          from scripts.plugin_protocol_contract import protocol_contract_changed
 
           PLUGIN_PATH = "plugin/PhMon.py"
 
@@ -90,10 +91,12 @@ jobs:
 
           plugin_changed = before != after
           contract_changed = base_contract != head_contract
+          protocol_bump_required = protocol_contract_changed(base_contract, head_contract)
 
           print(f"Plugin file changed:      {plugin_changed}")
           print(f"Plugin version:           {old_plugin} -> {new_plugin}")
           print(f"Monitor contract changed: {contract_changed}")
+          print(f"Protocol bump required:   {protocol_bump_required}")
           print(f"Protocol version:         {old_protocol} -> {new_protocol}")
 
           failed = False
@@ -106,7 +109,7 @@ jobs:
               )
               failed = True
 
-          if contract_changed and new_protocol <= old_protocol:
+          if protocol_bump_required and new_protocol <= old_protocol:
               print(
                   f"::error file={PLUGIN_PATH}::"
                   "The generated monitor output contract changed, but "
@@ -114,11 +117,11 @@ jobs:
               )
               failed = True
 
-          if not contract_changed and new_protocol != old_protocol:
+          if not protocol_bump_required and new_protocol != old_protocol:
               print(
                   f"::error file={PLUGIN_PATH}::"
                   "PROTOCOL_VERSION changed, but the generated monitor output "
-                  "contract did not change. Only bump the protocol when monitor output changes."
+                  "contract has no incompatible changes. Only bump the protocol for incompatible monitor output changes."
               )
               failed = True
 

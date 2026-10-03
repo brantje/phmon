@@ -1012,8 +1012,13 @@ if supplied by the runtime. Go validates these fields in the existing v7
 `map.monsters` frame. The map never treats a numeric type/model code as a level and
 shows level unavailable when absent. Older agents remain compatible, but their
 absent fields cannot be reconstructed from a map screenshot or stored rows. Current
-map sightings are deduplicated across sessions by server, region, model/server name
-and an 8-unit position tolerance, while retaining same-session rows. The installed
+map sightings are deduplicated by normalized server and monster ID. The operator's
+2026-10-02 executable investigation verified that phMonitor uses this identity;
+it supersedes the earlier model/name and 8-unit position matching rule. The
+documented dictionary key is the monster's ID; real cross-observer and instanced
+area behavior remains a runtime validation gate. HP/max HP remain raw fields
+from one chosen snapshot, with no estimated or minimum-held health. See the
+[HP investigation](reference/monster-hp-investigation.md). The installed
 real phBot runtime has not yet been verified with 1.5.2 or a level field.
 
 ### Live NPC and teleporter snapshots — 2026-10-01
@@ -1305,3 +1310,53 @@ supported map transforms. The 305 excluded points include unsupported interior
 regions and 46 Donwhang points that fail bounds/floor placement. Job Temple's
 shared-region floor ambiguity remains a placement blocker. No plugin or live bot
 was operated for this issue.
+
+## Issue #34 — Reverse return (2026-10-02)
+
+Source: official [Inventory API](https://plugins.phbot.org/phbot-api/inventory),
+rechecked for this implementation; `reverse_return(type, name)` documents mode 0
+(last Return Scroll location), 1 (last death), 2 (party player name) and 3
+(location name). True means a scroll was used; false means no usable scroll.
+The official [Pets API](https://plugins.phbot.org/phbot-api/pets) example
+identifies model 3795 as `ITEM_MALL_REVERSE_RETURN_SCROLL`. The example is
+item-code evidence; pet contents are not evidence of usable character inventory.
+The official [Party API](https://plugins.phbot.org/phbot-api/party) documents
+`get_party()` returning a dictionary of party members including their names.
+The operator supplied `web/public/game-assets/textdata/refoptionalteleport.txt`
+as the type-3 destination source. Its 19-column layout is cross-checked against
+[RSBot's RefOptionalTeleport definition](https://github.com/myildirimofficial/RSBot/blob/master/Library/RSBot.Core/Client/ReferenceObjects/RefOptionalTeleport.cs).
+Enabled rows (service 1) use zero-based column 3 as the exact localization key in
+`textdata_object.txt`, English column 8 (also zero-based). The Greatest archive has 42 rows: four
+disabled rows and two unresolved `xxx` keys are excluded, leaving 36 unique names.
+The `ObjName128` column contains replacement question marks and is not an API name.
+Ambiguous localization, duplicate display names, control characters and names over
+100 UTF-8 bytes are excluded. Coordinates/level restrictions are left to phBot.
+Using the English localized label for the documented `name` argument is the
+implementation's source-based interpretation; native name resolution still needs
+operator-authorized Windows/phBot validation.
+
+Plugin **1.9.11**, protocol **13**, imports these optional APIs through the normal
+allowlisted adapter, advertises supported modes, and invokes `reverse_return` on
+the existing controlled command callback. Party mode rechecks `get_party()` at
+execution, uses the observed member's exact name and refuses the executing
+character itself. All names are trimmed, at most 100 UTF-8 bytes, with no control
+characters; malformed/unknown arguments never invoke the API. Boolean true/false,
+exceptions and non-boolean results have distinct command outcomes and retain normal
+expiry, duplicate suppression and session/generation fences.
+
+Go projects optional Reverse return context through the existing single/batched
+controls reads, joining active sessions and resource generations. Party names use
+resource check time (35 seconds, five-second future tolerance), never content-change
+time or coordinate-filtered markers. Unchanged party checks are republished after
+callback collection; cached resource resends do not renew freshness. Fresh character
+inventory can identify the documented scroll as advisory evidence; absent/stale/
+unrecognized inventory and pet/storage items cannot establish authoritative usability.
+Only phBot's API decides whether an attempt uses a scroll.
+
+Validation: Python adapter/callback tests, Go validation/admission/resource tests,
+frontend eligibility/concurrent admission tests and disposable simulator/browser
+flows. The fixture worker executes production plugin validation and reports separate
+true/false audited results plus an unsupported skipped target. These tests do not
+validate native Windows/phBot behavior. Runtime gate remains: load 1.9.11 against
+a protocol-13 backend, verify available primitive/modes and current party readback,
+then perform an operator-authorized scroll attempt and observe its result/position.

@@ -77,6 +77,41 @@ def _archive_index(entries: tuple[Entry, ...]) -> dict[str, Entry]:
     return result
 
 
+def _extract_textdata(media, index: dict[str, Entry], destination: Path) -> dict[str, Any]:
+    """Copy every textdata file without decoding or filtering its contents."""
+    destination.mkdir(parents=True)
+    records = []
+    for source_path, entry in sorted(index.items()):
+        if not source_path.startswith(TEXT_ROOT):
+            continue
+        relative = entry.path[len(TEXT_ROOT):]
+        parts = relative.split("/")
+        if (
+            not relative
+            or any(part in ("", ".", "..") for part in parts)
+            or any(char in relative for char in ("\\", ":"))
+            or any(ord(char) < 32 for char in relative)
+        ):
+            raise ExportError(f"unsafe textdata output path: {entry.path}")
+        target = destination.joinpath(*parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        payload = media.read_payload(entry)
+        target.write_bytes(payload)
+        records.append({
+            "sourceEntry": entry.path,
+            "path": relative,
+            "sizeBytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        })
+    return {
+        "sourceArchive": "Media.pk2",
+        "sourceDirectory": TEXT_ROOT.rstrip("/"),
+        "fileCount": len(records),
+        "totalBytes": sum(row["sizeBytes"] for row in records),
+        "files": records,
+    }
+
+
 def _source_path(value: str) -> str | None:
     """Turn an associated client icon name into a contained Media entry."""
     if not value or value.casefold() == "xxx":
@@ -333,15 +368,22 @@ def _publish(staging: Path, destination: Path, lock: Path) -> bool:
         if destination.exists():
             if not destination.is_dir() or destination.is_symlink():
                 raise ExportError("dataset output path already exists and is not a safe directory")
-            prior_bundle = destination / "bundle"
-            new_bundle = staging / "bundle"
-            prior_files = sorted(path.relative_to(prior_bundle).as_posix() for path in prior_bundle.rglob("*") if path.is_file())
-            new_files = sorted(path.relative_to(new_bundle).as_posix() for path in new_bundle.rglob("*") if path.is_file())
-            if prior_files != new_files or any(
-                sha256_file(prior_bundle / relative) != sha256_file(new_bundle / relative)
-                for relative in prior_files
-            ):
-                raise ExportError("dataset identity matches existing output but bundle bytes differ")
+            for directory in ("bundle", "textdata"):
+                prior_tree = destination / directory
+                new_tree = staging / directory
+                _no_symlink_components(prior_tree)
+                if not prior_tree.is_dir():
+                    raise ExportError(f"dataset identity matches existing output but {directory} is missing")
+                prior_paths = list(prior_tree.rglob("*"))
+                if any(path.is_symlink() for path in prior_paths):
+                    raise ExportError(f"symlink in existing {directory} output")
+                prior_files = sorted(path.relative_to(prior_tree).as_posix() for path in prior_paths if path.is_file())
+                new_files = sorted(path.relative_to(new_tree).as_posix() for path in new_tree.rglob("*") if path.is_file())
+                if prior_files != new_files or any(
+                    sha256_file(prior_tree / relative) != sha256_file(new_tree / relative)
+                    for relative in prior_files
+                ):
+                    raise ExportError(f"dataset identity matches existing output but {directory} bytes differ")
             shutil.rmtree(staging)
             reused = True
             return reused
@@ -451,6 +493,8 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             media_info = media.inventory()
             map_info = map_archive.inventory()
             media_index = _archive_index(media_info.entries)
+            textdata_report = _extract_textdata(media, media_index, staging / "textdata")
+            _json_write(audit / "textdata.json", textdata_report)
             portrait_entries = {
                 entry.path.casefold(): entry
                 for entry in media_info.entries
@@ -1416,6 +1460,7 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
                 dataset_directory / "audit",
                 asset_output,
                 namespace="monsters" if monster_models is not None or unique_monsters else None,
+                textdata=dataset_directory / "textdata",
             )
         bundle_bytes = sum(path.stat().st_size for path in (dataset_directory / "bundle").rglob("*") if path.is_file())
         audit_bytes = sum(path.stat().st_size for path in (dataset_directory / "audit").rglob("*") if path.is_file())
@@ -1425,6 +1470,9 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             "datasetPath": str(dataset_directory),
             "bundlePath": str(dataset_directory / "bundle"),
             "auditPath": str(dataset_directory / "audit"),
+            "textdataPath": str(dataset_directory / "textdata"),
+            "textdataFileCount": textdata_report["fileCount"],
+            "textdataBytes": textdata_report["totalBytes"],
             "elapsedSeconds": round(time.perf_counter() - started, 3),
             "bundleBytes": bundle_bytes,
             "auditBytes": audit_bytes,
@@ -1454,6 +1502,8 @@ def export_dataset(source: Path, output: Path, key: str, asset_output: Path | No
             result["publicAssetOutputPath"] = str(asset_output)
             result["publicAssetCount"] = public_asset_validation["publicFilesValidated"]
             result["publicAssetKeyCount"] = public_asset_validation["semanticAssetKeysValidated"]
+            result["publicTextdataPath"] = str(asset_output / "textdata")
+            result["publicTextdataFileCount"] = public_asset_validation.get("textdataFilesValidated", 0)
         return result
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)

@@ -2,10 +2,11 @@
 """Authenticated browser-relay -> Go -> PostgreSQL -> production plugin-worker smoke.
 
 Use only a disposable local test database and a dedicated simulator credential.
-The simulator's bot.stop adapter is fake and this script never touches phBot.
+The simulator's selected command adapter is fake and this script never touches phBot.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import http.cookiejar
 import json
 import os
@@ -87,6 +88,11 @@ def main():
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     import live_smoke
 
+    command_name = os.environ.get("PHMON_SMOKE_COMMAND", "bot.stop")
+    if command_name not in ("bot.stop", "character.reverse_return"): raise RuntimeError("unsupported fixture command")
+    reverse_args = {"type": int(os.environ.get("PHMON_SMOKE_REVERSE_TYPE", "0"))}
+    if reverse_args["type"] >= 2: reverse_args["name"] = os.environ.get("PHMON_SMOKE_REVERSE_NAME", "Jangan")
+    skip_third = command_name == "character.reverse_return" and os.environ.get("PHMON_SMOKE_SKIP_THIRD") == "true"
     server = os.environ.get("PHMON_SIMULATOR_SERVER", "Fixture Slice3")
     character_prefix = os.environ.get("PHMON_SIMULATOR_CHARACTER", "Slice3_" + str(int(time.time_ns())))
     character_names = [character_prefix + "_" + str(index) for index in range(3)]
@@ -197,6 +203,7 @@ def main():
                 "PHMON_SIMULATOR_CONNECT_TIMEOUT": str(int(connect_timeout)),
                 "PHMON_SIMULATOR_BOT_STOP_RESULT": "false" if index == 1 else "true",
             })
+            if skip_third and index == 2: env["PHMON_SIMULATOR_SKIP_REVERSE"] = "true"
             simulators.append(subprocess.Popen(
                 [sys.executable, os.path.join(ROOT, "scripts", "agent_simulator.py")],
                 cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -242,18 +249,34 @@ def main():
         if controls is None:
             raise RuntimeError("multi-character controls projection did not return matching sessions")
 
+        if skip_third:
+            third = targets[-1]
+            third_caps = rows_by_id[third['character_id']]['controls']['capabilities'][command_name]
+            if third_caps['supported']: raise RuntimeError('fixture skip target incorrectly reports capability')
+            code,_,rejected = request_json(opener, WEB_URL + '/api/commands', 'POST', {
+                'character_id': third['character_id'], 'expected_session_id': third['session_id'],
+                'name': command_name, 'args': {'type':0}, 'confirmation':True, 'idempotency_key':'reverse-skipped-'+str(time.time_ns()),
+            },cookie)
+            if code != 422: raise RuntimeError('unsupported sibling was admitted: '+str(rejected))
+            targets = targets[:-1]
+            skipped_worker = simulators.pop()
+            skipped_worker.terminate(); skipped_worker.communicate(timeout=5)
+            print('PASS unsupported selected sibling skipped; backend also rejects an attempted admission')
+
         keys = ["command-smoke-" + str(time.time_ns()) + "-" + str(index) for index in range(len(targets))]
         accepted_by_key = {}
-        for target, key in zip(targets, keys):
+        def admit(target, key):
             code, _, accepted = request_json(opener, WEB_URL + "/api/commands", "POST", {
-                "character_id": target["character_id"],
-                "expected_session_id": target["session_id"],
-                "name": "bot.stop", "args": {}, "confirmation": False,
-                "idempotency_key": key,
-            }, cookie)
-            if code != 202 or not accepted.get("command_id"):
-                raise RuntimeError("command admission failed: HTTP " + str(code) + " " + str(accepted))
-            accepted_by_key[key] = {"command_id": accepted["command_id"], "target": target}
+                "character_id": target["character_id"], "expected_session_id": target["session_id"],
+                "name": command_name, "args": reverse_args if command_name=="character.reverse_return" else {},
+                "confirmation": command_name=="character.reverse_return", "idempotency_key":key,
+            },cookie)
+            if code!=202 or not accepted.get("command_id"): raise RuntimeError("command admission failed: "+str(accepted))
+            return key, {"command_id":accepted["command_id"],"target":target}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets)) as executor:
+            futures=[executor.submit(admit,target,key) for target,key in zip(targets,keys)]
+            for future in futures:
+                key,accepted=future.result(); accepted_by_key[key]=accepted
 
         live.send_json({"type":"subscribe","protocol_version":1,"subscription_id":"command-exact-results","revision":1,"stream":"commands","filter":{"idempotency_keys":keys}})
         completed_by_key = {}
@@ -280,15 +303,17 @@ def main():
                 raise RuntimeError("a sibling execution outcome did not remain independent")
             if completed.get("verification") != "api_confirmed" or completed.get("api_return") is not expected_return:
                 raise RuntimeError("authoritative result did not preserve fake adapter evidence")
+            if command_name == "character.reverse_return" and completed.get("effective_args") != {"type": reverse_args["type"], "name": reverse_args.get("name", "")}:
+                raise RuntimeError("Reverse return result changed the reviewed type or name")
             if index == 1 and completed.get("result_code") != "api_return_false":
                 raise RuntimeError("failed fake adapter result omitted its result code")
             if not completed.get("finished_at"):
                 raise RuntimeError("exact-key result omitted its finish timestamp")
         for simulator in simulators:
             output, _ = simulator.communicate(timeout=10)
-            if "production worker invoked bot.stop once" not in output:
+            if "production worker invoked " + command_name + " once" not in output:
                 raise RuntimeError("fake callback adapter did not confirm one invocation: " + output[-1000:])
-        print("PASS three authenticated simulator workers: set-based controls -> independent session-fenced admissions -> exact-key recovery of command IDs and execution evidence")
+        print("PASS authenticated simulator workers: set-based controls -> independent session-fenced admissions -> exact-key recovery of command IDs and execution evidence")
     finally:
         if live: live.close()
         for simulator in simulators:

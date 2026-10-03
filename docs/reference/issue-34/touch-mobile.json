@@ -1,0 +1,11 @@
+{
+  "touch": true,
+  "preview": "Confirm Reverse returnExplicit confirmation requiredConfirmation requiredSelected4Eligible1Skipped3Scroll attempts1Reverse34_AlphaEligibleUse a Reverse Return Scroll to party member FixturePartyLeader. Usable scroll availability will be checked by phBot. Scroll acceptance does not prove arrival.Reverse34_BravoSkippedThe selected member is not in this character\u2019s party.Reverse34_CharlieSkippedThis phBot runtime does not expose the required action.Reverse34_GateObserverSkippedFresh party membership is unavailable for this session. Cancel Confirm Reverse return for 1 characters",
+  "cancellationPosts": 0,
+  "dialogClosed": true,
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "scope": "Disposable simulator only; production plugin command path; no Windows/phBot validation."
+}

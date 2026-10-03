@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"unicode"
 
 	"phmon/server/internal/chat"
 )
@@ -17,6 +18,11 @@ const (
 )
 
 type noArgs struct{}
+
+type reverseReturnArgs struct {
+	Type *int   `json:"type"`
+	Name string `json:"name,omitempty"`
+}
 
 type traceArgs struct {
 	Name string `json:"name"`
@@ -65,6 +71,29 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 			return Validated{}, ErrInvalid
 		}
 		if (name == "character.return" || name == "character.disconnect" || name == "client.clientless") && !confirmation {
+			return Validated{}, ErrInvalid
+		}
+		normalized, _ := json.Marshal(args)
+		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
+	case "character.reverse_return":
+		var args reverseReturnArgs
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(raw, &fields) != nil || bytes.Equal(fields["name"], []byte("null")) {
+			return Validated{}, ErrInvalid
+		}
+		if decodeExact(raw, &args) != nil || args.Type == nil || *args.Type < 0 || *args.Type > 3 || !confirmation {
+			return Validated{}, ErrInvalid
+		}
+		for _, r := range args.Name {
+			if unicode.IsControl(r) {
+				return Validated{}, ErrInvalid
+			}
+		}
+		if *args.Type < 2 && args.Name != "" {
+			return Validated{}, ErrInvalid
+		}
+		args.Name = strings.TrimSpace(args.Name)
+		if len(args.Name) > 100 || (*args.Type < 2 && args.Name != "") || (*args.Type >= 2 && args.Name == "") {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)

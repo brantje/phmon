@@ -41,6 +41,7 @@ import {
 import {
   localMapAsset,
   monsterDisplayName,
+  monsterHPBarFraction,
   monsterHPFraction,
   monsterMapName,
   monsterTypePresentation,
@@ -1088,7 +1089,7 @@ function markerPopup(marker: MapCanvasMarker) {
       detailRow('Seen by', marker.observerName || 'Unavailable'),
     )
     panel.append(header, details)
-    const fraction = monsterHPFraction(monster)
+    const fraction = monsterHPBarFraction(monster)
     if (fraction != null) {
       const track = document.createElement('div')
       track.className = 'phmon-map-detail-hp-track'
@@ -1582,7 +1583,8 @@ onMounted(async () => {
       marker.monster
         ? monsterMapName(marker.monster, Boolean(marker.showLabel))
         : '',
-      hp,
+      hp == null,
+      marker.monster?.max_hp,
       marker.monster?.attacking,
       marker.itemIconUrl,
     ])
@@ -1617,6 +1619,12 @@ onMounted(async () => {
     if (existing) {
       moveMarker(markerKey, existing, point)
       if (icon) existing.setIcon(icon)
+      if (marker.monster) {
+        const bubble = existing
+          .getElement()
+          ?.querySelector<HTMLElement>('.phmon-map-monster-bubble')
+        bubble?.style.setProperty('--phmon-monster-hp', (hp ?? 0).toFixed(4))
+      }
       if (!props.compact && marker.kind !== 'character')
         existing.setPopupContent(markerPopup(marker))
       return existing

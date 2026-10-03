@@ -721,6 +721,14 @@ function cancelReview(operation: FanOutOperation) {
       </label>
       <small>Changes the active training area’s radius only.</small>
     </div>
+    <ReverseReturnActions
+      :selected-ids="selectedIds"
+      :scope-key="scopeKey"
+      :scope-key-for-character="scopeKeyForCharacter"
+      :current-scope-key="currentScopeKey"
+      :current-character="currentCharacter"
+      :map-snapshot-current="props.mapSnapshotCurrent"
+    />
     <p v-if="!validatedArgs" class="form-error" role="status">
       Enter valid action values before submitting.
     </p>
