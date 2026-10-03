@@ -1920,6 +1920,52 @@ select:focus-visible {
   margin-left: auto;
 }
 
+.unique-event-art {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.dashboard-recent-list .unique-event-art {
+  width: 42px;
+  height: 42px;
+}
+
+.unique-event-list {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.unique-event-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(76, 91, 111, 0.38);
+  border-radius: 4px;
+  background: rgba(11, 18, 28, 0.73);
+  padding: 8px;
+}
+
+.unique-event-card strong {
+  color: var(--ph-primary);
+  font-size: 14px;
+}
+
+.unique-event-card p,
+.unique-event-card time {
+  margin: 0;
+  color: #9caabd;
+  font-size: 12px;
+}
+
+.unique-event-card a {
+  color: var(--ph-text);
+}
+
 .dashboard-event-list,
 .dashboard-recent-list {
   display: grid;

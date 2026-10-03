@@ -1,0 +1,5605 @@
+{
+  "dataset_id": "gamedata-e184cceb0b359ca140c1",
+  "records": [
+    {
+      "model_id": 1954,
+      "code": "MOB_CH_TIGERWOMAN",
+      "name": "Tiger Girl",
+      "level": 20,
+      "image_url": "/game-assets/monsters/tigerwoman.png"
+    },
+    {
+      "model_id": 1982,
+      "code": "MOB_OA_URUCHI",
+      "name": "Uruchi",
+      "level": 40,
+      "image_url": "/game-assets/monsters/uruchi.png"
+    },
+    {
+      "model_id": 2002,
+      "code": "MOB_KK_ISYUTARU",
+      "name": "Isyutaru",
+      "level": 60,
+      "image_url": "/game-assets/monsters/isyutaru.png"
+    },
+    {
+      "model_id": 3810,
+      "code": "MOB_TK_BONELORD",
+      "name": "Lord Yarkan",
+      "level": 80,
+      "image_url": "/game-assets/monsters/bonelord.png"
+    },
+    {
+      "model_id": 3875,
+      "code": "MOB_RM_TAHOMET",
+      "name": "Demon Shaitan",
+      "level": 90,
+      "image_url": "/game-assets/monsters/tahomet.png"
+    },
+    {
+      "model_id": 3877,
+      "code": "MOB_RM_ROC",
+      "name": "Roc",
+      "level": 100,
+      "image_url": "/game-assets/monsters/roc.png"
+    },
+    {
+      "model_id": 5871,
+      "code": "MOB_EU_KERBEROS",
+      "name": "Cerberus",
+      "level": 24,
+      "image_url": "/game-assets/monsters/kerberos.png"
+    },
+    {
+      "model_id": 7550,
+      "code": "MOB_CH_TIGERWOMAN_L2",
+      "name": "",
+      "level": 20,
+      "image_url": "/game-assets/monsters/tigerwoman.png"
+    },
+    {
+      "model_id": 7551,
+      "code": "MOB_CH_TIGERWOMAN_L3",
+      "name": "",
+      "level": 20,
+      "image_url": "/game-assets/monsters/tigerwoman.png"
+    },
+    {
+      "model_id": 7557,
+      "code": "MOB_OA_URUCHI_L2",
+      "name": "",
+      "level": 40,
+      "image_url": "/game-assets/monsters/uruchi.png"
+    },
+    {
+      "model_id": 7558,
+      "code": "MOB_OA_URUCHI_L3",
+      "name": "",
+      "level": 40,
+      "image_url": "/game-assets/monsters/uruchi.png"
+    },
+    {
+      "model_id": 7559,
+      "code": "MOB_KK_ISYUTARU_L2",
+      "name": "",
+      "level": 60,
+      "image_url": "/game-assets/monsters/isyutaru.png"
+    },
+    {
+      "model_id": 7560,
+      "code": "MOB_KK_ISYUTARU_L3",
+      "name": "",
+      "level": 60,
+      "image_url": "/game-assets/monsters/isyutaru.png"
+    },
+    {
+      "model_id": 7561,
+      "code": "MOB_TK_BONELORD_L2",
+      "name": "",
+      "level": 80,
+      "image_url": "/game-assets/monsters/bonelord.png"
+    },
+    {
+      "model_id": 7562,
+      "code": "MOB_TK_BONELORD_L3",
+      "name": "",
+      "level": 80,
+      "image_url": "/game-assets/monsters/bonelord.png"
+    },
+    {
+      "model_id": 7563,
+      "code": "MOB_RM_TAHOMET_L2",
+      "name": "",
+      "level": 90,
+      "image_url": "/game-assets/monsters/tahomet.png"
+    },
+    {
+      "model_id": 7564,
+      "code": "MOB_RM_TAHOMET_L3",
+      "name": "",
+      "level": 90,
+      "image_url": "/game-assets/monsters/tahomet.png"
+    },
+    {
+      "model_id": 14936,
+      "code": "MOB_AM_IVY",
+      "name": "Captain Ivy",
+      "level": 30,
+      "image_url": "/game-assets/monsters/ivy.png"
+    },
+    {
+      "model_id": 14983,
+      "code": "MOB_TQ_TOMBGENERAL",
+      "name": "Tomb General Hyun",
+      "level": 85,
+      "image_url": "/game-assets/monsters/tombgeneral.png"
+    },
+    {
+      "model_id": 14984,
+      "code": "MOB_TQ_TOMBGENERAL_CLON",
+      "name": "Tomb General Bi",
+      "level": 88,
+      "image_url": "/game-assets/monsters/tombgeneral.png"
+    },
+    {
+      "model_id": 14985,
+      "code": "MOB_TQ_TOMBGENERAL_CLON2",
+      "name": "Tomb General Ho",
+      "level": 89,
+      "image_url": "/game-assets/monsters/tombgeneral.png"
+    },
+    {
+      "model_id": 14986,
+      "code": "MOB_TQ_TOMBGENERAL_CLON3",
+      "name": "Tomb General Jin",
+      "level": 90,
+      "image_url": "/game-assets/monsters/tombgeneral.png"
+    },
+    {
+      "model_id": 14987,
+      "code": "MOB_TQ_SNAKEGENERAL",
+      "name": "Snake General Ki",
+      "level": 95,
+      "image_url": "/game-assets/monsters/snakegeneral.png"
+    },
+    {
+      "model_id": 14988,
+      "code": "MOB_TQ_SNAKEGENERAL_CLON",
+      "name": "Snake General Jung",
+      "level": 95,
+      "image_url": "/game-assets/monsters/snakegeneral.png"
+    },
+    {
+      "model_id": 14989,
+      "code": "MOB_TQ_SNAKEGENERAL_CLON2",
+      "name": "Snake General Yul",
+      "level": 95,
+      "image_url": "/game-assets/monsters/snakegeneral.png"
+    },
+    {
+      "model_id": 14990,
+      "code": "MOB_TQ_SNAKEGENERAL_CLON3",
+      "name": "Snake General Hew",
+      "level": 95,
+      "image_url": "/game-assets/monsters/snakegeneral.png"
+    },
+    {
+      "model_id": 14991,
+      "code": "MOB_TQ_NORTHGUARDIAN",
+      "name": "JeonUk The Black Tortoise",
+      "level": 98,
+      "image_url": "/game-assets/monsters/northguardian.png"
+    },
+    {
+      "model_id": 14992,
+      "code": "MOB_TQ_SOUTHGUARDIAN",
+      "name": "YumJae The Blue Hawk",
+      "level": 98,
+      "image_url": "/game-assets/monsters/southguardian.png"
+    },
+    {
+      "model_id": 14993,
+      "code": "MOB_TQ_WESTGUARDIAN",
+      "name": "TaeHo The Blue Dragon",
+      "level": 99,
+      "image_url": "/game-assets/monsters/westguardian.png"
+    },
+    {
+      "model_id": 14994,
+      "code": "MOB_TQ_EASTGUARDIAN",
+      "name": "SoHaow The White Tiger",
+      "level": 99,
+      "image_url": "/game-assets/monsters/eastguardian.png"
+    },
+    {
+      "model_id": 14995,
+      "code": "MOB_TQ_BLACKSNAKE",
+      "name": "SoSo The Black Viper",
+      "level": 100,
+      "image_url": "/game-assets/monsters/blacksnake.png"
+    },
+    {
+      "model_id": 14996,
+      "code": "MOB_TQ_FLAMEMASTER",
+      "name": "ShinMoo The man of Flames",
+      "level": 100,
+      "image_url": "/game-assets/monsters/shinmu.png"
+    },
+    {
+      "model_id": 14997,
+      "code": "MOB_TQ_WHITESNAKE",
+      "name": "BeakYung The White Viper",
+      "level": 100,
+      "image_url": "/game-assets/monsters/whitesnake.png"
+    },
+    {
+      "model_id": 21399,
+      "code": "MOB_FW_TAESE_001",
+      "name": "Tai-Sui",
+      "level": 1,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21400,
+      "code": "MOB_FW_TAESE_002",
+      "name": "Tai-Sui",
+      "level": 2,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21401,
+      "code": "MOB_FW_TAESE_003",
+      "name": "Tai-Sui",
+      "level": 3,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21402,
+      "code": "MOB_FW_TAESE_004",
+      "name": "Tai-Sui",
+      "level": 4,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21403,
+      "code": "MOB_FW_TAESE_005",
+      "name": "Tai-Sui",
+      "level": 5,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21404,
+      "code": "MOB_FW_TAESE_006",
+      "name": "Tai-Sui",
+      "level": 6,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21405,
+      "code": "MOB_FW_TAESE_007",
+      "name": "Tai-Sui",
+      "level": 7,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21406,
+      "code": "MOB_FW_TAESE_008",
+      "name": "Tai-Sui",
+      "level": 8,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21407,
+      "code": "MOB_FW_TAESE_009",
+      "name": "Tai-Sui",
+      "level": 9,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21408,
+      "code": "MOB_FW_TAESE_010",
+      "name": "Tai-Sui",
+      "level": 10,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21409,
+      "code": "MOB_FW_TAESE_011",
+      "name": "Tai-Sui",
+      "level": 11,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21410,
+      "code": "MOB_FW_TAESE_012",
+      "name": "Tai-Sui",
+      "level": 12,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21411,
+      "code": "MOB_FW_TAESE_013",
+      "name": "Tai-Sui",
+      "level": 13,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21412,
+      "code": "MOB_FW_TAESE_014",
+      "name": "Tai-Sui",
+      "level": 14,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21413,
+      "code": "MOB_FW_TAESE_015",
+      "name": "Tai-Sui",
+      "level": 15,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21414,
+      "code": "MOB_FW_TAESE_016",
+      "name": "Tai-Sui",
+      "level": 16,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21415,
+      "code": "MOB_FW_TAESE_017",
+      "name": "Tai-Sui",
+      "level": 17,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21416,
+      "code": "MOB_FW_TAESE_018",
+      "name": "Tai-Sui",
+      "level": 18,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21417,
+      "code": "MOB_FW_TAESE_019",
+      "name": "Tai-Sui",
+      "level": 19,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21418,
+      "code": "MOB_FW_TAESE_020",
+      "name": "Tai-Sui",
+      "level": 20,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21419,
+      "code": "MOB_FW_TAESE_021",
+      "name": "Tai-Sui",
+      "level": 21,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21420,
+      "code": "MOB_FW_TAESE_022",
+      "name": "Tai-Sui",
+      "level": 22,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21421,
+      "code": "MOB_FW_TAESE_023",
+      "name": "Tai-Sui",
+      "level": 23,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21422,
+      "code": "MOB_FW_TAESE_024",
+      "name": "Tai-Sui",
+      "level": 24,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21423,
+      "code": "MOB_FW_TAESE_025",
+      "name": "Tai-Sui",
+      "level": 25,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21424,
+      "code": "MOB_FW_TAESE_026",
+      "name": "Tai-Sui",
+      "level": 26,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21425,
+      "code": "MOB_FW_TAESE_027",
+      "name": "Tai-Sui",
+      "level": 27,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21426,
+      "code": "MOB_FW_TAESE_028",
+      "name": "Tai-Sui",
+      "level": 28,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21427,
+      "code": "MOB_FW_TAESE_029",
+      "name": "Tai-Sui",
+      "level": 29,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21428,
+      "code": "MOB_FW_TAESE_030",
+      "name": "Tai-Sui",
+      "level": 30,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21429,
+      "code": "MOB_FW_TAESE_031",
+      "name": "Tai-Sui",
+      "level": 31,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21430,
+      "code": "MOB_FW_TAESE_032",
+      "name": "Tai-Sui",
+      "level": 32,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21431,
+      "code": "MOB_FW_TAESE_033",
+      "name": "Tai-Sui",
+      "level": 33,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21432,
+      "code": "MOB_FW_TAESE_034",
+      "name": "Tai-Sui",
+      "level": 34,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21433,
+      "code": "MOB_FW_TAESE_035",
+      "name": "Tai-Sui",
+      "level": 35,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21434,
+      "code": "MOB_FW_TAESE_036",
+      "name": "Tai-Sui",
+      "level": 36,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21435,
+      "code": "MOB_FW_TAESE_037",
+      "name": "Tai-Sui",
+      "level": 37,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21436,
+      "code": "MOB_FW_TAESE_038",
+      "name": "Tai-Sui",
+      "level": 38,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21437,
+      "code": "MOB_FW_TAESE_039",
+      "name": "Tai-Sui",
+      "level": 39,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21438,
+      "code": "MOB_FW_TAESE_040",
+      "name": "Tai-Sui",
+      "level": 40,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21439,
+      "code": "MOB_FW_TAESE_041",
+      "name": "Tai-Sui",
+      "level": 41,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21440,
+      "code": "MOB_FW_TAESE_042",
+      "name": "Tai-Sui",
+      "level": 42,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21441,
+      "code": "MOB_FW_TAESE_043",
+      "name": "Tai-Sui",
+      "level": 43,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21442,
+      "code": "MOB_FW_TAESE_044",
+      "name": "Tai-Sui",
+      "level": 44,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21443,
+      "code": "MOB_FW_TAESE_045",
+      "name": "Tai-Sui",
+      "level": 45,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21444,
+      "code": "MOB_FW_TAESE_046",
+      "name": "Tai-Sui",
+      "level": 46,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21445,
+      "code": "MOB_FW_TAESE_047",
+      "name": "Tai-Sui",
+      "level": 47,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21446,
+      "code": "MOB_FW_TAESE_048",
+      "name": "Tai-Sui",
+      "level": 48,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21447,
+      "code": "MOB_FW_TAESE_049",
+      "name": "Tai-Sui",
+      "level": 49,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21448,
+      "code": "MOB_FW_TAESE_050",
+      "name": "Tai-Sui",
+      "level": 50,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21449,
+      "code": "MOB_FW_TAESE_051",
+      "name": "Tai-Sui",
+      "level": 51,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21450,
+      "code": "MOB_FW_TAESE_052",
+      "name": "Tai-Sui",
+      "level": 52,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21451,
+      "code": "MOB_FW_TAESE_053",
+      "name": "Tai-Sui",
+      "level": 53,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21452,
+      "code": "MOB_FW_TAESE_054",
+      "name": "Tai-Sui",
+      "level": 54,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21453,
+      "code": "MOB_FW_TAESE_055",
+      "name": "Tai-Sui",
+      "level": 55,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21454,
+      "code": "MOB_FW_TAESE_056",
+      "name": "Tai-Sui",
+      "level": 56,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21455,
+      "code": "MOB_FW_TAESE_057",
+      "name": "Tai-Sui",
+      "level": 57,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21456,
+      "code": "MOB_FW_TAESE_058",
+      "name": "Tai-Sui",
+      "level": 58,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21457,
+      "code": "MOB_FW_TAESE_059",
+      "name": "Tai-Sui",
+      "level": 59,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21458,
+      "code": "MOB_FW_TAESE_060",
+      "name": "Tai-Sui",
+      "level": 60,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21459,
+      "code": "MOB_FW_TAESE_061",
+      "name": "Tai-Sui",
+      "level": 61,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21460,
+      "code": "MOB_FW_TAESE_062",
+      "name": "Tai-Sui",
+      "level": 62,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21461,
+      "code": "MOB_FW_TAESE_063",
+      "name": "Tai-Sui",
+      "level": 63,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21462,
+      "code": "MOB_FW_TAESE_064",
+      "name": "Tai-Sui",
+      "level": 64,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21463,
+      "code": "MOB_FW_TAESE_065",
+      "name": "Tai-Sui",
+      "level": 65,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21464,
+      "code": "MOB_FW_TAESE_066",
+      "name": "Tai-Sui",
+      "level": 66,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21465,
+      "code": "MOB_FW_TAESE_067",
+      "name": "Tai-Sui",
+      "level": 67,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21466,
+      "code": "MOB_FW_TAESE_068",
+      "name": "Tai-Sui",
+      "level": 68,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21467,
+      "code": "MOB_FW_TAESE_069",
+      "name": "Tai-Sui",
+      "level": 69,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21468,
+      "code": "MOB_FW_TAESE_070",
+      "name": "Tai-Sui",
+      "level": 70,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21469,
+      "code": "MOB_FW_TAESE_071",
+      "name": "Tai-Sui",
+      "level": 71,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21470,
+      "code": "MOB_FW_TAESE_072",
+      "name": "Tai-Sui",
+      "level": 72,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21471,
+      "code": "MOB_FW_TAESE_073",
+      "name": "Tai-Sui",
+      "level": 73,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21472,
+      "code": "MOB_FW_TAESE_074",
+      "name": "Tai-Sui",
+      "level": 74,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21473,
+      "code": "MOB_FW_TAESE_075",
+      "name": "Tai-Sui",
+      "level": 75,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21474,
+      "code": "MOB_FW_TAESE_076",
+      "name": "Tai-Sui",
+      "level": 76,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21475,
+      "code": "MOB_FW_TAESE_077",
+      "name": "Tai-Sui",
+      "level": 77,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21476,
+      "code": "MOB_FW_TAESE_078",
+      "name": "Tai-Sui",
+      "level": 78,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21477,
+      "code": "MOB_FW_TAESE_079",
+      "name": "Tai-Sui",
+      "level": 79,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21478,
+      "code": "MOB_FW_TAESE_080",
+      "name": "Tai-Sui",
+      "level": 80,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21479,
+      "code": "MOB_FW_TAESE_081",
+      "name": "Tai-Sui",
+      "level": 81,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21480,
+      "code": "MOB_FW_TAESE_082",
+      "name": "Tai-Sui",
+      "level": 82,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21481,
+      "code": "MOB_FW_TAESE_083",
+      "name": "Tai-Sui",
+      "level": 83,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21482,
+      "code": "MOB_FW_TAESE_084",
+      "name": "Tai-Sui",
+      "level": 84,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21483,
+      "code": "MOB_FW_TAESE_085",
+      "name": "Tai-Sui",
+      "level": 85,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21484,
+      "code": "MOB_FW_TAESE_086",
+      "name": "Tai-Sui",
+      "level": 86,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21485,
+      "code": "MOB_FW_TAESE_087",
+      "name": "Tai-Sui",
+      "level": 87,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21486,
+      "code": "MOB_FW_TAESE_088",
+      "name": "Tai-Sui",
+      "level": 88,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21487,
+      "code": "MOB_FW_TAESE_089",
+      "name": "Tai-Sui",
+      "level": 89,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21488,
+      "code": "MOB_FW_TAESE_090",
+      "name": "Tai-Sui",
+      "level": 90,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21489,
+      "code": "MOB_FW_TAESE_091",
+      "name": "Tai-Sui",
+      "level": 91,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21490,
+      "code": "MOB_FW_TAESE_092",
+      "name": "Tai-Sui",
+      "level": 92,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21491,
+      "code": "MOB_FW_TAESE_093",
+      "name": "Tai-Sui",
+      "level": 93,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21492,
+      "code": "MOB_FW_TAESE_094",
+      "name": "Tai-Sui",
+      "level": 94,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21493,
+      "code": "MOB_FW_TAESE_095",
+      "name": "Tai-Sui",
+      "level": 95,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21494,
+      "code": "MOB_FW_TAESE_096",
+      "name": "Tai-Sui",
+      "level": 96,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21495,
+      "code": "MOB_FW_TAESE_097",
+      "name": "Tai-Sui",
+      "level": 97,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21496,
+      "code": "MOB_FW_TAESE_098",
+      "name": "Tai-Sui",
+      "level": 98,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21497,
+      "code": "MOB_FW_TAESE_099",
+      "name": "Tai-Sui",
+      "level": 99,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21498,
+      "code": "MOB_FW_TAESE_100",
+      "name": "Tai-Sui",
+      "level": 100,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21499,
+      "code": "MOB_FW_TAESE_101",
+      "name": "Tai-Sui",
+      "level": 101,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21500,
+      "code": "MOB_FW_TAESE_102",
+      "name": "Tai-Sui",
+      "level": 102,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21501,
+      "code": "MOB_FW_TAESE_103",
+      "name": "Tai-Sui",
+      "level": 103,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21502,
+      "code": "MOB_FW_TAESE_104",
+      "name": "Tai-Sui",
+      "level": 104,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21503,
+      "code": "MOB_FW_TAESE_105",
+      "name": "Tai-Sui",
+      "level": 105,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21504,
+      "code": "MOB_FW_TAESE_106",
+      "name": "Tai-Sui",
+      "level": 106,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21505,
+      "code": "MOB_FW_TAESE_107",
+      "name": "Tai-Sui",
+      "level": 107,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21506,
+      "code": "MOB_FW_TAESE_108",
+      "name": "Tai-Sui",
+      "level": 108,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21507,
+      "code": "MOB_FW_TAESE_109",
+      "name": "Tai-Sui",
+      "level": 109,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21508,
+      "code": "MOB_FW_TAESE_110",
+      "name": "Tai-Sui",
+      "level": 110,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21509,
+      "code": "MOB_FW_TAESE_111",
+      "name": "Tai-Sui",
+      "level": 111,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21510,
+      "code": "MOB_FW_TAESE_112",
+      "name": "Tai-Sui",
+      "level": 112,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21511,
+      "code": "MOB_FW_TAESE_113",
+      "name": "Tai-Sui",
+      "level": 113,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21512,
+      "code": "MOB_FW_TAESE_114",
+      "name": "Tai-Sui",
+      "level": 114,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21513,
+      "code": "MOB_FW_TAESE_115",
+      "name": "Tai-Sui",
+      "level": 115,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21514,
+      "code": "MOB_FW_TAESE_116",
+      "name": "Tai-Sui",
+      "level": 116,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21515,
+      "code": "MOB_FW_TAESE_117",
+      "name": "Tai-Sui",
+      "level": 117,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21516,
+      "code": "MOB_FW_TAESE_118",
+      "name": "Tai-Sui",
+      "level": 118,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21517,
+      "code": "MOB_FW_TAESE_119",
+      "name": "Tai-Sui",
+      "level": 119,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21518,
+      "code": "MOB_FW_TAESE_120",
+      "name": "Tai-Sui",
+      "level": 120,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21519,
+      "code": "MOB_FW_TAESE_121",
+      "name": "Tai-Sui",
+      "level": 121,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21520,
+      "code": "MOB_FW_TAESE_122",
+      "name": "Tai-Sui",
+      "level": 122,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21521,
+      "code": "MOB_FW_TAESE_123",
+      "name": "Tai-Sui",
+      "level": 123,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21522,
+      "code": "MOB_FW_TAESE_124",
+      "name": "Tai-Sui",
+      "level": 124,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21523,
+      "code": "MOB_FW_TAESE_125",
+      "name": "Tai-Sui",
+      "level": 125,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21524,
+      "code": "MOB_FW_TAESE_126",
+      "name": "Tai-Sui",
+      "level": 126,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21525,
+      "code": "MOB_FW_TAESE_127",
+      "name": "Tai-Sui",
+      "level": 127,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21526,
+      "code": "MOB_FW_TAESE_128",
+      "name": "Tai-Sui",
+      "level": 128,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21527,
+      "code": "MOB_FW_TAESE_129",
+      "name": "Tai-Sui",
+      "level": 129,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21528,
+      "code": "MOB_FW_TAESE_130",
+      "name": "Tai-Sui",
+      "level": 130,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21529,
+      "code": "MOB_FW_TAESE_131",
+      "name": "Tai-Sui",
+      "level": 131,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21530,
+      "code": "MOB_FW_TAESE_132",
+      "name": "Tai-Sui",
+      "level": 132,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21531,
+      "code": "MOB_FW_TAESE_133",
+      "name": "Tai-Sui",
+      "level": 133,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21532,
+      "code": "MOB_FW_TAESE_134",
+      "name": "Tai-Sui",
+      "level": 134,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21533,
+      "code": "MOB_FW_TAESE_135",
+      "name": "Tai-Sui",
+      "level": 135,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21534,
+      "code": "MOB_FW_TAESE_136",
+      "name": "Tai-Sui",
+      "level": 136,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21535,
+      "code": "MOB_FW_TAESE_137",
+      "name": "Tai-Sui",
+      "level": 137,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21536,
+      "code": "MOB_FW_TAESE_138",
+      "name": "Tai-Sui",
+      "level": 138,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21537,
+      "code": "MOB_FW_TAESE_139",
+      "name": "Tai-Sui",
+      "level": 139,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 21538,
+      "code": "MOB_FW_TAESE_140",
+      "name": "Tai-Sui",
+      "level": 140,
+      "image_url": "/game-assets/monsters/fw_taese.png"
+    },
+    {
+      "model_id": 22099,
+      "code": "MOB_FW_HYEONGCHEON_001",
+      "name": "Senior General",
+      "level": 1,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22100,
+      "code": "MOB_FW_HYEONGCHEON_002",
+      "name": "Senior General",
+      "level": 2,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22101,
+      "code": "MOB_FW_HYEONGCHEON_003",
+      "name": "Senior General",
+      "level": 3,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22102,
+      "code": "MOB_FW_HYEONGCHEON_004",
+      "name": "Senior General",
+      "level": 4,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22103,
+      "code": "MOB_FW_HYEONGCHEON_005",
+      "name": "Senior General",
+      "level": 5,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22104,
+      "code": "MOB_FW_HYEONGCHEON_006",
+      "name": "Senior General",
+      "level": 6,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22105,
+      "code": "MOB_FW_HYEONGCHEON_007",
+      "name": "Senior General",
+      "level": 7,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22106,
+      "code": "MOB_FW_HYEONGCHEON_008",
+      "name": "Senior General",
+      "level": 8,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22107,
+      "code": "MOB_FW_HYEONGCHEON_009",
+      "name": "Senior General",
+      "level": 9,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22108,
+      "code": "MOB_FW_HYEONGCHEON_010",
+      "name": "Senior General",
+      "level": 10,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22109,
+      "code": "MOB_FW_HYEONGCHEON_011",
+      "name": "Senior General",
+      "level": 11,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22110,
+      "code": "MOB_FW_HYEONGCHEON_012",
+      "name": "Senior General",
+      "level": 12,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22111,
+      "code": "MOB_FW_HYEONGCHEON_013",
+      "name": "Senior General",
+      "level": 13,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22112,
+      "code": "MOB_FW_HYEONGCHEON_014",
+      "name": "Senior General",
+      "level": 14,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22113,
+      "code": "MOB_FW_HYEONGCHEON_015",
+      "name": "Senior General",
+      "level": 15,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22114,
+      "code": "MOB_FW_HYEONGCHEON_016",
+      "name": "Senior General",
+      "level": 16,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22115,
+      "code": "MOB_FW_HYEONGCHEON_017",
+      "name": "Senior General",
+      "level": 17,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22116,
+      "code": "MOB_FW_HYEONGCHEON_018",
+      "name": "Senior General",
+      "level": 18,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22117,
+      "code": "MOB_FW_HYEONGCHEON_019",
+      "name": "Senior General",
+      "level": 19,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22118,
+      "code": "MOB_FW_HYEONGCHEON_020",
+      "name": "Senior General",
+      "level": 20,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22119,
+      "code": "MOB_FW_HYEONGCHEON_021",
+      "name": "Senior General",
+      "level": 21,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22120,
+      "code": "MOB_FW_HYEONGCHEON_022",
+      "name": "Senior General",
+      "level": 22,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22121,
+      "code": "MOB_FW_HYEONGCHEON_023",
+      "name": "Senior General",
+      "level": 23,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22122,
+      "code": "MOB_FW_HYEONGCHEON_024",
+      "name": "Senior General",
+      "level": 24,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22123,
+      "code": "MOB_FW_HYEONGCHEON_025",
+      "name": "Senior General",
+      "level": 25,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22124,
+      "code": "MOB_FW_HYEONGCHEON_026",
+      "name": "Senior General",
+      "level": 26,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22125,
+      "code": "MOB_FW_HYEONGCHEON_027",
+      "name": "Senior General",
+      "level": 27,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22126,
+      "code": "MOB_FW_HYEONGCHEON_028",
+      "name": "Senior General",
+      "level": 28,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22127,
+      "code": "MOB_FW_HYEONGCHEON_029",
+      "name": "Senior General",
+      "level": 29,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22128,
+      "code": "MOB_FW_HYEONGCHEON_030",
+      "name": "Senior General",
+      "level": 30,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22129,
+      "code": "MOB_FW_HYEONGCHEON_031",
+      "name": "Senior General",
+      "level": 31,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22130,
+      "code": "MOB_FW_HYEONGCHEON_032",
+      "name": "Senior General",
+      "level": 32,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22131,
+      "code": "MOB_FW_HYEONGCHEON_033",
+      "name": "Senior General",
+      "level": 33,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22132,
+      "code": "MOB_FW_HYEONGCHEON_034",
+      "name": "Senior General",
+      "level": 34,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22133,
+      "code": "MOB_FW_HYEONGCHEON_035",
+      "name": "Senior General",
+      "level": 35,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22134,
+      "code": "MOB_FW_HYEONGCHEON_036",
+      "name": "Senior General",
+      "level": 36,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22135,
+      "code": "MOB_FW_HYEONGCHEON_037",
+      "name": "Senior General",
+      "level": 37,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22136,
+      "code": "MOB_FW_HYEONGCHEON_038",
+      "name": "Senior General",
+      "level": 38,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22137,
+      "code": "MOB_FW_HYEONGCHEON_039",
+      "name": "Senior General",
+      "level": 39,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22138,
+      "code": "MOB_FW_HYEONGCHEON_040",
+      "name": "Senior General",
+      "level": 40,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22139,
+      "code": "MOB_FW_HYEONGCHEON_041",
+      "name": "Senior General",
+      "level": 41,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22140,
+      "code": "MOB_FW_HYEONGCHEON_042",
+      "name": "Senior General",
+      "level": 42,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22141,
+      "code": "MOB_FW_HYEONGCHEON_043",
+      "name": "Senior General",
+      "level": 43,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22142,
+      "code": "MOB_FW_HYEONGCHEON_044",
+      "name": "Senior General",
+      "level": 44,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22143,
+      "code": "MOB_FW_HYEONGCHEON_045",
+      "name": "Senior General",
+      "level": 45,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22144,
+      "code": "MOB_FW_HYEONGCHEON_046",
+      "name": "Senior General",
+      "level": 46,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22145,
+      "code": "MOB_FW_HYEONGCHEON_047",
+      "name": "Senior General",
+      "level": 47,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22146,
+      "code": "MOB_FW_HYEONGCHEON_048",
+      "name": "Senior General",
+      "level": 48,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22147,
+      "code": "MOB_FW_HYEONGCHEON_049",
+      "name": "Senior General",
+      "level": 49,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22148,
+      "code": "MOB_FW_HYEONGCHEON_050",
+      "name": "Senior General",
+      "level": 50,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22149,
+      "code": "MOB_FW_HYEONGCHEON_051",
+      "name": "Senior General",
+      "level": 51,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22150,
+      "code": "MOB_FW_HYEONGCHEON_052",
+      "name": "Senior General",
+      "level": 52,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22151,
+      "code": "MOB_FW_HYEONGCHEON_053",
+      "name": "Senior General",
+      "level": 53,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22152,
+      "code": "MOB_FW_HYEONGCHEON_054",
+      "name": "Senior General",
+      "level": 54,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22153,
+      "code": "MOB_FW_HYEONGCHEON_055",
+      "name": "Senior General",
+      "level": 55,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22154,
+      "code": "MOB_FW_HYEONGCHEON_056",
+      "name": "Senior General",
+      "level": 56,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22155,
+      "code": "MOB_FW_HYEONGCHEON_057",
+      "name": "Senior General",
+      "level": 57,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22156,
+      "code": "MOB_FW_HYEONGCHEON_058",
+      "name": "Senior General",
+      "level": 58,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22157,
+      "code": "MOB_FW_HYEONGCHEON_059",
+      "name": "Senior General",
+      "level": 59,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22158,
+      "code": "MOB_FW_HYEONGCHEON_060",
+      "name": "Senior General",
+      "level": 60,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22159,
+      "code": "MOB_FW_HYEONGCHEON_061",
+      "name": "Senior General",
+      "level": 61,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22160,
+      "code": "MOB_FW_HYEONGCHEON_062",
+      "name": "Senior General",
+      "level": 62,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22161,
+      "code": "MOB_FW_HYEONGCHEON_063",
+      "name": "Senior General",
+      "level": 63,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22162,
+      "code": "MOB_FW_HYEONGCHEON_064",
+      "name": "Senior General",
+      "level": 64,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22163,
+      "code": "MOB_FW_HYEONGCHEON_065",
+      "name": "Senior General",
+      "level": 65,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22164,
+      "code": "MOB_FW_HYEONGCHEON_066",
+      "name": "Senior General",
+      "level": 66,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22165,
+      "code": "MOB_FW_HYEONGCHEON_067",
+      "name": "Senior General",
+      "level": 67,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22166,
+      "code": "MOB_FW_HYEONGCHEON_068",
+      "name": "Senior General",
+      "level": 68,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22167,
+      "code": "MOB_FW_HYEONGCHEON_069",
+      "name": "Senior General",
+      "level": 69,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22168,
+      "code": "MOB_FW_HYEONGCHEON_070",
+      "name": "Senior General",
+      "level": 70,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22169,
+      "code": "MOB_FW_HYEONGCHEON_071",
+      "name": "Senior General",
+      "level": 71,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22170,
+      "code": "MOB_FW_HYEONGCHEON_072",
+      "name": "Senior General",
+      "level": 72,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22171,
+      "code": "MOB_FW_HYEONGCHEON_073",
+      "name": "Senior General",
+      "level": 73,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22172,
+      "code": "MOB_FW_HYEONGCHEON_074",
+      "name": "Senior General",
+      "level": 74,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22173,
+      "code": "MOB_FW_HYEONGCHEON_075",
+      "name": "Senior General",
+      "level": 75,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22174,
+      "code": "MOB_FW_HYEONGCHEON_076",
+      "name": "Senior General",
+      "level": 76,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22175,
+      "code": "MOB_FW_HYEONGCHEON_077",
+      "name": "Senior General",
+      "level": 77,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22176,
+      "code": "MOB_FW_HYEONGCHEON_078",
+      "name": "Senior General",
+      "level": 78,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22177,
+      "code": "MOB_FW_HYEONGCHEON_079",
+      "name": "Senior General",
+      "level": 79,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22178,
+      "code": "MOB_FW_HYEONGCHEON_080",
+      "name": "Senior General",
+      "level": 80,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22179,
+      "code": "MOB_FW_HYEONGCHEON_081",
+      "name": "Senior General",
+      "level": 81,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22180,
+      "code": "MOB_FW_HYEONGCHEON_082",
+      "name": "Senior General",
+      "level": 82,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22181,
+      "code": "MOB_FW_HYEONGCHEON_083",
+      "name": "Senior General",
+      "level": 83,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22182,
+      "code": "MOB_FW_HYEONGCHEON_084",
+      "name": "Senior General",
+      "level": 84,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22183,
+      "code": "MOB_FW_HYEONGCHEON_085",
+      "name": "Senior General",
+      "level": 85,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22184,
+      "code": "MOB_FW_HYEONGCHEON_086",
+      "name": "Senior General",
+      "level": 86,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22185,
+      "code": "MOB_FW_HYEONGCHEON_087",
+      "name": "Senior General",
+      "level": 87,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22186,
+      "code": "MOB_FW_HYEONGCHEON_088",
+      "name": "Senior General",
+      "level": 88,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22187,
+      "code": "MOB_FW_HYEONGCHEON_089",
+      "name": "Senior General",
+      "level": 89,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22188,
+      "code": "MOB_FW_HYEONGCHEON_090",
+      "name": "Senior General",
+      "level": 90,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22189,
+      "code": "MOB_FW_HYEONGCHEON_091",
+      "name": "Senior General",
+      "level": 91,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22190,
+      "code": "MOB_FW_HYEONGCHEON_092",
+      "name": "Senior General",
+      "level": 92,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22191,
+      "code": "MOB_FW_HYEONGCHEON_093",
+      "name": "Senior General",
+      "level": 93,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22192,
+      "code": "MOB_FW_HYEONGCHEON_094",
+      "name": "Senior General",
+      "level": 94,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22193,
+      "code": "MOB_FW_HYEONGCHEON_095",
+      "name": "Senior General",
+      "level": 95,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22194,
+      "code": "MOB_FW_HYEONGCHEON_096",
+      "name": "Senior General",
+      "level": 96,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22195,
+      "code": "MOB_FW_HYEONGCHEON_097",
+      "name": "Senior General",
+      "level": 97,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22196,
+      "code": "MOB_FW_HYEONGCHEON_098",
+      "name": "Senior General",
+      "level": 98,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22197,
+      "code": "MOB_FW_HYEONGCHEON_099",
+      "name": "Senior General",
+      "level": 99,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22198,
+      "code": "MOB_FW_HYEONGCHEON_100",
+      "name": "Senior General",
+      "level": 100,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22199,
+      "code": "MOB_FW_HYEONGCHEON_101",
+      "name": "Senior General",
+      "level": 101,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22200,
+      "code": "MOB_FW_HYEONGCHEON_102",
+      "name": "Senior General",
+      "level": 102,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22201,
+      "code": "MOB_FW_HYEONGCHEON_103",
+      "name": "Senior General",
+      "level": 103,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22202,
+      "code": "MOB_FW_HYEONGCHEON_104",
+      "name": "Senior General",
+      "level": 104,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22203,
+      "code": "MOB_FW_HYEONGCHEON_105",
+      "name": "Senior General",
+      "level": 105,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22204,
+      "code": "MOB_FW_HYEONGCHEON_106",
+      "name": "Senior General",
+      "level": 106,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22205,
+      "code": "MOB_FW_HYEONGCHEON_107",
+      "name": "Senior General",
+      "level": 107,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22206,
+      "code": "MOB_FW_HYEONGCHEON_108",
+      "name": "Senior General",
+      "level": 108,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22207,
+      "code": "MOB_FW_HYEONGCHEON_109",
+      "name": "Senior General",
+      "level": 109,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22208,
+      "code": "MOB_FW_HYEONGCHEON_110",
+      "name": "Senior General",
+      "level": 110,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22209,
+      "code": "MOB_FW_HYEONGCHEON_111",
+      "name": "Senior General",
+      "level": 111,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22210,
+      "code": "MOB_FW_HYEONGCHEON_112",
+      "name": "Senior General",
+      "level": 112,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22211,
+      "code": "MOB_FW_HYEONGCHEON_113",
+      "name": "Senior General",
+      "level": 113,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22212,
+      "code": "MOB_FW_HYEONGCHEON_114",
+      "name": "Senior General",
+      "level": 114,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22213,
+      "code": "MOB_FW_HYEONGCHEON_115",
+      "name": "Senior General",
+      "level": 115,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22214,
+      "code": "MOB_FW_HYEONGCHEON_116",
+      "name": "Senior General",
+      "level": 116,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22215,
+      "code": "MOB_FW_HYEONGCHEON_117",
+      "name": "Senior General",
+      "level": 117,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22216,
+      "code": "MOB_FW_HYEONGCHEON_118",
+      "name": "Senior General",
+      "level": 118,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22217,
+      "code": "MOB_FW_HYEONGCHEON_119",
+      "name": "Senior General",
+      "level": 119,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22218,
+      "code": "MOB_FW_HYEONGCHEON_120",
+      "name": "Senior General",
+      "level": 120,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22219,
+      "code": "MOB_FW_HYEONGCHEON_121",
+      "name": "Senior General",
+      "level": 121,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22220,
+      "code": "MOB_FW_HYEONGCHEON_122",
+      "name": "Senior General",
+      "level": 122,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22221,
+      "code": "MOB_FW_HYEONGCHEON_123",
+      "name": "Senior General",
+      "level": 123,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22222,
+      "code": "MOB_FW_HYEONGCHEON_124",
+      "name": "Senior General",
+      "level": 124,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22223,
+      "code": "MOB_FW_HYEONGCHEON_125",
+      "name": "Senior General",
+      "level": 125,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22224,
+      "code": "MOB_FW_HYEONGCHEON_126",
+      "name": "Senior General",
+      "level": 126,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22225,
+      "code": "MOB_FW_HYEONGCHEON_127",
+      "name": "Senior General",
+      "level": 127,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22226,
+      "code": "MOB_FW_HYEONGCHEON_128",
+      "name": "Senior General",
+      "level": 128,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22227,
+      "code": "MOB_FW_HYEONGCHEON_129",
+      "name": "Senior General",
+      "level": 129,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22228,
+      "code": "MOB_FW_HYEONGCHEON_130",
+      "name": "Senior General",
+      "level": 130,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22229,
+      "code": "MOB_FW_HYEONGCHEON_131",
+      "name": "Senior General",
+      "level": 131,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22230,
+      "code": "MOB_FW_HYEONGCHEON_132",
+      "name": "Senior General",
+      "level": 132,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22231,
+      "code": "MOB_FW_HYEONGCHEON_133",
+      "name": "Senior General",
+      "level": 133,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22232,
+      "code": "MOB_FW_HYEONGCHEON_134",
+      "name": "Senior General",
+      "level": 134,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22233,
+      "code": "MOB_FW_HYEONGCHEON_135",
+      "name": "Senior General",
+      "level": 135,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22234,
+      "code": "MOB_FW_HYEONGCHEON_136",
+      "name": "Senior General",
+      "level": 136,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22235,
+      "code": "MOB_FW_HYEONGCHEON_137",
+      "name": "Senior General",
+      "level": 137,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22236,
+      "code": "MOB_FW_HYEONGCHEON_138",
+      "name": "Senior General",
+      "level": 138,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22237,
+      "code": "MOB_FW_HYEONGCHEON_139",
+      "name": "Senior General",
+      "level": 139,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22238,
+      "code": "MOB_FW_HYEONGCHEON_140",
+      "name": "Senior General",
+      "level": 140,
+      "image_url": "/game-assets/monsters/fw_hyeongcheon.png"
+    },
+    {
+      "model_id": 22239,
+      "code": "MOB_FW_MUJIGI_001",
+      "name": "Rage Cloud",
+      "level": 1,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22240,
+      "code": "MOB_FW_MUJIGI_002",
+      "name": "Rage Cloud",
+      "level": 2,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22241,
+      "code": "MOB_FW_MUJIGI_003",
+      "name": "Rage Cloud",
+      "level": 3,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22242,
+      "code": "MOB_FW_MUJIGI_004",
+      "name": "Rage Cloud",
+      "level": 4,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22243,
+      "code": "MOB_FW_MUJIGI_005",
+      "name": "Rage Cloud",
+      "level": 5,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22244,
+      "code": "MOB_FW_MUJIGI_006",
+      "name": "Rage Cloud",
+      "level": 6,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22245,
+      "code": "MOB_FW_MUJIGI_007",
+      "name": "Rage Cloud",
+      "level": 7,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22246,
+      "code": "MOB_FW_MUJIGI_008",
+      "name": "Rage Cloud",
+      "level": 8,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22247,
+      "code": "MOB_FW_MUJIGI_009",
+      "name": "Rage Cloud",
+      "level": 9,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22248,
+      "code": "MOB_FW_MUJIGI_010",
+      "name": "Rage Cloud",
+      "level": 10,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22249,
+      "code": "MOB_FW_MUJIGI_011",
+      "name": "Rage Cloud",
+      "level": 11,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22250,
+      "code": "MOB_FW_MUJIGI_012",
+      "name": "Rage Cloud",
+      "level": 12,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22251,
+      "code": "MOB_FW_MUJIGI_013",
+      "name": "Rage Cloud",
+      "level": 13,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22252,
+      "code": "MOB_FW_MUJIGI_014",
+      "name": "Rage Cloud",
+      "level": 14,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22253,
+      "code": "MOB_FW_MUJIGI_015",
+      "name": "Rage Cloud",
+      "level": 15,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22254,
+      "code": "MOB_FW_MUJIGI_016",
+      "name": "Rage Cloud",
+      "level": 16,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22255,
+      "code": "MOB_FW_MUJIGI_017",
+      "name": "Rage Cloud",
+      "level": 17,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22256,
+      "code": "MOB_FW_MUJIGI_018",
+      "name": "Rage Cloud",
+      "level": 18,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22257,
+      "code": "MOB_FW_MUJIGI_019",
+      "name": "Rage Cloud",
+      "level": 19,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22258,
+      "code": "MOB_FW_MUJIGI_020",
+      "name": "Rage Cloud",
+      "level": 20,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22259,
+      "code": "MOB_FW_MUJIGI_021",
+      "name": "Rage Cloud",
+      "level": 21,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22260,
+      "code": "MOB_FW_MUJIGI_022",
+      "name": "Rage Cloud",
+      "level": 22,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22261,
+      "code": "MOB_FW_MUJIGI_023",
+      "name": "Rage Cloud",
+      "level": 23,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22262,
+      "code": "MOB_FW_MUJIGI_024",
+      "name": "Rage Cloud",
+      "level": 24,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22263,
+      "code": "MOB_FW_MUJIGI_025",
+      "name": "Rage Cloud",
+      "level": 25,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22264,
+      "code": "MOB_FW_MUJIGI_026",
+      "name": "Rage Cloud",
+      "level": 26,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22265,
+      "code": "MOB_FW_MUJIGI_027",
+      "name": "Rage Cloud",
+      "level": 27,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22266,
+      "code": "MOB_FW_MUJIGI_028",
+      "name": "Rage Cloud",
+      "level": 28,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22267,
+      "code": "MOB_FW_MUJIGI_029",
+      "name": "Rage Cloud",
+      "level": 29,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22268,
+      "code": "MOB_FW_MUJIGI_030",
+      "name": "Rage Cloud",
+      "level": 30,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22269,
+      "code": "MOB_FW_MUJIGI_031",
+      "name": "Rage Cloud",
+      "level": 31,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22270,
+      "code": "MOB_FW_MUJIGI_032",
+      "name": "Rage Cloud",
+      "level": 32,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22271,
+      "code": "MOB_FW_MUJIGI_033",
+      "name": "Rage Cloud",
+      "level": 33,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22272,
+      "code": "MOB_FW_MUJIGI_034",
+      "name": "Rage Cloud",
+      "level": 34,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22273,
+      "code": "MOB_FW_MUJIGI_035",
+      "name": "Rage Cloud",
+      "level": 35,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22274,
+      "code": "MOB_FW_MUJIGI_036",
+      "name": "Rage Cloud",
+      "level": 36,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22275,
+      "code": "MOB_FW_MUJIGI_037",
+      "name": "Rage Cloud",
+      "level": 37,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22276,
+      "code": "MOB_FW_MUJIGI_038",
+      "name": "Rage Cloud",
+      "level": 38,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22277,
+      "code": "MOB_FW_MUJIGI_039",
+      "name": "Rage Cloud",
+      "level": 39,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22278,
+      "code": "MOB_FW_MUJIGI_040",
+      "name": "Rage Cloud",
+      "level": 40,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22279,
+      "code": "MOB_FW_MUJIGI_041",
+      "name": "Rage Cloud",
+      "level": 41,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22280,
+      "code": "MOB_FW_MUJIGI_042",
+      "name": "Rage Cloud",
+      "level": 42,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22281,
+      "code": "MOB_FW_MUJIGI_043",
+      "name": "Rage Cloud",
+      "level": 43,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22282,
+      "code": "MOB_FW_MUJIGI_044",
+      "name": "Rage Cloud",
+      "level": 44,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22283,
+      "code": "MOB_FW_MUJIGI_045",
+      "name": "Rage Cloud",
+      "level": 45,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22284,
+      "code": "MOB_FW_MUJIGI_046",
+      "name": "Rage Cloud",
+      "level": 46,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22285,
+      "code": "MOB_FW_MUJIGI_047",
+      "name": "Rage Cloud",
+      "level": 47,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22286,
+      "code": "MOB_FW_MUJIGI_048",
+      "name": "Rage Cloud",
+      "level": 48,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22287,
+      "code": "MOB_FW_MUJIGI_049",
+      "name": "Rage Cloud",
+      "level": 49,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22288,
+      "code": "MOB_FW_MUJIGI_050",
+      "name": "Rage Cloud",
+      "level": 50,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22289,
+      "code": "MOB_FW_MUJIGI_051",
+      "name": "Rage Cloud",
+      "level": 51,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22290,
+      "code": "MOB_FW_MUJIGI_052",
+      "name": "Rage Cloud",
+      "level": 52,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22291,
+      "code": "MOB_FW_MUJIGI_053",
+      "name": "Rage Cloud",
+      "level": 53,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22292,
+      "code": "MOB_FW_MUJIGI_054",
+      "name": "Rage Cloud",
+      "level": 54,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22293,
+      "code": "MOB_FW_MUJIGI_055",
+      "name": "Rage Cloud",
+      "level": 55,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22294,
+      "code": "MOB_FW_MUJIGI_056",
+      "name": "Rage Cloud",
+      "level": 56,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22295,
+      "code": "MOB_FW_MUJIGI_057",
+      "name": "Rage Cloud",
+      "level": 57,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22296,
+      "code": "MOB_FW_MUJIGI_058",
+      "name": "Rage Cloud",
+      "level": 58,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22297,
+      "code": "MOB_FW_MUJIGI_059",
+      "name": "Rage Cloud",
+      "level": 59,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22298,
+      "code": "MOB_FW_MUJIGI_060",
+      "name": "Rage Cloud",
+      "level": 60,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22299,
+      "code": "MOB_FW_MUJIGI_061",
+      "name": "Rage Cloud",
+      "level": 61,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22300,
+      "code": "MOB_FW_MUJIGI_062",
+      "name": "Rage Cloud",
+      "level": 62,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22301,
+      "code": "MOB_FW_MUJIGI_063",
+      "name": "Rage Cloud",
+      "level": 63,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22302,
+      "code": "MOB_FW_MUJIGI_064",
+      "name": "Rage Cloud",
+      "level": 64,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22303,
+      "code": "MOB_FW_MUJIGI_065",
+      "name": "Rage Cloud",
+      "level": 65,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22304,
+      "code": "MOB_FW_MUJIGI_066",
+      "name": "Rage Cloud",
+      "level": 66,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22305,
+      "code": "MOB_FW_MUJIGI_067",
+      "name": "Rage Cloud",
+      "level": 67,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22306,
+      "code": "MOB_FW_MUJIGI_068",
+      "name": "Rage Cloud",
+      "level": 68,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22307,
+      "code": "MOB_FW_MUJIGI_069",
+      "name": "Rage Cloud",
+      "level": 69,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22308,
+      "code": "MOB_FW_MUJIGI_070",
+      "name": "Rage Cloud",
+      "level": 70,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22309,
+      "code": "MOB_FW_MUJIGI_071",
+      "name": "Rage Cloud",
+      "level": 71,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22310,
+      "code": "MOB_FW_MUJIGI_072",
+      "name": "Rage Cloud",
+      "level": 72,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22311,
+      "code": "MOB_FW_MUJIGI_073",
+      "name": "Rage Cloud",
+      "level": 73,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22312,
+      "code": "MOB_FW_MUJIGI_074",
+      "name": "Rage Cloud",
+      "level": 74,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22313,
+      "code": "MOB_FW_MUJIGI_075",
+      "name": "Rage Cloud",
+      "level": 75,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22314,
+      "code": "MOB_FW_MUJIGI_076",
+      "name": "Rage Cloud",
+      "level": 76,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22315,
+      "code": "MOB_FW_MUJIGI_077",
+      "name": "Rage Cloud",
+      "level": 77,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22316,
+      "code": "MOB_FW_MUJIGI_078",
+      "name": "Rage Cloud",
+      "level": 78,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22317,
+      "code": "MOB_FW_MUJIGI_079",
+      "name": "Rage Cloud",
+      "level": 79,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22318,
+      "code": "MOB_FW_MUJIGI_080",
+      "name": "Rage Cloud",
+      "level": 80,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22319,
+      "code": "MOB_FW_MUJIGI_081",
+      "name": "Rage Cloud",
+      "level": 81,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22320,
+      "code": "MOB_FW_MUJIGI_082",
+      "name": "Rage Cloud",
+      "level": 82,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22321,
+      "code": "MOB_FW_MUJIGI_083",
+      "name": "Rage Cloud",
+      "level": 83,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22322,
+      "code": "MOB_FW_MUJIGI_084",
+      "name": "Rage Cloud",
+      "level": 84,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22323,
+      "code": "MOB_FW_MUJIGI_085",
+      "name": "Rage Cloud",
+      "level": 85,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22324,
+      "code": "MOB_FW_MUJIGI_086",
+      "name": "Rage Cloud",
+      "level": 86,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22325,
+      "code": "MOB_FW_MUJIGI_087",
+      "name": "Rage Cloud",
+      "level": 87,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22326,
+      "code": "MOB_FW_MUJIGI_088",
+      "name": "Rage Cloud",
+      "level": 88,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22327,
+      "code": "MOB_FW_MUJIGI_089",
+      "name": "Rage Cloud",
+      "level": 89,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22328,
+      "code": "MOB_FW_MUJIGI_090",
+      "name": "Rage Cloud",
+      "level": 90,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22329,
+      "code": "MOB_FW_MUJIGI_091",
+      "name": "Rage Cloud",
+      "level": 91,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22330,
+      "code": "MOB_FW_MUJIGI_092",
+      "name": "Rage Cloud",
+      "level": 92,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22331,
+      "code": "MOB_FW_MUJIGI_093",
+      "name": "Rage Cloud",
+      "level": 93,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22332,
+      "code": "MOB_FW_MUJIGI_094",
+      "name": "Rage Cloud",
+      "level": 94,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22333,
+      "code": "MOB_FW_MUJIGI_095",
+      "name": "Rage Cloud",
+      "level": 95,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22334,
+      "code": "MOB_FW_MUJIGI_096",
+      "name": "Rage Cloud",
+      "level": 96,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22335,
+      "code": "MOB_FW_MUJIGI_097",
+      "name": "Rage Cloud",
+      "level": 97,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22336,
+      "code": "MOB_FW_MUJIGI_098",
+      "name": "Rage Cloud",
+      "level": 98,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22337,
+      "code": "MOB_FW_MUJIGI_099",
+      "name": "Rage Cloud",
+      "level": 99,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22338,
+      "code": "MOB_FW_MUJIGI_100",
+      "name": "Rage Cloud",
+      "level": 100,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22339,
+      "code": "MOB_FW_MUJIGI_101",
+      "name": "Rage Cloud",
+      "level": 101,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22340,
+      "code": "MOB_FW_MUJIGI_102",
+      "name": "Rage Cloud",
+      "level": 102,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22341,
+      "code": "MOB_FW_MUJIGI_103",
+      "name": "Rage Cloud",
+      "level": 103,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22342,
+      "code": "MOB_FW_MUJIGI_104",
+      "name": "Rage Cloud",
+      "level": 104,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22343,
+      "code": "MOB_FW_MUJIGI_105",
+      "name": "Rage Cloud",
+      "level": 105,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22344,
+      "code": "MOB_FW_MUJIGI_106",
+      "name": "Rage Cloud",
+      "level": 106,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22345,
+      "code": "MOB_FW_MUJIGI_107",
+      "name": "Rage Cloud",
+      "level": 107,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22346,
+      "code": "MOB_FW_MUJIGI_108",
+      "name": "Rage Cloud",
+      "level": 108,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22347,
+      "code": "MOB_FW_MUJIGI_109",
+      "name": "Rage Cloud",
+      "level": 109,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22348,
+      "code": "MOB_FW_MUJIGI_110",
+      "name": "Rage Cloud",
+      "level": 110,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22349,
+      "code": "MOB_FW_MUJIGI_111",
+      "name": "Rage Cloud",
+      "level": 111,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22350,
+      "code": "MOB_FW_MUJIGI_112",
+      "name": "Rage Cloud",
+      "level": 112,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22351,
+      "code": "MOB_FW_MUJIGI_113",
+      "name": "Rage Cloud",
+      "level": 113,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22352,
+      "code": "MOB_FW_MUJIGI_114",
+      "name": "Rage Cloud",
+      "level": 114,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22353,
+      "code": "MOB_FW_MUJIGI_115",
+      "name": "Rage Cloud",
+      "level": 115,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22354,
+      "code": "MOB_FW_MUJIGI_116",
+      "name": "Rage Cloud",
+      "level": 116,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22355,
+      "code": "MOB_FW_MUJIGI_117",
+      "name": "Rage Cloud",
+      "level": 117,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22356,
+      "code": "MOB_FW_MUJIGI_118",
+      "name": "Rage Cloud",
+      "level": 118,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22357,
+      "code": "MOB_FW_MUJIGI_119",
+      "name": "Rage Cloud",
+      "level": 119,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22358,
+      "code": "MOB_FW_MUJIGI_120",
+      "name": "Rage Cloud",
+      "level": 120,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22359,
+      "code": "MOB_FW_MUJIGI_121",
+      "name": "Rage Cloud",
+      "level": 121,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22360,
+      "code": "MOB_FW_MUJIGI_122",
+      "name": "Rage Cloud",
+      "level": 122,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22361,
+      "code": "MOB_FW_MUJIGI_123",
+      "name": "Rage Cloud",
+      "level": 123,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22362,
+      "code": "MOB_FW_MUJIGI_124",
+      "name": "Rage Cloud",
+      "level": 124,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22363,
+      "code": "MOB_FW_MUJIGI_125",
+      "name": "Rage Cloud",
+      "level": 125,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22364,
+      "code": "MOB_FW_MUJIGI_126",
+      "name": "Rage Cloud",
+      "level": 126,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22365,
+      "code": "MOB_FW_MUJIGI_127",
+      "name": "Rage Cloud",
+      "level": 127,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22366,
+      "code": "MOB_FW_MUJIGI_128",
+      "name": "Rage Cloud",
+      "level": 128,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22367,
+      "code": "MOB_FW_MUJIGI_129",
+      "name": "Rage Cloud",
+      "level": 129,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22368,
+      "code": "MOB_FW_MUJIGI_130",
+      "name": "Rage Cloud",
+      "level": 130,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22369,
+      "code": "MOB_FW_MUJIGI_131",
+      "name": "Rage Cloud",
+      "level": 131,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22370,
+      "code": "MOB_FW_MUJIGI_132",
+      "name": "Rage Cloud",
+      "level": 132,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22371,
+      "code": "MOB_FW_MUJIGI_133",
+      "name": "Rage Cloud",
+      "level": 133,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22372,
+      "code": "MOB_FW_MUJIGI_134",
+      "name": "Rage Cloud",
+      "level": 134,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22373,
+      "code": "MOB_FW_MUJIGI_135",
+      "name": "Rage Cloud",
+      "level": 135,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22374,
+      "code": "MOB_FW_MUJIGI_136",
+      "name": "Rage Cloud",
+      "level": 136,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22375,
+      "code": "MOB_FW_MUJIGI_137",
+      "name": "Rage Cloud",
+      "level": 137,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22376,
+      "code": "MOB_FW_MUJIGI_138",
+      "name": "Rage Cloud",
+      "level": 138,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22377,
+      "code": "MOB_FW_MUJIGI_139",
+      "name": "Rage Cloud",
+      "level": 139,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22378,
+      "code": "MOB_FW_MUJIGI_140",
+      "name": "Rage Cloud",
+      "level": 140,
+      "image_url": "/game-assets/monsters/fw_mujigi.png"
+    },
+    {
+      "model_id": 22519,
+      "code": "MOB_FW_BATTLEGOLEM_001",
+      "name": "Battle Golem",
+      "level": 1,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22520,
+      "code": "MOB_FW_BATTLEGOLEM_002",
+      "name": "Battle Golem",
+      "level": 2,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22521,
+      "code": "MOB_FW_BATTLEGOLEM_003",
+      "name": "Battle Golem",
+      "level": 3,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22522,
+      "code": "MOB_FW_BATTLEGOLEM_004",
+      "name": "Battle Golem",
+      "level": 4,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22523,
+      "code": "MOB_FW_BATTLEGOLEM_005",
+      "name": "Battle Golem",
+      "level": 5,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22524,
+      "code": "MOB_FW_BATTLEGOLEM_006",
+      "name": "Battle Golem",
+      "level": 6,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22525,
+      "code": "MOB_FW_BATTLEGOLEM_007",
+      "name": "Battle Golem",
+      "level": 7,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22526,
+      "code": "MOB_FW_BATTLEGOLEM_008",
+      "name": "Battle Golem",
+      "level": 8,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22527,
+      "code": "MOB_FW_BATTLEGOLEM_009",
+      "name": "Battle Golem",
+      "level": 9,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22528,
+      "code": "MOB_FW_BATTLEGOLEM_010",
+      "name": "Battle Golem",
+      "level": 10,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22529,
+      "code": "MOB_FW_BATTLEGOLEM_011",
+      "name": "Battle Golem",
+      "level": 11,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22530,
+      "code": "MOB_FW_BATTLEGOLEM_012",
+      "name": "Battle Golem",
+      "level": 12,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22531,
+      "code": "MOB_FW_BATTLEGOLEM_013",
+      "name": "Battle Golem",
+      "level": 13,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22532,
+      "code": "MOB_FW_BATTLEGOLEM_014",
+      "name": "Battle Golem",
+      "level": 14,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22533,
+      "code": "MOB_FW_BATTLEGOLEM_015",
+      "name": "Battle Golem",
+      "level": 15,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22534,
+      "code": "MOB_FW_BATTLEGOLEM_016",
+      "name": "Battle Golem",
+      "level": 16,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22535,
+      "code": "MOB_FW_BATTLEGOLEM_017",
+      "name": "Battle Golem",
+      "level": 17,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22536,
+      "code": "MOB_FW_BATTLEGOLEM_018",
+      "name": "Battle Golem",
+      "level": 18,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22537,
+      "code": "MOB_FW_BATTLEGOLEM_019",
+      "name": "Battle Golem",
+      "level": 19,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22538,
+      "code": "MOB_FW_BATTLEGOLEM_020",
+      "name": "Battle Golem",
+      "level": 20,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22539,
+      "code": "MOB_FW_BATTLEGOLEM_021",
+      "name": "Battle Golem",
+      "level": 21,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22540,
+      "code": "MOB_FW_BATTLEGOLEM_022",
+      "name": "Battle Golem",
+      "level": 22,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22541,
+      "code": "MOB_FW_BATTLEGOLEM_023",
+      "name": "Battle Golem",
+      "level": 23,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22542,
+      "code": "MOB_FW_BATTLEGOLEM_024",
+      "name": "Battle Golem",
+      "level": 24,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22543,
+      "code": "MOB_FW_BATTLEGOLEM_025",
+      "name": "Battle Golem",
+      "level": 25,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22544,
+      "code": "MOB_FW_BATTLEGOLEM_026",
+      "name": "Battle Golem",
+      "level": 26,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22545,
+      "code": "MOB_FW_BATTLEGOLEM_027",
+      "name": "Battle Golem",
+      "level": 27,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22546,
+      "code": "MOB_FW_BATTLEGOLEM_028",
+      "name": "Battle Golem",
+      "level": 28,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22547,
+      "code": "MOB_FW_BATTLEGOLEM_029",
+      "name": "Battle Golem",
+      "level": 29,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22548,
+      "code": "MOB_FW_BATTLEGOLEM_030",
+      "name": "Battle Golem",
+      "level": 30,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22549,
+      "code": "MOB_FW_BATTLEGOLEM_031",
+      "name": "Battle Golem",
+      "level": 31,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22550,
+      "code": "MOB_FW_BATTLEGOLEM_032",
+      "name": "Battle Golem",
+      "level": 32,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22551,
+      "code": "MOB_FW_BATTLEGOLEM_033",
+      "name": "Battle Golem",
+      "level": 33,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22552,
+      "code": "MOB_FW_BATTLEGOLEM_034",
+      "name": "Battle Golem",
+      "level": 34,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22553,
+      "code": "MOB_FW_BATTLEGOLEM_035",
+      "name": "Battle Golem",
+      "level": 35,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22554,
+      "code": "MOB_FW_BATTLEGOLEM_036",
+      "name": "Battle Golem",
+      "level": 36,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22555,
+      "code": "MOB_FW_BATTLEGOLEM_037",
+      "name": "Battle Golem",
+      "level": 37,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22556,
+      "code": "MOB_FW_BATTLEGOLEM_038",
+      "name": "Battle Golem",
+      "level": 38,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22557,
+      "code": "MOB_FW_BATTLEGOLEM_039",
+      "name": "Battle Golem",
+      "level": 39,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22558,
+      "code": "MOB_FW_BATTLEGOLEM_040",
+      "name": "Battle Golem",
+      "level": 40,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22559,
+      "code": "MOB_FW_BATTLEGOLEM_041",
+      "name": "Battle Golem",
+      "level": 41,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22560,
+      "code": "MOB_FW_BATTLEGOLEM_042",
+      "name": "Battle Golem",
+      "level": 42,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22561,
+      "code": "MOB_FW_BATTLEGOLEM_043",
+      "name": "Battle Golem",
+      "level": 43,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22562,
+      "code": "MOB_FW_BATTLEGOLEM_044",
+      "name": "Battle Golem",
+      "level": 44,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22563,
+      "code": "MOB_FW_BATTLEGOLEM_045",
+      "name": "Battle Golem",
+      "level": 45,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22564,
+      "code": "MOB_FW_BATTLEGOLEM_046",
+      "name": "Battle Golem",
+      "level": 46,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22565,
+      "code": "MOB_FW_BATTLEGOLEM_047",
+      "name": "Battle Golem",
+      "level": 47,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22566,
+      "code": "MOB_FW_BATTLEGOLEM_048",
+      "name": "Battle Golem",
+      "level": 48,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22567,
+      "code": "MOB_FW_BATTLEGOLEM_049",
+      "name": "Battle Golem",
+      "level": 49,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22568,
+      "code": "MOB_FW_BATTLEGOLEM_050",
+      "name": "Battle Golem",
+      "level": 50,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22569,
+      "code": "MOB_FW_BATTLEGOLEM_051",
+      "name": "Battle Golem",
+      "level": 51,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22570,
+      "code": "MOB_FW_BATTLEGOLEM_052",
+      "name": "Battle Golem",
+      "level": 52,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22571,
+      "code": "MOB_FW_BATTLEGOLEM_053",
+      "name": "Battle Golem",
+      "level": 53,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22572,
+      "code": "MOB_FW_BATTLEGOLEM_054",
+      "name": "Battle Golem",
+      "level": 54,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22573,
+      "code": "MOB_FW_BATTLEGOLEM_055",
+      "name": "Battle Golem",
+      "level": 55,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22574,
+      "code": "MOB_FW_BATTLEGOLEM_056",
+      "name": "Battle Golem",
+      "level": 56,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22575,
+      "code": "MOB_FW_BATTLEGOLEM_057",
+      "name": "Battle Golem",
+      "level": 57,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22576,
+      "code": "MOB_FW_BATTLEGOLEM_058",
+      "name": "Battle Golem",
+      "level": 58,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22577,
+      "code": "MOB_FW_BATTLEGOLEM_059",
+      "name": "Battle Golem",
+      "level": 59,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22578,
+      "code": "MOB_FW_BATTLEGOLEM_060",
+      "name": "Battle Golem",
+      "level": 60,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22579,
+      "code": "MOB_FW_BATTLEGOLEM_061",
+      "name": "Battle Golem",
+      "level": 61,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22580,
+      "code": "MOB_FW_BATTLEGOLEM_062",
+      "name": "Battle Golem",
+      "level": 62,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22581,
+      "code": "MOB_FW_BATTLEGOLEM_063",
+      "name": "Battle Golem",
+      "level": 63,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22582,
+      "code": "MOB_FW_BATTLEGOLEM_064",
+      "name": "Battle Golem",
+      "level": 64,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22583,
+      "code": "MOB_FW_BATTLEGOLEM_065",
+      "name": "Battle Golem",
+      "level": 65,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22584,
+      "code": "MOB_FW_BATTLEGOLEM_066",
+      "name": "Battle Golem",
+      "level": 66,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22585,
+      "code": "MOB_FW_BATTLEGOLEM_067",
+      "name": "Battle Golem",
+      "level": 67,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22586,
+      "code": "MOB_FW_BATTLEGOLEM_068",
+      "name": "Battle Golem",
+      "level": 68,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22587,
+      "code": "MOB_FW_BATTLEGOLEM_069",
+      "name": "Battle Golem",
+      "level": 69,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22588,
+      "code": "MOB_FW_BATTLEGOLEM_070",
+      "name": "Battle Golem",
+      "level": 70,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22589,
+      "code": "MOB_FW_BATTLEGOLEM_071",
+      "name": "Battle Golem",
+      "level": 71,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22590,
+      "code": "MOB_FW_BATTLEGOLEM_072",
+      "name": "Battle Golem",
+      "level": 72,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22591,
+      "code": "MOB_FW_BATTLEGOLEM_073",
+      "name": "Battle Golem",
+      "level": 73,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22592,
+      "code": "MOB_FW_BATTLEGOLEM_074",
+      "name": "Battle Golem",
+      "level": 74,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22593,
+      "code": "MOB_FW_BATTLEGOLEM_075",
+      "name": "Battle Golem",
+      "level": 75,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22594,
+      "code": "MOB_FW_BATTLEGOLEM_076",
+      "name": "Battle Golem",
+      "level": 76,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22595,
+      "code": "MOB_FW_BATTLEGOLEM_077",
+      "name": "Battle Golem",
+      "level": 77,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22596,
+      "code": "MOB_FW_BATTLEGOLEM_078",
+      "name": "Battle Golem",
+      "level": 78,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22597,
+      "code": "MOB_FW_BATTLEGOLEM_079",
+      "name": "Battle Golem",
+      "level": 79,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22598,
+      "code": "MOB_FW_BATTLEGOLEM_080",
+      "name": "Battle Golem",
+      "level": 80,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22599,
+      "code": "MOB_FW_BATTLEGOLEM_081",
+      "name": "Battle Golem",
+      "level": 81,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22600,
+      "code": "MOB_FW_BATTLEGOLEM_082",
+      "name": "Battle Golem",
+      "level": 82,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22601,
+      "code": "MOB_FW_BATTLEGOLEM_083",
+      "name": "Battle Golem",
+      "level": 83,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22602,
+      "code": "MOB_FW_BATTLEGOLEM_084",
+      "name": "Battle Golem",
+      "level": 84,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22603,
+      "code": "MOB_FW_BATTLEGOLEM_085",
+      "name": "Battle Golem",
+      "level": 85,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22604,
+      "code": "MOB_FW_BATTLEGOLEM_086",
+      "name": "Battle Golem",
+      "level": 86,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22605,
+      "code": "MOB_FW_BATTLEGOLEM_087",
+      "name": "Battle Golem",
+      "level": 87,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22606,
+      "code": "MOB_FW_BATTLEGOLEM_088",
+      "name": "Battle Golem",
+      "level": 88,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22607,
+      "code": "MOB_FW_BATTLEGOLEM_089",
+      "name": "Battle Golem",
+      "level": 89,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22608,
+      "code": "MOB_FW_BATTLEGOLEM_090",
+      "name": "Battle Golem",
+      "level": 90,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22609,
+      "code": "MOB_FW_BATTLEGOLEM_091",
+      "name": "Battle Golem",
+      "level": 91,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22610,
+      "code": "MOB_FW_BATTLEGOLEM_092",
+      "name": "Battle Golem",
+      "level": 92,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22611,
+      "code": "MOB_FW_BATTLEGOLEM_093",
+      "name": "Battle Golem",
+      "level": 93,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22612,
+      "code": "MOB_FW_BATTLEGOLEM_094",
+      "name": "Battle Golem",
+      "level": 94,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22613,
+      "code": "MOB_FW_BATTLEGOLEM_095",
+      "name": "Battle Golem",
+      "level": 95,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22614,
+      "code": "MOB_FW_BATTLEGOLEM_096",
+      "name": "Battle Golem",
+      "level": 96,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22615,
+      "code": "MOB_FW_BATTLEGOLEM_097",
+      "name": "Battle Golem",
+      "level": 97,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22616,
+      "code": "MOB_FW_BATTLEGOLEM_098",
+      "name": "Battle Golem",
+      "level": 98,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22617,
+      "code": "MOB_FW_BATTLEGOLEM_099",
+      "name": "Battle Golem",
+      "level": 99,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22618,
+      "code": "MOB_FW_BATTLEGOLEM_100",
+      "name": "Battle Golem",
+      "level": 100,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22619,
+      "code": "MOB_FW_BATTLEGOLEM_101",
+      "name": "Battle Golem",
+      "level": 101,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22620,
+      "code": "MOB_FW_BATTLEGOLEM_102",
+      "name": "Battle Golem",
+      "level": 102,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22621,
+      "code": "MOB_FW_BATTLEGOLEM_103",
+      "name": "Battle Golem",
+      "level": 103,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22622,
+      "code": "MOB_FW_BATTLEGOLEM_104",
+      "name": "Battle Golem",
+      "level": 104,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22623,
+      "code": "MOB_FW_BATTLEGOLEM_105",
+      "name": "Battle Golem",
+      "level": 105,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22624,
+      "code": "MOB_FW_BATTLEGOLEM_106",
+      "name": "Battle Golem",
+      "level": 106,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22625,
+      "code": "MOB_FW_BATTLEGOLEM_107",
+      "name": "Battle Golem",
+      "level": 107,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22626,
+      "code": "MOB_FW_BATTLEGOLEM_108",
+      "name": "Battle Golem",
+      "level": 108,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22627,
+      "code": "MOB_FW_BATTLEGOLEM_109",
+      "name": "Battle Golem",
+      "level": 109,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22628,
+      "code": "MOB_FW_BATTLEGOLEM_110",
+      "name": "Battle Golem",
+      "level": 110,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22629,
+      "code": "MOB_FW_BATTLEGOLEM_111",
+      "name": "Battle Golem",
+      "level": 111,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22630,
+      "code": "MOB_FW_BATTLEGOLEM_112",
+      "name": "Battle Golem",
+      "level": 112,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22631,
+      "code": "MOB_FW_BATTLEGOLEM_113",
+      "name": "Battle Golem",
+      "level": 113,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22632,
+      "code": "MOB_FW_BATTLEGOLEM_114",
+      "name": "Battle Golem",
+      "level": 114,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22633,
+      "code": "MOB_FW_BATTLEGOLEM_115",
+      "name": "Battle Golem",
+      "level": 115,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22634,
+      "code": "MOB_FW_BATTLEGOLEM_116",
+      "name": "Battle Golem",
+      "level": 116,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22635,
+      "code": "MOB_FW_BATTLEGOLEM_117",
+      "name": "Battle Golem",
+      "level": 117,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22636,
+      "code": "MOB_FW_BATTLEGOLEM_118",
+      "name": "Battle Golem",
+      "level": 118,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22637,
+      "code": "MOB_FW_BATTLEGOLEM_119",
+      "name": "Battle Golem",
+      "level": 119,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22638,
+      "code": "MOB_FW_BATTLEGOLEM_120",
+      "name": "Battle Golem",
+      "level": 120,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22639,
+      "code": "MOB_FW_BATTLEGOLEM_121",
+      "name": "Battle Golem",
+      "level": 121,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22640,
+      "code": "MOB_FW_BATTLEGOLEM_122",
+      "name": "Battle Golem",
+      "level": 122,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22641,
+      "code": "MOB_FW_BATTLEGOLEM_123",
+      "name": "Battle Golem",
+      "level": 123,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22642,
+      "code": "MOB_FW_BATTLEGOLEM_124",
+      "name": "Battle Golem",
+      "level": 124,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22643,
+      "code": "MOB_FW_BATTLEGOLEM_125",
+      "name": "Battle Golem",
+      "level": 125,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22644,
+      "code": "MOB_FW_BATTLEGOLEM_126",
+      "name": "Battle Golem",
+      "level": 126,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22645,
+      "code": "MOB_FW_BATTLEGOLEM_127",
+      "name": "Battle Golem",
+      "level": 127,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22646,
+      "code": "MOB_FW_BATTLEGOLEM_128",
+      "name": "Battle Golem",
+      "level": 128,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22647,
+      "code": "MOB_FW_BATTLEGOLEM_129",
+      "name": "Battle Golem",
+      "level": 129,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22648,
+      "code": "MOB_FW_BATTLEGOLEM_130",
+      "name": "Battle Golem",
+      "level": 130,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22649,
+      "code": "MOB_FW_BATTLEGOLEM_131",
+      "name": "Battle Golem",
+      "level": 131,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22650,
+      "code": "MOB_FW_BATTLEGOLEM_132",
+      "name": "Battle Golem",
+      "level": 132,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22651,
+      "code": "MOB_FW_BATTLEGOLEM_133",
+      "name": "Battle Golem",
+      "level": 133,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22652,
+      "code": "MOB_FW_BATTLEGOLEM_134",
+      "name": "Battle Golem",
+      "level": 134,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22653,
+      "code": "MOB_FW_BATTLEGOLEM_135",
+      "name": "Battle Golem",
+      "level": 135,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22654,
+      "code": "MOB_FW_BATTLEGOLEM_136",
+      "name": "Battle Golem",
+      "level": 136,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22655,
+      "code": "MOB_FW_BATTLEGOLEM_137",
+      "name": "Battle Golem",
+      "level": 137,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22656,
+      "code": "MOB_FW_BATTLEGOLEM_138",
+      "name": "Battle Golem",
+      "level": 138,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22657,
+      "code": "MOB_FW_BATTLEGOLEM_139",
+      "name": "Battle Golem",
+      "level": 139,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 22658,
+      "code": "MOB_FW_BATTLEGOLEM_140",
+      "name": "Battle Golem",
+      "level": 140,
+      "image_url": "/game-assets/monsters/fw_battlegolem.png"
+    },
+    {
+      "model_id": 23307,
+      "code": "MOB_EU_KERBEROS_L3",
+      "name": "",
+      "level": 24,
+      "image_url": "/game-assets/monsters/kerberos.png"
+    },
+    {
+      "model_id": 23308,
+      "code": "MOB_AM_IVY_L3",
+      "name": "",
+      "level": 30,
+      "image_url": "/game-assets/monsters/ivy.png"
+    },
+    {
+      "model_id": 24156,
+      "code": "MOB_RM_SPIRITS",
+      "name": "Undine",
+      "level": 100,
+      "image_url": "/game-assets/monsters/spirits.png"
+    },
+    {
+      "model_id": 24157,
+      "code": "MOB_RM_SPIRITS_CLON",
+      "name": "Salamander",
+      "level": 100,
+      "image_url": "/game-assets/monsters/spirits.png"
+    },
+    {
+      "model_id": 24158,
+      "code": "MOB_RM_SPIRITS_CLON2",
+      "name": "Sylph",
+      "level": 100,
+      "image_url": "/game-assets/monsters/spirits.png"
+    },
+    {
+      "model_id": 24159,
+      "code": "MOB_RM_SPIRITS_CLON3",
+      "name": "Gnome",
+      "level": 100,
+      "image_url": "/game-assets/monsters/spirits.png"
+    },
+    {
+      "model_id": 24160,
+      "code": "MOB_RM_DEVILSAYTAN",
+      "name": "Devil Shaitan",
+      "level": 100,
+      "image_url": "/game-assets/monsters/devilsaytan.png"
+    },
+    {
+      "model_id": 24260,
+      "code": "MOB_RM_TAHOMET_ROC",
+      "name": "Demon Shaitan",
+      "level": 100,
+      "image_url": "/game-assets/monsters/tahomet.png"
+    },
+    {
+      "model_id": 24261,
+      "code": "MOB_TQ_BLACKSNAKE_L3",
+      "name": "SoSo The Hades Viper (Titan)",
+      "level": 100,
+      "image_url": "/game-assets/monsters/blacksnake.png"
+    },
+    {
+      "model_id": 24285,
+      "code": "MOB_RM_WINGTRIBEKNIGHT",
+      "name": "Wingtribe Knight",
+      "level": 100,
+      "image_url": "/game-assets/monsters/wingtribespear.png"
+    },
+    {
+      "model_id": 26666,
+      "code": "MOB_EU_KERBEROS_L2",
+      "name": "",
+      "level": 24,
+      "image_url": "/game-assets/monsters/kerberos.png"
+    },
+    {
+      "model_id": 26667,
+      "code": "MOB_AM_IVY_L2",
+      "name": "",
+      "level": 30,
+      "image_url": "/game-assets/monsters/ivy.png"
+    },
+    {
+      "model_id": 26668,
+      "code": "MOB_TQ_BLACKSNAKE_L2",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/blacksnake.png"
+    },
+    {
+      "model_id": 26736,
+      "code": "MOB_SD_HAROERIS",
+      "name": "Haroeris",
+      "level": 109,
+      "image_url": "/game-assets/monsters/haroeris.png"
+    },
+    {
+      "model_id": 26738,
+      "code": "MOB_SD_SETH",
+      "name": "Seth",
+      "level": 110,
+      "image_url": "/game-assets/monsters/seth.png"
+    },
+    {
+      "model_id": 28812,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_20",
+      "name": "White Knight",
+      "level": 20,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28813,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_24",
+      "name": "White Knight",
+      "level": 24,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28814,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_30",
+      "name": "White Knight",
+      "level": 30,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28815,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_40",
+      "name": "White Knight",
+      "level": 40,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28816,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_60",
+      "name": "White Knight",
+      "level": 60,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28817,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_80",
+      "name": "White Knight",
+      "level": 80,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28818,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_90",
+      "name": "White Knight",
+      "level": 90,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28819,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_100",
+      "name": "White Knight",
+      "level": 100,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 28820,
+      "code": "MOB_EV_WINTER_PRINCESS_20",
+      "name": "Princess Miyene",
+      "level": 20,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28821,
+      "code": "MOB_EV_WINTER_PRINCESS_24",
+      "name": "Princess Miyene",
+      "level": 24,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28822,
+      "code": "MOB_EV_WINTER_PRINCESS_30",
+      "name": "Princess Miyene",
+      "level": 30,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28823,
+      "code": "MOB_EV_WINTER_PRINCESS_40",
+      "name": "Princess Miyene",
+      "level": 40,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28824,
+      "code": "MOB_EV_WINTER_PRINCESS_60",
+      "name": "Princess Miyene",
+      "level": 60,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28825,
+      "code": "MOB_EV_WINTER_PRINCESS_80",
+      "name": "Princess Miyene",
+      "level": 80,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28826,
+      "code": "MOB_EV_WINTER_PRINCESS_90",
+      "name": "Princess Miyene",
+      "level": 90,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 28827,
+      "code": "MOB_EV_WINTER_PRINCESS_100",
+      "name": "Princess Miyene",
+      "level": 100,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 36105,
+      "code": "MOB_GOD_TOGUI_TOGUIGENERAL_A1",
+      "name": "Togui General",
+      "level": 39,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36106,
+      "code": "MOB_GOD_TOGUI_TOGUIGENERAL_A2",
+      "name": "Togui General",
+      "level": 47,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36107,
+      "code": "MOB_GOD_TOGUI_TOGUIGENERAL_B1",
+      "name": "Togui General",
+      "level": 53,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36108,
+      "code": "MOB_GOD_TOGUI_TOGUIGENERAL_B2",
+      "name": "Togui General",
+      "level": 58,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36109,
+      "code": "MOB_GOD_TOGUI_TOGUIGENERAL_C1",
+      "name": "Togui General",
+      "level": 63,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36110,
+      "code": "MOB_GOD_TOGUI_TOGUIGENERAL_C2",
+      "name": "Togui General",
+      "level": 68,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36111,
+      "code": "MOB_GOD_TOGUI_TOGUICAPTAIN_A1",
+      "name": "Togui Captain",
+      "level": 39,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36112,
+      "code": "MOB_GOD_TOGUI_TOGUICAPTAIN_A2",
+      "name": "Togui Captain",
+      "level": 47,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36113,
+      "code": "MOB_GOD_TOGUI_TOGUICAPTAIN_B1",
+      "name": "Togui Captain",
+      "level": 53,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36114,
+      "code": "MOB_GOD_TOGUI_TOGUICAPTAIN_B2",
+      "name": "Togui Captain",
+      "level": 58,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36115,
+      "code": "MOB_GOD_TOGUI_TOGUICAPTAIN_C1",
+      "name": "Togui Captain",
+      "level": 63,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36116,
+      "code": "MOB_GOD_TOGUI_TOGUICAPTAIN_C2",
+      "name": "Togui Captain",
+      "level": 68,
+      "image_url": "/game-assets/monsters/togui_general.png"
+    },
+    {
+      "model_id": 36193,
+      "code": "MOB_GOD_FLAME_CAPTAIN_A1",
+      "name": "Flame Captain",
+      "level": 73,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36194,
+      "code": "MOB_GOD_FLAME_CAPTAIN_A2",
+      "name": "Flame Captain",
+      "level": 76,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36195,
+      "code": "MOB_GOD_FLAME_CAPTAIN_A3",
+      "name": "Flame Captain",
+      "level": 76,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36196,
+      "code": "MOB_GOD_FLAME_CAPTAIN_A4",
+      "name": "Flame Captain",
+      "level": 79,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36197,
+      "code": "MOB_GOD_FLAME_CAPTAIN_B1",
+      "name": "Flame Captain",
+      "level": 83,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36198,
+      "code": "MOB_GOD_FLAME_CAPTAIN_B2",
+      "name": "Flame Captain",
+      "level": 86,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36199,
+      "code": "MOB_GOD_FLAME_CAPTAIN_B3",
+      "name": "Flame Captain",
+      "level": 86,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36200,
+      "code": "MOB_GOD_FLAME_CAPTAIN_B4",
+      "name": "Flame Captain",
+      "level": 89,
+      "image_url": "/game-assets/monsters/flame_captain.png"
+    },
+    {
+      "model_id": 36201,
+      "code": "MOB_GOD_FLAME_ADJUTANT_A1",
+      "name": "Flame Adjutant Honghaea",
+      "level": 73,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36202,
+      "code": "MOB_GOD_FLAME_ADJUTANT_A2",
+      "name": "Flame Adjutant Honghaea",
+      "level": 76,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36203,
+      "code": "MOB_GOD_FLAME_ADJUTANT_A3",
+      "name": "Flame Adjutant Honghaea",
+      "level": 76,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36204,
+      "code": "MOB_GOD_FLAME_ADJUTANT_A4",
+      "name": "Flame Adjutant Honghaea",
+      "level": 79,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36205,
+      "code": "MOB_GOD_FLAME_ADJUTANT_B1",
+      "name": "Flame Adjutant Honghaea",
+      "level": 83,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36206,
+      "code": "MOB_GOD_FLAME_ADJUTANT_B2",
+      "name": "Flame Adjutant Honghaea",
+      "level": 86,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36207,
+      "code": "MOB_GOD_FLAME_ADJUTANT_B3",
+      "name": "Flame Adjutant Honghaea",
+      "level": 86,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36208,
+      "code": "MOB_GOD_FLAME_ADJUTANT_B4",
+      "name": "Flame Adjutant Honghaea",
+      "level": 89,
+      "image_url": "/game-assets/monsters/flame_adjutant.png"
+    },
+    {
+      "model_id": 36281,
+      "code": "MOB_GOD_GHOST_GLUTTONY_A1",
+      "name": "Ghost Gultton",
+      "level": 93,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36282,
+      "code": "MOB_GOD_GHOST_GLUTTONY_A2",
+      "name": "Ghost Gultton",
+      "level": 96,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36283,
+      "code": "MOB_GOD_GHOST_GLUTTONY_A3",
+      "name": "Ghost Gultton",
+      "level": 96,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36284,
+      "code": "MOB_GOD_GHOST_GLUTTONY_A4",
+      "name": "Ghost Gultton",
+      "level": 99,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36285,
+      "code": "MOB_GOD_GHOST_GLUTTONY_B1",
+      "name": "Ghost Gultton",
+      "level": 103,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36286,
+      "code": "MOB_GOD_GHOST_GLUTTONY_B2",
+      "name": "Ghost Gultton",
+      "level": 106,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36287,
+      "code": "MOB_GOD_GHOST_GLUTTONY_B3",
+      "name": "Ghost Gultton",
+      "level": 106,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36288,
+      "code": "MOB_GOD_GHOST_GLUTTONY_B4",
+      "name": "Ghost Gultton",
+      "level": 109,
+      "image_url": "/game-assets/monsters/ghost_gluttony.png"
+    },
+    {
+      "model_id": 36289,
+      "code": "MOB_GOD_GHOST_BEAST_A1",
+      "name": "Ghost Beast",
+      "level": 93,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36290,
+      "code": "MOB_GOD_GHOST_BEAST_A2",
+      "name": "Ghost Beast",
+      "level": 96,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36291,
+      "code": "MOB_GOD_GHOST_BEAST_A3",
+      "name": "Ghost Beast",
+      "level": 96,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36292,
+      "code": "MOB_GOD_GHOST_BEAST_A4",
+      "name": "Ghost Beast",
+      "level": 99,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36293,
+      "code": "MOB_GOD_GHOST_BEAST_B1",
+      "name": "Ghost Beast",
+      "level": 103,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36294,
+      "code": "MOB_GOD_GHOST_BEAST_B2",
+      "name": "Ghost Beast",
+      "level": 106,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36295,
+      "code": "MOB_GOD_GHOST_BEAST_B3",
+      "name": "Ghost Beast",
+      "level": 106,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36296,
+      "code": "MOB_GOD_GHOST_BEAST_B4",
+      "name": "Ghost Beast",
+      "level": 109,
+      "image_url": "/game-assets/monsters/ghost_beast.png"
+    },
+    {
+      "model_id": 36321,
+      "code": "MOB_GOD_TOGUI_TOGUIELDER_A1",
+      "name": "Togui Elder",
+      "level": 39,
+      "image_url": "/game-assets/monsters/togui_elder.png"
+    },
+    {
+      "model_id": 36322,
+      "code": "MOB_GOD_TOGUI_TOGUIELDER_A2",
+      "name": "Togui Elder",
+      "level": 47,
+      "image_url": "/game-assets/monsters/togui_elder.png"
+    },
+    {
+      "model_id": 36323,
+      "code": "MOB_GOD_TOGUI_TOGUIELDER_B1",
+      "name": "Togui Elder",
+      "level": 53,
+      "image_url": "/game-assets/monsters/togui_elder.png"
+    },
+    {
+      "model_id": 36324,
+      "code": "MOB_GOD_TOGUI_TOGUIELDER_B2",
+      "name": "Togui Elder",
+      "level": 58,
+      "image_url": "/game-assets/monsters/togui_elder.png"
+    },
+    {
+      "model_id": 36325,
+      "code": "MOB_GOD_TOGUI_TOGUIELDER_C1",
+      "name": "Togui Elder",
+      "level": 63,
+      "image_url": "/game-assets/monsters/togui_elder.png"
+    },
+    {
+      "model_id": 36326,
+      "code": "MOB_GOD_TOGUI_TOGUIELDER_C2",
+      "name": "Togui Elder",
+      "level": 68,
+      "image_url": "/game-assets/monsters/togui_elder.png"
+    },
+    {
+      "model_id": 36327,
+      "code": "MOB_GOD_FLAME_COWKING_A1",
+      "name": "Flame Cow King",
+      "level": 73,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36328,
+      "code": "MOB_GOD_FLAME_COWKING_A2",
+      "name": "Flame Cow King",
+      "level": 76,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36329,
+      "code": "MOB_GOD_FLAME_COWKING_A3",
+      "name": "Flame Cow King",
+      "level": 76,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36330,
+      "code": "MOB_GOD_FLAME_COWKING_A4",
+      "name": "Flame Cow King",
+      "level": 79,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36331,
+      "code": "MOB_GOD_FLAME_COWKING_B1",
+      "name": "Flame Cow King",
+      "level": 83,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36332,
+      "code": "MOB_GOD_FLAME_COWKING_B2",
+      "name": "Flame Cow King",
+      "level": 86,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36333,
+      "code": "MOB_GOD_FLAME_COWKING_B3",
+      "name": "Flame Cow King",
+      "level": 86,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36334,
+      "code": "MOB_GOD_FLAME_COWKING_B4",
+      "name": "Flame Cow King",
+      "level": 89,
+      "image_url": "/game-assets/monsters/flame_cowking.png"
+    },
+    {
+      "model_id": 36335,
+      "code": "MOB_GOD_GHOST_UNDINE_A1",
+      "name": "Ghost Sereness",
+      "level": 93,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36336,
+      "code": "MOB_GOD_GHOST_UNDINE_A2",
+      "name": "Ghost Sereness",
+      "level": 96,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36337,
+      "code": "MOB_GOD_GHOST_UNDINE_A3",
+      "name": "Ghost Sereness",
+      "level": 96,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36338,
+      "code": "MOB_GOD_GHOST_UNDINE_A4",
+      "name": "Ghost Sereness",
+      "level": 99,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36339,
+      "code": "MOB_GOD_GHOST_UNDINE_B1",
+      "name": "Ghost Sereness",
+      "level": 116,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36340,
+      "code": "MOB_GOD_GHOST_UNDINE_B2",
+      "name": "Ghost Sereness",
+      "level": 116,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36341,
+      "code": "MOB_GOD_GHOST_UNDINE_B3",
+      "name": "Ghost Sereness",
+      "level": 118,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 36342,
+      "code": "MOB_GOD_GHOST_UNDINE_B4",
+      "name": "Ghost Sereness",
+      "level": 120,
+      "image_url": "/game-assets/monsters/ghost_undine.png"
+    },
+    {
+      "model_id": 38195,
+      "code": "MOB_SD_APIS",
+      "name": "Apis",
+      "level": 103,
+      "image_url": "/game-assets/monsters/apis.png"
+    },
+    {
+      "model_id": 38196,
+      "code": "MOB_SD_SPHINX",
+      "name": "Sphinx",
+      "level": 101,
+      "image_url": "/game-assets/monsters/sphinx.png"
+    },
+    {
+      "model_id": 38197,
+      "code": "MOB_SD_SPHINX_2",
+      "name": "Sphinx",
+      "level": 104,
+      "image_url": "/game-assets/monsters/sphinx.png"
+    },
+    {
+      "model_id": 38198,
+      "code": "MOB_SD_SPHINX_3",
+      "name": "Sphinx",
+      "level": 107,
+      "image_url": "/game-assets/monsters/sphinx.png"
+    },
+    {
+      "model_id": 38199,
+      "code": "MOB_SD_SEKHMET",
+      "name": "Sekhmet",
+      "level": 102,
+      "image_url": "/game-assets/monsters/sekhmet.png"
+    },
+    {
+      "model_id": 38200,
+      "code": "MOB_SD_SEKHMET_2",
+      "name": "Sekhmet",
+      "level": 105,
+      "image_url": "/game-assets/monsters/sekhmet.png"
+    },
+    {
+      "model_id": 38201,
+      "code": "MOB_SD_SEKHMET_3",
+      "name": "Sekhmet",
+      "level": 108,
+      "image_url": "/game-assets/monsters/sekhmet.png"
+    },
+    {
+      "model_id": 38202,
+      "code": "MOB_SD_NEPHTHYS",
+      "name": "Nephthys",
+      "level": 103,
+      "image_url": "/game-assets/monsters/nephthys.png"
+    },
+    {
+      "model_id": 38203,
+      "code": "MOB_SD_NEPHTHYS_2",
+      "name": "Nephthys",
+      "level": 106,
+      "image_url": "/game-assets/monsters/nephthys.png"
+    },
+    {
+      "model_id": 38204,
+      "code": "MOB_SD_NEPHTHYS_3",
+      "name": "Nephthys",
+      "level": 109,
+      "image_url": "/game-assets/monsters/nephthys.png"
+    },
+    {
+      "model_id": 38205,
+      "code": "MOB_SD_HORUS",
+      "name": "Horus",
+      "level": 104,
+      "image_url": "/game-assets/monsters/phhorus.png"
+    },
+    {
+      "model_id": 38206,
+      "code": "MOB_SD_HORUS_2",
+      "name": "Horus",
+      "level": 107,
+      "image_url": "/game-assets/monsters/phhorus.png"
+    },
+    {
+      "model_id": 38207,
+      "code": "MOB_SD_HORUS_3",
+      "name": "Horus",
+      "level": 110,
+      "image_url": "/game-assets/monsters/phhorus.png"
+    },
+    {
+      "model_id": 38208,
+      "code": "MOB_SD_OSIRIS",
+      "name": "Osiris",
+      "level": 105,
+      "image_url": "/game-assets/monsters/osiris.png"
+    },
+    {
+      "model_id": 38209,
+      "code": "MOB_SD_OSIRIS_2",
+      "name": "Osiris",
+      "level": 108,
+      "image_url": "/game-assets/monsters/osiris.png"
+    },
+    {
+      "model_id": 38210,
+      "code": "MOB_SD_OSIRIS_3",
+      "name": "Osiris",
+      "level": 110,
+      "image_url": "/game-assets/monsters/osiris.png"
+    },
+    {
+      "model_id": 38211,
+      "code": "MOB_SD_SELKIS",
+      "name": "Selket",
+      "level": 105,
+      "image_url": "/game-assets/monsters/selkis.png"
+    },
+    {
+      "model_id": 38212,
+      "code": "MOB_SD_NEITH",
+      "name": "Neith",
+      "level": 106,
+      "image_url": "/game-assets/monsters/neith.png"
+    },
+    {
+      "model_id": 38213,
+      "code": "MOB_SD_ANUBIS",
+      "name": "Anubis",
+      "level": 107,
+      "image_url": "/game-assets/monsters/anubis.png"
+    },
+    {
+      "model_id": 38214,
+      "code": "MOB_SD_ISIS",
+      "name": "Isis",
+      "level": 108,
+      "image_url": "/game-assets/monsters/isis.png"
+    },
+    {
+      "model_id": 38215,
+      "code": "MOB_SD_ERIS",
+      "name": "Eris",
+      "level": 109,
+      "image_url": "/game-assets/monsters/haroeris_head.png"
+    },
+    {
+      "model_id": 38261,
+      "code": "MOB_SD_HAROERIS_DROP",
+      "name": "Treasure box of Haroeris",
+      "level": 109,
+      "image_url": "/game-assets/monsters/event_pandora.png"
+    },
+    {
+      "model_id": 38262,
+      "code": "MOB_SD_SETH_DROP",
+      "name": "Treasure box of Seth",
+      "level": 110,
+      "image_url": "/game-assets/monsters/event_pandora.png"
+    },
+    {
+      "model_id": 41416,
+      "code": "MOB_JUPITER_THE_EARTH1",
+      "name": "The Earth",
+      "level": 115,
+      "image_url": "/game-assets/monsters/the_earth.png"
+    },
+    {
+      "model_id": 41417,
+      "code": "MOB_JUPITER_THE_EARTH2",
+      "name": "The Earth",
+      "level": 115,
+      "image_url": "/game-assets/monsters/the_earth.png"
+    },
+    {
+      "model_id": 41418,
+      "code": "MOB_JUPITER_YUNO",
+      "name": "Yuno",
+      "level": 115,
+      "image_url": "/game-assets/monsters/yuno.png"
+    },
+    {
+      "model_id": 41419,
+      "code": "MOB_JUPITER_JUPITER",
+      "name": "Jupiter",
+      "level": 120,
+      "image_url": "/game-assets/monsters/jupiter.png"
+    },
+    {
+      "model_id": 41420,
+      "code": "MOB_JUPITER_DARK_DOG",
+      "name": "Zielkiaxe",
+      "level": 120,
+      "image_url": "/game-assets/monsters/dark_dog.png"
+    },
+    {
+      "model_id": 41421,
+      "code": "MOB_JUPITER_DARK_DOG2",
+      "name": "Zielkiaxe",
+      "level": 120,
+      "image_url": "/game-assets/monsters/dark_dog.png"
+    },
+    {
+      "model_id": 41422,
+      "code": "MOB_JUPITER_BABILION",
+      "name": "Babilion",
+      "level": 120,
+      "image_url": "/game-assets/monsters/babilion.png"
+    },
+    {
+      "model_id": 41423,
+      "code": "MOB_JUPITER_BAAL",
+      "name": "Baal",
+      "level": 120,
+      "image_url": "/game-assets/monsters/baal.png"
+    },
+    {
+      "model_id": 41424,
+      "code": "MOB_JUPITER_BAAL_WEAPON",
+      "name": "Baal",
+      "level": 120,
+      "image_url": "/game-assets/monsters/baal_weapon.png"
+    },
+    {
+      "model_id": 41842,
+      "code": "MOB_ARABIA_KIDEMONAS",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/kidemonas.png"
+    },
+    {
+      "model_id": 42837,
+      "code": "MOB_Zeus_BIRD",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet_bird_a.png"
+    },
+    {
+      "model_id": 42838,
+      "code": "MOB_Zeus_DRAGON",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet_dragon_a.png"
+    },
+    {
+      "model_id": 42839,
+      "code": "MOB_Zeus_DOG",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet_dog_a_saddle.png"
+    },
+    {
+      "model_id": 42840,
+      "code": "MOB_Zeus_CAT",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet_cat_a_saddle.png"
+    },
+    {
+      "model_id": 42841,
+      "code": "MOB_Zeus_BEAR",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet_bear_a_saddle.png"
+    },
+    {
+      "model_id": 42842,
+      "code": "MOB_Zeus_DINOSAUR",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet_dinosaur_a_saddle.png"
+    },
+    {
+      "model_id": 42843,
+      "code": "MOB_Zeus_OSTRICH",
+      "name": "",
+      "level": 100,
+      "image_url": "/game-assets/monsters/pet2_pet_ostrich_saddle_a.png"
+    },
+    {
+      "model_id": 42911,
+      "code": "MOB_ZEUS_BACLK_KNIGHT_130_UNIQ",
+      "name": "",
+      "level": 130,
+      "image_url": "/game-assets/monsters/event_winter_blackknight.png"
+    },
+    {
+      "model_id": 43954,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_110",
+      "name": "White Knight",
+      "level": 110,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 43955,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_120",
+      "name": "White Knight",
+      "level": 120,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 43956,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_130",
+      "name": "White Knight",
+      "level": 130,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 43957,
+      "code": "MOB_EV_WINTER_WHITEKNIGHT_140",
+      "name": "White Knight",
+      "level": 140,
+      "image_url": "/game-assets/monsters/event_winter_whiteknight.png"
+    },
+    {
+      "model_id": 43958,
+      "code": "MOB_EV_WINTER_PRINCESS_110",
+      "name": "Princess Miyene",
+      "level": 110,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 43959,
+      "code": "MOB_EV_WINTER_PRINCESS_120",
+      "name": "Princess Miyene",
+      "level": 120,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 43960,
+      "code": "MOB_EV_WINTER_PRINCESS_130",
+      "name": "Princess Miyene",
+      "level": 130,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 43961,
+      "code": "MOB_EV_WINTER_PRINCESS_140",
+      "name": "Princess Miyene",
+      "level": 140,
+      "image_url": "/game-assets/monsters/event_winter_princess.png"
+    },
+    {
+      "model_id": 44391,
+      "code": "MOB_RM_BONEROC",
+      "name": "Death Bone roc",
+      "level": 120,
+      "image_url": "/game-assets/monsters/boneroc.png"
+    },
+    {
+      "model_id": 44435,
+      "code": "MOB_ARABIA_THIEF_BOSS",
+      "name": "",
+      "level": 131,
+      "image_url": "/game-assets/monsters/thief_boss.png"
+    },
+    {
+      "model_id": 44436,
+      "code": "MOB_ARABIA_MAD_GENERAL",
+      "name": "",
+      "level": 131,
+      "image_url": "/game-assets/monsters/mad_general_1.png"
+    },
+    {
+      "model_id": 44438,
+      "code": "MOB_ARABIA_GIANT_DEMON",
+      "name": "",
+      "level": 131,
+      "image_url": "/game-assets/monsters/giant_demon.png"
+    },
+    {
+      "model_id": 44492,
+      "code": "MOB_ARAB_1",
+      "name": "",
+      "level": 110,
+      "image_url": "/game-assets/monsters/launatune.png"
+    },
+    {
+      "model_id": 44493,
+      "code": "MOB_ARAB_2",
+      "name": "",
+      "level": 110,
+      "image_url": "/game-assets/monsters/giant_demon.png"
+    },
+    {
+      "model_id": 44494,
+      "code": "MOB_ARAB_3",
+      "name": "",
+      "level": 110,
+      "image_url": "/game-assets/monsters/venefica.png"
+    },
+    {
+      "model_id": 44495,
+      "code": "MOB_ARAB_4",
+      "name": "",
+      "level": 110,
+      "image_url": "/game-assets/monsters/venefica_demon.png"
+    },
+    {
+      "model_id": 44496,
+      "code": "MOB_ARAB_5",
+      "name": "",
+      "level": 110,
+      "image_url": "/game-assets/monsters/harrison.png"
+    },
+    {
+      "model_id": 44497,
+      "code": "MOB_ARAB_6",
+      "name": "",
+      "level": 140,
+      "image_url": "/game-assets/monsters/mad_general_1.png"
+    },
+    {
+      "model_id": 44498,
+      "code": "MOB_MEGATITAN_01",
+      "name": "",
+      "level": 140,
+      "image_url": "/game-assets/monsters/geenie.png"
+    },
+    {
+      "model_id": 44499,
+      "code": "MOB_MEGATITAN_02",
+      "name": "",
+      "level": 140,
+      "image_url": "/game-assets/monsters/volkoff.png"
+    },
+    {
+      "model_id": 44501,
+      "code": "MOB_MEGATITAN_04",
+      "name": "",
+      "level": 140,
+      "image_url": "/game-assets/monsters/boneroc.png"
+    },
+    {
+      "model_id": 44502,
+      "code": "MOB_MEGATITAN_05",
+      "name": "",
+      "level": 140,
+      "image_url": "/game-assets/monsters/darkguardian.png"
+    },
+    {
+      "model_id": 46021,
+      "code": "MOB_VALKYRUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/valkyrie.png"
+    },
+    {
+      "model_id": 46022,
+      "code": "MOB_BOSS_EMP_EVOG2_DRAGON",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/emp_evog2_dragon.png"
+    },
+    {
+      "model_id": 50749,
+      "code": "MOB_BOSS_DRAGON_FIRE",
+      "name": "Reign of fire",
+      "level": 120,
+      "image_url": "/game-assets/monsters/a11saaae_a11saaae.png"
+    },
+    {
+      "model_id": 50750,
+      "code": "MOB_BOSS_DRAGON_ICE",
+      "name": "Reign of Ice",
+      "level": 120,
+      "image_url": "/game-assets/monsters/a11saaa1_a11saaae.png"
+    },
+    {
+      "model_id": 50751,
+      "code": "MOB_BOSS_DRAGON_EARTH",
+      "name": "Reign of Soil",
+      "level": 120,
+      "image_url": "/game-assets/monsters/a11saaa3_a11saaae.png"
+    },
+    {
+      "model_id": 50752,
+      "code": "MOB_BOSS_BLIGHT_DRAGON",
+      "name": "Blight Dragon Boss",
+      "level": 120,
+      "image_url": "/game-assets/monsters/blight_dragon.png"
+    },
+    {
+      "model_id": 50896,
+      "code": "MOB_DEATH_GATE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/jalliaza.png"
+    },
+    {
+      "model_id": 50897,
+      "code": "MOB_BLACK_SNIPER",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/darkguardian.png"
+    },
+    {
+      "model_id": 50898,
+      "code": "MOB_VENUS_SPACE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/devilspore.png"
+    },
+    {
+      "model_id": 50899,
+      "code": "MOB_ANGRY_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/garm.png"
+    },
+    {
+      "model_id": 50900,
+      "code": "MOB_SERPENT_AWFUL",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/snake.png"
+    },
+    {
+      "model_id": 50901,
+      "code": "MOB_IMMORTAL_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/dmsolide.png"
+    },
+    {
+      "model_id": 50902,
+      "code": "MOB_RIGHTS_STONE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/bartis.png"
+    },
+    {
+      "model_id": 50903,
+      "code": "MOB_TERMINATOR",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/immotal2.png"
+    },
+    {
+      "model_id": 50904,
+      "code": "MOB_UNSTABLE_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/spirit.png"
+    },
+    {
+      "model_id": 50905,
+      "code": "MOB_STRANGELY_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/toadstool.png"
+    },
+    {
+      "model_id": 50906,
+      "code": "MOB_GHOST_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/voiddevil.png"
+    },
+    {
+      "model_id": 50907,
+      "code": "MOB_WEREWOLF_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/wendigo.png"
+    },
+    {
+      "model_id": 50908,
+      "code": "MOB_OSTRICH_SADDLE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/cos_pet2_pet_ostrich_saddle_a.png"
+    },
+    {
+      "model_id": 50909,
+      "code": "MOB_STRONG_ASSASSIN",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/mad_general_3_clone.png"
+    },
+    {
+      "model_id": 50910,
+      "code": "MOB_ANGRY_BEAR",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/dowb.png"
+    },
+    {
+      "model_id": 50911,
+      "code": "MOB_INVOLVEMENT_UNIQUE",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/ghost_specter.png"
+    },
+    {
+      "model_id": 50912,
+      "code": "MOB_HOUND_OF_HELL",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/devildog.png"
+    },
+    {
+      "model_id": 50913,
+      "code": "MOB_VENUS_PREDATORY",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/karmus.png"
+    },
+    {
+      "model_id": 50914,
+      "code": "MOB_LINAN_SHI",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/zed.png"
+    },
+    {
+      "model_id": 50915,
+      "code": "MOB_DARK_HELL",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/horned_demon.png"
+    },
+    {
+      "model_id": 50918,
+      "code": "MOB_CH_TIGERWOMAN_EVENT",
+      "name": "Tiger Girl",
+      "level": 20,
+      "image_url": "/game-assets/monsters/tigerwoman.png"
+    },
+    {
+      "model_id": 50919,
+      "code": "MOB_OA_URUCHI_EVENT",
+      "name": "Uruchi",
+      "level": 40,
+      "image_url": "/game-assets/monsters/uruchi.png"
+    },
+    {
+      "model_id": 50920,
+      "code": "MOB_KK_ISYUTARU_EVENT",
+      "name": "Isyutaru",
+      "level": 60,
+      "image_url": "/game-assets/monsters/isyutaru.png"
+    },
+    {
+      "model_id": 50921,
+      "code": "MOB_TK_BONELORD_EVENT",
+      "name": "Lord Yarkan",
+      "level": 80,
+      "image_url": "/game-assets/monsters/bonelord.png"
+    },
+    {
+      "model_id": 50922,
+      "code": "MOB_RM_TAHOMET_EVENT",
+      "name": "Demon Shaitan",
+      "level": 90,
+      "image_url": "/game-assets/monsters/tahomet.png"
+    },
+    {
+      "model_id": 50923,
+      "code": "MOB_RM_ROC_EVENT",
+      "name": "Roc",
+      "level": 100,
+      "image_url": "/game-assets/monsters/roc.png"
+    },
+    {
+      "model_id": 50924,
+      "code": "MOB_EU_KERBEROS_EVENT",
+      "name": "Cerberus",
+      "level": 24,
+      "image_url": "/game-assets/monsters/kerberos.png"
+    },
+    {
+      "model_id": 50925,
+      "code": "MOB_AM_IVY_EVENT",
+      "name": "Captain Ivy",
+      "level": 30,
+      "image_url": "/game-assets/monsters/ivy.png"
+    },
+    {
+      "model_id": 50926,
+      "code": "MOB_TQ_WHITESNAKE_EVENT",
+      "name": "BeakYung The White Viper",
+      "level": 100,
+      "image_url": "/game-assets/monsters/whitesnake.png"
+    },
+    {
+      "model_id": 50927,
+      "code": "MOB_BOSS_EMP_EVOG2_DRAGON_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/emp_evog2_dragon.png"
+    },
+    {
+      "model_id": 50928,
+      "code": "MOB_BOSS_DRAGON_FIRE_EVENT",
+      "name": "Reign of fire",
+      "level": 120,
+      "image_url": "/game-assets/monsters/a11saaae_a11saaae.png"
+    },
+    {
+      "model_id": 50929,
+      "code": "MOB_BOSS_DRAGON_ICE_EVENT",
+      "name": "Reign of Ice",
+      "level": 120,
+      "image_url": "/game-assets/monsters/a11saaa1_a11saaae.png"
+    },
+    {
+      "model_id": 50930,
+      "code": "MOB_BOSS_DRAGON_EARTH_EVENT",
+      "name": "Reign of Soil",
+      "level": 120,
+      "image_url": "/game-assets/monsters/a11saaa3_a11saaae.png"
+    },
+    {
+      "model_id": 50931,
+      "code": "MOB_BOSS_BLIGHT_DRAGON_EVENT",
+      "name": "Blight Dragon Boss",
+      "level": 120,
+      "image_url": "/game-assets/monsters/blight_dragon.png"
+    },
+    {
+      "model_id": 50932,
+      "code": "MOB_DEATH_GATE_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/jalliaza.png"
+    },
+    {
+      "model_id": 50933,
+      "code": "MOB_BLACK_SNIPER_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/darkguardian.png"
+    },
+    {
+      "model_id": 50934,
+      "code": "MOB_VENUS_SPACE_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/devilspore.png"
+    },
+    {
+      "model_id": 50935,
+      "code": "MOB_ANGRY_UNIQUE_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/garm.png"
+    },
+    {
+      "model_id": 50936,
+      "code": "MOB_SERPENT_AWFUL_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/snake.png"
+    },
+    {
+      "model_id": 50937,
+      "code": "MOB_TERMINATOR_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/immotal2.png"
+    },
+    {
+      "model_id": 50938,
+      "code": "MOB_GHOST_UNIQUE_EVENT",
+      "name": "",
+      "level": 120,
+      "image_url": "/game-assets/monsters/voiddevil.png"
+    }
+  ]
+}

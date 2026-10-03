@@ -325,6 +325,13 @@ Reference captures supplied with the repository remain the visual baseline:
 “History”; the independent PhMon implementation uses Events navigation and History
 headings inside its own shell.
 
+Unique cards follow `phmonitor_screenshots/05-uniques.png`: monster portrait,
+name, level, location, observer and time. Portraits come from
+`/game-assets/monsters/`. The reference HP figure is catalog maximum HP, which
+the current monster reference does not include, so PhMon leaves HP off the card.
+Dashboard recent activity uses the same portrait and skips inventory-quantity,
+chat and session rows that were hiding unique notices.
+
 ### Implemented behavior and evidence
 
 - Protocol v6 batches generalized the v5 death event frame. Migration

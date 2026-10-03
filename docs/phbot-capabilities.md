@@ -797,6 +797,18 @@ not inferred from third-party snippets.
 | ID | Official data meaning | Canonical event | Stored source detail |
 | ---: | --- | --- | --- |
 | 0 `EVENT_UNIQUE_SPAWN` | Monster name | `world.unique_spawned` | Bounded `value` string |
+
+The installed Greatest agents produced GM, hunter and thief callbacks, and zero
+real `EVENT_UNIQUE_SPAWN` rows. phMonitor v0.5.0 records the same occurrences
+from Joymax opcode `0x300C`: byte 0 is 5 for a spawn or 6 for a kill, and bytes
+2–5 are the little-endian model ID. A kill may then carry a little-endian name
+length and killer text. Plugin 1.9.12 queues that notice without the observer's
+coordinates. The server resolves the model through `server/game-data/unique-monsters.json`
+and the Events and Dashboard views use the matching file under
+`/game-assets/monsters/`. Catalog HP is not in the exported monster reference,
+so the card omits HP instead of inventing it. Notice chat remains a separate
+phMonitor source and is not used here: stored type-7 messages on this server
+are ordinary notices, not unique spawn lines.
 | 1 `EVENT_HUNTER_SPAWN` | Player name, including traders | `job.hunter_trader_seen` | Bounded `value` string |
 | 2 `EVENT_THIEF_SPAWN` | Player name | `job.thief_seen` | Bounded `value` string |
 | 3 `EVENT_TRANSPORT_DIED` | Transport ID, including horses | `pet.transport_died` | Bounded `value` string |

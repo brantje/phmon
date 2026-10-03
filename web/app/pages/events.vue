@@ -4,6 +4,7 @@ import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 import { eventLocationText } from '~/utils/event-location'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
+import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
 const { serverScope } = useServerScope()
@@ -241,7 +242,7 @@ function eventSummary(item: ActivityEvent) {
     case 'drop.item':
       return 'Normal drop'
     case 'world.unique_spawned':
-      return `${String(payload.value || 'Unique')} spawned`
+      return uniqueEventHeadline(item)
     case 'world.gm_spawned':
       return `GM spawned · ${String(payload.value || 'name unknown')}`
     case 'job.hunter_trader_seen':
@@ -376,7 +377,52 @@ function localDateBoundary(value: string, addDays: number) {
       <div v-if="liveStale" class="status-banner warning" role="status">
         Showing the last received event page as stale while PhMon reconnects.
       </div>
-      <div class="event-table-scroll">
+      <div
+        v-if="filterKind === 'world.unique_spawned'"
+        class="unique-event-list"
+      >
+        <article
+          v-for="item in page?.events || []"
+          :key="item.event_id"
+          class="unique-event-card"
+        >
+          <img
+            v-if="uniqueEventDetails(item)?.imageUrl"
+            class="unique-event-art"
+            :src="uniqueEventDetails(item)?.imageUrl"
+            :alt="uniqueEventDetails(item)?.name || 'Unique'"
+          />
+          <div>
+            <strong>{{ uniqueEventHeadline(item) }}</strong>
+            <p>{{ eventLocationText(item) }}</p>
+            <p>
+              Seen by
+              <NuxtLink
+                v-if="item.character_id"
+                :to="`/characters/${item.character_id}`"
+                >{{ item.character }}</NuxtLink
+              >
+              <template v-else>{{ item.character || 'unknown' }}</template>
+            </p>
+            <time :datetime="item.occurred_at">{{
+              formatTimestamp(item.occurred_at)
+            }}</time>
+          </div>
+        </article>
+        <div v-if="!page?.events.length" class="event-empty-state">
+          <strong>{{
+            connectionState === 'current'
+              ? 'No unique spawns found'
+              : 'Loading event history'
+          }}</strong>
+          <span>{{
+            connectionState === 'current'
+              ? 'No unique notices match this server, character and date range.'
+              : 'Waiting for a current event snapshot.'
+          }}</span>
+        </div>
+      </div>
+      <div v-else class="event-table-scroll">
         <table class="event-table">
           <thead>
             <tr>

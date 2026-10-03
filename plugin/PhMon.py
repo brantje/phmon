@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.11'
+pVersion = '1.9.12'
 pUrl = ''
 
 PROTOCOL_VERSION = 13
@@ -2426,8 +2426,8 @@ class EventSpool(object):
         total_raw = json.dumps(self._items, separators=(',', ':'), sort_keys=True).encode('utf-8')
         if len(self._items) >= self.max_items or len(total_raw) + len(raw) > self.max_bytes:
             return False
-        critical = item.get('kind') in ('character.died', 'drop.rare', 'alchemy.attempt', 'alchemy.finished')
-        current = [entry for entry in self._items if (entry.get('kind') in ('character.died', 'drop.rare', 'alchemy.attempt', 'alchemy.finished')) == critical]
+        critical = _event_is_critical(item)
+        current = [entry for entry in self._items if _event_is_critical(entry) == critical]
         current_bytes = sum(len(json.dumps(entry, separators=(',', ':'), sort_keys=True).encode('utf-8')) for entry in current)
         if critical:
             return len(current) < MAX_EVENT_CRITICAL_ITEMS and current_bytes + len(raw) <= MAX_EVENT_CRITICAL_BYTES
@@ -4584,7 +4584,74 @@ def handle_joymax(opcode, data):
         except Exception:
             # A monitoring failure must never interfere with the game packet.
             pass
+    try:
+        _observe_unique_notice(opcode, data)
+    except Exception:
+        # A monitoring failure must never interfere with the game packet.
+        pass
     return True
+
+
+_CRITICAL_EVENT_KINDS = (
+    'character.died', 'drop.rare', 'alchemy.attempt', 'alchemy.finished', 'world.unique_spawned',
+)
+
+
+def _event_is_critical(item):
+    return isinstance(item, dict) and item.get('kind') in _CRITICAL_EVENT_KINDS
+
+
+def _unique_notice(opcode, data):
+    """Read a unique spawn or kill notice. Other packets stay untouched."""
+    try:
+        opcode = int(opcode)
+    except Exception:
+        return None
+    if opcode != 0x300C:
+        return None
+    try:
+        raw = bytes(data or b'')
+    except Exception:
+        return None
+    if len(raw) < 6 or len(raw) > 256 or raw[0] not in (5, 6):
+        return None
+    model = struct.unpack_from('<I', raw, 2)[0]
+    if model < 1 or model > 4294967295:
+        return None
+    killer = ''
+    if raw[0] == 6 and len(raw) >= 8:
+        killer_len = struct.unpack_from('<H', raw, 6)[0]
+        end = 8 + killer_len
+        if 0 < killer_len <= 64 and end <= len(raw):
+            killer = raw[8:end].decode('utf-8', 'ignore')
+            killer = ''.join(ch for ch in killer if ch.isprintable()).strip()[:64]
+    return {'notice': 'spawn' if raw[0] == 5 else 'kill', 'model': int(model), 'killer': killer}
+
+
+def _observe_unique_notice(opcode, data):
+    parsed = _unique_notice(opcode, data)
+    if parsed is None:
+        return False
+    try:
+        character = _get_character_data()
+    except Exception:
+        character = None
+    identity = None
+    if isinstance(character, dict):
+        server = str(character.get('server', '') or '').strip()[:100]
+        name = str(character.get('name', '') or '').strip()[:64]
+        if server and name:
+            identity = {'server': server, 'name': name}
+    if identity is None:
+        return False
+    payload = {'model': parsed['model'], 'notice': parsed['notice']}
+    if parsed['killer']:
+        payload['killer'] = parsed['killer']
+    # The notice is server-wide. The observing character is attribution, not a map point.
+    return _queue_canonical_event(
+        'world.unique_spawned', 'world', 'joymax.unique_notice', '0x300C', payload, identity,
+        position=False, dedupe_key='unique-notice:%s:%d:%d' % (parsed['notice'], parsed['model'], int(time.time()) // 15),
+    )
 
 
 def handle_event(event_type, data):
