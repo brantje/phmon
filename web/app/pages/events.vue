@@ -527,7 +527,6 @@ function localDateBoundary(value: string, addDays: number) {
                 <ItemDetailPopup
                   v-if="itemRecordFromActivityEvent(item)"
                   :item="itemRecordFromActivityEvent(item)!"
-                  :to="eventItemTarget(item)"
                 />
                 <span v-else>—</span>
                 <small v-if="eventSourceLabel(item)" class="event-origin">

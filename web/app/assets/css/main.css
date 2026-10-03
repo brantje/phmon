@@ -2582,6 +2582,14 @@ select:focus-visible {
   letter-spacing: 0;
   text-decoration: none;
 }
+button.item-detail-name {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
 .item-detail-name:hover {
   text-decoration: underline;
 }

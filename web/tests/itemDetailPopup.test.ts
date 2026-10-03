@@ -60,6 +60,124 @@ test('observed instance stats take precedence over catalog ranges', () => {
   assert.equal(detail.requirements[0]?.level, true)
 })
 
+test('Events drop item renders the reference observed suit details in order', () => {
+  const record = itemRecordFromActivityEvent({
+    kind: 'item.quantity_increased',
+    item_model: 9001,
+    item_metadata: {
+      name: 'Shaman Suit',
+      rare: true,
+      sort_type: 'Garment',
+      mounted_part: 'Shoulders',
+      degree: 9,
+      type_ids: [1, 1, 2],
+      required_level: 81,
+      required_gender: 'Male',
+      required_race: 'Chinese',
+      reference_stats: { phy_def_pwr: { min: '100', max: '222' } },
+    },
+    payload: {
+      item: { model: 9001, servername: 'ITEM_CH_SUIT_09', plus: 5 },
+      destination_container: { type: 'inventory', slot: 29 },
+    },
+    item_details: {
+      seal: 'Seal of Sun',
+      instance_details: {
+        sources: ['phbot_api'],
+        stats: [
+          {
+            key: 'phy_def_pwr',
+            label: 'Phy. def. pwr',
+            value: '221.8',
+            percent: 100,
+          },
+          {
+            key: 'mag_def_pwr',
+            label: 'Mag. def. pwr',
+            value: '473.5',
+            percent: 100,
+          },
+          {
+            key: 'parry_ratio',
+            label: 'Parry ratio',
+            value: '84',
+            percent: 100,
+          },
+          {
+            key: 'phy_reinforce',
+            label: 'Phy. reinforce',
+            value: '31.1%',
+            percent: 100,
+          },
+          {
+            key: 'mag_reinforce',
+            label: 'Mag. reinforce',
+            value: '66.3%',
+            percent: 100,
+          },
+        ],
+        durability: { current: 227, maximum: 93 },
+        percentages: [{ key: 'durability', label: 'Durability', value: 100 }],
+        blues: [
+          { label: 'MP increase', raw_value: '600', scale: 1 },
+          { label: 'Str increase', raw_value: '6', scale: 1 },
+          { label: 'HP increase', raw_value: '600', scale: 1 },
+          { label: 'Int increase', raw_value: '6', scale: 1 },
+          { label: 'Lucky', raw_value: '6', scale: 1 },
+          {
+            label: 'Durability increase',
+            raw_value: '160',
+            scale: 1,
+            unit: '%',
+          },
+          {
+            label: 'Parry rate increase',
+            raw_value: '40',
+            scale: 1,
+            unit: '%',
+          },
+          { label: 'Steady', raw_value: '6', scale: 1 },
+        ],
+      },
+    },
+  })
+  assert.ok(record)
+  const detail = buildItemDetail(record)
+  assert.equal(detail.name, 'Shaman Suit')
+  assert.equal(detail.plus, 5)
+  assert.equal(detail.seal, 'Seal of Sun')
+  assert.deepEqual(detail.classifications, [
+    'Sort of item: Garment',
+    'Mounting part: Shoulders',
+    'Degree: 9 degrees',
+  ])
+  assert.deepEqual(detail.statsBeforeDurability, [
+    'Phy. def. pwr 221.8 (+100%)',
+    'Mag. def. pwr 473.5 (+100%)',
+  ])
+  assert.equal(detail.durability, 'Durability 227/93 (+100%)')
+  assert.deepEqual(detail.statsAfterDurability, [
+    'Parry ratio 84 (+100%)',
+    'Phy. reinforce 31.1% (+100%)',
+    'Mag. reinforce 66.3% (+100%)',
+  ])
+  assert.deepEqual(
+    detail.requirements.map((line) => line.text),
+    ['Required level 81', 'Male', 'Chinese'],
+  )
+  assert.deepEqual(detail.blues, [
+    'MP 600 Increase',
+    'Str 6 Increase',
+    'HP 600 Increase',
+    'Int 6 Increase',
+    'Lucky(6Time/times)',
+    'Durability 160% Increase',
+    'Parry rate 40% Increase',
+    'Steady(6Time/times)',
+  ])
+  assert.equal(detail.catalogNote, '')
+})
+
 test('percentage stat values keep their variance mark', () => {
   const detail = buildItemDetail({
     metadata: { name: 'Hood', type_ids: [1, 1, 1] },
