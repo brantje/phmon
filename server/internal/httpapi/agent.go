@@ -1021,7 +1021,7 @@ func writeCharacterRejected(ctx context.Context, writer *agentWriter, protocol i
 func validReportedCommandName(name string) bool {
 	switch name {
 	case "bot.start", "bot.stop", "trace.start", "trace.stop",
-		"training.area.set", "training.radius.set", "character.walk", "character.navigate",
+		"training.area.set", "training.radius.set", "character.walk", "character.move_to", "character.navigate",
 		"character.navigate.stop", "character.teleport",
 		"character.return", "character.reverse_return", "character.disconnect", "client.clientless", "chat.send":
 		return true

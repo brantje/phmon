@@ -244,7 +244,7 @@ test('Job Temple manually selected upper floors stay unsupported', () => {
   assert.match(result.reason?.message || '', /1F/)
 })
 
-test('exact uncertain retries keep the frozen destination after the character moves', () => {
+test('terrain height changes preserve both initial submission and exact retry destinations', () => {
   const mapProfile = baseProfile()
   const captured = intent({ targetIDs: ['one'] })
   const current = character('one', 25000, 40)
@@ -277,10 +277,12 @@ test('exact uncertain retries keep the frozen destination after the character mo
     confirmation: false,
   } satisfies FanOutCommandRequest
 
+  assert.deepEqual(definition.buildArgs(current), original)
   current.z = 48
+  assert.deepEqual(definition.buildArgs(current), original)
   assert.equal(
-    definition.admissionGuard?.(child, request, { exactRetry: false })?.code,
-    'arguments_changed',
+    definition.admissionGuard?.(child, request, { exactRetry: false }),
+    null,
   )
   assert.equal(
     definition.admissionGuard?.(child, request, { exactRetry: true }),

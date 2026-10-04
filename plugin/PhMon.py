@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.19'
+pVersion = '1.9.21'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -223,9 +223,9 @@ def _read_botting_state(character_data, status_getter=None, timing=None):
     # means stopped. Do not turn missing status into a guessed false value.
     return _normalize_botting_status(value)
 
-_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','get_teleport_data',
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_status','get_position','get_monsters','get_npcs','get_teleport_data',
               'generate_path','set_training_position','set_training_radius','set_training_area','get_training_area',
-              'move_to_region','generate_script','start_script','stop_script','use_return_scroll','reverse_return','get_party','disconnect')
+              'move_to','move_to_region','generate_script','start_script','stop_script','use_return_scroll','reverse_return','get_party','disconnect')
 
 _CHAT_METHODS = {
     'general': ('All',),
@@ -3676,7 +3676,6 @@ class AgentWorker(object):
                         else:
                             self._latest_sample = sample
                             self._publish_sample(client, sample, False)
-                        continue
                     except _queue.Empty:
                         pass
                     self._flush_death_events(client)
@@ -3721,14 +3720,9 @@ class AgentWorker(object):
                             'sent_at': _utc_now(),
                         })
                         next_heartbeat = now + interval
-                        continue
-                    wait = min(next_heartbeat - now, 1.0)
-                    message = client.receive_json(timeout=wait)
-                    if message is not None:
-                        self._handle_server_message(message)
+                    wait = max(0.001, min(next_heartbeat - now, 0.25))
+                    self._drain_server_messages(client, wait)
                     self._flush_results(client)
-                    self._flush_death_events(client)
-                    self._flush_map_observations(client)
             except Exception as error:
                 if not self.stop_event.is_set():
                     self.status = 'Backend unavailable; retrying...'
@@ -3765,6 +3759,17 @@ class AgentWorker(object):
                     remaining = deadline - _monotonic()
                     if remaining <= 0 or self.stop_event.wait(min(0.25, remaining)):
                         break
+
+    def _drain_server_messages(self, client, timeout, max_frames=32):
+        # One read per iteration used to fall behind the acknowledgements from
+        # several outgoing frames. Commands then waited behind an ever-growing
+        # backlog. Drain a bounded burst; retain time for sampling and heartbeats.
+        for index in range(max_frames):
+            message = client.receive_json(timeout=timeout if index == 0 else 0.001)
+            if message is None:
+                return index
+            self._handle_server_message(message)
+        return max_frames
 
     def _publish_sample(self, client, sample, snapshot):
         identity, state = sample['identity'], sample['state']
@@ -4087,6 +4092,7 @@ class AgentWorker(object):
             'training.area.set': (None, 'unsupported_runtime_primitive'),
             'training.radius.set': ('set_training_radius', 'unsupported_runtime_primitive'),
             'character.walk': ('move_to_region', 'unsupported_runtime_primitive'),
+            'character.move_to': ('move_to', 'unsupported_runtime_primitive'),
             'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
             'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
             'character.teleport': (None, 'unsupported_runtime_primitive'),
@@ -4139,6 +4145,7 @@ class AgentWorker(object):
             return
         if command_id in self._dedup:
             return
+        _log('command %s %s received' % (command_id, message['name']))
         if self._outgoing.qsize() > 29:
             self._queue_result(self._base_result(message, 'failed', 'result_queue_full', 'unverified'))
             return
@@ -4159,6 +4166,7 @@ class AgentWorker(object):
             self._queue_result(self._base_result(message, 'failed', 'command_queue_full', 'unverified'))
             return
         self._remember_command(command_id)
+        _log('command %s queued (remaining=%.0f ms)' % (command_id, remaining * 1000.0))
         self._queue_result({'type':'command.ack','protocol_version':PROTOCOL_VERSION,'command_id':command_id,'character_id':self.character_id,'session_id':self.session_id})
 
     def _remember_command(self, command_id):
@@ -4167,6 +4175,15 @@ class AgentWorker(object):
             old = self._dedup_order.pop(0); self._dedup.discard(old)
 
     def _queue_result(self, frame):
+        if frame.get('type') == 'command.result':
+            reason = frame.get('reason') or 'none'
+            # Native exception strings can contain arguments or local details.
+            # Log only bounded reason codes, never arbitrary exception text.
+            if not isinstance(reason, str) or not re.match(r'^[a-z][a-z0-9_]{0,63}$', reason):
+                reason = 'api_error'
+            _log('command %s result=%s reason=%s verification=%s' % (
+                frame.get('command_id'), frame.get('status'), reason,
+                frame.get('verification')))
         try: self._outgoing.put_nowait(frame)
         except _queue.Full: self.status = 'Command result queue is full; backend may show an unknown outcome.'
 
@@ -4302,6 +4319,7 @@ class AgentWorker(object):
         try: item = self._commands.get_nowait()
         except _queue.Empty: return False
         message = item['message']; name = message['name']; args = message['args']
+        _log('command %s %s callback started' % (message['command_id'], name))
         if item['epoch'] != self._profile_epoch or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             self._queue_result(self._base_result(message, 'failed', 'stale_session', 'unverified')); return True
         if _monotonic() >= item['deadline']:
@@ -4323,7 +4341,8 @@ class AgentWorker(object):
             result['effective_args'] = effective
             if observed is not None: result['observed_after'] = observed
             self._queue_result(result)
-            self._queue_control_state(message)
+            if name != 'character.move_to':
+                self._queue_control_state(message)
             if name == 'character.navigate' and outcome is not False:
                 self._publish_navigation_route(message)
         except Exception as error:
@@ -4421,7 +4440,7 @@ class AgentWorker(object):
                     return True
                 if job['error']:
                     raise ValueError(job['error'])
-                outcome, effective, observed, verification = self._finish_navigation(message['args'], job['generated'])
+                outcome, effective, observed, verification = self._finish_navigation(message['args'], job['generated'], message['command_id'])
                 result = self._base_result(message, 'failed' if outcome is False else 'completed',
                                            'api_return_false' if outcome is False else '', verification)
                 result['api_return'] = outcome
@@ -4436,7 +4455,25 @@ class AgentWorker(object):
                 self._navigation_job = None
         return True
 
-    def _finish_navigation(self, args, generated):
+    def _navigation_debug_status(self):
+        # Optional installed-runtime observation. None/unknown text has no
+        # inferred meaning and must not become a script admission condition.
+        if not self.api.has('get_status'):
+            return 'unavailable'
+        try:
+            status = self.api.call('get_status')
+        except Exception:
+            return 'read_failed'
+        if status is None:
+            return 'none'
+        if isinstance(status, str):
+            label = status.strip().lower()
+            if label in ('botting', 'training', 'tracing', 'stopped', 'idle', 'walking', 'script', 'running'):
+                return label
+            return 'other_text'
+        return 'other_type'
+
+    def _finish_navigation(self, args, generated, command_id='local'):
         self._last_navigation_evidence = None
         region = self._navigation_args(args)
         if generated is False: raise ValueError('path_rate_limited_or_not_in_game')
@@ -4452,11 +4489,28 @@ class AgentWorker(object):
                           'y': float(position['y']), 'z': float(position['z']), 'observed_at': source_time}
         except Exception:
             source = None
+        counts = collections.Counter(instruction['kind'] for instruction in instructions)
+        encoded = script.encode('utf-8')
+        status_before = _navigation_stage('debug_status_before', self._navigation_debug_status)
+        _log('navigation %s prepared steps=%d walk=%d wait=%d teleport=%d bytes=%d sha256=%s '
+             'trailing_lf=%s source_region=%s source_z=%s target_region=%s target_z=%s status=%s' % (
+                 command_id, len(instructions), counts['walk'], counts['wait'], counts['teleport'],
+                 len(encoded), hashlib.sha256(encoded).hexdigest()[:16], script.endswith('\n'),
+                 source.get('region') if source else 'unknown', source.get('z') if source else 'unknown',
+                 region, float(args['z']), status_before))
         invoked_at = _utc_now()
         try:
             result=_navigation_stage('start_script', self.api.call, 'start_script', script)
         except Exception:
+            _log('navigation %s start_script raised; status_after=%s' % (
+                command_id, _navigation_stage('debug_status_after', self._navigation_debug_status)))
             raise ValueError('script_start_failed')
+        returned = 'false' if result is False else 'true' if result is True else 'none' if result is None else 'other'
+        return_type = ('NoneType' if result is None else 'bool' if isinstance(result, bool)
+                       else 'int' if isinstance(result, int) else 'float' if isinstance(result, float)
+                       else 'str' if isinstance(result, str) else 'other')
+        _log('navigation %s start_script result=%s result_type=%s status_after=%s' % (
+            command_id, returned, return_type, _navigation_stage('debug_status_after', self._navigation_debug_status)))
         if result is not False:
             self._last_navigation_evidence = {'instructions': instructions, 'source': source,
                                               'invoked_at': invoked_at}
@@ -4569,6 +4623,16 @@ class AgentWorker(object):
     def _invoke(self, name, args, current_region):
         def exact(allowed):
             if set(args) - set(allowed): raise ValueError('invalid_arguments')
+        if name == 'character.move_to':
+            if set(args) != set(('x', 'y', 'z')) or not all(
+                    _number(args.get(axis)) and abs(args[axis]) <= 10000000 for axis in ('x', 'y', 'z')):
+                raise ValueError('invalid_arguments')
+            if not self.api.has('move_to'):
+                raise ValueError('unsupported_runtime_primitive')
+            # Explicit operator test: no path generation, position readback,
+            # bot/script mutation or arrival wait. None is the documented return.
+            result = self.api.call('move_to', float(args['x']), float(args['y']), float(args['z']))
+            return result, dict(args), None, 'unverified'
         empty = ('bot.start','bot.stop','trace.stop','character.return','character.disconnect')
         if name in empty:
             exact(())

@@ -177,6 +177,18 @@ export function mapNavigationStatusLabel(
   geometryCount: number,
 ) {
   switch (status) {
+    case 'submitting':
+      return 'Submitting command'
+    case 'failed':
+    case 'rejected':
+    case 'skipped':
+    case 'expired':
+    case 'unknown':
+    case 'stopped':
+    case 'stop_failed':
+      return status.replaceAll('_', ' ')
+    case 'superseded':
+      return 'Replaced by a newer route'
     case 'stale':
       return 'Stale · last route frozen'
     case 'waiting_for_movement':

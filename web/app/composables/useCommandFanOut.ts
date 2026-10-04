@@ -21,6 +21,7 @@ let nextOwnerNumber = 0
 export interface UseCommandFanOutOptions {
   command: FanOutCommandDefinition
   scopeKey: string
+  controlsOwnerID?: string
   scopeKeyForCharacter(character: CharacterView, scopeKey?: string): string
   currentScopeKey(characterID: string): string
   currentCharacter(characterID: string): CharacterView | undefined
@@ -35,7 +36,17 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
   const submitting = ref(false)
   let disposed = false
 
-  const feed = computed(() => live.commandFanOutFeeds.value[ownerID])
+  const feed = computed(() => {
+    const own = live.commandFanOutFeeds.value[ownerID]
+    if (!options.controlsOwnerID) return own
+    const controls = live.commandFanOutFeeds.value[options.controlsOwnerID]
+    return {
+      ...own,
+      targets: controls?.targets || {},
+      controls_current: controls?.controls_current || false,
+      controls_unavailable: controls?.controls_unavailable || false,
+    }
+  })
   const stale = computed(
     () =>
       live.liveStale.value ||
@@ -220,7 +231,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
   }
 
   function setTargets(characterIDs: string[]) {
-    if (disposed) return
+    if (disposed || options.controlsOwnerID) return
     live.setCommandFanOutTargets(ownerID, [...new Set(characterIDs)])
   }
 
@@ -235,7 +246,7 @@ export function useCommandFanOut(options: UseCommandFanOutOptions) {
     preparing.value = true
     error.value = ''
     try {
-      live.refreshCommandFanOutTargets(ownerID)
+      if (!options.controlsOwnerID) live.refreshCommandFanOutTargets(ownerID)
       await waitForControls()
       if (disposed) return false
       const refreshed = makePreparedOperation(

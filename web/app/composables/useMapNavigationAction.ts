@@ -45,6 +45,7 @@ export function useMapNavigationAction(options: {
   mapFeedCurrent(): boolean
   reviewActions(): boolean
   now(): number
+  controlsOwnerID?: string
 }) {
   const menuOpen = ref(false)
   const menuAnchor = ref({ x: 0, y: 0 })
@@ -79,6 +80,7 @@ export function useMapNavigationAction(options: {
   }
   const fanOutOptions = (definition: FanOutCommandDefinition) => ({
     command: definition,
+    controlsOwnerID: options.controlsOwnerID,
     get scopeKey() {
       const scope = options.scope()
       return scope ? mapNavigationScopeKey(scope) : 'unavailable'
