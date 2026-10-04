@@ -85,6 +85,16 @@ test('pending, prepared and cancelled commands never announce completion', () =>
   }
 })
 
+test('recall designation reports a sent request without claiming the point was saved', () => {
+  assert.deepEqual(
+    mapActionNotification(operation('character.recall_point.designate')),
+    {
+      message: 'Recall-point request sent to 1 character; save unverified',
+      tone: 'warning',
+    },
+  )
+})
+
 test('partial results count only completed commands and expose failure, skips and uncertainty', () => {
   const result = mapActionNotification(
     operation('bot.start', [

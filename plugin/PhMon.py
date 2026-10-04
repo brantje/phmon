@@ -878,6 +878,52 @@ def _session_teleporter_gate(npcs, gate_servername, source):
     return None
 
 
+def _session_recall_point_gate(npcs, args):
+    """Resolve one requested gate in this character's current NPC snapshot.
+
+    The map combines other characters' observations; its runtime NPC id must
+    never be reused here. A duplicate match is ambiguous and cannot be acted on.
+    """
+    if not isinstance(npcs, list) or not isinstance(args, dict):
+        return None
+    if set(args) not in (set(('gate_servername', 'region', 'x', 'y')),
+                         set(('gate_servername', 'region', 'x', 'y', 'model_id'))):
+        return None
+    servername = args.get('gate_servername')
+    region = args.get('region')
+    x, y = args.get('x'), args.get('y')
+    model = args.get('model_id')
+    if (not isinstance(servername, str) or not _NPC_GATE_ROLE.fullmatch(servername) or
+            not _valid_position_region(region) or not _number(x) or not _number(y) or
+            abs(x) > 10000000 or abs(y) > 10000000 or
+            (model is not None and (not isinstance(model, int) or isinstance(model, bool) or
+                                    model <= 0 or model > 4294967295))):
+        return None
+    matches = []
+    for row in npcs:
+        if not isinstance(row, dict) or row.get('role') != 'teleporter':
+            continue
+        if row.get('servername') != servername or row.get('region') != region:
+            continue
+        if model is not None and row.get('model_id') != model:
+            continue
+        rx, ry = row.get('x'), row.get('y')
+        if not _number(rx) or not _number(ry):
+            continue
+        if (float(rx) - float(x)) ** 2 + (float(ry) - float(y)) ** 2 > 64.0:
+            continue
+        identifier = row.get('id')
+        if not isinstance(identifier, str) or not re.match(r'^[0-9]+$', identifier):
+            continue
+        npc_id = int(identifier)
+        if not 0 < npc_id <= 4294967295:
+            continue
+        matches.append((row, npc_id))
+        if len(matches) > 1:
+            return None
+    return matches[0] if matches else None
+
+
 def _hotan_gate_row(npcs):
     for row in _teleport_probe_gate_rows(npcs):
         name = row.get('name')
@@ -4090,6 +4136,7 @@ class AgentWorker(object):
             'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
             'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
             'character.teleport': (None, 'unsupported_runtime_primitive'),
+            'character.recall_point.designate': (None, 'recall_point_unverified'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
             'character.reverse_return': ('reverse_return', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),

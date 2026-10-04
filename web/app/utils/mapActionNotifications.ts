@@ -73,6 +73,9 @@ export function mapActionNotification(
     case 'character.teleport':
       message = `Teleport script sent to ${characters(count)}`
       break
+    case 'character.recall_point.designate':
+      message = `Recall-point request sent to ${characters(count)}; save unverified`
+      break
     case 'training.area.set':
       message = `Training area set for ${characters(count)}`
       break
@@ -91,7 +94,14 @@ export function mapActionNotification(
   ].filter(Boolean)
   return {
     message: [message, ...details].join(' · '),
-    tone: failed || unknown || skipped || pending ? 'warning' : 'success',
+    tone:
+      operation.command.name === 'character.recall_point.designate' ||
+      failed ||
+      unknown ||
+      skipped ||
+      pending
+        ? 'warning'
+        : 'success',
   }
 }
 

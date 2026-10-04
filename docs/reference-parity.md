@@ -2260,3 +2260,29 @@ events without fabricating a gain. `get_item(model)` resolves the documented
 type IDs on phBot's callback thread; the event worker uses a bounded local cache.
 The public event protocol remains unchanged. The plugin regression suite passes;
 Windows/phBot widget placement and live API behavior remain unverified here.
+
+## Map → Teleport → Designate Recall Point — 2026-10-04
+
+The map's observed-gate Teleport flyout now offers **Designate Recall Point**.
+Right-click, touch and keyboard paths reach the same gate-specific review. It
+shows checked targets, eligible/skipped counts and reasons, requires explicit
+confirmation, and cancels when the map feed, gate, server, targets or sessions
+change. When a verified capability becomes available, the browser will submit
+only the gate identity and position through the
+shared concurrent fan-out; the Go catalog rejects extra fields and requires
+confirmation. A plugin gate resolver is ready to use each character's own current
+NPC snapshot; it is not yet invoked for packet execution. Merged map NPC IDs
+cannot be used as an action argument.
+
+**Capability remains open:** installed phBot Stable 20.1.3.0 and the official
+plugin API provide no verified recall-point call or packet contract. The plugin
+advertises `recall_point_unverified` and sends nothing. The UI review therefore
+shows targets as unavailable, and no saved point is claimed. A read-only capture
+probe and evidence are in [the investigation](reference/recall-point-investigation.md).
+The public phMonitor demo Map could not be inspected beyond its recurring
+connection failure on this run; this placement follows the repository's existing
+menu and the official phBot map guide. The attachment path supplied with the
+request was unavailable on this Windows host. No local browser viewport capture,
+live designation or server readback has been performed. Backend/plugin/frontend
+unit suites and static build checks cover the guarded path; these are not proof
+of live phBot support.

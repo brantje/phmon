@@ -250,6 +250,16 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Plan — 2026-10-04 Designate Recall Point
+
+The implementation plan is [docs/plans/map-designate-recall-point.md](docs/plans/map-designate-recall-point.md).
+Current status remains **unsupported**: the official phBot map guide exposes the
+action, but the plugin API investigation found no dedicated function and community
+`0x7059` behavior lacks an operator-authorized runtime capture. Implementation
+starts with that capability evidence, then uses the existing audited command
+fan-out and gate-specific Teleport flyout. This planning request did not authorize
+a live character action or packet test.
+
 ### Resume — 2026-10-03 dropped-item tooltip correction
 
 #### Follow-up — live necklace still lacked details
@@ -5586,3 +5596,33 @@ reference screenshot was exercised. Exact next action: deploy the updated plugin
 web during an authorized rollout, then verify one naturally occurring death and
 its persisted/dashboard/history reason without forcing a character death. Continue
 the remaining Slice 4/5 gates independently.
+
+### Resume — 2026-10-04 Map Designate Recall Point
+
+Active focused increment on branch `codex/designate-recall-point` in the existing
+checkout: the observed teleporter's Teleport flyout offers a mandatory
+**Designate Recall Point** review for checked characters. The narrow Go command
+contract requires confirmation and rejects extra packet fields; the frontend
+uses the existing concurrent fan-out and invalidates reviews when the gate, map
+feed, server, targets or sessions change. The plugin has a per-session gate
+resolver but advertises `recall_point_unverified`, so no command is admitted or
+packet emitted. A temporary read-only 15-second capture plugin and test are in
+`tools/recall-point-capture/`; it has not been installed in phBot. See
+`docs/reference/recall-point-investigation.md` and the plan in `docs/plans/`.
+
+Evidence: official phBot map documentation shows the menu action but official
+plugin documentation has no recall-point primitive or packet contract. Installed
+phBot Stable file version 20.1.3.0 was inspected read-only. The prior community
+`0x7059` proposal remains a hypothesis. The phMonitor demo Map was blocked by
+its recurring connection failure, and the original attachment path was not
+available on this Windows host. No live character was operated.
+
+Validation: Go `go test ./...`; 192 plugin tests; 189 frontend unit tests;
+read-only capture-probe test; frontend lint, typecheck, Prettier and production
+build; and `git diff --check` passed. No local PostgreSQL/browser stack was
+available for viewport or end-to-end verification. Exact next action: obtain a
+specific operator-designated test character and teleporter, run one bounded
+manual phBot designation with the capture probe, record emitted bytes and
+server/result evidence, then implement only the verified primitive. Run the
+deterministic command simulator and browser viewport checks before claiming
+feature completion. Preserve unrelated pre-existing edits in `plugin/PhMon.py`.

@@ -1305,6 +1305,8 @@ active route.
 
 **Designate Recall Point:** **Unsupported.** Community candidate: `inject_joymax(0x7059, struct.pack('I', npc_uid))` after name match in `get_npcs()` ([xControl](https://github.com/JellyBitz/phBot-xPlugins/blob/master/xControl.py)). Script command `recall` is pick-pet only. No authorized PhMon packet capture in this spike.
 
+**2026-10-04 follow-up:** Local phBot Stable executable is version **20.1.3.0**. The official API still documents no dedicated recall-point primitive. A temporary, read-only manual-capture probe and the precise evidence gap are recorded in [recall-point-investigation.md](reference/recall-point-investigation.md). The plugin advertises the new command as `recall_point_unverified`; it sends no recall packet until that evidence gate is met.
+
 **Operator probe:** Plugin **1.9.2** QtBind **Probe teleporters** calls `probe_teleporter_capabilities()` — symbol name discovery, at most 16 read-only `get_teleport_data` tests, no `inject_joymax` / `start_script`. Full report: [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md).
 
 **Live probe (2026-10-02):** Operator ran **Probe teleporters** on plugin 1.9.2 at the Hotan gate (`GATE_KT`, runtime npc id `4`). Symbol scan found no destination-menu or recall API. Early probe JSON lacked tagged `Hotan`→`Jangan` pairs (added in 1.9.3). See [issue32-teleporter-investigation.md](reference/issue32-teleporter-investigation.md) § Operator live probe.

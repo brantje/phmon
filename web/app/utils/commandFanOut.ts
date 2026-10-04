@@ -14,6 +14,7 @@ export type FanOutCommandName =
   | 'character.walk'
   | 'character.navigate'
   | 'character.teleport'
+  | 'character.recall_point.designate'
   | 'character.return'
   | 'character.reverse_return'
   | 'character.disconnect'
@@ -142,6 +143,8 @@ const capabilityMessages: Record<string, string> = {
     'Waiting for this session to report command capabilities.',
   unsupported_runtime_primitive:
     'This phBot runtime does not expose the required action.',
+  recall_point_unverified:
+    'Recall-point designation is awaiting validation on this phBot runtime.',
   unsupported: 'This session does not report support for the action.',
 }
 
@@ -186,6 +189,7 @@ function needsIntentFlag(name: FanOutCommandName) {
   return [
     'character.return',
     'character.reverse_return',
+    'character.recall_point.designate',
     'character.disconnect',
     'client.clientless',
   ].includes(name)

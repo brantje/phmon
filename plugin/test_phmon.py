@@ -3441,6 +3441,33 @@ class WorkerStopTests(unittest.TestCase):
         set_status.assert_called_once_with('Connected to PhMon backend.')
 
 
+class RecallPointGateTests(unittest.TestCase):
+    def setUp(self):
+        self.args = {
+            'gate_servername': 'GATE_KT', 'region': 25000,
+            'x': 30.0, 'y': 40.0, 'model_id': 2094,
+        }
+        self.npcs = [{
+            'id': '4', 'role': 'teleporter', 'servername': 'GATE_KT',
+            'region': 25000, 'x': 30.0, 'y': 40.0, 'model_id': 2094,
+        }]
+
+    def test_resolves_only_the_current_sessions_unique_gate(self):
+        row, npc_id = plugin._session_recall_point_gate(self.npcs, self.args)
+        self.assertEqual(row['servername'], 'GATE_KT')
+        self.assertEqual(npc_id, 4)
+        self.assertEqual(plugin._session_recall_point_gate(self.npcs, dict(self.args, x=38.01)), None)
+
+    def test_rejects_missing_wrong_or_ambiguous_gate(self):
+        self.assertIsNone(plugin._session_recall_point_gate([], self.args))
+        self.assertIsNone(plugin._session_recall_point_gate(self.npcs, dict(self.args, region=1)))
+        self.assertIsNone(plugin._session_recall_point_gate(self.npcs, dict(self.args, model_id=999)))
+        self.assertIsNone(plugin._session_recall_point_gate(self.npcs * 2, self.args))
+        self.assertIsNone(plugin._session_recall_point_gate(self.npcs, dict(self.args, opcode=28761)))
+        self.assertIsNone(plugin._session_recall_point_gate(self.npcs, dict(self.args, gate_servername='NPC_KT')))
+        self.assertIsNone(plugin._session_recall_point_gate([dict(self.npcs[0], id='bad')], self.args))
+
+
 class TeleporterProbeTests(unittest.TestCase):
     def test_probe_never_injects_and_caps_pair_calls(self):
         calls = []
