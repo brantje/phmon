@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -598,6 +599,22 @@ class ConfigTests(unittest.TestCase):
             'agent_token': 'phm_token',
         })
         self.assertEqual(config['backend_url'], 'ws://127.0.0.1:8081/agent')
+        self.assertTrue(config['ignore_potion_events'])
+        self.assertTrue(config['ignore_pill_events'])
+
+    def test_filter_config_accepts_independent_boolean_values(self):
+        config = plugin.validate_config({
+            'backend_url': 'ws://127.0.0.1:8081/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'phm_token',
+            'ignore_potion_events': False,
+            'ignore_pill_events': 'false',
+        })
+        self.assertFalse(config['ignore_potion_events'])
+        self.assertFalse(config['ignore_pill_events'])
+        config['ignore_pill_events'] = 'maybe'
+        with self.assertRaises(ValueError):
+            plugin.validate_config(config)
 
     def test_invalid_config_rejects_credentials_and_bad_identity(self):
         cases = [
@@ -656,6 +673,8 @@ class ConfigTests(unittest.TestCase):
             'backend_url': 'wss://example.test/agent',
             'agent_id': AGENT_ID,
             'agent_token': 'phm_secret',
+            'ignore_potion_events': False,
+            'ignore_pill_events': True,
         }
         try:
             saved = plugin.save_saved_config(path, config)
@@ -665,6 +684,8 @@ class ConfigTests(unittest.TestCase):
                 content = stream.read()
             self.assertNotIn('{', content)
             self.assertIn('agent_token=phm_secret', content)
+            self.assertIn('ignore_potion_events=false', content)
+            self.assertIn('ignore_pill_events=true', content)
         finally:
             if os.path.exists(path):
                 os.unlink(path)
@@ -672,6 +693,57 @@ class ConfigTests(unittest.TestCase):
             if os.path.isdir(directory):
                 os.rmdir(directory)
                 os.rmdir(root)
+
+    def test_legacy_saved_profile_defaults_item_filters_on(self):
+        root = tempfile.mkdtemp()
+        path = os.path.join(root, 'legacy.cfg')
+        try:
+            with open(path, 'w') as stream:
+                stream.write('backend_url=ws://example.test/agent\n')
+                stream.write('agent_id=' + AGENT_ID + '\n')
+                stream.write('agent_token=phm_secret\n')
+            config = plugin.load_saved_config(path)
+            self.assertTrue(config['ignore_potion_events'])
+            self.assertTrue(config['ignore_pill_events'])
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+            os.rmdir(root)
+
+    def test_item_type_lookup_matches_phbot_type_ids_and_caches_other_types(self):
+        plugin._reset_item_type_cache()
+        definitions = {
+            10: {'tid1': 3, 'tid2': 1, 'tid3': 1},
+            11: {'tid1': 3, 'tid2': 2, 'tid3': 6},
+            12: {'tid1': 3, 'tid2': 5, 'tid3': 0},
+        }
+        getter = Mock(side_effect=lambda model: definitions[model])
+        with patch.object(plugin, '_optional_phbot_api', return_value=getter):
+            self.assertEqual(plugin._item_sort_type('Silkroad', 10), 'Potion')
+            self.assertEqual(plugin._item_sort_type('Silkroad', 11), 'Pill')
+            self.assertIsNone(plugin._item_sort_type('Silkroad', 12))
+            self.assertIsNone(plugin._item_sort_type('Silkroad', 12))
+        self.assertEqual(getter.call_count, 3)
+        plugin._reset_item_type_cache()
+
+    def test_resource_item_type_lookup_covers_inventory_and_pet_slots(self):
+        plugin._reset_item_type_cache()
+        inputs = {
+            'get_inventory': {'available': True, 'value': {'items': [{'model': 10}, {'model': 12}]}},
+            'get_pets': {'available': True, 'value': {'123': {'items': [{'model': 11}]}}},
+        }
+        definitions = {
+            10: {'tid1': 3, 'tid2': 1},
+            11: {'tid1': 3, 'tid2': 2},
+            12: {'tid1': 3, 'tid2': 5},
+        }
+        getter = Mock(side_effect=lambda model: definitions[model])
+        with patch.object(plugin, '_optional_phbot_api', return_value=getter):
+            plugin._cache_resource_item_types(inputs, 'Silkroad')
+        self.assertEqual(plugin._cached_item_sort_type('Silkroad', 10), 'Potion')
+        self.assertEqual(plugin._cached_item_sort_type('Silkroad', 11), 'Pill')
+        self.assertEqual(getter.call_count, 3)
+        plugin._reset_item_type_cache()
 
 
 class ResourceCollectorTests(unittest.TestCase):
@@ -1512,6 +1584,9 @@ class DeathEventTransportTests(unittest.TestCase):
 
 class ResourceEventDerivationTests(unittest.TestCase):
     def setUp(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            self.previous_item_type_cache = plugin.collections.OrderedDict(plugin._ITEM_TYPE_CACHE)
+            plugin._ITEM_TYPE_CACHE.clear()
         self.worker = plugin.AgentWorker({
             'backend_url': 'ws://127.0.0.1:8081/agent',
             'agent_id': AGENT_ID,
@@ -1521,6 +1596,11 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.worker._current_identity = self.identity
         self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
         self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+
+    def tearDown(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            plugin._ITEM_TYPE_CACHE.clear()
+            plugin._ITEM_TYPE_CACHE.update(self.previous_item_type_cache)
 
     def item(self, quantity=1):
         return {'model': 77, 'servername': 'ITEM_ETC_TEST', 'name': 'Test Item', 'quantity': quantity}
@@ -1746,6 +1826,66 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, self.item(20))]))
         self.assertEqual(self.drain(), [])
 
+    def test_ignored_potion_loss_advances_baseline_and_other_items_still_emit(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            plugin._ITEM_TYPE_CACHE[('silkroad', 77)] = 'Potion'
+        other_before = {'model': 88, 'servername': 'ITEM_ETC_OTHER', 'quantity': 2}
+        other_after = dict(other_before, quantity=3)
+        self.observe(self.resources(bag=[(13, self.item(2)), (14, other_before)]))
+        self.observe(self.resources(bag=[(13, self.item(1)), (14, other_after)]))
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['item_model'], 88)
+        self.assertEqual(events[0]['kind'], 'item.quantity_increased')
+        self.observe(self.resources(bag=[(13, self.item(1)), (14, other_after)]))
+        self.assertEqual(self.drain(), [])
+
+    def test_ignored_potion_transfer_does_not_emit_item_event(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            plugin._ITEM_TYPE_CACHE[('silkroad', 77)] = 'Potion'
+        self.observe(self.resources(bag=[(13, self.item(2))], storage=[]))
+        self.observe(self.resources(bag=[(13, self.item(1))], storage=[(0, self.item(1))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_queue_event_filters_all_item_event_kinds_but_keeps_unknown_types(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            plugin._ITEM_TYPE_CACHE[('silkroad', 77)] = 'Potion'
+            plugin._ITEM_TYPE_CACHE[('silkroad', 78)] = 'Pill'
+        for index, kind in enumerate((
+                'drop.item', 'drop.rare', 'item.acquired', 'item.quantity_increased',
+                'item.quantity_decreased', 'item.transferred', 'alchemy.attempt')):
+            with self.subTest(kind=kind):
+                self.assertFalse(self.worker.queue_event(self.identity, {
+                    'event_id': str(uuid.uuid4()), 'schema_version': 1,
+                    'kind': kind, 'category': kind.split('.', 1)[0],
+                    'item_model': 77 if index % 2 == 0 else 78,
+                    'source': 'fixture', 'payload': {},
+                }))
+        unknown = {
+            'event_id': str(uuid.uuid4()), 'schema_version': 1,
+            'kind': 'item.acquired', 'category': 'item', 'item_model': 99,
+            'source': 'fixture', 'payload': {},
+        }
+        self.assertTrue(self.worker.queue_event(self.identity, unknown))
+        self.assertEqual(self.drain()[0]['item_model'], 99)
+
+    def test_filter_options_are_independent_and_unchecked_type_is_recorded(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            plugin._ITEM_TYPE_CACHE[('silkroad', 77)] = 'Potion'
+            plugin._ITEM_TYPE_CACHE[('silkroad', 78)] = 'Pill'
+        self.worker.config['ignore_potion_events'] = False
+        potion_event = {
+            'event_id': str(uuid.uuid4()), 'schema_version': 1,
+            'kind': 'item.acquired', 'category': 'item', 'item_model': 77,
+            'source': 'fixture', 'payload': {},
+        }
+        pill_event = dict(potion_event, event_id=str(uuid.uuid4()), item_model=78)
+        self.assertTrue(self.worker.queue_event(self.identity, potion_event))
+        self.assertFalse(self.worker.queue_event(self.identity, pill_event))
+        queued = self.drain()
+        self.assertEqual(len(queued), 1)
+        self.assertEqual(queued[0]['item_model'], 77)
+
     def test_verified_pet_pickup_receipt_keeps_snapshot_and_delta_separate(self):
         worker = self.worker
         item = self.item(4)
@@ -1840,6 +1980,25 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(rare['item_model'], 77)
         self.assertNotIn('item', rare['payload'])
         self.assertEqual(normal['payload'], {'model': 78})
+
+    def test_ignored_potion_drop_never_starts_inventory_enrichment(self):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            previous_cache = plugin.collections.OrderedDict(plugin._ITEM_TYPE_CACHE)
+            plugin._ITEM_TYPE_CACHE.clear()
+            plugin._ITEM_TYPE_CACHE[('silkroad', 77)] = 'Potion'
+        previous_config = plugin._profile_config
+        try:
+            plugin._profile_config = None
+            with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                    patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+                plugin.handle_event(plugin.EVENT_ITEM_DROP, '77')
+            self.assertTrue(self.worker._event_samples.empty())
+            self.assertEqual(self.worker._pending_drop_events, [])
+        finally:
+            plugin._profile_config = previous_config
+            with plugin._ITEM_TYPE_CACHE_LOCK:
+                plugin._ITEM_TYPE_CACHE.clear()
+                plugin._ITEM_TYPE_CACHE.update(previous_cache)
 
     def test_verified_pet_pickup_receipt_replays_exactly_from_durable_spool(self):
         evidence = {

@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.17'
+pVersion = '1.9.18'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -98,6 +98,7 @@ DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
 MAX_RESOURCE_SLOTS = 2048
+MAX_ITEM_TYPE_CACHE_ENTRIES = 4096
 RESOURCE_SAMPLE_INTERVAL_SECONDS = 2.0
 DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
 DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
@@ -127,6 +128,14 @@ ITEM_API_EVIDENCE_FIELDS = (
     'phys_absorb_min', 'phys_absorb_max', 'mag_absorb_min', 'mag_absorb_max',
 )
 _WEBSOCKET_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+_ITEM_TYPE_CACHE = collections.OrderedDict()
+_ITEM_TYPE_CACHE_LOCK = threading.Lock()
+_ITEM_TYPE_OTHER = object()
+_ITEM_TYPE_CACHE_MISS = object()
+_ITEM_TYPE_FILTERS = {
+    'Potion': 'ignore_potion_events',
+    'Pill': 'ignore_pill_events',
+}
 MAX_WALK_WAYPOINTS = 256
 WALK_ARRIVAL_TOLERANCE = 12.0
 WALK_TIMEOUT_SECONDS = 300.0
@@ -1162,6 +1171,110 @@ def collect_resource_inputs(api=None):
     return inputs
 
 
+def _reset_item_type_cache():
+    with _ITEM_TYPE_CACHE_LOCK:
+        _ITEM_TYPE_CACHE.clear()
+
+
+def _cached_item_sort_type(server, model):
+    if (not isinstance(server, str) or not server.strip() or
+            not isinstance(model, int) or isinstance(model, bool) or model <= 0):
+        return None
+    key = (server.strip().lower(), model)
+    with _ITEM_TYPE_CACHE_LOCK:
+        if key not in _ITEM_TYPE_CACHE:
+            return _ITEM_TYPE_CACHE_MISS
+        value = _ITEM_TYPE_CACHE[key]
+        _ITEM_TYPE_CACHE.move_to_end(key)
+        return value
+
+
+def _item_sort_type(server, model):
+    """Resolve the two filtered item families using phBot's documented game data."""
+    cached = _cached_item_sort_type(server, model)
+    valid_identity = (
+        isinstance(server, str) and bool(server.strip()) and
+        isinstance(model, int) and not isinstance(model, bool)
+    )
+    key = (server.strip().lower(), model) if valid_identity else None
+    if cached is not _ITEM_TYPE_CACHE_MISS:
+        return cached if isinstance(cached, str) else None
+    if key is None or model <= 0:
+        return None
+    getter = _optional_phbot_api('get_item')
+    if not callable(getter):
+        return None
+    try:
+        definition = getter(model)
+    except Exception:
+        return None
+    if not isinstance(definition, dict):
+        return None
+    tid1 = definition.get('tid1')
+    tid2 = definition.get('tid2')
+    if (not isinstance(tid1, int) or isinstance(tid1, bool) or
+            not isinstance(tid2, int) or isinstance(tid2, bool)):
+        return None
+    sort_type = None
+    if tid1 == 3 and tid2 == 1:
+        sort_type = 'Potion'
+    elif tid1 == 3 and tid2 == 2:
+        sort_type = 'Pill'
+    with _ITEM_TYPE_CACHE_LOCK:
+        _ITEM_TYPE_CACHE[key] = sort_type if sort_type is not None else _ITEM_TYPE_OTHER
+        _ITEM_TYPE_CACHE.move_to_end(key)
+        while len(_ITEM_TYPE_CACHE) > MAX_ITEM_TYPE_CACHE_ENTRIES:
+            _ITEM_TYPE_CACHE.popitem(last=False)
+    return sort_type
+
+
+def _cache_resource_item_types(inputs, server):
+    """Resolve item families on phBot's callback thread; never send this map."""
+    if not _item_filters_enabled(_profile_config or {}):
+        return
+    models = set()
+
+    def add_items(value):
+        if not isinstance(value, dict) or len(models) >= MAX_RESOURCE_SLOTS:
+            return
+        items = value.get('items')
+        if not isinstance(items, (list, tuple)):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            model = item.get('model')
+            if isinstance(model, int) and not isinstance(model, bool) and model > 0:
+                models.add(model)
+                if len(models) >= MAX_RESOURCE_SLOTS:
+                    return
+
+    for api_name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch'):
+        result = inputs.get(api_name) if isinstance(inputs, dict) else None
+        if isinstance(result, dict) and result.get('available') is True:
+            add_items(result.get('value'))
+    pets_result = inputs.get('get_pets') if isinstance(inputs, dict) else None
+    pets = pets_result.get('value') if isinstance(pets_result, dict) and pets_result.get('available') is True else None
+    if isinstance(pets, dict):
+        for pet in pets.values():
+            add_items(pet)
+            if len(models) >= MAX_RESOURCE_SLOTS:
+                break
+    for model in models:
+        _item_sort_type(server, model)
+
+
+def _ignore_item_event(config, sort_type):
+    setting = _ITEM_TYPE_FILTERS.get(sort_type)
+    if setting is None:
+        return False
+    return config.get(setting, True) is True
+
+
+def _item_filters_enabled(config):
+    return any(config.get(setting, True) is True for setting in _ITEM_TYPE_FILTERS.values())
+
+
 def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None):
     """Normalize bounded API data off the callback thread; never mutate game state."""
     def call(name):
@@ -2050,10 +2163,19 @@ def validate_config(config):
     normalized = dict(config)
     if parsed.path in ('', '/'):
         normalized['backend_url'] = backend_url.rstrip('/') + '/agent'
+    for key in _CONFIG_OPTIONAL_BOOLEAN_KEYS:
+        value = config.get(key, True)
+        if isinstance(value, str) and value.lower() in ('true', 'false'):
+            value = value.lower() == 'true'
+        if not isinstance(value, bool):
+            raise ValueError(key + ' must be true or false')
+        normalized[key] = value
     return normalized
 
 
 _CONFIG_KEYS = ('backend_url', 'agent_id', 'agent_token')
+_CONFIG_OPTIONAL_BOOLEAN_KEYS = ('ignore_potion_events', 'ignore_pill_events')
+_CONFIG_ALLOWED_KEYS = frozenset(_CONFIG_KEYS + _CONFIG_OPTIONAL_BOOLEAN_KEYS)
 
 
 def _profile_settings_path(config_dir, bot_config_path, bot_profile):
@@ -2114,10 +2236,10 @@ def load_saved_config(path):
             if '=' not in line:
                 raise ValueError('invalid saved configuration')
             key, value = line.split('=', 1)
-            if key not in _CONFIG_KEYS or key in values:
+            if key not in _CONFIG_ALLOWED_KEYS or key in values:
                 raise ValueError('invalid saved configuration')
             values[key] = value
-    if set(values) != set(_CONFIG_KEYS):
+    if not set(_CONFIG_KEYS).issubset(values):
         raise ValueError('saved configuration is incomplete')
     return validate_config(values)
 
@@ -2133,13 +2255,15 @@ def save_saved_config(path, config):
                 raise
     temporary = path + '.tmp'
     with open(temporary, 'w') as handle:
-        for key in _CONFIG_KEYS:
-            handle.write(key + '=' + normalized[key] + '\n')
+        for key in _CONFIG_KEYS + _CONFIG_OPTIONAL_BOOLEAN_KEYS:
+            value = normalized[key]
+            handle.write(key + '=' + (str(value).lower() if isinstance(value, bool) else value) + '\n')
     os.replace(temporary, path)
     return normalized
 
 
-def config_from_gui_values(backend_url, agent_id, agent_token, saved_config=None):
+def config_from_gui_values(backend_url, agent_id, agent_token, saved_config=None,
+                           ignore_potion_events=True, ignore_pill_events=True):
     backend_url = str(backend_url).strip()
     agent_id = str(agent_id).strip()
     agent_token = str(agent_token).strip()
@@ -2158,6 +2282,8 @@ def config_from_gui_values(backend_url, agent_id, agent_token, saved_config=None
         'backend_url': backend_url,
         'agent_id': agent_id,
         'agent_token': agent_token,
+        'ignore_potion_events': ignore_potion_events,
+        'ignore_pill_events': ignore_pill_events,
     })
 
 
@@ -3355,7 +3481,14 @@ class AgentWorker(object):
                 self._identity_key(identity) != self._identity_key(self._current_identity)):
             _log('activity event was rejected because its character identity is no longer active')
             return False
+        if _item_filters_enabled(self.config):
+            sort_type = event.get('_phmon_item_sort_type')
+            if not isinstance(sort_type, str) and isinstance(identity, dict):
+                sort_type = _cached_item_sort_type(identity.get('server'), event.get('item_model'))
+            if _ignore_item_event(self.config, sort_type):
+                return False
         record = dict(event)
+        record.pop('_phmon_item_sort_type', None)
         if isinstance(identity, dict):
             server = identity.get('server')
             character_name = identity.get('name')
@@ -4636,6 +4769,8 @@ _gui = None
 _gui_backend_url = None
 _gui_agent_id = None
 _gui_agent_token = None
+_gui_ignore_potions = None
+_gui_ignore_pills = None
 _gui_status = None
 _last_character_signature = None
 _last_character_sample_at = 0.0
@@ -4695,6 +4830,14 @@ def _set_gui_config(config=None):
     _QtBind.setText(_gui, _gui_agent_id, config.get('agent_id', ''))
     # QtBind has no documented password field. Never keep the persisted token visible.
     _QtBind.setText(_gui, _gui_agent_token, '')
+    if _gui_ignore_potions is not None:
+        _QtBind.setChecked(_gui, _gui_ignore_potions, config.get('ignore_potion_events', True))
+    if _gui_ignore_pills is not None:
+        _QtBind.setChecked(_gui, _gui_ignore_pills, config.get('ignore_pill_events', True))
+
+
+def item_filter_changed(state):
+    _set_gui_status('Click Save & Connect to apply item filters.')
 
 
 def _stop_worker():
@@ -4760,6 +4903,7 @@ def _load_active_profile(force=False):
     _active_settings_path = path
     _profile_config = None
     _stop_worker()
+    _reset_item_type_cache()
 
     try:
         config = load_saved_config(path)
@@ -4795,6 +4939,8 @@ def save_config():
             _QtBind.text(_gui, _gui_agent_id),
             _QtBind.text(_gui, _gui_agent_token),
             saved,
+            _QtBind.isChecked(_gui, _gui_ignore_potions),
+            _QtBind.isChecked(_gui, _gui_ignore_pills),
         )
         save_saved_config(path, config)
     except Exception as error:
@@ -5039,6 +5185,11 @@ def _queue_canonical_event(kind, category, source, source_ref, payload, identity
     }
     if item_model is not None:
         event['item_model'] = item_model
+        if isinstance(identity, dict) and _item_filters_enabled(_profile_config or {}):
+            sort_type = _item_sort_type(identity.get('server'), item_model)
+            event['_phmon_item_sort_type'] = sort_type
+            if _ignore_item_event(_profile_config or {}, sort_type):
+                return False
     if item_code:
         event['item_code'] = str(item_code)[:128]
     if dedupe_key:
@@ -5269,6 +5420,7 @@ def _sample_character(timing=None):
             locale = None
         try:
             inputs = timing.run('resource_collect', collect_resource_inputs)
+            timing.run('item_type_lookup', _cache_resource_item_types, inputs, identity['server'])
             timing.run('resource_publish', _worker.update_resource_inputs, identity, inputs, config_dir, locale, position)
             _last_resources_sample_at = now
         except Exception as error:
@@ -5445,6 +5597,12 @@ def finished():
 if _PHBOT_AVAILABLE and _QtBind is not None:
     _gui = _QtBind.init(__name__, pName)
     _QtBind.createLabel(_gui, 'Loaded: ' + pName + ' v' + pVersion + ' (pet packet probe r1)', 390, 10)
+    _QtBind.createLabel(_gui, 'Ignore item events', 390, 42)
+    _gui_ignore_potions = _QtBind.createCheckBox(_gui, 'item_filter_changed', 'Potions', 390, 66)
+    _gui_ignore_pills = _QtBind.createCheckBox(_gui, 'item_filter_changed', 'Pills', 390, 91)
+    _QtBind.setChecked(_gui, _gui_ignore_potions, True)
+    _QtBind.setChecked(_gui, _gui_ignore_pills, True)
+    _QtBind.createLabel(_gui, 'Apply changes with Save & Connect.', 390, 118)
     _QtBind.createLabel(_gui, 'Backend WebSocket URL', 10, 10)
     _gui_backend_url = _QtBind.createLineEdit(_gui, '', 10, 30, 360, 20)
     _QtBind.createLabel(_gui, 'Agent ID', 10, 60)

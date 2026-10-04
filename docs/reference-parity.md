@@ -2214,3 +2214,15 @@ Collection and event completion limits are recorded in
 passive count/size probe in the Pet tab while the production pet packet decoder
 remains disabled and no real pet-pickup receipt has yet been emitted. This is an
 open acceptance gate, not parity evidence.
+
+## Plugin item-type event filters — 2026-10-04
+
+The phBot plugin now has right-side **Potions** and **Pills** checkboxes, both
+enabled by default and saved per bot profile. Checked types are suppressed from
+new item events before spooling across callback drops, inventory/pet gains and
+losses, transfers, and item-bearing alchemy attempts. Resource snapshots and
+their diff baselines continue updating, so turning a filter off resumes future
+events without fabricating a gain. `get_item(model)` resolves the documented
+type IDs on phBot's callback thread; the event worker uses a bounded local cache.
+The public event protocol remains unchanged. The plugin regression suite passes;
+Windows/phBot widget placement and live API behavior remain unverified here.
