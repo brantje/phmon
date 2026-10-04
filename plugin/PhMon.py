@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.18'
+pVersion = '1.9.19'
 pUrl = ''
 
 PROTOCOL_VERSION = 14
@@ -38,6 +38,7 @@ EVENT_HUNTER_SPAWN = 1
 EVENT_THIEF_SPAWN = 2
 EVENT_TRANSPORT_DIED = 3
 EVENT_PLAYER_ATTACKING = 4
+RECENT_PLAYER_ATTACK_SECONDS = 10.0
 EVENT_RARE_DROP = 5
 EVENT_ITEM_DROP = 6
 EVENT_ALCHEMY_FINISHED = 8
@@ -4809,6 +4810,7 @@ def _reset_player_sample_state():
     _last_player_publish_at = 0.0
     _player_sample_forced = False
 _death_callback_active = False
+_recent_player_attack = None
 _phbot_connected_state = None
 _pending_callback_events = _queue.Queue(maxsize=64)
 _pending_callback_overflow = False
@@ -4966,12 +4968,13 @@ def connected():
 
 
 def disconnected():
-    global _last_character_signature, _character_joined, _death_callback_active, _phbot_connected_state
+    global _last_character_signature, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state
     already_disconnected = _phbot_connected_state is False
     _phbot_connected_state = False
     _last_character_signature = None
     _character_joined = False
     _death_callback_active = False
+    _recent_player_attack = None
     if not already_disconnected:
         _lifecycle_event('session.disconnected', 'disconnected', include_identity=_worker is not None)
     if _worker is not None:
@@ -4983,11 +4986,12 @@ def disconnected():
 
 def joined_game():
     # This callback runs after the player selects a character.
-    global _last_character_signature, _character_joined, _death_callback_active
+    global _last_character_signature, _character_joined, _death_callback_active, _recent_player_attack
     already_joined = _character_joined is True
     _last_character_signature = None
     _character_joined = True
     _death_callback_active = False
+    _recent_player_attack = None
     # joined_game runs before phBot has loaded character data; keep this agent-scoped.
     _reset_npc_sample_state()
     _reset_player_sample_state()
@@ -5087,7 +5091,7 @@ def _observe_unique_notice(opcode, data):
 
 def handle_event(event_type, data):
     """Normalize documented event callbacks and enqueue without disk/network work."""
-    global _death_callback_active
+    global _death_callback_active, _recent_player_attack
     try:
         event_type = int(event_type)
     except Exception:
@@ -5122,6 +5126,16 @@ def handle_event(event_type, data):
     if identity is None:
         _log('phBot event callback had no character identity')
         return
+    if event_type == EVENT_PLAYER_ATTACKING:
+        attacker = (_bounded_text(data, 128) or '').strip()
+        if attacker:
+            _recent_player_attack = {
+                'identity': (server.casefold(), name.casefold()),
+                'name': attacker,
+                'at': _monotonic(),
+            }
+        else:
+            _recent_player_attack = None
     payload = {}
     item_model = None
     if event_type in (EVENT_ITEM_DROP, EVENT_RARE_DROP):
@@ -5143,7 +5157,20 @@ def handle_event(event_type, data):
             return
         payload = {'level': level}
     elif event_type == EVENT_DIED:
-        payload = {'cause': 'unknown'}
+        payload = {
+            'cause': 'monster_environment',
+            'reason_type': 'monster_or_environment',
+            'reason_value': 'Monster / environment',
+        }
+        attack = _recent_player_attack
+        if attack and attack['identity'] == (server.casefold(), name.casefold()):
+            age = _monotonic() - attack['at']
+            if 0 <= age <= RECENT_PLAYER_ATTACK_SECONDS:
+                payload = {
+                    'cause': attack['name'],
+                    'reason_type': 'attacker',
+                    'reason_value': attack['name'],
+                }
     elif event_type == EVENT_ALCHEMY_FINISHED:
         payload = {}
     else:
@@ -5153,6 +5180,7 @@ def handle_event(event_type, data):
                               item_model=item_model, event_id=drop_event_id):
         if event_type == EVENT_DIED:
             _death_callback_active = True
+            _recent_player_attack = None
         if drop_event_id and _worker is not None:
             inventory_quantity = _inventory_model_quantity(item_model)
             if inventory_quantity is not None:
@@ -5338,7 +5366,7 @@ def _drain_pending_callback_events():
 
 
 def _sample_character(timing=None):
-    global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined, _death_callback_active
+    global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined, _death_callback_active, _recent_player_attack
     if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False:
         return
     timing = timing or _CallbackTiming()
@@ -5366,6 +5394,8 @@ def _sample_character(timing=None):
     if isinstance(data.get('dead'), bool):
         state['dead'] = data['dead']
         if data['dead'] is False:
+            if _death_callback_active:
+                _recent_player_attack = None
             _death_callback_active = False
     try:
         position = timing.run('position', _get_position)

@@ -3,6 +3,7 @@ import type { ActivityEvent } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
+import { deathCauseLabel } from '~/utils/deathCause'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
@@ -352,11 +353,7 @@ function eventRowSubtitle(item: ActivityEvent) {
     .join(' | ')
 }
 function eventDeathCause(item: ActivityEvent) {
-  const value = record(item.payload).cause
-  if (typeof value !== 'string' || !value.trim() || value === 'unknown')
-    return 'Unknown cause'
-  if (value === 'monster_environment') return 'Monster / environment'
-  return value.replaceAll('_', ' ')
+  return deathCauseLabel(item.payload)
 }
 function eventRowDetail(item: ActivityEvent) {
   if (item.kind === 'character.died') return eventDeathCause(item)

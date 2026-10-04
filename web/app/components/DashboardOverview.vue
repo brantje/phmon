@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ActivityEvent } from '~~/shared/types/live'
 import { groupRecentEvents } from '~/utils/groupRecentEvents'
+import { deathCauseLabel } from '~/utils/deathCause'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import {
   dashboardNoisyEvent,
@@ -228,7 +229,9 @@ onBeforeUnmount(() => {
             />
             <span class="dashboard-event-identity">
               <strong>{{ item.character }}</strong>
-              <span>Cause unknown · {{ item.server }}</span>
+              <span
+                >{{ deathCauseLabel(item.payload) }} · {{ item.server }}</span
+              >
             </span>
           </NuxtLink>
           <time :datetime="item.occurred_at">{{

@@ -1555,6 +1555,7 @@ class DeathEventTransportTests(unittest.TestCase):
     def test_death_callback_is_deduplicated_until_alive_or_character_switch(self):
         previous_worker = plugin._worker
         previous_active = plugin._death_callback_active
+        previous_attack = plugin._recent_player_attack
         received = []
         fake_worker = type('Worker', (), {
             'session_id': None,
@@ -1563,6 +1564,7 @@ class DeathEventTransportTests(unittest.TestCase):
         try:
             plugin._worker = fake_worker
             plugin._death_callback_active = False
+            plugin._recent_player_attack = None
             with patch.object(plugin, '_get_character_data', return_value={'server': 'Silkroad', 'name': 'Alpha'}), \
                     patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 1, 'y': 2, 'z': 3}), \
                     patch.object(plugin, '_load_active_profile'):
@@ -1571,7 +1573,8 @@ class DeathEventTransportTests(unittest.TestCase):
                 deaths = [entry for entry in received if entry[1]['kind'] == 'character.died']
                 self.assertEqual(len(deaths), 1)
                 self.assertEqual(deaths[0][1]['source_ref'], 'EVENT_DIED')
-                self.assertEqual(deaths[0][1]['payload']['cause'], 'unknown')
+                self.assertEqual(deaths[0][1]['payload']['cause'], 'monster_environment')
+                self.assertEqual(deaths[0][1]['payload']['reason_type'], 'monster_or_environment')
                 plugin.joined_game()
                 plugin.handle_event(plugin.EVENT_DIED, '')
                 deaths = [entry for entry in received if entry[1]['kind'] == 'character.died']
@@ -1580,6 +1583,63 @@ class DeathEventTransportTests(unittest.TestCase):
         finally:
             plugin._worker = previous_worker
             plugin._death_callback_active = previous_active
+            plugin._recent_player_attack = previous_attack
+
+    def test_death_records_recent_player_attacker_and_consumes_the_observation(self):
+        received = []
+        fake_worker = type('Worker', (), {
+            'session_id': None,
+            'queue_event': lambda _, identity, event: received.append(event) or True,
+        })()
+        with patch.object(plugin, '_worker', fake_worker), \
+                patch.object(plugin, '_death_callback_active', False), \
+                patch.object(plugin, '_recent_player_attack', None), \
+                patch.object(plugin, '_get_character_data', return_value={'server': 'Silkroad', 'name': 'Alpha'}), \
+                patch.object(plugin, '_get_position', return_value=None):
+            with patch.object(plugin, '_monotonic', return_value=100.0):
+                plugin.handle_event(plugin.EVENT_PLAYER_ATTACKING, '  Rival  ')
+            with patch.object(plugin, '_monotonic', return_value=109.9):
+                plugin.handle_event(plugin.EVENT_DIED, '')
+            deaths = [event for event in received if event['kind'] == 'character.died']
+            self.assertEqual(len(deaths), 1)
+            self.assertEqual(deaths[0]['payload'], {
+                'cause': 'Rival', 'reason_type': 'attacker', 'reason_value': 'Rival',
+            })
+            self.assertIsNone(plugin._recent_player_attack)
+
+    def test_death_does_not_attribute_expired_or_other_character_attack(self):
+        received = []
+        fake_worker = type('Worker', (), {
+            'session_id': None,
+            'queue_event': lambda _, identity, event: received.append(event) or True,
+        })()
+        current = {'server': 'Silkroad', 'name': 'Alpha'}
+        with patch.object(plugin, '_worker', fake_worker), \
+                patch.object(plugin, '_death_callback_active', False), \
+                patch.object(plugin, '_recent_player_attack', None), \
+                patch.object(plugin, '_get_character_data', side_effect=lambda: current), \
+                patch.object(plugin, '_get_position', return_value=None):
+            with patch.object(plugin, '_monotonic', return_value=100.0):
+                plugin.handle_event(plugin.EVENT_PLAYER_ATTACKING, 'Rival')
+            with patch.object(plugin, '_monotonic', return_value=110.1):
+                plugin.handle_event(plugin.EVENT_DIED, '')
+            self.assertEqual(received[-1]['payload']['reason_type'], 'monster_or_environment')
+
+            plugin._death_callback_active = False
+            with patch.object(plugin, '_monotonic', return_value=200.0):
+                plugin.handle_event(plugin.EVENT_PLAYER_ATTACKING, 'Rival')
+            current = {'server': 'Silkroad', 'name': 'Beta'}
+            with patch.object(plugin, '_monotonic', return_value=201.0):
+                plugin.handle_event(plugin.EVENT_DIED, '')
+            self.assertEqual(received[-1]['payload']['reason_type'], 'monster_or_environment')
+
+            plugin._death_callback_active = False
+            current = {'server': 'Silkroad', 'name': 'Alpha'}
+            with patch.object(plugin, '_monotonic', return_value=300.0):
+                plugin.handle_event(plugin.EVENT_PLAYER_ATTACKING, 'Rival')
+                plugin.handle_event(plugin.EVENT_PLAYER_ATTACKING, '')
+                plugin.handle_event(plugin.EVENT_DIED, '')
+            self.assertEqual(received[-1]['payload']['reason_type'], 'monster_or_environment')
 
 
 class ResourceEventDerivationTests(unittest.TestCase):

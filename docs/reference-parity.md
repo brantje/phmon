@@ -277,7 +277,9 @@ future-slice state. The supplied `phmonitor_screenshots/05-deaths.png` shows com
 event-type tabs, character/date filters, count badge, timestamp/character/reason/
 location/map columns and pagination. Events → Deaths follows that hierarchy and
 supports server scope, character search, inclusive date range and cursor pagination.
-The source only supplies `EVENT_DIED` with empty callback data, so cause is unknown.
+At the initial Slice 4 increment, `EVENT_DIED` supplied no cause and rows showed
+unknown. Plugin 1.9.19 now correlates a same-character type-4 player attack from
+the previous ten seconds or shows `Monster / environment`; both are inferred labels.
 Coordinates are recorded when observed, but the map action remains unavailable
 until a region transform is validated in Slice 7.
 
@@ -377,12 +379,26 @@ remain available. Feature rows reflow on narrow screens and detail rows scroll
 inside the event list.
 
 The death example displays a specific cause, but the documented `EVENT_DIED`
-callback supplies no cause and PhMon currently records `unknown`. The row therefore
-shows “Unknown cause” until a source provides an observed value. Local browser
+callback supplies no cause. Plugin 1.9.19 follows the inspected phMonitor adapter's
+ten-second recent-player-attack correlation. Events and Dashboard show “Recent
+attacker: <name>” when type 4 supplies a player name in that window, or “Monster /
+environment” otherwise. Historical unknown events still show “Unknown cause.”
+The label is an inference, not a verified killing blow. Local browser
 screenshots at the required desktop and mobile viewports have not been captured for
 this presentation correction.
 
-Verification passed: `go test ./...`, `go vet ./...`, `go build ./...`,
+Death-reason parity evidence (2026-10-04): the operator-authorized local
+`phMonitor-v0.5.0.exe` contains the installed adapter's type-4 player-name cache,
+ten-second expiry and type-7 fallback. PhMon plugin 1.9.19 records those observations
+as `cause`, `reason_type` and `reason_value` in the existing canonical event payload;
+the Go event validator accepts both inferred variants, and the Events and Dashboard
+views share one formatter. Deterministic plugin tests cover recent, expired, empty
+and cross-character attack observations; frontend tests cover current and historical
+payloads. Actual Windows/phBot callback timing, PostgreSQL persistence with a real
+death, deployed UI display and matched reference screenshots remain unverified. Do
+not operate a character just to force a death.
+
+Initial Slice 5 verification (2026-09-28) passed: `go test ./...`, `go vet ./...`, `go build ./...`,
 `python -m py_compile plugin/PhMon.py`, `python -m unittest plugin.test_phmon`
 (71 tests, including spool capacity and disk failure), `npm run test:unit` (8 tests,
 including cross-character chat grouping),

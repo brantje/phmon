@@ -436,8 +436,18 @@ do not infer them from desktop CPython or the simulator.
   stays unknown; HP values do not imply alive/dead status.
 - [Events API — `handle_event(t, data)`](https://plugins.phbot.org/phbot-api/events)
   documents `EVENT_DIED = 7` and specifies that its data is an empty string. The
-  callback records the occurrence; it supplies no cause, so PhMon stores and shows
-  `cause: unknown`. A dead-state snapshot alone never creates an event.
+  callback records the occurrence; it supplies no cause. A dead-state snapshot alone
+  never creates an event. Plugin 1.9.19 also uses documented
+  `EVENT_PLAYER_ATTACKING = 4`, whose data is a player name. It remembers the most
+  recent player attack for the same server/character for up to ten seconds. On a
+  death callback in that window it records the player as a **recent attacker**;
+  otherwise it records `Monster / environment`. Neither label proves the killing
+  blow or distinguishes a monster from environmental damage. The cache is cleared
+  after an accepted death, on character join/disconnect, and on observed revival.
+  The source mechanism was also found in the operator-authorized local
+  `phMonitor-v0.5.0.exe` and installed `phMonitorAdapter.py` v1.7.0; that adapter
+  uses the same ten-second window but does not provide confirmed killer evidence.
+  Older PhMon events with `cause: unknown` remain unchanged.
 - [Character API — `get_position()`](https://plugins.phbot.org/phbot-api/character)
   documents optional region and x/y/z position. The event stores only numeric values
   observed at callback time. This does not validate an outdoor-to-map transform;
@@ -815,7 +825,7 @@ are ordinary notices, not unique spawn lines.
 | 4 `EVENT_PLAYER_ATTACKING` | Player name | `character.attacked` | Bounded `value` string |
 | 5 `EVENT_RARE_DROP` | Equippable item model ID | `drop.rare` | Numeric model ID only |
 | 6 `EVENT_ITEM_DROP` | Equippable item model ID | `drop.item` | Numeric model ID only |
-| 7 `EVENT_DIED` | Empty string | `character.died` | Cause remains `unknown` |
+| 7 `EVENT_DIED` | Empty string | `character.died` | Plugin 1.9.19 combines a same-character type-4 observation within ten seconds; otherwise `Monster / environment` (both inferred) |
 | 8 `EVENT_ALCHEMY_FINISHED` | Empty string | `alchemy.finished` | Empty payload; no attempt is inferred |
 | 9 `EVENT_GM_SPAWNED` | Player name | `world.gm_spawned` | Bounded `value` string |
 | 10 `EVENT_LEVEL_UP` | New level | `character.level_up` | Validated integer, 1–255 |

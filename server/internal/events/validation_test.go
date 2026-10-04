@@ -65,6 +65,18 @@ func TestValidateAgentEventBoundsAndTrimsZoneName(t *testing.T) {
 	}
 }
 
+func TestValidateAgentEventAcceptsInferredDeathReason(t *testing.T) {
+	for _, payload := range []string{
+		`{"cause":"Rival","reason_type":"attacker","reason_value":"Rival"}`,
+		`{"cause":"monster_environment","reason_type":"monster_or_environment","reason_value":"Monster / environment"}`,
+	} {
+		event := validTestEvent("character.died", "character", "phbot.callback", "EVENT_DIED", payload)
+		if err := validateAgentEvent(event); err != nil {
+			t.Fatalf("inferred death reason %s rejected: %v", payload, err)
+		}
+	}
+}
+
 func TestNormalizeLevelUpEventPreservesRawCallbackAndIsIdempotent(t *testing.T) {
 	event := validTestEvent("character.level_up", "character", "phbot.callback", "EVENT_LEVEL_UP", `{"level":71}`)
 	if err := normalizeLevelUpEvent(&event, "20.1.2"); err != nil {
