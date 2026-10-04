@@ -325,12 +325,13 @@ Reference captures supplied with the repository remain the visual baseline:
 “History”; the independent PhMon implementation uses Events navigation and History
 headings inside its own shell.
 
-Unique cards follow `phmonitor_screenshots/05-uniques.png`: monster portrait,
-name, level, location, observer and time. Portraits come from
-`/game-assets/monsters/`. The reference HP figure is catalog maximum HP, which
-the current monster reference does not include, so PhMon leaves HP off the card.
-Dashboard recent activity uses the same portrait and skips inventory-quantity,
-chat and session rows that were hiding unique notices.
+The original unique cards followed `phmonitor_screenshots/05-uniques.png` with a
+monster portrait, name, level, location, observer and time. The operator-supplied
+2026-10-04 row reference now sets the Events page layout: monster portrait, name,
+server and time. Portraits come from `/game-assets/monsters/`. The reference HP
+figure is catalog maximum HP, which the current monster reference does not include,
+so PhMon leaves HP off the row. Dashboard recent activity uses the same portrait
+and skips inventory-quantity, chat and session rows that were hiding unique notices.
 
 ### Implemented behavior and evidence
 
@@ -363,6 +364,23 @@ chat and session rows that were hiding unique notices.
 - Dashboard Recent Events groups identical chat messages from the same sender, raw
   type and server when distinct characters observe them within two seconds. One row
   lists all observers; the canonical event history retains each observation.
+
+### Event row presentation correction — 2026-10-04
+
+The operator supplied five event-row examples for unique spawns, level-ups,
+character deaths, rare drops and normal drops. The Events page now uses compact
+icon/portrait, title, secondary detail and right-aligned time rows for unique
+spawns and level-ups, plus aligned detail rows for deaths and drops. These layouts
+also apply when the events appear together in All; other event kinds use the same
+detail-row treatment. Item popups, character links, location links and pagination
+remain available. Feature rows reflow on narrow screens and detail rows scroll
+inside the event list.
+
+The death example displays a specific cause, but the documented `EVENT_DIED`
+callback supplies no cause and PhMon currently records `unknown`. The row therefore
+shows “Unknown cause” until a source provides an observed value. Local browser
+screenshots at the required desktop and mobile viewports have not been captured for
+this presentation correction.
 
 Verification passed: `go test ./...`, `go vet ./...`, `go build ./...`,
 `python -m py_compile plugin/PhMon.py`, `python -m unittest plugin.test_phmon`
