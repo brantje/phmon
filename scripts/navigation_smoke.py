@@ -278,6 +278,10 @@ def main():
             if (len(blocks) != 1 or [point["x"] for point in blocks[0]["points"]] != [6580, 6650]
                     or remaining.get("current_anchor", {}).get("region") != 25001):
                 raise RuntimeError("outdoor seam progress or remaining connector is incorrect")
+            # Plugin observation timestamps have second precision and the
+            # route store ignores duplicate/out-of-order samples. Ensure the
+            # controlled arrival is a distinct fresh observation after progress.
+            time.sleep(1.1)
         if os.environ.get("PHMON_NAVIGATION_SMOKE_HOLD_FOR_ARRIVAL") == "1":
             wait_for_fixture_arrival(live)
         simulator.stdin.write("arrive\n")
