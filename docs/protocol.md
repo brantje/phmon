@@ -783,6 +783,16 @@ callback thread and writes it to an atomic JSON spool before transmission. The s
 is capped at 512 occurrences / 2 MiB; queue overflow or disk failure is surfaced in
 plugin status and logs.
 
+Current plugin 1.9.19 (protocol 14) keeps the same durable `character.died` kind and
+adds inferred reason fields to its canonical event payload. A documented
+`EVENT_PLAYER_ATTACKING` player name observed for the same character in the ten
+seconds before `EVENT_DIED` yields
+`{"cause":"<player>","reason_type":"attacker","reason_value":"<player>"}`.
+Otherwise it yields
+`{"cause":"monster_environment","reason_type":"monster_or_environment","reason_value":"Monster / environment"}`.
+The type-7 callback itself still contains no killer data. Older `cause: unknown`
+events and protocol-v5 payloads remain valid and are not rewritten.
+
 Each profile's spool filename is derived from the agent ID and normalized profile
 settings path, so two phBot profiles using the same agent credential cannot overwrite
 each other's pending occurrences. If the callback arrives after a backend socket

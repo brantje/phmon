@@ -1,10 +1,13 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.18**, using agent protocol **14**. Its
-profile-scoped **Potions** and **Pills** options default on and suppress new item
-events of the selected types before they enter the event spool. Item types resolve
-through phBot's `get_item(model)` data on the callback thread; inventory snapshots
-continue updating normally. These classifications add no fields to the wire
+The current local plugin release is **1.9.19**, using agent protocol **14**. It
+correlates a documented player-attack callback with a death callback from the same
+character within ten seconds. The death event records the recent player's name or
+`Monster / environment` as an inferred reason. This does not identify the actual
+killing blow. The profile-scoped **Potions** and **Pills** options default on and
+suppress new item events of the selected types before they enter the event spool.
+Item types resolve through phBot's `get_item(model)` data on the callback thread;
+inventory snapshots continue updating normally. These classifications add no fields to the wire
 protocol. The historical capability summary below starts at plugin 1.9.12 and
 protocol 13.
 

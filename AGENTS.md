@@ -5560,3 +5560,29 @@ Exact next action: when a Windows/phBot runtime is available, load 1.9.18, verif
 the two checkboxes appear on the right and retain independent checked states across
 profile reload, then observe one natural Potion/Pill item event while each option
 is checked and unchecked. Do not operate a real character just to force a sample.
+
+### Resume — 2026-10-04 inferred death reason parity
+
+Active Slice 5 death-event follow-up: plugin 1.9.19 keeps the last documented
+`EVENT_PLAYER_ATTACKING` player name per character for ten seconds and attaches it
+to a subsequent `EVENT_DIED` event as an inferred recent attacker. With no matching
+attack it records `Monster / environment`. The cache is fenced by server/character,
+cleared on join/disconnect, consumed on an accepted death and cleared on observed
+revival. Older `unknown` events remain unchanged. This independently reproduces the
+mechanism found in the operator-authorized phMonitor v0.5.0 executable and installed
+adapter v1.7.0; neither proves the killing blow. Events and Dashboard now render the
+same reason label. No migration or agent protocol bump was needed; the canonical
+event payload already supports these fields.
+
+Files: `plugin/{PhMon.py,test_phmon.py,README.md}`,
+`web/app/{utils/deathCause.ts,pages/events.vue,components/DashboardOverview.vue}`,
+`web/tests/deathCause.test.ts`, `server/internal/events/validation_test.go`,
+`docs/{phbot-capabilities.md,protocol.md,reference-parity.md}`, this ledger.
+Validation: 190 plugin tests, five protocol-contract tests, 184 frontend unit tests,
+frontend typecheck/lint/format/build, Go tests/vet and plugin syntax compile passed.
+Linter retains unrelated warnings. Backend acceptance was unit-tested; no real
+phBot death, PostgreSQL integration fixture, deployed browser event or matching
+reference screenshot was exercised. Exact next action: deploy the updated plugin and
+web during an authorized rollout, then verify one naturally occurring death and
+its persisted/dashboard/history reason without forcing a character death. Continue
+the remaining Slice 4/5 gates independently.
