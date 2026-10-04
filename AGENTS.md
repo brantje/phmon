@@ -5717,11 +5717,13 @@ so its map page lacked the default-off **Click to walk (uses move_to)** option
 and direct `character.move_to` dispatch. Merged current `origin/main` into this
 branch and resolved the overlapping plugin, command-catalog and map edits while
 retaining both navigation and scoped recall-point behavior. Combined plugin
-version is 1.9.22. The checkbox is back below the Map action buttons and map
-point clicks submit independent fire-and-forget moves for selected characters.
+version is 1.9.22 / protocol 15. The checkbox is back below the Map action buttons,
+and map point clicks submit independent fire-and-forget moves for selected characters.
 
 Validation: 208 plugin tests, 192 frontend unit tests, `go test ./...`, Nuxt
 typecheck, Prettier check and production build passed. ESLint passed with zero
 errors and 69 style warnings. `git diff --check` passed.
-Exact next action: commit the resolved merge, push this branch and open a PR;
-wait for CI and fix any reported failures before reporting the final SHA.
+The PR's version guard identified the added recall-point capability report as a
+protocol-contract change; the plugin and server now both use protocol 15. Exact
+next action: commit and push the protocol bump, update PR #74's validation notes,
+and wait for CI to pass before reporting the final SHA.

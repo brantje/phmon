@@ -1,4 +1,4 @@
-# Agent protocol versions 2–13
+# Agent protocol versions 2–15
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -1361,3 +1361,13 @@ from older sessions cause normal server rejection. A completed result with API
 The experimental Map checkbox is default off and sends every selected target
 concurrently. It bypasses frontend command-controls preparation and review; the
 server still validates the authenticated target and bounded command contract.
+
+### Designate recall point capability — 2026-10-04
+
+Agent protocol 15 adds the `character.recall_point.designate` capability report.
+The audited command requires explicit confirmation and accepts only the observed
+gate name and coordinates. The plugin resolves the matching gate from that
+character's current NPC snapshot; merged map IDs are never command arguments.
+Packet submission is enabled only for phBot 20.1.3 on Greatest and uses the
+observed fixed packet plus that session's gate ID. The server outcome remains
+`unverified` because no PhMon-issued response has been classified.

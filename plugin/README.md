@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.22**, using agent protocol **14**. It
+The current local plugin release is **1.9.22**, using agent protocol **15**. It
 includes navigation transport fixes, script diagnostics and direct `move_to` support,
 plus scoped recall-point packet submission for phBot 20.1.3 on Greatest. It also
 correlates a documented player-attack callback with a death callback from the same
