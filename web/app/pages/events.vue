@@ -2,7 +2,7 @@
 import type { ActivityEvent } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
-import { eventLocationText } from '~/utils/event-location'
+import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
@@ -106,10 +106,6 @@ const itemTab = computed(
       'item.transferred',
     ].includes(filterKind.value || '') || activeTabLabel.value === 'All',
 )
-const dropFeed = computed(
-  () => filterKind.value === 'drop.item' || filterKind.value === 'drop.rare',
-)
-const rareDropFeed = computed(() => filterKind.value === 'drop.rare')
 const hasReliableMapLocation = (event: ActivityEvent) => {
   const profile = eventMapProfiles.value[event.server.toLowerCase()]
   return Boolean(
@@ -321,6 +317,55 @@ function eventSummary(item: ActivityEvent) {
       return item.kind.replaceAll('.', ' ')
   }
 }
+function eventRowLayout(item: ActivityEvent) {
+  if (
+    item.kind === 'world.unique_spawned' ||
+    item.kind === 'character.level_up'
+  )
+    return 'featured'
+  if (item.kind === 'character.died') return 'death'
+  if (item.kind === 'drop.rare' || item.kind === 'drop.item') return 'drop'
+  return 'standard'
+}
+function isDropEvent(item: ActivityEvent) {
+  return item.kind === 'drop.rare' || item.kind === 'drop.item'
+}
+function eventRowTitle(item: ActivityEvent) {
+  if (item.kind === 'character.level_up') {
+    const level = Number(record(item.payload).level)
+    if (Number.isInteger(level) && level > 0)
+      return `${item.character || 'Character'} leveled up ${level - 1} -> ${level}`
+  }
+  return eventSummary(item)
+}
+function eventRowSubtitle(item: ActivityEvent) {
+  if (item.kind === 'world.unique_spawned')
+    return item.server || 'Unknown server'
+  const level = record(item.payload).level
+  const levelLabel = level == null ? '' : `Lv ${String(level)}`
+  return [
+    item.character || 'Unknown character',
+    item.zone || eventLocationText(item),
+    levelLabel,
+  ]
+    .filter(Boolean)
+    .join(' | ')
+}
+function eventDeathCause(item: ActivityEvent) {
+  const value = record(item.payload).cause
+  if (typeof value !== 'string' || !value.trim() || value === 'unknown')
+    return 'Unknown cause'
+  if (value === 'monster_environment') return 'Monster / environment'
+  return value.replaceAll('_', ' ')
+}
+function eventRowDetail(item: ActivityEvent) {
+  if (item.kind === 'character.died') return eventDeathCause(item)
+  if (item.kind === 'drop.item' || item.kind === 'drop.rare') return ''
+  return eventSourceLabel(item) || item.category.replaceAll('.', ' ')
+}
+function eventRowLocation(item: ActivityEvent) {
+  return eventRowLocationText(item)
+}
 function eventSourceLabel(item: ActivityEvent) {
   if (item.kind === 'drop.item' || item.kind === 'drop.rare')
     return 'Drop observed'
@@ -465,196 +510,142 @@ function localDateBoundary(value: string, addDays: number) {
       <div v-if="liveStale" class="status-banner warning" role="status">
         Showing the last received event page as stale while PhMon reconnects.
       </div>
-      <div
-        v-if="filterKind === 'world.unique_spawned'"
-        class="unique-event-list"
-      >
-        <article
-          v-for="item in page?.events || []"
-          :key="item.event_id"
-          class="unique-event-card"
-        >
-          <img
-            v-if="uniqueEventDetails(item)?.imageUrl"
-            class="unique-event-art"
-            :src="uniqueEventDetails(item)?.imageUrl"
-            :alt="uniqueEventDetails(item)?.name || 'Unique'"
-          />
-          <div>
-            <strong>{{ uniqueEventHeadline(item) }}</strong>
-            <p>{{ eventLocationText(item) }}</p>
-            <p>
-              Seen by
+      <div class="event-rows-scroll">
+        <div class="event-history-rows">
+          <template v-for="item in page?.events || []" :key="item.event_id">
+            <article
+              v-if="eventRowLayout(item) === 'featured'"
+              class="event-row-featured"
+              :class="{
+                'event-row-unique': item.kind === 'world.unique_spawned',
+                'event-row-level': item.kind === 'character.level_up',
+              }"
+            >
               <NuxtLink
-                v-if="item.character_id"
+                v-if="
+                  item.kind === 'world.unique_spawned' &&
+                  uniqueEventDetails(item)?.imageUrl &&
+                  item.character_id
+                "
+                class="event-row-art-link"
                 :to="`/characters/${item.character_id}`"
-                >{{ item.character }}</NuxtLink
+                :aria-label="`Open ${item.character} details`"
               >
-              <template v-else>{{ item.character || 'unknown' }}</template>
-            </p>
-            <time :datetime="item.occurred_at">{{
-              formatTimestamp(item.occurred_at)
-            }}</time>
-          </div>
-        </article>
-        <div v-if="!page?.events.length" class="event-empty-state">
-          <strong>{{
-            connectionState === 'current'
-              ? 'No unique spawns found'
-              : 'Loading event history'
-          }}</strong>
-          <span>{{
-            connectionState === 'current'
-              ? 'No unique notices match this server, character and date range.'
-              : 'Waiting for a current event snapshot.'
-          }}</span>
-        </div>
-      </div>
-      <div v-else-if="dropFeed" class="event-table-scroll">
-        <table class="event-table drop-event-table">
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Time</th>
-              <th>Character</th>
-              <th>Location</th>
-              <th v-if="rareDropFeed">Map</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in page?.events || []" :key="item.event_id">
-              <td :class="{ 'rare-drop-event': item.kind === 'drop.rare' }">
-                <ItemDetailPopup
-                  v-if="itemRecordFromActivityEvent(item)"
-                  :item="itemRecordFromActivityEvent(item)!"
+                <img
+                  class="event-row-art"
+                  :src="uniqueEventDetails(item)?.imageUrl"
+                  :alt="uniqueEventDetails(item)?.name || 'Unique'"
                 />
-                <span v-else>—</span>
-                <small v-if="eventSourceLabel(item)" class="event-origin">
-                  {{ eventSourceLabel(item) }}
-                  <template v-if="eventContainerDetail(item)">
-                    · {{ eventContainerDetail(item) }}
-                  </template>
-                </small>
-              </td>
-              <td>
-                <time :datetime="item.occurred_at">{{
-                  formatTimestamp(item.occurred_at)
-                }}</time>
-              </td>
-              <td>
-                <NuxtLink
-                  v-if="item.character_id"
-                  class="event-character-link"
-                  :to="`/characters/${item.character_id}`"
-                >
+              </NuxtLink>
+              <img
+                v-else-if="
+                  item.kind === 'world.unique_spawned' &&
+                  uniqueEventDetails(item)?.imageUrl
+                "
+                class="event-row-art"
+                :src="uniqueEventDetails(item)?.imageUrl"
+                :alt="uniqueEventDetails(item)?.name || 'Unique'"
+              />
+              <CharacterPortrait
+                v-else
+                :name="item.character || 'Unknown character'"
+                :portrait-url="item.portrait_url"
+                size="small"
+                :to="
+                  item.character_id
+                    ? `/characters/${item.character_id}`
+                    : undefined
+                "
+              />
+              <div class="event-row-featured-copy">
+                <strong>{{ eventRowTitle(item) }}</strong>
+                <span>{{ eventRowSubtitle(item) }}</span>
+              </div>
+              <time :datetime="item.occurred_at">{{
+                formatTimestamp(item.occurred_at)
+              }}</time>
+              <NuxtLink
+                v-if="hasReliableMapLocation(item)"
+                class="compact-button map-event-link featured-event-map-link"
+                :to="eventMapTarget(item)"
+                aria-label="Open event location on map"
+              >
+                <UIcon name="i-lucide-map-pin" />
+              </NuxtLink>
+            </article>
+
+            <article
+              v-else
+              class="event-row-grid"
+              :class="[
+                `event-row-${eventRowLayout(item)}`,
+                { 'event-row-rare': item.kind === 'drop.rare' },
+              ]"
+              :aria-label="eventSummary(item)"
+            >
+              <div class="event-row-primary">
+                <template v-if="item.kind === 'character.died'">
                   <CharacterPortrait
-                    :name="item.character"
+                    :name="item.character || 'Unknown character'"
                     :portrait-url="item.portrait_url"
                     size="small"
                   />
-                  {{ item.character }}
-                </NuxtLink>
-                <span v-else>{{ item.character || '—' }}</span>
-              </td>
-              <td>
-                {{ eventLocationText(item) }}
-                <NuxtLink
-                  v-if="!rareDropFeed && hasReliableMapLocation(item)"
-                  class="compact-button map-event-link"
-                  :to="eventMapTarget(item)"
-                  aria-label="Open event location on map"
-                >
-                  <UIcon name="i-lucide-map-pin" />
-                </NuxtLink>
-              </td>
-              <td v-if="rareDropFeed">
-                <NuxtLink
-                  v-if="hasReliableMapLocation(item)"
-                  class="compact-button map-event-link"
-                  :to="eventMapTarget(item)"
-                  aria-label="Open event location on map"
-                >
-                  <UIcon name="i-lucide-map-pin" />
-                </NuxtLink>
-                <button
-                  v-else
-                  class="compact-button map-event-link"
-                  type="button"
-                  disabled
-                  title="Map transforms are not yet validated for this region"
-                >
-                  <UIcon name="i-lucide-map-pin" />
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="!page?.events.length" class="event-empty-state">
-          <strong>{{
-            connectionState === 'current'
-              ? 'No events found'
-              : 'Loading event history'
-          }}</strong>
-          <span>{{
-            connectionState === 'current'
-              ? 'No events match this server, character, item and date range.'
-              : 'Waiting for a current event snapshot.'
-          }}</span>
-        </div>
-      </div>
-      <div v-else class="event-table-scroll">
-        <table class="event-table">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Event</th>
-              <th>Character</th>
-              <th>Item</th>
-              <th>Location</th>
-              <th>Map</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in page?.events || []" :key="item.event_id">
-              <td>
-                <time :datetime="item.occurred_at">{{
-                  formatTimestamp(item.occurred_at)
-                }}</time>
-              </td>
-              <td :class="{ 'rare-drop-event': item.kind === 'drop.rare' }">
-                <span>{{ eventSummary(item) }}</span>
-                <small v-if="eventSourceLabel(item)" class="event-origin">
-                  {{ eventSourceLabel(item) }}
-                  <template v-if="eventContainerDetail(item)">
-                    · {{ eventContainerDetail(item) }}
-                  </template>
-                </small>
-              </td>
-              <td>
-                <NuxtLink
-                  v-if="item.character_id"
-                  class="event-character-link"
-                  :to="`/characters/${item.character_id}`"
-                >
-                  <CharacterPortrait
-                    :name="item.character"
-                    :portrait-url="item.portrait_url"
-                    size="small"
-                  />
-                  {{ item.character }}
-                </NuxtLink>
-                <span v-else>{{ item.character || '—' }}</span>
-              </td>
-              <td>
+                </template>
                 <ItemDetailPopup
-                  v-if="itemRecordFromActivityEvent(item)"
+                  v-else-if="itemRecordFromActivityEvent(item)"
                   :item="itemRecordFromActivityEvent(item)!"
                   :to="eventItemTarget(item)"
                 />
-                <span v-else>—</span>
-              </td>
-              <td>{{ eventLocationText(item) }}</td>
-              <td>
+                <NuxtLink
+                  v-else-if="item.character_id"
+                  class="event-row-character-primary"
+                  :to="`/characters/${item.character_id}`"
+                >
+                  <CharacterPortrait
+                    :name="item.character"
+                    :portrait-url="item.portrait_url"
+                    size="small"
+                  />
+                  <strong>{{ eventSummary(item) }}</strong>
+                </NuxtLink>
+                <div v-else class="event-row-generic-primary">
+                  <UIcon name="i-lucide-activity" />
+                  <strong>{{ eventSummary(item) }}</strong>
+                </div>
+                <small
+                  v-if="eventSourceLabel(item) && !isDropEvent(item)"
+                  class="event-origin"
+                >
+                  {{ eventSourceLabel(item) }}
+                  <template v-if="eventContainerDetail(item)">
+                    · {{ eventContainerDetail(item) }}
+                  </template>
+                </small>
+              </div>
+              <time :datetime="item.occurred_at">{{
+                formatTimestamp(item.occurred_at)
+              }}</time>
+              <div class="event-row-character">
+                <NuxtLink
+                  v-if="item.character_id"
+                  :to="`/characters/${item.character_id}`"
+                  >{{ item.character }}</NuxtLink
+                >
+                <span v-else>{{ item.character || '—' }}</span>
+              </div>
+              <div
+                v-if="item.kind === 'character.died'"
+                class="event-row-detail"
+              >
+                {{ eventDeathCause(item) }}
+              </div>
+              <div v-else-if="!isDropEvent(item)" class="event-row-detail">
+                {{ eventRowDetail(item) || '—' }}
+              </div>
+              <div class="event-row-location">
+                {{ eventRowLocation(item) }}
+              </div>
+              <div class="event-row-map">
                 <NuxtLink
                   v-if="hasReliableMapLocation(item)"
                   class="compact-button map-event-link"
@@ -664,7 +655,9 @@ function localDateBoundary(value: string, addDays: number) {
                   <UIcon name="i-lucide-map-pin" />
                 </NuxtLink>
                 <button
-                  v-else
+                  v-else-if="
+                    item.kind === 'character.died' || item.kind === 'drop.rare'
+                  "
                   class="compact-button map-event-link"
                   type="button"
                   disabled
@@ -672,21 +665,21 @@ function localDateBoundary(value: string, addDays: number) {
                 >
                   <UIcon name="i-lucide-map-pin" />
                 </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="!page?.events.length" class="event-empty-state">
-          <strong>{{
-            connectionState === 'current'
-              ? 'No events found'
-              : 'Loading event history'
-          }}</strong>
-          <span>{{
-            connectionState === 'current'
-              ? 'No events match this server, character, item and date range.'
-              : 'Waiting for a current event snapshot.'
-          }}</span>
+              </div>
+            </article>
+          </template>
+          <div v-if="!page?.events.length" class="event-empty-state">
+            <strong>{{
+              connectionState === 'current'
+                ? 'No events found'
+                : 'Loading event history'
+            }}</strong>
+            <span>{{
+              connectionState === 'current'
+                ? 'No events match this server, character, item and date range.'
+                : 'Waiting for a current event snapshot.'
+            }}</span>
+          </div>
         </div>
       </div>
 
