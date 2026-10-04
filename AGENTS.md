@@ -5725,5 +5725,4 @@ typecheck, Prettier check and production build passed. ESLint passed with zero
 errors and 69 style warnings. `git diff --check` passed.
 The PR's version guard identified the added recall-point capability report as a
 protocol-contract change; the plugin and server now both use protocol 15. Exact
-next action: commit and push the protocol bump, update PR #74's validation notes,
-and wait for CI to pass before reporting the final SHA.
+next action: monitor PR #74's checks, fix any failures, then report the final SHA.
