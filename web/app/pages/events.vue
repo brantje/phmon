@@ -318,7 +318,10 @@ function eventSummary(item: ActivityEvent) {
   }
 }
 function eventRowLayout(item: ActivityEvent) {
-  if (item.kind === 'world.unique_spawned' || item.kind === 'character.level_up')
+  if (
+    item.kind === 'world.unique_spawned' ||
+    item.kind === 'character.level_up'
+  )
     return 'featured'
   if (item.kind === 'character.died') return 'death'
   if (item.kind === 'drop.rare' || item.kind === 'drop.item') return 'drop'
