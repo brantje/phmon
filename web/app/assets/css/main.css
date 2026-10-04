@@ -1941,6 +1941,7 @@ select:focus-visible {
 .event-history-rows {
   display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
 }
 
@@ -1956,7 +1957,7 @@ select:focus-visible {
 .event-row-featured {
   display: grid;
   min-height: 72px;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr) auto 38px;
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
@@ -2141,6 +2142,12 @@ select:focus-visible {
 .event-row-map .map-event-link {
   min-width: 34px;
   min-height: 34px;
+}
+
+.event-row-featured > .featured-event-map-link {
+  min-width: 34px;
+  min-height: 34px;
+  justify-self: end;
 }
 
 .dashboard-event-list,
@@ -2561,7 +2568,7 @@ select:focus-visible {
   }
 
   .event-row-featured {
-    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr) 38px;
     gap: 8px 10px;
     padding: 8px 9px;
   }
@@ -2580,8 +2587,14 @@ select:focus-visible {
 
   .event-row-featured > time {
     grid-column: 2;
+    grid-row: 2;
     align-self: auto;
     padding-top: 0;
+  }
+
+  .event-row-featured > .featured-event-map-link {
+    grid-column: 3;
+    grid-row: 2;
   }
 
   .dashboard-event-list li,

@@ -2,7 +2,7 @@
 import type { ActivityEvent } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
-import { eventLocationText } from '~/utils/event-location'
+import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
@@ -364,13 +364,7 @@ function eventRowDetail(item: ActivityEvent) {
   return eventSourceLabel(item) || item.category.replaceAll('.', ' ')
 }
 function eventRowLocation(item: ActivityEvent) {
-  if (isDropEvent(item) && item.zone?.trim()) return item.zone.trim()
-  if (item.x != null && item.y != null) {
-    const zone = item.zone?.trim() || 'Unknown zone'
-    const coordinates = `${item.x.toFixed(1)}, ${item.y.toFixed(1)}, ${item.z?.toFixed(1) ?? '—'}`
-    return `${zone} | ${coordinates}`
-  }
-  return eventLocationText(item)
+  return eventRowLocationText(item)
 }
 function eventSourceLabel(item: ActivityEvent) {
   if (item.kind === 'drop.item' || item.kind === 'drop.rare')
@@ -570,6 +564,14 @@ function localDateBoundary(value: string, addDays: number) {
               <time :datetime="item.occurred_at">{{
                 formatTimestamp(item.occurred_at)
               }}</time>
+              <NuxtLink
+                v-if="hasReliableMapLocation(item)"
+                class="compact-button map-event-link featured-event-map-link"
+                :to="eventMapTarget(item)"
+                aria-label="Open event location on map"
+              >
+                <UIcon name="i-lucide-map-pin" />
+              </NuxtLink>
             </article>
 
             <article
