@@ -1520,3 +1520,27 @@ polls; a runtime packet/change callback with verified semantics would be needed
 to eliminate that sampling limit. CI validation with disposable PostgreSQL and
 the stack smoke job passed for commit `501fe922`. Live phBot validation after
 installing the new plugin remains open.
+
+## Potion and Pill event filters — 2026-10-04
+
+The official [Game Data API](https://plugins.phbot.org/phbot-api/game-data)
+documents `get_item(id)` with numeric `tid1`, `tid2` and `tid3` fields. In the
+active Greatest item catalog, the labeled `Potion` models have type IDs
+`[3,3,1,*]` and the labeled `Pill` models have `[3,3,2,*]`; therefore phBot's
+documented item shape resolves them as `tid1=3, tid2=1` and `tid1=3, tid2=2`.
+
+Plugin **1.9.18** adds profile-scoped **Potions** and **Pills** checkboxes, both
+enabled for new and legacy settings. On the phBot callback thread, `get_item`
+classifies the current resource models and item callbacks. A bounded, profile
+reset cache makes those classifications available to the event worker without
+calling phBot APIs there. Checked types are discarded before event queue/spool
+admission for drop callbacks, owned-item deltas, transfers and item-bearing
+alchemy events. Unknown or unavailable metadata remains eligible for recording.
+Inventory/resource snapshots continue to be collected and sent; protocol remains
+14 because the type labels are local-only.
+
+The deterministic plugin suite covers the documented type-ID mapping, both
+independent defaults/settings, legacy configuration, callback suppression,
+container event suppression and continued baseline updates. No Windows/phBot
+runtime was available; native Qt layout, installed `get_item` behavior and
+callback cost still require operator runtime validation.

@@ -1,9 +1,17 @@
 # PhMon phBot plugin
 
-The current plugin development release is **1.9.12** (`vsro_1188_passive_r2`, API
-evidence schema 2), using agent protocol v13 over the existing authenticated
-connection. It retains canonical callbacks, inbound chat, alchemy attempts, reliable
-membership/container deltas and bounded v6 event batches. It adds current nearby
+The current local plugin release is **1.9.18**, using agent protocol **14**. Its
+profile-scoped **Potions** and **Pills** options default on and suppress new item
+events of the selected types before they enter the event spool. Item types resolve
+through phBot's `get_item(model)` data on the callback thread; inventory snapshots
+continue updating normally. These classifications add no fields to the wire
+protocol. The historical capability summary below starts at plugin 1.9.12 and
+protocol 13.
+
+At the 1.9.12 development baseline, plugin **1.9.12** (`vsro_1188_passive_r2`, API
+evidence schema 2), used agent protocol v13 over the existing authenticated
+connection. It retained canonical callbacks, inbound chat, alchemy attempts, reliable
+membership/container deltas and bounded v6 event batches. It added current nearby
 monster snapshots and profile-scoped durable observation samples. Protocol v8 adds
 transient route reports for generated-script navigation. Protocol v9 adds ephemeral
 `map.npcs` snapshots from `get_npcs()`: at most 128 rows, sampled about every two

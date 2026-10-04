@@ -5537,3 +5537,26 @@ but PR #69 CI validation against disposable PostgreSQL and the stack smoke job
 passed for commit `501fe922`. Live plugin install and browser validation remain
 open. Next: have the operator load plugin 1.9.17 and restart the app before
 observing a new natural party gain.
+
+### Resume — 2026-10-04 Potion/Pill event filters
+
+Implemented plugin 1.9.18 / protocol 14 with right-side **Potions** and **Pills**
+checkboxes. Both default on for new settings and legacy config files, save per
+active bot profile, and suppress newly generated item events of the chosen types
+before queue/spool admission. Filtering includes callback drops, container and pet
+item gains/losses/transfers, and item-bearing alchemy events. Inventory snapshots
+and diff baselines continue normally; unknown item types remain recordable.
+phBot's documented `get_item(model)` fields resolve Potion from `tid1=3, tid2=1`
+and Pill from `tid1=3, tid2=2`; bounded type caching is callback-side and resets on
+profile changes. Protocol output is unchanged.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
+`docs/phbot-capabilities.md`, `docs/reference-parity.md`, this ledger.
+Validation: plugin syntax compile; 188 plugin tests; five protocol-contract tests;
+generated contract check and `git diff --check` passed. Native Windows/phBot Qt
+layout, installed `get_item` values and callback timing remain unverified.
+
+Exact next action: when a Windows/phBot runtime is available, load 1.9.18, verify
+the two checkboxes appear on the right and retain independent checked states across
+profile reload, then observe one natural Potion/Pill item event while each option
+is checked and unchecked. Do not operate a real character just to force a sample.
