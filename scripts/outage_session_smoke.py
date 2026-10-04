@@ -79,6 +79,10 @@ def stop_process(process):
 
 def main():
     global recovered
+    try:
+        live_recovery_stale_file.unlink()
+    except FileNotFoundError:
+        pass
     token_response = Request(
         web + "/api/agents/credentials",
         data=b"{}",

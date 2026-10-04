@@ -5730,7 +5730,8 @@ CI found a flaky database-recovery test ordering: PostgreSQL was restored before
 the parallel live-WebSocket check confirmed its unavailable frame. The outage
 smoke now waits for the observer's stale marker before restoring PostgreSQL. Its
 Python syntax and whitespace checks pass. Both full validation and stack runs on
-the resulting PR head pass, as does the plugin/protocol version guard. CodeRabbit
-is still processing and has not posted review findings. Exact next action: if it
-posts actionable feedback, fix it and reply on PR #74 with the resulting SHA;
-otherwise leave the PR open for review.
+the previous PR head pass, as does the plugin/protocol version guard. CodeRabbit
+identified that a pre-existing stale marker could satisfy the handshake early;
+`outage_session_smoke.py` now clears that marker at startup. Exact next action:
+validate, commit and push this fix, reply to its PR #74 review with the SHA, and
+wait for CI.
