@@ -245,8 +245,15 @@ export function buildItemDetail(
     }
   }
   const scalars = instanceStats.length ? [] : scalarStatLines(item)
+  const blues = blueLines(Object.keys(instance).length ? instance : null)
   const ranges =
-    instanceStats.length || scalars.length ? [] : referenceRangeLines(metadata)
+    instanceStats.length ||
+    scalars.length ||
+    item.drop_unobserved === true ||
+    item.instance_unobserved === true ||
+    item.owned_gain === true
+      ? []
+      : referenceRangeLines(metadata)
   const name =
     stringField(detail, 'name') ||
     stringField(item, 'servername') ||
@@ -301,9 +308,22 @@ export function buildItemDetail(
       ...instanceStats.slice(2).map((stat) => stat.text),
       ...rolls.filter((line) => !line.startsWith('Durability ')),
     ],
-    catalogNote: ranges.length ? catalogNote : '',
+    catalogNote:
+      item.drop_unobserved === true
+        ? 'Rolled stats and blue options were not observed for this drop.'
+        : item.instance_unobserved === true
+          ? 'The gained instance could not be identified among copies of this item.'
+          : item.owned_gain === true &&
+              !instanceStats.length &&
+              !scalars.length &&
+              !durability &&
+              !blues.length
+            ? 'Rolled stats and blue options were not observed for this item gain.'
+            : ranges.length
+              ? catalogNote
+              : '',
     requirements,
-    blues: blueLines(Object.keys(instance).length ? instance : null),
+    blues,
   }
 }
 
@@ -315,12 +335,36 @@ export function itemRecordFromActivityEvent(
     | 'item_name'
     | 'item_icon_url'
     | 'item_metadata'
+    | 'item_details'
     | 'payload'
-  >,
+  > & { kind?: ActivityEvent['kind'] },
 ): Record<string, unknown> | null {
   const payload = asRecord(event.payload)
-  const snapshot = asRecord(payload.item)
+  const snapshot = {
+    ...asRecord(payload.item),
+    ...asRecord(event.item_details),
+  }
+  const packetObservation = asRecord(payload.packet_observation)
+  const observationID = stringField(packetObservation, 'observation_id')
+  const itemObservation = asRecord(payload.item_observation)
+  const association = stringField(itemObservation, 'association')
+  if (observationID) {
+    snapshot.instance = {
+      ...asRecord(snapshot.instance),
+      observation_id: observationID,
+    }
+  }
+  if (
+    association === 'unique_model_inventory_gain' ||
+    association === 'unique_temporal_inventory_gain'
+  ) {
+    snapshot.instance = {
+      ...asRecord(snapshot.instance),
+      association,
+    }
+  }
   const metadata = asRecord(event.item_metadata)
+  const snapshotMetadata = asRecord(snapshot.metadata)
   const name =
     stringField(metadata, 'name') ||
     stringField(snapshot, 'name') ||
@@ -344,6 +388,17 @@ export function itemRecordFromActivityEvent(
     stringField(metadata, 'icon_url') || stringField(event, 'item_icon_url')
   return {
     ...snapshot,
+    ...(event.kind === 'item.acquired' ||
+    event.kind === 'item.quantity_increased'
+      ? { owned_gain: true }
+      : {}),
+    ...(payload.item_instance_unobserved === true
+      ? { instance_unobserved: true }
+      : {}),
+    ...((event.kind === 'drop.item' || event.kind === 'drop.rare') &&
+    !Object.keys(asRecord(payload.item)).length
+      ? { drop_unobserved: true }
+      : {}),
     ...(name ? { name } : {}),
     ...(code ? { servername: code } : {}),
     ...(model === null ? {} : { model }),
@@ -352,6 +407,7 @@ export function itemRecordFromActivityEvent(
       ? { plus: numberField(payload, 'plus') }
       : {}),
     metadata: {
+      ...snapshotMetadata,
       ...metadata,
       ...(name ? { name } : {}),
       ...(icon ? { icon_url: icon } : {}),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useId } from 'vue'
-import type { CharacterView } from '~~/shared/types/live'
+import type { CharacterView, PetInventoryRecord } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
 
 const props = defineProps<{
@@ -54,7 +54,7 @@ const freshness = computed(() => {
 })
 const pets = computed(() => {
   const list = payload('pets').pets
-  return Array.isArray(list) ? (list as Record<string, unknown>[]) : []
+  return Array.isArray(list) ? (list as PetInventoryRecord[]) : []
 })
 const partyMembers = computed(() => {
   const list = payload('party').members
@@ -82,7 +82,7 @@ const activeResourceKeys = computed(() => {
   if (selectedTab.value === 'Info') return ['equipment']
   if (selectedTab.value === 'Inventory') return ['inventory']
   if (selectedTab.value === 'Storage') return [selectedContainer.value]
-  if (selectedTab.value === 'Pet') return ['pets']
+  if (selectedTab.value === 'Pet') return ['pets', 'item_enrichment']
   if (selectedTab.value === 'Party') return ['party', 'party_setup']
   if (selectedTab.value === 'Academy') return ['academy']
   return []
@@ -94,7 +94,7 @@ function available(key: string) {
 function itemSlots(value: unknown) {
   return Array.isArray(value) ? value : []
 }
-function petLabel(pet: Record<string, unknown>) {
+function petLabel(pet: PetInventoryRecord) {
   const type = typeof pet.type === 'string' ? pet.type : 'unknown'
   const labels: Record<string, string> = {
     wolf: 'Attack',
@@ -106,6 +106,54 @@ function petLabel(pet: Record<string, unknown>) {
     labels[type.toLowerCase()] ||
     (type === 'horse' ? 'Horse' : `Other · ${type}`)
   )
+}
+function petDetailStatus(pet: PetInventoryRecord) {
+  if (pet.inventory_available !== true || !Array.isArray(pet.slots))
+    return 'No pet inventory was supplied in this observation.'
+  const items = (pet.slots as unknown[]).flatMap((row) => {
+    if (!row || typeof row !== 'object' || !('item' in row)) return []
+    const item = (row as { item?: unknown }).item
+    return item && typeof item === 'object'
+      ? [item as Record<string, unknown>]
+      : []
+  })
+  if (items.length === 0)
+    return 'No items currently occupy this supplied inventory.'
+  const detailed = items.filter((item) => {
+    const details = item.instance_details
+    return (
+      !!details &&
+      typeof details === 'object' &&
+      (details as Record<string, unknown>).status === 'partial'
+    )
+  }).length
+  if (detailed)
+    return `${detailed} item${detailed === 1 ? '' : 's'} include interpreted instance details.`
+  const raw = items.some((item) => item.api_fields || item.instance)
+  return raw
+    ? 'Instance evidence is present, but its detail interpretation is still pending.'
+    : 'Current slots show basic item facts; detailed attributes await verified API or packet evidence.'
+}
+const petPacketProbe = computed(() => {
+  const value = payload('item_enrichment').pet_packet_probe
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const probe = value as Record<string, unknown>
+  if (probe.mode !== 'presence_and_size_only') return null
+  const opcodes = probe.opcodes
+  if (!opcodes || typeof opcodes !== 'object' || Array.isArray(opcodes))
+    return null
+  return opcodes as Record<string, unknown>
+})
+function petPacketProbeSummary(opcode: string) {
+  const value = petPacketProbe.value?.[opcode]
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return `${opcode}: waiting`
+  const detail = value as Record<string, unknown>
+  const count = typeof detail.count === 'number' ? detail.count : 0
+  const minimum = typeof detail.min_bytes === 'number' ? detail.min_bytes : null
+  const maximum = typeof detail.max_bytes === 'number' ? detail.max_bytes : null
+  const sizeRange = minimum === null ? '' : ` · ${minimum}–${maximum} bytes`
+  return `${opcode}: ${count} packet${count === 1 ? '' : 's'}${sizeRange}`
 }
 function memberNumber(member: Record<string, unknown>, key: string) {
   const value = member[key]
@@ -475,6 +523,15 @@ onBeforeUnmount(() => {
             : 'phBot has not supplied a current pet observation.'
         }}</span>
       </div>
+      <div v-if="petPacketProbe" class="pet-packet-probe" role="status">
+        <strong>Passive packet probe · V14</strong>
+        <span>{{ petPacketProbeSummary('0x30C8') }}</span>
+        <span>{{ petPacketProbeSummary('0xB034') }}</span>
+        <small
+          >This build reports packet counts and sizes only. It does not decode
+          packet contents or change pet items.</small
+        >
+      </div>
       <article v-for="pet in pets" :key="String(pet.pet_id)" class="pet-card">
         <div class="pet-card-heading">
           <strong>{{
@@ -484,8 +541,20 @@ onBeforeUnmount(() => {
           ><span v-if="pet.mounted === true">Mounted</span>
         </div>
         <p>
+          Owner: {{ character.name }} · Pet ID:
+          {{ String(pet.pet_id || 'unknown') }} ·
+          {{
+            pet.inventory_available === true && Array.isArray(pet.slots)
+              ? `${pet.slots.length} inventory slots from get_pets()`
+              : 'inventory not supplied'
+          }}
+        </p>
+        <p>
           Reported type: {{ String(pet.type || 'unknown') }} · HP
           {{ pet.hp == null ? '—' : String(pet.hp) }}
+        </p>
+        <p class="pet-detail-status" role="status">
+          {{ petDetailStatus(pet) }}
         </p>
         <InventoryGrid
           v-if="pet.inventory_available === true && Array.isArray(pet.slots)"

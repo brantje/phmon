@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 13
+	agentProtocolVersion    = 14
 	agentMinProtocolVersion = 2
 )
 
@@ -550,6 +550,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			for _, event := range message.Events {
 				if !agentdomain.ValidAgentID(event.ID) {
 					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid event identifier", hello.AgentID, hello.ProtocolVersion)
+					return
+				}
+				if event.Source == "joymax.pet_inventory" && hello.ProtocolVersion < 14 {
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "pet inventory events require protocol 14", hello.AgentID, hello.ProtocolVersion)
 					return
 				}
 			}

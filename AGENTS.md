@@ -250,6 +250,68 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-03 dropped-item tooltip correction
+
+#### Follow-up — live necklace still lacked details
+
+The operator supplied the 18:44:10Z nuker4 Normal Drops necklace row and
+confirmed plugin 1.9.15 is installed. Authenticated read-only Events inspection
+found its model-only callback and one `item.acquired` at 18:44:11Z, same agent,
+character, session, model and exact region/coordinates. The acquired item was in
+inventory slot 37 and retained observed physical/magical absorption 23.4/23.1
+and white percentages 87/32; no blue options were observed. It lacked
+`drop_event_id`. The exact plugin gate failure is not persisted.
+
+Current increment: plugin **1.9.16** keeps per-slot snapshots when a newly
+occupied slot increases an already owned model, allowing a unique
+`item.quantity_increased` link with that new item's own evidence. The server
+accepts that explicit link and uses a conservative read-time fallback for one
+unlinked `item.acquired` within three seconds, same agent/session/character/
+model and nearby coordinates, with no competing same-model drop. Events/Dashboard
+show the item's observed stats after deployment; the association is marked
+inferred and acquisition cause remains unknown. Saved events are not mutated.
+No ground-only roll/blue data is invented.
+
+Files: plugin, Go event store/validation/integration tests, shared item tooltip,
+protocol/capability/item-evidence/reference-parity/investigation docs and this
+guide. Validation: 175 plugin tests, 178 frontend tests, all Go packages,
+Nuxt typecheck, production build, lint (zero errors; 67 existing warnings),
+focused Prettier and `git diff --check` pass. PostgreSQL integration is skipped
+because no local service or `TEST_DATABASE_URL` is available. Exact next action:
+deploy the backend and plugin only with operator authorization;
+read the same event through the authenticated API and browser afterward.
+The current live backend does not yet contain this fallback.
+
+The operator reported that Normal/Rare Drops still showed catalog ranges instead
+of actual item stats and blues. Static inspection of the authorized local
+`%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe` found a callback-plus-later-
+inventory enrichment path; exact offsets are in
+`docs/reference/item-tooltip-investigation.md`. Plugin **1.9.15** now tracks a
+callback ID, reads a fresh inventory count at callback time and briefly samples
+resources every second. A unique new inventory
+item of the same model in the same character session links its observed snapshot
+to that drop through the existing durable acquisition event. The server validates
+the link and joins only matching agent/session/character/model/time; Events and
+Dashboard can display typed observed stats and blues. Ambiguous matches remain
+unlinked, acquisition cause remains unknown, and model-only drop tooltips no
+longer show catalog ranges as if they were the dropped item's rolls.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`,
+`server/internal/events/{store.go,store_integration_test.go,validation_test.go}`,
+`server/internal/httpapi/character_portraits_test.go`,
+`web/app/{components/ItemDetailPopup.vue,utils/itemDetailPopup.ts}`,
+`web/tests/itemDetailPopup.test.ts`, and the item capability/parity/investigation
+docs. Validation: plugin 173 tests, frontend 178 tests, all Go packages,
+Nuxt typecheck, production build, lint (zero errors; 67 warnings) and
+`git diff --check` pass. PostgreSQL integration tests
+were skipped because `TEST_DATABASE_URL` is absent and no local PostgreSQL
+service/runtime is available. Exact next action: run the PostgreSQL linked-drop
+integration test, load plugin 1.9.16 against a compatible backend, observe a
+naturally occurring drop and subsequent unique inventory gain, then compare its
+tooltip with the captured phBot item fields. Ground-only drop stats remain an
+open capability question; the official `get_drops()` example lacks whites/blues.
+Do not claim full per-drop detail parity until the real runtime confirms it.
+
 ### Resume — 2026-10-02 phMonitor mob HP behavior
 
 Completed the operator's bounded request to inspect the supplied local
@@ -5370,3 +5432,108 @@ notice for 15 seconds and attaches catalog name, level and portrait on read.
 Events Uniques and Dashboard recent activity render that portrait. Catalog HP
 is not in the exported monster reference, so the card does not show HP. No
 plugin was loaded into phBot and no character was operated.
+
+### Resume — 2026-10-03 pet inventory details and Normal/Rare drop feeds
+
+Completed the implementable Pet and Events work from the operator's request. Pet
+resource rows now expose typed inventory/detail availability and preserve the
+existing authenticated resource persistence; shared item resolution merges
+verified fields individually and enriches immutable historical occurrence
+snapshots. The Pet tab shows owner, pet identity/type, source, API slot count,
+occupied inventory and empty/missing/pending/stale states. Normal/Rare tabs opt in
+to verified pet pickup rows and render the reference's per-tab column order with
+source, pet slot and observed quantity details.
+
+The workspace plugin is **1.9.13** / protocol **14**. Receipt validation, immutable snapshot
+capture and durable exact retry are implemented, but production pet packet decoding
+remains disabled as `disabled_runtime_layout_unverified`. The operator-provided
+phBot 20.1.2 / plugin 1.9.12 / protocol 13 Pick observation had 56 slots and five
+basic items without plus, whites or blues. No sanitized `get_pets()` payload or
+matching naturally arriving `0x30C8`/`0xB034` bytes were available. Do not infer a
+packet layout or claim detailed packet stats/pet-pickup emissions from the pinned
+RSBot handlers or synthetic tests. Protocol-14 receipt tests exercise only the
+future verified-decoder contract.
+
+Files affected: `plugin/{PhMon.py,test_phmon.py}`; Go event validation/storage,
+HTTP/live filters, item metadata enrichment, startup wiring and migration
+`000022_pet_pickup_classification.sql`; frontend shared types, event/character
+components, item popup, CSS and tests; `docs/{phbot-capabilities,
+item-instance-evidence,reference-parity}.md`; this ledger.
+
+Validation: 167 plugin tests; 5 protocol-contract tests and the live transport
+audit; Go events/resources/HTTP/server tests; the new pet
+pickup/classification/count/cursor test and other event/resource/HTTP integration
+tests against a disposable PostgreSQL database; 177 frontend unit tests; Nuxt
+typecheck; lint (0 errors, 67 warnings); production build; `git diff --check`.
+Public demo inspection confirmed Rare Drops columns Item/Time/Character/Location/Map
+and Normal Drops columns Item/Time/Character/Location. Local browser checks rendered
+Pet and both drop screens at 1440×1000, 1280×800 and 390×844 with no horizontal
+document overflow or console errors. The demo Stats screen had no character to
+inspect the Pet tab. The local event stream was reconnecting during the last browser
+pass, so row provenance and pagination are verified by Go/PostgreSQL tests rather
+than live browser data. No real phBot action, plugin upload, deployment, merge or
+third-party notification was performed.
+
+Exact next action: collect sanitized current `get_pets()` objects and naturally
+arriving `0x30C8`/`0xB034` packet fixtures for Pick, Transport, Fellow and every
+other inventory-bearing type on supported runtime/protocol versions. Verify packet
+branch/alignment and exact pet-to-bag quantity deltas against independent API
+observations, then implement only those proven layouts and complete real
+PostgreSQL/API/UI restart-and-retry acceptance. Until that evidence is available,
+detailed pet packet values and production pickup receipts remain unimplemented.
+
+### Resume — 2026-10-03 pet packet presence probe
+
+The operator authorized trying the protocol-14 pet packet path and will restart
+the containers and upload the plugin. Plugin **1.9.14** / agent protocol **14**
+now allowlists `0x30C8` as well as `0xB034` and reports per-session counts and
+packet-size min/max/latest values through `item_enrichment`; the Stats Pet tab
+shows them. This is a count/size probe only: no packet bytes are retained, no
+candidate field is decoded, and `0xB034` still invalidates character packet
+enrichment. The design remains fail-closed until runtime evidence verifies the
+branch/layout. The pinned RSBot handlers and official phBot API pages were checked
+again; their corroborating shapes do not establish the installed runtime layout.
+
+Files affected: `plugin/{PhMon.py,test_phmon.py}`, Pet-tab subscription/status UI
+and CSS, `docs/{phbot-capabilities,item-instance-evidence,reference-parity}.md`,
+and this ledger. Validation: 167 plugin tests, protocol contract check, live
+transport audit, 177 frontend tests on Node 24.20.0, Nuxt typecheck, lint (0
+errors, 67 existing warnings), production build, Prettier, and `git diff --check`
+passed. Next: push this increment to PR #69 so the operator can install 1.9.14.
+After operator upload and container restart, inspect the live Pet-tab probe counts
+and only then select the packet branch work justified by naturally observed
+traffic. Do not claim decoding or pickup-event validation.
+
+### Resume — 2026-10-03 party recipient item gains
+
+The operator wants each character's own observed inventory/pet gain recorded and
+shown with that instance's stats, even if another party member saw the world drop.
+The Hydra Thunder Gauntlet party line at 21:17:39 local had no matching historical
+drop or gain event in the authenticated live Events API. A later nuker2 inventory
+snapshot had model 11840 at source slot 29 with white rolls; no blue options were
+observed. Its arrival time cannot be inferred from the current snapshot.
+
+Plugin **1.9.17** independently compares each character's item containers every
+2 seconds. Unavailable pets no longer block inventory diffs. A newly opened or
+dismissed optional container suppresses only models it contains, so unrelated
+recipient gains survive. A unique newly gained slot supplies the event's own
+item evidence even if an older copy of the model is already held. The plugin
+stores only item identity when several changed copies prevent instance selection.
+The Go event store classifies state-diff `item.acquired`/`item.quantity_increased` by the active
+profile. An opt-in `include_owned_gains` filter puts inventory/pet gains in the
+Normal/Rare feeds with a separate **Owned item gain** origin and destination;
+callback drops and verified pet receipts retain distinct origins. The gain's
+cause remains unknown. The authorized phMonitor v0.5.0 client inspection and
+official phBot documentation are recorded in `docs/phbot-capabilities.md`.
+
+Files: `plugin/{PhMon.py,test_phmon.py}`, Go events/httpapi store, filters and
+tests, `web/app/{pages/events.vue,composables/useLiveData.ts}`,
+`web/shared/types/live.ts`, `web/tests/itemDetailPopup.test.ts`, capability and
+parity docs, this ledger. Validation: 184 plugin/protocol tests, Go
+`go test ./...`, 181 frontend unit tests, Nuxt typecheck, production build,
+lint (zero errors, 67 pre-existing warnings), and `git diff --check` pass. Disposable
+PostgreSQL is unavailable locally (`TEST_DATABASE_URL` unset, Docker CLI absent),
+but PR #69 CI validation against disposable PostgreSQL and the stack smoke job
+passed for commit `501fe922`. Live plugin install and browser validation remain
+open. Next: have the operator load plugin 1.9.17 and restart the app before
+observing a new natural party gain.

@@ -20,11 +20,49 @@ const props = withDefaults(
 
 const anchor = ref<HTMLElement | null>(null)
 const tooltipEl = ref<HTMLElement | null>(null)
+const tooltipID = `item-tooltip-${useId()}`
 const visible = ref(false)
 const placed = ref(false)
 const iconFailed = ref(false)
 const tooltipStyle = ref<Record<string, string>>({})
 const model = computed(() => buildItemDetail(props.item))
+const detailProvenance = computed(() => {
+  const instance =
+    props.item.instance && typeof props.item.instance === 'object'
+      ? (props.item.instance as Record<string, unknown>)
+      : {}
+  const details =
+    props.item.instance_details &&
+    typeof props.item.instance_details === 'object'
+      ? (props.item.instance_details as Record<string, unknown>)
+      : {}
+  const rawSources = Array.isArray(details.sources)
+    ? details.sources
+    : typeof details.source === 'string'
+      ? [details.source]
+      : []
+  const sources = rawSources.flatMap((source) => {
+    if (source === 'phbot_api') return ['phBot API']
+    if (source === 'vsro_1188_packet') return ['Joymax packet']
+    return typeof source === 'string' ? [source] : []
+  })
+  const observationID =
+    typeof instance.observation_id === 'string' ? instance.observation_id : ''
+  const association =
+    instance.association === 'unique_model_inventory_gain'
+      ? 'Matched inventory gain; acquisition cause unverified'
+      : instance.association === 'unique_temporal_inventory_gain'
+        ? 'Matched nearby inventory gain; acquisition cause unverified'
+        : ''
+  if (!sources.length && !observationID && !association) return ''
+  return [
+    sources.length ? `Detail source: ${[...new Set(sources)].join(' + ')}` : '',
+    observationID ? `Packet observation: ${observationID}` : '',
+    association,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
 const narrow = () => window.matchMedia('(max-width: 640px)').matches
 let listening = false
 
@@ -52,6 +90,7 @@ function bind() {
   listening = true
   window.addEventListener('scroll', place, true)
   window.addEventListener('resize', place)
+  document.addEventListener('pointerdown', closeOutside)
 }
 
 function unbind() {
@@ -59,6 +98,13 @@ function unbind() {
   listening = false
   window.removeEventListener('scroll', place, true)
   window.removeEventListener('resize', place)
+  document.removeEventListener('pointerdown', closeOutside)
+}
+
+function closeOutside(event: PointerEvent) {
+  if (event.target instanceof Node && anchor.value?.contains(event.target))
+    return
+  hide()
 }
 
 function open() {
@@ -74,11 +120,16 @@ function open() {
   })
 }
 
+function hide() {
+  visible.value = false
+  unbind()
+}
+
 function close(event?: FocusEvent) {
   const next = event?.relatedTarget
   if (next instanceof Node && anchor.value?.contains(next)) return
-  visible.value = false
-  unbind()
+  if (!event && anchor.value?.contains(document.activeElement)) return
+  hide()
 }
 
 watch(
@@ -86,7 +137,7 @@ watch(
     `${props.item.model ?? ''}:${props.item.servername ?? ''}:${model.value.icon}:${model.value.name}`,
   () => {
     iconFailed.value = false
-    close()
+    hide()
   },
 )
 onBeforeUnmount(unbind)
@@ -116,12 +167,15 @@ const slotLabel = computed(() => {
     @mouseleave="close()"
     @focusin="open"
     @focusout="close"
+    @keydown.esc.stop="hide"
   >
     <button
       v-if="layout === 'slot'"
       class="item-slot"
       type="button"
       :aria-label="slotLabel"
+      :aria-describedby="visible ? tooltipID : undefined"
+      @click="open"
     >
       <img
         v-if="model.icon && !iconFailed"
@@ -153,22 +207,35 @@ const slotLabel = computed(() => {
       <span v-else class="item-detail-icon item-fallback" aria-hidden="true">{{
         model.iconFallback
       }}</span>
-      <NuxtLink v-if="to" class="item-detail-name" :to="to">
+      <NuxtLink
+        v-if="to"
+        class="item-detail-name"
+        :to="to"
+        :aria-describedby="visible ? tooltipID : undefined"
+      >
         {{ model.name
         }}<template v-if="model.plus !== null && model.plus > 0">
           (+{{ model.plus }})</template
         >
       </NuxtLink>
-      <span v-else class="item-detail-name" tabindex="0">
+      <button
+        v-else
+        class="item-detail-name"
+        type="button"
+        :aria-label="`Show details for ${model.name}`"
+        :aria-describedby="visible ? tooltipID : undefined"
+        @click="open"
+      >
         {{ model.name
         }}<template v-if="model.plus !== null && model.plus > 0">
           (+{{ model.plus }})</template
         >
-      </span>
+      </button>
     </template>
     <Teleport to="body">
       <div
         v-if="visible"
+        :id="tooltipID"
         ref="tooltipEl"
         class="item-tooltip"
         :class="{ 'is-rare': model.rare, 'is-placed': placed }"
@@ -181,6 +248,9 @@ const slotLabel = computed(() => {
             (+{{ model.plus }})</template
           >
         </strong>
+        <span v-if="detailProvenance" class="item-tooltip-provenance">
+          {{ detailProvenance }}
+        </span>
         <span v-if="model.seal" class="item-tooltip-seal">{{
           model.seal
         }}</span>

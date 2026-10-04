@@ -1372,3 +1372,151 @@ true/false audited results plus an unsupported skipped target. These tests do no
 validate native Windows/phBot behavior. Runtime gate remains: load 1.9.11 against
 a protocol-13 backend, verify available primitive/modes and current party readback,
 then perform an operator-authorized scroll attempt and observe its result/position.
+
+## Pet inventory details and pickup source — 2026-10-03
+
+The official [Pets API](https://plugins.phbot.org/phbot-api/pets) documents
+`get_pets()` as the authority for current pet IDs, type, basic state and supplied
+item lists. It does not document richer per-instance fields or a packet layout.
+The official [`get_item(id)` API](https://plugins.phbot.org/phbot-api/game-data)
+provides static item definitions, not current plus, durability, whites, blues or
+rolled combat values. The official [event API](https://plugins.phbot.org/phbot-api/events)
+documents drop callbacks with a model ID only; those callbacks cannot be correlated
+to a pet pickup.
+
+The operator-provided current runtime report is phBot **20.1.2**, plugin **1.9.12**,
+agent protocol **13**. Its Pick pet reported 56 slots and five items, including two
+necklaces; those API rows did not expose plus, whites or blues. This confirms a real
+API-backed inventory and a missing-detail need, but no sanitized raw API payload or
+matching pet packet bytes were available in this task. The same API contract applies
+to Pick, Transport, Fellow and other types only where that runtime supplies `items`;
+no family-specific packet layout is inferred from the shared field name.
+
+Pinned RSBot handlers support investigating Joymax `0x30C8` as a pet data response
+and `0xB034` as item operations, but are corroboration only, not evidence for the
+installed phBot protocol. Plugin **1.9.14** / protocol **14** adds a presence probe
+for both opcodes. Its resource diagnostic reports per-session counts and packet
+length ranges; it retains no payload bytes and decodes no pet details or operation
+semantics. `0xB034` still invalidates character item enrichment. The Pet tab shows
+these probe counts so natural runtime traffic can establish which packet families
+arrive. API slots remain persisted separately as basic facts.
+
+This upload is an evidence-gathering build, not an enabled candidate decoder. The
+runtime protocol, pet-family branches, item rental/binding variants, and packet
+ordering still need to be established from operator runtime evidence before any
+packet-derived fields or pickup events are produced.
+
+The protocol-14 event validator accepts `joymax.pet_inventory` only for bounded,
+positive `item.acquired` pet receipts carrying pet/slot destination and packet
+observation identity. A validated worker helper freezes the item snapshot, hashes a
+stable dedupe identity and enters the existing durable spool. No production parser
+emits such receipts until a matching runtime fixture verifies packet branch, item
+identity and delta semantics. Snapshot differences remain unknown-source item-gain
+records and are never presented as verified pet pickups. Normal/Rare feeds can
+separately include classified recipient-owned inventory/pet gains with a clear
+source label.
+
+Backend migration `000022` stores optional profile-derived normal/rare classification
+and version. REST and live feed inclusion is opt-in and valid only for Normal or Rare
+Drops with no category filter. It defaults off for existing clients. PhMon's two
+drop tabs explicitly opt in, including legacy side-navigation URLs without the query
+flag. Unknown classification remains in All. Callback drop classification retains
+its existing observed callback kind.
+
+Source references: [pinned RSBot pet response](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Cos/CosDataResponse.cs)
+and [pinned inventory operations](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryOperationResponse.cs).
+Required next evidence: sanitized `get_pets()` objects with missing/zero/empty
+distinctions and captured naturally arriving `0x30C8`/`0xB034` bytes from each
+supported pet family and runtime protocol, followed by natural, exactly observed
+pet-to-bag comparisons. Until then, detailed packet stats and live pickup receipts
+are explicit runtime blockers.
+
+## Drop tooltip observation link — 2026-10-03
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) still gives
+only an equippable model ID for drop callbacks. The official
+[Drops API](https://plugins.phbot.org/phbot-api/drops) exposes nearby pickable
+items keyed by pick ID, with name/code/model/location, blue flag and plus in its
+example; it does not document actual white rolls or option values. Static
+inspection of the authorized local phMonitor v0.5.0 executable shows that it
+checks later inventory snapshots for a changed item of the callback model and
+emits a linked enrichment; see
+[the investigation](reference/item-tooltip-investigation.md).
+
+Workspace plugin **1.9.15** / protocol **14** retains the callback occurrence,
+reads a fresh inventory model count, and accelerates resource sampling to one
+second for up to 30 seconds while a
+drop match is pending. It links only a unique callback model to one newly owned
+item in one inventory slot with a count above that callback baseline, within
+the same character session. The acquisition
+event keeps `acquisition_method: unknown`; the link means a nearby-in-time
+inventory gain, not proven ground pickup. The server joins the event snapshots
+only when agent, session, character, model and event ID agree. The original
+acquisition payload contains observed API/packet item details and the tooltip
+uses its existing typed resolver. Multiple same-model drops or gains stay
+unlinked. No live Windows/phBot callback-to-inventory capture or PostgreSQL
+integration result for this increment is available from this workspace; those
+are the next runtime gates. Ground-only drops may still lack exact stats when
+they never enter an observed inventory.
+
+### Live necklace drop correlation — 2026-10-03
+
+The active nuker4 agent reports plugin 1.9.15. An authenticated read-only Events
+API check found a model-1895 `EVENT_ITEM_DROP` at 18:44:10Z and one
+`item.acquired` at 18:44:11Z for the same agent, character, session, region and
+coordinates. The acquisition held API white percentages 87/32 and resolved
+physical/magical absorption 23.4/23.1; no blue options were observed. The
+acquisition lacked `drop_event_id`. The exact plugin gate that rejected or missed
+the link cannot be recovered from the persisted events.
+
+Plugin 1.9.16 fixes a separate verified code gap for an already owned same-model
+item: a uniquely new inventory slot may now link an `item.quantity_increased`
+event with that slot's own item evidence. The server also provides a conservative
+read-time temporal match for a sole unlinked one-item acquisition within three
+seconds and 24 XY / 32 Z units, with no competing drop of that model. This uses
+saved observations, leaves cause unknown, and can recover the reported row after
+deployment. It does not create stats for unpicked ground drops, establish actual
+blue options from `get_drops()`, or explain why the 1.9.15 explicit gate missed
+this callback. PostgreSQL and deployed UI validation remain open.
+
+### Party distribution and recipient-owned gains — 2026-10-03
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) provides an
+equippable model for `EVENT_ITEM_DROP`/`EVENT_RARE_DROP`, not a loot recipient or
+rolled instance. The [Inventory API](https://plugins.phbot.org/phbot-api/inventory)
+returns the current character's items; the [Pets API](https://plugins.phbot.org/phbot-api/pets)
+returns summoned pet items when available. The [Party API](https://plugins.phbot.org/phbot-api/party)
+lists party members but does not document item allocation. A party distribution
+line is therefore a hint to inspect the named character, not proof that a drop
+callback belongs to that character or that an item gain was persisted.
+
+Static inspection of the authorized `%USERPROFILE%\Downloads\phMonitor-v0.5.0.exe`
+found that its drop enrichment compares the callback observer's before/after
+inventory and emits `drop_item_enriched` for a match; it does not parse the party
+line as a recipient. Its normal diff loop defaults to 2 seconds and inventory
+snapshot sync to 15 seconds. Copying the observer-only match would preserve this
+party-sharing failure. PhMon instead compares each connected character's own
+inventory/pet snapshots at a 2-second interval, independently of callback or
+chat delivery. The gained instance is selected from the changed slot when unique,
+including when an older copy of the same model already exists. Optional pet or
+storage availability no longer suppresses an unrelated inventory gain; models
+present in an appearing/disappearing container are conservatively skipped for
+that comparison to avoid inventing an acquisition from a transfer. When several
+same-model copies change and the gained instance is ambiguous, the event keeps
+only the item identity and marks its instance unobserved; it never borrows
+another copy's rolls.
+
+An authenticated read-only check near the reported 21:17:39 local party line
+found no Hydra Gauntlet drop or gain event. A later nuker2 inventory snapshot
+contained male model 11840 in slot 29 with observed white rolls and no observed
+blues. That current snapshot does not establish when the item arrived; the
+historical event cannot be backfilled as an acquisition without an earlier
+comparable owner snapshot. A recipient's future `item.acquired` or
+`item.quantity_increased` event carries its own observed item evidence, unknown
+acquisition cause and exact destination. The Normal/Rare feeds opt in to those
+classified gains and label them **Owned item gain**, distinct from **Drop observed**
+and verified **Pet pickup** rows. Brief items can still enter and leave between
+polls; a runtime packet/change callback with verified semantics would be needed
+to eliminate that sampling limit. CI validation with disposable PostgreSQL and
+the stack smoke job passed for commit `501fe922`. Live phBot validation after
+installing the new plugin remains open.

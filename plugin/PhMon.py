@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.12'
+pVersion = '1.9.17'
 pUrl = ''
 
-PROTOCOL_VERSION = 13
+PROTOCOL_VERSION = 14
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -98,7 +98,9 @@ DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
 MAX_MESSAGE_BYTES = 256 * 1024
 MAX_RESOURCE_SLOTS = 2048
-RESOURCE_SAMPLE_INTERVAL_SECONDS = 15.0
+RESOURCE_SAMPLE_INTERVAL_SECONDS = 2.0
+DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
+DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
 MAX_ITEM_PACKET_COUNT = 128
 MAX_ITEM_PACKET_BYTES = 2 * 1024 * 1024
 MAX_ITEM_PACKET_SIZE = 256 * 1024
@@ -106,9 +108,10 @@ MAX_ITEM_MAGIC_OPTIONS = 32
 MAX_ITEM_CAPTURE_RECORDS = 100
 MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # Enable only for a bounded, local diagnostic capture. Captured records contain
-# decoded item fields only; the live callback never writes to disk.
+# parsed item fields or packet sizes only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
+PET_INVENTORY_DECODER_BUILD = 'vsro_pet_packet_probe_r1'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -974,6 +977,27 @@ def _zone_name_for_region(region, limit=80):
     return _bounded_text(value, limit) if isinstance(value, str) else None
 
 
+def _inventory_model_quantity(model):
+    getter = _optional_phbot_api('get_inventory')
+    if not callable(getter):
+        return None
+    try:
+        inventory = getter()
+    except Exception:
+        return None
+    if not isinstance(inventory, dict) or not isinstance(inventory.get('items'), list):
+        return None
+    items = inventory['items']
+    start = 13 if len(items) >= 13 else 0
+    total = 0
+    for item in items[start:start + MAX_RESOURCE_SLOTS]:
+        if not isinstance(item, dict) or item.get('model') != model:
+            continue
+        quantity = item.get('quantity', 1)
+        total += quantity if isinstance(quantity, int) and not isinstance(quantity, bool) and quantity > 0 else 1
+    return total
+
+
 def _normalize_item(value):
     if value is None:
         return None
@@ -1308,13 +1332,7 @@ def _normalize_academy(value, api_available):
 def _event_resource_snapshot(resources):
     if not isinstance(resources, dict):
         return None
-    equipment = resources.get('equipment')
-    inventory = resources.get('inventory')
     pets_resource = resources.get('pets')
-    if (not isinstance(equipment, dict) or equipment.get('availability') != 'observed' or
-            not isinstance(inventory, dict) or inventory.get('availability') != 'observed' or
-            not isinstance(pets_resource, dict) or pets_resource.get('availability') != 'observed'):
-        return None
 
     def membership(resource, collection_path):
         if not isinstance(resource, dict) or resource.get('availability') != 'observed':
@@ -1335,11 +1353,13 @@ def _event_resource_snapshot(resources):
 
     party = membership(resources.get('party'), ('members',))
     academy = membership(resources.get('academy'), ('value', 'members'))
-    pets = {}
-    for pet in pets_resource.get('pets', [])[:32]:
-        if not isinstance(pet, dict) or not pet.get('pet_id'):
-            continue
-        pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
+    pets = None
+    if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
+        pets = {}
+        for pet in pets_resource.get('pets', [])[:32]:
+            if not isinstance(pet, dict) or not pet.get('pet_id'):
+                continue
+            pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
 
     containers = {}
     for key in ('equipment', 'inventory', 'storage', 'job_pouch'):
@@ -1347,7 +1367,7 @@ def _event_resource_snapshot(resources):
         if not isinstance(container, dict) or container.get('availability') != 'observed':
             continue
         containers[key] = _event_item_quantities(container.get('slots', []))
-    for pet in pets_resource.get('pets', [])[:32]:
+    for pet in (pets_resource.get('pets', [])[:32] if pets is not None else []):
         if not isinstance(pet, dict) or not pet.get('pet_id') or not pet.get('inventory_available'):
             continue
         pet_key = 'pets:' + str(pet['pet_id'])[:64]
@@ -1375,11 +1395,43 @@ def _event_item_quantities(slots):
         if not _number(quantity) or quantity < 0:
             quantity = 1
         slot = row.get('source_slot')
-        record = result.setdefault(signature, {'quantity': 0, 'item': item, 'slots': []})
+        record = result.setdefault(signature, {'quantity': 0, 'item': item, 'slots': [],
+                                               'slot_items': {}})
         record['quantity'] += quantity
         if isinstance(slot, int) and not isinstance(slot, bool) and slot >= 0:
             record['slots'].append(slot)
+            record['slot_items'][slot] = item
     return result
+
+
+def _event_gain_observation(before_record, after_record, quantity):
+    """Identify one gained instance without borrowing another copy's rolls."""
+    if quantity != 1:
+        return None
+    previous = list((before_record or {}).get('slot_items', {}).values())
+    unmatched = []
+    for slot, item in after_record.get('slot_items', {}).items():
+        try:
+            index = previous.index(item)
+        except ValueError:
+            unmatched.append((slot, item))
+        else:
+            previous.pop(index)
+    return unmatched[0] if len(unmatched) == 1 else None
+
+
+def _event_gain_item(before_record, after_record, quantity):
+    selected = _event_gain_observation(before_record, after_record, quantity)
+    if selected:
+        return selected[1], selected, False
+    item = after_record.get('item') or {}
+    if len(after_record.get('slot_items', {})) <= 1:
+        return item, None, False
+    # Multiple copies changed without one provable instance. Preserve only the
+    # item identity, never the first copy's unrelated plus/whites/blues.
+    identity = {key: item[key] for key in ('model', 'servername', 'name') if key in item}
+    identity['quantity'] = quantity
+    return identity, None, True
 
 
 def _item_has_identity(item):
@@ -1595,7 +1647,7 @@ def parse_item_durability_update(data):
 
 class PassiveItemTracker(object):
     """Bounded packet queue plus session-local, fail-closed item observations."""
-    ALLOWED_OPCODES = (0x3040, 0x3052, 0xB034)
+    ALLOWED_OPCODES = (0x3040, 0x3052, 0x30C8, 0xB034)
 
     def __init__(self, capture_enabled=None):
         self.capture_enabled = ITEM_PACKET_CAPTURE_ENABLED if capture_enabled is None else bool(capture_enabled)
@@ -1612,6 +1664,14 @@ class PassiveItemTracker(object):
         self._capture_records = []
         self._capture_bytes = 0
         self.capture_overflow = False
+        self._pet_packet_count = 0
+        self._pet_snapshot_packet_count = 0
+        self._pet_packet_sizes = {
+            '0x30C8': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+            '0xB034': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+        }
 
     def enqueue(self, opcode, data):
         if opcode not in self.ALLOWED_OPCODES:
@@ -1652,6 +1712,14 @@ class PassiveItemTracker(object):
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
+        self._pet_packet_count = 0
+        self._pet_snapshot_packet_count = 0
+        self._pet_packet_sizes = {
+            '0x30C8': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+            '0xB034': {'count': 0, 'min_bytes': None, 'max_bytes': None,
+                       'last_bytes': None, 'last_sequence': None},
+        }
         if protocol is not None:
             self._protocol = protocol
         with self._lock:
@@ -1692,15 +1760,36 @@ class PassiveItemTracker(object):
         self._capture_bytes += len(encoded)
 
     def sanitized_capture(self):
-        """Return item-only decoded evidence suitable for a local fixture file."""
+        """Return bounded item observations and packet metadata without packet bytes."""
         return {'schema_version': 1, 'overflow': self.capture_overflow,
                 'records': list(self._capture_records)}
 
     def _process(self, opcode, payload):
         self._sequence += 1
-        if opcode == 0xB034:
-            self._invalidate('inventory_operation_unclassified')
-            self._capture({'opcode': '0xB034', 'sequence': str(self._sequence), 'result': 'invalidated'})
+        if opcode in (0x30C8, 0xB034):
+            opcode_name = '0x%04X' % opcode
+            diagnostic = self._pet_packet_sizes[opcode_name]
+            diagnostic['count'] = min(diagnostic['count'] + 1, 2147483647)
+            packet_size = len(payload)
+            diagnostic['min_bytes'] = packet_size if diagnostic['min_bytes'] is None else min(
+                diagnostic['min_bytes'], packet_size)
+            diagnostic['max_bytes'] = packet_size if diagnostic['max_bytes'] is None else max(
+                diagnostic['max_bytes'], packet_size)
+            diagnostic['last_bytes'] = packet_size
+            diagnostic['last_sequence'] = str(self._sequence)
+            if opcode == 0x30C8:
+                self._pet_snapshot_packet_count = min(
+                    self._pet_snapshot_packet_count + 1, 2147483647)
+            else:
+                self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
+                # This operation stream can change character inventory state;
+                # discard character-slot enrichment until a verified handler
+                # can reconcile the specific operation.
+                self._invalidate('inventory_operation_unclassified')
+            self._capture({'opcode': opcode_name, 'sequence': str(self._sequence),
+                           'result': 'presence_and_size_only',
+                           'packet_bytes': packet_size,
+                           'decoder_build': PET_INVENTORY_DECODER_BUILD})
             return
         try:
             parsed = parse_item_stats_update(payload) if opcode == 0x3040 else parse_item_durability_update(payload)
@@ -1804,11 +1893,24 @@ class PassiveItemTracker(object):
             'observed_items': attached,
             'reason': None if attached else self._last_invalidation,
             'capture_overflow': self.capture_overflow,
+            'pet_inventory_decoder_build': PET_INVENTORY_DECODER_BUILD,
+            'pet_inventory_packet_count': self._pet_packet_count,
+            'pet_snapshot_packet_count': self._pet_snapshot_packet_count,
+            'pet_inventory_status': (
+                'candidate_layout_unverified'
+                if self._pet_snapshot_packet_count else 'not_observed'),
+            'pet_packet_probe': {
+                'mode': 'presence_and_size_only',
+                'packet_bytes_retained': False,
+                'opcodes': {
+                    key: dict(value) for key, value in self._pet_packet_sizes.items()
+                },
+            },
         }
         return resources
 
     def persist_sanitized_capture(self, path):
-        """Write only parsed item records; callers must run off the phBot callback."""
+        """Write only parsed item observations and packet metadata off the callback."""
         if not self.capture_enabled or not isinstance(path, str) or not path:
             return False
         payload = json.dumps(self.sanitized_capture(), separators=(',', ':'), sort_keys=True)
@@ -2661,6 +2763,8 @@ class AgentWorker(object):
         self._event_diff_session = None
         self._event_diff_identity = None
         self._event_diff = None
+        self._pending_drop_lock = threading.Lock()
+        self._pending_drop_events = []
         self._event_samples = _queue.Queue(maxsize=256)
         self._death_samples = self._event_samples
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
@@ -2916,18 +3020,28 @@ class AgentWorker(object):
             self._event_baseline_required = True
             self._event_diff_identity = identity_key
             self._event_diff_session = self.session_id
+            with self._pending_drop_lock:
+                self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                             if entry['session_id'] == self.session_id and
+                                             entry['identity_key'] == identity_key]
         if self._resource_sample_gap:
             self._resource_sample_gap = False
             self._event_baseline_required = True
+            with self._pending_drop_lock:
+                self._pending_drop_events = []
         current = _event_resource_snapshot(resources)
         if current is None:
             self._event_baseline_required = True
             self._event_diff = None
+            with self._pending_drop_lock:
+                self._pending_drop_events = []
             return
         previous = self._event_diff
         if self._event_baseline_required or previous is None:
             self._event_diff = current
             self._event_baseline_required = False
+            with self._pending_drop_lock:
+                self._pending_drop_events = []
             return
         observed_at = sample.get('observed_at') if isinstance(sample, dict) else None
         position = sample.get('position') if isinstance(sample, dict) else None
@@ -2947,11 +3061,18 @@ class AgentWorker(object):
 
         old_containers = previous.get('containers', {})
         new_containers = current.get('containers', {})
-        if set(old_containers) == set(new_containers):
-            self._emit_item_deltas(identity, old_containers, new_containers, observed_at, position)
-        else:
-            # A newly opened or dismissed container establishes a new baseline.
-            pass
+        common = set(old_containers) & set(new_containers)
+        changed = set(old_containers) ^ set(new_containers)
+        # A newly available or dismissed container has no comparable baseline.
+        # Suppress its item models on this sample, since moving one of them into
+        # a stable container could otherwise look like an acquisition.
+        uncertain = set()
+        for key in changed:
+            uncertain.update((old_containers.get(key) or new_containers.get(key) or {}).keys())
+        self._emit_item_deltas(identity,
+                               {key: old_containers[key] for key in common},
+                               {key: new_containers[key] for key in common},
+                               observed_at, position, uncertain)
         self._event_diff = current
 
     def _emit_state_change(self, identity, kind, source_ref, key, value, occurred_at, position):
@@ -2960,11 +3081,29 @@ class AgentWorker(object):
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
-    def _emit_item_deltas(self, identity, before, after, occurred_at, position):
+    def _emit_item_deltas(self, identity, before, after, occurred_at, position, uncertain=()):
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
+        def inventory_slots(containers):
+            slots = {}
+            for record in containers.get('inventory', {}).values():
+                slots.update(record.get('slot_items', {}))
+            return slots
+
+        before_slots = inventory_slots(before)
+        after_slots = inventory_slots(after)
+        new_model_slots = {}
+        for slot, slot_item in after_slots.items():
+            # Only a formerly empty bag slot can identify one particular item.
+            if slot in before_slots:
+                continue
+            model = slot_item.get('model')
+            if isinstance(model, int) and not isinstance(model, bool) and model > 0:
+                new_model_slots.setdefault(model, []).append((slot, slot_item))
         for signature in sorted(signatures):
+            if signature in uncertain:
+                continue
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
             if old_total == new_total:
@@ -2987,11 +3126,16 @@ class AgentWorker(object):
                                                   occurred_at, position, item)
                 elif gains or losses:
                     for container_key, quantity, record in gains:
-                        item = record.get('item') or {}
+                        item, selected, ambiguous = _event_gain_item(
+                            before[container_key].get(signature), record, quantity)
                         if _item_has_identity(item):
                             payload = {'item': item, 'quantity_delta': quantity,
                                        'destination_container': _container_reference(container_key, record),
                                        'acquisition_method': 'unknown'}
+                            if selected:
+                                payload['destination_container']['slot'] = selected[0]
+                            if ambiguous:
+                                payload['item_instance_unobserved'] = True
                             self._queue_derived_event(identity, 'item.quantity_increased', 'item_container', payload,
                                                       occurred_at, position, item)
                     for container_key, quantity, record in losses:
@@ -3015,19 +3159,92 @@ class AgentWorker(object):
             for direction, container_key, quantity, record in changes:
                 amount = min(quantity, remaining)
                 remaining -= amount
-                item = record.get('item') or {}
+                if direction == 'gain':
+                    item, selected, ambiguous = _event_gain_item(
+                        before[container_key].get(signature), record, amount)
+                else:
+                    item, selected, ambiguous = record.get('item') or {}, None, False
                 if not amount or not _item_has_identity(item):
                     continue
                 if direction == 'gain':
                     kind = 'item.acquired' if old_total == 0 else 'item.quantity_increased'
                     payload = {'item': item, 'quantity_delta': amount,
                                'destination_container': _container_reference(container_key, record)}
+                    if selected:
+                        payload['destination_container']['slot'] = selected[0]
+                    if ambiguous:
+                        payload['item_instance_unobserved'] = True
                     payload['acquisition_method'] = 'unknown'
+                    model = item.get('model')
+                    candidates = new_model_slots.get(model, [])
+                    if (container_key == 'inventory' and amount == 1 and len(changes) == 1 and
+                            isinstance(model, int) and len(candidates) == 1 and
+                            candidates[0][0] in record.get('slots', []) and
+                            candidates[0][1].get('quantity', 1) == 1):
+                        slot, observed_item = candidates[0]
+                        inventory_quantity = sum(
+                            entry.get('quantity', 0)
+                            for entry in after.get('inventory', {}).values()
+                            if (entry.get('item') or {}).get('model') == model)
+                        drop_event_id = self._claim_drop_for_inventory_gain(identity, observed_item,
+                                                                              inventory_quantity)
+                        if drop_event_id:
+                            payload['item'] = observed_item
+                            payload['destination_container'] = {'type': 'inventory', 'slot': slot}
+                            payload['drop_event_id'] = drop_event_id
+                            payload.pop('item_instance_unobserved', None)
+                            item = observed_item
                 else:
                     kind = 'item.quantity_decreased'
                     payload = {'item': item, 'quantity_delta': amount,
                                'source_container': _container_reference(container_key, record)}
                 self._queue_derived_event(identity, kind, 'item_container', payload, occurred_at, position, item)
+
+    def register_drop_for_enrichment(self, identity, model, event_id, inventory_quantity):
+        if (not isinstance(identity, dict) or not isinstance(model, int) or model <= 0 or
+                not _validate_agent_id(event_id) or not _validate_agent_id(self.session_id) or
+                not isinstance(inventory_quantity, int) or inventory_quantity < 0 or
+                self._identity_key(identity) != self._identity_key(self._current_identity)):
+            return False
+        with self._pending_drop_lock:
+            now = _monotonic()
+            self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                         if entry['expires_at'] > now and entry['session_id'] == self.session_id]
+            if len(self._pending_drop_events) >= 32:
+                return False
+            self._pending_drop_events.append({
+                'event_id': event_id, 'model': model, 'session_id': self.session_id,
+                'identity_key': self._identity_key(identity),
+                'inventory_quantity': inventory_quantity,
+                'expires_at': now + DROP_ENRICHMENT_WINDOW_SECONDS,
+            })
+        return True
+
+    def has_pending_drop_enrichment(self, identity):
+        with self._pending_drop_lock:
+            now = _monotonic()
+            key = self._identity_key(identity)
+            self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                         if entry['expires_at'] > now and entry['session_id'] == self.session_id and
+                                         entry['identity_key'] == key]
+            return bool(self._pending_drop_events)
+
+    def _claim_drop_for_inventory_gain(self, identity, item, inventory_quantity):
+        model = item.get('model') if isinstance(item, dict) else None
+        if not isinstance(model, int) or isinstance(model, bool) or model <= 0:
+            return None
+        with self._pending_drop_lock:
+            now = _monotonic()
+            key = self._identity_key(identity)
+            self._pending_drop_events = [entry for entry in self._pending_drop_events
+                                         if entry['expires_at'] > now and entry['session_id'] == self.session_id and
+                                         entry['identity_key'] == key]
+            matches = [entry for entry in self._pending_drop_events if entry['model'] == model]
+            if len(matches) != 1 or inventory_quantity <= matches[0]['inventory_quantity']:
+                return None
+            selected = matches[0]
+            self._pending_drop_events.remove(selected)
+            return selected['event_id']
 
     def _queue_derived_event(self, identity, kind, source_ref, payload, occurred_at, position, item=None):
         event = {
@@ -3056,6 +3273,71 @@ class AgentWorker(object):
     def capture_joymax_packet(self, opcode, data):
         """Copy only allowlisted packets; decoding is performed by the network worker."""
         return self._item_tracker.enqueue(opcode, data)
+
+    def _queue_verified_pet_pickup(self, identity, item, quantity_delta, pet_id,
+                                  source_slot, packet_observation, position=None):
+        """Queue a receipt emitted only by a validated pet operation reconciler."""
+        if (self._current_identity is None or not isinstance(identity, dict) or
+                self._identity_key(identity) != self._identity_key(self._current_identity) or
+                not _validate_agent_id(self.character_id) or not _validate_agent_id(self.session_id) or
+                not isinstance(item, dict) or not _item_has_identity(item) or
+                not isinstance(quantity_delta, int) or isinstance(quantity_delta, bool) or
+                quantity_delta <= 0 or quantity_delta > 1000000000 or
+                not isinstance(pet_id, str) or not pet_id or len(pet_id) > 64 or
+                not isinstance(source_slot, int) or isinstance(source_slot, bool) or
+                source_slot < 0 or source_slot > 65535 or
+                not isinstance(packet_observation, dict)):
+            return False
+        observation_id = packet_observation.get('observation_id')
+        sequence = packet_observation.get('sequence')
+        decoder = packet_observation.get('decoder_version')
+        if (not isinstance(observation_id, str) or not observation_id or len(observation_id) > 160 or
+                not isinstance(sequence, str) or not sequence.isdigit() or not sequence.strip('0') or
+                len(sequence) > 20 or not isinstance(decoder, str) or not decoder or len(decoder) > 64):
+            return False
+        try:
+            snapshot = json.loads(json.dumps(item, separators=(',', ':'), ensure_ascii=False))
+            payload = {
+                'item': snapshot,
+                'quantity_delta': quantity_delta,
+                'destination_container': {'type': 'pets', 'id': pet_id, 'slot': source_slot},
+                'acquisition_method': 'pet_pickup',
+                'packet_observation': {
+                    'observation_id': observation_id,
+                    'sequence': sequence,
+                    'decoder_version': decoder,
+                },
+            }
+            if len(json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode('utf-8')) > MAX_EVENT_PAYLOAD_BYTES:
+                return False
+        except Exception:
+            return False
+        model = item.get('model')
+        code = item.get('servername')
+        session = self.session_id
+        stable_identity = session + ':' + observation_id
+        event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, 'phmon:pet-pickup:' + stable_identity))
+        event = {
+            'event_id': event_id, 'schema_version': 1,
+            'kind': 'item.acquired', 'category': 'item',
+            'occurred_at': packet_observation.get('occurred_at') or _worker_utc_now(self),
+            'source': 'joymax.pet_inventory', 'source_ref': '0xB034',
+            'payload': payload,
+            'dedupe_key': 'pet-pickup:' + hashlib.sha256(stable_identity.encode('utf-8')).hexdigest(),
+        }
+        if isinstance(model, int) and not isinstance(model, bool) and model >= 0:
+            event['item_model'] = model
+        if isinstance(code, str) and code:
+            event['item_code'] = code[:128]
+        if isinstance(position, dict):
+            region = position.get('region')
+            if _valid_position_region(region):
+                event['region'] = region
+            for axis in ('x', 'y', 'z'):
+                value = position.get(axis)
+                if _number(value) and abs(value) <= 1000000:
+                    event[axis] = float(value)
+        return self.queue_event(identity, event)
 
     def queue_death_event(self, identity, event):
         if isinstance(event, dict):
@@ -4598,7 +4880,10 @@ _CRITICAL_EVENT_KINDS = (
 
 
 def _event_is_critical(item):
-    return isinstance(item, dict) and item.get('kind') in _CRITICAL_EVENT_KINDS
+    return isinstance(item, dict) and (
+        item.get('kind') in _CRITICAL_EVENT_KINDS or
+        (item.get('kind') == 'item.acquired' and item.get('source') == 'joymax.pet_inventory')
+    )
 
 
 def _unique_notice(opcode, data):
@@ -4717,10 +5002,16 @@ def handle_event(event_type, data):
         payload = {}
     else:
         payload = {'value': _bounded_text(data, 512) or ''}
+    drop_event_id = str(uuid.uuid4()) if item_model is not None else None
     if _queue_canonical_event(kind, category, 'phbot.callback', source_ref, payload, identity,
-                              item_model=item_model):
+                              item_model=item_model, event_id=drop_event_id):
         if event_type == EVENT_DIED:
             _death_callback_active = True
+        if drop_event_id and _worker is not None:
+            inventory_quantity = _inventory_model_quantity(item_model)
+            if inventory_quantity is not None:
+                _worker.register_drop_for_enrichment(identity, item_model, drop_event_id,
+                                                     inventory_quantity)
 
 
 def _safe_callback_text(value, maximum=2048):
@@ -4734,9 +5025,10 @@ def _safe_callback_text(value, maximum=2048):
 
 
 def _queue_canonical_event(kind, category, source, source_ref, payload, identity=None,
-                           item_model=None, item_code=None, position=True, dedupe_key=None):
+                           item_model=None, item_code=None, position=True, dedupe_key=None,
+                           event_id=None):
     event = {
-        'event_id': str(uuid.uuid4()),
+        'event_id': event_id or str(uuid.uuid4()),
         'schema_version': 1,
         'kind': kind,
         'category': category,
@@ -4962,7 +5254,10 @@ def _sample_character(timing=None):
         return
     signature = json.dumps([identity,state],sort_keys=True,separators=(',',':'))
     now = _monotonic()
-    if now - _last_resources_sample_at >= RESOURCE_SAMPLE_INTERVAL_SECONDS:
+    resource_interval = (DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS
+                         if _worker.has_pending_drop_enrichment(identity)
+                         else RESOURCE_SAMPLE_INTERVAL_SECONDS)
+    if now - _last_resources_sample_at >= resource_interval:
         try:
             config_dir = timing.run('config_dir', _get_config_dir) if callable(_get_config_dir) else None
         except Exception:
@@ -5149,7 +5444,7 @@ def finished():
 
 if _PHBOT_AVAILABLE and _QtBind is not None:
     _gui = _QtBind.init(__name__, pName)
-    _QtBind.createLabel(_gui, 'Loaded: ' + pName + ' v' + pVersion + ' (item decoder r2)', 390, 10)
+    _QtBind.createLabel(_gui, 'Loaded: ' + pName + ' v' + pVersion + ' (pet packet probe r1)', 390, 10)
     _QtBind.createLabel(_gui, 'Backend WebSocket URL', 10, 10)
     _gui_backend_url = _QtBind.createLineEdit(_gui, '', 10, 30, 360, 20)
     _QtBind.createLabel(_gui, 'Agent ID', 10, 60)
