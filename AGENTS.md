@@ -269,16 +269,22 @@ script metadata, native return type and optional `get_status()` before/after
 invocation. Unknown/None status has no inferred meaning; probes do not alter
 admission, script text, retries or bot state and do not dump scripts/credentials.
 
-Real phBot 20.1.3, protocol 14, all eight group profiles on plugin 1.9.20:
-one-character short/long arrived; group short/long each had seven observed arrivals.
-All eight direct `move_to` targets moved. Menus prepared in 28–72 ms; eight POSTs
-launched within 2.9–3.3 ms and group ACKs arrived within 20–190 ms. Kalypso generated
-valid paths but native `start_script` returned False in 1 ms; a separate Z=0 probe
-also failed. The operator reports no script error/running message. Kalypso restarted
-and registered a fresh 1.9.21 session at 09:31:18.910222Z. Its short and staging
-routes passed; both repeated group short/long routes then had eight observed
-arrivals and all sixteen script starts returned True/api_confirmed. All requested
-live cases now pass. The underlying earlier native refusal cause remains unknown.
+Real phBot 20.1.3, protocol 14: the one-character short/long and initial all-profile
+tests used plugin 1.9.20; both group routes had seven observed arrivals. All eight
+direct `move_to` targets moved. Menus prepared in 28–72 ms; eight POSTs launched
+within 2.9–3.3 ms and group ACKs arrived within 20–190 ms. Kalypso generated valid
+paths but native `start_script` returned False in 1 ms; a separate Z=0 probe also
+failed. The operator reports no script error/running message. Kalypso restarted and
+registered a fresh 1.9.21 session at 09:31:18.910222Z; the other seven profiles
+remained on 1.9.20. Kalypso's short and staging routes passed, and both repeated
+group short/long routes then had eight observed arrivals. Per-command plugin
+versions are recorded in the evidence JSON. All requested live cases now pass;
+the underlying earlier native refusal cause remains unknown.
+
+The direct-movement test verified native invocation and fresh positions, not how
+`move_to` interacts with an already-running generated script. The opt-in control
+remains fire-and-forget and does not issue `stop_script`; do not infer that it
+cancels an active script. Coexistence and subsequent stop behavior remain unverified.
 
 Live schema retry errors were resolved by migration 23, committed/applied by a
 concurrent maintenance change (`c5e436b`) in this shared checkout. This work adds
@@ -286,8 +292,8 @@ an isolated legacy-schema regression without changing migration history.
 Files: plugin/README/tests; Go command catalog/service/capability admission and
 database regression; MapCanvas, fan-out/navigation composables, map page and shared
 navigation/direct-click/tray helpers/tests; protocol/capability/parity docs and
-`docs/reference/navigation-2026-10-04{.md,-evidence.json}`. No worktree, commit, PR or
-external publication was created by this run; upstream changes were preserved.
+`docs/reference/navigation-2026-10-04{.md,-evidence.json}`. The implementation is
+submitted on branch `codex/multi-character-navigation` in PR #73; no worktree was used.
 
 Validation: Go vet/race/tests/build with disposable PostgreSQL `phmon_nav_checks`,
 202 plugin/protocol tests, 187 frontend tests, typecheck/format/build, transport audit

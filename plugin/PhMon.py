@@ -4504,7 +4504,7 @@ class AgentWorker(object):
         except Exception:
             _log('navigation %s start_script raised; status_after=%s' % (
                 command_id, _navigation_stage('debug_status_after', self._navigation_debug_status)))
-            raise ValueError('script_start_failed')
+            raise ValueError('script_start_failed') from None
         returned = 'false' if result is False else 'true' if result is True else 'none' if result is None else 'other'
         return_type = ('NoneType' if result is None else 'bool' if isinstance(result, bool)
                        else 'int' if isinstance(result, int) else 'float' if isinstance(result, float)

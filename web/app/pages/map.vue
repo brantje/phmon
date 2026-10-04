@@ -174,6 +174,7 @@ const selectedCharacterID = ref(
 const actionTargetIDs = ref(new Set<string>())
 const clickToWalk = ref(false)
 const clickWalkNotice = ref('')
+let clickWalkGeneration = 0
 const dismissedNavigationRows = ref(new Set<string>())
 const navigationStopPending = ref(new Set<string>())
 const navigationTrayOpen = ref(true)
@@ -757,6 +758,8 @@ function selectMapPoint(point: RasterPosition) {
 }
 function walkOnMapClick(point: RasterPosition) {
   if (!clickToWalk.value || !mapProfile.value) return
+  const generation = ++clickWalkGeneration
+  const failures: string[] = []
   clickWalkNotice.value = ''
   sendMapClickWalk({
     intent: createMapNavigationIntent({
@@ -774,7 +777,11 @@ function walkOnMapClick(point: RasterPosition) {
     key: createIdempotencyKey,
     post: (body) => $fetch('/api/commands', { method: 'POST', body, retry: 0 }),
     failed: (name, error) => {
-      clickWalkNotice.value = `${name}: ${error instanceof Error ? error.message : 'Move was not admitted.'}`
+      if (generation !== clickWalkGeneration) return
+      failures.push(
+        `${name}: ${error instanceof Error ? error.message : 'Move was not admitted.'}`,
+      )
+      clickWalkNotice.value = failures.join(' · ')
     },
   })
 }

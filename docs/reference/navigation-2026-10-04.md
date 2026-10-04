@@ -59,9 +59,11 @@ timeout cannot be attributed solely to either schema errors or transport starvat
 retains exact command IDs, requested/effective arguments, HTTP times, durable
 delivery/acknowledgement/result timestamps and first observed route states.
 Live agent reports identify **phBot 20.1.3**, protocol 14, and plugin **1.9.20**
-for all eight profiles during the group/direct runs. Single-character runs preceded
-the final all-profile reload. Times below are UTC; the supplied phBot log uses
-UTC+2.
+for all eight profiles during the initial group/direct runs. Single-character runs
+preceded the final all-profile reload. In the post-restart retests below, Kalypso
+used plugin **1.9.21** while the other seven profiles remained on **1.9.20**; the
+evidence JSON records the plugin release per command. Times below are UTC; the
+supplied phBot log uses UTC+2.
 
 | Controlled case                    |        Menu ready | POST launch spread | ACK after admission | Movement evidence                                                             |
 | ---------------------------------- | ----------------: | -----------------: | ------------------: | ----------------------------------------------------------------------------- |
@@ -70,6 +72,12 @@ UTC+2.
 | all eight short, about 14–30 units |           28.1 ms |             2.9 ms |       97.1–189.9 ms | Seven observed arrivals; Kalypso script start rejected                        |
 | all eight long, about 165 units    |           71.8 ms |             3.3 ms |        20.0–29.6 ms | Seven observed arrivals, last by 09:12:38.105Z; Kalypso script start rejected |
 | direct move_to, all eight          | no menu/preflight |             2.8 ms |        21.4–38.4 ms | All eight fresh positions matched 6439.8,1115.4                               |
+
+The direct-movement test verified the native call and fresh positions, not how
+`move_to` interacts with an already-running generated script. The opt-in control
+remains fire-and-forget and does not issue `stop_script`; it must not be treated as
+cancelling an active script. Coexistence and subsequent stop behavior remain
+unverified.
 
 The direct batch's first POST started 0.9 ms after the click; all eight HTTP
 responses were 202 in 44–46 ms. Invocation results took 40–1092 ms, including

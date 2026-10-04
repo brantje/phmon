@@ -3327,6 +3327,20 @@ class NavigationGenerationTests(unittest.TestCase):
         self.assertFalse(any('walk,10,20,0' in line or 'private-token' in line for line in messages))
         self.assertIsNone(worker._last_navigation_evidence)
 
+    def test_start_script_exception_is_redacted_and_suppressed(self):
+        worker = self.worker
+        worker.api.functions['start_script'] = Mock(
+            side_effect=RuntimeError('private script body'),
+        )
+        with patch.object(plugin, '_log') as log, self.assertRaisesRegex(
+            ValueError, 'script_start_failed',
+        ) as raised:
+            worker._finish_navigation(
+                self.frame['args'], ['walk,10,20,0'], self.frame['command_id'],
+            )
+        self.assertTrue(raised.exception.__suppress_context__)
+        self.assertFalse(any('private script body' in call.args[0] for call in log.call_args_list))
+
     def test_optional_debug_status_failure_does_not_block_script_execution(self):
         worker = self.worker
         start = Mock(return_value=True)
