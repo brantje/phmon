@@ -5729,5 +5729,8 @@ protocol-contract change; the plugin and server now both use protocol 15.
 CI found a flaky database-recovery test ordering: PostgreSQL was restored before
 the parallel live-WebSocket check confirmed its unavailable frame. The outage
 smoke now waits for the observer's stale marker before restoring PostgreSQL. Its
-Python syntax and whitespace checks pass. Exact next action: push the harness fix,
-rerun CI, resolve any remaining failure and report the final SHA.
+Python syntax and whitespace checks pass. Both full validation and stack runs on
+the resulting PR head pass, as does the plugin/protocol version guard. CodeRabbit
+is still processing and has not posted review findings. Exact next action: if it
+posts actionable feedback, fix it and reply on PR #74 with the resulting SHA;
+otherwise leave the PR open for review.
