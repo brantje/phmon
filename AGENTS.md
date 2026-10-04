@@ -5724,5 +5724,10 @@ Validation: 208 plugin tests, 192 frontend unit tests, `go test ./...`, Nuxt
 typecheck, Prettier check and production build passed. ESLint passed with zero
 errors and 69 style warnings. `git diff --check` passed.
 The PR's version guard identified the added recall-point capability report as a
-protocol-contract change; the plugin and server now both use protocol 15. Exact
-next action: monitor PR #74's checks, fix any failures, then report the final SHA.
+protocol-contract change; the plugin and server now both use protocol 15.
+
+CI found a flaky database-recovery test ordering: PostgreSQL was restored before
+the parallel live-WebSocket check confirmed its unavailable frame. The outage
+smoke now waits for the observer's stale marker before restoring PostgreSQL. Its
+Python syntax and whitespace checks pass. Exact next action: push the harness fix,
+rerun CI, resolve any remaining failure and report the final SHA.
