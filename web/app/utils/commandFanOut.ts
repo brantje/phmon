@@ -143,6 +143,8 @@ const capabilityMessages: Record<string, string> = {
     'Waiting for this session to report command capabilities.',
   unsupported_runtime_primitive:
     'This phBot runtime does not expose the required action.',
+  recall_point_unverified:
+    'Recall-point designation is awaiting validation on this phBot runtime.',
   recall_point_build_unverified:
     'Recall-point designation has only been verified with phBot 20.1.3.',
   recall_point_server_unverified:
