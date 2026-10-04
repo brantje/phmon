@@ -72,8 +72,13 @@ import {
 import {
   mapNavigationTrayRows,
   navigationTrayProgressSummary,
+  rememberMapNavigationObservations,
+  type MapNavigationObservation,
 } from '~/utils/mapNavigationTray'
 import { submitNavigationStop } from '~/utils/mapNavigationStop'
+import { createMapNavigationIntent } from '~/utils/mapNavigationAction'
+import { sendMapClickWalk } from '~/utils/mapClickWalk'
+import { createIdempotencyKey } from '~/utils/createIdempotencyKey'
 import { placedGuideCell } from '~/utils/guideCells'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
@@ -167,6 +172,9 @@ const selectedCharacterID = ref(
   typeof route.query.character_id === 'string' ? route.query.character_id : '',
 )
 const actionTargetIDs = ref(new Set<string>())
+const clickToWalk = ref(false)
+const clickWalkNotice = ref('')
+let clickWalkGeneration = 0
 const dismissedNavigationRows = ref(new Set<string>())
 const navigationStopPending = ref(new Set<string>())
 const navigationTrayOpen = ref(true)
@@ -624,6 +632,7 @@ const heatmapWindow = computed(() =>
   ),
 )
 const navigationAction = useMapNavigationAction({
+  controlsOwnerID: MAP_ACTIVITY_OWNER,
   scope: () =>
     mapProfile.value
       ? {
@@ -746,6 +755,35 @@ function selectMapPoint(point: RasterPosition) {
   }
   inspectorOpen.value = false
   if (trainingEditor.selectedID.value) trainingEditor.select('')
+}
+function walkOnMapClick(point: RasterPosition) {
+  if (!clickToWalk.value || !mapProfile.value) return
+  const generation = ++clickWalkGeneration
+  const failures: string[] = []
+  clickWalkNotice.value = ''
+  sendMapClickWalk({
+    intent: createMapNavigationIntent({
+      point,
+      server: server.value,
+      areaID: areaID.value,
+      floorID: floorID.value,
+      explicitRegion: regionID.value,
+      datasetID: mapProfile.value.dataset_id,
+      datasetVersion: mapProfile.value.dataset_version,
+      targetIDs: [...actionTargetIDs.value],
+    }),
+    profile: mapProfile.value,
+    characters: [...fleetCharacters.value],
+    key: createIdempotencyKey,
+    post: (body) => $fetch('/api/commands', { method: 'POST', body, retry: 0 }),
+    failed: (name, error) => {
+      if (generation !== clickWalkGeneration) return
+      failures.push(
+        `${name}: ${error instanceof Error ? error.message : 'Move was not admitted.'}`,
+      )
+      clickWalkNotice.value = failures.join(' · ')
+    },
+  })
 }
 const historicalCharacters = computed(() =>
   fleetCharacters.value
@@ -1922,6 +1960,24 @@ const zoneNameForRegion = (region?: number | null) => {
 const zoneOptionLabels = computed(() =>
   uniqueRegionOptionLabels(regionOptions.value, zoneNameForRegion),
 )
+const navigationObservations = shallowRef<MapNavigationObservation[]>([])
+watch(
+  () => mapSnapshot.value?.navigation,
+  (routes) => {
+    if (
+      !routes ||
+      !streamCurrent.value ||
+      !mapSnapshotInFeedScope.value ||
+      liveStale.value
+    )
+      return
+    navigationObservations.value = rememberMapNavigationObservations(
+      navigationObservations.value,
+      routes,
+    )
+  },
+  { immediate: true },
+)
 const navigationTrayRows = computed(() =>
   mapNavigationTrayRows(
     mapNavigationRoutes.value,
@@ -1930,6 +1986,7 @@ const navigationTrayRows = computed(() =>
     dismissedNavigationRows.value,
     mapSnapshot.value?.navigation,
     navigationStopSupport.value,
+    navigationObservations.value,
   ).map((row) => {
     const route = mapSnapshot.value?.navigation?.find(
       (item) =>
@@ -2643,6 +2700,7 @@ useHead({ title: 'Map · PhMon' })
               @inspectcharacter="inspectCharacter"
               @viewchange="onMapViewChange"
               @pointselect="selectMapPoint"
+              @pointclick="walkOnMapClick"
               @trainingselect="selectTrainingArea"
               @trainingmove="trainingEditor.moveCenter"
               @trainingresize="trainingEditor.resizeFromPixels"
@@ -3522,7 +3580,7 @@ useHead({ title: 'Map · PhMon' })
                 group === 'active'
                   ? 'en route'
                   : group === 'done'
-                    ? 'arrived'
+                    ? 'finished'
                     : 'need attention'
               }}</span
             >
@@ -3702,6 +3760,13 @@ useHead({ title: 'Map · PhMon' })
               @action-notification="showMapActionNotification"
               @refresh-nearby-players="refreshMapPlayers"
             />
+            <label class="map-click-walk">
+              <input v-model="clickToWalk" type="checkbox" />
+              Click to walk (uses move_to)
+            </label>
+            <p v-if="clickWalkNotice" class="map-empty-copy" role="status">
+              {{ clickWalkNotice }}
+            </p>
             <section class="map-side-list map-character-list">
               <div class="map-target-toolbar">
                 <button
@@ -4634,6 +4699,17 @@ useHead({ title: 'Map · PhMon' })
 </template>
 
 <style scoped>
+.map-click-walk {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.map-click-walk input {
+  accent-color: var(--color-primary, #fef6c3);
+}
+
 .map-event-range {
   display: flex;
   gap: 4px;

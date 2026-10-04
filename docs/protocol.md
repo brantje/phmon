@@ -1346,3 +1346,17 @@ The plugin rechecks party membership directly immediately before mode 2, rejects
 self-targeting, and records the observed member's exact name in `effective_args`.
 A true API result completes with `api_confirmed`; false fails with
 `api_return_false`. Exceptions/non-boolean results fail. No result proves arrival.
+
+### Direct movement capability — 2026-10-04
+
+Plugin 1.9.20 retains protocol 14 and adds the extensible reported capability
+`character.move_to` with exact `{x:number,y:number,z:number}` arguments. Coordinates
+are required, finite and bounded to absolute 10,000,000. It uses existing
+authenticated command admission, session/generation fencing, idempotency and audit
+records. It has no region/path/readback/arrival preflight. Missing capability reports
+from older sessions cause normal server rejection. A completed result with API
+`null` and verification `unverified` means `move_to` was invoked, not arrival.
+
+The experimental Map checkbox is default off and sends every selected target
+concurrently. It bypasses frontend command-controls preparation and review; the
+server still validates the authenticated target and bounded command contract.

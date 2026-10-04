@@ -39,6 +39,12 @@ type walkArgs struct {
 	Z      float64 `json:"z"`
 }
 
+type moveToArgs struct {
+	X *float64 `json:"x"`
+	Y *float64 `json:"y"`
+	Z *float64 `json:"z"`
+}
+
 type navigateStopArgs struct {
 	CommandID     string `json:"command_id"`
 	RouteSequence uint64 `json:"route_sequence"`
@@ -112,6 +118,13 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 	case "training.radius.set":
 		var args radiusArgs
 		if err := decodeExact(raw, &args); err != nil || !finite(args.Radius) || args.Radius < 1 || args.Radius > maxRadius {
+			return Validated{}, ErrInvalid
+		}
+		normalized, _ := json.Marshal(args)
+		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
+	case "character.move_to":
+		var args moveToArgs
+		if decodeExact(raw, &args) != nil || args.X == nil || args.Y == nil || args.Z == nil || !coordinate(*args.X) || !coordinate(*args.Y) || !coordinate(*args.Z) {
 			return Validated{}, ErrInvalid
 		}
 		normalized, _ := json.Marshal(args)

@@ -318,17 +318,26 @@ export function mapNavigationCommand(state: {
   mapFeedCurrent(): boolean
   now(): number
 }): FanOutCommandDefinition {
+  const destinationZ = new Map<string, number>()
   const resolve = (character: CharacterView) => {
     const intent = state.getIntent()
     const profile = state.getProfile()
     if (!intent || !profile)
       return { reason: reasons.profile } as MapNavigationResolution
-    return resolveMapNavigationDestination(
+    const result = resolveMapNavigationDestination(
       intent,
       profile,
       character,
       state.now(),
     )
+    if (result.destination) {
+      // Height belongs to the prepared destination. Terrain changes while the
+      // menu is open must not invalidate an otherwise identical map click.
+      if (!destinationZ.has(character.character_id))
+        destinationZ.set(character.character_id, result.destination.z)
+      result.destination.z = destinationZ.get(character.character_id)!
+    }
+    return result
   }
   return {
     name: 'character.navigate',
@@ -391,7 +400,9 @@ export function mapNavigationCommand(state: {
       if (!resolved.destination) return resolved.reason || reasons.point
       if (
         !context?.exactRetry &&
-        JSON.stringify(resolved.destination) !== JSON.stringify(request.args)
+        (resolved.destination.region !== request.args.region ||
+          resolved.destination.x !== request.args.x ||
+          resolved.destination.y !== request.args.y)
       )
         return {
           code: 'arguments_changed',

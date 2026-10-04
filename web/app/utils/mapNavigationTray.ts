@@ -24,6 +24,43 @@ export interface MapNavigationTrayRow {
   canStop?: boolean
 }
 
+export type MapNavigationObservation = Pick<
+  NavigationRoute,
+  | 'character_id'
+  | 'session_id'
+  | 'command_id'
+  | 'route_sequence'
+  | 'server'
+  | 'status'
+>
+
+/** Retain bounded evidence when the server replaces a character's live route. */
+export function rememberMapNavigationObservations(
+  previous: MapNavigationObservation[],
+  routes: NavigationRoute[],
+): MapNavigationObservation[] {
+  const byCommand = new Map(
+    previous.map((route) => [
+      `${route.character_id}:${route.session_id}:${route.command_id}`,
+      route,
+    ]),
+  )
+  for (const route of routes) {
+    if (!route.command_id) continue
+    const key = `${route.character_id}:${route.session_id}:${route.command_id}`
+    byCommand.delete(key)
+    byCommand.set(key, {
+      character_id: route.character_id,
+      session_id: route.session_id,
+      command_id: route.command_id,
+      route_sequence: route.route_sequence,
+      server: route.server,
+      status: route.status,
+    })
+  }
+  return [...byCommand.values()].slice(-128)
+}
+
 export function navigationTrayProgressSummary(
   rows: MapNavigationTrayRow[],
 ): string | null {
@@ -72,7 +109,7 @@ function routeFields(
 export function navigationTrayGroup(
   status: string,
 ): MapNavigationTrayRow['group'] {
-  if (status === 'arrived') return 'done'
+  if (['arrived', 'superseded'].includes(status)) return 'done'
   return [
     'submitting',
     'waiting_for_movement',
@@ -90,6 +127,7 @@ export function mapNavigationTrayRows(
   dismissed: ReadonlySet<string>,
   navigationRoutes?: NavigationRoute[],
   stopSupportedByCharacter?: Readonly<Record<string, boolean>>,
+  observations: MapNavigationObservation[] = [],
 ): MapNavigationTrayRow[] {
   const routeByID = new Map(
     (navigationRoutes || []).map((route) => [
@@ -129,22 +167,57 @@ export function mapNavigationTrayRows(
         )
       )
         continue
+      const observed = child.commandID
+        ? observations.find(
+            (route) =>
+              route.character_id === child.characterID &&
+              route.session_id === child.sessionID &&
+              route.command_id === child.commandID &&
+              route.server.toLowerCase() === server.toLowerCase(),
+          )
+        : undefined
+      const replaced =
+        observed &&
+        navigationRoutes?.some(
+          (route) =>
+            route.character_id === observed.character_id &&
+            route.session_id === observed.session_id &&
+            route.server.toLowerCase() === server.toLowerCase() &&
+            route.route_sequence > observed.route_sequence,
+        )
+      const retainedStatus =
+        observed &&
+        ['arrived', 'stopped', 'stop_failed'].includes(observed.status)
+          ? observed.status
+          : replaced
+            ? 'superseded'
+            : undefined
       const status =
-        child.submission === 'ready' || child.submission === 'submitting'
+        retainedStatus ||
+        (child.submission === 'ready' || child.submission === 'submitting'
           ? 'submitting'
           : child.submission === 'accepted' &&
               !['failed', 'expired', 'unknown'].includes(
                 child.executionState || '',
               )
             ? 'waiting_for_movement'
-            : child.executionState || child.submission
+            : child.executionState || child.submission)
       rows.push({
-        id: `${operation.operationID}:${child.characterID}:${child.sessionID}`,
+        id: observed
+          ? `${observed.character_id}:${observed.session_id}:${observed.route_sequence}`
+          : `${operation.operationID}:${child.characterID}:${child.sessionID}`,
         characterID: child.characterID,
         name: child.characterName,
         status,
         detail:
-          child.skipReason?.message || child.message || child.argsSummary || '',
+          retainedStatus === 'arrived'
+            ? 'Arrival observed from a fresh position'
+            : retainedStatus === 'superseded'
+              ? 'Replaced by a newer observed route; arrival was not observed'
+              : child.skipReason?.message ||
+                child.message ||
+                child.argsSummary ||
+                '',
         geometryCount: 0,
         group: navigationTrayGroup(status),
       })

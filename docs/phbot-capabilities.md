@@ -1554,3 +1554,47 @@ independent defaults/settings, legacy configuration, callback suppression,
 container event suppression and continued baseline updates. No Windows/phBot
 runtime was available; native Qt layout, installed `get_item` behavior and
 callback cost still require operator runtime validation.
+
+### Navigation transport and direct movement — 2026-10-04
+
+Official [Movement API](https://plugins.phbot.org/phbot-api/movement), checked
+2026-10-04, documents `move_to(x, y, z)` as nonblocking, supporting transports/pets,
+and returning `None`. Plugin 1.9.20 adds the fixed `character.move_to` command.
+It invokes that primitive once on the callback, without `generate_path`,
+`generate_script`, bot/script changes, position/training readback or arrival
+tracking. API `None` is recorded as unverified invocation, never observed arrival.
+
+The existing [Paths API](https://plugins.phbot.org/phbot-api/paths) still limits
+generation to one call per five seconds and returns `None` for no route or `False`
+for the documented rate-limit/not-in-game alternatives. No speculative retries
+or failure causes are added. Generated navigation keeps existing bounded generation,
+expiry and lifecycle fences.
+
+The transport previously sent several acknowledgement-producing frames per loop
+while reading at most one, and skipped receive entirely after a character sample
+or heartbeat. Version 1.9.20 removes those skips, flushes bulk telemetry once per
+iteration and drains at most 32 incoming frames. Commands now log receipt, queue
+admission, callback start and terminal status/reason by command ID; existing native
+stage timers remain. Tests verify backlog draining, the burst bound, direct movement
+without planner/readback calls, exact deduplication and argument rejection.
+Live observations and limits are recorded in
+[the navigation follow-up](reference/navigation-2026-10-04.md).
+
+The authorized live follow-up used phBot **20.1.3**. All eight profiles reported
+plugin 1.9.20 and the direct capability; seven characters arrived on both generated
+group routes, and all eight moved with `move_to`. Kalypso's `start_script` returned
+False in 1 ms after successful generation/validation on both routes. A Z=0 probe
+also failed. The operator saw no separate script error or running-script message;
+the API does not document the reason and no native cause is inferred.
+
+At the operator's request, **1.9.21** adds bounded script metadata and optional
+callback `get_status()` observations before/after invocation. The symbol is the
+existing undocumented runtime compatibility fallback, not proof of an active
+script. Only known bounded labels are logged, unfamiliar text is redacted, and
+None/unavailable has no inferred meaning. Diagnostics never alter generated text,
+admission, retry or bot state. The 202-test plugin suite passes. The operator
+restarted Kalypso and its fresh 1.9.21 session passed a short and staging route.
+Both repeated eight-character short/long cases then had eight observed arrivals;
+all sixteen native `start_script` results were True/api_confirmed. The requested
+live gate is closed. The underlying cause of the earlier False is unknown, and
+the new Windows diagnostic lines have not been copied to this host.
