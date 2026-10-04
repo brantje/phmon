@@ -2287,3 +2287,36 @@ request was unavailable on this Windows host. The first branch build is deployed
 on the remote server and `/map` returned HTTP 200; remote browser viewport capture
 failed because Chrome could not start with the server's user-namespace sandbox.
 No PhMon-issued live designation or server readback has been performed.
+
+## Navigation latency, fan-out and direct walk — 2026-10-04
+
+The operator-authorized Greatest test matrix exercised one and all eight characters
+on short and long generated routes. Reusing the existing sidebar controls feed
+removed repeated subscription preflights; menu preparation measured 28–72 ms.
+The eight requests launched within 2.9–3.3 ms. Plugin transport receive skips and
+acknowledgement backlog handling were corrected, and command/stage diagnostics
+identify native timing and failures. Destination Z remains stable across preparation
+and exact retries; bounded UI route observations preserve observed arrival after
+another command replaces the live route.
+
+The requested default-off **Click to walk (uses move_to)** checkbox appears below
+the action buttons. Direct clicks fan out without controls preflight, generation,
+review or result waiting; all eight characters moved in the live direct test.
+Generated single-character short/long tests passed. Seven of eight arrived in both
+group tests; Kalypso's native `start_script` returned False after successful path
+generation. The
+operator requested extra diagnostics before restarting Kalypso; plugin 1.9.21 is
+ready with script metadata and optional bounded native status observations. Its
+fresh 1.9.21 session passed the short and staging routes after the restart; the
+repeated group short and long cases then each had eight observed arrivals and
+True/api_confirmed script starts. All requested movement cases now pass. The
+underlying native refusal cause remains unknown.
+
+Backend/plugin/UI evidence, exact controlled command IDs, exclusion of overlapping
+operator runs, API sources, regression checks and the completed real-runtime gate are
+in [the live report](reference/navigation-2026-10-04.md) and its
+[sanitized evidence](reference/navigation-2026-10-04-evidence.json). Deployed browser
+checks passed at 1440×1000, 1280×800 and 390×844 with no horizontal overflow or page
+errors. Live screenshots stay under `/tmp/phmon-nav-final-{desktop,1280,mobile}.png`.
+The public demo again stayed on Dashboard when Map was selected, so no newly
+verified demo Map parity is claimed.

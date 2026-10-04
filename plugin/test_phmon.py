@@ -2745,6 +2745,84 @@ class WebSocketFrameTests(unittest.TestCase):
             server_sock.close()
 
 
+class CommandTransportDrainTests(unittest.TestCase):
+    def worker(self, api=None):
+        worker = plugin.AgentWorker({'backend_url': 'ws://127.0.0.1:8081/agent',
+                                    'agent_id': AGENT_ID, 'agent_token': 'private-token'},
+                                   'fixture', api_adapter=plugin.PhBotAdapter(api or {}))
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        return worker
+
+    def test_ack_backlog_is_drained_and_command_received_in_same_tick(self):
+        worker = self.worker()
+        received = []
+        worker._handle_server_message = received.append
+        frames = [{'type': 'mob.sample.ack'} for _ in range(20)]
+        frames.append({'type': 'command.execute'})
+        client = Mock()
+        client.receive_json.side_effect = frames + [None]
+        self.assertEqual(worker._drain_server_messages(client, 0.25), 21)
+        self.assertEqual(received[-1]['type'], 'command.execute')
+        self.assertEqual(client.receive_json.call_args_list[0].kwargs['timeout'], 0.25)
+        self.assertTrue(all(call.kwargs['timeout'] == 0.001 for call in client.receive_json.call_args_list[1:]))
+
+    def test_continuous_frames_cannot_starve_outbound_sampling(self):
+        worker = self.worker()
+        worker._handle_server_message = Mock()
+        client = Mock()
+        client.receive_json.return_value = {'type': 'mob.sample.ack'}
+        self.assertEqual(worker._drain_server_messages(client, 0.25), 32)
+        self.assertEqual(client.receive_json.call_count, 32)
+
+    def test_direct_move_calls_only_move_to_once_and_logs_outcome(self):
+        move = Mock(return_value=None)
+        generation = Mock()
+        position = Mock()
+        worker = self.worker({'move_to': move, 'generate_script': generation, 'get_position': position})
+        frame = {'protocol_version': plugin.PROTOCOL_VERSION,
+                 'command_id': 'cmd_00000000-0000-4000-8000-000000000001',
+                 'character_id': worker.character_id, 'session_id': worker.session_id,
+                 'name': 'character.move_to', 'args': {'x': 10, 'y': 20, 'z': 0},
+                 'ttl_ms': 10000,
+                 'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10))}
+        with patch.object(plugin, '_log') as log:
+            worker._accept_command(frame)
+            worker.process_one_command()
+            worker._accept_command(frame)
+        move.assert_called_once_with(10.0, 20.0, 0.0)
+        generation.assert_not_called()
+        position.assert_not_called()
+        lines = [call.args[0] for call in log.call_args_list]
+        self.assertTrue(any('received' in line for line in lines))
+        self.assertTrue(any('callback started' in line for line in lines))
+        self.assertTrue(any('result=completed' in line for line in lines))
+        self.assertFalse(any('private-token' in line for line in lines))
+        self.assertIsNone(worker._latest_navigation_route)
+
+    def test_direct_move_rejects_nonfinite_or_extra_arguments(self):
+        move = Mock()
+        worker = self.worker({'move_to': move})
+        for args in ({'x': float('nan'), 'y': 20, 'z': 0}, {'x': 10, 'y': 20},
+                     {'x': 10, 'y': 20, 'z': 0, 'region': 25000}, {'x': True, 'y': 20, 'z': 0}):
+            with self.assertRaisesRegex(ValueError, 'invalid_arguments'):
+                worker._invoke('character.move_to', args, None)
+        move.assert_not_called()
+
+    def test_result_logs_reason_codes_without_native_exception_text(self):
+        worker = self.worker()
+        with patch.object(plugin, '_log') as log:
+            worker._queue_result({'type': 'command.result', 'command_id': 'cmd-test',
+                                 'status': 'failed', 'reason': 'walk,10,20,0 private-token',
+                                 'verification': 'unverified'})
+            worker._queue_result({'type': 'command.result', 'command_id': 'cmd-test',
+                                 'status': 'failed', 'reason': 'api_return_false',
+                                 'verification': 'api_confirmed'})
+        self.assertIn('reason=api_error', log.call_args_list[0].args[0])
+        self.assertNotIn('private-token', log.call_args_list[0].args[0])
+        self.assertIn('reason=api_return_false', log.call_args_list[1].args[0])
+
+
 class BackoffTests(unittest.TestCase):
     def test_backoff_caps_and_resets(self):
         backoff = plugin.ReconnectBackoff(lambda low, high: 1.0)
@@ -3226,6 +3304,53 @@ class NavigationGenerationTests(unittest.TestCase):
         self.release.set()
         self.worker._navigation_job['thread'].join(timeout=1)
         self.assertTrue(self.worker.process_one_command(self.identity, 25000))
+
+    def test_native_rejection_logs_bounded_metadata_and_status_without_retry(self):
+        start = Mock(return_value=False)
+        statuses = Mock(side_effect=[None, 'private-token unexpected status'])
+        worker = self.worker
+        worker.api.functions['start_script'] = start
+        worker.api.functions['get_status'] = statuses
+        lines = ['walk,10,20,0', 'wait,500', 'walk,30,40,0']
+        with patch.object(plugin, '_log') as log:
+            outcome = worker._finish_navigation(self.frame['args'], lines, self.frame['command_id'])
+        self.assertIs(outcome[0], False)
+        start.assert_called_once_with('\n'.join(lines))
+        self.assertEqual(statuses.call_count, 2)
+        messages = [call.args[0] for call in log.call_args_list]
+        prepared = next(line for line in messages if ' prepared ' in line)
+        self.assertIn(self.frame['command_id'], prepared)
+        self.assertIn('steps=3 walk=2 wait=1 teleport=0', prepared)
+        self.assertIn('sha256=', prepared)
+        self.assertIn('trailing_lf=False', prepared)
+        self.assertIn('status=none', prepared)
+        self.assertTrue(any('result=false result_type=bool status_after=other_text' in line for line in messages))
+        self.assertFalse(any('walk,10,20,0' in line or 'private-token' in line for line in messages))
+        self.assertIsNone(worker._last_navigation_evidence)
+
+    def test_start_script_exception_is_redacted_and_suppressed(self):
+        worker = self.worker
+        worker.api.functions['start_script'] = Mock(
+            side_effect=RuntimeError('private script body'),
+        )
+        with patch.object(plugin, '_log') as log, self.assertRaisesRegex(
+            ValueError, 'script_start_failed',
+        ) as raised:
+            worker._finish_navigation(
+                self.frame['args'], ['walk,10,20,0'], self.frame['command_id'],
+            )
+        self.assertTrue(raised.exception.__suppress_context__)
+        self.assertFalse(any('private script body' in call.args[0] for call in log.call_args_list))
+
+    def test_optional_debug_status_failure_does_not_block_script_execution(self):
+        worker = self.worker
+        start = Mock(return_value=True)
+        worker.api.functions['start_script'] = start
+        worker.api.functions['get_status'] = Mock(side_effect=RuntimeError('private detail'))
+        with patch.object(plugin, '_log'):
+            outcome = worker._finish_navigation(self.frame['args'], ['walk,10,20,0'])
+        self.assertIs(outcome[0], True)
+        start.assert_called_once_with('walk,10,20,0')
 
     def test_blocked_generation_keeps_callback_sampling_and_result_transport_responsive(self):
         self.begin()

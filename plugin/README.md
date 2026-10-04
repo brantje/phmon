@@ -1,6 +1,8 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.19**, using agent protocol **14**. It
+The current local plugin release is **1.9.22**, using agent protocol **14**. It
+includes navigation transport fixes, script diagnostics and direct `move_to` support,
+plus scoped recall-point packet submission for phBot 20.1.3 on Greatest. It also
 correlates a documented player-attack callback with a death callback from the same
 character within ten seconds. The death event records the recent player's name or
 `Monster / environment` as an inferred reason. This does not identify the actual
@@ -322,3 +324,30 @@ skip with independent audited results. `remote-controls` fixtures also support
 `PHMON_SIMULATOR_FALSE_ACTION=reverse_return`, and omission through
 `PHMON_SIMULATOR_UNSUPPORTED_PRIMITIVES=reverse_return` or `get_party`.
 No simulator result validates Windows/phBot scroll behavior.
+
+### Navigation diagnostics and direct movement (1.9.20)
+
+The plugin logs each command ID when received, queued, started on the callback,
+and completed or rejected. Generated navigation also logs generation, validation,
+source sampling and script-start timings. Credentials and generated scripts are
+never logged. The network worker drains up to 32 inbound frames per iteration so
+acknowledgements cannot indefinitely bury commands.
+
+The Map sidebar offers a default-off **Click to walk (uses move_to)** test toggle.
+A map click immediately sends a `character.move_to` command to every selected
+character, without a frontend controls preflight, path generation, confirmation
+review or arrival tracking. The callback invokes `move_to(x,y,z)` once; its
+documented `None` return establishes invocation only. Normal authenticated
+admission, current-session fencing, bounded arguments and audit records remain.
+Right-click continues to use generated-script navigation.
+
+The **1.9.21** debug follow-up logs a command-correlated script summary before
+invocation: walk/wait/teleport counts, UTF-8 byte length, a SHA-256 prefix, trailing
+newline flag, source/destination region and Z. Optional `get_status()` is read on
+the callback before and after `start_script`, with timings and bounded labels.
+`None`, unavailable or unfamiliar status never implies a running/stopped script;
+the probe never changes admission, retries, script text or bot state. No arbitrary
+native exception text is printed. Kalypso's fresh 1.9.21 session passed after the
+operator restart, and both repeated eight-character short/long routes had eight
+observed arrivals. The earlier native False reason remains unknown; these logs
+are available if it recurs. See the [live report](../docs/reference/navigation-2026-10-04.md).

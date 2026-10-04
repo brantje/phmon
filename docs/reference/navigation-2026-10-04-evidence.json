@@ -1,0 +1,2317 @@
+{
+  "instance": "http://192.168.10.25:3005/map?server=Greatest&area=world&floor=world",
+  "tested_at": "2026-10-04",
+  "phbot_version": "20.1.3",
+  "plugin_release": "1.9.20",
+  "protocol_version": 14,
+  "notes": [
+    "Single-character tests preceded the final all-profile plugin reload; group and direct tests used fresh sessions advertising character.move_to.",
+    "All actions explicitly authorized by operator. Other commands overlapped the initial long run, which was excluded and repeated after operator agreed to leave characters idle.",
+    "No credentials, cookies, idempotency keys, full resource snapshots or generated script bodies are retained.",
+    "A default-off direct movement option was unchecked again after the test."
+  ],
+  "excluded_runs": [
+    {
+      "label": "one-long",
+      "reason": "Superseded by unrelated operator commands before arrival; repeated as one-long-isolated."
+    },
+    {
+      "label": "direct-move-return",
+      "reason": "Old plugin capability absent, HTTP 422; no movement invocation."
+    },
+    {
+      "label": "direct-move-auren",
+      "reason": "Test toggle was not actually checked; no POST, invalid attempt."
+    },
+    {
+      "label": "all-eight-short",
+      "reason": "Reload temporarily exposed only seven eligible targets; cancelled without POST."
+    }
+  ],
+  "runs": [
+    {
+      "label": "one-short",
+      "menu_ready_ms": 39.1,
+      "submission_span_ms": 0.0,
+      "click_to_first_post_ms": 22.2,
+      "before": [
+        {
+          "name": "Auren",
+          "x": 6434.2001953125,
+          "y": 1094.300048828125,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:37.47848Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:40.174946Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6432.02685546875,
+          "y": 1123.6844482421875,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:40.048554Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6431.97802734375,
+          "y": 1125.2393798828125,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:39.613331Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6432.1689453125,
+          "y": 1113.7982177734375,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:39.29233Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:38.553821Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:38.746082Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:00:40.10684Z"
+        }
+      ],
+      "after": [
+        {
+          "name": "Auren",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:34.277323Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:31.874425Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:33.849747Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:31.936863Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:32.835283Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:33.543969Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6432,
+          "y": 1134,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:35.447322Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6451,
+          "y": 1143,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:01:35.863059Z"
+        }
+      ],
+      "commands": [
+        {
+          "command_id": "cmd_d4f5c77e-b240-4dfa-938f-59f575e9e9cb",
+          "character_name": "nuker4",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:00:40.337901+00:00",
+          "sent_at": "2026-10-04T09:00:40.345645+00:00",
+          "acknowledged_at": "2026-10-04T09:00:40.358549+00:00",
+          "finished_at": "2026-10-04T09:00:42.52978+00:00",
+          "effective_args": {
+            "x": 6451.047930850096,
+            "y": 1143.3878400000003,
+            "z": -32.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 18,
+          "requested_args": {
+            "region": 25000,
+            "x": 6451.047930850096,
+            "y": 1143.3878400000003,
+            "z": -32
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 20.6,
+          "result_ms": 2191.9,
+          "verification": "api_confirmed",
+          "api_return": true
+        }
+      ],
+      "arrival_evidence": "Browser navigation tray showed nuker4 Arrived; subsequent fresh character position was 6451,1143. Route was replaced before the separate route recorder started."
+    },
+    {
+      "label": "one-long-isolated",
+      "menu_ready_ms": 28.2,
+      "submission_span_ms": 0,
+      "click_to_first_post_ms": 19.5,
+      "before": [
+        {
+          "name": "Auren",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:27.023973Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:25.5477Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:27.524925Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:28.349236Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:29.507689Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:26.024593Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:26.127062Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:03:27.439833Z"
+        }
+      ],
+      "after": [
+        {
+          "name": "Auren",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:39.872327Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:40.189699Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:38.793227Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:39.589971Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:40.669614Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:42.056651Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:04:41.573914Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6431,
+          "y": 950,
+          "z": 0,
+          "region": 24744,
+          "state_updated_at": "2026-10-04T09:04:41.052906Z"
+        }
+      ],
+      "commands": [
+        {
+          "command_id": "cmd_8f359cbb-12e7-4da3-9145-ab9123f2d5bf",
+          "character_name": "nuker4",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:03:44.247412+00:00",
+          "sent_at": "2026-10-04T09:03:44.255288+00:00",
+          "acknowledged_at": "2026-10-04T09:03:44.255995+00:00",
+          "finished_at": "2026-10-04T09:03:46.287691+00:00",
+          "effective_args": {
+            "x": 6431.664156127186,
+            "y": 950.2788191999998,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 30
+          },
+          "http_status": 202,
+          "http_response_ms": 19.2,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.664156127186,
+            "y": 950.2788191999998,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "arrived": {
+              "observed_at": "2026-10-04T09:04:15.511Z",
+              "route_updated_at": "2026-10-04T09:04:13Z"
+            }
+          },
+          "ack_ms": 8.6,
+          "result_ms": 2040.3,
+          "verification": "api_confirmed",
+          "api_return": true
+        }
+      ],
+      "arrival_evidence": "First recorder snapshot already observed arrived; it bounds arrival time and is not an exact arrival timestamp."
+    },
+    {
+      "label": "all-eight-short-isolated",
+      "menu_ready_ms": 28.1,
+      "submission_span_ms": 2.9,
+      "click_to_first_post_ms": 21.7,
+      "before": [
+        {
+          "name": "Auren",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:12.046373Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:11.069603Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:10.960441Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6454,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:09.590201Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6454.5,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:10.524717Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6453.5,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:11.98448Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6453.5,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:08.30631Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6453,
+          "y": 1132,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:10:07.261303Z"
+        }
+      ],
+      "after": [
+        {
+          "name": "Auren",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:25.798672Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:28.47596Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.884754Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.932744Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6441,
+          "y": 1117,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.550781Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.612178Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:28.173694Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.612292Z"
+        }
+      ],
+      "commands": [
+        {
+          "command_id": "cmd_1e8401ee-d87f-49a4-bead-60e83261cc13",
+          "character_name": "Auren",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.414428+00:00",
+          "sent_at": "2026-10-04T09:10:12.50929+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.514594+00:00",
+          "finished_at": "2026-10-04T09:10:14.636591+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 50.9,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "moving": {
+              "observed_at": "2026-10-04T09:10:15.094Z",
+              "route_updated_at": "2026-10-04T09:10:15Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:16.940Z",
+              "route_updated_at": "2026-10-04T09:10:17Z"
+            }
+          },
+          "ack_ms": 100.2,
+          "result_ms": 2222.2,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_d629d318-293d-4b13-bc88-edc9fe3a9fc2",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "failed",
+          "result_code": "api_return_false",
+          "created_at": "2026-10-04T09:10:12.41765+00:00",
+          "sent_at": "2026-10-04T09:10:12.540726+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.54564+00:00",
+          "finished_at": "2026-10-04T09:10:14.496429+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": -32.0,
+            "region": 25000,
+            "route_steps": 3
+          },
+          "http_status": 202,
+          "http_response_ms": 74.7,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": -32
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 128.0,
+          "result_ms": 2078.8,
+          "verification": "api_confirmed",
+          "api_return": false
+        },
+        {
+          "command_id": "cmd_cee91967-0d36-4b27-a4db-61dfe4043f88",
+          "character_name": "Odin",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.417467+00:00",
+          "sent_at": "2026-10-04T09:10:12.509136+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.514563+00:00",
+          "finished_at": "2026-10-04T09:10:13.674823+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 74.6,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:10:14.055Z",
+              "route_updated_at": "2026-10-04T09:10:13.734332829Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:10:14.739Z",
+              "route_updated_at": "2026-10-04T09:10:14Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:18.084Z",
+              "route_updated_at": "2026-10-04T09:10:18Z"
+            }
+          },
+          "ack_ms": 97.1,
+          "result_ms": 1257.4,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_4fe90a57-4cf5-4d4a-a5f3-70294ad2bbbc",
+          "character_name": "Veyra",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.417628+00:00",
+          "sent_at": "2026-10-04T09:10:12.599784+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.607545+00:00",
+          "finished_at": "2026-10-04T09:10:14.205356+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 103.8,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:10:14.739Z",
+              "route_updated_at": "2026-10-04T09:10:14.249408321Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:10:15.094Z",
+              "route_updated_at": "2026-10-04T09:10:15Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:18.084Z",
+              "route_updated_at": "2026-10-04T09:10:18Z"
+            }
+          },
+          "ack_ms": 189.9,
+          "result_ms": 1787.7,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_13384cf5-fa76-4d1f-9f89-14294906d15e",
+          "character_name": "nuker1",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.418612+00:00",
+          "sent_at": "2026-10-04T09:10:12.508854+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.521574+00:00",
+          "finished_at": "2026-10-04T09:10:19.413907+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 3
+          },
+          "http_status": 202,
+          "http_response_ms": 74.1,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:10:19.735Z",
+              "route_updated_at": "2026-10-04T09:10:19.491118249Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:10:20.451Z",
+              "route_updated_at": "2026-10-04T09:10:18Z"
+            },
+            "waiting_for_arrival": {
+              "observed_at": "2026-10-04T09:10:20.980Z",
+              "route_updated_at": "2026-10-04T09:10:19Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:22.550Z",
+              "route_updated_at": "2026-10-04T09:10:20Z"
+            }
+          },
+          "ack_ms": 103.0,
+          "result_ms": 6995.3,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_4b91b061-ee74-4200-913c-fb74879c5c54",
+          "character_name": "nuker2",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.458003+00:00",
+          "sent_at": "2026-10-04T09:10:12.606891+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.64171+00:00",
+          "finished_at": "2026-10-04T09:10:13.952809+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 102.8,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:10:14.739Z",
+              "route_updated_at": "2026-10-04T09:10:14.025127889Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:10:15.094Z",
+              "route_updated_at": "2026-10-04T09:10:13Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:16.300Z",
+              "route_updated_at": "2026-10-04T09:10:14Z"
+            }
+          },
+          "ack_ms": 183.7,
+          "result_ms": 1494.8,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_979e3fa2-fc50-4fe8-93fa-72affd6f7690",
+          "character_name": "nuker3",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.494522+00:00",
+          "sent_at": "2026-10-04T09:10:12.64209+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.657698+00:00",
+          "finished_at": "2026-10-04T09:10:14.41028+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 123.2,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:10:14.739Z",
+              "route_updated_at": "2026-10-04T09:10:14.458064898Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:10:15.094Z",
+              "route_updated_at": "2026-10-04T09:10:13Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:17.500Z",
+              "route_updated_at": "2026-10-04T09:10:15Z"
+            }
+          },
+          "ack_ms": 163.2,
+          "result_ms": 1915.8,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_7a8e377d-75ce-49a1-9e20-cfeb5849091d",
+          "character_name": "nuker4",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:10:12.509132+00:00",
+          "sent_at": "2026-10-04T09:10:12.678426+00:00",
+          "acknowledged_at": "2026-10-04T09:10:12.681666+00:00",
+          "finished_at": "2026-10-04T09:10:14.017513+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "http_status": 202,
+          "http_response_ms": 136.6,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.5999999999995,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:10:14.739Z",
+              "route_updated_at": "2026-10-04T09:10:14.067066487Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:10:15.094Z",
+              "route_updated_at": "2026-10-04T09:10:13Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:10:17.500Z",
+              "route_updated_at": "2026-10-04T09:10:15Z"
+            }
+          },
+          "ack_ms": 172.5,
+          "result_ms": 1508.4,
+          "verification": "api_confirmed",
+          "api_return": true
+        }
+      ]
+    },
+    {
+      "label": "all-eight-long",
+      "menu_ready_ms": 71.8,
+      "submission_span_ms": 3.3,
+      "click_to_first_post_ms": 90.1,
+      "before": [
+        {
+          "name": "Auren",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:58.97342Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:02.369482Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:58.91159Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:00.116737Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.112229Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.684726Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.810553Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.568879Z"
+        }
+      ],
+      "after": [],
+      "commands": [
+        {
+          "command_id": "cmd_22aa95ba-1a29-40f4-ab0b-64b5ed3ecd93",
+          "character_name": "Auren",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.307654+00:00",
+          "sent_at": "2026-10-04T09:12:04.322155+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.332327+00:00",
+          "finished_at": "2026-10-04T09:12:05.981975+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 91.4,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:06.462Z",
+              "route_updated_at": "2026-10-04T09:12:05.989782282Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:07.058Z",
+              "route_updated_at": "2026-10-04T09:12:07Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:26.208Z",
+              "route_updated_at": "2026-10-04T09:12:26Z"
+            }
+          },
+          "ack_ms": 24.7,
+          "result_ms": 1674.3,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_cdcf2d57-e451-4660-978d-675a581b80cb",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "failed",
+          "result_code": "api_return_false",
+          "created_at": "2026-10-04T09:12:04.310494+00:00",
+          "sent_at": "2026-10-04T09:12:04.322313+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.33224+00:00",
+          "finished_at": "2026-10-04T09:12:05.52755+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": -32.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 91,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": -32
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 21.7,
+          "result_ms": 1217.1,
+          "verification": "api_confirmed",
+          "api_return": false
+        },
+        {
+          "command_id": "cmd_4cf35ea3-1749-438a-a267-a6a87c974286",
+          "character_name": "Odin",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.310683+00:00",
+          "sent_at": "2026-10-04T09:12:04.322202+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.332347+00:00",
+          "finished_at": "2026-10-04T09:12:05.391344+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 90.4,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:05.928Z",
+              "route_updated_at": "2026-10-04T09:12:05.410431298Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:06.462Z",
+              "route_updated_at": "2026-10-04T09:12:06Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:38.105Z",
+              "route_updated_at": "2026-10-04T09:12:38Z"
+            }
+          },
+          "ack_ms": 21.7,
+          "result_ms": 1080.7,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_57a2dc96-97fa-4c45-a6f4-93588b3e1ee8",
+          "character_name": "Veyra",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.310719+00:00",
+          "sent_at": "2026-10-04T09:12:04.330896+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.332301+00:00",
+          "finished_at": "2026-10-04T09:12:05.451481+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 90.7,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:05.928Z",
+              "route_updated_at": "2026-10-04T09:12:05.466572141Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:06.462Z",
+              "route_updated_at": "2026-10-04T09:12:06Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:32.863Z",
+              "route_updated_at": "2026-10-04T09:12:33Z"
+            }
+          },
+          "ack_ms": 21.6,
+          "result_ms": 1140.8,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_a8889f3a-1191-4ff4-bd56-5db8e4729fb5",
+          "character_name": "nuker1",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.311084+00:00",
+          "sent_at": "2026-10-04T09:12:04.324575+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.3407+00:00",
+          "finished_at": "2026-10-04T09:12:06.570888+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 89.9,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:07.058Z",
+              "route_updated_at": "2026-10-04T09:12:06.578709123Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:07.585Z",
+              "route_updated_at": "2026-10-04T09:12:05Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:22.207Z",
+              "route_updated_at": "2026-10-04T09:12:20Z"
+            }
+          },
+          "ack_ms": 29.6,
+          "result_ms": 2259.8,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_f1bdbf95-e063-4d56-8d10-f83b90853126",
+          "character_name": "nuker2",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.315667+00:00",
+          "sent_at": "2026-10-04T09:12:04.330852+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.340562+00:00",
+          "finished_at": "2026-10-04T09:12:05.691439+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 89.7,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:05.928Z",
+              "route_updated_at": "2026-10-04T09:12:05.707282047Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:06.462Z",
+              "route_updated_at": "2026-10-04T09:12:04Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:22.207Z",
+              "route_updated_at": "2026-10-04T09:12:20Z"
+            }
+          },
+          "ack_ms": 24.9,
+          "result_ms": 1375.8,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_1f991f41-1168-42c8-874b-b632b2c5a868",
+          "character_name": "nuker3",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.320653+00:00",
+          "sent_at": "2026-10-04T09:12:04.334875+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.340627+00:00",
+          "finished_at": "2026-10-04T09:12:05.817619+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 89.6,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:05.928Z",
+              "route_updated_at": "2026-10-04T09:12:05.824458905Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:06.462Z",
+              "route_updated_at": "2026-10-04T09:12:04Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:22.207Z",
+              "route_updated_at": "2026-10-04T09:12:20Z"
+            }
+          },
+          "ack_ms": 20.0,
+          "result_ms": 1497.0,
+          "verification": "api_confirmed",
+          "api_return": true
+        },
+        {
+          "command_id": "cmd_3cd6aedb-7f63-4bf2-9f9c-61770ecb9579",
+          "character_name": "nuker4",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:12:04.326211+00:00",
+          "sent_at": "2026-10-04T09:12:04.34083+00:00",
+          "acknowledged_at": "2026-10-04T09:12:04.350611+00:00",
+          "finished_at": "2026-10-04T09:12:06.164853+00:00",
+          "effective_args": {
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 28
+          },
+          "http_status": 202,
+          "http_response_ms": 89.5,
+          "requested_args": {
+            "region": 24744,
+            "x": 6431.784698559379,
+            "y": 950.1763200000005,
+            "z": 0
+          },
+          "first_route_status_observations": {
+            "waiting_for_movement": {
+              "observed_at": "2026-10-04T09:12:06.462Z",
+              "route_updated_at": "2026-10-04T09:12:06.173677682Z"
+            },
+            "moving": {
+              "observed_at": "2026-10-04T09:12:07.058Z",
+              "route_updated_at": "2026-10-04T09:12:05Z"
+            },
+            "arrived": {
+              "observed_at": "2026-10-04T09:12:22.207Z",
+              "route_updated_at": "2026-10-04T09:12:20Z"
+            }
+          },
+          "ack_ms": 24.4,
+          "result_ms": 1838.6,
+          "verification": "api_confirmed",
+          "api_return": true
+        }
+      ]
+    },
+    {
+      "label": "direct-all-eight",
+      "menu_ready_ms": null,
+      "submission_span_ms": 2.8,
+      "click_to_first_post_ms": 0.9,
+      "before": [
+        {
+          "name": "Auren",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:25.798672Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6430,
+          "y": 1097,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:28.47596Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.884754Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.932744Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6441,
+          "y": 1117,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.550781Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.612178Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:28.173694Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6435,
+          "y": 1110,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:27.612292Z"
+        }
+      ],
+      "after": [
+        {
+          "name": "Auren",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:58.97342Z"
+        },
+        {
+          "name": "Kalypso",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:02.369482Z"
+        },
+        {
+          "name": "Odin",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:11:58.91159Z"
+        },
+        {
+          "name": "Veyra",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:00.116737Z"
+        },
+        {
+          "name": "nuker1",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.112229Z"
+        },
+        {
+          "name": "nuker2",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.684726Z"
+        },
+        {
+          "name": "nuker3",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.810553Z"
+        },
+        {
+          "name": "nuker4",
+          "x": 6439.7998046875,
+          "y": 1115.4000244140625,
+          "z": 0,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:12:03.568879Z"
+        }
+      ],
+      "commands": [
+        {
+          "command_id": "cmd_00956157-5299-4883-8790-69bd2609c9b4",
+          "character_name": "Auren",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.730898+00:00",
+          "sent_at": "2026-10-04T09:11:31.750103+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.768022+00:00",
+          "finished_at": "2026-10-04T09:11:31.77131+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 46.1,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 37.1,
+          "result_ms": 40.4,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_65a1e954-d180-4827-8ae4-402963838dac",
+          "character_name": "Kalypso",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.735292+00:00",
+          "sent_at": "2026-10-04T09:11:31.750099+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.75895+00:00",
+          "finished_at": "2026-10-04T09:11:31.799922+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": -32
+          },
+          "http_status": 202,
+          "http_response_ms": 45,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": -32
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 23.7,
+          "result_ms": 64.6,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_ae2a032d-9900-44f5-81aa-70670c5cd85f",
+          "character_name": "Odin",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.735104+00:00",
+          "sent_at": "2026-10-04T09:11:31.749984+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.758928+00:00",
+          "finished_at": "2026-10-04T09:11:31.802915+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 44.3,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 23.8,
+          "result_ms": 67.8,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_71dd3c0f-b294-4357-b62a-d773330067a7",
+          "character_name": "Veyra",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.735538+00:00",
+          "sent_at": "2026-10-04T09:11:31.758096+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.773963+00:00",
+          "finished_at": "2026-10-04T09:11:32.827743+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 44.3,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 38.4,
+          "result_ms": 1092.2,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_af837daf-e1b9-4e94-9170-d73c7055f5d8",
+          "character_name": "nuker1",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.735359+00:00",
+          "sent_at": "2026-10-04T09:11:31.750097+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.758635+00:00",
+          "finished_at": "2026-10-04T09:11:32.297516+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 44.3,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 23.3,
+          "result_ms": 562.2,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_a7cbfbcc-34a7-491a-a3f3-b2df6271a884",
+          "character_name": "nuker2",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.743553+00:00",
+          "sent_at": "2026-10-04T09:11:31.758009+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.7737+00:00",
+          "finished_at": "2026-10-04T09:11:32.297495+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 44.4,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 30.1,
+          "result_ms": 553.9,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_017484f3-cf8d-4fc5-8b8a-605d34c0741c",
+          "character_name": "nuker3",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.748314+00:00",
+          "sent_at": "2026-10-04T09:11:31.757938+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.773671+00:00",
+          "finished_at": "2026-10-04T09:11:32.297517+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 44.2,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 25.4,
+          "result_ms": 549.2,
+          "verification": "unverified",
+          "api_return": null
+        },
+        {
+          "command_id": "cmd_5e9ab567-9fad-4a68-a9ed-d77143fdc10a",
+          "character_name": "nuker4",
+          "command_name": "character.move_to",
+          "state": "completed",
+          "result_code": "",
+          "created_at": "2026-10-04T09:11:31.752257+00:00",
+          "sent_at": "2026-10-04T09:11:31.761955+00:00",
+          "acknowledged_at": "2026-10-04T09:11:31.773632+00:00",
+          "finished_at": "2026-10-04T09:11:32.29756+00:00",
+          "effective_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "http_status": 202,
+          "http_response_ms": 44.1,
+          "requested_args": {
+            "x": 6439.857235561325,
+            "y": 1115.4000000000005,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 21.4,
+          "result_ms": 545.3,
+          "verification": "unverified",
+          "api_return": null
+        }
+      ],
+      "arrival_evidence": "All eight fresh positions independently matched 6439.8,1115.4. move_to returned None and the command result remained unverified; no navigation route is fabricated."
+    },
+    {
+      "label": "kalypso-z-zero",
+      "menu_ready_ms": null,
+      "submission_span_ms": 0.0,
+      "click_to_first_post_ms": 0.0,
+      "before": [
+        {
+          "name": "Kalypso",
+          "x": 6439.7001953125,
+          "y": 1115.4000244140625,
+          "z": -32,
+          "region": 25000,
+          "state_updated_at": "2026-10-04T09:22:02.321744Z"
+        }
+      ],
+      "after": [],
+      "commands": [
+        {
+          "command_id": "cmd_07601964-8d3e-43fd-ac9a-1ec33e4f8018",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "failed",
+          "result_code": "api_return_false",
+          "created_at": "2026-10-04T09:22:19.29264+00:00",
+          "sent_at": "2026-10-04T09:22:19.301537+00:00",
+          "acknowledged_at": "2026-10-04T09:22:19.303801+00:00",
+          "finished_at": "2026-10-04T09:22:20.697447+00:00",
+          "effective_args": {
+            "x": 6435.052433484747,
+            "y": 1110.6,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 2
+          },
+          "http_status": 202,
+          "http_response_ms": 8.8,
+          "requested_args": {
+            "region": 25000,
+            "x": 6435.052433484747,
+            "y": 1110.6,
+            "z": 0
+          },
+          "first_route_status_observations": {},
+          "ack_ms": 11.2,
+          "result_ms": 1404.8,
+          "verification": "api_confirmed",
+          "api_return": false
+        }
+      ]
+    }
+  ],
+  "debug_plugin_release": "1.9.21",
+  "debug_retest_status": "Kalypso fresh 1.9.21 session connected 09:31:18.910222Z; short and staging routes passed; both all-eight group cases passed with seven profiles on 1.9.20 and Kalypso on 1.9.21. All generated start_script results were true/api_confirmed. Native cause of earlier False remains unknown.",
+  "post_restart_runs": [
+    {
+      "label": "kalypso-restarted-short",
+      "commands": [
+        {
+          "command_id": "cmd_e7685d73-a363-4309-9cb7-e9a14fec447c",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:35:01.160176+00:00",
+          "sent_at": "2026-10-04T09:35:01.170818+00:00",
+          "acknowledged_at": "2026-10-04T09:35:01.187555+00:00",
+          "finished_at": "2026-10-04T09:35:02.016721+00:00",
+          "effective_args": {
+            "x": 6449.749323149121,
+            "y": 1095.5150592,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 7
+          },
+          "ack_ms": 27.4,
+          "result_ms": 856.5,
+          "plugin_release": "1.9.21"
+        }
+      ],
+      "server_admission_span_ms": 0.0,
+      "menu_ready_ms": 34.5,
+      "http_response_ms": 20.5,
+      "arrival_evidence": "Browser live tray showed Kalypso Arrived, then preserved that observed result after the staging route replaced it."
+    },
+    {
+      "label": "kalypso-restarted-staging",
+      "commands": [
+        {
+          "command_id": "cmd_ab711221-0989-4e19-a1a1-33531aed8483",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:35:54.846009+00:00",
+          "sent_at": "2026-10-04T09:35:54.854719+00:00",
+          "acknowledged_at": "2026-10-04T09:35:54.863013+00:00",
+          "finished_at": "2026-10-04T09:35:55.66059+00:00",
+          "effective_args": {
+            "x": 6431.454380272549,
+            "y": 998.4000000000005,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 12
+          },
+          "ack_ms": 17.0,
+          "result_ms": 814.6,
+          "plugin_release": "1.9.21"
+        }
+      ],
+      "server_admission_span_ms": 0.0,
+      "arrival_evidence": "Browser tray showed both Kalypso rows Arrived with no active rows; fresh position was 6431,998."
+    },
+    {
+      "label": "all-eight-restarted-short",
+      "commands": [
+        {
+          "command_id": "cmd_dd7d075c-c7e2-4582-9537-58cf2d020d2d",
+          "character_name": "Auren",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.884074+00:00",
+          "sent_at": "2026-10-04T09:37:03.894736+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.898761+00:00",
+          "finished_at": "2026-10-04T09:37:06.369225+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 14.7,
+          "result_ms": 2485.2,
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_a53ce23f-eae2-42cd-8dc1-f92d8bdb4d83",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.887819+00:00",
+          "sent_at": "2026-10-04T09:37:03.898828+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.913841+00:00",
+          "finished_at": "2026-10-04T09:37:06.025318+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 26.0,
+          "result_ms": 2137.5,
+          "plugin_release": "1.9.21"
+        },
+        {
+          "command_id": "cmd_9ad9f1ef-6cab-4c2c-be3e-9c428f7e273f",
+          "character_name": "Odin",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.888725+00:00",
+          "sent_at": "2026-10-04T09:37:03.900645+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.913717+00:00",
+          "finished_at": "2026-10-04T09:37:05.052996+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 25.0,
+          "result_ms": 1164.3,
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_9f2d2c89-a796-4573-82c3-703b853459c5",
+          "character_name": "Veyra",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.88899+00:00",
+          "sent_at": "2026-10-04T09:37:03.90106+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.913855+00:00",
+          "finished_at": "2026-10-04T09:37:04.976798+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 24.9,
+          "result_ms": 1087.8,
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_c8bc24b6-8786-426c-9d05-35543c990ba0",
+          "character_name": "nuker1",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.890143+00:00",
+          "sent_at": "2026-10-04T09:37:03.905744+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.947761+00:00",
+          "finished_at": "2026-10-04T09:37:05.924158+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 57.6,
+          "result_ms": 2034.0,
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_459668ca-711e-4002-ad84-f3b7d4c67089",
+          "character_name": "nuker2",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.892227+00:00",
+          "sent_at": "2026-10-04T09:37:03.910009+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.935744+00:00",
+          "finished_at": "2026-10-04T09:37:05.329879+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 43.5,
+          "result_ms": 1437.7,
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_d2678f1f-aeda-434b-95e3-3b2f68d076f5",
+          "character_name": "nuker3",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.894848+00:00",
+          "sent_at": "2026-10-04T09:37:03.909986+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.935743+00:00",
+          "finished_at": "2026-10-04T09:37:05.955073+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 40.9,
+          "result_ms": 2060.2,
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_2e336d14-a9bf-451d-8013-ab479542a903",
+          "character_name": "nuker4",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:37:03.900247+00:00",
+          "sent_at": "2026-10-04T09:37:03.911963+00:00",
+          "acknowledged_at": "2026-10-04T09:37:03.959747+00:00",
+          "finished_at": "2026-10-04T09:37:05.423853+00:00",
+          "effective_args": {
+            "x": 6447.659571706683,
+            "y": 1012.1999999999989,
+            "z": 0.0,
+            "region": 25000,
+            "route_steps": 4
+          },
+          "ack_ms": 59.5,
+          "result_ms": 1523.6,
+          "plugin_release": "1.9.20"
+        }
+      ],
+      "server_admission_span_ms": 16.2,
+      "menu_ready_ms": 67.6,
+      "http_response_ms_range": [48.9, 50.2],
+      "arrival_evidence": "Read-only map observer returned arrived for all eight exact command IDs; tray showed ten finished and no active rows before the next route was submitted."
+    },
+    {
+      "label": "all-eight-restarted-long",
+      "commands": [
+        {
+          "command_id": "cmd_17bf16d6-1bcc-413f-b22c-0eccbbecce89",
+          "character_name": "Auren",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.154489+00:00",
+          "sent_at": "2026-10-04T09:38:09.165198+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.168454+00:00",
+          "finished_at": "2026-10-04T09:38:11.199967+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 14.0,
+          "result_ms": 2045.5,
+          "arrival_observation": {
+            "character_id": "4f78b30d-24b2-4c08-95eb-ed6dbf5a946f",
+            "command_id": "cmd_17bf16d6-1bcc-413f-b22c-0eccbbecce89",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:25Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_ce245394-0e46-41f2-87fd-1eafba8f1c38",
+          "character_name": "Kalypso",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.15773+00:00",
+          "sent_at": "2026-10-04T09:38:09.172428+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.183324+00:00",
+          "finished_at": "2026-10-04T09:38:10.722485+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 25.6,
+          "result_ms": 1564.8,
+          "arrival_observation": {
+            "character_id": "826114f9-65bf-4e88-b98f-6b8b399dbb2b",
+            "command_id": "cmd_ce245394-0e46-41f2-87fd-1eafba8f1c38",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 4,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:23Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.21"
+        },
+        {
+          "command_id": "cmd_eedc7023-e13f-4bac-b675-230f129e526b",
+          "character_name": "Odin",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.158531+00:00",
+          "sent_at": "2026-10-04T09:38:09.17271+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.21468+00:00",
+          "finished_at": "2026-10-04T09:38:10.244562+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 56.1,
+          "result_ms": 1086.0,
+          "arrival_observation": {
+            "character_id": "b6d2a166-8a6a-49b3-953b-957d30e7ff7b",
+            "command_id": "cmd_eedc7023-e13f-4bac-b675-230f129e526b",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:23Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_7bda663d-cd70-4194-a9d3-a83e69143854",
+          "character_name": "Veyra",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.158884+00:00",
+          "sent_at": "2026-10-04T09:38:09.172138+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.18335+00:00",
+          "finished_at": "2026-10-04T09:38:10.244665+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 24.5,
+          "result_ms": 1085.8,
+          "arrival_observation": {
+            "character_id": "f36f6315-db80-480e-8615-78f0cb597135",
+            "command_id": "cmd_7bda663d-cd70-4194-a9d3-a83e69143854",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:23Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_b2f1a143-07ab-4d9c-b676-dda2981b0750",
+          "character_name": "nuker1",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.160246+00:00",
+          "sent_at": "2026-10-04T09:38:09.17836+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.198542+00:00",
+          "finished_at": "2026-10-04T09:38:10.667957+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 38.3,
+          "result_ms": 1507.7,
+          "arrival_observation": {
+            "character_id": "1b991933-1a46-44d4-80b9-6e07a2164da3",
+            "command_id": "cmd_b2f1a143-07ab-4d9c-b676-dda2981b0750",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:23Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_8bdb3b8f-4719-4b10-a94e-251890bb0694",
+          "character_name": "nuker2",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.162509+00:00",
+          "sent_at": "2026-10-04T09:38:09.18307+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.197729+00:00",
+          "finished_at": "2026-10-04T09:38:10.543767+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 35.2,
+          "result_ms": 1381.3,
+          "arrival_observation": {
+            "character_id": "482022ad-97a9-4a18-ae2c-a6724241fc8c",
+            "command_id": "cmd_8bdb3b8f-4719-4b10-a94e-251890bb0694",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:23Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_de1da1a1-c1a0-406f-8122-a78025ba6471",
+          "character_name": "nuker3",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.168329+00:00",
+          "sent_at": "2026-10-04T09:38:09.183291+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.197729+00:00",
+          "finished_at": "2026-10-04T09:38:11.214546+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 29.4,
+          "result_ms": 2046.2,
+          "arrival_observation": {
+            "character_id": "26211dcc-773d-4e33-875d-dfbe3fde3e38",
+            "command_id": "cmd_de1da1a1-c1a0-406f-8122-a78025ba6471",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:24Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        },
+        {
+          "command_id": "cmd_7f6789aa-2daf-4368-a866-f315360c1ad1",
+          "character_name": "nuker4",
+          "command_name": "character.navigate",
+          "state": "completed",
+          "result_code": "",
+          "verification": "api_confirmed",
+          "api_return": true,
+          "created_at": "2026-10-04T09:38:09.176447+00:00",
+          "sent_at": "2026-10-04T09:38:09.188382+00:00",
+          "acknowledged_at": "2026-10-04T09:38:09.197741+00:00",
+          "finished_at": "2026-10-04T09:38:11.066694+00:00",
+          "effective_args": {
+            "x": 6431.762792102789,
+            "y": 830.669068799999,
+            "z": 0.0,
+            "region": 24744,
+            "route_steps": 14
+          },
+          "ack_ms": 21.3,
+          "result_ms": 1890.2,
+          "arrival_observation": {
+            "character_id": "1782d5c6-3498-4aad-baf1-2edf85cb165c",
+            "command_id": "cmd_7f6789aa-2daf-4368-a866-f315360c1ad1",
+            "destination": {
+              "region": 24744,
+              "x": 6431.762792102789,
+              "y": 830.669068799999,
+              "z": 0
+            },
+            "route_sequence": 5,
+            "status": "arrived",
+            "updated_at": "2026-10-04T09:41:23Z",
+            "observed_at": "2026-10-04T09:41:26.584Z"
+          },
+          "plugin_release": "1.9.20"
+        }
+      ],
+      "server_admission_span_ms": 22.0,
+      "arrival_evidence": "Fresh authenticated map snapshot at 09:41:26.584Z returned arrived for all eight exact command IDs; fresh character positions were all 6431,830. The waiting browser session was lost, so exact first arrival times and frontend launch spread were not retained for this final batch."
+    }
+  ],
+  "final_character_positions": [
+    {
+      "name": "Auren",
+      "state_updated_at": "2026-10-04T09:41:25.079023Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "Kalypso",
+      "state_updated_at": "2026-10-04T09:41:22.611339Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "Odin",
+      "state_updated_at": "2026-10-04T09:41:23.080684Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "Veyra",
+      "state_updated_at": "2026-10-04T09:41:22.753366Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "nuker1",
+      "state_updated_at": "2026-10-04T09:41:25.43326Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "nuker2",
+      "state_updated_at": "2026-10-04T09:41:25.223897Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "nuker3",
+      "state_updated_at": "2026-10-04T09:41:25.773044Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    },
+    {
+      "name": "nuker4",
+      "state_updated_at": "2026-10-04T09:41:25.383306Z",
+      "x": 6431,
+      "y": 830,
+      "z": 0
+    }
+  ],
+  "final_acceptance": {
+    "one_short": "passed",
+    "one_long": "passed",
+    "all_short": "8/8 observed arrived after restart",
+    "all_long": "8/8 observed arrived after restart",
+    "direct_move_to": "8/8 fresh positions matched; result remains unverified"
+  }
+}

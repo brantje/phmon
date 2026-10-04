@@ -262,6 +262,62 @@ classified. The operator authorized a controlled test with any idle character
 and deployment of this branch on the remote server. See the investigation for
 the separate manual and automated evidence.
 
+### Resume — 2026-10-04 navigation latency and live verification complete
+
+Completed targeted Slice 3/7–8 follow-up: the operator authorized live Greatest
+navigation (one/all eight characters, short/long) and a direct movement test option.
+The deployed Map reuses its existing controls feed instead of repeating preflights,
+freezes destination Z for exact retries, and retains at most 128 observed route
+outcomes after replacement. The default-off sidebar **Click to walk (uses move_to)**
+posts all selected targets immediately; the fixed audited command calls native
+`move_to(x,y,z)` once with no planner/control readback or arrival tracking. Existing
+auth/session/generation/idempotency and four Go delivery workers remain.
+
+Plugin 1.9.20 fixed receive starvation: no receive skips after sample/heartbeat,
+one telemetry flush per loop and bounded 32-frame draining. Command IDs now log
+receipt, queue TTL, callback and terminal result plus native stage timing. Final
+source 1.9.21, requested by the operator before Kalypso's restart, adds bounded
+script metadata, native return type and optional `get_status()` before/after
+invocation. Unknown/None status has no inferred meaning; probes do not alter
+admission, script text, retries or bot state and do not dump scripts/credentials.
+
+Real phBot 20.1.3, protocol 14: the one-character short/long and initial all-profile
+tests used plugin 1.9.20; both group routes had seven observed arrivals. All eight
+direct `move_to` targets moved. Menus prepared in 28–72 ms; eight POSTs launched
+within 2.9–3.3 ms and group ACKs arrived within 20–190 ms. Kalypso generated valid
+paths but native `start_script` returned False in 1 ms; a separate Z=0 probe also
+failed. The operator reports no script error/running message. Kalypso restarted and
+registered a fresh 1.9.21 session at 09:31:18.910222Z; the other seven profiles
+remained on 1.9.20. Kalypso's short and staging routes passed, and both repeated
+group short/long routes then had eight observed arrivals. Per-command plugin
+versions are recorded in the evidence JSON. All requested live cases now pass;
+the underlying earlier native refusal cause remains unknown.
+
+The direct-movement test verified native invocation and fresh positions, not how
+`move_to` interacts with an already-running generated script. The opt-in control
+remains fire-and-forget and does not issue `stop_script`; do not infer that it
+cancels an active script. Coexistence and subsequent stop behavior remain unverified.
+
+Live schema retry errors were resolved by migration 23, committed/applied by a
+concurrent maintenance change (`c5e436b`) in this shared checkout. This work adds
+an isolated legacy-schema regression without changing migration history.
+Files: plugin/README/tests; Go command catalog/service/capability admission and
+database regression; MapCanvas, fan-out/navigation composables, map page and shared
+navigation/direct-click/tray helpers/tests; protocol/capability/parity docs and
+`docs/reference/navigation-2026-10-04{.md,-evidence.json}`. The implementation is
+submitted on branch `codex/multi-character-navigation` in PR #73; no worktree was used.
+
+Validation: Go vet/race/tests/build with disposable PostgreSQL `phmon_nav_checks`,
+202 plugin/protocol tests, 187 frontend tests, typecheck/format/build, transport audit
+and Compose config passed (example config requires a disposable secret). Lint has
+zero errors/69 style warnings. Production server/web were rebuilt/restarted; final
+browser checks at 1440×1000, 1280×800 and 390×844 had no horizontal overflow/page
+errors. Exact IDs, timings and limitations are in the live report above.
+Exact next action: continue the remaining roadmap gates only when requested;
+this targeted navigation task is complete. If native False recurs, capture the
+1.9.21 command-correlated diagnostic lines rather than guessing a cause or silently
+falling back to direct movement. Operator credentials remain only in local config.
+
 ### Resume — 2026-10-03 dropped-item tooltip correction
 
 #### Follow-up — live necklace still lacked details
@@ -5653,3 +5709,19 @@ commit, update the remote branch, install the updated plugin on phBot, perform
 one audited PhMon-issued command on an authorized idle character, capture its
 `0xB059` byte and in-game result, and check browser viewports from an approved
 browser environment. Preserve the unrelated local plugin edits.
+
+### Resume — 2026-10-05 branch sync and click-to-walk restoration
+
+The `codex/designate-recall-point` branch had been based before PR #73 merged,
+so its map page lacked the default-off **Click to walk (uses move_to)** option
+and direct `character.move_to` dispatch. Merged current `origin/main` into this
+branch and resolved the overlapping plugin, command-catalog and map edits while
+retaining both navigation and scoped recall-point behavior. Combined plugin
+version is 1.9.22. The checkbox is back below the Map action buttons and map
+point clicks submit independent fire-and-forget moves for selected characters.
+
+Validation: 208 plugin tests, 192 frontend unit tests, `go test ./...`, Nuxt
+typecheck, Prettier check and production build passed. ESLint passed with zero
+errors and 69 style warnings. `git diff --check` passed.
+Exact next action: commit the resolved merge, push this branch and open a PR;
+wait for CI and fix any reported failures before reporting the final SHA.

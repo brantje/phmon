@@ -129,6 +129,7 @@ const emit = defineEmits<{
   trainingaccept: [characterID: string]
   trainingdiscard: [characterID: string]
   pointselect: [point: RasterPosition]
+  pointclick: [point: RasterPosition]
   contextaction: [
     action: { point: RasterPosition; anchor: { x: number; y: number } },
   ]
@@ -1857,6 +1858,7 @@ onMounted(async () => {
   })
   map.on('click', (event: L.LeafletMouseEvent) => {
     selectPoint(event.latlng)
+    emit('pointclick', indexAt(event.latlng))
   })
   map.on('contextmenu', (event: L.LeafletMouseEvent) => {
     L.DomEvent.preventDefault(event.originalEvent)

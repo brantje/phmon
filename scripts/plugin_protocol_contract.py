@@ -6,7 +6,9 @@ from __future__ import print_function
 import argparse
 import ast
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import queue
@@ -557,8 +559,12 @@ def main():
     parser.add_argument("plugin")
     args = parser.parse_args()
     path = os.path.abspath(args.plugin)
-    plugin = load_plugin(path)
-    print(json.dumps(build_contract(plugin, path), sort_keys=True, separators=(",", ":"), allow_nan=False))
+    # Plugin callbacks may log while the contract harness exercises them. Keep
+    # those diagnostics out of stdout so callers can consume the JSON directly.
+    with contextlib.redirect_stdout(io.StringIO()):
+        plugin = load_plugin(path)
+        contract = build_contract(plugin, path)
+    print(json.dumps(contract, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   mapNavigationTrayRows,
   navigationTrayGroup,
+  rememberMapNavigationObservations,
 } from '../app/utils/mapNavigationTray.ts'
+import type { NavigationRoute } from '../shared/types/live.ts'
 import type { FanOutOperation } from '../app/utils/commandFanOut.ts'
 import type { MapRouteOverlay } from '../app/utils/mapNavigationRoutes.ts'
 const route: MapRouteOverlay = {
@@ -33,6 +35,122 @@ const operation = {
     },
   ],
 } as FanOutOperation
+
+const observedRoute = {
+  character_id: 'c',
+  session_id: 's',
+  command_id: 'command',
+  route_sequence: 1,
+  server: 'Greatest',
+  status: 'arrived',
+  blocks: [],
+} as unknown as NavigationRoute
+
+test('later routes retain observed arrivals without fabricating unobserved arrival', () => {
+  const observations = rememberMapNavigationObservations([], [observedRoute])
+  const newer = { ...observedRoute, command_id: 'next', route_sequence: 2 }
+  const rows = mapNavigationTrayRows(
+    [],
+    [operation],
+    'greatest',
+    new Set(),
+    [newer],
+    { c: true },
+    observations,
+  )
+  assert.equal(rows[0]?.status, 'arrived')
+  assert.equal(rows[0]?.group, 'done')
+  assert.ok(!rows[0]?.canStop)
+  assert.equal(
+    mapNavigationTrayRows(
+      [],
+      [operation],
+      'greatest',
+      new Set(['c:s:1']),
+      [newer],
+      {},
+      observations,
+    ).length,
+    0,
+  )
+  const moving = observations.map((item) => ({ ...item, status: 'moving' }))
+  assert.equal(
+    mapNavigationTrayRows(
+      [],
+      [operation],
+      'greatest',
+      new Set(),
+      [newer],
+      {},
+      moving,
+    )[0]?.status,
+    'superseded',
+  )
+  for (const replacement of [
+    { ...newer, session_id: 'replacement' },
+    { ...newer, route_sequence: 1 },
+    { ...newer, server: 'Other' },
+  ]) {
+    assert.equal(
+      mapNavigationTrayRows(
+        [],
+        [operation],
+        'greatest',
+        new Set(),
+        [replacement],
+        {},
+        moving,
+      )[0]?.status,
+      'waiting_for_movement',
+    )
+  }
+  assert.equal(
+    mapNavigationTrayRows(
+      [],
+      [operation],
+      'greatest',
+      new Set(),
+      [newer],
+      {},
+      [],
+    )[0]?.status,
+    'waiting_for_movement',
+  )
+})
+
+test('route evidence is bounded and keeps command and session identity', () => {
+  const routes = Array.from({ length: 130 }, (_, index) => ({
+    ...observedRoute,
+    command_id: `command-${index}`,
+  }))
+  const observations = rememberMapNavigationObservations([], routes)
+  assert.equal(observations.length, 128)
+  assert.equal(observations[0]?.command_id, 'command-2')
+  const updated = rememberMapNavigationObservations(observations, [
+    {
+      ...routes[2]!,
+      status: 'stopped',
+    },
+  ])
+  assert.equal(updated.length, 128)
+  assert.equal(updated.at(-1)?.status, 'stopped')
+  const differentSession = {
+    ...operation,
+    children: [{ ...operation.children[0]!, sessionID: 'other' }],
+  }
+  assert.equal(
+    mapNavigationTrayRows(
+      [],
+      [differentSession],
+      'greatest',
+      new Set(),
+      [],
+      {},
+      updated,
+    )[0]?.status,
+    'waiting_for_movement',
+  )
+})
 
 test('backend routes replace only matching session and command submissions', () => {
   assert.equal(
