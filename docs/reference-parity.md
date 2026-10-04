@@ -2267,22 +2267,23 @@ The map's observed-gate Teleport flyout now offers **Designate Recall Point**.
 Right-click, touch and keyboard paths reach the same gate-specific review. It
 shows checked targets, eligible/skipped counts and reasons, requires explicit
 confirmation, and cancels when the map feed, gate, server, targets or sessions
-change. When a verified capability becomes available, the browser will submit
-only the gate identity and position through the
-shared concurrent fan-out; the Go catalog rejects extra fields and requires
-confirmation. A plugin gate resolver is ready to use each character's own current
-NPC snapshot; it is not yet invoked for packet execution. Merged map NPC IDs
+change. For the verified build/server, the browser submits only gate identity
+and position through the shared concurrent fan-out; the Go catalog rejects
+extra fields and requires confirmation. The plugin resolves each character's
+own current NPC snapshot before sending the fixed packet. Merged map NPC IDs
 cannot be used as an action argument.
 
-**Capability remains open:** installed phBot Stable 20.1.3.0 and the official
-plugin API provide no verified recall-point call or packet contract. The plugin
-advertises `recall_point_unverified` and sends nothing. The UI review therefore
-shows targets as unavailable, and no saved point is claimed. A read-only capture
-probe and evidence are in [the investigation](reference/recall-point-investigation.md).
+**Runtime evidence:** the operator's two manual Hotan actions on Auren at Greatest
+sent `0x7059` with current gate ID `4` and received `0xB059`; the game showed a
+recall-point-updated message. The second capture had no preceding selection
+packet. phBot 20.1.3 on Greatest is now eligible for packet submission. Other
+builds and servers show a scoped capability reason. The response byte was not
+captured, so PhMon reports packet submission with an unverified saved outcome.
+The capture and evidence are in [the investigation](reference/recall-point-investigation.md).
 The public phMonitor demo Map could not be inspected beyond its recurring
 connection failure on this run; this placement follows the repository's existing
 menu and the official phBot map guide. The attachment path supplied with the
-request was unavailable on this Windows host. No local browser viewport capture,
-live designation or server readback has been performed. Backend/plugin/frontend
-unit suites and static build checks cover the guarded path; these are not proof
-of live phBot support.
+request was unavailable on this Windows host. The first branch build is deployed
+on the remote server and `/map` returned HTTP 200; remote browser viewport capture
+failed because Chrome could not start with the server's user-namespace sandbox.
+No PhMon-issued live designation or server readback has been performed.

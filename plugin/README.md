@@ -70,15 +70,16 @@ session `get_npcs()`, `get_teleport_data(source, destination)`, then one bounded
 fan-out with an operator-entered destination (no menu enumeration). `start_script=True`
 does not prove arrival.
 
-The Map menu now prepares a **Designate Recall Point** review for an observed
-teleporter. The plugin reports `character.recall_point.designate` as unsupported
-(`recall_point_unverified`), so no command is admitted and no recall packet is
-sent. The official phBot map guide shows the action, but the plugin API does not
-document a recall-point primitive or packet payload. A temporary read-only
-capture plugin and procedure are in
-[`tools/recall-point-capture`](../tools/recall-point-capture/README.md).
-Do not enable packet execution from an assumed opcode; record a controlled
-runtime capture and result first.
+The Map menu prepares a **Designate Recall Point** review for an observed
+teleporter. On phBot 20.1.3 and Greatest, the plugin resolves that gate again
+from the target character's `get_npcs()` snapshot and submits the captured
+`0x7059` request using the gate's live runtime ID. Two operator-run manual
+captures and an in-game success message established the request. PhMon records
+its own request as **sent; outcome unverified** because the `0xB059` response
+byte has not been interpreted for an automated command. Other builds and
+servers remain disabled. The temporary read-only capture procedure and evidence
+are in [`tools/recall-point-capture`](../tools/recall-point-capture/README.md)
+and [the investigation](../docs/reference/recall-point-investigation.md).
 
 Version 1.9.3 adds **Test Hotan→Jangan** (operator-only): requires the Hotan
 `GATE_KT` gate in `get_npcs()`, resolves `get_teleport_data`, then runs one

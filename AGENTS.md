@@ -253,12 +253,14 @@ only the visible easy-mode flows were exercised during the initial inspection.
 ### Plan — 2026-10-04 Designate Recall Point
 
 The implementation plan is [docs/plans/map-designate-recall-point.md](docs/plans/map-designate-recall-point.md).
-Current status remains **unsupported**: the official phBot map guide exposes the
-action, but the plugin API investigation found no dedicated function and community
-`0x7059` behavior lacks an operator-authorized runtime capture. Implementation
-starts with that capability evidence, then uses the existing audited command
-fan-out and gate-specific Teleport flyout. This planning request did not authorize
-a live character action or packet test.
+Current status: the operator's two manual Auren/Hotan captures on Greatest with
+phBot 20.1.3 verified `0x7059` plus that session's four-byte gate ID, followed
+by `0xB059`; the game displayed a recall-point-updated message. PhMon now
+submits that fixed packet through the audited command only for this build/server
+and reports its saved outcome as unverified until a PhMon-issued response can be
+classified. The operator authorized a controlled test with any idle character
+and deployment of this branch on the remote server. See the investigation for
+the separate manual and automated evidence.
 
 ### Resume — 2026-10-03 dropped-item tooltip correction
 
@@ -5626,3 +5628,28 @@ manual phBot designation with the capture probe, record emitted bytes and
 server/result evidence, then implement only the verified primitive. Run the
 deterministic command simulator and browser viewport checks before claiming
 feature completion. Preserve unrelated pre-existing edits in `plugin/PhMon.py`.
+
+### Resume follow-up — 2026-10-04 captured and scoped packet submission
+
+The operator authorized any idle character for one controlled test and approved
+deployment of this branch to `node@192.168.10.25`. Commit `f4f6b5be` was
+deployed to the remote web/server containers; `/map` returned HTTP 200. A
+remote Chrome viewport check could not launch under the server's user-namespace
+sandbox. The operator manually designated Hotan for Auren on Greatest twice.
+`get_npcs()` listed `GATE_KT` runtime ID `4`; both captures sent `0x7059`
+payload `04000000` and received `0xB059` length 1. The second capture sent no
+preceding selection packet. The game said the recall point was updated.
+
+Current increment: `plugin/PhMon.py` now enables fixed packet submission only
+for phBot 20.1.3 on Greatest when the target character's fresh NPC snapshot
+uniquely matches the requested gate. It returns `verification=unverified`
+because the response byte and a PhMon-issued saved outcome have not been
+observed. The read-only capture probe now logs a one-byte `0xB059` payload.
+Updated files: plugin, plugin tests/README, capture probe/tests/README,
+`web/app/utils/commandFanOut.ts`, protocol/capability/plan/reference docs, and
+this ledger. Local plugin tests passed (194 full suite before the final new
+focused case, then six focused cases). Exact next actions: push this scoped
+commit, update the remote branch, install the updated plugin on phBot, perform
+one audited PhMon-issued command on an authorized idle character, capture its
+`0xB059` byte and in-game result, and check browser viewports from an approved
+browser environment. Preserve the unrelated local plugin edits.

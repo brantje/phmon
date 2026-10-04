@@ -33,11 +33,13 @@ class RecallCaptureTests(unittest.TestCase):
             self.assertTrue(probe.handle_silkroad(0x7045, b'\x04\x00\x00\x00'))
             self.assertTrue(probe.handle_silkroad(0x7020, b'secret'))
             self.assertTrue(probe.handle_joymax(0xB059, b'secret'))
+            self.assertTrue(probe.handle_joymax(0xB059, b'\x01'))
             self.assertIn('payload=04000000', '\n'.join(lines))
+            self.assertIn('incoming opcode=0xB059 length=1 payload=01', '\n'.join(lines))
             self.assertNotIn('secret', '\n'.join(lines))
             probe._capture_until = time.monotonic() - 1
             probe.event_loop()
-            self.assertTrue(any('complete outgoing=3 incoming=1' in line for line in lines))
+            self.assertTrue(any('complete outgoing=3 incoming=2' in line for line in lines))
         finally:
             for name, module in before.items():
                 if module is None:

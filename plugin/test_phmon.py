@@ -2798,11 +2798,12 @@ class BackoffTests(unittest.TestCase):
         worker._publish_sample(transport, sample, False)
         self.assertEqual(transport.sent[0]['type'], 'character.identify')
         self.assertEqual(transport.sent[0]['guild'], '')
-        self.assertEqual(transport.sent[1]['type'], 'character.snapshot')
-        self.assertEqual(transport.sent[1]['character_id'], AGENT_ID)
-        self.assertEqual(transport.sent[2]['type'], 'character.state')
+        self.assertEqual(transport.sent[1]['type'], 'agent.capabilities')
+        self.assertEqual(transport.sent[2]['type'], 'character.snapshot')
         self.assertEqual(transport.sent[2]['character_id'], AGENT_ID)
-        self.assertEqual(transport.sent[1]['session_id'], '22222222-3333-4444-8555-666666666666')
+        self.assertEqual(transport.sent[3]['type'], 'character.state')
+        self.assertEqual(transport.sent[3]['character_id'], AGENT_ID)
+        self.assertEqual(transport.sent[2]['session_id'], '22222222-3333-4444-8555-666666666666')
 
         unknown_guild = plugin.AgentWorker({
             'backend_url': 'ws://127.0.0.1:8081/agent',
@@ -3466,6 +3467,96 @@ class RecallPointGateTests(unittest.TestCase):
         self.assertIsNone(plugin._session_recall_point_gate(self.npcs, dict(self.args, opcode=28761)))
         self.assertIsNone(plugin._session_recall_point_gate(self.npcs, dict(self.args, gate_servername='NPC_KT')))
         self.assertIsNone(plugin._session_recall_point_gate([dict(self.npcs[0], id='bad')], self.args))
+
+    def test_live_submission_uses_only_the_current_gate_id(self):
+        packets = []
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {4: {
+                'name': 'Hotan', 'servername': 'GATE_KT', 'model': 2094,
+                'region': 25000, 'x': 30.0, 'y': 40.0,
+            }},
+            'inject_joymax': lambda *packet: packets.append(packet),
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'fixture',
+        }, '20.1.3', api_adapter=adapter)
+        worker._current_identity = {'server': 'Greatest', 'name': 'Auren'}
+        caps = {row['name']: row for row in worker._capability_frame()['commands']}
+        self.assertTrue(caps['character.recall_point.designate']['supported'])
+        result, effective, observed, verification = worker._invoke(
+            'character.recall_point.designate', self.args, 25000)
+        self.assertIsNone(result)
+        self.assertIsNone(observed)
+        self.assertEqual(verification, 'unverified')
+        self.assertEqual(effective['gate_npc_id'], '4')
+        self.assertEqual(packets, [(0x7059, b'\x04\x00\x00\x00', False)])
+
+        packets.clear()
+        with self.assertRaisesRegex(ValueError, 'recall_point_gate_not_observed'):
+            worker._invoke('character.recall_point.designate', dict(self.args, x=38.01), 25000)
+        self.assertEqual(packets, [])
+        with self.assertRaisesRegex(ValueError, 'recall_point_gate_not_observed'):
+            worker._invoke('character.recall_point.designate', dict(self.args, opcode=0x7059), 25000)
+        self.assertEqual(packets, [])
+
+    def test_submission_is_limited_to_observed_build_server_and_api(self):
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {}, 'inject_joymax': lambda *_: None,
+        })
+        for version, server, expected in (
+                ('20.1.2', 'Greatest', 'recall_point_build_unverified'),
+                ('20.1.3', 'Other', 'recall_point_server_unverified')):
+            worker = plugin.AgentWorker({
+                'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+                'agent_token': 'fixture',
+            }, version, api_adapter=adapter)
+            worker._current_identity = {'server': server, 'name': 'Auren'}
+            caps = {row['name']: row for row in worker._capability_frame()['commands']}
+            self.assertEqual(caps['character.recall_point.designate']['reason'], expected)
+            with self.assertRaisesRegex(ValueError, expected):
+                worker._invoke('character.recall_point.designate', self.args, 25000)
+
+        supported, reason = plugin._recall_point_support(
+            '20.1.3', {'server': 'Greatest'}, plugin.PhBotAdapter({'get_npcs': lambda: {}}))
+        self.assertFalse(supported)
+        self.assertEqual(reason, 'unsupported_runtime_primitive')
+
+    def test_audited_command_submits_once_and_reports_unverified(self):
+        packets = []
+        adapter = plugin.PhBotAdapter({
+            'get_npcs': lambda: {4: {
+                'name': 'Hotan', 'servername': 'GATE_KT', 'model': 2094,
+                'region': 25000, 'x': 30.0, 'y': 40.0,
+            }},
+            'inject_joymax': lambda *packet: packets.append(packet),
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'fixture',
+        }, '20.1.3', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        identity = {'server': 'Greatest', 'name': 'Auren'}
+        worker._current_identity = identity
+        frame = {
+            'type': 'command.execute', 'protocol_version': plugin.PROTOCOL_VERSION,
+            'command_id': 'cmd_00000000-0000-4000-8000-000000000097',
+            'character_id': AGENT_ID, 'session_id': worker.session_id,
+            'name': 'character.recall_point.designate', 'args': self.args,
+            'ttl_ms': 10000,
+            'expires_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() + 10)),
+        }
+        worker._accept_command(frame)
+        worker._accept_command(frame)
+        worker.process_one_command(identity, 25000)
+        ack = worker._outgoing.get_nowait()
+        result = worker._outgoing.get_nowait()
+        self.assertEqual(ack['type'], 'command.ack')
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['verification'], 'unverified')
+        self.assertEqual(result['effective_args']['gate_npc_id'], '4')
+        self.assertEqual(packets, [(0x7059, b'\x04\x00\x00\x00', False)])
 
 
 class TeleporterProbeTests(unittest.TestCase):

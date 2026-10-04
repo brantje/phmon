@@ -223,7 +223,7 @@ def _read_botting_state(character_data, status_getter=None, timing=None):
     # means stopped. Do not turn missing status into a guessed false value.
     return _normalize_botting_status(value)
 
-_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','get_teleport_data',
+_API_NAMES = ('start_bot','stop_bot','start_trace','stop_trace','get_position','get_monsters','get_npcs','get_teleport_data','inject_joymax',
               'generate_path','set_training_position','set_training_radius','set_training_area','get_training_area',
               'move_to_region','generate_script','start_script','stop_script','use_return_scroll','reverse_return','get_party','disconnect')
 
@@ -922,6 +922,17 @@ def _session_recall_point_gate(npcs, args):
         if len(matches) > 1:
             return None
     return matches[0] if matches else None
+
+
+def _recall_point_support(phbot_version, identity, adapter):
+    """Limit packet submission to the build and server observed in the manual capture."""
+    if str(phbot_version).strip() not in ('20.1.3', '20.1.3.0'):
+        return False, 'recall_point_build_unverified'
+    if not isinstance(identity, dict) or identity.get('server') != 'Greatest':
+        return False, 'recall_point_server_unverified'
+    if not adapter.has('get_npcs') or not adapter.has('inject_joymax'):
+        return False, 'unsupported_runtime_primitive'
+    return True, ''
 
 
 def _hotan_gate_row(npcs):
@@ -3839,6 +3850,9 @@ class AgentWorker(object):
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
             self._current_identity = identity
+            # The first capability frame is sent before character registration.
+            # Rescope recall support now that the game server is known.
+            client.send_json(self._capability_frame())
             with self._death_context_lock:
                 self._last_death_context = {
                     'identity': dict(identity),
@@ -4136,7 +4150,7 @@ class AgentWorker(object):
             'character.navigate': ('generate_script', 'unsupported_runtime_primitive'),
             'character.navigate.stop': ('stop_script', 'unsupported_runtime_primitive'),
             'character.teleport': (None, 'unsupported_runtime_primitive'),
-            'character.recall_point.designate': (None, 'recall_point_unverified'),
+            'character.recall_point.designate': (None, 'recall_point_server_unverified'),
             'character.return': ('use_return_scroll', 'unsupported_runtime_primitive'),
             'character.reverse_return': ('reverse_return', 'unsupported_runtime_primitive'),
             'character.disconnect': ('disconnect', 'unsupported_runtime_primitive'),
@@ -4166,6 +4180,8 @@ class AgentWorker(object):
                 if supported: extra['modes'].append('named_location')
             if name == 'character.teleport':
                 supported = all(self.api.has(symbol) for symbol in ('get_npcs', 'get_teleport_data', 'start_script'))
+            if name == 'character.recall_point.designate':
+                supported, reason = _recall_point_support(self.phbot_version, self._current_identity, self.api)
             commands.append({'name': name, 'supported': supported, 'reason': '' if supported else reason})
             if extra: commands[-1].update(extra)
         chat_modes = self.api.chat_modes()
@@ -4753,6 +4769,30 @@ class AgentWorker(object):
                 'teleport_code': code,
             }
             return result, effective, None, 'api_confirmed' if isinstance(result, bool) else 'unverified'
+        if name == 'character.recall_point.designate':
+            supported, reason = _recall_point_support(self.phbot_version, self._current_identity, self.api)
+            if not supported:
+                raise ValueError(reason)
+            npc_status, npcs, _ = collect_npc_observation(
+                {'get_npcs': self.api.functions.get('get_npcs')})
+            if npc_status != 'observed':
+                raise ValueError('recall_point_gate_not_observed')
+            resolved = _session_recall_point_gate(npcs, args)
+            if resolved is None:
+                raise ValueError('recall_point_gate_not_observed')
+            gate, npc_id = resolved
+            # phBot 20.1.3 on Greatest sent exactly 0x7059 + this live gate ID
+            # for two successful manual Hotan designations. No select packet.
+            result = self.api.call('inject_joymax', 0x7059, struct.pack('<I', npc_id), False)
+            effective = {
+                'gate_servername': gate['servername'], 'region': gate['region'],
+                'x': gate['x'], 'y': gate['y'], 'gate_npc_id': gate['id'],
+            }
+            if 'model_id' in gate:
+                effective['model_id'] = gate['model_id']
+            # The B059 response byte has not been captured/interpreted for a
+            # PhMon-issued request, so packet submission is not save proof.
+            return result, effective, None, 'unverified'
         if name == 'character.navigate':
             raise ValueError('navigation_requires_callback_path')
         if name == 'character.walk':

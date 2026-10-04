@@ -2,8 +2,10 @@
 
 Date: 2026-10-04. The operator subsequently authorized implementation on branch
 `codex/designate-recall-point`. The command contract, guarded review UI, and a
-read-only capture probe are implemented. Packet execution remains open pending
-an authorized phBot runtime capture at a named test character and gate. See
+read-only capture probe are implemented. Two successful manual Auren/Hotan
+captures established the fixed request for phBot 20.1.3 on Greatest. The plugin
+now submits that request under these exact conditions. Automated result
+confirmation and a PhMon-issued runtime check remain open. See
 [the investigation](../reference/recall-point-investigation.md).
 
 ## Intended behavior
@@ -36,11 +38,12 @@ With one observed gate, put **Designate Recall Point** in that gate's Teleport f
 - Simulator end-to-end run using a deterministic fake phBot adapter for the verified contract. Separately record the operator-authorized Windows/phBot test and observed server response; simulator success alone does not establish live support.
 
 Current status: Go validation/capability projection, plugin gate resolution and
-unsupported capability, map intent/review, and the read-only probe are implemented
-and unit-tested. Native packet execution, server-response classification, the
-verified-contract simulator, browser viewport screenshots, and the operator's
-Windows/phBot designation remain pending the runtime evidence gate. The absence
-of a test character/gate does not authorize choosing a live bot automatically.
+fixed packet submission, map intent/review, and the read-only probe are
+implemented and unit-tested. The operator's manual Windows/phBot designation
+succeeded twice. Server-response status-byte classification, the
+verified-contract simulator, browser viewport screenshots, and a PhMon-issued
+live designation remain pending. The manual test proves the request bytes; it
+does not prove the PhMon remote command path or a later saved outcome.
 
 ## Current repo entry points
 

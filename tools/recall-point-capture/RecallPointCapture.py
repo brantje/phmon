@@ -13,7 +13,7 @@ from phBot import get_npcs, log
 import QtBind
 
 pName = 'Recall Point Capture'
-pVersion = '0.1.0'
+pVersion = '0.1.1'
 
 _capture_until = 0.0
 _outgoing_count = 0
@@ -75,7 +75,8 @@ def handle_joymax(opcode, data):
         if isinstance(opcode, int):
             _incoming_count += 1
             size = len(data) if isinstance(data, (bytes, bytearray)) else -1
-            log('RecallCapture incoming opcode=0x%04X length=%d' % (opcode, size))
+            detail = ' payload=' + bytes(data).hex() if opcode == 0xB059 and size == 1 else ''
+            log('RecallCapture incoming opcode=0x%04X length=%d%s' % (opcode, size, detail))
     return True
 
 
