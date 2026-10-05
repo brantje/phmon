@@ -1,8 +1,13 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.22**, using agent protocol **15**. It
-includes navigation transport fixes, script diagnostics and direct `move_to` support,
-plus scoped recall-point packet submission for phBot 20.1.3 on Greatest. It also
+The current local plugin release is **1.9.23**, using agent protocol **16**. It
+adds the session-fenced, latest-value `character.position` transport used by the live
+Map for controlled characters, while retaining navigation transport fixes, script
+diagnostics, direct `move_to` support and scoped recall-point packet submission for
+phBot 20.1.3 on Greatest. Position observations are memory-only: packet callbacks
+never write WebSockets, the network worker keeps only the newest unsent coordinate,
+and a failed socket write leaves that coordinate pending without consuming its
+sequence. It also
 correlates a documented player-attack callback with a death callback from the same
 character within ten seconds. The death event records the recent player's name or
 `Monster / environment` as an inferred reason. This does not identify the actual
