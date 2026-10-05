@@ -28,6 +28,18 @@ Final validation passed: 196 frontend unit tests, Nuxt typecheck, focused ESLint
 (0 errors; 34 existing warnings), Prettier, production build and `git diff --check`.
 No demo fullscreen behavior is inferred, and no real character command was sent.
 
+## Character-position freshness — 2026-10-05
+
+The operator requested the concurrent position changes in the fullscreen PR. Map
+pins retain valid last-observed positions when the UI clock trails a newer sample.
+A shared helper classifies an online sample as current through the 35-second
+window, without the former five-second future rejection. The Map, preview,
+navigation admission and route overlays share that rule, while the live transport
+updates the freshness clock on WebSocket open/messages. Offline and expired samples
+remain stale. Four additional regression cases cover these boundaries and retained
+pins; the combined frontend unit suite contains 196 tests. This is frontend timing
+and presentation behavior; no phBot collection contract changes.
+
 ## Monster HP identity and updates — 2026-10-02
 
 Operator-authorized inspection of the local phMonitor v0.5.0 executable verified
@@ -1901,7 +1913,6 @@ opt-in name label. They do not replace or cover the bubble. Names remain off
 until **Show nearby monsters names** is enabled, so the icons appear only with
 that label.
 
-
 ### Issue #55 map workspace redesign — 2026-10-01
 
 The operator-supplied `PhMon Map Redesign.html` and screenshots provide the layout
@@ -1963,7 +1974,6 @@ requested leader on control state, and a nearby-player trace picker fed by the
 existing `map.players` snapshot with Refresh on the live map feed. Return Scroll
 stays on command results without synthetic navigation rows. Real `stop_script` and
 `get_status` validation remains a separate Windows/phBot gate.
-
 
 #### Historical heatmap panel correction — 2026-10-01
 

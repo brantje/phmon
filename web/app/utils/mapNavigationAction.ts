@@ -1,6 +1,7 @@
 import type { CharacterView } from '../../shared/types/live'
 import type { MapProfile } from '../../shared/types/map'
 import type { FanOutCommandDefinition, FanOutSkipReason } from './commandFanOut'
+import { characterPositionIsFresh } from './characterPositionFreshness.ts'
 import {
   rasterPositionToGame,
   type GamePosition,
@@ -101,14 +102,8 @@ export function resolveMapNavigationDestination(
   )
     return { reason: reasons.session }
 
-  const observedAt = character.state_updated_at
-    ? Date.parse(character.state_updated_at)
-    : Number.NaN
-  const age = now - observedAt
   if (
-    !Number.isFinite(observedAt) ||
-    age < -5_000 ||
-    age > 35_000 ||
+    !characterPositionIsFresh(character, now) ||
     character.region == null ||
     character.x == null ||
     character.y == null

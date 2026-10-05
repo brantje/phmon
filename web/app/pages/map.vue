@@ -33,6 +33,7 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
+import { characterPositionIsFresh } from '~/utils/characterPositionFreshness'
 import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
@@ -984,15 +985,8 @@ const currentRegion = computed(
   () => regionID.value || currentCharacter.value?.region,
 )
 function positionIsFresh(character?: CharacterView) {
-  const updatedAt = character?.state_updated_at
-    ? Date.parse(character.state_updated_at)
-    : Number.NaN
-  const age = freshnessNow.value - updatedAt
   return Boolean(
-    character?.online &&
-    Number.isFinite(updatedAt) &&
-    age >= -5_000 &&
-    age <= 35_000,
+    character && characterPositionIsFresh(character, freshnessNow.value),
   )
 }
 function positionCanBeDisplayed(character?: CharacterView) {

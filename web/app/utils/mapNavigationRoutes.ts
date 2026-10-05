@@ -1,5 +1,6 @@
 import type { CharacterView, NavigationRoute } from '../../shared/types/live'
 import type { MapProfile } from '../../shared/types/map'
+import { characterPositionIsFresh } from './characterPositionFreshness.ts'
 import { worldPositionToRaster, type RasterPosition } from './mapCoordinates.ts'
 
 export interface MapRouteOverlay {
@@ -84,14 +85,10 @@ export function mapNavigationRouteOverlays(input: {
         item.server.toLowerCase() === input.server.toLowerCase(),
     )
     if (!character || character.session_id !== route.session_id) continue
-    const stateAt = character.state_updated_at
-      ? Date.parse(character.state_updated_at)
-      : Number.NaN
-    const positionFresh =
-      character.online &&
-      Number.isFinite(stateAt) &&
-      input.freshnessNow - stateAt >= -5_000 &&
-      input.freshnessNow - stateAt <= 35_000
+    const positionFresh = characterPositionIsFresh(
+      character,
+      input.freshnessNow,
+    )
     const stale = input.liveStale || !input.streamCurrent || !positionFresh
     const blocks =
       route.dataset_version === input.profile.dataset_version &&

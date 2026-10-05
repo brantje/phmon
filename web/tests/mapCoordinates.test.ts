@@ -270,6 +270,23 @@ test('list filtering passes the actual clock to every character', () => {
   assert.deepEqual(displayableMapCharacters(characters, now), characters)
 })
 
+test('a lagged UI clock still keeps last observed map pins', () => {
+  const laggedNow = Date.parse('2026-09-29T12:00:00Z')
+  const character = {
+    character_id: 'nuker1',
+    name: 'nuker1',
+    online: true,
+    region: 25735,
+    x: 96.4,
+    y: 1558.9,
+    state_updated_at: '2026-09-29T12:00:20Z',
+  }
+  assert.equal(characterHasDisplayableMapPosition(character, laggedNow), true)
+  assert.deepEqual(displayableMapCharacters([character], laggedNow), [
+    character,
+  ])
+})
+
 test('encoded outdoor region is primary without an explicit region mapping', () => {
   const mapProfile = greatestOutdoorProfile()
   mapProfile.region_mappings = []
