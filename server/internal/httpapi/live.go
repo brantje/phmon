@@ -119,8 +119,9 @@ type LiveHub struct {
 	positions  *positions.Store
 	navigation *navigation.Store
 
-	positionMu      sync.Mutex
-	positionPending map[string]positions.Position
+	positionMu         sync.Mutex
+	positionDeliveryMu sync.Mutex
+	positionPending    map[string]positions.Position
 	positionRemoved map[string]positions.Removal
 	positionFlush   *time.Timer
 
@@ -223,6 +224,13 @@ func (h *LiveHub) flushPositionDeltas() {
 	h.positionRemoved = make(map[string]positions.Removal)
 	h.positionFlush = nil
 	h.positionMu.Unlock()
+
+	// Position replacement snapshots and deltas share this short critical
+	// section so their enqueue order matches a single current in-memory store
+	// view. It prevents an older cross-session snapshot from following a newer
+	// delta and poisoning the browser's session fence.
+	h.positionDeliveryMu.Lock()
+	defer h.positionDeliveryMu.Unlock()
 
 	h.mu.RLock()
 	clients := make([]*liveClient, 0, len(h.clients))
@@ -658,6 +666,11 @@ func (c *liveClient) snapshotSubscriptionsForPass() []liveSubscription {
 func (c *liveClient) snapshot(subscription liveSubscription) bool {
 	ctx, cancel := context.WithTimeout(c.ctx, liveSnapshotTimeout)
 	defer cancel()
+
+	if subscription.Stream == "positions" {
+		c.hub.positionDeliveryMu.Lock()
+		defer c.hub.positionDeliveryMu.Unlock()
+	}
 
 	data, err := c.hub.snapshot(ctx, subscription)
 	if err != nil {
