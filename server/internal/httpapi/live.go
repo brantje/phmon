@@ -122,8 +122,8 @@ type LiveHub struct {
 	positionMu         sync.Mutex
 	positionDeliveryMu sync.Mutex
 	positionPending    map[string]positions.Position
-	positionRemoved map[string]positions.Removal
-	positionFlush   *time.Timer
+	positionRemoved    map[string]positions.Removal
+	positionFlush      *time.Timer
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
