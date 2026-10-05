@@ -1632,7 +1632,9 @@ about five realtime frames per second, while a character-session or region
 transition may force an immediate position. A small coordinate tolerance
 suppresses stationary float jitter. The network worker owns WebSocket writes and
 retains only one unsent position; position frames never enter the durable event
-or mob spools.
+or mob spools. A failed socket write does not consume that latest position or its
+sequence, so a stationary or teleport coordinate can be retried after reconnect
+unless a newer observation replaces it first.
 
 The transport split is deliberate:
 
@@ -1648,11 +1650,13 @@ The Go server keeps one current in-memory position per controlled character,
 fenced by character ID, session ID, agent ID, connection generation and
 monotonic session sequence. Accepted positions feed the existing navigation
 observer immediately and the existing `/api/live` WebSocket's `positions`
-stream directly. Browser deltas are coalesced over approximately 100 ms and keep
-only each character's newest coordinate. They do not call global
-`LiveHub.Invalidate()` and do not rebuild a full map snapshot. PostgreSQL
-location state and movement analytics are admitted at most approximately once
-per second per character.
+stream directly. Subscribe and explicit refresh may produce replacement position
+snapshots; unrelated global live invalidations deliberately skip this stream so a
+stale snapshot cannot follow a newer delta. Browser deltas are coalesced over
+approximately 100 ms and keep only each character's newest coordinate. Movement does
+not call global `LiveHub.Invalidate()` and does not rebuild a full map snapshot.
+PostgreSQL location state and movement analytics are admitted at most approximately
+once per second per character.
 
 Only `/map` subscribes to the fast browser stream. The normal map snapshot
 remains authoritative for character identity, online/session state and other
