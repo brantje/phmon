@@ -35,17 +35,28 @@ export function validRealtimePosition(
 
 export function realtimePositionSnapshotState(
   positions: readonly RealtimePosition[],
+  current: RealtimePositionState = {},
 ): RealtimePositionState {
   const next: RealtimePositionState = {}
   for (const position of positions) {
     if (!validRealtimePosition(position)) continue
-    const current = next[position.character_id]
+    const pending = next[position.character_id]
+    const existing = current[position.character_id]
     if (
-      !current ||
-      current.session_id !== position.session_id ||
-      position.sequence > current.sequence
+      pending &&
+      pending.session_id === position.session_id &&
+      pending.sequence >= position.sequence
     )
-      next[position.character_id] = position
+      continue
+    if (
+      existing &&
+      existing.session_id === position.session_id &&
+      existing.sequence > position.sequence
+    ) {
+      next[position.character_id] = existing
+      continue
+    }
+    next[position.character_id] = position
   }
   return next
 }
