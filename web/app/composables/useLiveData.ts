@@ -441,10 +441,7 @@ function applyRealtimePositionSnapshot(
   return true
 }
 
-function applyRealtimePositionDelta(
-  subscription: Subscription,
-  data: unknown,
-) {
+function applyRealtimePositionDelta(subscription: Subscription, data: unknown) {
   const delta = data as RealtimePositionDelta
   if (!delta || typeof delta !== 'object' || Array.isArray(delta)) return false
   if (delta.positions != null && !Array.isArray(delta.positions)) return false
