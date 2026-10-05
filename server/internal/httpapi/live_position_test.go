@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"phmon/server/internal/mapprofile"
+	"phmon/server/internal/navigation"
 	"phmon/server/internal/positions"
 )
 
@@ -62,6 +64,67 @@ func TestPositionSnapshotsAreOnlyIncludedWhenExplicitlyRequested(t *testing.T) {
 	refreshed := client.snapshotSubscriptionsForPass()
 	if len(refreshed) != 2 {
 		t.Fatalf("explicit position refresh should request a new snapshot: %#v", refreshed)
+	}
+}
+
+func TestRealtimePositionHotPathFeedsNavigationWithoutSnapshotInvalidation(t *testing.T) {
+	now := time.Date(2026, 10, 5, 20, 0, 0, 0, time.UTC)
+	characterID := testPositionUUID(1)
+	sessionID := testPositionUUID(101)
+	agentID := testPositionUUID(201)
+
+	positionStore := positions.NewStore()
+	positionStore.Claim("Greatest", agentID, 4, characterID, sessionID)
+	navigationStore := navigation.NewStore()
+	destination := navigation.Point{Region: 25000, X: 10, Y: 20, Z: 3}
+	if !navigationStore.Replace(navigation.Input{
+		SchemaVersion: navigation.SchemaVersion,
+		CommandID:     testPositionUUID(301),
+		CharacterID:   characterID,
+		SessionID:     sessionID,
+		Sequence:      1,
+		InvokedAt:     now.Add(-time.Second),
+		Instructions: []navigation.Instruction{{
+			Index: 0, Kind: "walk", X: 10, Y: 20, Z: 3,
+		}},
+	}, agentID, 4, "Greatest", "dataset", destination, now.Add(-time.Second)) {
+		t.Fatal("failed to prepare navigation route")
+	}
+
+	hub := NewLiveHub(nil, nil, nil)
+	hub.SetPositions(positionStore)
+	client := &liveClient{
+		ctx:           context.Background(),
+		outgoing:      make(chan []byte, liveOutgoingQueueSize),
+		snapshotWake:  make(chan struct{}, 1),
+		subscriptions: map[string]liveSubscription{},
+		revisions:     map[string]uint64{},
+	}
+	hub.register(client)
+	defer hub.unregister(client)
+
+	handler := &agentHandler{
+		positions:  positionStore,
+		live:       hub,
+		navigation: navigationStore,
+	}
+	accepted, ok := handler.applyRealtimePosition(positions.Position{
+		AgentID: agentID, Generation: 4, CharacterID: characterID,
+		SessionID: sessionID, Sequence: 1, Region: 25000,
+		X: 10, Y: 20, Z: positionFloat64(3), ObservedAt: now,
+	}, now)
+	if !ok || accepted.Server != "Greatest" {
+		t.Fatalf("valid realtime position was not accepted: %#v", accepted)
+	}
+	if len(client.snapshotWake) != 0 {
+		t.Fatal("realtime hot path woke full live snapshots")
+	}
+
+	views := navigationStore.Snapshot("Greatest", mapprofile.Profile{
+		DatasetID: "dataset", DatasetVersion: "test",
+	}, now)
+	if len(views) != 1 || !views[0].Arrived || !views[0].UpdatedAt.Equal(now) {
+		t.Fatalf("navigation did not receive realtime observation: %#v", views)
 	}
 }
 
@@ -166,6 +229,10 @@ func TestPositionRemovalCarriesSessionAndCannotDeleteNewerPendingPosition(t *tes
 		hub.positionFlush.Stop()
 		hub.positionFlush = nil
 	}
+}
+
+func positionFloat64(value float64) *float64 {
+	return &value
 }
 
 func testPositionUUID(value int) string {
