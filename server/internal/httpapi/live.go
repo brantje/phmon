@@ -24,6 +24,7 @@ import (
 	"phmon/server/internal/navigation"
 	"phmon/server/internal/npcs"
 	"phmon/server/internal/players"
+	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
 )
 
@@ -38,7 +39,9 @@ const (
 	liveHeartbeatInterval     = 10 * time.Second
 	liveHeartbeatTimeout      = 35 * time.Second
 	liveSnapshotCoalesce      = 500 * time.Millisecond
+	livePositionCoalesce      = 100 * time.Millisecond
 	liveMaxConcurrentBuilds   = 2
+	liveMaxPendingRemovalsPerCharacter = 2
 )
 
 type liveFilter struct {
@@ -114,7 +117,13 @@ type LiveHub struct {
 	mobLive    *mobs.LiveStore
 	npcLive    *npcs.LiveStore
 	playerLive *players.LiveStore
+	positions  *positions.Store
 	navigation *navigation.Store
+
+	positionMu       sync.Mutex
+	positionPending  map[string]positions.Position
+	positionRemoved  map[string][]positions.Removal
+	positionFlush    *time.Timer
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -129,6 +138,7 @@ func (h *LiveHub) SetMobObservations(store *mobs.Store)   { h.mobs = store }
 func (h *LiveHub) SetMobLive(store *mobs.LiveStore)       { h.mobLive = store }
 func (h *LiveHub) SetNPCLive(store *npcs.LiveStore)       { h.npcLive = store }
 func (h *LiveHub) SetPlayerLive(store *players.LiveStore) { h.playerLive = store }
+func (h *LiveHub) SetPositions(store *positions.Store)      { h.positions = store }
 
 func (h *LiveHub) npcSnapshots(server string) []npcs.LiveSnapshot {
 	if h == nil || h.npcLive == nil {
@@ -161,9 +171,124 @@ func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStor
 		agents:     agents,
 		registry:   registry,
 		characters: characterStore,
-		clients:    make(map[*liveClient]struct{}),
-		buildSlots: make(chan struct{}, liveMaxConcurrentBuilds),
-		navigation: navigation.NewStore(),
+		clients:         make(map[*liveClient]struct{}),
+		buildSlots:      make(chan struct{}, liveMaxConcurrentBuilds),
+		navigation:      navigation.NewStore(),
+		positionPending: make(map[string]positions.Position),
+		positionRemoved: make(map[string][]positions.Removal),
+	}
+}
+
+func (h *LiveHub) PublishPosition(position positions.Position) {
+	if h == nil {
+		return
+	}
+	h.positionMu.Lock()
+	h.positionPending[position.CharacterID] = position
+	if removals := h.positionRemoved[position.CharacterID]; len(removals) > 0 {
+		filtered := removals[:0]
+		for _, removal := range removals {
+			if removal.SessionID != position.SessionID {
+				filtered = append(filtered, removal)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(h.positionRemoved, position.CharacterID)
+		} else {
+			h.positionRemoved[position.CharacterID] = filtered
+		}
+	}
+	h.schedulePositionFlushLocked()
+	h.positionMu.Unlock()
+}
+
+func (h *LiveHub) PublishPositionRemoval(removal positions.Removal) {
+	if h == nil || removal.CharacterID == "" || removal.SessionID == "" {
+		return
+	}
+	h.positionMu.Lock()
+	if pending, ok := h.positionPending[removal.CharacterID]; ok && pending.SessionID == removal.SessionID {
+		delete(h.positionPending, removal.CharacterID)
+	}
+	rows := h.positionRemoved[removal.CharacterID]
+	for _, current := range rows {
+		if current.SessionID == removal.SessionID {
+			h.schedulePositionFlushLocked()
+			h.positionMu.Unlock()
+			return
+		}
+	}
+	rows = append(rows, removal)
+	if len(rows) > liveMaxPendingRemovalsPerCharacter {
+		rows = rows[len(rows)-liveMaxPendingRemovalsPerCharacter:]
+	}
+	h.positionRemoved[removal.CharacterID] = rows
+	h.schedulePositionFlushLocked()
+	h.positionMu.Unlock()
+}
+
+func (h *LiveHub) schedulePositionFlushLocked() {
+	if h.positionFlush == nil {
+		h.positionFlush = time.AfterFunc(livePositionCoalesce, h.flushPositionDeltas)
+	}
+}
+
+func (h *LiveHub) flushPositionDeltas() {
+	h.positionMu.Lock()
+	pending := h.positionPending
+	removed := h.positionRemoved
+	h.positionPending = make(map[string]positions.Position)
+	h.positionRemoved = make(map[string][]positions.Removal)
+	h.positionFlush = nil
+	h.positionMu.Unlock()
+
+	h.mu.RLock()
+	clients := make([]*liveClient, 0, len(h.clients))
+	for client := range h.clients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		client.mu.RLock()
+		subscriptions := make([]liveSubscription, 0)
+		for _, subscription := range client.subscriptions {
+			if subscription.Stream == "positions" {
+				subscriptions = append(subscriptions, subscription)
+			}
+		}
+		client.mu.RUnlock()
+		for _, subscription := range subscriptions {
+			updates := make([]positions.Position, 0, len(pending))
+			for _, position := range pending {
+				if strings.EqualFold(position.Server, subscription.Filter.Server) {
+					updates = append(updates, position)
+				}
+			}
+			sort.Slice(updates, func(i, j int) bool { return updates[i].CharacterID < updates[j].CharacterID })
+			removals := make([]positions.Removal, 0)
+			for _, rows := range removed {
+				for _, removal := range rows {
+					if strings.EqualFold(removal.Server, subscription.Filter.Server) {
+						removals = append(removals, removal)
+					}
+				}
+			}
+			if len(updates) == 0 && len(removals) == 0 {
+				continue
+			}
+			sort.Slice(removals, func(i, j int) bool {
+				if removals[i].CharacterID == removals[j].CharacterID {
+					return removals[i].SessionID < removals[j].SessionID
+				}
+				return removals[i].CharacterID < removals[j].CharacterID
+			})
+			client.enqueue(liveServerMessage{
+				Type: "delta", ProtocolVersion: liveProtocolVersion,
+				SubscriptionID: subscription.ID, Revision: subscription.Revision, Stream: subscription.Stream,
+				Data: map[string]any{"positions": updates, "removed": removals},
+			})
+		}
 	}
 }
 
@@ -572,6 +697,11 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, err
 		}
 		return map[string]any{"agents": agents}, nil
+	case "positions":
+		if h.positions == nil {
+			return nil, errors.New("realtime positions unavailable")
+		}
+		return map[string]any{"positions": h.positions.Snapshot(subscription.Filter.Server)}, nil
 	case "characters":
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")
@@ -1033,6 +1163,15 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 				return liveSubscription{}, false
 			}
 		} else if subscription.Filter.Peer != "" {
+			return liveSubscription{}, false
+		}
+	case "positions":
+		if !validServerFilter(subscription.Filter.Server) || subscription.Filter.Server == "" ||
+			subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CharacterID != "" ||
+			subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 ||
+			len(subscription.Filter.ResourceKeys) != 0 || hasEventSpecificFilters(subscription.Filter) ||
+			subscription.Filter.Channel != "" || subscription.Filter.Peer != "" ||
+			subscription.Filter.Area != "" || subscription.Filter.Floor != "" || subscription.Filter.Region != 0 {
 			return liveSubscription{}, false
 		}
 	case "map":
