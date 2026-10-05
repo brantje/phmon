@@ -3899,13 +3899,15 @@ class AgentWorker(object):
                 previous_key = (self._current_identity.get('server','').lower(), self._current_identity.get('name','').lower())
                 next_key = (identity.get('server','').lower(), identity.get('name','').lower())
                 if previous_key != next_key:
-                    client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
+                    client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'sent_at':_worker_utc_now(self)})
                     self.character_id = None
+                    self.session_id = None
+                    self.clear_position()
             self._profile_epoch += 1
             self._clear_navigation_route()
             self._trace_requested_name = None
             self._item_tracker.reset('character_or_profile_changed')
-            client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_utc_now()})
+            client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_worker_utc_now(self)})
             reply = self._wait_for_registration(client)
             if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):
                 raise WebSocketClosed('character registration rejected')
@@ -3926,7 +3928,7 @@ class AgentWorker(object):
             self._resource_baseline_required = True
             self._confirmed_resources = None
             snapshot = True
-        client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'state':state,'sent_at':_utc_now()})
+        client.send_json({'type':'character.snapshot' if snapshot else 'character.state','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'state':state,'sent_at':_worker_utc_now(self)})
 
     def _flush_navigation_route(self, client):
         with self._navigation_lock:
@@ -4986,6 +4988,7 @@ _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
 _last_position_sample_at = 0.0
+_last_position_publish_at = 0.0
 _last_position_observed = None
 _last_position_session_id = None
 _position_sample_lock = threading.Lock()
@@ -5181,11 +5184,12 @@ def connected():
 
 
 def disconnected():
-    global _last_character_signature, _last_position_sample_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state
+    global _last_character_signature, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state
     already_disconnected = _phbot_connected_state is False
     _phbot_connected_state = False
     _last_character_signature = None
     _last_position_sample_at = 0.0
+    _last_position_publish_at = 0.0
     _last_position_observed = None
     _last_position_session_id = None
     _character_joined = False
@@ -5202,10 +5206,11 @@ def disconnected():
 
 def joined_game():
     # This callback runs after the player selects a character.
-    global _last_character_signature, _last_position_sample_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack
+    global _last_character_signature, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack
     already_joined = _character_joined is True
     _last_character_signature = None
     _last_position_sample_at = 0.0
+    _last_position_publish_at = 0.0
     _last_position_observed = None
     _last_position_session_id = None
     if _worker is not None and hasattr(_worker, 'clear_position'):
@@ -5221,9 +5226,10 @@ def joined_game():
 
 
 def teleported():
-    global _npc_sample_forced, _player_sample_forced, _last_position_sample_at, _last_position_observed
+    global _npc_sample_forced, _player_sample_forced, _last_position_sample_at, _last_position_publish_at, _last_position_observed
     _npc_sample_forced = True
     _last_position_sample_at = 0.0
+    _last_position_publish_at = 0.0
     _last_position_observed = None
     _player_sample_forced = True
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
@@ -5256,8 +5262,8 @@ def _position_meaningfully_changed(previous, current):
     )
 
 
-def _publish_realtime_position(position, now=None, mark_sample=True):
-    global _last_position_sample_at, _last_position_observed, _last_position_session_id
+def _publish_realtime_position(position, now=None):
+    global _last_position_publish_at, _last_position_observed, _last_position_session_id
     if _worker is None:
         return False
     normalized = _normalized_realtime_position(position)
@@ -5265,16 +5271,22 @@ def _publish_realtime_position(position, now=None, mark_sample=True):
         return False
     now = _monotonic() if now is None else now
     with _position_sample_lock:
-        if mark_sample:
-            _last_position_sample_at = now
         session_id = getattr(_worker, 'session_id', None)
         session_changed = bool(session_id) and session_id != _last_position_session_id
+        region_changed = (
+            _last_position_observed is not None and
+            _last_position_observed.get('region') != normalized.get('region')
+        )
         if not session_changed and not _position_meaningfully_changed(_last_position_observed, normalized):
             return False
+        if (not session_changed and not region_changed and _last_position_publish_at > 0.0 and
+                now - _last_position_publish_at < POSITION_PUBLISH_INTERVAL_SECONDS):
+            return False
+        _last_position_publish_at = now
         _last_position_observed = dict(normalized)
         if session_id:
             _last_position_session_id = session_id
-        return bool(_worker.update_position(normalized, _utc_now()))
+        return bool(_worker.update_position(normalized, _worker_utc_now(_worker)))
 
 
 def _sample_realtime_position(now=None):
@@ -5291,7 +5303,7 @@ def _sample_realtime_position(now=None):
         position = _get_position()
     except Exception:
         return False
-    return _publish_realtime_position(position, now, mark_sample=False)
+    return _publish_realtime_position(position, now)
 
 
 def handle_joymax(opcode, data):
