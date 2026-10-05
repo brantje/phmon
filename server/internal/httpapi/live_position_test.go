@@ -128,6 +128,76 @@ func TestRealtimePositionHotPathFeedsNavigationWithoutSnapshotInvalidation(t *te
 	}
 }
 
+func TestPositionSnapshotReadsAfterDeliveryFence(t *testing.T) {
+	now := time.Date(2026, 10, 5, 20, 0, 0, 0, time.UTC)
+	characterID := testPositionUUID(1)
+	agentID := testPositionUUID(201)
+	oldSession := testPositionUUID(101)
+	newSession := testPositionUUID(102)
+
+	positionStore := positions.NewStore()
+	positionStore.Claim("Greatest", agentID, 1, characterID, oldSession)
+	if _, ok := positionStore.Apply(positions.Position{
+		AgentID: agentID, Generation: 1, CharacterID: characterID,
+		SessionID: oldSession, Sequence: 1, Region: 25000,
+		X: 1, Y: 2, Z: positionFloat64(3), ObservedAt: now,
+	}, now); !ok {
+		t.Fatal("failed to prepare old position")
+	}
+
+	hub := NewLiveHub(nil, nil, nil)
+	hub.SetPositions(positionStore)
+	subscription := liveSubscription{
+		ID: "map-positions", Revision: 1, Stream: "positions",
+		Filter: liveFilter{Server: "Greatest"},
+	}
+	client := &liveClient{
+		hub:           hub,
+		ctx:           context.Background(),
+		outgoing:      make(chan []byte, liveOutgoingQueueSize),
+		subscriptions: map[string]liveSubscription{subscription.ID: subscription},
+		revisions:     map[string]uint64{subscription.ID: subscription.Revision},
+	}
+
+	hub.positionDeliveryMu.Lock()
+	done := make(chan bool, 1)
+	go func() {
+		done <- client.snapshot(subscription)
+	}()
+
+	positionStore.Claim("Greatest", agentID, 2, characterID, newSession)
+	if _, ok := positionStore.Apply(positions.Position{
+		AgentID: agentID, Generation: 2, CharacterID: characterID,
+		SessionID: newSession, Sequence: 1, Region: 25000,
+		X: 10, Y: 20, Z: positionFloat64(30), ObservedAt: now.Add(time.Second),
+	}, now.Add(time.Second)); !ok {
+		hub.positionDeliveryMu.Unlock()
+		t.Fatal("failed to prepare replacement position")
+	}
+	hub.positionDeliveryMu.Unlock()
+
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Fatal("position snapshot was not enqueued")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("position snapshot remained blocked")
+	}
+
+	var frame struct {
+		Data struct {
+			Positions []positions.Position `json:"positions"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(<-client.outgoing, &frame); err != nil {
+		t.Fatal(err)
+	}
+	if len(frame.Data.Positions) != 1 || frame.Data.Positions[0].SessionID != newSession {
+		t.Fatalf("snapshot escaped delivery fence with stale session: %#v", frame.Data.Positions)
+	}
+}
+
 func TestPositionBatchKeepsLatestPerCharacterAndDoesNotInvalidateSnapshots(t *testing.T) {
 	hub := NewLiveHub(nil, nil, nil)
 	client := &liveClient{
