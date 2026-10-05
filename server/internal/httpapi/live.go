@@ -41,7 +41,6 @@ const (
 	liveSnapshotCoalesce               = 500 * time.Millisecond
 	livePositionCoalesce               = 100 * time.Millisecond
 	liveMaxConcurrentBuilds            = 2
-	liveMaxPendingRemovalsPerCharacter = 2
 )
 
 type liveFilter struct {
@@ -122,7 +121,7 @@ type LiveHub struct {
 
 	positionMu      sync.Mutex
 	positionPending map[string]positions.Position
-	positionRemoved map[string][]positions.Removal
+	positionRemoved map[string]positions.Removal
 	positionFlush   *time.Timer
 
 	mu         sync.RWMutex
@@ -175,7 +174,7 @@ func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStor
 		buildSlots:      make(chan struct{}, liveMaxConcurrentBuilds),
 		navigation:      navigation.NewStore(),
 		positionPending: make(map[string]positions.Position),
-		positionRemoved: make(map[string][]positions.Removal),
+		positionRemoved: make(map[string]positions.Removal),
 	}
 }
 
@@ -185,18 +184,8 @@ func (h *LiveHub) PublishPosition(position positions.Position) {
 	}
 	h.positionMu.Lock()
 	h.positionPending[position.CharacterID] = position
-	if removals := h.positionRemoved[position.CharacterID]; len(removals) > 0 {
-		filtered := removals[:0]
-		for _, removal := range removals {
-			if removal.SessionID != position.SessionID {
-				filtered = append(filtered, removal)
-			}
-		}
-		if len(filtered) == 0 {
-			delete(h.positionRemoved, position.CharacterID)
-		} else {
-			h.positionRemoved[position.CharacterID] = filtered
-		}
+	if removal, ok := h.positionRemoved[position.CharacterID]; ok && removal.SessionID == position.SessionID {
+		delete(h.positionRemoved, position.CharacterID)
 	}
 	h.schedulePositionFlushLocked()
 	h.positionMu.Unlock()
@@ -210,19 +199,12 @@ func (h *LiveHub) PublishPositionRemoval(removal positions.Removal) {
 	if pending, ok := h.positionPending[removal.CharacterID]; ok && pending.SessionID == removal.SessionID {
 		delete(h.positionPending, removal.CharacterID)
 	}
-	rows := h.positionRemoved[removal.CharacterID]
-	for _, current := range rows {
-		if current.SessionID == removal.SessionID {
-			h.schedulePositionFlushLocked()
-			h.positionMu.Unlock()
-			return
-		}
+	if _, exists := h.positionRemoved[removal.CharacterID]; !exists {
+		// Keep the first session removed in this coalescing window. The browser can
+		// only still be displaying the session that existed before this batch;
+		// intermediate replacement sessions were never flushed to it.
+		h.positionRemoved[removal.CharacterID] = removal
 	}
-	rows = append(rows, removal)
-	if len(rows) > liveMaxPendingRemovalsPerCharacter {
-		rows = rows[len(rows)-liveMaxPendingRemovalsPerCharacter:]
-	}
-	h.positionRemoved[removal.CharacterID] = rows
 	h.schedulePositionFlushLocked()
 	h.positionMu.Unlock()
 }
@@ -238,7 +220,7 @@ func (h *LiveHub) flushPositionDeltas() {
 	pending := h.positionPending
 	removed := h.positionRemoved
 	h.positionPending = make(map[string]positions.Position)
-	h.positionRemoved = make(map[string][]positions.Removal)
+	h.positionRemoved = make(map[string]positions.Removal)
 	h.positionFlush = nil
 	h.positionMu.Unlock()
 
@@ -266,12 +248,10 @@ func (h *LiveHub) flushPositionDeltas() {
 				}
 			}
 			sort.Slice(updates, func(i, j int) bool { return updates[i].CharacterID < updates[j].CharacterID })
-			removals := make([]positions.Removal, 0)
-			for _, rows := range removed {
-				for _, removal := range rows {
-					if strings.EqualFold(removal.Server, subscription.Filter.Server) {
-						removals = append(removals, removal)
-					}
+			removals := make([]positions.Removal, 0, len(removed))
+			for _, removal := range removed {
+				if strings.EqualFold(removal.Server, subscription.Filter.Server) {
+					removals = append(removals, removal)
 				}
 			}
 			if len(updates) == 0 && len(removals) == 0 {
