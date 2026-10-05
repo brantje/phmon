@@ -2509,7 +2509,8 @@ watch(
 watch(
   server,
   (selectedServer) => {
-    if (selectedServer) setMapPositionFeed(positionSubscriptionID, selectedServer)
+    if (selectedServer)
+      setMapPositionFeed(positionSubscriptionID, selectedServer)
   },
   { immediate: true },
 )
