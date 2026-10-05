@@ -4,6 +4,30 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Map fullscreen toggle — 2026-10-05
+
+Operator-requested addition: the existing right-side map controls now place a
+fullscreen toggle immediately below Zoom out. The icon, accessible label, tooltip
+and pressed state switch between enter/exit; Escape and route navigation restore
+the regular layout. Native fullscreen targets the map frame, including its controls,
+legend and overlays. An unavailable/rejected Fullscreen API uses a browser-viewport
+fallback with scroll locking. Teleport and Reverse return portals use the map frame
+while fullscreen so their menus, reviews and results remain within that surface.
+The existing Leaflet resize observer maintains canvas sizing and zoom.
+
+Browser checks passed at 1440×1000, 1280×800 and 390×844 for native and fallback
+entry, button/Escape exit, zoom preservation, legend clearance and no horizontal
+overflow; request rejection and native/fallback route cleanup also passed. Native
+desktop and fallback mobile checks confirmed visible Teleport/Reverse return menus
+inside the map. Fresh development-browser checks have no page errors after moving
+the existing `streamCurrent` declaration ahead of the action composables.
+Evidence: `/tmp/phmon-map-fullscreen-verification.json` and
+`/tmp/phmon-map-fullscreen-{1440,1280,390}-{normal,native,fallback}.png`;
+menu captures are `/tmp/phmon-map-fullscreen-{1440,390}-menus.png`.
+Final validation passed: 196 frontend unit tests, Nuxt typecheck, focused ESLint
+(0 errors; 34 existing warnings), Prettier, production build and `git diff --check`.
+No demo fullscreen behavior is inferred, and no real character command was sent.
+
 ## Monster HP identity and updates — 2026-10-02
 
 Operator-authorized inspection of the local phMonitor v0.5.0 executable verified

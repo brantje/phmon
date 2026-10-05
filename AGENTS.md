@@ -250,6 +250,34 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-05 Map fullscreen toggle
+
+Completed the operator's targeted Slice 7 presentation follow-up: `/map` has a
+fullscreen toggle directly below Zoom out. It expands the map frame with its
+controls/overlays using the browser Fullscreen API, or fills the browser viewport
+when that API is unavailable or rejected. The button and Escape restore the normal
+layout; route navigation releases fullscreen and scroll locking. Teleport and
+Reverse return portals follow the fullscreen frame. The existing Leaflet resize
+observer updates the canvas without resetting zoom. Also moved `streamCurrent`
+before the action composables to fix an existing development-mode initialization
+error that prevented Map from rendering.
+
+Files: `web/app/pages/map.vue`, `web/app/components/ReverseReturnActions.vue`,
+`docs/reference-parity.md`, this guide. Browser verification passed at 1440×1000,
+1280×800 and 390×844 for native/fallback entry, button/Escape exit, resizing, zoom,
+legend clearance, request rejection and route cleanup, with no page errors or
+horizontal overflow. Teleport/Reverse return menus were checked in native desktop
+and fallback mobile fullscreen. Evidence: `/tmp/phmon-map-fullscreen-verification.json`
+and `/tmp/phmon-map-fullscreen-*.png`. Final frontend validation passed: 196 unit
+tests, Nuxt typecheck, focused ESLint (0 errors; 34 existing warnings), Prettier,
+production build and `git diff --check`. Concurrent character-position freshness
+edits in the shared checkout were preserved. No backend/plugin changes or real
+character commands were needed for this request.
+The operator subsequently authorized committing/pushing a focused PR, waiting for
+CI and CodeRabbit, fixing actionable findings and replying with the fixing commit
+SHA. Publication and review results are recorded in the PR discussion. Keep the PR
+open and unmerged; deploy during an authorized rollout. No feature blocker remains.
+
 ### Plan — 2026-10-04 Designate Recall Point
 
 The implementation plan is [docs/plans/map-designate-recall-point.md](docs/plans/map-designate-recall-point.md).
