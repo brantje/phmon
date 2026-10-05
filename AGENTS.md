@@ -5801,11 +5801,13 @@ its legacy state-frame analytics path. Protocol 16 realtime movement does not
 call global `LiveHub.Invalidate()` or rebuild `MapSnapshot`.
 
 The existing `/api/live` browser socket has an additive `positions` stream.
-The server coalesces latest-per-character deltas at approximately 100 ms. Only
-`/map` subscribes; Nuxt keeps this state separate from `mapFeeds`, guards
-updates/removals by session and sequence, overlays coordinates onto matching
-MapSnapshot character metadata, and uses approximately 190 ms interpolation only
-for controlled-character markers.
+Subscribe/explicit refresh own its replacement snapshots; ordinary global live
+invalidations skip this stream, while movement uses approximately 100 ms
+latest-per-character deltas. Only `/map` subscribes; Nuxt keeps this state separate
+from `mapFeeds`, guards updates/removals by session and sequence, overlays coordinates
+onto matching MapSnapshot character metadata, and uses approximately 190 ms
+interpolation only for controlled-character markers. The plugin also retains the
+latest coordinate across a failed WebSocket write without consuming its sequence.
 
 Automated coverage includes plugin packet/publish throttling and latest-slot
 behavior, Go store authority/cleanup/checkpoint tests, a deterministic
