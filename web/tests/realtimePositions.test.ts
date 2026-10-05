@@ -1,13 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { RealtimePosition, RealtimePositionDelta } from '../shared/types/live.ts'
+import type {
+  RealtimePosition,
+  RealtimePositionDelta,
+} from '../shared/types/live.ts'
 import {
   applyRealtimePositionDeltaState,
   realtimePositionSnapshotState,
   validRealtimePosition,
 } from '../app/utils/realtimePositions.ts'
 
-function position(session_id = 'session-a', sequence = 1, x = 10): RealtimePosition {
+function position(
+  session_id = 'session-a',
+  sequence = 1,
+  x = 10,
+): RealtimePosition {
   return {
     character_id: 'character-a',
     session_id,
