@@ -23,11 +23,11 @@ export function validRealtimePosition(
     value.region >= -32768 &&
     value.region <= 65535 &&
     Number.isFinite(value.x) &&
-    Math.abs(value.x) <= 1_000_000 &&
+    Math.abs(value.x) <= 10_000_000 &&
     Number.isFinite(value.y) &&
-    Math.abs(value.y) <= 1_000_000 &&
+    Math.abs(value.y) <= 10_000_000 &&
     (value.z == null ||
-      (Number.isFinite(value.z) && Math.abs(value.z) <= 1_000_000)) &&
+      (Number.isFinite(value.z) && Math.abs(value.z) <= 10_000_000)) &&
     typeof value.observed_at === 'string' &&
     Number.isFinite(Date.parse(value.observed_at))
   )
