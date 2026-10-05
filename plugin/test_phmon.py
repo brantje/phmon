@@ -2610,6 +2610,194 @@ class CharacterCollectorTests(unittest.TestCase):
         worker.update_character.assert_not_called()
 
 
+class RealtimePositionTests(unittest.TestCase):
+    def setUp(self):
+        self.previous = (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_position_sample_at,
+            plugin._last_position_observed,
+            plugin._last_position_session_id,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        )
+        plugin._last_position_sample_at = 0.0
+        plugin._last_position_observed = None
+        plugin._last_position_session_id = None
+
+    def tearDown(self):
+        (
+            plugin._worker,
+            plugin._character_joined,
+            plugin._last_position_sample_at,
+            plugin._last_position_observed,
+            plugin._last_position_session_id,
+            plugin._last_character_signature,
+            plugin._last_character_sample_at,
+            plugin._last_resources_sample_at,
+        ) = self.previous
+
+    def test_packet_trigger_throttles_before_get_position(self):
+        worker = Mock()
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker.update_position = Mock(return_value=True)
+        plugin._worker = worker
+        plugin._character_joined = True
+        get_position = Mock(side_effect=[
+            {'region': 25000, 'x': 1, 'y': 2, 'z': 3},
+            {'region': 25000, 'x': 2, 'y': 2, 'z': 3},
+        ])
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_get_position', get_position):
+            self.assertTrue(plugin._sample_realtime_position(100.0))
+            self.assertFalse(plugin._sample_realtime_position(100.1))
+            self.assertTrue(plugin._sample_realtime_position(100.201))
+        self.assertEqual(get_position.call_count, 2)
+        self.assertEqual(worker.update_position.call_count, 2)
+
+    def test_stationary_and_jitter_positions_do_not_republish(self):
+        worker = Mock()
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker.update_position = Mock(return_value=True)
+        plugin._worker = worker
+        plugin._character_joined = True
+        get_position = Mock(side_effect=[
+            {'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 3.0},
+            {'region': 25000, 'x': 1.0005, 'y': 2.0, 'z': 3.0},
+            {'region': 25001, 'x': 1.0005, 'y': 2.0, 'z': 3.0},
+        ])
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_get_position', get_position):
+            self.assertTrue(plugin._sample_realtime_position(100.0))
+            self.assertFalse(plugin._sample_realtime_position(100.3))
+            self.assertTrue(plugin._sample_realtime_position(100.6))
+        self.assertEqual(worker.update_position.call_count, 2)
+
+    def test_malformed_position_is_ignored(self):
+        worker = Mock()
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker.update_position = Mock(return_value=True)
+        plugin._worker = worker
+        plugin._character_joined = True
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_get_position', return_value={
+                    'region': 25000, 'x': float('nan'), 'y': 2, 'z': 3,
+                }):
+            self.assertFalse(plugin._sample_realtime_position(100.0))
+        worker.update_position.assert_not_called()
+
+    def test_worker_position_slot_is_latest_only_and_sequence_is_session_scoped(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, '20.1.2')
+        worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        first_session = 'ffffffff-1111-4222-8333-444444444444'
+        second_session = '22222222-3333-4444-8555-666666666666'
+        worker.session_id = first_session
+        worker._adopt_position_session(first_session)
+        for x in range(100):
+            worker.update_position(
+                {'region': 25000, 'x': float(x), 'y': 2.0, 'z': 3.0},
+                '2026-10-05T20:00:00Z',
+            )
+        client = Mock()
+        self.assertTrue(worker._flush_realtime_position(client))
+        first = client.send_json.call_args.args[0]
+        self.assertEqual(first['type'], 'character.position')
+        self.assertEqual(first['sequence'], 1)
+        self.assertEqual(first['position']['x'], 99.0)
+        self.assertIsNone(worker._latest_position)
+
+        worker._adopt_position_session(first_session)
+        worker.update_position(
+            {'region': 25000, 'x': 100.0, 'y': 2.0, 'z': 3.0},
+            '2026-10-05T20:00:01Z',
+        )
+        worker._flush_realtime_position(client)
+        self.assertEqual(client.send_json.call_args.args[0]['sequence'], 2)
+
+        worker.session_id = second_session
+        worker._adopt_position_session(second_session)
+        worker.update_position(
+            {'region': 25000, 'x': 101.0, 'y': 2.0, 'z': 3.0},
+            '2026-10-05T20:00:02Z',
+        )
+        worker._flush_realtime_position(client)
+        self.assertEqual(client.send_json.call_args.args[0]['sequence'], 1)
+
+    def test_handle_joymax_never_sends_websocket_from_callback(self):
+        worker = Mock()
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker.update_position = Mock(return_value=True)
+        plugin._worker = worker
+        plugin._character_joined = True
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_get_position', return_value={
+                    'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 3.0,
+                }), \
+                patch.object(plugin, 'capture_joymax_packet'):
+            self.assertTrue(plugin.handle_joymax(plugin.POSITION_MOVEMENT_OPCODE, b''))
+        worker.update_position.assert_called_once()
+        self.assertFalse(hasattr(worker, 'send_json'))
+
+    def test_xy_only_movement_does_not_churn_character_state(self):
+        worker = Mock()
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker.update_position = Mock(return_value=True)
+        plugin._worker = worker
+        plugin._character_joined = True
+        plugin._last_character_signature = None
+        plugin._last_character_sample_at = 0.0
+        plugin._last_resources_sample_at = time.monotonic()
+        character = {
+            'server': 'Greatest', 'name': 'Alpha', 'level': 110,
+            'hp': 1000, 'hp_max': 1000, 'region': 25000,
+        }
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_get_character_data', return_value=character), \
+                patch.object(plugin, '_get_position', side_effect=[
+                    {'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 3.0},
+                    {'region': 25000, 'x': 2.0, 'y': 3.0, 'z': 3.0},
+                ]), \
+                patch.object(plugin, '_get_zone_name', return_value='Jangan'), \
+                patch.object(plugin, '_sample_monsters'), \
+                patch.object(plugin, '_sample_npcs'), \
+                patch.object(plugin, '_sample_players'):
+            plugin._sample_character()
+            plugin._sample_character()
+        self.assertEqual(worker.update_character.call_count, 1)
+        self.assertEqual(worker.update_position.call_count, 2)
+
+    def test_non_position_state_change_still_publishes(self):
+        worker = Mock()
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker.update_position = Mock(return_value=True)
+        plugin._worker = worker
+        plugin._character_joined = True
+        plugin._last_character_signature = None
+        plugin._last_character_sample_at = 0.0
+        plugin._last_resources_sample_at = time.monotonic()
+        characters = [
+            {'server': 'Greatest', 'name': 'Alpha', 'hp': 1000, 'region': 25000},
+            {'server': 'Greatest', 'name': 'Alpha', 'hp': 900, 'region': 25000},
+        ]
+        with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
+                patch.object(plugin, '_get_character_data', side_effect=characters), \
+                patch.object(plugin, '_get_position', return_value={
+                    'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 3.0,
+                }), \
+                patch.object(plugin, '_get_zone_name', return_value='Jangan'), \
+                patch.object(plugin, '_sample_monsters'), \
+                patch.object(plugin, '_sample_npcs'), \
+                patch.object(plugin, '_sample_players'):
+            plugin._sample_character()
+            plugin._sample_character()
+        self.assertEqual(worker.update_character.call_count, 2)
+
+
 class WebSocketFrameTests(unittest.TestCase):
     def _server_text_frame(self, payload):
         return bytes(bytearray([0x81, len(payload)])) + payload
