@@ -2728,20 +2728,29 @@ class RealtimePositionTests(unittest.TestCase):
         worker._flush_realtime_position(client)
         self.assertEqual(client.send_json.call_args.args[0]['sequence'], 1)
 
-    def test_handle_joymax_never_sends_websocket_from_callback(self):
-        worker = Mock()
-        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
-        worker.update_position = Mock(return_value=True)
-        plugin._worker = worker
+    def test_handle_joymax_only_samples_and_never_has_a_websocket_client(self):
+        calls = []
+
+        class CallbackWorker:
+            session_id = 'ffffffff-1111-4222-8333-444444444444'
+
+            def update_position(self, position, observed_at=None):
+                calls.append(('position', position))
+                return True
+
+            def capture_joymax_packet(self, opcode, data):
+                calls.append(('packet', opcode))
+                return True
+
+        plugin._worker = CallbackWorker()
         plugin._character_joined = True
         with patch.object(plugin, '_PHBOT_AVAILABLE', True), \
                 patch.object(plugin, '_get_position', return_value={
                     'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 3.0,
                 }), \
-                patch.object(plugin, 'capture_joymax_packet'):
+                patch.object(plugin, '_observe_unique_notice'):
             self.assertTrue(plugin.handle_joymax(plugin.POSITION_MOVEMENT_OPCODE, b''))
-        worker.update_position.assert_called_once()
-        self.assertFalse(hasattr(worker, 'send_json'))
+        self.assertEqual([entry[0] for entry in calls], ['position', 'packet'])
 
     def test_xy_only_movement_does_not_churn_character_state(self):
         worker = Mock()
