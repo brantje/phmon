@@ -795,16 +795,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				Region: message.Position.Region, X: message.Position.X, Y: message.Position.Y, Z: message.Position.Z,
 				ObservedAt: observedAt.UTC(),
 			}
-			// Resolve the canonical server from the in-memory claim before validation.
-			accepted, ok := h.positions.Apply(input, time.Now().UTC())
+			accepted, ok := h.applyRealtimePosition(input, time.Now().UTC())
 			if !ok {
 				continue
-			}
-			h.live.PublishPosition(accepted)
-			if h.navigation != nil {
-				h.navigation.Observe(accepted.CharacterID, accepted.SessionID, navigation.Position{
-					Region: accepted.Region, X: accepted.X, Y: accepted.Y, Z: accepted.Z, At: accepted.ObservedAt,
-				})
 			}
 			if h.characters != nil && h.positions.CheckpointDue(accepted, time.Now().UTC(), time.Second) {
 				checkpointCtx, checkpointCancel := context.WithTimeout(sessionCtx, 2*time.Second)
@@ -1052,6 +1045,29 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (h *agentHandler) applyRealtimePosition(input positions.Position, now time.Time) (positions.Position, bool) {
+	if h == nil || h.positions == nil {
+		return positions.Position{}, false
+	}
+	accepted, ok := h.positions.Apply(input, now)
+	if !ok {
+		return positions.Position{}, false
+	}
+	if h.live != nil {
+		h.live.PublishPosition(accepted)
+	}
+	if h.navigation != nil {
+		h.navigation.Observe(accepted.CharacterID, accepted.SessionID, navigation.Position{
+			Region: accepted.Region,
+			X:      accepted.X,
+			Y:      accepted.Y,
+			Z:      accepted.Z,
+			At:     accepted.ObservedAt,
+		})
+	}
+	return accepted, true
 }
 
 func navigationRouteOwnerMatches(route navigation.Input, command commands.Command, character characters.Character, agentID string, generation uint64) bool {
