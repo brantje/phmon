@@ -358,12 +358,12 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	client := &liveClient{
-		hub:           h,
-		conn:          conn,
-		ctx:           ctx,
-		cancel:        cancel,
-		outgoing:      make(chan []byte, liveOutgoingQueueSize),
-		snapshotWake:  make(chan struct{}, 1),
+		hub:               h,
+		conn:              conn,
+		ctx:               ctx,
+		cancel:            cancel,
+		outgoing:          make(chan []byte, liveOutgoingQueueSize),
+		snapshotWake:      make(chan struct{}, 1),
 		subscriptions:     make(map[string]liveSubscription),
 		revisions:         make(map[string]uint64),
 		positionSnapshots: make(map[string]uint64),
