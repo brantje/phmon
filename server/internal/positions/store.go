@@ -59,7 +59,7 @@ func NewStore() *Store {
 }
 
 func ValidCoordinate(value float64) bool {
-	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= -1_000_000 && value <= 1_000_000
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= -10_000_000 && value <= 10_000_000
 }
 
 func ValidRegion(region int) bool {
