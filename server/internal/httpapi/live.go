@@ -29,18 +29,18 @@ import (
 )
 
 const (
-	liveProtocolVersion       = 1
-	liveMaxClientMessageBytes = 16 * 1024
-	liveMaxServerMessageBytes = 512 * 1024
-	liveMaxSubscriptions      = 32
-	liveOutgoingQueueSize     = 64
-	liveSnapshotTimeout       = 3 * time.Second
-	liveWriteTimeout          = 3 * time.Second
-	liveHeartbeatInterval     = 10 * time.Second
-	liveHeartbeatTimeout      = 35 * time.Second
-	liveSnapshotCoalesce      = 500 * time.Millisecond
-	livePositionCoalesce      = 100 * time.Millisecond
-	liveMaxConcurrentBuilds   = 2
+	liveProtocolVersion                = 1
+	liveMaxClientMessageBytes          = 16 * 1024
+	liveMaxServerMessageBytes          = 512 * 1024
+	liveMaxSubscriptions               = 32
+	liveOutgoingQueueSize              = 64
+	liveSnapshotTimeout                = 3 * time.Second
+	liveWriteTimeout                   = 3 * time.Second
+	liveHeartbeatInterval              = 10 * time.Second
+	liveHeartbeatTimeout               = 35 * time.Second
+	liveSnapshotCoalesce               = 500 * time.Millisecond
+	livePositionCoalesce               = 100 * time.Millisecond
+	liveMaxConcurrentBuilds            = 2
 	liveMaxPendingRemovalsPerCharacter = 2
 )
 
@@ -120,10 +120,10 @@ type LiveHub struct {
 	positions  *positions.Store
 	navigation *navigation.Store
 
-	positionMu       sync.Mutex
-	positionPending  map[string]positions.Position
-	positionRemoved  map[string][]positions.Removal
-	positionFlush    *time.Timer
+	positionMu      sync.Mutex
+	positionPending map[string]positions.Position
+	positionRemoved map[string][]positions.Removal
+	positionFlush   *time.Timer
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -138,7 +138,7 @@ func (h *LiveHub) SetMobObservations(store *mobs.Store)   { h.mobs = store }
 func (h *LiveHub) SetMobLive(store *mobs.LiveStore)       { h.mobLive = store }
 func (h *LiveHub) SetNPCLive(store *npcs.LiveStore)       { h.npcLive = store }
 func (h *LiveHub) SetPlayerLive(store *players.LiveStore) { h.playerLive = store }
-func (h *LiveHub) SetPositions(store *positions.Store)      { h.positions = store }
+func (h *LiveHub) SetPositions(store *positions.Store)    { h.positions = store }
 
 func (h *LiveHub) npcSnapshots(server string) []npcs.LiveSnapshot {
 	if h == nil || h.npcLive == nil {
@@ -168,9 +168,9 @@ func (h *LiveHub) NavigationAdmission() *navigation.Store {
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
-		agents:     agents,
-		registry:   registry,
-		characters: characterStore,
+		agents:          agents,
+		registry:        registry,
+		characters:      characterStore,
 		clients:         make(map[*liveClient]struct{}),
 		buildSlots:      make(chan struct{}, liveMaxConcurrentBuilds),
 		navigation:      navigation.NewStore(),
