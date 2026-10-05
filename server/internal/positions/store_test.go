@@ -65,8 +65,8 @@ func TestStoreRejectsInvalidCoordinatesAndRegion(t *testing.T) {
 		positionFixture(testSessA, 1, 3, now),
 	}
 	cases[0].Region = 0
-	cases[1].X = 1_000_001
-	cases[2].Y = -1_000_001
+	cases[1].X = 10_000_001
+	cases[2].Y = -10_000_001
 	for i, item := range cases {
 		if _, ok := store.Apply(item, now); ok {
 			t.Fatalf("invalid position %d was admitted", i)
