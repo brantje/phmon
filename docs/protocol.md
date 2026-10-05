@@ -1371,3 +1371,78 @@ character's current NPC snapshot; merged map IDs are never command arguments.
 Packet submission is enabled only for phBot 20.1.3 on Greatest and uses the
 observed fixed packet plus that session's gate ID. The server outcome remains
 `unverified` because no PhMon-issued response has been classified.
+
+## Agent protocol 16: realtime controlled-character positions — 2026-10-05
+
+Protocol 16 adds one additive agent frame for the current position of a character
+directly controlled by a connected PhMon/phBot worker:
+
+```json
+{
+  "type": "character.position",
+  "protocol_version": 16,
+  "character_id": "<character UUID>",
+  "session_id": "<active session UUID>",
+  "sequence": 1,
+  "position": {"region": 25000, "x": 12.5, "y": 34.5, "z": -6.0},
+  "sent_at": "<UTC RFC3339>"
+}
+```
+
+The sequence is positive, monotonic within one character session and resets when the
+worker adopts a different session. The frame is ephemeral latest-value state, not an
+event: it is never written to the event/mob spools and the plugin retains at most one
+unsent coordinate. WebSocket transmission stays on the network worker. If a socket
+write fails, the latest coordinate stays pending and its sequence is not consumed; a
+newer observation may replace it before reconnect. Character/session loss clears the
+pending value.
+
+The server accepts this frame only from protocol-16 agents and resolves the server name
+from the authenticated in-memory character claim. Admission is fenced by agent ID,
+connection generation, character ID and session ID. Zero/replayed sequences, invalid
+regions, non-finite or out-of-bound coordinates and timestamps outside the bounded
+clock window are rejected or ignored. An accepted coordinate replaces only that
+character's current in-memory position and is passed immediately to the existing
+navigation observer. Durable character location and movement-analytics writes are
+independently admitted at most about once per second. Protocols 3-15 retain their
+previous state-frame movement/analytics path.
+
+Plugin 1.9.23 samples the documented `get_position()` API only from phBot-owned
+callback contexts. The documented 500 ms `event_loop()` remains the initial/fallback
+source. For the faster path, server opcode `0xB021` is used only as a movement wake
+signal: PhMon does not decode that packet to identify an entity. The callback applies
+a 200 ms monotonic gate before calling `get_position()`; coordinate publishing has
+its own 200 ms gate plus jitter suppression. Region and session transitions may
+publish immediately. No timer/background thread calls phBot position APIs.
+
+The browser reuses the existing authenticated `/api/live` protocol v1 with a
+server-scoped `positions` subscription. Subscribe and explicit refresh receive a
+replacement snapshot:
+
+```json
+{"positions":[{"character_id":"<uuid>","session_id":"<uuid>","sequence":7,
+"region":25000,"x":12.5,"y":34.5,"z":-6.0,"observed_at":"<UTC RFC3339>"}]}
+```
+
+Subsequent movement uses `type:"delta"` frames whose data contains
+latest-per-character `positions` plus optional session-aware `removed` rows. The
+server coalesces these for approximately 100 ms and never calls global
+`LiveHub.Invalidate()` for movement. Ordinary global invalidations also skip the
+`positions` snapshot stream, preventing an older replacement snapshot from being
+enqueued after a newer movement delta. Existing bounded per-client output queues remain
+the backpressure mechanism.
+
+Only the Map subscribes to this fast stream. Durable `MapSnapshot.characters` remains
+authoritative for identity, online/session state and non-position fields. A realtime
+coordinate overlays a character only when its session ID matches that durable row;
+otherwise the browser falls back to the durable coordinates. Controlled-character
+markers interpolate for about 190 ms from their currently rendered Leaflet position;
+other marker animation timing is unchanged.
+
+Automated tests prove the 200 ms gates, latest-value/retry behavior,
+session/generation/sequence fencing, bounded 50-character batching, session-aware
+removals and browser merge rules. They do **not** prove that a particular live vSRO
+server delivers `0xB021` callbacks frequently enough for 200 ms observations. Keep
+the safe 500 ms fallback and record live runtime cadence before claiming that rate on a
+real server.
+
