@@ -26,6 +26,10 @@ import {
   type LiveStream,
 } from '~~/shared/types/live'
 import { mapSnapshotMatchesScope } from '~/utils/mapRefresh'
+import {
+  applyRealtimePositionDeltaState,
+  realtimePositionSnapshotState,
+} from '~/utils/realtimePositions'
 import { chunkFanOutValues } from '~/utils/commandFanOut'
 
 type Subscription = {
@@ -394,31 +398,6 @@ function clearEventFeed(subscriptionID: string) {
   })
 }
 
-function validRealtimePosition(position: unknown): position is RealtimePosition {
-  if (!position || typeof position !== 'object' || Array.isArray(position)) return false
-  const value = position as RealtimePosition
-  return (
-    typeof value.character_id === 'string' &&
-    value.character_id.length > 0 &&
-    typeof value.session_id === 'string' &&
-    value.session_id.length > 0 &&
-    Number.isSafeInteger(value.sequence) &&
-    value.sequence > 0 &&
-    Number.isInteger(value.region) &&
-    value.region !== 0 &&
-    value.region >= -32768 &&
-    value.region <= 65535 &&
-    Number.isFinite(value.x) &&
-    Math.abs(value.x) <= 1_000_000 &&
-    Number.isFinite(value.y) &&
-    Math.abs(value.y) <= 1_000_000 &&
-    (value.z == null ||
-      (Number.isFinite(value.z) && Math.abs(value.z) <= 1_000_000)) &&
-    typeof value.observed_at === 'string' &&
-    Number.isFinite(Date.parse(value.observed_at))
-  )
-}
-
 function setMapPositionFeed(subscriptionID: string, server: string) {
   if (!server) return
   ensureSubscription(
@@ -445,17 +424,7 @@ function clearMapPositionFeed(subscriptionID: string) {
 function applyRealtimePositionSnapshot(subscription: Subscription, data: unknown) {
   const snapshot = data as RealtimePositionSnapshot
   if (!snapshot || !Array.isArray(snapshot.positions)) return false
-  const next: Record<string, RealtimePosition> = {}
-  for (const position of snapshot.positions) {
-    if (!validRealtimePosition(position)) continue
-    const current = next[position.character_id]
-    if (
-      !current ||
-      current.session_id !== position.session_id ||
-      position.sequence > current.sequence
-    )
-      next[position.character_id] = position
-  }
+  const next = realtimePositionSnapshotState(snapshot.positions)
   mapPositionFeeds.value = { ...mapPositionFeeds.value, [subscription.id]: next }
   return true
 }
@@ -467,29 +436,8 @@ function applyRealtimePositionDelta(subscription: Subscription, data: unknown) {
   if (delta.removed != null && !Array.isArray(delta.removed)) return false
 
   const current = mapPositionFeeds.value[subscription.id] || {}
-  const next = { ...current }
-
-  for (const removal of delta.removed || []) {
-    if (
-      !removal ||
-      typeof removal.character_id !== 'string' ||
-      typeof removal.session_id !== 'string'
-    )
-      continue
-    if (next[removal.character_id]?.session_id === removal.session_id)
-      delete next[removal.character_id]
-  }
-
-  for (const position of delta.positions || []) {
-    if (!validRealtimePosition(position)) continue
-    const previous = next[position.character_id]
-    if (previous) {
-      if (previous.session_id !== position.session_id) continue
-      if (position.sequence <= previous.sequence) continue
-    }
-    next[position.character_id] = position
-  }
-
+  const next = applyRealtimePositionDeltaState(current, delta)
+  // One incoming batch deliberately causes one Vue reactive replacement.
   mapPositionFeeds.value = { ...mapPositionFeeds.value, [subscription.id]: next }
   return true
 }
