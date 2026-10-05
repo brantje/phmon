@@ -331,6 +331,31 @@ export interface MapSnapshot {
   }
 }
 
+export interface RealtimePosition {
+  character_id: string
+  session_id: string
+  sequence: number
+  region: number
+  x: number
+  y: number
+  z?: number
+  observed_at: string
+}
+
+export interface RealtimePositionRemoval {
+  character_id: string
+  session_id: string
+}
+
+export interface RealtimePositionSnapshot {
+  positions: RealtimePosition[]
+}
+
+export interface RealtimePositionDelta {
+  positions?: RealtimePosition[]
+  removed?: RealtimePositionRemoval[]
+}
+
 export interface AlchemySummary {
   attempts: number
   successes: number
@@ -355,6 +380,7 @@ export type LiveStream =
   | 'events'
   | 'chat'
   | 'map'
+  | 'positions'
 
 export interface LiveFilter {
   q?: string
@@ -395,6 +421,7 @@ export interface LiveClientFrame {
 export interface LiveServerFrame {
   type:
     | 'snapshot'
+    | 'delta'
     | 'subscription.unavailable'
     | 'subscription.rejected'
     | 'heartbeat'
