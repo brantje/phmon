@@ -35,10 +35,17 @@ pins retain valid last-observed positions when the UI clock trails a newer sampl
 A shared helper classifies an online sample as current through the 35-second
 window, without the former five-second future rejection. The Map, preview,
 navigation admission and route overlays share that rule, while the live transport
-updates the freshness clock on WebSocket open/messages. Offline and expired samples
-remain stale. Four additional regression cases cover these boundaries and retained
-pins; the combined frontend unit suite contains 196 tests. This is frontend timing
-and presentation behavior; no phBot collection contract changes.
+updates the freshness clock on WebSocket open/messages. CodeRabbit's review of
+`d3f97b3` found that unlimited future tolerance could keep old positions eligible
+when the browser clock lagged substantially. The shared rule now allows at most
+35 seconds of future lag as well as 35 seconds of age, preserving the tested
+20-second lag case. Offline, expired and excessively future-dated samples remain
+stale; valid last-observed pins remain displayable. Regression cases cover both
+exact boundaries, values just outside either window, a sample a day ahead and
+retained pins. This is frontend timing and presentation behavior; no phBot
+collection contract changes.
+Review-fix validation passed: 198 frontend tests, Nuxt typecheck, focused ESLint,
+Prettier and whitespace checks; final-head CI/review evidence is in PR #75.
 
 ## Monster HP identity and updates — 2026-10-02
 

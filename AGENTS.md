@@ -288,6 +288,15 @@ lagged clocks, stale samples, offline characters and retained pins; the combined
 frontend suite has 196 tests. CI and CodeRabbit results belong to the latest combined
 PR head and are recorded in its discussion.
 
+CodeRabbit reviewed the combined head `d3f97b3` and identified unbounded future
+timestamps in position freshness. The shared rule now accepts at most 35 seconds
+of future clock lag and 35 seconds of age; valid last-observed pins still remain
+displayable. Regression tests preserve the 20-second lag case, include both exact
+35-second boundaries and reject samples just beyond either boundary or a day ahead.
+Focused review-fix validation passed: 198 frontend tests, Nuxt typecheck, ESLint,
+Prettier and whitespace checks. The review fix and its CI/reply SHA are recorded
+in PR #75.
+
 ### Plan — 2026-10-04 Designate Recall Point
 
 The implementation plan is [docs/plans/map-designate-recall-point.md](docs/plans/map-designate-recall-point.md).
