@@ -11,21 +11,21 @@ import (
 )
 
 const (
-	MaxPastAge  = 2 * time.Minute
+	MaxPastAge    = 2 * time.Minute
 	MaxFutureSkew = 30 * time.Second
 )
 
 type Position struct {
-	Server      string  `json:"-"`
-	AgentID     string  `json:"-"`
-	Generation  uint64  `json:"-"`
-	CharacterID string  `json:"character_id"`
-	SessionID   string  `json:"session_id"`
-	Sequence    uint64  `json:"sequence"`
-	Region      int     `json:"region"`
-	X           float64 `json:"x"`
-	Y           float64 `json:"y"`
-	Z           *float64 `json:"z,omitempty"`
+	Server      string    `json:"-"`
+	AgentID     string    `json:"-"`
+	Generation  uint64    `json:"-"`
+	CharacterID string    `json:"character_id"`
+	SessionID   string    `json:"session_id"`
+	Sequence    uint64    `json:"sequence"`
+	Region      int       `json:"region"`
+	X           float64   `json:"x"`
+	Y           float64   `json:"y"`
+	Z           *float64  `json:"z,omitempty"`
 	ObservedAt  time.Time `json:"observed_at"`
 }
 
