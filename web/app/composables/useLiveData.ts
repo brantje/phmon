@@ -433,7 +433,10 @@ function applyRealtimePositionSnapshot(
 ) {
   const snapshot = data as RealtimePositionSnapshot
   if (!snapshot || !Array.isArray(snapshot.positions)) return false
-  const next = realtimePositionSnapshotState(snapshot.positions)
+  const next = realtimePositionSnapshotState(
+    snapshot.positions,
+    mapPositionFeeds.value[subscription.id] || {},
+  )
   mapPositionFeeds.value = {
     ...mapPositionFeeds.value,
     [subscription.id]: next,
