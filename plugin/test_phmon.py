@@ -2731,6 +2731,34 @@ class RealtimePositionTests(unittest.TestCase):
         worker._flush_realtime_position(client)
         self.assertEqual(client.send_json.call_args.args[0]['sequence'], 1)
 
+    def test_failed_position_send_keeps_latest_value_for_retry(self):
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1/agent',
+            'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, '20.1.2')
+        worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker._adopt_position_session(worker.session_id)
+        worker.update_position(
+            {'region': 25000, 'x': 12.0, 'y': 34.0, 'z': 5.0},
+            '2026-10-05T20:00:00Z',
+        )
+
+        failing_client = Mock()
+        failing_client.send_json.side_effect = OSError('socket closed')
+        with self.assertRaises(OSError):
+            worker._flush_realtime_position(failing_client)
+        self.assertIsNotNone(worker._latest_position)
+        self.assertEqual(worker._position_sequence, 0)
+
+        healthy_client = Mock()
+        self.assertTrue(worker._flush_realtime_position(healthy_client))
+        sent = healthy_client.send_json.call_args.args[0]
+        self.assertEqual(sent['sequence'], 1)
+        self.assertEqual(sent['position']['x'], 12.0)
+        self.assertIsNone(worker._latest_position)
+
     def test_handle_joymax_only_samples_and_never_has_a_websocket_client(self):
         calls = []
 
