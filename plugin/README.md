@@ -1,8 +1,9 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.21**, using agent protocol **14**. It
-adds navigation transport fixes, script diagnostics and direct `move_to` support.
-It also correlates a documented player-attack callback with a death callback from the same
+The current local plugin release is **1.9.22**, using agent protocol **15**. It
+includes navigation transport fixes, script diagnostics and direct `move_to` support,
+plus scoped recall-point packet submission for phBot 20.1.3 on Greatest. It also
+correlates a documented player-attack callback with a death callback from the same
 character within ten seconds. The death event records the recent player's name or
 `Monster / environment` as an inferred reason. This does not identify the actual
 killing blow. The profile-scoped **Potions** and **Pills** options default on and
@@ -70,6 +71,17 @@ session `get_npcs()`, `get_teleport_data(source, destination)`, then one bounded
 `teleport,source,destination` line via `start_script`. Map UI uses action-target
 fan-out with an operator-entered destination (no menu enumeration). `start_script=True`
 does not prove arrival.
+
+The Map menu prepares a **Designate Recall Point** review for an observed
+teleporter. On phBot 20.1.3 and Greatest, the plugin resolves that gate again
+from the target character's `get_npcs()` snapshot and submits the captured
+`0x7059` request using the gate's live runtime ID. Two operator-run manual
+captures and an in-game success message established the request. PhMon records
+its own request as **sent; outcome unverified** because the `0xB059` response
+byte has not been interpreted for an automated command. Other builds and
+servers remain disabled. The temporary read-only capture procedure and evidence
+are in [`tools/recall-point-capture`](../tools/recall-point-capture/README.md)
+and [the investigation](../docs/reference/recall-point-investigation.md).
 
 Version 1.9.3 adds **Test Hotan→Jangan** (operator-only): requires the Hotan
 `GATE_KT` gate in `get_npcs()`, resolves `get_teleport_data`, then runs one

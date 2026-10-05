@@ -250,6 +250,18 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Plan — 2026-10-04 Designate Recall Point
+
+The implementation plan is [docs/plans/map-designate-recall-point.md](docs/plans/map-designate-recall-point.md).
+Current status: the operator's two manual Auren/Hotan captures on Greatest with
+phBot 20.1.3 verified `0x7059` plus that session's four-byte gate ID, followed
+by `0xB059`; the game displayed a recall-point-updated message. PhMon now
+submits that fixed packet through the audited command only for this build/server
+and reports its saved outcome as unverified until a PhMon-issued response can be
+classified. The operator authorized a controlled test with any idle character
+and deployment of this branch on the remote server. See the investigation for
+the separate manual and automated evidence.
+
 ### Resume — 2026-10-04 navigation latency and live verification complete
 
 Completed targeted Slice 3/7–8 follow-up: the operator authorized live Greatest
@@ -5642,3 +5654,84 @@ reference screenshot was exercised. Exact next action: deploy the updated plugin
 web during an authorized rollout, then verify one naturally occurring death and
 its persisted/dashboard/history reason without forcing a character death. Continue
 the remaining Slice 4/5 gates independently.
+
+### Resume — 2026-10-04 Map Designate Recall Point
+
+Active focused increment on branch `codex/designate-recall-point` in the existing
+checkout: the observed teleporter's Teleport flyout offers a mandatory
+**Designate Recall Point** review for checked characters. The narrow Go command
+contract requires confirmation and rejects extra packet fields; the frontend
+uses the existing concurrent fan-out and invalidates reviews when the gate, map
+feed, server, targets or sessions change. The plugin has a per-session gate
+resolver but advertises `recall_point_unverified`, so no command is admitted or
+packet emitted. A temporary read-only 15-second capture plugin and test are in
+`tools/recall-point-capture/`; it has not been installed in phBot. See
+`docs/reference/recall-point-investigation.md` and the plan in `docs/plans/`.
+
+Evidence: official phBot map documentation shows the menu action but official
+plugin documentation has no recall-point primitive or packet contract. Installed
+phBot Stable file version 20.1.3.0 was inspected read-only. The prior community
+`0x7059` proposal remains a hypothesis. The phMonitor demo Map was blocked by
+its recurring connection failure, and the original attachment path was not
+available on this Windows host. No live character was operated.
+
+Validation: Go `go test ./...`; 192 plugin tests; 189 frontend unit tests;
+read-only capture-probe test; frontend lint, typecheck, Prettier and production
+build; and `git diff --check` passed. No local PostgreSQL/browser stack was
+available for viewport or end-to-end verification. Exact next action: obtain a
+specific operator-designated test character and teleporter, run one bounded
+manual phBot designation with the capture probe, record emitted bytes and
+server/result evidence, then implement only the verified primitive. Run the
+deterministic command simulator and browser viewport checks before claiming
+feature completion. Preserve unrelated pre-existing edits in `plugin/PhMon.py`.
+
+### Resume follow-up — 2026-10-04 captured and scoped packet submission
+
+The operator authorized any idle character for one controlled test and approved
+deployment of this branch to `node@192.168.10.25`. Commit `f4f6b5be` was
+deployed to the remote web/server containers; `/map` returned HTTP 200. A
+remote Chrome viewport check could not launch under the server's user-namespace
+sandbox. The operator manually designated Hotan for Auren on Greatest twice.
+`get_npcs()` listed `GATE_KT` runtime ID `4`; both captures sent `0x7059`
+payload `04000000` and received `0xB059` length 1. The second capture sent no
+preceding selection packet. The game said the recall point was updated.
+
+Current increment: `plugin/PhMon.py` now enables fixed packet submission only
+for phBot 20.1.3 on Greatest when the target character's fresh NPC snapshot
+uniquely matches the requested gate. It returns `verification=unverified`
+because the response byte and a PhMon-issued saved outcome have not been
+observed. The read-only capture probe now logs a one-byte `0xB059` payload.
+Updated files: plugin, plugin tests/README, capture probe/tests/README,
+`web/app/utils/commandFanOut.ts`, protocol/capability/plan/reference docs, and
+this ledger. Local plugin tests passed (194 full suite before the final new
+focused case, then six focused cases). Exact next actions: push this scoped
+commit, update the remote branch, install the updated plugin on phBot, perform
+one audited PhMon-issued command on an authorized idle character, capture its
+`0xB059` byte and in-game result, and check browser viewports from an approved
+browser environment. Preserve the unrelated local plugin edits.
+
+### Resume — 2026-10-05 branch sync and click-to-walk restoration
+
+The `codex/designate-recall-point` branch had been based before PR #73 merged,
+so its map page lacked the default-off **Click to walk (uses move_to)** option
+and direct `character.move_to` dispatch. Merged current `origin/main` into this
+branch and resolved the overlapping plugin, command-catalog and map edits while
+retaining both navigation and scoped recall-point behavior. Combined plugin
+version is 1.9.22 / protocol 15. The checkbox is back below the Map action buttons,
+and map point clicks submit independent fire-and-forget moves for selected characters.
+
+Validation: 208 plugin tests, 192 frontend unit tests, `go test ./...`, Nuxt
+typecheck, Prettier check and production build passed. ESLint passed with zero
+errors and 69 style warnings. `git diff --check` passed.
+The PR's version guard identified the added recall-point capability report as a
+protocol-contract change; the plugin and server now both use protocol 15.
+
+CI found a flaky database-recovery test ordering: PostgreSQL was restored before
+the parallel live-WebSocket check confirmed its unavailable frame. The outage
+smoke now waits for the observer's stale marker before restoring PostgreSQL. Its
+Python syntax and whitespace checks pass. Both full validation and stack runs on
+the previous PR head pass, as does the plugin/protocol version guard. CodeRabbit
+identified that a pre-existing stale marker could satisfy the handshake early;
+`outage_session_smoke.py` now clears that marker at startup. Exact next action:
+validate, commit and push this fix, reply to its PR #74 review with the SHA, and
+wait for CI.

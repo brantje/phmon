@@ -56,6 +56,14 @@ type teleportArgs struct {
 	GateServername string `json:"gate_servername"`
 }
 
+type designateRecallPointArgs struct {
+	GateServername string   `json:"gate_servername"`
+	Region         *int     `json:"region"`
+	X              *float64 `json:"x"`
+	Y              *float64 `json:"y"`
+	ModelID        *int64   `json:"model_id,omitempty"`
+}
+
 type trainingAreaArgs struct {
 	Mode   string   `json:"mode"`
 	Name   *string  `json:"name,omitempty"`
@@ -158,6 +166,19 @@ func Validate(name string, raw json.RawMessage, confirmation bool) (Validated, e
 		if !teleportLabel(args.Source) || !teleportLabel(args.Destination) || !teleportGateServername(args.GateServername) {
 			return Validated{}, ErrInvalid
 		}
+		normalized, _ := json.Marshal(args)
+		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
+	case "character.recall_point.designate":
+		var args designateRecallPointArgs
+		if decodeExact(raw, &args) != nil || !confirmation ||
+			!teleportGateServername(strings.TrimSpace(args.GateServername)) ||
+			args.Region == nil || !validRegion(*args.Region) ||
+			args.X == nil || !coordinate(*args.X) ||
+			args.Y == nil || !coordinate(*args.Y) ||
+			(args.ModelID != nil && (*args.ModelID <= 0 || *args.ModelID > 4294967295)) {
+			return Validated{}, ErrInvalid
+		}
+		args.GateServername = strings.TrimSpace(args.GateServername)
 		normalized, _ := json.Marshal(args)
 		return Validated{Name: name, Args: normalized, Confirmation: confirmation}, nil
 	case "training.area.set":

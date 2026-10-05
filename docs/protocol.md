@@ -1,4 +1,4 @@
-# Agent protocol versions 2–13
+# Agent protocol versions 2–15
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -563,6 +563,7 @@ Canonical Slice 3 commands and application bounds:
 | `training.radius.set`  | `{radius:number}`                                        | finite 1..10,000; this is a PhMon safety bound, not a claimed phBot maximum                                              |
 | `character.walk`       | `{region:int,x:number,y:number,z:number}`                | same observed region only; finite coordinates abs <= 10,000,000                                                          |
 | `character.teleport`   | `{source:string,destination:string,gate_servername:string}` | comma-free labels 1..64 chars; `gate_servername` must match `GATE_*`; plugin requires live gate in session `get_npcs()`, successful `get_teleport_data`, then one `teleport,source,destination` script line via `start_script`; does not prove arrival |
+| `character.recall_point.designate` | `{gate_servername:string,region:int,x:number,y:number,model_id?:integer}` | explicit confirmation; bounded `GATE_*` identity and position; plugin supports only phBot 20.1.3 on Greatest with `get_npcs` and `inject_joymax`; resolves one fresh per-character gate, submits fixed `0x7059` plus little-endian 32-bit runtime gate ID; `completed` means packet submitted, `verification=unverified` until response semantics are validated; no saved recall state is persisted |
 | `character.reverse_return` | `{type:integer,name?:string}`                               | explicit confirmation; modes 0/1 require empty name; modes 2/3 require trimmed 1..100 UTF-8 bytes without control characters; mode 2 rechecks current party; mode 3 requires a name in the target server's catalog; boolean API acceptance does not prove arrival |
 | `character.return`     | `{}`                                                     | bool means scroll invocation accepted, not teleport completion                                                           |
 | `character.disconnect` | `{}`                                                     | void return; does not alter relog settings                                                                               |
@@ -1360,3 +1361,13 @@ from older sessions cause normal server rejection. A completed result with API
 The experimental Map checkbox is default off and sends every selected target
 concurrently. It bypasses frontend command-controls preparation and review; the
 server still validates the authenticated target and bounded command contract.
+
+### Designate recall point capability — 2026-10-04
+
+Agent protocol 15 adds the `character.recall_point.designate` capability report.
+The audited command requires explicit confirmation and accepts only the observed
+gate name and coordinates. The plugin resolves the matching gate from that
+character's current NPC snapshot; merged map IDs are never command arguments.
+Packet submission is enabled only for phBot 20.1.3 on Greatest and uses the
+observed fixed packet plus that session's gate ID. The server outcome remains
+`unverified` because no PhMon-issued response has been classified.

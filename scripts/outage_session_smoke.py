@@ -7,6 +7,7 @@ restart, and reconciliation must close only the dead generation's character.
 """
 import json
 import os
+import pathlib
 import signal
 import subprocess
 import sys
@@ -29,6 +30,9 @@ compose_project = os.environ.get("PHMON_COMPOSE_PROJECT")
 if not compose_project:
     raise SystemExit("PHMON_COMPOSE_PROJECT must name the disposable Compose test stack")
 compose = ["docker", "compose", "--project-name", compose_project]
+live_recovery_stale_file = pathlib.Path(
+    os.environ.get("LIVE_RECOVERY_STALE_FILE", "/tmp/phmon-live-recovery-stale")
+)
 
 
 def request_json(url, data=None, headers=None):
@@ -75,6 +79,10 @@ def stop_process(process):
 
 def main():
     global recovered
+    try:
+        live_recovery_stale_file.unlink()
+    except FileNotFoundError:
+        pass
     token_response = Request(
         web + "/api/agents/credentials",
         data=b"{}",
@@ -120,6 +128,11 @@ def main():
     outage_env = os.environ.copy()
     outage_env["EXPECT_UNAVAILABLE"] = "1"
     subprocess.run([sys.executable, "scripts/smoke.py"], env=outage_env, check=True)
+    wait_for(
+        "browser live subscription observes the database outage",
+        live_recovery_stale_file.is_file,
+        timeout=45,
+    )
     subprocess.run(compose + ["up", "-d", "--wait", "--wait-timeout", "120", "postgres"], check=True)
 
     def recovered_characters():

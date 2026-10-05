@@ -83,6 +83,7 @@ import { placedGuideCell } from '~/utils/guideCells'
 import { traceActivitySummary } from '~/utils/mapTraceActivity'
 import { useMapNavigationAction } from '~/composables/useMapNavigationAction'
 import { useMapTeleportAction } from '~/composables/useMapTeleportAction'
+import { useMapRecallPointAction } from '~/composables/useMapRecallPointAction'
 import { useMapTrainingEditor } from '~/composables/useMapTrainingEditor'
 import type { MapActionNotification } from '~/utils/mapActionNotifications'
 import {
@@ -661,6 +662,19 @@ const teleportAction = useMapTeleportAction({
     streamCurrent.value && mapSnapshotInFeedScope.value && !liveStale.value,
   reviewActions: () => reviewActions.value,
 })
+const recallPointAction = useMapRecallPointAction({
+  server: () => server.value,
+  selectedTargetIDs: () => [...actionTargetIDs.value],
+  characters: () => [...fleetCharacters.value],
+  gates: () =>
+    mapSnapshotInFeedScope.value
+      ? (mapSnapshot.value?.npcs?.npcs || []).filter(
+          (npc) => npc.role === 'teleporter',
+        )
+      : [],
+  mapFeedCurrent: () =>
+    streamCurrent.value && mapSnapshotInFeedScope.value && !liveStale.value,
+})
 const actionNotification = ref<MapActionNotification | null>(null)
 let actionNotificationTimer: ReturnType<typeof setTimeout> | undefined
 function showMapActionNotification(notification: MapActionNotification) {
@@ -676,6 +690,7 @@ useMapActionNotifications(
     ...navigationAction.operations.value,
     ...navigationAction.trainingOperations.value,
     ...teleportAction.operations.value,
+    ...recallPointAction.operations.value,
   ],
   showMapActionNotification,
 )
@@ -1203,6 +1218,19 @@ function openNpcNavigation(
 function openCustomTeleportDestination() {
   void teleportAction.showDestinationDialog()
   navigationAction.close(false)
+}
+function openRecallPointReview() {
+  const gate = teleportAction.menuNpc.value
+  if (!gate) return
+  const anchor = { ...navigationAction.menuAnchor.value }
+  clearTeleportSubmenus()
+  teleportAction.close(false)
+  navigationAction.close(false)
+  void recallPointAction.open(
+    gate,
+    anchor,
+    document.querySelector<HTMLElement>('.map-canvas'),
+  )
 }
 function chooseTeleportDestination(destination: string) {
   teleportAction.destination.value = destination
@@ -3233,6 +3261,12 @@ useHead({ title: 'Map · PhMon' })
                     $event.currentTarget as HTMLElement,
                   )
                 "
+                @click="
+                  showTeleportGateDestinations(
+                    npc,
+                    $event.currentTarget as HTMLElement,
+                  )
+                "
               >
                 {{ npcDisplayLabel(npc) }}
                 <UIcon
@@ -3255,6 +3289,16 @@ useHead({ title: 'Map · PhMon' })
               @mouseenter="keepTeleportSubmenus"
               @mouseleave="hideTeleportSubmenusSoon"
             >
+              <button
+                v-if="teleportAction.menuNpc.value"
+                class="map-navigation-menu-action"
+                type="button"
+                role="menuitem"
+                @click="openRecallPointReview"
+              >
+                <UIcon name="i-lucide-map-pin-check" />
+                Designate Recall Point
+              </button>
               <button
                 class="map-navigation-menu-action"
                 type="button"
@@ -3397,6 +3441,64 @@ useHead({ title: 'Map · PhMon' })
               </p>
             </div>
           </Teleport>
+          <div
+            v-if="recallPointAction.menuOpen.value"
+            :ref="recallPointAction.menuElement"
+            class="map-navigation-context map-teleport-context map-teleport-menu map-recall-review"
+            role="dialog"
+            tabindex="-1"
+            aria-label="Designate Recall Point review"
+            :style="{
+              left: `${recallPointAction.menuAnchor.value.x}px`,
+              top: `${recallPointAction.menuAnchor.value.y}px`,
+            }"
+            @pointerdown.stop
+          >
+            <div class="map-context-heading">
+              <strong>Designate Recall Point</strong>
+              <small>{{
+                recallPointAction.selectedGate.value?.name ||
+                recallPointAction.selectedGate.value?.servername
+              }}</small>
+            </div>
+            <p class="map-navigation-menu-summary">
+              This changes each eligible character's saved recall destination.
+            </p>
+            <p
+              v-if="recallPointAction.preparing.value"
+              class="map-navigation-menu-summary"
+              role="status"
+            >
+              Checking character capabilities…
+            </p>
+            <p
+              v-if="recallPointAction.error.value"
+              class="map-navigation-menu-summary"
+              role="alert"
+            >
+              {{ recallPointAction.error.value }}
+            </p>
+            <CommandFanOutPreview
+              v-if="recallPointAction.reviewOperation.value"
+              :operation="recallPointAction.reviewOperation.value"
+              :confirmation-required="true"
+              :busy="
+                recallPointAction.preparing.value ||
+                recallPointAction.submitting.value
+              "
+              notice="A sent request is not proof that the game saved the point."
+              @submit="recallPointAction.confirm"
+              @cancel="recallPointAction.close"
+            />
+            <button
+              v-else
+              class="map-text-action"
+              type="button"
+              @click="recallPointAction.close()"
+            >
+              Cancel
+            </button>
+          </div>
           <div
             v-if="
               teleportAction.menuOpen.value &&
@@ -3869,9 +3971,11 @@ useHead({ title: 'Map · PhMon' })
               v-if="
                 navigationAction.reviewOperation.value ||
                 teleportAction.reviewOperation.value ||
+                recallPointAction.reviewOperation.value ||
                 navigationAction.operations.value.length ||
                 navigationAction.trainingOperations.value.length ||
-                teleportAction.operations.value.length
+                teleportAction.operations.value.length ||
+                recallPointAction.operations.value.length
               "
               class="compact-button"
               type="button"
@@ -3946,6 +4050,24 @@ useHead({ title: 'Map · PhMon' })
                     )
                 "
                 :on-dismiss="() => teleportAction.fanout.dismiss(operation)"
+              />
+              <CommandFanOutResults
+                v-for="operation in recallPointAction.operations.value.filter(
+                  (item) =>
+                    item.state !== 'prepared' && item.state !== 'cancelled',
+                )"
+                :key="'recall-' + operation.operationID"
+                :operation="operation"
+                status-note="A sent request does not prove the game saved this recall point."
+                :stale="false"
+                :on-retry="
+                  (characterID: string) =>
+                    recallPointAction.fanout.retrySubmission(
+                      operation,
+                      characterID,
+                    )
+                "
+                :on-dismiss="() => recallPointAction.fanout.dismiss(operation)"
               />
               <CommandFanOutResults
                 v-for="operation in navigationAction.trainingOperations.value.filter(
@@ -4988,6 +5110,11 @@ useHead({ title: 'Map · PhMon' })
   z-index: 1500;
   overflow: visible;
   max-height: none;
+}
+
+.map-navigation-context.map-recall-review {
+  width: min(380px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
 }
 
 .map-navigation-context {
