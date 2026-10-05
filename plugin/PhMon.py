@@ -3857,6 +3857,7 @@ class AgentWorker(object):
                 self.character_id = None
                 self._current_identity = None
                 self.session_id = None
+                self.clear_position()
                 self._resource_revision = 0
                 self._resource_baseline_required = True
                 self._confirmed_resources = None
@@ -4084,6 +4085,7 @@ class AgentWorker(object):
         self._rejected_identity = self._identity_key(self._current_identity)
         self.character_id = None
         self.session_id = None
+        self.clear_position()
         self.status = 'Character observation superseded; waiting for a new character observation.'
 
     @staticmethod
