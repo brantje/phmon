@@ -2984,6 +2984,7 @@ class AgentWorker(object):
         self._latest_sample = None
         self._position_lock = threading.Lock()
         self._latest_position = None
+        self._position_revision = 0
         self._position_sequence = 0
         self._position_sequence_session = None
         self.character_id = None
@@ -3183,11 +3184,13 @@ class AgentWorker(object):
             'observed_at': observed_at or _worker_utc_now(self),
         }
         with self._position_lock:
+            self._position_revision += 1
             self._latest_position = sample
         return True
 
     def clear_position(self):
         with self._position_lock:
+            self._position_revision += 1
             self._latest_position = None
 
     def _adopt_position_session(self, session_id):
@@ -3203,21 +3206,27 @@ class AgentWorker(object):
             sample = self._latest_position
             if sample is None:
                 return False
-            if self._position_sequence_session != self.session_id:
-                self._position_sequence_session = self.session_id
+            session_id = self.session_id
+            character_id = self.character_id
+            if self._position_sequence_session != session_id:
+                self._position_sequence_session = session_id
                 self._position_sequence = 0
-            self._position_sequence += 1
-            sequence = self._position_sequence
-            self._latest_position = None
+            sequence = self._position_sequence + 1
+            revision = self._position_revision
         client.send_json({
             'type': 'character.position',
             'protocol_version': PROTOCOL_VERSION,
-            'character_id': self.character_id,
-            'session_id': self.session_id,
+            'character_id': character_id,
+            'session_id': session_id,
             'sequence': sequence,
             'position': sample['position'],
             'sent_at': sample['observed_at'],
         })
+        with self._position_lock:
+            if self._position_sequence_session == session_id:
+                self._position_sequence = sequence
+            if self._position_revision == revision and self._latest_position is sample:
+                self._latest_position = None
         return True
 
     def update_resources(self, identity, resources, position=None):
