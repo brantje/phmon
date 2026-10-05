@@ -37,6 +37,16 @@ test('snapshot keeps only newest position per character', () => {
   assert.equal(state['character-a']?.x, 3)
 })
 
+test('older same-session snapshot cannot rewind a newer delta', () => {
+  const current = { 'character-a': position('session-a', 8, 80) }
+  const state = realtimePositionSnapshotState(
+    [position('session-a', 6, 60)],
+    current,
+  )
+  assert.equal(state['character-a']?.sequence, 8)
+  assert.equal(state['character-a']?.x, 80)
+})
+
 test('lower or equal sequence is ignored', () => {
   const current = { 'character-a': position('session-a', 5, 5) }
   for (const sequence of [4, 5]) {
