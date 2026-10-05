@@ -4,6 +4,49 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Map fullscreen toggle — 2026-10-05
+
+Operator-requested addition: the existing right-side map controls now place a
+fullscreen toggle immediately below Zoom out. The icon, accessible label, tooltip
+and pressed state switch between enter/exit; Escape and route navigation restore
+the regular layout. Native fullscreen targets the map frame, including its controls,
+legend and overlays. An unavailable/rejected Fullscreen API uses a browser-viewport
+fallback with scroll locking. Teleport and Reverse return portals use the map frame
+while fullscreen so their menus, reviews and results remain within that surface.
+The existing Leaflet resize observer maintains canvas sizing and zoom.
+
+Browser checks passed at 1440×1000, 1280×800 and 390×844 for native and fallback
+entry, button/Escape exit, zoom preservation, legend clearance and no horizontal
+overflow; request rejection and native/fallback route cleanup also passed. Native
+desktop and fallback mobile checks confirmed visible Teleport/Reverse return menus
+inside the map. Fresh development-browser checks have no page errors after moving
+the existing `streamCurrent` declaration ahead of the action composables.
+Evidence: `/tmp/phmon-map-fullscreen-verification.json` and
+`/tmp/phmon-map-fullscreen-{1440,1280,390}-{normal,native,fallback}.png`;
+menu captures are `/tmp/phmon-map-fullscreen-{1440,390}-menus.png`.
+Final validation passed: 196 frontend unit tests, Nuxt typecheck, focused ESLint
+(0 errors; 34 existing warnings), Prettier, production build and `git diff --check`.
+No demo fullscreen behavior is inferred, and no real character command was sent.
+
+## Character-position freshness — 2026-10-05
+
+The operator requested the concurrent position changes in the fullscreen PR. Map
+pins retain valid last-observed positions when the UI clock trails a newer sample.
+A shared helper classifies an online sample as current through the 35-second
+window, without the former five-second future rejection. The Map, preview,
+navigation admission and route overlays share that rule, while the live transport
+updates the freshness clock on WebSocket open/messages. CodeRabbit's review of
+`d3f97b3` found that unlimited future tolerance could keep old positions eligible
+when the browser clock lagged substantially. The shared rule now allows at most
+35 seconds of future lag as well as 35 seconds of age, preserving the tested
+20-second lag case. Offline, expired and excessively future-dated samples remain
+stale; valid last-observed pins remain displayable. Regression cases cover both
+exact boundaries, values just outside either window, a sample a day ahead and
+retained pins. This is frontend timing and presentation behavior; no phBot
+collection contract changes.
+Review-fix validation passed: 198 frontend tests, Nuxt typecheck, focused ESLint,
+Prettier and whitespace checks; final-head CI/review evidence is in PR #75.
+
 ## Monster HP identity and updates — 2026-10-02
 
 Operator-authorized inspection of the local phMonitor v0.5.0 executable verified
@@ -1877,7 +1920,6 @@ opt-in name label. They do not replace or cover the bubble. Names remain off
 until **Show nearby monsters names** is enabled, so the icons appear only with
 that label.
 
-
 ### Issue #55 map workspace redesign — 2026-10-01
 
 The operator-supplied `PhMon Map Redesign.html` and screenshots provide the layout
@@ -1939,7 +1981,6 @@ requested leader on control state, and a nearby-player trace picker fed by the
 existing `map.players` snapshot with Refresh on the live map feed. Return Scroll
 stays on command results without synthetic navigation rows. Real `stop_script` and
 `get_status` validation remains a separate Windows/phBot gate.
-
 
 #### Historical heatmap panel correction — 2026-10-01
 

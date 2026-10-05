@@ -4,6 +4,7 @@ import type { MapProfile } from '~~/shared/types/map'
 import { regionTileCenter, worldPositionToRaster } from '~/utils/mapCoordinates'
 import { zoneNameText } from '~/utils/event-location'
 import { characterMapMarkers } from '~/utils/mapCharacterMarkers'
+import { characterPositionIsFresh } from '~/utils/characterPositionFreshness'
 import { mapPreviewLocation } from '~/utils/mapNavigation'
 
 const mapProfileCache = new Map<string, Promise<MapProfile>>()
@@ -18,15 +19,8 @@ const props = defineProps<{
 
 const profile = ref<MapProfile | null>(null)
 const profileUnavailable = ref(false)
-const positionFreshness = (character: CharacterView) => {
-  const time = character.state_updated_at
-    ? Date.parse(character.state_updated_at)
-    : Number.NaN
-  const age = Date.now() - time
-  return (
-    character.online && Number.isFinite(time) && age >= -5_000 && age <= 35_000
-  )
-}
+const positionFreshness = (character: CharacterView) =>
+  characterPositionIsFresh(character)
 const locatedMembers = computed(() =>
   props.members.filter(
     (character) =>

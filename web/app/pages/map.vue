@@ -33,6 +33,7 @@ import {
   characterMapMarkers,
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
+import { characterPositionIsFresh } from '~/utils/characterPositionFreshness'
 import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
@@ -181,6 +182,16 @@ const navigationStopPending = ref(new Set<string>())
 const navigationTrayOpen = ref(true)
 const navigationTrayCompact = ref(false)
 const mapWorkspaceElement = ref<HTMLElement | null>(null)
+const mapFrameElement = ref<HTMLElement | null>(null)
+const nativeMapFullscreen = ref(false)
+const fallbackMapFullscreen = ref(false)
+const mapFullscreenPending = ref(false)
+const mapFullscreen = computed(
+  () => nativeMapFullscreen.value || fallbackMapFullscreen.value,
+)
+const mapOverlayTarget = computed(() =>
+  mapFullscreen.value && mapFrameElement.value ? mapFrameElement.value : 'body',
+)
 let workspaceObserver: ResizeObserver | undefined
 // User-controlled disclosure: live action updates must not change this state.
 const actionFeedbackOpen = ref(false)
@@ -617,6 +628,9 @@ function focusMonsterReferenceCell(
   })
 }
 const jumpSequence = ref(0)
+const streamCurrent = computed(
+  () => mapFeedCurrent.value[subscriptionID] === true,
+)
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
 const mapSnapshotInFeedScope = computed(
@@ -918,9 +932,6 @@ const linkedEvent = computed(() =>
       )
     : undefined,
 )
-const streamCurrent = computed(
-  () => mapFeedCurrent.value[subscriptionID] === true,
-)
 const profileArea = computed<MapAreaProfile | undefined>(() =>
   mapProfile.value?.areas.find((area) => area.id === areaID.value),
 )
@@ -974,15 +985,8 @@ const currentRegion = computed(
   () => regionID.value || currentCharacter.value?.region,
 )
 function positionIsFresh(character?: CharacterView) {
-  const updatedAt = character?.state_updated_at
-    ? Date.parse(character.state_updated_at)
-    : Number.NaN
-  const age = freshnessNow.value - updatedAt
   return Boolean(
-    character?.online &&
-    Number.isFinite(updatedAt) &&
-    age >= -5_000 &&
-    age <= 35_000,
+    character && characterPositionIsFresh(character, freshnessNow.value),
   )
 }
 function positionCanBeDisplayed(character?: CharacterView) {
@@ -2554,13 +2558,53 @@ watch(
   { immediate: true },
 )
 let eventWindowTimer: ReturnType<typeof setInterval> | undefined
+function syncMapFullscreen() {
+  nativeMapFullscreen.value =
+    document.fullscreenElement === mapFrameElement.value
+}
+async function toggleMapFullscreen() {
+  const frame = mapFrameElement.value
+  if (!frame || mapFullscreenPending.value) return
+  if (fallbackMapFullscreen.value) {
+    fallbackMapFullscreen.value = false
+    return
+  }
+  mapFullscreenPending.value = true
+  try {
+    if (document.fullscreenElement === frame) {
+      await document.exitFullscreen()
+    } else if (document.fullscreenEnabled && frame.requestFullscreen) {
+      try {
+        await frame.requestFullscreen()
+      } catch {
+        fallbackMapFullscreen.value = true
+      }
+    } else {
+      fallbackMapFullscreen.value = true
+    }
+  } catch {
+    // A rejected browser exit leaves fullscreen active and Esc available.
+  } finally {
+    syncMapFullscreen()
+    mapFullscreenPending.value = false
+  }
+}
+function onMapFullscreenEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') fallbackMapFullscreen.value = false
+}
 onMounted(() => {
+  document.addEventListener('fullscreenchange', syncMapFullscreen)
+  document.addEventListener('keydown', onMapFullscreenEscape)
   void loadProfile(server.value)
   eventWindowTimer = setInterval(() => {
     eventWindowNow.value = Date.now()
   }, 30_000)
 })
 onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', syncMapFullscreen)
+  document.removeEventListener('keydown', onMapFullscreenEscape)
+  if (document.fullscreenElement === mapFrameElement.value)
+    void document.exitFullscreen().catch(() => {})
   if (referenceSearchDebounce) clearTimeout(referenceSearchDebounce)
   if (referenceOverlayDebounce) clearTimeout(referenceOverlayDebounce)
   referenceRequestID++
@@ -2698,7 +2742,11 @@ useHead({ title: 'Map · PhMon' })
         class="map-viewport-panel panel"
         aria-label="Game world raster map"
       >
-        <div class="map-canvas-frame">
+        <div
+          ref="mapFrameElement"
+          class="map-canvas-frame"
+          :class="{ 'map-canvas-frame--fullscreen': fallbackMapFullscreen }"
+        >
           <MapActionToast :notification="actionNotification" />
           <ClientOnly>
             <MapCanvas
@@ -2786,6 +2834,22 @@ useHead({ title: 'Map · PhMon' })
               @click="mapCanvas?.zoomOut()"
             >
               <UIcon name="i-lucide-minus" /></button
+            ><button
+              class="compact-button"
+              type="button"
+              :aria-label="mapFullscreen ? 'Exit fullscreen' : 'Fullscreen map'"
+              :title="
+                mapFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen map'
+              "
+              :aria-pressed="mapFullscreen"
+              :disabled="mapFullscreenPending"
+              @click="toggleMapFullscreen"
+            >
+              <UIcon
+                :name="
+                  mapFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'
+                "
+              /></button
             ><button
               class="compact-button"
               type="button"
@@ -3209,7 +3273,7 @@ useHead({ title: 'Map · PhMon' })
               {{ copyNotice }}
             </p>
           </div>
-          <Teleport to="body">
+          <Teleport :to="mapOverlayTarget">
             <div
               v-if="teleportGateMenu"
               class="map-teleport-flyout-panel map-teleport-menu"
@@ -3387,6 +3451,7 @@ useHead({ title: 'Map · PhMon' })
             >
               <ReverseReturnActions
                 presentation="menu"
+                :teleport-target="mapOverlayTarget"
                 :menu-visible="Boolean(reverseMenu)"
                 :selected-ids="[...actionTargetIDs]"
                 :scope-key="remoteActionScopeKey"
@@ -4947,6 +5012,20 @@ useHead({ title: 'Map · PhMon' })
   height: auto;
   min-height: 300px;
 }
+.map-canvas-frame:fullscreen,
+.map-canvas-frame.map-canvas-frame--fullscreen {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+}
+.map-canvas-frame--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+}
+:global(body:has(.map-canvas-frame--fullscreen)) {
+  overflow: hidden;
+}
 .map-side-panel {
   display: flex;
   flex-direction: column;
@@ -5755,13 +5834,13 @@ useHead({ title: 'Map · PhMon' })
 }
 .map-floating-legend {
   position: absolute;
-  top: 150px;
+  top: 184px;
   right: 10px;
   z-index: 1000;
   width: min(300px, calc(100% - 24px));
   padding: 12px;
   font-size: 12px;
-  max-height: calc(100% - 170px);
+  max-height: calc(100% - 204px);
   overflow: auto;
 }
 .map-corner-readouts {

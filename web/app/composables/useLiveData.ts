@@ -783,6 +783,7 @@ function ensureConnection() {
   next.addEventListener('open', () => {
     if (socket !== next) return
     lastMessageAt = Date.now()
+    freshnessNow.value = lastMessageAt
     connectionState.value = 'syncing'
     for (const subscription of subscriptions.values()) {
       subscription.current = false
@@ -813,6 +814,7 @@ function ensureConnection() {
       return
     }
     lastMessageAt = Date.now()
+    freshnessNow.value = lastMessageAt
     let frame: LiveServerFrame
     try {
       frame = JSON.parse(event.data) as LiveServerFrame

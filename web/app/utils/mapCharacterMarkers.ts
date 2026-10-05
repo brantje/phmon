@@ -40,17 +40,18 @@ export interface CharacterMapMarker {
 
 export function characterHasDisplayableMapPosition(
   character: CharacterMarkerInput,
-  now = Date.now(),
+  _now = Date.now(),
 ) {
   const updatedAt = character.state_updated_at
     ? Date.parse(character.state_updated_at)
     : Number.NaN
-  const hasPosition =
+  // Keep the last observed pin even when the UI clock lagged behind the
+  // sample (slow machines otherwise treat a fresh timestamp as "future").
+  return (
     character.region != null &&
     Number.isInteger(character.region) &&
     Number.isFinite(updatedAt)
-  if (!hasPosition) return false
-  return updatedAt <= now + 5_000
+  )
 }
 
 export function displayableMapCharacters<T extends CharacterMarkerInput>(

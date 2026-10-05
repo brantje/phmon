@@ -18,8 +18,14 @@ const props = withDefaults(
     presentation?: 'panel' | 'menu'
     menuVisible?: boolean
     mapSnapshotCurrent?: boolean
+    teleportTarget?: string | HTMLElement
   }>(),
-  { presentation: 'panel', menuVisible: true, mapSnapshotCurrent: true },
+  {
+    presentation: 'panel',
+    menuVisible: true,
+    mapSnapshotCurrent: true,
+    teleportTarget: 'body',
+  },
 )
 const emit = defineEmits<{
   chosen: []
@@ -319,7 +325,7 @@ function trapReview(event: KeyboardEvent) {
         actions.error.value
       }}</small>
     </div>
-    <Teleport to="body">
+    <Teleport :to="teleportTarget">
       <div
         v-if="partyOpen"
         ref="partyElement"
@@ -380,7 +386,7 @@ function trapReview(event: KeyboardEvent) {
         />
       </div>
     </Teleport>
-    <Teleport to="body" :disabled="presentation !== 'menu'">
+    <Teleport :to="teleportTarget" :disabled="presentation !== 'menu'">
       <div
         v-if="resultOperations.length"
         :class="{
