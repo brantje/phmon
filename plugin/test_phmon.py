@@ -2616,6 +2616,7 @@ class RealtimePositionTests(unittest.TestCase):
             plugin._worker,
             plugin._character_joined,
             plugin._last_position_sample_at,
+            plugin._last_position_publish_at,
             plugin._last_position_observed,
             plugin._last_position_session_id,
             plugin._last_character_signature,
@@ -2623,6 +2624,7 @@ class RealtimePositionTests(unittest.TestCase):
             plugin._last_resources_sample_at,
         )
         plugin._last_position_sample_at = 0.0
+        plugin._last_position_publish_at = 0.0
         plugin._last_position_observed = None
         plugin._last_position_session_id = None
 
@@ -2631,6 +2633,7 @@ class RealtimePositionTests(unittest.TestCase):
             plugin._worker,
             plugin._character_joined,
             plugin._last_position_sample_at,
+            plugin._last_position_publish_at,
             plugin._last_position_observed,
             plugin._last_position_session_id,
             plugin._last_character_signature,
@@ -2776,6 +2779,7 @@ class RealtimePositionTests(unittest.TestCase):
                 patch.object(plugin, '_sample_npcs'), \
                 patch.object(plugin, '_sample_players'):
             plugin._sample_character()
+            plugin._last_position_publish_at = 0.0
             plugin._sample_character()
         self.assertEqual(worker.update_character.call_count, 1)
         self.assertEqual(worker.update_position.call_count, 2)
