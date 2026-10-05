@@ -221,9 +221,9 @@ func TestPositionRemovalCarriesSessionAndCannotDeleteNewerPendingPosition(t *tes
 	if current, ok := hub.positionPending[characterID]; !ok || current.SessionID != newSession {
 		t.Fatalf("newer session position was removed: %#v", current)
 	}
-	rows := hub.positionRemoved[characterID]
-	if len(rows) != 1 || rows[0].SessionID != oldSession {
-		t.Fatalf("old-session removal was not retained safely: %#v", rows)
+	removal, ok := hub.positionRemoved[characterID]
+	if !ok || removal.SessionID != oldSession {
+		t.Fatalf("old-session removal was not retained safely: %#v", removal)
 	}
 	if hub.positionFlush != nil {
 		hub.positionFlush.Stop()
@@ -233,6 +233,32 @@ func TestPositionRemovalCarriesSessionAndCannotDeleteNewerPendingPosition(t *tes
 
 func positionFloat64(value float64) *float64 {
 	return &value
+}
+
+func TestPositionBatchRetainsFirstRemovedSessionAcrossRapidReplacement(t *testing.T) {
+	hub := NewLiveHub(nil, nil, nil)
+	characterID := testPositionUUID(1)
+	first := positions.Removal{
+		Server: "Greatest", CharacterID: characterID, SessionID: testPositionUUID(101),
+	}
+	hub.PublishPositionRemoval(first)
+	hub.PublishPositionRemoval(positions.Removal{
+		Server: "Greatest", CharacterID: characterID, SessionID: testPositionUUID(102),
+	})
+	hub.PublishPositionRemoval(positions.Removal{
+		Server: "Greatest", CharacterID: characterID, SessionID: testPositionUUID(103),
+	})
+
+	hub.positionMu.Lock()
+	defer hub.positionMu.Unlock()
+	removal, ok := hub.positionRemoved[characterID]
+	if !ok || removal.SessionID != first.SessionID {
+		t.Fatalf("batch lost the browser-visible session tombstone: %#v", removal)
+	}
+	if hub.positionFlush != nil {
+		hub.positionFlush.Stop()
+		hub.positionFlush = nil
+	}
 }
 
 func testPositionUUID(value int) string {
