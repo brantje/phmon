@@ -70,7 +70,9 @@ const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const chatFeedCurrent = ref<Record<string, boolean>>({})
 const mapFeeds = ref<Record<string, MapSnapshot>>({})
 const mapFeedCurrent = ref<Record<string, boolean>>({})
-const mapPositionFeeds = ref<Record<string, Record<string, RealtimePosition>>>({})
+const mapPositionFeeds = ref<Record<string, Record<string, RealtimePosition>>>(
+  {},
+)
 const commandFanOutFeeds = ref<Record<string, CommandFanOutLiveFeed>>({})
 const connectionState = ref<LiveConnectionState>('idle')
 const freshnessNow = ref(Date.now())
@@ -406,7 +408,9 @@ function setMapPositionFeed(subscriptionID: string, server: string) {
     { server },
     () => {
       mapPositionFeeds.value = Object.fromEntries(
-        Object.entries(mapPositionFeeds.value).filter(([id]) => id !== subscriptionID),
+        Object.entries(mapPositionFeeds.value).filter(
+          ([id]) => id !== subscriptionID,
+        ),
       )
     },
     false,
@@ -416,20 +420,31 @@ function setMapPositionFeed(subscriptionID: string, server: string) {
 function clearMapPositionFeed(subscriptionID: string) {
   removeSubscription(subscriptionID, () => {
     mapPositionFeeds.value = Object.fromEntries(
-      Object.entries(mapPositionFeeds.value).filter(([id]) => id !== subscriptionID),
+      Object.entries(mapPositionFeeds.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
     )
   })
 }
 
-function applyRealtimePositionSnapshot(subscription: Subscription, data: unknown) {
+function applyRealtimePositionSnapshot(
+  subscription: Subscription,
+  data: unknown,
+) {
   const snapshot = data as RealtimePositionSnapshot
   if (!snapshot || !Array.isArray(snapshot.positions)) return false
   const next = realtimePositionSnapshotState(snapshot.positions)
-  mapPositionFeeds.value = { ...mapPositionFeeds.value, [subscription.id]: next }
+  mapPositionFeeds.value = {
+    ...mapPositionFeeds.value,
+    [subscription.id]: next,
+  }
   return true
 }
 
-function applyRealtimePositionDelta(subscription: Subscription, data: unknown) {
+function applyRealtimePositionDelta(
+  subscription: Subscription,
+  data: unknown,
+) {
   const delta = data as RealtimePositionDelta
   if (!delta || typeof delta !== 'object' || Array.isArray(delta)) return false
   if (delta.positions != null && !Array.isArray(delta.positions)) return false
@@ -438,7 +453,10 @@ function applyRealtimePositionDelta(subscription: Subscription, data: unknown) {
   const current = mapPositionFeeds.value[subscription.id] || {}
   const next = applyRealtimePositionDeltaState(current, delta)
   // One incoming batch deliberately causes one Vue reactive replacement.
-  mapPositionFeeds.value = { ...mapPositionFeeds.value, [subscription.id]: next }
+  mapPositionFeeds.value = {
+    ...mapPositionFeeds.value,
+    [subscription.id]: next,
+  }
   return true
 }
 
