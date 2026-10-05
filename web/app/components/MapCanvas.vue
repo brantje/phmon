@@ -327,10 +327,7 @@ function moveMarker(
       return
     }
     startedAt ??= timestamp
-    const progress = Math.min(
-      1,
-      (timestamp - startedAt) / durationMs,
-    )
+    const progress = Math.min(1, (timestamp - startedAt) / durationMs)
     const position = interpolateMarkerPosition(start, target, progress)
     marker.setLatLng(createLatLng!(position.lat, position.lng))
     if (progress >= 1) {
