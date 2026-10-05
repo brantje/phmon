@@ -364,8 +364,9 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 		cancel:        cancel,
 		outgoing:      make(chan []byte, liveOutgoingQueueSize),
 		snapshotWake:  make(chan struct{}, 1),
-		subscriptions: make(map[string]liveSubscription),
-		revisions:     make(map[string]uint64),
+		subscriptions:     make(map[string]liveSubscription),
+		revisions:         make(map[string]uint64),
+		positionSnapshots: make(map[string]uint64),
 	}
 	h.register(client)
 	defer func() {
@@ -406,9 +407,10 @@ type liveClient struct {
 	outgoing     chan []byte
 	snapshotWake chan struct{}
 
-	mu            sync.RWMutex
-	subscriptions map[string]liveSubscription
-	revisions     map[string]uint64
+	mu                sync.RWMutex
+	subscriptions     map[string]liveSubscription
+	revisions         map[string]uint64
+	positionSnapshots map[string]uint64
 }
 
 func (c *liveClient) notify() {
@@ -525,6 +527,12 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 	}
 	c.subscriptions[subscription.ID] = subscription
 	c.revisions[subscription.ID] = subscription.Revision
+	if subscription.Stream == "positions" {
+		if c.positionSnapshots == nil {
+			c.positionSnapshots = make(map[string]uint64)
+		}
+		c.positionSnapshots[subscription.ID] = subscription.Revision
+	}
 	c.mu.Unlock()
 	c.notify()
 	return true
@@ -539,6 +547,7 @@ func (c *liveClient) unsubscribe(message liveClientMessage) {
 	current, exists := c.subscriptions[message.SubscriptionID]
 	if exists && message.Revision >= current.Revision {
 		delete(c.subscriptions, message.SubscriptionID)
+		delete(c.positionSnapshots, message.SubscriptionID)
 	}
 	c.mu.Unlock()
 }
@@ -548,9 +557,15 @@ func (c *liveClient) refresh(message liveClientMessage) {
 		c.fail(websocket.StatusPolicyViolation, "invalid refresh")
 		return
 	}
-	c.mu.RLock()
+	c.mu.Lock()
 	current, exists := c.subscriptions[message.SubscriptionID]
-	c.mu.RUnlock()
+	if exists && current.Revision == message.Revision && current.Stream == "positions" {
+		if c.positionSnapshots == nil {
+			c.positionSnapshots = make(map[string]uint64)
+		}
+		c.positionSnapshots[current.ID] = current.Revision
+	}
+	c.mu.Unlock()
 	if !exists || current.Revision != message.Revision {
 		c.enqueue(liveServerMessage{
 			Type:            "subscription.rejected",
@@ -622,12 +637,7 @@ func (c *liveClient) snapshotLoop() {
 			break
 		}
 
-		c.mu.RLock()
-		subscriptions := make([]liveSubscription, 0, len(c.subscriptions))
-		for _, subscription := range c.subscriptions {
-			subscriptions = append(subscriptions, subscription)
-		}
-		c.mu.RUnlock()
+		subscriptions := c.snapshotSubscriptionsForPass()
 
 		select {
 		case c.hub.buildSlots <- struct{}{}:
@@ -646,6 +656,23 @@ func (c *liveClient) snapshotLoop() {
 			return
 		}
 	}
+}
+
+func (c *liveClient) snapshotSubscriptionsForPass() []liveSubscription {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	positionSnapshots := c.positionSnapshots
+	c.positionSnapshots = make(map[string]uint64)
+	subscriptions := make([]liveSubscription, 0, len(c.subscriptions))
+	for _, subscription := range c.subscriptions {
+		if subscription.Stream == "positions" &&
+			positionSnapshots[subscription.ID] != subscription.Revision {
+			continue
+		}
+		subscriptions = append(subscriptions, subscription)
+	}
+	return subscriptions
 }
 
 func (c *liveClient) snapshot(subscription liveSubscription) bool {
