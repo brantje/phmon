@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.22'
+pVersion = '1.9.23'
 pUrl = ''
 
-PROTOCOL_VERSION = 15
+PROTOCOL_VERSION = 16
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -97,6 +97,11 @@ MOB_SAMPLE_INTERVAL_SECONDS = 60.0
 MOB_OBSERVER_CELL_SIZE = 192.0
 DEFAULT_HEARTBEAT_INTERVAL = 10
 DEFAULT_HEARTBEAT_TIMEOUT = 30
+POSITION_PUBLISH_INTERVAL_SECONDS = 0.2
+POSITION_JITTER_TOLERANCE = 0.001
+POSITION_COORDINATE_LIMIT = 1000000.0
+POSITION_MOVEMENT_OPCODE = 0xB021
+NETWORK_LOOP_MAX_WAIT_SECONDS = 0.05
 MAX_MESSAGE_BYTES = 256 * 1024
 MAX_RESOURCE_SLOTS = 2048
 MAX_ITEM_TYPE_CACHE_ENTRIES = 4096
@@ -2977,6 +2982,10 @@ class AgentWorker(object):
         self._death_context_lock = threading.Lock()
         self._last_death_context = None
         self._latest_sample = None
+        self._position_lock = threading.Lock()
+        self._latest_position = None
+        self._position_sequence = 0
+        self._position_sequence_session = None
         self.character_id = None
         self._current_identity = None
         self._rejected_identity = None
@@ -3164,6 +3173,52 @@ class AgentWorker(object):
 
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
+
+    def update_position(self, position, observed_at=None):
+        """Keep only the newest ephemeral coordinate observation."""
+        if not isinstance(position, dict):
+            return False
+        sample = {
+            'position': dict(position),
+            'observed_at': observed_at or _worker_utc_now(self),
+        }
+        with self._position_lock:
+            self._latest_position = sample
+        return True
+
+    def clear_position(self):
+        with self._position_lock:
+            self._latest_position = None
+
+    def _adopt_position_session(self, session_id):
+        with self._position_lock:
+            if self._position_sequence_session != session_id:
+                self._position_sequence_session = session_id
+                self._position_sequence = 0
+
+    def _flush_realtime_position(self, client):
+        if self.character_id is None or self.session_id is None:
+            return False
+        with self._position_lock:
+            sample = self._latest_position
+            if sample is None:
+                return False
+            if self._position_sequence_session != self.session_id:
+                self._position_sequence_session = self.session_id
+                self._position_sequence = 0
+            self._position_sequence += 1
+            sequence = self._position_sequence
+            self._latest_position = None
+        client.send_json({
+            'type': 'character.position',
+            'protocol_version': PROTOCOL_VERSION,
+            'character_id': self.character_id,
+            'session_id': self.session_id,
+            'sequence': sequence,
+            'position': sample['position'],
+            'sent_at': sample['observed_at'],
+        })
+        return True
 
     def update_resources(self, identity, resources, position=None):
         self._queue_resource_sample({'identity': dict(identity), 'resources': resources,
@@ -3720,6 +3775,7 @@ class AgentWorker(object):
                             self._current_identity = None
                             self._clear_navigation_route()
                             self._latest_sample = None
+                            self.clear_position()
                             self._latest_resources = None
                             self._latest_resources_identity = None
                             self._latest_map_observation = None
@@ -3736,6 +3792,7 @@ class AgentWorker(object):
                     except _queue.Empty:
                         pass
                     self._flush_death_events(client)
+                    self._flush_realtime_position(client)
                     self._flush_map_observations(client)
                     try:
                         resource_sample = self._resource_samples.get_nowait()
@@ -3777,7 +3834,7 @@ class AgentWorker(object):
                             'sent_at': _utc_now(),
                         })
                         next_heartbeat = now + interval
-                    wait = max(0.001, min(next_heartbeat - now, 0.25))
+                    wait = max(0.001, min(next_heartbeat - now, NETWORK_LOOP_MAX_WAIT_SECONDS))
                     self._drain_server_messages(client, wait)
                     self._flush_results(client)
             except Exception as error:
@@ -3854,6 +3911,7 @@ class AgentWorker(object):
                 raise WebSocketClosed('character registration rejected')
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
+            self._adopt_position_session(self.session_id)
             self._current_identity = identity
             # The first capability frame is sent before character registration.
             # Rescope recall support now that the game server is known.
@@ -4927,6 +4985,10 @@ _gui_status = None
 _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
+_last_position_sample_at = 0.0
+_last_position_observed = None
+_last_position_session_id = None
+_position_sample_lock = threading.Lock()
 _last_monster_poll_at = 0.0
 _last_mob_cell_samples = {}
 _last_npc_poll_at = 0.0
@@ -5119,10 +5181,13 @@ def connected():
 
 
 def disconnected():
-    global _last_character_signature, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state
+    global _last_character_signature, _last_position_sample_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state
     already_disconnected = _phbot_connected_state is False
     _phbot_connected_state = False
     _last_character_signature = None
+    _last_position_sample_at = 0.0
+    _last_position_observed = None
+    _last_position_session_id = None
     _character_joined = False
     _death_callback_active = False
     _recent_player_attack = None
@@ -5137,9 +5202,14 @@ def disconnected():
 
 def joined_game():
     # This callback runs after the player selects a character.
-    global _last_character_signature, _character_joined, _death_callback_active, _recent_player_attack
+    global _last_character_signature, _last_position_sample_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack
     already_joined = _character_joined is True
     _last_character_signature = None
+    _last_position_sample_at = 0.0
+    _last_position_observed = None
+    _last_position_session_id = None
+    if _worker is not None and hasattr(_worker, 'clear_position'):
+        _worker.clear_position()
     _character_joined = True
     _death_callback_active = False
     _recent_player_attack = None
@@ -5151,16 +5221,87 @@ def joined_game():
 
 
 def teleported():
-    global _npc_sample_forced, _player_sample_forced
+    global _npc_sample_forced, _player_sample_forced, _last_position_sample_at, _last_position_observed
     _npc_sample_forced = True
+    _last_position_sample_at = 0.0
+    _last_position_observed = None
     _player_sample_forced = True
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
         _worker._cancel_navigation_generation('character_teleported')
     _lifecycle_event('session.teleported', 'teleported', include_identity=True)
 
 
+def _normalized_realtime_position(position):
+    if not isinstance(position, dict):
+        return None
+    region = position.get('region')
+    if not _valid_position_region(region):
+        return None
+    normalized = {'region': int(region)}
+    for axis in ('x', 'y', 'z'):
+        value = position.get(axis)
+        if (not isinstance(value, (int, float)) or isinstance(value, bool) or
+                not math.isfinite(float(value)) or abs(float(value)) > POSITION_COORDINATE_LIMIT):
+            return None
+        normalized[axis] = float(value)
+    return normalized
+
+
+def _position_meaningfully_changed(previous, current):
+    if previous is None or previous.get('region') != current.get('region'):
+        return True
+    return any(
+        abs(float(previous[axis]) - float(current[axis])) > POSITION_JITTER_TOLERANCE
+        for axis in ('x', 'y', 'z')
+    )
+
+
+def _publish_realtime_position(position, now=None, mark_sample=True):
+    global _last_position_sample_at, _last_position_observed, _last_position_session_id
+    if _worker is None:
+        return False
+    normalized = _normalized_realtime_position(position)
+    if normalized is None:
+        return False
+    now = _monotonic() if now is None else now
+    with _position_sample_lock:
+        if mark_sample:
+            _last_position_sample_at = now
+        session_id = getattr(_worker, 'session_id', None)
+        session_changed = bool(session_id) and session_id != _last_position_session_id
+        if not session_changed and not _position_meaningfully_changed(_last_position_observed, normalized):
+            return False
+        _last_position_observed = dict(normalized)
+        if session_id:
+            _last_position_session_id = session_id
+        return bool(_worker.update_position(normalized, _utc_now()))
+
+
+def _sample_realtime_position(now=None):
+    """Fast packet-triggered sampler; throttle before calling get_position()."""
+    global _last_position_sample_at
+    if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False or not callable(_get_position):
+        return False
+    now = _monotonic() if now is None else now
+    with _position_sample_lock:
+        if now - _last_position_sample_at < POSITION_PUBLISH_INTERVAL_SECONDS:
+            return False
+        _last_position_sample_at = now
+    try:
+        position = _get_position()
+    except Exception:
+        return False
+    return _publish_realtime_position(position, now, mark_sample=False)
+
+
 def handle_joymax(opcode, data):
-    """Observe bounded item packets passively and always forward them to phBot."""
+    """Observe server packets passively and always forward them to phBot."""
+    if opcode == POSITION_MOVEMENT_OPCODE:
+        try:
+            _sample_realtime_position()
+        except Exception:
+            # Position monitoring must never interfere with packet forwarding.
+            pass
     if _worker is not None:
         try:
             _worker.capture_joymax_packet(opcode, data)
@@ -5584,8 +5725,12 @@ def _sample_character(timing=None):
     }
     if not identity['server'] or not identity['name']:
         return
-    signature = json.dumps([identity,state],sort_keys=True,separators=(',',':'))
     now = _monotonic()
+    _publish_realtime_position(position, now)
+    signature_state = dict(state)
+    for axis in ('x', 'y', 'z'):
+        signature_state.pop(axis, None)
+    signature = json.dumps([identity,signature_state],sort_keys=True,separators=(',',':'))
     resource_interval = (DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS
                          if _worker.has_pending_drop_enrichment(identity)
                          else RESOURCE_SAMPLE_INTERVAL_SECONDS)

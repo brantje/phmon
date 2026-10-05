@@ -356,6 +356,18 @@ def frame_fixtures(plugin, resources, monsters):
     )
     frames["character"] = client.sent
 
+    position_client = CaptureClient(plugin.PROTOCOL_VERSION)
+    position_worker = worker_fixture(plugin)
+    position_worker.character_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+    position_worker.session_id = "ffffffff-1111-4222-8333-444444444444"
+    position_worker._adopt_position_session(position_worker.session_id)
+    position_worker.update_position(
+        {"region": 25000, "x": 12.5, "y": 34.5, "z": -6.0},
+        "2026-01-01T00:00:00Z",
+    )
+    position_worker._flush_realtime_position(position_client)
+    frames["positions"] = position_client.sent
+
     resource_client = CaptureClient(plugin.PROTOCOL_VERSION)
     resource_worker = worker_fixture(plugin)
     resource_worker.character_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
