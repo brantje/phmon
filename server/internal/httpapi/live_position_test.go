@@ -32,6 +32,39 @@ func TestPositionsLiveSubscriptionRequiresOnlyServerScope(t *testing.T) {
 	}
 }
 
+func TestPositionSnapshotsAreOnlyIncludedWhenExplicitlyRequested(t *testing.T) {
+	client := &liveClient{
+		subscriptions: map[string]liveSubscription{
+			"map": {
+				ID: "map", Revision: 1, Stream: "map",
+				Filter: liveFilter{Server: "Greatest", Area: "world", Floor: "world"},
+			},
+			"map-positions": {
+				ID: "map-positions", Revision: 3, Stream: "positions",
+				Filter: liveFilter{Server: "Greatest"},
+			},
+		},
+		positionSnapshots: map[string]uint64{"map-positions": 3},
+	}
+
+	first := client.snapshotSubscriptionsForPass()
+	if len(first) != 2 {
+		t.Fatalf("initial pass should include map and requested positions: %#v", first)
+	}
+	second := client.snapshotSubscriptionsForPass()
+	if len(second) != 1 || second[0].Stream != "map" {
+		t.Fatalf("global invalidation pass should skip positions: %#v", second)
+	}
+
+	client.mu.Lock()
+	client.positionSnapshots["map-positions"] = 3
+	client.mu.Unlock()
+	refreshed := client.snapshotSubscriptionsForPass()
+	if len(refreshed) != 2 {
+		t.Fatalf("explicit position refresh should request a new snapshot: %#v", refreshed)
+	}
+}
+
 func TestPositionBatchKeepsLatestPerCharacterAndDoesNotInvalidateSnapshots(t *testing.T) {
 	hub := NewLiveHub(nil, nil, nil)
 	client := &liveClient{
