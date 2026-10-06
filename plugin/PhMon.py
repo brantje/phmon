@@ -2987,6 +2987,10 @@ class AgentWorker(object):
         self._position_revision = 0
         self._position_sequence = 0
         self._position_sequence_session = None
+        self._position_authority_epoch = 0
+        self._position_authority_character_id = None
+        self._position_authority_session_id = None
+        self._position_authority_identity = None
         self.character_id = None
         self._current_identity = None
         self._rejected_identity = None
@@ -3175,17 +3179,25 @@ class AgentWorker(object):
     def update_character(self, identity, state):
         self._replace_sample({'identity': dict(identity), 'state': dict(state)})
 
-    def update_position(self, position, observed_at=None):
-        """Keep only the newest ephemeral coordinate observation."""
+    def update_position(self, position, observed_at=None, identity=None):
+        """Keep only the newest coordinate owned by the registered character epoch."""
         if not isinstance(position, dict):
             return False
-        sample = {
-            'position': dict(position),
-            'observed_at': observed_at or _worker_utc_now(self),
-        }
+        identity = dict(identity) if isinstance(identity, dict) else None
         with self._position_lock:
+            if (self._position_authority_character_id is None or
+                    self._position_authority_session_id is None or
+                    self.character_id != self._position_authority_character_id or
+                    self.session_id != self._position_authority_session_id):
+                return False
+            if identity is not None and identity != self._position_authority_identity:
+                return False
             self._position_revision += 1
-            self._latest_position = sample
+            self._latest_position = {
+                'position': dict(position),
+                'observed_at': observed_at or _worker_utc_now(self),
+                'authority_epoch': self._position_authority_epoch,
+            }
         return True
 
     def clear_position(self):
@@ -3193,26 +3205,56 @@ class AgentWorker(object):
             self._position_revision += 1
             self._latest_position = None
 
-    def _adopt_position_session(self, session_id):
+    def invalidate_position_authority(self):
+        """Fence callback observations before character/session ownership changes."""
         with self._position_lock:
+            self._position_authority_epoch += 1
+            self._position_revision += 1
+            self._latest_position = None
+            self._position_authority_character_id = None
+            self._position_authority_session_id = None
+            self._position_authority_identity = None
+
+    def _adopt_position_session(self, session_id, identity=None):
+        identity = dict(identity) if isinstance(identity, dict) else None
+        with self._position_lock:
+            changed = (
+                self._position_authority_character_id != self.character_id or
+                self._position_authority_session_id != session_id or
+                self._position_authority_identity != identity
+            )
+            if changed:
+                self._position_authority_epoch += 1
+                self._position_revision += 1
+                self._latest_position = None
+            self._position_authority_character_id = self.character_id
+            self._position_authority_session_id = session_id
+            self._position_authority_identity = identity
             if self._position_sequence_session != session_id:
                 self._position_sequence_session = session_id
                 self._position_sequence = 0
 
     def _flush_realtime_position(self, client):
-        if self.character_id is None or self.session_id is None:
-            return False
         with self._position_lock:
             sample = self._latest_position
             if sample is None:
                 return False
-            session_id = self.session_id
-            character_id = self.character_id
+            if (sample.get('authority_epoch') != self._position_authority_epoch or
+                    self.character_id != self._position_authority_character_id or
+                    self.session_id != self._position_authority_session_id or
+                    self.character_id is None or self.session_id is None):
+                if self._latest_position is sample:
+                    self._position_revision += 1
+                    self._latest_position = None
+                return False
+            session_id = self._position_authority_session_id
+            character_id = self._position_authority_character_id
             if self._position_sequence_session != session_id:
                 self._position_sequence_session = session_id
                 self._position_sequence = 0
             sequence = self._position_sequence + 1
             revision = self._position_revision
+            authority_epoch = self._position_authority_epoch
         client.send_json({
             'type': 'character.position',
             'protocol_version': PROTOCOL_VERSION,
@@ -3223,7 +3265,8 @@ class AgentWorker(object):
             'sent_at': sample['observed_at'],
         })
         with self._position_lock:
-            if self._position_sequence_session == session_id:
+            if (self._position_authority_epoch == authority_epoch and
+                    self._position_sequence_session == session_id):
                 self._position_sequence = sequence
             if self._position_revision == revision and self._latest_position is sample:
                 self._latest_position = None
@@ -3680,6 +3723,7 @@ class AgentWorker(object):
         if self._active_walk is not None:
             self._finish_walk('unknown', 'character_left_during_walk', 'unverified')
         self._discard_pending_commands('character_left')
+        self.invalidate_position_authority()
         self._replace_sample({'leave': True})
 
     def _replace_sample(self, value):
@@ -3756,7 +3800,9 @@ class AgentWorker(object):
                 _log('connected to backend')
                 next_heartbeat = _monotonic() + interval
                 self._clear_navigation_route()
+                self.invalidate_position_authority()
                 self.character_id = None
+                self.session_id = None
                 self._current_identity = None
                 self._rejected_identity = None
                 self._resource_revision = 0
@@ -3863,10 +3909,10 @@ class AgentWorker(object):
                 if client is not None:
                     client.close()
                 self._set_socket(None)
+                self.invalidate_position_authority()
                 self.character_id = None
                 self._current_identity = None
                 self.session_id = None
-                self.clear_position()
                 self._resource_revision = 0
                 self._resource_baseline_required = True
                 self._confirmed_resources = None
@@ -3903,6 +3949,7 @@ class AgentWorker(object):
         if self._rejected_identity is not None and self._rejected_identity != identity_key:
             self._rejected_identity = None
         if identity != self._current_identity or self.character_id is None:
+            self.invalidate_position_authority()
             if self._current_identity is not None and identity != self._current_identity:
                 self._discard_pending_commands('character_changed')
             if self.character_id is not None and self._current_identity is not None:
@@ -3912,7 +3959,6 @@ class AgentWorker(object):
                     client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'session_id':self.session_id,'sent_at':_worker_utc_now(self)})
                     self.character_id = None
                     self.session_id = None
-                    self.clear_position()
             self._profile_epoch += 1
             self._clear_navigation_route()
             self._trace_requested_name = None
@@ -3923,7 +3969,7 @@ class AgentWorker(object):
                 raise WebSocketClosed('character registration rejected')
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
-            self._adopt_position_session(self.session_id)
+            self._adopt_position_session(self.session_id, identity)
             self._current_identity = identity
             # The first capability frame is sent before character registration.
             # Rescope recall support now that the game server is known.
@@ -4092,9 +4138,9 @@ class AgentWorker(object):
         self._discard_pending_commands('session_superseded')
         self._clear_navigation_route()
         self._rejected_identity = self._identity_key(self._current_identity)
+        self.invalidate_position_authority()
         self.character_id = None
         self.session_id = None
-        self.clear_position()
         self.status = 'Character observation superseded; waiting for a new character observation.'
 
     @staticmethod
@@ -5191,6 +5237,8 @@ def connected():
     _phbot_connected_state = True
     if not already_connected:
         _character_joined = False
+        if _worker is not None and hasattr(_worker, 'invalidate_position_authority'):
+            _worker.invalidate_position_authority()
         _lifecycle_event('session.connected', 'connected')
 
 
@@ -5224,8 +5272,8 @@ def joined_game():
     _last_position_publish_at = 0.0
     _last_position_observed = None
     _last_position_session_id = None
-    if _worker is not None and hasattr(_worker, 'clear_position'):
-        _worker.clear_position()
+    if _worker is not None and hasattr(_worker, 'invalidate_position_authority'):
+        _worker.invalidate_position_authority()
     _character_joined = True
     _death_callback_active = False
     _recent_player_attack = None
@@ -5243,6 +5291,8 @@ def teleported():
     _last_position_publish_at = 0.0
     _last_position_observed = None
     _player_sample_forced = True
+    if _worker is not None and hasattr(_worker, 'clear_position'):
+        _worker.clear_position()
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
         _worker._cancel_navigation_generation('character_teleported')
     _lifecycle_event('session.teleported', 'teleported', include_identity=True)
@@ -5273,7 +5323,7 @@ def _position_meaningfully_changed(previous, current):
     )
 
 
-def _publish_realtime_position(position, now=None):
+def _publish_realtime_position(position, now=None, identity=None):
     global _last_position_publish_at, _last_position_observed, _last_position_session_id
     if _worker is None:
         return False
@@ -5293,11 +5343,19 @@ def _publish_realtime_position(position, now=None):
         if (not session_changed and not region_changed and _last_position_publish_at > 0.0 and
                 now - _last_position_publish_at < POSITION_PUBLISH_INTERVAL_SECONDS):
             return False
+        observed_at = _worker_utc_now(_worker)
+        accepted = (
+            _worker.update_position(normalized, observed_at, identity)
+            if identity is not None
+            else _worker.update_position(normalized, observed_at)
+        )
+        if not accepted:
+            return False
         _last_position_publish_at = now
         _last_position_observed = dict(normalized)
         if session_id:
             _last_position_session_id = session_id
-        return bool(_worker.update_position(normalized, _worker_utc_now(_worker)))
+        return True
 
 
 def _sample_realtime_position(now=None):
@@ -5749,7 +5807,7 @@ def _sample_character(timing=None):
     if not identity['server'] or not identity['name']:
         return
     now = _monotonic()
-    _publish_realtime_position(position, now)
+    _publish_realtime_position(position, now, identity)
     signature_state = dict(state)
     for axis in ('x', 'y', 'z'):
         signature_state.pop(axis, None)
