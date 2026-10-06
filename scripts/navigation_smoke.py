@@ -286,6 +286,10 @@ def main():
             # route store ignores duplicate/out-of-order samples. Ensure the
             # controlled arrival is a distinct fresh observation after progress.
             time.sleep(1.1)
+        else:
+            # Plugin observation timestamps have second precision. Without this
+            # delay the arrival sample can be ignored as not-after InvokedAt.
+            time.sleep(1.1)
         if os.environ.get("PHMON_NAVIGATION_SMOKE_HOLD_FOR_ARRIVAL") == "1":
             wait_for_fixture_arrival(live)
         simulator.stdin.write("arrive\n")

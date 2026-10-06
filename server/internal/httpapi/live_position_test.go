@@ -67,7 +67,45 @@ func TestPositionSnapshotsAreOnlyIncludedWhenExplicitlyRequested(t *testing.T) {
 	}
 }
 
-func TestRealtimePositionHotPathFeedsNavigationWithoutSnapshotInvalidation(t *testing.T) {
+func TestRealtimePositionHotPathSkipsSnapshotWhenNavigationDoesNotChange(t *testing.T) {
+	now := time.Date(2026, 10, 5, 20, 0, 0, 0, time.UTC)
+	characterID := testPositionUUID(1)
+	sessionID := testPositionUUID(101)
+	agentID := testPositionUUID(201)
+
+	positionStore := positions.NewStore()
+	positionStore.Claim("Greatest", agentID, 4, characterID, sessionID)
+	hub := NewLiveHub(nil, nil, nil)
+	hub.SetPositions(positionStore)
+	client := &liveClient{
+		ctx:           context.Background(),
+		outgoing:      make(chan []byte, liveOutgoingQueueSize),
+		snapshotWake:  make(chan struct{}, 1),
+		subscriptions: map[string]liveSubscription{},
+		revisions:     map[string]uint64{},
+	}
+	hub.register(client)
+	defer hub.unregister(client)
+
+	handler := &agentHandler{
+		positions:  positionStore,
+		live:       hub,
+		navigation: navigation.NewStore(),
+	}
+	accepted, ok := handler.applyRealtimePosition(positions.Position{
+		AgentID: agentID, Generation: 4, CharacterID: characterID,
+		SessionID: sessionID, Sequence: 1, Region: 25000,
+		X: 10, Y: 20, Z: positionFloat64(3), ObservedAt: now,
+	}, now)
+	if !ok || accepted.Server != "Greatest" {
+		t.Fatalf("valid realtime position was not accepted: %#v", accepted)
+	}
+	if len(client.snapshotWake) != 0 {
+		t.Fatal("realtime hot path woke full live snapshots without a route change")
+	}
+}
+
+func TestRealtimePositionHotPathInvalidatesWhenNavigationChanges(t *testing.T) {
 	now := time.Date(2026, 10, 5, 20, 0, 0, 0, time.UTC)
 	characterID := testPositionUUID(1)
 	sessionID := testPositionUUID(101)
@@ -116,8 +154,8 @@ func TestRealtimePositionHotPathFeedsNavigationWithoutSnapshotInvalidation(t *te
 	if !ok || accepted.Server != "Greatest" {
 		t.Fatalf("valid realtime position was not accepted: %#v", accepted)
 	}
-	if len(client.snapshotWake) != 0 {
-		t.Fatal("realtime hot path woke full live snapshots")
+	if len(client.snapshotWake) != 1 {
+		t.Fatal("navigation route change did not wake the map snapshot")
 	}
 
 	views := navigationStore.Snapshot("Greatest", mapprofile.Profile{
