@@ -34,6 +34,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
+      - name: Diagnose realtime position test formatting
+        run: |
+          cd web
+          npx prettier tests/realtimePositions.test.ts --write
+          git diff -- tests/realtimePositions.test.ts
+          exit 1
       - run: bash scripts/check.sh
   stack:
     runs-on: ubuntu-latest
