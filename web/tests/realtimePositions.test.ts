@@ -8,7 +8,9 @@ import {
   applyRealtimePositionDeltaState,
   realtimePositionSnapshotState,
   validRealtimePosition,
+  withRealtimePosition,
 } from '../app/utils/realtimePositions.ts'
+import { characterPositionIsFresh } from '../app/utils/characterPositionFreshness.ts'
 
 function position(
   session_id = 'session-a',
@@ -96,4 +98,34 @@ test('malformed coordinates are ignored', () => {
     },
   )
   assert.deepEqual(next, {})
+})
+
+
+test('realtime coordinates do not replace durable character state freshness', () => {
+  const durableUpdatedAt = '2026-10-05T20:00:30Z'
+  const character = {
+    character_id: 'character-a',
+    server: 'Greatest',
+    name: 'Alpha',
+    online: true,
+    session_id: 'session-a',
+    state_updated_at: durableUpdatedAt,
+    region: 25000,
+    x: 1,
+    y: 2,
+    z: 3,
+  }
+  const live = {
+    ...position('session-a', 7, 70),
+    observed_at: '2026-10-05T19:59:00Z',
+  }
+
+  const overlaid = withRealtimePosition(character, live)
+  assert.equal(overlaid?.x, 70)
+  assert.equal(overlaid?.y, live.y)
+  assert.equal(overlaid?.state_updated_at, durableUpdatedAt)
+  assert.equal(
+    characterPositionIsFresh(overlaid!, Date.parse('2026-10-05T20:00:31Z')),
+    true,
+  )
 })

@@ -1,9 +1,25 @@
 import type {
+  CharacterView,
   RealtimePosition,
   RealtimePositionDelta,
 } from '~~/shared/types/live'
 
 export type RealtimePositionState = Record<string, RealtimePosition>
+
+export function withRealtimePosition(
+  character: CharacterView | undefined,
+  live: RealtimePosition | undefined,
+): CharacterView | undefined {
+  if (!character?.session_id || !live || live.session_id !== character.session_id)
+    return character
+  return {
+    ...character,
+    region: live.region,
+    x: live.x,
+    y: live.y,
+    z: live.z,
+  }
+}
 
 export function validRealtimePosition(
   position: unknown,

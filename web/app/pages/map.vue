@@ -35,6 +35,7 @@ import {
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
 import { characterPositionIsFresh } from '~/utils/characterPositionFreshness'
+import { withRealtimePosition as overlayRealtimePosition } from '~/utils/realtimePositions'
 import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
@@ -642,17 +643,11 @@ const realtimePositions = computed<Record<string, RealtimePosition>>(
   () => mapPositionFeeds.value[positionSubscriptionID] || {},
 )
 function withRealtimePosition(character?: CharacterView) {
-  if (!character?.session_id) return character
-  const live = realtimePositions.value[character.character_id]
-  if (!live || live.session_id !== character.session_id) return character
-  return {
-    ...character,
-    region: live.region,
-    x: live.x,
-    y: live.y,
-    z: live.z,
-    state_updated_at: live.observed_at,
-  }
+  if (!character) return character
+  return overlayRealtimePosition(
+    character,
+    realtimePositions.value[character.character_id],
+  )
 }
 const mapSnapshotInFeedScope = computed(
   () =>
