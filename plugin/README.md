@@ -1,8 +1,10 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.23**, using agent protocol **16**. It
-adds the session-fenced, latest-value `character.position` transport used by the live
-Map for controlled characters, while retaining navigation transport fixes, script
+The current local plugin release is **1.9.24**, using agent protocol **16**. It
+looks up a thief's own position in `get_players()` when `EVENT_THIEF_SPAWN` fires,
+and otherwise keeps the observer position. It also adds the session-fenced,
+latest-value `character.position` transport used by the live Map for controlled
+characters, while retaining navigation transport fixes, script
 diagnostics, direct `move_to` support and scoped recall-point packet submission for
 phBot 20.1.3 on Greatest. Position observations are memory-only: packet callbacks
 never write WebSockets, the network worker keeps only the newest unsent coordinate,

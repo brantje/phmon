@@ -820,7 +820,7 @@ so the card omits HP instead of inventing it. Notice chat remains a separate
 phMonitor source and is not used here: stored type-7 messages on this server
 are ordinary notices, not unique spawn lines.
 | 1 `EVENT_HUNTER_SPAWN` | Player name, including traders | `job.hunter_trader_seen` | Bounded `value` string |
-| 2 `EVENT_THIEF_SPAWN` | Player name | `job.thief_seen` | Bounded `value` string |
+| 2 `EVENT_THIEF_SPAWN` | Player name | `job.thief_seen` | Bounded `value` string. Plugin 1.9.24 also sends `plugin_version`, `position_source`, and `thief` `{name, region, x, y}` when `get_players()` has exactly one case-insensitive name match with a valid region and coordinates. Otherwise `position_source` is `observer` and the event keeps the observer position. The thief's own position exists only while that player is inside `get_players()` range; it does not include Z and does not prove the marker remains after the five-minute map TTL. |
 | 3 `EVENT_TRANSPORT_DIED` | Transport ID, including horses | `pet.transport_died` | Bounded `value` string |
 | 4 `EVENT_PLAYER_ATTACKING` | Player name | `character.attacked` | Bounded `value` string |
 | 5 `EVENT_RARE_DROP` | Equippable item model ID | `drop.rare` | Numeric model ID only |

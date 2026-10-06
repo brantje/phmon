@@ -885,6 +885,14 @@ terminal rejection while valid siblings can commit in the same transaction. Stab
 event ID, optional source-scoped dedupe key and per-session sequence enforce
 idempotence.
 
+Plugin 1.9.24 may add optional fields to a `job.thief_seen` payload:
+`plugin_version`, `position_source` (`thief`, `observer`, or `unknown`), and
+`thief` with `name`, `region`, `x`, and `y`. Older `{"value":"..."}` payloads
+remain valid. Newly inserted events are relayed to the open TradeNexus socket
+described in [tradenexus.md](tradenexus.md). Duplicate spool replays are not
+relayed. TradeNexus is not part of the agent protocol and does not require an
+agent token.
+
 Unique spawn and kill notices use the same `event.batch` envelope with
 `source` `joymax.unique_notice` and `source_ref` `0x300C`. The payload is
 `model`, `notice` (`spawn` or `kill`) and, for a kill, an optional `killer`.

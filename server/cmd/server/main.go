@@ -27,6 +27,7 @@ import (
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
+	"phmon/server/internal/tradenexus"
 )
 
 func main() {
@@ -108,6 +109,28 @@ func run() error {
 	live.SetNPCLive(npcLive)
 	live.SetPlayerLive(playerLive)
 	live.SetPositions(positionStore)
+	var tradeHub *tradenexus.Hub
+	var thiefSightings *tradenexus.Store
+	if cfg.TradeNexusEnabled {
+		thiefSightings = tradenexus.NewStore(pool)
+		tradeHub = tradenexus.NewHub(tradenexus.Options{Store: thiefSightings, Invalidate: live.Invalidate})
+		live.SetThiefSightings(thiefSightings)
+		go thiefSightings.RunRetention(ctx, cfg.TradeNexusRetentionDays, time.Hour)
+		eventStore.SetAcceptedHook(func(event events.Event) {
+			sighting, ok := tradenexus.SightingFromEvent(event)
+			if !ok {
+				return
+			}
+			hookCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			recorded, err := tradeHub.Record(hookCtx, sighting)
+			if err != nil {
+				slog.Warn("phmon thief sighting was not relayed", "reason", err.Error())
+				return
+			}
+			tradeHub.Broadcast(recorded)
+		})
+	}
 	dispatchStore := commands.NewStore(pool)
 	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
 		return errors.New("cannot recover interrupted commands")
@@ -118,23 +141,25 @@ func run() error {
 	go dispatcher.Run(ctx)
 	go httpapi.RunSessionReconciler(ctx, pool, registry, characterStore, live, 3*time.Second)
 	handler := httpapi.New(httpapi.Dependencies{
-		Database:     pool,
-		Auth:         operatorAuth,
-		Agents:       store,
-		Registry:     registry,
-		Characters:   characterStore,
-		Commands:     commandService,
-		Dispatcher:   dispatcher,
-		Live:         live,
-		Resources:    resourceStore,
-		Events:       eventStore,
-		Chat:         chatStore,
-		Mobs:         mobStore,
-		MobLive:      mobLive,
-		NPCLive:      npcLive,
-		PlayerLive:   playerLive,
-		Positions:    positionStore,
-		MapAnalytics: mapAnalyticsStore,
+		Database:       pool,
+		Auth:           operatorAuth,
+		Agents:         store,
+		Registry:       registry,
+		Characters:     characterStore,
+		Commands:       commandService,
+		Dispatcher:     dispatcher,
+		Live:           live,
+		Resources:      resourceStore,
+		Events:         eventStore,
+		Chat:           chatStore,
+		Mobs:           mobStore,
+		MobLive:        mobLive,
+		NPCLive:        npcLive,
+		PlayerLive:     playerLive,
+		Positions:      positionStore,
+		MapAnalytics:   mapAnalyticsStore,
+		TradeNexus:     tradeHub,
+		ThiefSightings: thiefSightings,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.

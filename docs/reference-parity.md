@@ -78,6 +78,24 @@ runtime IDs when Characters/Party layers are enabled. No navigate, equipment,
 player history, or packet fallback. Installed-runtime map validation remains
 separate from simulator/fixture evidence recorded after CI on this branch.
 
+## Thieves — TradeNexus map layer (2026-10-06)
+
+The Map Layers panel adds **Thieves**, on by default and stored in the
+`phmon-map-thieves` cookie. Pins use the character-pin geometry with a red
+border, `/game-assets/monsters/thief_01.png`, and the thief name below. They
+sit above Other players; a placed thief name hides the matching other-player
+pin while the Thieves layer is on. Sightings come from the `thief_sightings`
+table, including AdvancedAutoTrade reports, and expire from the map five
+minutes after the latest sighting for that server and name. Cave rows need a
+region and Z; known cave regions without a usable floor are not drawn on the
+world map. The Events **Thieves** tab lists the same stored rows with thief,
+time, reporter, source, location, and a map link that does not use an activity
+event id. A disposable fixture server showed the Thieves tab and a red Bandit123 pin
+with its name, reporter, and AdvancedAutoTrade source. The page did not
+overflow horizontally at 1440×1000, 1280×800, or 390×844. Real phBot
+`EVENT_THIEF_SPAWN` validation remains a separate runtime gate. The message
+contract is [tradenexus.md](tradenexus.md).
+
 ## Multi-character remote controls — 2026-10-01
 
 Before the Issue #35 screen changes, the operator supplied a reachable LAN demo

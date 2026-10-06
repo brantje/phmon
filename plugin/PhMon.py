@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.23'
+pVersion = '1.9.24'
 pUrl = ''
 
 PROTOCOL_VERSION = 16
@@ -5462,6 +5462,33 @@ def _observe_unique_notice(opcode, data):
     )
 
 
+def _thief_spawn_payload(data):
+    """Attach the thief's own position when get_players has one matching name."""
+    name = (_bounded_text(data, 512) or '').strip()
+    payload = {'value': name, 'plugin_version': pVersion, 'position_source': 'observer'}
+    _status, players, _truncated = collect_player_observation()
+    folded = name.casefold()
+    matches = [player for player in players
+               if folded and isinstance(player.get('name'), str) and player['name'].casefold() == folded]
+    if len(matches) != 1:
+        return payload
+    player = matches[0]
+    region = player.get('region')
+    x = player.get('x')
+    y = player.get('y')
+    if not _valid_position_region(region) or not _number(x) or not _number(y) or abs(x) > 1000000 or abs(y) > 1000000:
+        return payload
+    thief_name = player['name'].strip()
+    while thief_name and len(thief_name.encode('utf-8')) > 64:
+        thief_name = thief_name[:-1]
+    thief_name = thief_name.strip()
+    if not thief_name:
+        return payload
+    payload['position_source'] = 'thief'
+    payload['thief'] = {'name': thief_name, 'region': int(region), 'x': float(x), 'y': float(y)}
+    return payload
+
+
 def handle_event(event_type, data):
     """Normalize documented event callbacks and enqueue without disk/network work."""
     global _death_callback_active, _recent_player_attack
@@ -5546,6 +5573,8 @@ def handle_event(event_type, data):
                 }
     elif event_type == EVENT_ALCHEMY_FINISHED:
         payload = {}
+    elif event_type == EVENT_THIEF_SPAWN:
+        payload = _thief_spawn_payload(data)
     else:
         payload = {'value': _bounded_text(data, 512) or ''}
     drop_event_id = str(uuid.uuid4()) if item_model is not None else None

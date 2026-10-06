@@ -2032,6 +2032,35 @@ class CanonicalCallbackTests(unittest.TestCase):
             fn(*args)
         return self.worker._event_samples.get_nowait()
 
+    def test_thief_spawn_uses_one_matching_player_position(self):
+        players = [{'player_id': '1', 'name': 'Bandit', 'region': 25735, 'x': 12.5, 'y': -3}]
+        with patch.object(plugin, 'collect_player_observation', return_value=('observed', players, False)):
+            event = self.callback(plugin.handle_event, plugin.EVENT_THIEF_SPAWN, 'bandit')
+        self.assertEqual(event['kind'], 'job.thief_seen')
+        self.assertEqual(event['payload']['position_source'], 'thief')
+        self.assertEqual(event['payload']['plugin_version'], '1.9.24')
+        self.assertEqual(event['payload']['thief'], {'name': 'Bandit', 'region': 25735, 'x': 12.5, 'y': -3.0})
+        self.assertEqual(event['region'], 25273)
+        self.assertEqual(event['z'], 0)
+
+    def test_thief_spawn_keeps_the_observer_without_a_unique_located_match(self):
+        cases = [
+            ('unavailable', [], 'Bandit'),
+            ('observed', [{'player_id': '1', 'name': 'Other', 'region': 25735, 'x': 1, 'y': 2}], 'Bandit'),
+            ('observed', [
+                {'player_id': '1', 'name': 'Bandit', 'region': 25735, 'x': 1, 'y': 2},
+                {'player_id': '2', 'name': 'bandit', 'region': 25000, 'x': 3, 'y': 4},
+            ], 'Bandit'),
+            ('observed', [{'player_id': '1', 'name': 'Bandit', 'x': 1, 'y': 2}], 'Bandit'),
+            ('observed', [{'player_id': '1', 'name': 'Bandit', 'region': 25735, 'x': 1000001, 'y': 2}], 'Bandit'),
+        ]
+        for status, players, callback_name in cases:
+            with patch.object(plugin, 'collect_player_observation', return_value=(status, players, False)):
+                event = self.callback(plugin.handle_event, plugin.EVENT_THIEF_SPAWN, callback_name)
+            self.assertEqual(event['payload']['position_source'], 'observer', callback_name)
+            self.assertNotIn('thief', event['payload'])
+            self.assertEqual(event['payload']['value'], callback_name)
+
     def test_handle_event_keeps_drop_kinds_separate_and_does_not_invent_instance_data(self):
         rare = self.callback(plugin.handle_event, plugin.EVENT_RARE_DROP, '77')
         normal = self.callback(plugin.handle_event, plugin.EVENT_ITEM_DROP, '78')

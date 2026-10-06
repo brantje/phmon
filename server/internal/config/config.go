@@ -16,6 +16,8 @@ type Config struct {
 	OperatorSessionCookie     string
 	OperatorAllowedOrigins    []string
 	OperatorAllowInsecureHTTP bool
+	TradeNexusEnabled         bool
+	TradeNexusRetentionDays   int
 }
 
 func Load() (Config, error) {
@@ -60,6 +62,22 @@ func Load() (Config, error) {
 			return Config{}, errors.New("OPERATOR_ALLOW_INSECURE_HTTP must be true or false")
 		}
 		c.OperatorAllowInsecureHTTP = value
+	}
+	c.TradeNexusEnabled = true
+	if raw := strings.TrimSpace(os.Getenv("TRADENEXUS_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("TRADENEXUS_ENABLED must be true or false")
+		}
+		c.TradeNexusEnabled = value
+	}
+	c.TradeNexusRetentionDays = 30
+	if raw := strings.TrimSpace(os.Getenv("TRADENEXUS_RETENTION_DAYS")); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err != nil || days < 1 || days > 3650 {
+			return Config{}, errors.New("TRADENEXUS_RETENTION_DAYS must be between 1 and 3650")
+		}
+		c.TradeNexusRetentionDays = days
 	}
 	return c, nil
 }

@@ -7,6 +7,7 @@ import type {
   MapNpc,
   MapOtherPlayer,
   MapPartyMember,
+  MapThief,
   MapSnapshot,
   RealtimePosition,
 } from '~~/shared/types/live'
@@ -38,6 +39,7 @@ import { characterPositionIsFresh } from '~/utils/characterPositionFreshness'
 import { withRealtimePosition as overlayRealtimePosition } from '~/utils/realtimePositions'
 import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
+import { thiefMapMarkers } from '~/utils/mapThiefMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
 import {
   DEFAULT_SHOW_NEARBY_MONSTER_NAMES,
@@ -297,6 +299,10 @@ const confirmBroadReset = ref(false)
 const layerCharacters = ref(true)
 const layerParty = ref(true)
 const layerPlayers = ref(true)
+const layerThieves = useCookie<boolean>('phmon-map-thieves', {
+  default: () => true,
+  sameSite: 'lax',
+})
 const layerNPCs = ref(true)
 const layerTraining = ref(true)
 const layerMonsters = ref(true)
@@ -1913,6 +1919,7 @@ const mapMarkers = computed(() => {
       | 'character'
       | 'party'
       | 'player'
+      | 'thief'
       | 'npc'
       | 'monster'
       | 'death'
@@ -1923,6 +1930,7 @@ const mapMarkers = computed(() => {
     selected?: boolean
     party?: MapPartyMember
     player?: MapOtherPlayer
+    thief?: MapThief
     npc?: MapNpc
     monster?: MapMonster
     showLabel?: boolean
@@ -1975,6 +1983,24 @@ const mapMarkers = computed(() => {
     )
   }
   const playersSnapshot = mapSnapshot.value?.players
+  const thievesSnapshot = mapSnapshot.value?.thieves
+  const thiefMarkers =
+    layerThieves.value &&
+    thievesSnapshot &&
+    thievesSnapshot.status !== 'unavailable'
+      ? thiefMapMarkers(
+          profile,
+          areaID.value,
+          floorID.value,
+          thievesSnapshot.thieves,
+        ).map((marker) => ({
+          ...marker,
+          zoneLabel: zoneNameForRegion(marker.thief.region),
+        }))
+      : []
+  const thiefNames = new Set(
+    thiefMarkers.map((marker) => marker.thief.name.trim().toLocaleLowerCase()),
+  )
   if (
     layerPlayers.value &&
     playersSnapshot &&
@@ -1990,16 +2016,23 @@ const mapMarkers = computed(() => {
           ? characterMarkers.map((marker) => marker.character.name)
           : [],
         layerParty.value ? currentPartyMembers.value : [],
-      ).map((marker) => ({
-        ...marker,
-        zoneLabel: playerZoneLabel(
-          marker.player.zone,
-          marker.player.region,
-          zoneNameForRegion,
-        ),
-      })),
+      )
+        .filter(
+          (marker) =>
+            !layerThieves.value ||
+            !thiefNames.has(marker.player.name.trim().toLocaleLowerCase()),
+        )
+        .map((marker) => ({
+          ...marker,
+          zoneLabel: playerZoneLabel(
+            marker.player.zone,
+            marker.player.region,
+            zoneNameForRegion,
+          ),
+        })),
     )
   }
+  markers.push(...thiefMarkers)
   markers.push(
     ...npcMapMarkers(
       profile,
@@ -2085,6 +2118,12 @@ const placedNpcCount = computed(
 )
 const placedPlayerCount = computed(
   () => mapMarkers.value.filter((marker) => marker.kind === 'player').length,
+)
+const placedThiefCount = computed(
+  () => mapMarkers.value.filter((marker) => marker.kind === 'thief').length,
+)
+const thievesStatus = computed(
+  () => mapSnapshot.value?.thieves?.status || 'unavailable',
 )
 const otherPlayersStatus = computed(
   () => mapSnapshot.value?.players?.status || 'unavailable',
@@ -4033,6 +4072,7 @@ useHead({ title: 'Map · PhMon' })
                   : [
                       layerCharacters,
                       layerParty,
+                      layerThieves,
                       layerNPCs,
                       layerTraining,
                       layerMonsters,
@@ -4446,6 +4486,26 @@ useHead({ title: 'Map · PhMon' })
                 >
                 <span
                   v-else-if="otherPlayersStatus === 'truncated'"
+                  class="map-layer-status"
+                  >truncated</span
+                ></label
+              >
+              <label class="map-layer-toggle"
+                ><input
+                  v-model="layerThieves"
+                  type="checkbox"
+                  role="switch"
+                  :aria-checked="layerThieves"
+                  :disabled="thievesStatus === 'unavailable'"
+                />
+                Thieves <span>{{ placedThiefCount }}</span>
+                <span
+                  v-if="thievesStatus === 'unavailable'"
+                  class="map-layer-status"
+                  >unavailable</span
+                >
+                <span
+                  v-else-if="thievesStatus === 'truncated'"
                   class="map-layer-status"
                   >truncated</span
                 ></label

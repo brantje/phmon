@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -193,6 +194,7 @@ type Cursor struct {
 type Store struct {
 	pool         *pgxpool.Pool
 	classifyDrop func(server string, model *int64, code string) (string, string)
+	acceptedHook func(Event)
 }
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
@@ -202,6 +204,15 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 func (s *Store) SetDropClassifier(classify func(server string, model *int64, code string) (string, string)) {
 	if s != nil {
 		s.classifyDrop = classify
+	}
+}
+
+// SetAcceptedHook receives events that this call newly inserted. Duplicate
+// replays and rejected rows are not reported. The hook runs after commit and
+// must not fail the agent batch.
+func (s *Store) SetAcceptedHook(hook func(Event)) {
+	if s != nil {
+		s.acceptedHook = hook
 	}
 }
 
@@ -261,11 +272,12 @@ func (s *Store) AppendBatch(ctx context.Context, agentID string, incoming []Agen
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	changed := false
+	var inserted []AgentEvent
 	for i, event := range incoming {
 		if results[i].Status == "rejected" {
 			continue
 		}
-		inserted, duplicate, err := appendOne(ctx, tx, agentID, event, s.classifyDrop)
+		insertedRow, duplicate, err := appendOne(ctx, tx, agentID, event, s.classifyDrop)
 		if errors.Is(err, ErrUnauthorizedSession) || errors.Is(err, ErrEventConflict) || errors.Is(err, ErrInvalidEvent) {
 			results[i].Status = "rejected"
 			results[i].Reason = "session_or_event_rejected"
@@ -280,9 +292,10 @@ func (s *Store) AppendBatch(ctx context.Context, agentID string, incoming []Agen
 			}
 			return results, false, fmt.Errorf("append event batch: %w", err)
 		}
-		if inserted {
+		if insertedRow {
 			changed = true
 			results[i].Status = "persisted"
+			inserted = append(inserted, event)
 		} else if duplicate {
 			results[i].Status = "persisted"
 		} else {
@@ -299,7 +312,36 @@ func (s *Store) AppendBatch(ctx context.Context, agentID string, incoming []Agen
 		}
 		return results, false, fmt.Errorf("commit event batch: %w", err)
 	}
+	if s.acceptedHook != nil {
+		for _, event := range inserted {
+			s.notifyAccepted(acceptedFromAgent(agentID, event))
+		}
+	}
 	return results, changed, nil
+}
+
+func (s *Store) notifyAccepted(event Event) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Warn("accepted event hook panicked", "kind", event.Kind, "reason", recovered)
+		}
+	}()
+	s.acceptedHook(event)
+}
+
+func acceptedFromAgent(agentID string, event AgentEvent) Event {
+	payload := event.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+	return Event{
+		ID: event.ID, Schema: 1, Kind: event.Kind, Category: event.Category, AgentID: agentID,
+		CharacterID: event.CharacterID, SessionID: event.SessionID, Server: event.Server,
+		Character: event.Character, OccurredAt: event.OccurredAt, Source: event.Source,
+		SourceRef: event.SourceRef, Region: event.Region, Zone: event.Zone, X: event.X, Y: event.Y,
+		Z: event.Z, Payload: append(json.RawMessage(nil), payload...), Sequence: event.Sequence,
+		DedupeKey: event.DedupeKey, ItemModel: event.ItemModel, ItemCode: event.ItemCode,
+	}
 }
 
 // phBot 20.1.2 reports the level being left in EVENT_LEVEL_UP.
@@ -439,10 +481,14 @@ func validateAgentEvent(event AgentEvent) error {
 			if json.Unmarshal(object["model"], &model) != nil || model < 0 || event.ItemModel == nil || *event.ItemModel != model {
 				return fmt.Errorf("%w: drop callback requires its observed model ID", ErrInvalidEvent)
 			}
-		case "character.attacked", "world.unique_spawned", "world.gm_spawned", "job.hunter_trader_seen", "job.thief_seen", "pet.transport_died":
+		case "character.attacked", "world.unique_spawned", "world.gm_spawned", "job.hunter_trader_seen", "pet.transport_died":
 			var value string
 			if json.Unmarshal(object["value"], &value) != nil || len(value) > 512 {
 				return fmt.Errorf("%w: callback value is missing or too large", ErrInvalidEvent)
+			}
+		case "job.thief_seen":
+			if err := validateThiefSeenPayload(object); err != nil {
+				return err
 			}
 		}
 	}
@@ -924,6 +970,70 @@ AND payload=$13::jsonb))`, incoming.ID, agentID, characterID, sessionID, DeathKi
 		return false, ErrEventConflict
 	}
 	return false, ErrUnauthorizedSession
+}
+
+func validateThiefSeenPayload(object map[string]json.RawMessage) error {
+	for key := range object {
+		switch key {
+		case "value", "thief", "position_source", "plugin_version":
+		default:
+			return fmt.Errorf("%w: unexpected thief payload field", ErrInvalidEvent)
+		}
+	}
+	var value string
+	if json.Unmarshal(object["value"], &value) != nil || len(value) > 512 {
+		return fmt.Errorf("%w: callback value is missing or too large", ErrInvalidEvent)
+	}
+	source := ""
+	if raw, ok := object["position_source"]; ok {
+		if json.Unmarshal(raw, &source) != nil || (source != "thief" && source != "observer" && source != "unknown") {
+			return fmt.Errorf("%w: invalid thief position source", ErrInvalidEvent)
+		}
+	}
+	if raw, ok := object["plugin_version"]; ok {
+		var version string
+		if json.Unmarshal(raw, &version) != nil || len(version) > 64 {
+			return fmt.Errorf("%w: invalid thief plugin version", ErrInvalidEvent)
+		}
+	}
+	rawThief, hasThief := object["thief"]
+	if source == "thief" && !hasThief {
+		return fmt.Errorf("%w: thief position is incomplete", ErrInvalidEvent)
+	}
+	if !hasThief {
+		return nil
+	}
+	var thief struct {
+		Name   string   `json:"name"`
+		Region *int     `json:"region"`
+		X      *float64 `json:"x"`
+		Y      *float64 `json:"y"`
+	}
+	if json.Unmarshal(rawThief, &thief) != nil {
+		return fmt.Errorf("%w: invalid thief position", ErrInvalidEvent)
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(rawThief, &fields) != nil {
+		return fmt.Errorf("%w: invalid thief position", ErrInvalidEvent)
+	}
+	for key := range fields {
+		switch key {
+		case "name", "region", "x", "y":
+		default:
+			return fmt.Errorf("%w: unexpected thief position field", ErrInvalidEvent)
+		}
+	}
+	name := strings.TrimSpace(thief.Name)
+	if name == "" || len(name) > 64 {
+		return fmt.Errorf("%w: invalid thief name", ErrInvalidEvent)
+	}
+	if source == "thief" && (thief.Region == nil || thief.X == nil || thief.Y == nil || !validPosition(thief.Region, thief.X, thief.Y)) {
+		return fmt.Errorf("%w: thief position is incomplete", ErrInvalidEvent)
+	}
+	if (thief.Region != nil || thief.X != nil || thief.Y != nil) && (thief.Region == nil || thief.X == nil || thief.Y == nil || !validPosition(thief.Region, thief.X, thief.Y)) {
+		return fmt.Errorf("%w: thief position is incomplete", ErrInvalidEvent)
+	}
+	return nil
 }
 
 func validPosition(region *int, axes ...*float64) bool {

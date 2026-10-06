@@ -5817,6 +5817,19 @@ environment; do not claim the 200 ms runtime source proven until it is measured
 on the target server. The branch must remain unmerged. Run/inspect the full
 `bash scripts/check.sh`/CI validation before declaring the branch ready.
 
+### Resume — 2026-10-06 TradeNexus thief relay
+
+Added an unauthenticated `GET /tradenexus` WebSocket on the existing Go server.
+AdvancedAutoTrade clients subscribe by server and publish `thief.report`
+frames. PhMon relays only newly inserted `job.thief_seen` events into that hub
+after commit. Every accepted sighting is stored in `thief_sightings` (migration
+000024) and shown on the Map **Thieves** layer for five minutes and on the
+Events **Thieves** tab. Plugin 1.9.24 looks up the thief in `get_players()` and
+otherwise keeps the observer position. The contract is `docs/tradenexus.md`.
+`TRADENEXUS_ENABLED` defaults to true. Real phBot thief-callback validation is
+still a separate runtime gate; no character was operated and this was not
+deployed.
+
 ### Resume — 2026-10-06 Map character Follow
 
 Added a per-character **Follow** toggle beside Focus on the Map character list.
