@@ -10,7 +10,11 @@ export function withRealtimePosition(
   character: CharacterView | undefined,
   live: RealtimePosition | undefined,
 ): CharacterView | undefined {
-  if (!character?.session_id || !live || live.session_id !== character.session_id)
+  if (
+    !character?.session_id ||
+    !live ||
+    live.session_id !== character.session_id
+  )
     return character
   return {
     ...character,

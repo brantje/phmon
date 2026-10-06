@@ -100,7 +100,6 @@ test('malformed coordinates are ignored', () => {
   assert.deepEqual(next, {})
 })
 
-
 test('realtime coordinates do not replace durable character state freshness', () => {
   const durableUpdatedAt = '2026-10-05T20:00:30Z'
   const character = {
