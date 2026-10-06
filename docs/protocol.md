@@ -885,6 +885,14 @@ terminal rejection while valid siblings can commit in the same transaction. Stab
 event ID, optional source-scoped dedupe key and per-session sequence enforce
 idempotence.
 
+Plugin 1.9.24 may add optional fields to a `job.thief_seen` payload:
+`plugin_version`, `position_source` (`thief`, `observer`, or `unknown`), and
+`thief` with `name`, `region`, `x`, and `y`. Older `{"value":"..."}` payloads
+remain valid. Newly inserted events are relayed to the open TradeNexus socket
+described in [tradenexus.md](tradenexus.md). Duplicate spool replays are not
+relayed. TradeNexus is not part of the agent protocol and does not require an
+agent token.
+
 Unique spawn and kill notices use the same `event.batch` envelope with
 `source` `joymax.unique_notice` and `source_ref` `0x300C`. The payload is
 `model`, `notice` (`spawn` or `kill`) and, for a kill, an optional `killer`.
@@ -1114,8 +1122,9 @@ session cleanup so a duplicate cannot resurrect an arrived or cleared route.
 or a teleport barrier; generated script text and teleporter identifiers remain local
 to the plugin. The worker parses and validates the script once, then executes that
 exact validated text. The entire script is rejected if any line is malformed,
-oversized, non-finite, or outside the coordinate bounds. The generated route is
-limited to 256 instructions and its encoded route frame to 64 KiB.
+oversized, non-finite, or outside the coordinate bounds. A generated
+`character.navigate` route may contain 4096 instructions when the script and
+its encoded route frame each fit in 512 KiB.
 
 The server derives server and destination from the authenticated active character and
 the exact durable `character.navigate` command, including commands already completed.
@@ -1126,16 +1135,17 @@ creates position-history rows.
 
 Generated walks have no region field. The server scopes outdoor points through the
 active dataset's documented tile grid and applies existing cave region/floor rules.
-Waits and teleports break geometry. Geometry beyond a barrier is withheld until a
-fresh accepted position observation demonstrates movement into the next scoped walk
-block. Unknown transforms and ambiguous floors stay status-only or split geometry;
+Waits and teleports split the drawn line into separate blocks, including the
+walks that follow a ferry teleport. The cursor still stays on that barrier until
+a fresh accepted position observation demonstrates movement into the next scoped
+walk block. Unknown transforms and ambiguous floors stay status-only or split geometry;
 X/Y alone never establishes a Tomb or manually selected Job Temple floor. Arrival is
 a separate position-observation status within the documented 12-game-unit presentation
 tolerance and compatible region/floor. Neither `start_script` acceptance nor durable
 command completion claims arrival.
 
 The browser live protocol v1 `map` snapshot adds optional navigation records. This
-does not add another socket. Navigation is limited to 128 KiB aggregate per live map
+does not add another socket. Navigation is limited to 384 KiB aggregate per live map
 frame and is reduced further to preserve the 512 KiB live-frame ceiling; when needed,
 complete geometry is omitted while status and omission counts remain available.
 
@@ -1445,4 +1455,59 @@ removals and browser merge rules. They do **not** prove that a particular live v
 server delivers `0xB021` callbacks frequently enough for 200 ms observations. Keep
 the safe 500 ms fallback and record live runtime cadence before claiming that rate on a
 real server.
+
+## Agent protocol 17: display-only observed routes — 2026-10-06
+
+Protocol 17 adds `navigation.observed` for a path that another plugin in the same
+phBot process is already following. PhMon does not generate, start, or stop that
+path. Command-owned `navigation.route` is unchanged and still requires a completed
+`character.navigate` command.
+
+```json
+{
+  "type": "navigation.observed",
+  "protocol_version": 17,
+  "observed": {
+    "schema_version": 1,
+    "character_id": "<character UUID>",
+    "session_id": "<active session UUID>",
+    "route_sequence": 1,
+    "active": true,
+    "invoked_at": "<UTC RFC3339>",
+    "source": {"region": 25000, "x": 6410.0, "y": 1080.0, "z": 0.0, "observed_at": "<UTC RFC3339>"},
+    "instructions": [
+      {"index": 0, "kind": "walk", "x": 6420.0, "y": 1080.0, "z": 0.0},
+      {"index": 1, "kind": "wait", "duration_ms": 500},
+      {"index": 2, "kind": "walk", "x": 6430.0, "y": 1090.0, "z": 0.0}
+    ]
+  }
+}
+```
+
+`active: false` repeats the same `route_sequence` and omits `source` and
+`instructions`. The server removes that display route. An equal or older sequence
+does not replace a current route or return after it was cleared. The plugin may
+repeat the current active snapshot at most every five seconds. The frame is not
+spooled.
+
+A display walk may include the optional phBot script region:
+
+```json
+{"index": 0, "kind": "walk", "region": -32767, "x": -24200.0, "y": 10.0, "z": 0.0}
+```
+
+Ferry and cave scripts use `walk,region,x,y,z`. The region places that point,
+including a cave floor, instead of borrowing the character's starting area.
+Outdoor `walk,x,y,z` lines stay unchanged. Command-owned `navigation.route`
+rejects a per-walk region. Both command routes and observed routes may contain
+4096 instructions when the frame fits in 512 KiB.
+Teleport names may contain spaces; the names are not stored.
+
+Admission requires protocol 17, the authenticated agent's current character
+session, and the current connection generation. There is no command lookup. The
+route is stored separately from a PhMon `character.navigate` route for the same
+session. Its arrival point is the last `walk` instruction. Live character
+positions trim walked prefixes with the existing 12-unit rule. The live map view
+uses an empty `command_id`, so the browser draws the remaining line and does not
+offer Stop.
 

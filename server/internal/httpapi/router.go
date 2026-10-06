@@ -19,6 +19,7 @@ import (
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
+	"phmon/server/internal/tradenexus"
 )
 
 type AgentStore interface {
@@ -32,24 +33,26 @@ type AgentStore interface {
 }
 
 type Dependencies struct {
-	Database     Pinger
-	Auth         *authdomain.Manager
-	Agents       AgentStore
-	Registry     *agentdomain.Registry
-	AgentOptions AgentOptions
-	Characters   *characters.Store
-	Commands     *commands.Service
-	Dispatcher   *commands.Dispatcher
-	Live         *LiveHub
-	Resources    *resources.Store
-	Events       *events.Store
-	Chat         *chat.Store
-	Mobs         *mobs.Store
-	MobLive      *mobs.LiveStore
-	NPCLive      *npcs.LiveStore
-	PlayerLive   *players.LiveStore
-	Positions    *positions.Store
-	MapAnalytics *mapanalytics.Store
+	Database       Pinger
+	Auth           *authdomain.Manager
+	Agents         AgentStore
+	Registry       *agentdomain.Registry
+	AgentOptions   AgentOptions
+	Characters     *characters.Store
+	Commands       *commands.Service
+	Dispatcher     *commands.Dispatcher
+	Live           *LiveHub
+	Resources      *resources.Store
+	Events         *events.Store
+	Chat           *chat.Store
+	Mobs           *mobs.Store
+	MobLive        *mobs.LiveStore
+	NPCLive        *npcs.LiveStore
+	PlayerLive     *players.LiveStore
+	Positions      *positions.Store
+	MapAnalytics   *mapanalytics.Store
+	TradeNexus     *tradenexus.Hub
+	ThiefSightings *tradenexus.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -75,6 +78,13 @@ func New(deps Dependencies) http.Handler {
 	if deps.Commands != nil {
 		commandAPI := &commandHandler{service: deps.Commands, live: deps.Live}
 		register("POST /api/commands", true, commandAPI.submit)
+	}
+	if deps.TradeNexus != nil {
+		mux.Handle("GET /tradenexus", deps.TradeNexus)
+	}
+	if deps.ThiefSightings != nil {
+		sightings := &thiefSightingHandler{store: deps.ThiefSightings}
+		register("GET /api/thief-sightings", false, sightings.list)
 	}
 	if deps.Agents != nil && deps.Registry != nil {
 		live := deps.Live
@@ -126,6 +136,7 @@ func New(deps Dependencies) http.Handler {
 			navigation: live.navigation,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
+		live.SetThiefSightings(deps.ThiefSightings)
 		register("GET /api/live", true, live.connect)
 		if deps.Chat != nil {
 			chatAPI := &chatHandler{store: deps.Chat, live: live}

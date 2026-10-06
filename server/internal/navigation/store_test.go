@@ -23,6 +23,13 @@ func TestValidBoundsAndRejectsUnrecognizedOrUnsafeInstructions(t *testing.T) {
 	if err := Valid(valid); err != nil {
 		t.Fatalf("valid route: %v", err)
 	}
+	longRoute := routeInput(1)
+	for i := 0; i < 300; i++ {
+		longRoute.Instructions = append(longRoute.Instructions, Instruction{Index: i, Kind: "walk", X: float64(i), Y: 1})
+	}
+	if err := Valid(longRoute); err != nil {
+		t.Fatalf("route within the shared cap: %v", err)
+	}
 	for name, bad := range map[string]Input{
 		"nan":                      routeInput(1, Instruction{Index: 0, Kind: "walk", X: math.NaN()}),
 		"unknown":                  routeInput(1, Instruction{Index: 0, Kind: "script", X: 1}),
@@ -147,11 +154,13 @@ func TestWaitAndTeleportRemainSeparateDrawableBlocks(t *testing.T) {
 		t.Fatal("route not stored")
 	}
 	views := store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))
-	if len(views) != 1 || len(views[0].Blocks) != 1 || len(views[0].Blocks[0].Points) != 1 {
-		t.Fatalf("barriers were joined or future geometry leaked: %#v", views)
+	if len(views) != 1 || len(views[0].Blocks) != 3 {
+		t.Fatalf("walks after a barrier were dropped or joined: %#v", views)
 	}
-	if views[0].Blocks[0].Points[0].X != 6420 {
-		t.Fatalf("wrong active block: %#v", views)
+	for index, x := range []float64{6420, 6430, 6440} {
+		if len(views[0].Blocks[index].Points) != 1 || views[0].Blocks[index].Points[0].X != x {
+			t.Fatalf("block %d = %#v", index, views[0].Blocks[index])
+		}
 	}
 }
 
@@ -177,8 +186,9 @@ func TestBarrierDoesNotRevealOverlappingFutureGeometryBeforeMovementEvidence(t *
 		t.Fatal("first walk observation was ignored")
 	}
 	views := store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))
-	if len(views) != 1 || views[0].Status != "transition_awaiting_evidence" || len(views[0].Blocks) != 0 {
-		t.Fatalf("future geometry leaked across a wait without movement evidence: %#v", views)
+	if len(views) != 1 || views[0].Status != "transition_awaiting_evidence" || views[0].CompletedInstructions != 1 ||
+		len(views[0].Blocks) != 1 || len(views[0].Blocks[0].Points) != 2 || views[0].Blocks[0].Points[0].X != 6420 {
+		t.Fatalf("cursor crossed the wait or hid the following walks: %#v", views)
 	}
 	if !store.Observe(input.CharacterID, input.SessionID, Position{
 		Region: 25000, X: 6440, Y: 1080, At: input.InvokedAt.Add(2 * time.Second),
@@ -412,8 +422,8 @@ func TestOutdoorSeamRejectsInconsistentObservedRegionAndPreservesWait(t *testing
 		Instruction{Index: 1, Kind: "wait", DurationMS: 500}, Instruction{Index: 2, Kind: "walk", X: 6580, Y: 1080})
 	store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25001, X: 6700, Y: 1080}, input.InvokedAt)
 	view := store.Snapshot("Greatest", profile, input.InvokedAt)[0]
-	if len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 1 {
-		t.Fatal("geometry crossed the wait")
+	if len(view.Blocks) != 2 || view.Blocks[0].Points[0].X != 6500 || view.Blocks[1].Points[0].X != 6580 {
+		t.Fatal("walk after the wait was joined or dropped")
 	}
 	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25000, X: 6540, Y: 1080, At: input.InvokedAt.Add(time.Second)})
 	view = store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))[0]
@@ -507,5 +517,155 @@ func TestCanStopNavigationAndMarkStopped(t *testing.T) {
 	view := store.Snapshot("Greatest", profile, input.InvokedAt.Add(3*time.Second))[0]
 	if view.Status != "stopped" {
 		t.Fatalf("expected stopped status, got %#v", view)
+	}
+}
+
+func TestObservedRouteTrimsIndependentlyOfTheCommandRoute(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	command := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0}, Instruction{Index: 1, Kind: "walk", X: 6430, Y: 1090, Z: 0})
+	destination := Point{Region: 25000, X: 6430, Y: 1090, Z: 0}
+	if !store.Replace(command, "agent-one", 4, "Greatest", profile.DatasetID, destination, invoked) {
+		t.Fatal("command route not stored")
+	}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: command.CharacterID, SessionID: command.SessionID, Sequence: 3, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: []Instruction{
+			{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0},
+			{Index: 1, Kind: "walk", X: 6430, Y: 1090, Z: 0},
+		},
+	}
+	if store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return false }) {
+		t.Fatal("stale owner stored an observed route")
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("observed route not stored")
+	}
+	if store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(time.Second), func() bool { return true }) {
+		t.Fatal("duplicate observed sequence reset the route")
+	}
+	views := store.Snapshot("Greatest", profile, invoked.Add(time.Second))
+	if len(views) != 2 {
+		t.Fatalf("expected command and observed routes, got %#v", views)
+	}
+	if !store.Observe(command.CharacterID, command.SessionID, Position{Region: 25000, X: 6420, Y: 1080, At: invoked.Add(2 * time.Second)}) {
+		t.Fatal("fresh position did not advance a route")
+	}
+	views = store.Snapshot("Greatest", profile, invoked.Add(2*time.Second))
+	for _, view := range views {
+		if len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 1 || view.Blocks[0].Points[0].X != 6430 {
+			t.Fatalf("passed waypoint remained: %#v", view)
+		}
+		if view.CommandID == "" && (view.Sequence != 3 || view.Status != "moving") {
+			t.Fatalf("observed view: %#v", view)
+		}
+	}
+	cleared := ObservedInput{SchemaVersion: SchemaVersion, CharacterID: command.CharacterID, SessionID: command.SessionID, Sequence: 3, Active: false, InvokedAt: invoked.Add(3 * time.Second)}
+	if store.ClearObserved(cleared, "agent-one", 9, func() bool { return true }) {
+		t.Fatal("wrong generation cleared the observed route")
+	}
+	if store.ClearObserved(cleared, "agent-one", 4, func() bool { return false }) {
+		t.Fatal("stale owner cleared the observed route")
+	}
+	if !store.ClearObserved(cleared, "agent-one", 4, func() bool { return true }) {
+		t.Fatal("clear failed")
+	}
+	if store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(4*time.Second), func() bool { return true }) {
+		t.Fatal("cleared sequence was resurrected")
+	}
+	views = store.Snapshot("Greatest", profile, invoked.Add(4*time.Second))
+	if len(views) != 1 || views[0].CommandID == "" {
+		t.Fatalf("command route did not remain: %#v", views)
+	}
+	store.RemoveSession(command.SessionID)
+	if remaining := store.Snapshot("Greatest", profile, invoked); len(remaining) != 0 {
+		t.Fatalf("session cleanup left %#v", remaining)
+	}
+}
+
+func TestTeleportKeepsTheFollowingFerryWalksVisible(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	north := 25000
+	south := 25001
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-ferry", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: north, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: []Instruction{
+			{Index: 0, Kind: "walk", Region: &north, X: 6420, Y: 1080, Z: 0},
+			{Index: 1, Kind: "teleport"},
+			{Index: 2, Kind: "walk", Region: &south, X: 6700, Y: 900, Z: 0},
+			{Index: 3, Kind: "walk", Region: &south, X: 6800, Y: 880, Z: 0},
+		},
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("ferry route not stored")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if len(view.Blocks) != 2 || len(view.Blocks[0].Points) != 1 || view.Blocks[0].Points[0].X != 6420 ||
+		len(view.Blocks[1].Points) != 2 || view.Blocks[1].Points[0].X != 6700 || view.Blocks[1].AreaID != "world" {
+		t.Fatalf("route stopped at the teleport: %#v", view.Blocks)
+	}
+}
+
+func TestObservedFerryWalkUsesItsOwnRegion(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	cave := -32767
+	outdoor := 25000
+	steps := []Instruction{{Index: 0, Kind: "walk", Region: &cave, X: -24200, Y: 10, Z: 0}}
+	for index := 1; index < 300; index++ {
+		steps = append(steps, Instruction{Index: index, Kind: "walk", Region: &outdoor, X: 6420 + float64(index)/100, Y: 1080, Z: 0})
+	}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-ferry", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source:       &Position{Region: outdoor, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: steps,
+	}
+	if err := ValidObserved(observed); err != nil {
+		t.Fatal(err)
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("ferry route not stored")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if len(view.Blocks) < 2 || view.Blocks[0].AreaID != "donwhang-stone-cave" || view.Blocks[0].FloorID != "1F" ||
+		view.Blocks[0].Points[0].Region != cave || view.Blocks[1].AreaID != "world" || view.Destination.Region != outdoor {
+		t.Fatalf("ferry geometry = %#v destination %#v", view.Blocks, view.Destination)
+	}
+	if view.InstructionCount != 300 {
+		t.Fatalf("instruction count = %d", view.InstructionCount)
+	}
+	regionWalk := routeInput(1, Instruction{Index: 0, Kind: "walk", Region: &outdoor, X: 6420, Y: 1080, Z: 0})
+	if Valid(regionWalk) == nil {
+		t.Fatal("command route accepted a per-walk region")
+	}
+	zero := 0
+	observed.Instructions = []Instruction{{Index: 0, Kind: "walk", Region: &zero, X: 1, Y: 2, Z: 0}}
+	if ValidObserved(observed) == nil {
+		t.Fatal("accepted region 0")
+	}
+	observed.Instructions = nil
+	for index := 0; index < MaxObservedInstructions+1; index++ {
+		observed.Instructions = append(observed.Instructions, Instruction{Index: index, Kind: "walk", X: 6420, Y: 1080, Z: 0})
+	}
+	if ValidObserved(observed) == nil {
+		t.Fatal("accepted a route past the display cap")
 	}
 }

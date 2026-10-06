@@ -26,6 +26,7 @@ import (
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
+	"phmon/server/internal/tradenexus"
 )
 
 const (
@@ -109,19 +110,20 @@ type livePositionTimer interface {
 }
 
 type LiveHub struct {
-	agents     AgentStore
-	registry   *agentdomain.Registry
-	characters *characters.Store
-	commands   *commands.Service
-	resources  *resources.Store
-	events     *events.Store
-	chat       *chat.Store
-	mobs       *mobs.Store
-	mobLive    *mobs.LiveStore
-	npcLive    *npcs.LiveStore
-	playerLive *players.LiveStore
-	positions  *positions.Store
-	navigation *navigation.Store
+	agents         AgentStore
+	registry       *agentdomain.Registry
+	characters     *characters.Store
+	commands       *commands.Service
+	resources      *resources.Store
+	events         *events.Store
+	chat           *chat.Store
+	mobs           *mobs.Store
+	mobLive        *mobs.LiveStore
+	npcLive        *npcs.LiveStore
+	playerLive     *players.LiveStore
+	positions      *positions.Store
+	navigation     *navigation.Store
+	thiefSightings *tradenexus.Store
 
 	positionMu         sync.Mutex
 	positionDeliveryMu sync.Mutex
@@ -135,15 +137,16 @@ type LiveHub struct {
 	buildSlots chan struct{}
 }
 
-func (h *LiveHub) SetCommands(service *commands.Service)  { h.commands = service }
-func (h *LiveHub) SetResources(store *resources.Store)    { h.resources = store }
-func (h *LiveHub) SetEvents(store *events.Store)          { h.events = store }
-func (h *LiveHub) SetChat(store *chat.Store)              { h.chat = store }
-func (h *LiveHub) SetMobObservations(store *mobs.Store)   { h.mobs = store }
-func (h *LiveHub) SetMobLive(store *mobs.LiveStore)       { h.mobLive = store }
-func (h *LiveHub) SetNPCLive(store *npcs.LiveStore)       { h.npcLive = store }
-func (h *LiveHub) SetPlayerLive(store *players.LiveStore) { h.playerLive = store }
-func (h *LiveHub) SetPositions(store *positions.Store)    { h.positions = store }
+func (h *LiveHub) SetCommands(service *commands.Service)     { h.commands = service }
+func (h *LiveHub) SetResources(store *resources.Store)       { h.resources = store }
+func (h *LiveHub) SetEvents(store *events.Store)             { h.events = store }
+func (h *LiveHub) SetChat(store *chat.Store)                 { h.chat = store }
+func (h *LiveHub) SetMobObservations(store *mobs.Store)      { h.mobs = store }
+func (h *LiveHub) SetMobLive(store *mobs.LiveStore)          { h.mobLive = store }
+func (h *LiveHub) SetNPCLive(store *npcs.LiveStore)          { h.npcLive = store }
+func (h *LiveHub) SetPlayerLive(store *players.LiveStore)    { h.playerLive = store }
+func (h *LiveHub) SetPositions(store *positions.Store)       { h.positions = store }
+func (h *LiveHub) SetThiefSightings(store *tradenexus.Store) { h.thiefSightings = store }
 
 func (h *LiveHub) npcSnapshots(server string) []npcs.LiveSnapshot {
 	if h == nil || h.npcLive == nil {
@@ -1123,6 +1126,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			"characters": charRows, "party": party, "training_areas": training, "monsters": monsterRows,
 			"npcs":    projectNPCs(profile, h.npcSnapshots(subscription.Filter.Server), subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region),
 			"players": projectPlayers(profile, h.playerSnapshots(subscription.Filter.Server), subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, time.Now().UTC()),
+			"thieves": h.mapThiefSnapshot(ctx, profile, subscription.Filter.Server, subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, selectedArea.Kind),
 			"events":  activity,
 			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},
 		}

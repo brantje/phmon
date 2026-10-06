@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { ActivityEvent } from '~~/shared/types/live'
+import type {
+  ActivityEvent,
+  ThiefSighting,
+  ThiefSightingPage,
+} from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
@@ -42,12 +46,15 @@ const tabs = [
     key: 'world.unique_spawned',
     query: { kind: 'world.unique_spawned' },
   },
+  { label: 'Thieves', key: 'thieves', query: { view: 'thieves' } },
 ]
 const selectedTab = computed(() => {
+  if (route.query.view === 'thieves') return 'thieves'
   if (typeof route.query.kind === 'string') return route.query.kind
   if (route.query.category === 'custom') return 'custom'
   return 'all'
 })
+const thievesView = computed(() => selectedTab.value === 'thieves')
 const activeTab = computed(
   () => tabs.find((tab) => tab.key === selectedTab.value) || tabs[0],
 )
@@ -75,8 +82,11 @@ const pageTitle = computed(() =>
     ? 'History · All'
     : `History · ${activeTabLabel.value}`,
 )
-const description =
-  'Recorded activity from phBot callbacks and reliable state observations.'
+const description = computed(() =>
+  thievesView.value
+    ? 'Thief sightings reported by PhMon characters and AdvancedAutoTrade.'
+    : 'Recorded activity from phBot callbacks and reliable state observations.',
+)
 const fromDate = ref(dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)))
 const toDate = ref(dateInput(new Date()))
 const characterInput = ref('')
@@ -92,6 +102,12 @@ let characterSearchTimer: ReturnType<typeof setTimeout> | undefined
 let itemSearchTimer: ReturnType<typeof setTimeout> | undefined
 const feedID = 'activity-history'
 const page = computed(() => eventFeeds.value[feedID])
+const sightingPage = ref<ThiefSightingPage | null>(null)
+const sightingStatus = ref<'loading' | 'current' | 'error'>('loading')
+const sightingCursor = ref('')
+const sightingPrevious = ref<string[]>([])
+let sightingTimer: ReturnType<typeof setInterval> | undefined
+let sightingRequest = 0
 const eventMapProfiles = ref<Record<string, MapProfile>>({})
 const mapProfileRequests = new Map<string, Promise<MapProfile>>()
 const invalidDateRange = computed(
@@ -126,34 +142,33 @@ const eventMapTarget = (event: ActivityEvent) => {
   )
 }
 
+async function rememberMapProfiles(servers: string[]) {
+  await Promise.all(
+    [...new Set(servers.filter(Boolean))].map(async (server) => {
+      const key = server.toLowerCase()
+      let request = mapProfileRequests.get(key)
+      if (!request) {
+        request = $fetch<MapProfile>(
+          `/api/map/profile?server=${encodeURIComponent(server)}`,
+        )
+        mapProfileRequests.set(key, request)
+      }
+      try {
+        const profile = await request
+        eventMapProfiles.value = { ...eventMapProfiles.value, [key]: profile }
+      } catch {
+        if (mapProfileRequests.get(key) === request)
+          mapProfileRequests.delete(key)
+      }
+    }),
+  )
+}
+
 watch(
   page,
-  async (eventPage) => {
-    const serverNames = [
-      ...new Set((eventPage?.events || []).map((event) => event.server)),
-    ]
-    await Promise.all(
-      serverNames.map(async (server) => {
-        const key = server.toLowerCase()
-        let request = mapProfileRequests.get(key)
-        if (!request) {
-          request = $fetch<MapProfile>(
-            `/api/map/profile?server=${encodeURIComponent(server)}`,
-          )
-          mapProfileRequests.set(key, request)
-        }
-        try {
-          const profile = await request
-          eventMapProfiles.value = {
-            ...eventMapProfiles.value,
-            [key]: profile,
-          }
-        } catch {
-          if (mapProfileRequests.get(key) === request)
-            mapProfileRequests.delete(key)
-          // An unavailable profile leaves the map action disabled for this server.
-        }
-      }),
+  (eventPage) => {
+    void rememberMapProfiles(
+      (eventPage?.events || []).map((event) => event.server),
     )
   },
   { immediate: true },
@@ -193,6 +208,7 @@ watch(
     filterCategory,
     includePetPickups,
     includeOwnedGains,
+    thievesView,
     cursor,
     pageSize,
   ],
@@ -206,9 +222,14 @@ watch(
     category,
     includePickups,
     includeGains,
+    _thieves,
     pageCursor,
     size,
   ]) => {
+    if (_thieves) {
+      clearEventFeed(feedID)
+      return
+    }
     if (from && to && from > to) {
       clearEventFeed(feedID)
       return
@@ -247,11 +268,104 @@ watch(
     previousCursors.value = []
   },
 )
+watch(
+  [
+    thievesView,
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    sightingCursor,
+    pageSize,
+  ],
+  () => {
+    if (sightingTimer) clearInterval(sightingTimer)
+    sightingTimer = undefined
+    if (!thievesView.value) return
+    void loadSightings()
+    sightingTimer = setInterval(() => void loadSightings(), 5000)
+  },
+  { immediate: true },
+)
+watch(
+  [thievesView, serverScope, fromDate, toDate, characterQuery, pageSize],
+  () => {
+    sightingCursor.value = ''
+    sightingPrevious.value = []
+  },
+)
+watch(sightingPage, (value) => {
+  void rememberMapProfiles((value?.sightings || []).map((row) => row.server))
+})
 onBeforeUnmount(() => {
   if (characterSearchTimer) clearTimeout(characterSearchTimer)
   if (itemSearchTimer) clearTimeout(itemSearchTimer)
+  if (sightingTimer) clearInterval(sightingTimer)
   clearEventFeed(feedID)
 })
+
+async function loadSightings() {
+  const request = ++sightingRequest
+  if (!thievesView.value || invalidDateRange.value) {
+    sightingPage.value = null
+    return
+  }
+  if (!sightingPage.value) sightingStatus.value = 'loading'
+  try {
+    const next = await $fetch<ThiefSightingPage>('/api/thief-sightings', {
+      query: {
+        server: serverScope.value === 'all' ? undefined : serverScope.value,
+        q: characterQuery.value || undefined,
+        from: fromDate.value ? localDateBoundary(fromDate.value, 0) : undefined,
+        to: toDate.value ? localDateBoundary(toDate.value, 1) : undefined,
+        cursor: sightingCursor.value || undefined,
+        limit: pageSize.value,
+      },
+    })
+    if (request !== sightingRequest) return
+    sightingPage.value = next
+    sightingStatus.value = 'current'
+  } catch {
+    if (request !== sightingRequest) return
+    sightingStatus.value = 'error'
+  }
+}
+
+function nextSightingPage() {
+  if (!sightingPage.value?.next_cursor) return
+  sightingPrevious.value.push(sightingCursor.value)
+  sightingCursor.value = sightingPage.value.next_cursor
+}
+function previousSightingPage() {
+  if (!sightingPrevious.value.length) return
+  sightingCursor.value = sightingPrevious.value.pop() || ''
+}
+function sightingSource(row: ThiefSighting) {
+  if (row.origin === 'phmon') return 'PhMon'
+  return row.reporter.app?.trim() || 'AdvancedAutoTrade'
+}
+function sightingMapTarget(row: ThiefSighting) {
+  const position = row.position
+  if (!position) return undefined
+  const profile = eventMapProfiles.value[row.server.toLowerCase()]
+  const location = profile ? mapEventLocation(profile, position) : undefined
+  if (!location || location.status !== 'mapped') return undefined
+  return {
+    path: '/map',
+    query: {
+      server: row.server,
+      area: location.areaID,
+      floor: location.floorID,
+      ...(location.areaID === 'world'
+        ? { region: String(position.region) }
+        : {}),
+    },
+  }
+}
+function sightingLocation(row: ThiefSighting) {
+  if (!row.position) return 'Position unavailable'
+  return `Region ${row.position.region} · ${row.position.x.toFixed(1)}, ${row.position.y.toFixed(1)}`
+}
 
 function nextPage() {
   if (!page.value?.next_cursor) return
@@ -465,17 +579,27 @@ function localDateBoundary(value: string, addDays: number) {
           :to="{ path: '/events', query: tab.query }"
           >{{ tab.label }}</NuxtLink
         >
-        <span class="event-count">{{ page?.total ?? '—' }}</span>
+        <span class="event-count">{{
+          thievesView ? (sightingPage?.total ?? '—') : (page?.total ?? '—')
+        }}</span>
       </div>
 
       <div class="events-filters">
         <label>
-          <span>Character</span>
+          <span>{{ thievesView ? 'Name' : 'Character' }}</span>
           <input
             v-model="characterInput"
             maxlength="64"
-            placeholder="Filter by character"
-            aria-label="Filter events by character"
+            :placeholder="
+              thievesView
+                ? 'Filter by thief or reporter'
+                : 'Filter by character'
+            "
+            :aria-label="
+              thievesView
+                ? 'Filter thief sightings by name'
+                : 'Filter events by character'
+            "
           />
         </label>
         <label v-if="itemTab">
@@ -504,11 +628,66 @@ function localDateBoundary(value: string, addDays: number) {
         The start date must be on or before the end date.
       </div>
 
-      <div v-if="liveStale" class="status-banner warning" role="status">
+      <div
+        v-if="liveStale && !thievesView"
+        class="status-banner warning"
+        role="status"
+      >
         Showing the last received event page as stale while PhMon reconnects.
       </div>
+      <div
+        v-if="thievesView && sightingStatus === 'error'"
+        class="status-banner warning"
+        role="alert"
+      >
+        Thief sightings could not be loaded.
+      </div>
       <div class="event-rows-scroll">
-        <div class="event-history-rows">
+        <div v-if="thievesView" class="event-history-rows">
+          <article
+            v-for="row in sightingPage?.sightings || []"
+            :key="row.sighting_id"
+            class="event-row-grid event-row-thief"
+            :aria-label="`${row.thief_name} reported by ${row.reporter.name || 'an unknown reporter'}`"
+          >
+            <div class="event-row-primary">
+              <strong>{{ row.thief_name }}</strong>
+            </div>
+            <time :datetime="row.received_at">{{
+              formatTimestamp(row.received_at)
+            }}</time>
+            <div class="event-row-character">
+              {{ row.reporter.name || '—' }}
+            </div>
+            <div class="event-row-detail">{{ sightingSource(row) }}</div>
+            <div class="event-row-location">{{ sightingLocation(row) }}</div>
+            <div class="event-row-map">
+              <NuxtLink
+                v-if="sightingMapTarget(row)"
+                class="compact-button map-event-link"
+                :to="sightingMapTarget(row) || '/map'"
+                aria-label="Open thief sighting on map"
+              >
+                <UIcon name="i-lucide-map-pin" />
+              </NuxtLink>
+            </div>
+          </article>
+          <div v-if="!sightingPage?.sightings.length" class="event-empty-state">
+            <strong>{{
+              sightingStatus === 'current'
+                ? 'No thief sightings found'
+                : sightingStatus === 'error'
+                  ? 'Thief sightings unavailable'
+                  : 'Loading thief sightings'
+            }}</strong>
+            <span>{{
+              sightingStatus === 'current'
+                ? 'No sightings match this server, name and date range.'
+                : 'Waiting for the thief sighting history.'
+            }}</span>
+          </div>
+        </div>
+        <div v-else class="event-history-rows">
           <template v-for="item in page?.events || []" :key="item.event_id">
             <article
               v-if="eventRowLayout(item) === 'featured'"
@@ -693,21 +872,40 @@ function localDateBoundary(value: string, addDays: number) {
           <button
             class="compact-button"
             type="button"
-            :disabled="!previousCursors.length"
-            @click="previousPage"
+            :disabled="
+              thievesView ? !sightingPrevious.length : !previousCursors.length
+            "
+            @click="thievesView ? previousSightingPage() : previousPage()"
           >
             Previous
           </button>
           <span>
-            Page {{ previousCursors.length + 1 }} /
-            {{ Math.max(1, Math.ceil((page?.total || 0) / pageSize)) }}
-            · {{ page?.total || 0 }} entries
+            Page
+            {{
+              (thievesView ? sightingPrevious.length : previousCursors.length) +
+              1
+            }}
+            /
+            {{
+              Math.max(
+                1,
+                Math.ceil(
+                  ((thievesView ? sightingPage?.total : page?.total) || 0) /
+                    pageSize,
+                ),
+              )
+            }}
+            ·
+            {{ (thievesView ? sightingPage?.total : page?.total) || 0 }}
+            entries
           </span>
           <button
             class="compact-button"
             type="button"
-            :disabled="!page?.next_cursor"
-            @click="nextPage"
+            :disabled="
+              thievesView ? !sightingPage?.next_cursor : !page?.next_cursor
+            "
+            @click="thievesView ? nextSightingPage() : nextPage()"
           >
             Next
           </button>

@@ -13,6 +13,7 @@ import type {
   MapNpc,
   MapOtherPlayer,
   MapPartyMember,
+  MapThief,
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import type {
@@ -35,6 +36,7 @@ import {
   npcRoleLabel,
 } from '~/utils/mapNpcMarkers'
 import { PARTY_MEMBER_ICON } from '~/utils/mapPartyPresentation'
+import { THIEF_ICON, thiefOriginLabel } from '~/utils/mapThiefMarkers'
 import {
   OTHER_PLAYER_ICON,
   playerAliveLabel,
@@ -72,6 +74,7 @@ interface MapCanvasMarker {
     | 'character'
     | 'party'
     | 'player'
+    | 'thief'
     | 'npc'
     | 'monster'
     | 'death'
@@ -83,6 +86,7 @@ interface MapCanvasMarker {
   character?: CharacterMarkerInput
   party?: MapPartyMember
   player?: MapOtherPlayer
+  thief?: MapThief
   npc?: MapNpc
   monster?: MapMonster
   showLabel?: boolean
@@ -1000,6 +1004,16 @@ function partyIconElement(className: string) {
   return frame
 }
 
+function relativeSeen(value: string) {
+  const then = Date.parse(value)
+  if (!Number.isFinite(then)) return 'unknown'
+  const seconds = Math.max(0, Math.round((Date.now() - then) / 1000))
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  return `${Math.round(minutes / 60)}h ago`
+}
+
 function markerPopup(marker: MapCanvasMarker) {
   const panel = document.createElement('section')
   panel.className = `phmon-map-detail phmon-map-detail--${marker.kind}`
@@ -1070,6 +1084,24 @@ function markerPopup(marker: MapCanvasMarker) {
       details.append(...rows)
       panel.append(details)
     }
+  } else if (marker.kind === 'thief' && marker.thief) {
+    const thief = marker.thief
+    title.textContent = thief.name
+    subtitle.textContent = 'Thief'
+    const icon = document.createElement('img')
+    icon.className = 'phmon-map-detail-thief-icon'
+    icon.src = THIEF_ICON
+    icon.alt = ''
+    header.prepend(icon)
+    details.append(
+      detailRow('Last seen', relativeSeen(thief.observed_at)),
+      detailRow('Reporter', thief.reporter_name?.trim() || '—'),
+      detailRow('Source', thiefOriginLabel(thief)),
+      detailRow('Zone', marker.zoneLabel || '—'),
+      detailRow('Region', String(thief.region)),
+      detailRow('Position', positionText(thief.x, thief.y, thief.z)),
+    )
+    panel.append(header, details)
   } else if (marker.kind === 'player' && marker.player) {
     const other = marker.player
     title.textContent = other.name || `Player ${other.player_id}`
@@ -1250,6 +1282,16 @@ function markerIconContent(
     const name = document.createElement('span')
     name.className = 'phmon-map-party-name'
     name.textContent = marker.party?.name?.trim() || marker.label
+    content.append(name)
+  } else if (marker.kind === 'thief') {
+    content.className = 'phmon-map-character-pin'
+    const img = document.createElement('img')
+    img.src = THIEF_ICON
+    img.alt = ''
+    content.append(img)
+    const name = document.createElement('span')
+    name.className = 'phmon-map-player-name'
+    name.textContent = marker.thief?.name?.trim() || marker.label
     content.append(name)
   } else if (marker.kind === 'player') {
     content.className = 'phmon-map-player-icon'
@@ -1725,7 +1767,7 @@ onMounted(async () => {
     const type = marker.monster ? monsterTypePresentation(marker.monster) : null
     const hp = marker.monster ? monsterHPFraction(marker.monster) : null
     const size =
-      marker.kind === 'character'
+      marker.kind === 'character' || marker.kind === 'thief'
         ? 28
         : marker.kind === 'party' ||
             marker.kind === 'player' ||
@@ -1746,6 +1788,10 @@ onMounted(async () => {
       marker.character?.online,
       marker.character?.position_stale,
       marker.selected,
+      marker.thief?.name,
+      marker.thief?.origin,
+      marker.thief?.observed_at,
+      marker.thief?.reporter_name,
       marker.npc ? npcDisplayLabel(marker.npc) : '',
       marker.npc?.role,
       marker.npc?.servername,
@@ -1823,13 +1869,15 @@ onMounted(async () => {
           ? 1000
           : marker.kind === 'party'
             ? 700
-            : marker.kind === 'player'
-              ? 680
-              : marker.kind === 'npc'
-                ? 650
-                : marker.kind === 'drop' || marker.kind === 'death'
-                  ? 400
-                  : 0,
+            : marker.kind === 'thief'
+              ? 690
+              : marker.kind === 'player'
+                ? 680
+                : marker.kind === 'npc'
+                  ? 650
+                  : marker.kind === 'drop' || marker.kind === 'death'
+                    ? 400
+                    : 0,
     })
     if (!props.compact && marker.kind === 'character')
       rendered.on('click', () => emit('inspectcharacter', marker.id))
@@ -2312,6 +2360,17 @@ onBeforeUnmount(() => {
 
 :global(.phmon-map-character-pin--selected) {
   border-color: #4db9ff;
+}
+
+:global(.phmon-map-marker--thief .phmon-map-character-pin) {
+  border-color: #e23b3b;
+}
+
+:global(.phmon-map-detail-thief-icon) {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 :global(.phmon-map-character-pin--offline) {

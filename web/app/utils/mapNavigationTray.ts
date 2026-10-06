@@ -135,10 +135,14 @@ export function mapNavigationTrayRows(
       route,
     ]),
   )
-  const rows: MapNavigationTrayRow[] = routes.map((route) => {
+  const rows: MapNavigationTrayRow[] = []
+  for (const route of routes) {
+    // Display-only routes from another plugin have no PhMon command. They stay
+    // on the map and never become a stoppable tray row.
+    if (!route.commandID) continue
     const backend = routeByID.get(route.id)
     const stopSupported = stopSupportedByCharacter?.[route.characterID] ?? false
-    return {
+    rows.push({
       id: route.id,
       characterID: route.characterID,
       name: route.characterName,
@@ -147,8 +151,8 @@ export function mapNavigationTrayRows(
       geometryCount: route.blocks.length,
       group: navigationTrayGroup(route.status),
       ...routeFields(backend, stopSupported),
-    }
-  })
+    })
+  }
   for (const operation of operations) {
     if (
       operation.command.name !== 'character.navigate' ||

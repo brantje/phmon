@@ -820,7 +820,7 @@ so the card omits HP instead of inventing it. Notice chat remains a separate
 phMonitor source and is not used here: stored type-7 messages on this server
 are ordinary notices, not unique spawn lines.
 | 1 `EVENT_HUNTER_SPAWN` | Player name, including traders | `job.hunter_trader_seen` | Bounded `value` string |
-| 2 `EVENT_THIEF_SPAWN` | Player name | `job.thief_seen` | Bounded `value` string |
+| 2 `EVENT_THIEF_SPAWN` | Player name | `job.thief_seen` | Bounded `value` string. Plugin 1.9.24 also sends `plugin_version`, `position_source`, and `thief` `{name, region, x, y}` when `get_players()` has exactly one case-insensitive name match with a valid region and coordinates. Otherwise `position_source` is `observer` and the event keeps the observer position. The thief's own position exists only while that player is inside `get_players()` range; it does not include Z and does not prove the marker remains after the five-minute map TTL. |
 | 3 `EVENT_TRANSPORT_DIED` | Transport ID, including horses | `pet.transport_died` | Bounded `value` string |
 | 4 `EVENT_PLAYER_ATTACKING` | Player name | `character.attacked` | Bounded `value` string |
 | 5 `EVENT_RARE_DROP` | Equippable item model ID | `drop.rare` | Numeric model ID only |
@@ -1679,4 +1679,30 @@ manual/clientless movement, teleport and reconnect. If the target server does no
 provide a sufficiently frequent verified packet trigger, PhMon must keep the safe
 500 ms fallback and report that limitation rather than adding an unverified
 background phBot API polling thread.
+
+## Display-only routes from another plugin (2026-10-06)
+
+Plugin **1.9.24** / agent protocol **17** adds `submit_external_route`. Another
+plugin loaded in the same phBot process calls that function when its own
+navigation starts, changes, or stops. The function only stores the snapshot. It
+does not call `generate_script`, `start_script`, `stop_script`, or `move_to`.
+
+The public Script API still has no getter for a running script. This path works
+only when the other plugin submits the lines it is already following. A bare
+`move_to` still has no path to draw. The map reuses the existing remaining-walk
+overlay and shortens it from live character positions. Observed routes do not
+create a navigation command, tray row, or Stop action. The other plugin's
+contract is [external-route-plugin-prompt.md](../external-route-plugin-prompt.md).
+
+Plugin **1.9.25** accepts the documented ferry/cave walk form
+`walk,region,x,y,z` on that display path, including teleport names that contain
+spaces. The region is kept on the walk and selects its map area. Display routes
+may contain 4096 lines when the frame fits in 512 KiB. Generated
+`character.navigate` scripts use that same 4096-line and 512 KiB budget.
+They still accept only `walk,x,y,z`, not a per-walk region.
+
+Plugin **1.9.26** keeps those walks when the submitted script also contains blank
+lines, comments, shop commands, or a teleport name with punctuation. Those lines
+are omitted. The route is rejected only when no walk remains. `lines` may be a
+list or one script string.
 

@@ -236,7 +236,40 @@ test('unassigned command IDs never suppress a submitted child row', () => {
         'greatest',
         new Set(),
       ).length,
-      2,
+      1,
     )
   }
+})
+
+test('display-only routes stay off the tray and cannot be stopped', () => {
+  const observed = { ...route, commandID: '' }
+  const rows = mapNavigationTrayRows(
+    [observed],
+    [],
+    'greatest',
+    new Set(),
+    [
+      {
+        command_id: '',
+        character_id: 'c',
+        session_id: 's',
+        route_sequence: 4,
+        server: 'Greatest',
+        dataset_id: 'd',
+        dataset_version: 'v',
+        destination: { region: 1, x: 1, y: 1, z: 0 },
+        status: 'moving',
+        updated_at: '2026-01-01T00:00:00Z',
+        blocks: [
+          {
+            area_id: 'world',
+            floor_id: 'world',
+            points: [{ region: 1, x: 1, y: 1, z: 0 }],
+          },
+        ],
+      },
+    ],
+    { c: true },
+  )
+  assert.equal(rows.length, 0)
 })

@@ -51,6 +51,24 @@ func TestValidateAgentEventAcceptsPublishedCallbackCatalog(t *testing.T) {
 	}
 }
 
+func TestValidateAgentEventAcceptsOptionalThiefPosition(t *testing.T) {
+	event := validTestEvent("job.thief_seen", "job", "phbot.callback", "EVENT_THIEF_SPAWN", `{"value":"Bandit","position_source":"thief","plugin_version":"1.9.24","thief":{"name":"Bandit","region":25735,"x":10.5,"y":-4}}`)
+	if err := validateAgentEvent(event); err != nil {
+		t.Fatalf("thief position rejected: %v", err)
+	}
+	for _, payload := range []string{
+		`{"value":"Bandit","position_source":"thief"}`,
+		`{"value":"Bandit","thief":{"name":"Bandit","region":0,"x":1,"y":2}}`,
+		`{"value":"Bandit","extra":true}`,
+		`{"value":"Bandit","thief":{"name":"Bandit","z":1}}`,
+	} {
+		event.Payload = json.RawMessage(payload)
+		if err := validateAgentEvent(event); err == nil {
+			t.Fatalf("invalid thief payload accepted: %s", payload)
+		}
+	}
+}
+
 func TestValidateAgentEventBoundsAndTrimsZoneName(t *testing.T) {
 	event := validTestEvent("character.died", "character", "phbot.callback", "EVENT_DIED", `{"cause":"unknown"}`)
 	event.Zone = "Jangan"

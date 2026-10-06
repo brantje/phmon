@@ -242,6 +242,53 @@ export interface MapOtherPlayersSnapshot {
   players: MapOtherPlayer[]
 }
 
+export interface MapThief {
+  id: string
+  sighting_id: string
+  name: string
+  region: number
+  x: number
+  y: number
+  z?: number
+  position_source: 'thief' | 'observer' | 'unknown'
+  reporter_name?: string
+  reporter_app?: string
+  origin: 'phmon' | 'external'
+  observed_at: string
+}
+
+export interface MapThiefSnapshot {
+  status: 'observed' | 'unavailable' | 'truncated'
+  truncated?: boolean
+  thieves: MapThief[]
+}
+
+export interface ThiefSightingPosition {
+  region: number
+  x: number
+  y: number
+  z?: number
+}
+
+export interface ThiefSighting {
+  sighting_id: string
+  server: string
+  thief_name: string
+  position?: ThiefSightingPosition
+  position_source: 'thief' | 'observer' | 'unknown'
+  reporter: { name: string; app: string; version: string }
+  origin: 'phmon' | 'external'
+  event_id?: string
+  observed_at: string
+  received_at: string
+}
+
+export interface ThiefSightingPage {
+  sightings: ThiefSighting[]
+  next_cursor?: string
+  total: number
+}
+
 export interface MapPartySnapshot {
   status: 'observed' | 'unavailable' | 'truncated'
   truncated?: boolean
@@ -321,6 +368,8 @@ export interface MapSnapshot {
   npcs?: MapNpcSnapshot
   /** Optional for compatibility with backends predating live other players. */
   players?: MapOtherPlayersSnapshot
+  /** Optional for compatibility with backends predating TradeNexus thief sightings. */
+  thieves?: MapThiefSnapshot
   events: ActivityEvent[]
   /** Optional for compatibility with backends predating navigation routes. */
   navigation?: NavigationRoute[]

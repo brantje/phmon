@@ -5778,6 +5778,27 @@ identified that a pre-existing stale marker could satisfy the handshake early;
 validate, commit and push this fix, reply to its PR #74 review with the SHA, and
 wait for CI.
 
+### Resume — 2026-10-06 display-only routes from another plugin
+
+Plugin 1.9.24 / protocol 17 accepts `submit_external_route` from another plugin
+in the same phBot process and publishes `navigation.observed`. The server stores
+that route separately from `character.navigate`, trims it from live positions,
+and the map draws the remaining line without a Stop control. The other plugin's
+contract is `external-route-plugin-prompt.md`. PhMon does not start or stop the
+other plugin's navigation.
+
+Plugin 1.9.25 accepts ferry/cave `walk,region,x,y,z` lines and teleport names
+that contain spaces on that display path only. The walk region selects the map
+area, including a cave floor. Display routes may contain 4096 lines when the
+frame fits in 512 KiB, and the live map keeps up to 384 KiB of route geometry.
+Generated `character.navigate` scripts use the same 4096-line and 512 KiB
+budget. Protocol stays 17.
+
+Plugin 1.9.26 keeps the walks when a trade script also contains blank lines,
+comments, shop commands, or a teleport name with punctuation. Those lines are
+omitted. A route is rejected only when no walk remains. `lines` may be a list
+or one script string. Each character session still has its own display route.
+
 ### Resume — 2026-10-05 realtime controlled-character map positions
 
 Focused user-requested branch: `feat/realtime-map-positions`, based on
@@ -5816,6 +5837,19 @@ tests. Real phBot `0xB021` cadence was not available to verify in this execution
 environment; do not claim the 200 ms runtime source proven until it is measured
 on the target server. The branch must remain unmerged. Run/inspect the full
 `bash scripts/check.sh`/CI validation before declaring the branch ready.
+
+### Resume — 2026-10-06 TradeNexus thief relay
+
+Added an unauthenticated `GET /tradenexus` WebSocket on the existing Go server.
+AdvancedAutoTrade clients subscribe by server and publish `thief.report`
+frames. PhMon relays only newly inserted `job.thief_seen` events into that hub
+after commit. Every accepted sighting is stored in `thief_sightings` (migration
+000024) and shown on the Map **Thieves** layer for five minutes and on the
+Events **Thieves** tab. Plugin 1.9.24 looks up the thief in `get_players()` and
+otherwise keeps the observer position. The contract is `docs/tradenexus.md`.
+`TRADENEXUS_ENABLED` defaults to true. Real phBot thief-callback validation is
+still a separate runtime gate; no character was operated and this was not
+deployed.
 
 ### Resume — 2026-10-06 Map character Follow
 
