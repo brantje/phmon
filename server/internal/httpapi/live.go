@@ -201,9 +201,9 @@ func (h *LiveHub) PublishPositionRemoval(removal positions.Removal) {
 		delete(h.positionPending, removal.CharacterID)
 	}
 	if _, exists := h.positionRemoved[removal.CharacterID]; !exists {
-		// Keep the first session removed in this coalescing window. The browser can
-		// only still be displaying the session that existed before this batch;
-		// intermediate replacement sessions were never flushed to it.
+		// One bounded tombstone marks this character as touched. The exact session
+		// removed from each browser is derived from that client's delivered state,
+		// so an explicit snapshot between rapid replacements is handled safely.
 		h.positionRemoved[removal.CharacterID] = removal
 	}
 	h.schedulePositionFlushLocked()
@@ -249,33 +249,85 @@ func (h *LiveHub) flushPositionDeltas() {
 		}
 		client.mu.RUnlock()
 		for _, subscription := range subscriptions {
-			updates := make([]positions.Position, 0, len(pending))
+			touched := make(map[string]struct{})
 			for _, position := range pending {
 				if strings.EqualFold(position.Server, subscription.Filter.Server) {
-					updates = append(updates, position)
+					touched[position.CharacterID] = struct{}{}
 				}
 			}
-			sort.Slice(updates, func(i, j int) bool { return updates[i].CharacterID < updates[j].CharacterID })
-			removals := make([]positions.Removal, 0, len(removed))
 			for _, removal := range removed {
 				if strings.EqualFold(removal.Server, subscription.Filter.Server) {
+					touched[removal.CharacterID] = struct{}{}
+				}
+			}
+			if len(touched) == 0 {
+				continue
+			}
+
+			// Resolve each touched character against the authoritative in-memory
+			// position store. This closes the A->B snapshot / B->C delta race:
+			// the removal is generated for the session this client actually saw.
+			current := make(map[string]positions.Position, len(touched))
+			if h.positions != nil {
+				for _, position := range h.positions.Snapshot(subscription.Filter.Server) {
+					if _, ok := touched[position.CharacterID]; ok {
+						current[position.CharacterID] = position
+					}
+				}
+			} else {
+				// Unit-level publishers may not install a store; pending remains
+				// authoritative for those isolated batching tests.
+				for characterID := range touched {
+					if position, ok := pending[characterID]; ok &&
+						strings.EqualFold(position.Server, subscription.Filter.Server) {
+						current[characterID] = position
+					}
+				}
+			}
+
+			delivered := client.positionSessionState(subscription.ID)
+			characterIDs := make([]string, 0, len(touched))
+			for characterID := range touched {
+				characterIDs = append(characterIDs, characterID)
+			}
+			sort.Strings(characterIDs)
+
+			updates := make([]positions.Position, 0, len(characterIDs))
+			removals := make([]positions.Removal, 0, len(characterIDs))
+			for _, characterID := range characterIDs {
+				visibleSession := delivered[characterID]
+				position, hasCurrent := current[characterID]
+				if hasCurrent {
+					if visibleSession != "" && visibleSession != position.SessionID {
+						removals = append(removals, positions.Removal{
+							Server: subscription.Filter.Server, CharacterID: characterID, SessionID: visibleSession,
+						})
+					}
+					if _, changed := pending[characterID]; changed || visibleSession != position.SessionID {
+						updates = append(updates, position)
+					}
+					continue
+				}
+				if visibleSession != "" {
+					removals = append(removals, positions.Removal{
+						Server: subscription.Filter.Server, CharacterID: characterID, SessionID: visibleSession,
+					})
+				} else if removal, ok := removed[characterID]; ok {
+					// A delta can precede the first explicit snapshot. Preserve a
+					// session-aware tombstone for that legacy/empty-state case.
 					removals = append(removals, removal)
 				}
 			}
 			if len(updates) == 0 && len(removals) == 0 {
 				continue
 			}
-			sort.Slice(removals, func(i, j int) bool {
-				if removals[i].CharacterID == removals[j].CharacterID {
-					return removals[i].SessionID < removals[j].SessionID
-				}
-				return removals[i].CharacterID < removals[j].CharacterID
-			})
-			client.enqueue(liveServerMessage{
+			if client.enqueue(liveServerMessage{
 				Type: "delta", ProtocolVersion: liveProtocolVersion,
 				SubscriptionID: subscription.ID, Revision: subscription.Revision, Stream: subscription.Stream,
 				Data: map[string]any{"positions": updates, "removed": removals},
-			})
+			}) {
+				client.applyPositionDelivery(subscription.ID, updates, removals)
+			}
 		}
 	}
 }
@@ -355,6 +407,7 @@ func (h *LiveHub) connect(w http.ResponseWriter, r *http.Request) {
 		subscriptions:     make(map[string]liveSubscription),
 		revisions:         make(map[string]uint64),
 		positionSnapshots: make(map[string]uint64),
+		positionSessions:  make(map[string]map[string]string),
 	}
 	h.register(client)
 	defer func() {
@@ -399,6 +452,63 @@ type liveClient struct {
 	subscriptions     map[string]liveSubscription
 	revisions         map[string]uint64
 	positionSnapshots map[string]uint64
+	positionSessions  map[string]map[string]string
+}
+
+func (c *liveClient) positionSessionState(subscriptionID string) map[string]string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	state := make(map[string]string)
+	for characterID, sessionID := range c.positionSessions[subscriptionID] {
+		state[characterID] = sessionID
+	}
+	return state
+}
+
+func (c *liveClient) replacePositionSessionState(subscriptionID string, state map[string]string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.positionSessions == nil {
+		c.positionSessions = make(map[string]map[string]string)
+	}
+	c.positionSessions[subscriptionID] = state
+}
+
+func (c *liveClient) applyPositionDelivery(subscriptionID string, updates []positions.Position, removals []positions.Removal) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.positionSessions == nil {
+		c.positionSessions = make(map[string]map[string]string)
+	}
+	state := c.positionSessions[subscriptionID]
+	if state == nil {
+		state = make(map[string]string)
+		c.positionSessions[subscriptionID] = state
+	}
+	for _, removal := range removals {
+		if state[removal.CharacterID] == removal.SessionID {
+			delete(state, removal.CharacterID)
+		}
+	}
+	for _, position := range updates {
+		state[position.CharacterID] = position.SessionID
+	}
+}
+
+func positionSessionStateFromSnapshot(data any) map[string]string {
+	state := make(map[string]string)
+	payload, ok := data.(map[string]any)
+	if !ok {
+		return state
+	}
+	rows, ok := payload["positions"].([]positions.Position)
+	if !ok {
+		return state
+	}
+	for _, position := range rows {
+		state[position.CharacterID] = position.SessionID
+	}
+	return state
 }
 
 func (c *liveClient) notify() {
@@ -519,7 +629,13 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 		if c.positionSnapshots == nil {
 			c.positionSnapshots = make(map[string]uint64)
 		}
+		if c.positionSessions == nil {
+			c.positionSessions = make(map[string]map[string]string)
+		}
 		c.positionSnapshots[subscription.ID] = subscription.Revision
+		c.positionSessions[subscription.ID] = make(map[string]string)
+	} else if c.positionSessions != nil {
+		delete(c.positionSessions, subscription.ID)
 	}
 	c.mu.Unlock()
 	c.notify()
@@ -536,6 +652,7 @@ func (c *liveClient) unsubscribe(message liveClientMessage) {
 	if exists && message.Revision >= current.Revision {
 		delete(c.subscriptions, message.SubscriptionID)
 		delete(c.positionSnapshots, message.SubscriptionID)
+		delete(c.positionSessions, message.SubscriptionID)
 	}
 	c.mu.Unlock()
 }
@@ -692,7 +809,7 @@ func (c *liveClient) snapshot(subscription liveSubscription) bool {
 	if !c.subscriptionCurrent(subscription) {
 		return true
 	}
-	return c.enqueue(liveServerMessage{
+	enqueued := c.enqueue(liveServerMessage{
 		Type:            "snapshot",
 		ProtocolVersion: liveProtocolVersion,
 		SubscriptionID:  subscription.ID,
@@ -700,6 +817,10 @@ func (c *liveClient) snapshot(subscription liveSubscription) bool {
 		Stream:          subscription.Stream,
 		Data:            data,
 	})
+	if enqueued && subscription.Stream == "positions" {
+		c.replacePositionSessionState(subscription.ID, positionSessionStateFromSnapshot(data))
+	}
+	return enqueued
 }
 
 func (c *liveClient) subscriptionCurrent(subscription liveSubscription) bool {

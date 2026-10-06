@@ -305,29 +305,131 @@ func positionFloat64(value float64) *float64 {
 	return &value
 }
 
-func TestPositionBatchRetainsFirstRemovedSessionAcrossRapidReplacement(t *testing.T) {
-	hub := NewLiveHub(nil, nil, nil)
+func TestPositionBatchUsesClientVisibleSessionAcrossSnapshotBetweenReplacements(t *testing.T) {
+	now := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
 	characterID := testPositionUUID(1)
-	first := positions.Removal{
-		Server: "Greatest", CharacterID: characterID, SessionID: testPositionUUID(101),
+	agentID := testPositionUUID(201)
+	sessionA := testPositionUUID(101)
+	sessionB := testPositionUUID(102)
+	sessionC := testPositionUUID(103)
+
+	store := positions.NewStore()
+	store.Claim("Greatest", agentID, 1, characterID, sessionA)
+	if _, ok := store.Apply(positions.Position{
+		AgentID: agentID, Generation: 1, CharacterID: characterID, SessionID: sessionA,
+		Sequence: 1, Region: 25000, X: 1, Y: 2, ObservedAt: now,
+	}, now); !ok {
+		t.Fatal("failed to prepare session A")
 	}
-	hub.PublishPositionRemoval(first)
-	hub.PublishPositionRemoval(positions.Removal{
-		Server: "Greatest", CharacterID: characterID, SessionID: testPositionUUID(102),
-	})
-	hub.PublishPositionRemoval(positions.Removal{
-		Server: "Greatest", CharacterID: characterID, SessionID: testPositionUUID(103),
-	})
+
+	hub := NewLiveHub(nil, nil, nil)
+	hub.SetPositions(store)
+	subscription := liveSubscription{
+		ID: "map-positions", Revision: 1, Stream: "positions",
+		Filter: liveFilter{Server: "Greatest"},
+	}
+	client := &liveClient{
+		hub: hub, ctx: context.Background(),
+		outgoing: make(chan []byte, liveOutgoingQueueSize),
+		subscriptions: map[string]liveSubscription{subscription.ID: subscription},
+		revisions: map[string]uint64{subscription.ID: subscription.Revision},
+		positionSessions: make(map[string]map[string]string),
+	}
+	hub.register(client)
+	defer hub.unregister(client)
+
+	// Establish browser-visible A through the real snapshot delivery path.
+	if !client.snapshot(subscription) {
+		t.Fatal("session A snapshot was not delivered")
+	}
+	<-client.outgoing
+	if got := client.positionSessionState(subscription.ID)[characterID]; got != sessionA {
+		t.Fatalf("server did not remember browser-visible A: %q", got)
+	}
+
+	// A -> B queues A's tombstone and B's latest position.
+	for _, removal := range store.Claim("Greatest", agentID, 2, characterID, sessionB) {
+		hub.PublishPositionRemoval(removal)
+	}
+	positionB, ok := store.Apply(positions.Position{
+		AgentID: agentID, Generation: 2, CharacterID: characterID, SessionID: sessionB,
+		Sequence: 1, Region: 25000, X: 10, Y: 20, ObservedAt: now.Add(time.Second),
+	}, now.Add(time.Second))
+	if !ok {
+		t.Fatal("failed to prepare session B")
+	}
+	hub.PublishPosition(positionB)
+
+	// Explicit refresh lands before the pending 100 ms delta and exposes B.
+	if !client.snapshot(subscription) {
+		t.Fatal("session B snapshot was not delivered")
+	}
+	<-client.outgoing
+	if got := client.positionSessionState(subscription.ID)[characterID]; got != sessionB {
+		t.Fatalf("snapshot did not expose B: %q", got)
+	}
+
+	// B -> C occurs in the same coalescing window. The bounded tombstone map
+	// still contains A, but delivery must remove the actually visible B.
+	for _, removal := range store.Claim("Greatest", agentID, 3, characterID, sessionC) {
+		hub.PublishPositionRemoval(removal)
+	}
+	positionC, ok := store.Apply(positions.Position{
+		AgentID: agentID, Generation: 3, CharacterID: characterID, SessionID: sessionC,
+		Sequence: 1, Region: 25000, X: 100, Y: 200, ObservedAt: now.Add(2 * time.Second),
+	}, now.Add(2*time.Second))
+	if !ok {
+		t.Fatal("failed to prepare session C")
+	}
+	hub.PublishPosition(positionC)
 
 	hub.positionMu.Lock()
-	defer hub.positionMu.Unlock()
-	removal, ok := hub.positionRemoved[characterID]
-	if !ok || removal.SessionID != first.SessionID {
-		t.Fatalf("batch lost the browser-visible session tombstone: %#v", removal)
-	}
 	if hub.positionFlush != nil {
 		hub.positionFlush.Stop()
 		hub.positionFlush = nil
+	}
+	if len(hub.positionPending) > 1 || len(hub.positionRemoved) > 1 {
+		hub.positionMu.Unlock()
+		t.Fatal("rapid replacement state grew beyond one entry per character")
+	}
+	hub.positionMu.Unlock()
+	hub.flushPositionDeltas()
+
+	var delta struct {
+		Data struct {
+			Positions []positions.Position `json:"positions"`
+			Removed   []positions.Removal  `json:"removed"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(<-client.outgoing, &delta); err != nil {
+		t.Fatal(err)
+	}
+	if len(delta.Data.Removed) != 1 || delta.Data.Removed[0].SessionID != sessionB {
+		t.Fatalf("delta did not remove browser-visible B: %#v", delta.Data.Removed)
+	}
+	if len(delta.Data.Positions) != 1 || delta.Data.Positions[0].SessionID != sessionC {
+		t.Fatalf("delta did not advance browser to C: %#v", delta.Data.Positions)
+	}
+	if got := client.positionSessionState(subscription.ID)[characterID]; got != sessionC {
+		t.Fatalf("delivered state did not advance to C: %q", got)
+	}
+
+	// A's delayed tombstone must never delete the newer C browser state.
+	hub.PublishPositionRemoval(positions.Removal{
+		Server: "Greatest", CharacterID: characterID, SessionID: sessionA,
+	})
+	hub.positionMu.Lock()
+	if hub.positionFlush != nil {
+		hub.positionFlush.Stop()
+		hub.positionFlush = nil
+	}
+	hub.positionMu.Unlock()
+	hub.flushPositionDeltas()
+	if got := len(client.outgoing); got != 0 {
+		t.Fatalf("stale A removal produced a browser delta after C: %d", got)
+	}
+	if got := client.positionSessionState(subscription.ID)[characterID]; got != sessionC {
+		t.Fatalf("stale A removal changed delivered C state: %q", got)
 	}
 }
 
