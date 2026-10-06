@@ -433,7 +433,6 @@ func TestPositionBatchUsesClientVisibleSessionAcrossSnapshotBetweenReplacements(
 	}
 }
 
-
 type fakePositionTimer struct {
 	due      time.Duration
 	function func()
