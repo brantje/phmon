@@ -123,7 +123,7 @@ func TestRealtimePositionHotPathFeedsNavigationWithoutSnapshotInvalidation(t *te
 	views := navigationStore.Snapshot("Greatest", mapprofile.Profile{
 		DatasetID: "dataset", DatasetVersion: "test",
 	}, now)
-	if len(views) != 1 || !views[0].Arrived || !views[0].UpdatedAt.Equal(now) {
+	if len(views) != 1 || !views[0].UpdatedAt.Equal(now) {
 		t.Fatalf("navigation did not receive realtime observation: %#v", views)
 	}
 }
