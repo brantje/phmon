@@ -1127,9 +1127,10 @@ creates position-history rows.
 
 Generated walks have no region field. The server scopes outdoor points through the
 active dataset's documented tile grid and applies existing cave region/floor rules.
-Waits and teleports break geometry. Geometry beyond a barrier is withheld until a
-fresh accepted position observation demonstrates movement into the next scoped walk
-block. Unknown transforms and ambiguous floors stay status-only or split geometry;
+Waits and teleports split the drawn line into separate blocks, including the
+walks that follow a ferry teleport. The cursor still stays on that barrier until
+a fresh accepted position observation demonstrates movement into the next scoped
+walk block. Unknown transforms and ambiguous floors stay status-only or split geometry;
 X/Y alone never establishes a Tomb or manually selected Job Temple floor. Arrival is
 a separate position-observation status within the documented 12-game-unit presentation
 tolerance and compatible region/floor. Neither `start_script` acceptance nor durable

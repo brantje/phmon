@@ -654,10 +654,10 @@ func snapshotRoutes(routes map[string]route, server string, profile mapprofile.P
 						blocks = append(blocks, active)
 						active = Block{}
 					}
-					// A barrier remains active until Observe advances the cursor
-					// past it. Position coincidence alone cannot reveal future
-					// geometry (for example, a route that loops over itself).
-					break
+					// A barrier splits the drawn line. Later walk blocks stay
+					// visible; Observe still will not move the cursor across
+					// the barrier without a fresh position in the next block.
+					continue
 				}
 				point, area, floor, ok := scopeStep(route, step)
 				if !ok {

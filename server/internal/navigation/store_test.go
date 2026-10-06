@@ -154,11 +154,13 @@ func TestWaitAndTeleportRemainSeparateDrawableBlocks(t *testing.T) {
 		t.Fatal("route not stored")
 	}
 	views := store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))
-	if len(views) != 1 || len(views[0].Blocks) != 1 || len(views[0].Blocks[0].Points) != 1 {
-		t.Fatalf("barriers were joined or future geometry leaked: %#v", views)
+	if len(views) != 1 || len(views[0].Blocks) != 3 {
+		t.Fatalf("walks after a barrier were dropped or joined: %#v", views)
 	}
-	if views[0].Blocks[0].Points[0].X != 6420 {
-		t.Fatalf("wrong active block: %#v", views)
+	for index, x := range []float64{6420, 6430, 6440} {
+		if len(views[0].Blocks[index].Points) != 1 || views[0].Blocks[index].Points[0].X != x {
+			t.Fatalf("block %d = %#v", index, views[0].Blocks[index])
+		}
 	}
 }
 
@@ -184,8 +186,9 @@ func TestBarrierDoesNotRevealOverlappingFutureGeometryBeforeMovementEvidence(t *
 		t.Fatal("first walk observation was ignored")
 	}
 	views := store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))
-	if len(views) != 1 || views[0].Status != "transition_awaiting_evidence" || len(views[0].Blocks) != 0 {
-		t.Fatalf("future geometry leaked across a wait without movement evidence: %#v", views)
+	if len(views) != 1 || views[0].Status != "transition_awaiting_evidence" || views[0].CompletedInstructions != 1 ||
+		len(views[0].Blocks) != 1 || len(views[0].Blocks[0].Points) != 2 || views[0].Blocks[0].Points[0].X != 6420 {
+		t.Fatalf("cursor crossed the wait or hid the following walks: %#v", views)
 	}
 	if !store.Observe(input.CharacterID, input.SessionID, Position{
 		Region: 25000, X: 6440, Y: 1080, At: input.InvokedAt.Add(2 * time.Second),
@@ -419,8 +422,8 @@ func TestOutdoorSeamRejectsInconsistentObservedRegionAndPreservesWait(t *testing
 		Instruction{Index: 1, Kind: "wait", DurationMS: 500}, Instruction{Index: 2, Kind: "walk", X: 6580, Y: 1080})
 	store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID, Point{Region: 25001, X: 6700, Y: 1080}, input.InvokedAt)
 	view := store.Snapshot("Greatest", profile, input.InvokedAt)[0]
-	if len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 1 {
-		t.Fatal("geometry crossed the wait")
+	if len(view.Blocks) != 2 || view.Blocks[0].Points[0].X != 6500 || view.Blocks[1].Points[0].X != 6580 {
+		t.Fatal("walk after the wait was joined or dropped")
 	}
 	store.Observe(input.CharacterID, input.SessionID, Position{Region: 25000, X: 6540, Y: 1080, At: input.InvokedAt.Add(time.Second)})
 	view = store.Snapshot("Greatest", profile, input.InvokedAt.Add(time.Second))[0]
@@ -583,6 +586,36 @@ func TestObservedRouteTrimsIndependentlyOfTheCommandRoute(t *testing.T) {
 	store.RemoveSession(command.SessionID)
 	if remaining := store.Snapshot("Greatest", profile, invoked); len(remaining) != 0 {
 		t.Fatalf("session cleanup left %#v", remaining)
+	}
+}
+
+func TestTeleportKeepsTheFollowingFerryWalksVisible(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	north := 25000
+	south := 25001
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-ferry", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: north, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: []Instruction{
+			{Index: 0, Kind: "walk", Region: &north, X: 6420, Y: 1080, Z: 0},
+			{Index: 1, Kind: "teleport"},
+			{Index: 2, Kind: "walk", Region: &south, X: 6700, Y: 900, Z: 0},
+			{Index: 3, Kind: "walk", Region: &south, X: 6800, Y: 880, Z: 0},
+		},
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("ferry route not stored")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if len(view.Blocks) != 2 || len(view.Blocks[0].Points) != 1 || view.Blocks[0].Points[0].X != 6420 ||
+		len(view.Blocks[1].Points) != 2 || view.Blocks[1].Points[0].X != 6700 || view.Blocks[1].AreaID != "world" {
+		t.Fatalf("route stopped at the teleport: %#v", view.Blocks)
 	}
 }
 
