@@ -89,8 +89,11 @@ test('delayed old-session removal cannot remove newer overlay', () => {
 test('malformed coordinates are ignored', () => {
   const malformed = { ...position(), x: Number.NaN }
   assert.equal(validRealtimePosition(malformed), false)
-  const next = applyRealtimePositionDeltaState({}, {
-    positions: [malformed],
-  })
+  const next = applyRealtimePositionDeltaState(
+    {},
+    {
+      positions: [malformed],
+    },
+  )
   assert.deepEqual(next, {})
 })
