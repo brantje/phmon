@@ -286,8 +286,9 @@ func (s *Store) ReplaceIf(input Input, agentID string, generation uint64, server
 	return true
 }
 
-// ObservedDestination is the last walk point. Its region comes from the source
-// cave context, or from the outdoor grid when the source is not inside a cave.
+// ObservedDestination is the last walk point. Its region is the walk's explicit
+// region when present; otherwise it comes from the source cave context, or from
+// the outdoor grid when the source is not inside a cave.
 func ObservedDestination(server, dataset string, input ObservedInput) (Point, bool) {
 	if input.Source == nil {
 		return Point{}, false

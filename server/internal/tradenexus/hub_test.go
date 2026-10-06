@@ -287,6 +287,24 @@ func dialTradeNexus(t *testing.T, httpURL string) *websocket.Conn {
 	return conn
 }
 
+func TestTradeNexusInvalidateCoalescesBursts(t *testing.T) {
+	var invalidated atomic.Int32
+	hub := NewHub(Options{Invalidate: func() { invalidated.Add(1) }})
+	for range 40 {
+		hub.scheduleInvalidate()
+	}
+	if invalidated.Load() != 1 {
+		t.Fatalf("immediate invalidations = %d", invalidated.Load())
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && invalidated.Load() < 2 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if invalidated.Load() != 2 {
+		t.Fatalf("coalesced invalidations = %d", invalidated.Load())
+	}
+}
+
 func writeFrame(t *testing.T, conn *websocket.Conn, frame map[string]any) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

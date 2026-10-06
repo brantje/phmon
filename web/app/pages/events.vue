@@ -107,6 +107,7 @@ const sightingStatus = ref<'loading' | 'current' | 'error'>('loading')
 const sightingCursor = ref('')
 const sightingPrevious = ref<string[]>([])
 let sightingTimer: ReturnType<typeof setInterval> | undefined
+let sightingRequest = 0
 const eventMapProfiles = ref<Record<string, MapProfile>>({})
 const mapProfileRequests = new Map<string, Promise<MapProfile>>()
 const invalidDateRange = computed(
@@ -304,29 +305,28 @@ onBeforeUnmount(() => {
 })
 
 async function loadSightings() {
+  const request = ++sightingRequest
   if (!thievesView.value || invalidDateRange.value) {
     sightingPage.value = null
     return
   }
   if (!sightingPage.value) sightingStatus.value = 'loading'
   try {
-    sightingPage.value = await $fetch<ThiefSightingPage>(
-      '/api/thief-sightings',
-      {
-        query: {
-          server: serverScope.value === 'all' ? undefined : serverScope.value,
-          q: characterQuery.value || undefined,
-          from: fromDate.value
-            ? localDateBoundary(fromDate.value, 0)
-            : undefined,
-          to: toDate.value ? localDateBoundary(toDate.value, 1) : undefined,
-          cursor: sightingCursor.value || undefined,
-          limit: pageSize.value,
-        },
+    const next = await $fetch<ThiefSightingPage>('/api/thief-sightings', {
+      query: {
+        server: serverScope.value === 'all' ? undefined : serverScope.value,
+        q: characterQuery.value || undefined,
+        from: fromDate.value ? localDateBoundary(fromDate.value, 0) : undefined,
+        to: toDate.value ? localDateBoundary(toDate.value, 1) : undefined,
+        cursor: sightingCursor.value || undefined,
+        limit: pageSize.value,
       },
-    )
+    })
+    if (request !== sightingRequest) return
+    sightingPage.value = next
     sightingStatus.value = 'current'
   } catch {
+    if (request !== sightingRequest) return
     sightingStatus.value = 'error'
   }
 }

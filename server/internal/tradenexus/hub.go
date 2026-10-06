@@ -50,6 +50,10 @@ type Hub struct {
 	clients  map[*client]struct{}
 	perIP    map[string]int
 	admitted int
+
+	invalidateMu    sync.Mutex
+	lastInvalidate  time.Time
+	invalidateTimer *time.Timer
 }
 
 type client struct {
@@ -174,9 +178,40 @@ func (h *Hub) Broadcast(sighting Sighting) {
 	for _, subscriber := range h.subscribers(sighting.Server) {
 		h.enqueue(subscriber, outbound{payload: payload})
 	}
-	if h.invalidate != nil {
-		h.invalidate()
+	h.scheduleInvalidate()
+}
+
+// scheduleInvalidate rebuilds operator snapshots at most once per second.
+// A burst keeps one trailing refresh so the latest sighting still appears.
+func (h *Hub) scheduleInvalidate() {
+	if h == nil || h.invalidate == nil {
+		return
 	}
+	h.invalidateMu.Lock()
+	now := time.Now()
+	if h.invalidateTimer != nil {
+		h.invalidateMu.Unlock()
+		return
+	}
+	if h.lastInvalidate.IsZero() || now.Sub(h.lastInvalidate) >= time.Second {
+		h.lastInvalidate = now
+		refresh := h.invalidate
+		h.invalidateMu.Unlock()
+		refresh()
+		return
+	}
+	delay := time.Second - now.Sub(h.lastInvalidate)
+	h.invalidateTimer = time.AfterFunc(delay, func() {
+		h.invalidateMu.Lock()
+		h.lastInvalidate = time.Now()
+		h.invalidateTimer = nil
+		refresh := h.invalidate
+		h.invalidateMu.Unlock()
+		if refresh != nil {
+			refresh()
+		}
+	})
+	h.invalidateMu.Unlock()
 }
 
 func (h *Hub) subscribers(server string) []*client {
