@@ -76,7 +76,7 @@ export function applyRealtimePositionDeltaState(
     )
       continue
     if (next[removal.character_id]?.session_id === removal.session_id)
-      delete next[removal.character_id]
+      Reflect.deleteProperty(next, removal.character_id)
   }
 
   for (const position of delta.positions || []) {
