@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,10 +39,16 @@ func (m *memorySightings) Insert(_ context.Context, sighting Sighting) error {
 	return nil
 }
 
+func (m *memorySightings) callCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls
+}
+
 func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	store := &memorySightings{}
-	invalidated := 0
-	hub := NewHub(Options{Store: store, Invalidate: func() { invalidated++ }})
+	var invalidated atomic.Int32
+	hub := NewHub(Options{Store: store, Invalidate: func() { invalidated.Add(1) }})
 	server := httptest.NewServer(hub)
 	defer server.Close()
 
@@ -76,8 +83,8 @@ func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	if echo["type"] != "thief.sighting" || echo["sighting_id"] != ack["sighting_id"] || echo["origin"] != "external" {
 		t.Fatalf("broadcast: %#v", echo)
 	}
-	if echo["server"] != "GREATEST" || invalidated != 1 || store.calls != 1 {
-		t.Fatalf("stored=%d invalidated=%d broadcast=%#v", store.calls, invalidated, echo)
+	if echo["server"] != "GREATEST" || invalidated.Load() != 1 || store.callCount() != 1 {
+		t.Fatalf("stored=%d invalidated=%d broadcast=%#v", store.callCount(), invalidated.Load(), echo)
 	}
 	thief, _ := echo["thief"].(map[string]any)
 	if thief["name"] != "Bandit" {
@@ -192,8 +199,8 @@ func TestTradeNexusReplacesStaleObservedTimeAndBroadcastsStoreFailure(t *testing
 		t.Fatal("store failure suppressed the acknowledgement")
 	}
 	broadcast := readFrame(t, conn)
-	if broadcast["observed_at"] != now.Format(time.RFC3339Nano) || store.calls != 1 {
-		t.Fatalf("stale time or store call: %#v calls=%d", broadcast["observed_at"], store.calls)
+	if broadcast["observed_at"] != now.Format(time.RFC3339Nano) || store.callCount() != 1 {
+		t.Fatalf("stale time or store call: %#v calls=%d", broadcast["observed_at"], store.callCount())
 	}
 }
 
