@@ -98,6 +98,7 @@ const props = defineProps<{
   compact?: boolean
   externalControls?: boolean
   focusedCharacterID?: string
+  followedCharacterID?: string
   initialPosition?: RasterPosition | null
   focusRequest?: number
   initialTile?: { x: number; y: number }
@@ -317,6 +318,7 @@ function moveMarker(
   if (distance < 0.01) {
     markerAnimationFrames.delete(markerKey)
     marker.setLatLng(target)
+    panFollowedCharacter(markerKey, target, false)
     return
   }
 
@@ -338,6 +340,39 @@ function moveMarker(
     markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
   }
   markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
+  panFollowedCharacter(markerKey, target, durationMs > 0)
+}
+
+function followedCharacterMarkerKey() {
+  return props.followedCharacterID
+    ? `character:${props.followedCharacterID}`
+    : ''
+}
+
+function panFollowedCharacter(
+  markerKey: string,
+  point: LatLng,
+  animate: boolean,
+) {
+  if (
+    !map ||
+    props.compact ||
+    !props.followedCharacterID ||
+    markerKey !== followedCharacterMarkerKey()
+  )
+    return
+  map.panTo(point, {
+    animate,
+    duration: animate ? CHARACTER_MARKER_ANIMATION_DURATION_MS / 1000 : 0,
+    easeLinearity: 0.25,
+    noMoveStart: true,
+  })
+}
+
+function panToFollowedCharacter(animate = false) {
+  const key = followedCharacterMarkerKey()
+  const marker = key ? renderedMarkers.get(key) : undefined
+  if (marker) panFollowedCharacter(key, marker.getLatLng(), animate)
 }
 
 function syncMarkers() {
@@ -1823,6 +1858,7 @@ onMounted(async () => {
       })
     rendered.addTo(markerLayer!)
     popupMarker = rendered
+    panFollowedCharacter(`${marker.kind}:${marker.id}`, point, false)
     return rendered
   }
 
@@ -1981,6 +2017,10 @@ function focusAt(point: RasterPosition) {
     )
 }
 watch(() => props.focusedCharacterID, layoutCharacterLabels)
+watch(
+  () => props.followedCharacterID,
+  () => panToFollowedCharacter(),
+)
 defineExpose({
   focus: focusCanvas,
   zoomIn: () => zoomBy(1),
