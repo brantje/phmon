@@ -1,10 +1,16 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.24**, using agent protocol **16**. It
-looks up a thief's own position in `get_players()` when `EVENT_THIEF_SPAWN` fires,
-and otherwise keeps the observer position. It also adds the session-fenced,
-latest-value `character.position` transport used by the live Map for controlled
-characters, while retaining navigation transport fixes, script
+The current local plugin release is **1.9.26**, using agent protocol **17**. It
+accepts a display-only route from another plugin in the same phBot process through
+`submit_external_route` and publishes `navigation.observed`. PhMon does not start
+or stop that route. Walks stay visible when a trade script also contains blank
+lines, comments, shop commands, or a teleport name with punctuation; those lines
+are omitted, and a route is kept when at least one walk remains. `lines` may be a
+list or one script string. `character.navigate` accepts the same 4096-line and
+512 KiB route budget. It looks up a thief's own position in `get_players()` when
+`EVENT_THIEF_SPAWN` fires, and otherwise keeps the observer position. It also
+adds the session-fenced, latest-value `character.position` transport used by the
+live Map for controlled characters, while retaining navigation transport fixes, script
 diagnostics, direct `move_to` support and scoped recall-point packet submission for
 phBot 20.1.3 on Greatest. Position observations are memory-only: packet callbacks
 never write WebSockets, the network worker keeps only the newest unsent coordinate,

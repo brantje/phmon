@@ -389,6 +389,44 @@ def frame_fixtures(plugin, resources, monsters):
             raise AssertionError("protocol 16 position fixture produced no character.position frame")
         frames["positions"] = position_client.sent
 
+    if plugin.PROTOCOL_VERSION >= 17:
+        observed_worker = worker_fixture(plugin)
+        observed_methods = ("submit_external_route", "_flush_external_route")
+        if not callable(getattr(plugin, "submit_external_route", None)) or not callable(
+            getattr(observed_worker, "_flush_external_route", None)
+        ):
+            raise AssertionError(
+                "protocol 17 external route contract missing callable methods: "
+                + ", ".join(observed_methods)
+            )
+        observed_client = CaptureClient(plugin.PROTOCOL_VERSION)
+        observed_worker.character_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        observed_worker.session_id = "ffffffff-1111-4222-8333-444444444444"
+        previous_worker = getattr(plugin, "_worker", None)
+        plugin._worker = observed_worker
+        try:
+            if not plugin.submit_external_route(
+                {
+                    "sequence": 1,
+                    "active": True,
+                    "source": {"region": 25000, "x": 6410.0, "y": 1080.0, "z": 0.0},
+                    "lines": ["walk,6420,1080,0", "walk,6430,1090,0"],
+                }
+            ):
+                raise AssertionError("protocol 17 external route fixture was not accepted")
+            with observed_worker._external_lock:
+                observed_worker._external_route["submitted_at"] = "2026-01-01T00:00:00Z"
+            if not observed_worker._flush_external_route(observed_client):
+                raise AssertionError("protocol 17 external route fixture was not flushed")
+        finally:
+            plugin._worker = previous_worker
+        if not any(
+            isinstance(frame, dict) and frame.get("type") == "navigation.observed"
+            for frame in observed_client.sent
+        ):
+            raise AssertionError("protocol 17 external route fixture produced no navigation.observed frame")
+        frames["observed_routes"] = observed_client.sent
+
     resource_client = CaptureClient(plugin.PROTOCOL_VERSION)
     resource_worker = worker_fixture(plugin)
     resource_worker.character_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"

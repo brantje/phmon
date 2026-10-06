@@ -338,3 +338,23 @@ test('a filtered prefix cannot attach the character to a later visible section',
   assert.equal(overlay.blocks[0]?.length, 1)
   assert.equal(overlay.currentAnchor, undefined)
 })
+
+test('a display-only route with no command still draws its remaining path', () => {
+  const overlays = mapNavigationRouteOverlays({
+    routes: [route({ command_id: '' })],
+    characters: [character],
+    profile,
+    server: 'Greatest',
+    areaID: 'world',
+    floorID: 'world',
+    region: 0,
+    streamCurrent: true,
+    liveStale: false,
+    freshnessNow: Date.parse('2026-09-30T12:00:02.000Z'),
+    selectedRouteID: '',
+  })
+  assert.equal(overlays.length, 1)
+  assert.equal(overlays[0]?.commandID, '')
+  assert.equal(overlays[0]?.status, 'moving')
+  assert.ok((overlays[0]?.blocks.length ?? 0) > 0)
+})

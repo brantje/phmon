@@ -3483,12 +3483,132 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(len(oversized_frame), 250)
         for invalid in (
             ['walk,nan,1,2'], ['walk,10000001,1,2'], ['walk,1,2,3', 'exec,unsafe'],
-            ['wait,1000000'], ['teleport,PRIVATE-NAME,TARGET'], [], ['walk,1,2,3'] * 257,
-            ['walk,' + ('1' * 257) + ',1,1'], [oversized_frame] * 256,
+            ['wait,1000000'], ['teleport,PRIVATE-NAME,TARGET'], [],
+            ['walk,1,2,3'] * (plugin.MAX_EXTERNAL_ROUTE_LINES + 1),
+            ['walk,' + ('1' * 257) + ',1,1'],
+            [oversized_frame] * ((plugin.MAX_EXTERNAL_ROUTE_BYTES // len(oversized_frame)) + 2),
         ):
             with self.subTest(invalid=invalid[:1]):
                 with self.assertRaises(ValueError):
                     plugin._parse_generated_navigation_script(invalid)
+
+    def test_external_route_submission_is_display_only(self):
+        calls = []
+        adapter = plugin.PhBotAdapter({
+            'generate_script': lambda *args: calls.append(('generate', args)) or ['walk,1,2,0'],
+            'start_script': lambda script: calls.append(('start', script)) or True,
+            'stop_script': lambda: calls.append('stop') or True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {
+            'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileOne',
+        }
+        route = {
+            'sequence': 1, 'active': True,
+            'source': {'region': 25000, 'x': 6410.0, 'y': 1080.0, 'z': 0.0},
+            'lines': ['walk,6420,1080,0', 'wait,500', 'walk,6430,1090,0'],
+        }
+        previous = plugin._worker
+        plugin._worker = worker
+        try:
+            self.assertFalse(plugin.submit_external_route(None))
+            self.assertFalse(plugin.submit_external_route({
+                'sequence': 1, 'active': True,
+                'source': {'region': 25000, 'x': 1, 'y': 2, 'z': 0},
+                'lines': ['exec,unsafe'],
+            }))
+            self.assertTrue(plugin.submit_external_route(route))
+            self.assertTrue(plugin.submit_external_route(dict(route, lines=['walk,1,1,0'])))
+            self.assertEqual(worker._external_route['instructions'][0]['x'], 6420.0)
+            sent = []
+
+            class CaptureClient:
+                def send_json(self, value):
+                    sent.append(value)
+
+            self.assertTrue(worker._flush_external_route(CaptureClient()))
+            self.assertEqual(calls, [])
+            self.assertEqual(sent[0]['type'], 'navigation.observed')
+            self.assertEqual(sent[0]['protocol_version'], plugin.PROTOCOL_VERSION)
+            observed = sent[0]['observed']
+            self.assertNotIn('command_id', observed)
+            self.assertTrue(observed['active'])
+            self.assertEqual([item['kind'] for item in observed['instructions']], ['walk', 'wait', 'walk'])
+            self.assertFalse(worker._flush_external_route(CaptureClient()))
+            self.assertTrue(plugin.submit_external_route({'sequence': 1, 'active': False}))
+            sent[:] = []
+            self.assertTrue(worker._flush_external_route(CaptureClient()))
+            self.assertFalse(sent[0]['observed']['active'])
+            self.assertNotIn('instructions', sent[0]['observed'])
+            self.assertIsNone(worker._external_route)
+
+            self.assertTrue(plugin.submit_external_route(route))
+            registered = {
+                'type': 'character.registered', 'protocol_version': plugin.PROTOCOL_VERSION,
+                'character_id': '33333333-4444-4555-8666-777777777777',
+                'session_id': '44444444-5555-4666-8777-888888888888',
+            }
+            with patch.object(worker, '_wait_for_registration', return_value=registered):
+                worker._publish_sample(CaptureClient(), {
+                    'identity': {'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileTwo'},
+                    'state': {'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 0.0},
+                }, False)
+            self.assertIsNone(worker._external_route)
+            self.assertEqual(calls, [])
+        finally:
+            plugin._worker = previous
+
+    def test_external_route_accepts_region_walks_and_long_ferry_scripts(self):
+        lines = [
+            'walk,-32767,-24200,10,0',
+            'wait,500',
+            'teleport,Ferry Ticket Seller Doji,Ferry Ticket Seller Tayun',
+        ]
+        lines.extend(['walk,25000,6420.%d,1080,0' % (index % 10) for index in range(300)])
+        parsed = plugin._parse_external_route_lines(lines)
+        self.assertEqual(parsed[0], {
+            'index': 0, 'kind': 'walk', 'region': -32767, 'x': -24200.0, 'y': 10.0, 'z': 0.0,
+        })
+        self.assertEqual(parsed[2], {'index': 2, 'kind': 'teleport'})
+        self.assertEqual(parsed[-1]['region'], 25000)
+        self.assertEqual(len(parsed), 303)
+        trade_script = '\n'.join([
+            'walk,25000,10,20,0',
+            '',
+            '# town stop',
+            'buy,1,HP Recovery',
+            'teleport,Ferry (Doji),Ferry (Tayun)',
+            'walk,25001,30,40,0',
+        ])
+        trade_route = plugin._parse_external_route_lines(trade_script)
+        self.assertEqual([item['kind'] for item in trade_route], ['walk', 'teleport', 'walk'])
+        self.assertEqual([item['index'] for item in trade_route], [0, 1, 2])
+        self.assertEqual(trade_route[0]['region'], 25000)
+        self.assertEqual(trade_route[2]['region'], 25001)
+        route = {
+            'sequence': 4, 'active': True,
+            'source': {'region': 25000, 'x': 6410.0, 'y': 1080.0, 'z': 0.0},
+            'lines': lines,
+        }
+        accepted = plugin._validate_external_route(route)
+        self.assertIsNotNone(accepted)
+        self.assertEqual(accepted['instructions'][0]['region'], -32767)
+        self.assertIsNone(plugin._validate_external_route(dict(route, lines=['walk,0,1,2,3'])))
+        self.assertIsNone(plugin._validate_external_route(dict(
+            route, lines=['walk,1,2,0'] * (plugin.MAX_EXTERNAL_ROUTE_LINES + 1),
+        )))
+        long_script, long_route = plugin._parse_generated_navigation_script(['walk,1,2,0'] * 300)
+        self.assertEqual(len(long_route), 300)
+        self.assertIn('walk,1,2,0', long_script)
+        with self.assertRaises(ValueError):
+            plugin._parse_generated_navigation_script(['walk,25000,1,2,0'])
+        with self.assertRaises(ValueError):
+            plugin._parse_generated_navigation_script(['walk,1,2,0'] * (plugin.MAX_EXTERNAL_ROUTE_LINES + 1))
 
     def test_navigation_route_is_cleared_on_profile_replacement_and_revocation(self):
         worker = plugin.AgentWorker({
