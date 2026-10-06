@@ -2361,3 +2361,14 @@ checks passed at 1440×1000, 1280×800 and 390×844 with no horizontal overflow 
 errors. Live screenshots stay under `/tmp/phmon-nav-final-{desktop,1280,mobile}.png`.
 The public demo again stayed on Dashboard when Map was selected, so no newly
 verified demo Map parity is claimed.
+
+### Map character Follow — 2026-10-06
+
+Each Map character row has a Follow toggle beside Focus. Follow is opt-in and
+independent of action-target checkboxes: it jumps once like Focus, then keeps the
+map centered on that character as live/realtime positions update, including
+detected cave/world floor changes, without changing zoom. Dragging the map,
+choosing another destination/floor/area, focusing a different character, or
+changing server turns Follow off. Manual pan/zoom stays preserved when Follow is
+off. Follow floor/world remounts pass the last stored zoom into the replacement
+MapCanvas so `setInitialView()` does not reset to 125%.

@@ -1058,14 +1058,16 @@ func (h *agentHandler) applyRealtimePosition(input positions.Position, now time.
 	if h.live != nil {
 		h.live.PublishPosition(accepted)
 	}
-	if h.navigation != nil {
-		h.navigation.Observe(accepted.CharacterID, accepted.SessionID, navigation.Position{
-			Region: accepted.Region,
-			X:      accepted.X,
-			Y:      accepted.Y,
-			Z:      accepted.Z,
-			At:     accepted.ObservedAt,
-		})
+	if h.navigation != nil && h.navigation.Observe(accepted.CharacterID, accepted.SessionID, navigation.Position{
+		Region: accepted.Region,
+		X:      accepted.X,
+		Y:      accepted.Y,
+		Z:      accepted.Z,
+		At:     accepted.ObservedAt,
+	}) && h.live != nil {
+		// Position deltas skip MapSnapshot rebuilds. A changed remaining-route
+		// overlay still has to reach the existing map subscription.
+		h.live.Invalidate()
 	}
 	return accepted, true
 }

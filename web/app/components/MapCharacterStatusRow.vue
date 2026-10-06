@@ -10,11 +10,14 @@ const props = defineProps<{
   activity?: string
   traceLines?: string[]
   focusDisabled?: boolean
+  followActive?: boolean
+  followDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
   select: []
   focus: []
+  follow: []
   toggleTarget: []
 }>()
 
@@ -87,20 +90,45 @@ const staleLabel = computed(() => {
         {{ line }}
       </small>
     </button>
-    <button
-      class="compact-button map-character-jump"
-      type="button"
-      :disabled="focusDisabled"
-      :aria-label="`Focus ${character.name} on the map`"
-      :title="
-        focusDisabled
-          ? 'Map position unavailable.'
-          : `Jump to ${character.name}.`
-      "
-      @click="emit('focus')"
-    >
-      <UIcon name="i-lucide-crosshair" />
-    </button>
+    <div class="map-character-actions">
+      <button
+        class="compact-button map-character-jump"
+        type="button"
+        :disabled="focusDisabled"
+        :aria-label="`Focus ${character.name} on the map`"
+        :title="
+          focusDisabled
+            ? 'Map position unavailable.'
+            : `Jump to ${character.name}.`
+        "
+        @click="emit('focus')"
+      >
+        <UIcon name="i-lucide-crosshair" />
+      </button>
+      <button
+        class="compact-button map-character-follow"
+        type="button"
+        :class="{ selected: followActive }"
+        :disabled="followDisabled"
+        :aria-pressed="followActive"
+        :aria-label="
+          followActive
+            ? `Stop following ${character.name}`
+            : `Follow ${character.name} on the map`
+        "
+        :title="
+          followDisabled
+            ? 'Map position unavailable.'
+            : followActive
+              ? `Stop following ${character.name}.`
+              : `Keep the map centered on ${character.name}.`
+        "
+        @click="emit('follow')"
+      >
+        <UIcon v-if="followActive" name="i-lucide-locate-fixed" />
+        <UIcon v-else name="i-lucide-locate" />
+      </button>
+    </div>
   </div>
 </template>
 
@@ -216,8 +244,14 @@ const staleLabel = computed(() => {
   padding: 12px 2px;
   border-top: 0;
 }
-.map-character-jump {
+.map-character-actions {
+  display: flex;
+  flex-direction: row;
   align-self: start;
+  gap: 4px;
+}
+.map-character-jump,
+.map-character-follow {
   min-height: 24px;
   padding: 3px 6px;
   font-size: 11px;

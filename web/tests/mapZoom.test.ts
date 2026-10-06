@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   INITIAL_MAP_ZOOM,
   MAP_ZOOM_OPTIONS,
+  mapCanvasInitialZoomLevel,
   mapZoomLevelForPercent,
   mapZoomPercentForLevel,
   snapMapZoomPercent,
@@ -29,4 +30,11 @@ test('leaflet zoom levels snap back to 5 percentage point increments', () => {
   assert.equal(snapMapZoomPercent(5), 25)
   assert.equal(snapMapZoomPercent(0), 25)
   assert.equal(snapMapZoomPercent(2100), 2000)
+})
+
+test('map canvas initial zoom keeps a stored percent and falls back otherwise', () => {
+  assert.equal(mapCanvasInitialZoomLevel(), INITIAL_MAP_ZOOM)
+  assert.equal(mapCanvasInitialZoomLevel(Number.NaN), INITIAL_MAP_ZOOM)
+  assert.equal(mapCanvasInitialZoomLevel(150), mapZoomLevelForPercent(150))
+  assert.equal(mapCanvasInitialZoomLevel(5), mapZoomLevelForPercent(25))
 })

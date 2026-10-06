@@ -5817,3 +5817,16 @@ environment; do not claim the 200 ms runtime source proven until it is measured
 on the target server. The branch must remain unmerged. Run/inspect the full
 `bash scripts/check.sh`/CI validation before declaring the branch ready.
 
+### Resume — 2026-10-06 Map character Follow
+
+Added a per-character **Follow** toggle beside Focus on the Map character list.
+Follow jumps once like Focus, then keeps the map centered on that character as
+positions update, including cave/world floor changes, without changing zoom.
+Dragging the map, choosing another place/floor, focusing a different character,
+or changing server turns it off. Default map behavior still preserves manual
+pan/zoom when Follow is off.
+
+Files: `web/app/utils/mapFollow.ts`, `web/tests/mapFollow.test.ts`,
+`web/app/components/MapCharacterStatusRow.vue`, `web/app/components/MapCanvas.vue`,
+`web/app/pages/map.vue`, `docs/reference-parity.md`, this guide.
+

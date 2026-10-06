@@ -68,6 +68,8 @@ import {
   selectAllMapActionTargets,
   toggleMapActionTarget,
 } from '~/utils/mapActionTargets'
+import { mapFollowView, toggleMapFollow } from '~/utils/mapFollow'
+import { INITIAL_MAP_ZOOM_PERCENT } from '~/utils/mapZoom'
 import {
   mapNavigationRouteOverlays,
   mapNavigationStatusLabel,
@@ -180,6 +182,7 @@ const selectedCharacterID = ref(
   typeof route.query.character_id === 'string' ? route.query.character_id : '',
 )
 const actionTargetIDs = ref(new Set<string>())
+const followedCharacterID = ref('')
 const clickToWalk = ref(false)
 const clickWalkNotice = ref('')
 let clickWalkGeneration = 0
@@ -332,7 +335,11 @@ const layerDrops = ref(false)
 const mapProfile = ref<MapProfile | null>(null)
 const profileLoading = ref(false)
 const profileError = ref('')
-const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
+const mapView = ref({
+  tileX: 168,
+  tileY: 97,
+  zoomPercent: INITIAL_MAP_ZOOM_PERCENT,
+})
 const referenceViewport = ref<MonsterReferenceBounds | null>(null)
 const referenceAreas = ref<MonsterReferenceArea[]>([])
 const referenceGuideRows = ref<MonsterReferenceGuideRow[]>([])
@@ -559,6 +566,7 @@ async function loadMonsterReferenceOverlay() {
   }
 }
 async function selectMonsterReference(row: MonsterReferenceSearchRow) {
+  stopFollowing()
   referenceSelected.value = row
   referenceLocations.value = []
   referenceSelectedCells.value = []
@@ -609,6 +617,7 @@ async function selectMonsterReference(row: MonsterReferenceSearchRow) {
   }
 }
 function focusMonsterReferencePoint(point: MonsterReferencePoint) {
+  stopFollowing()
   rememberReferenceFocus({
     min_x: point.position.tile_x,
     max_x: point.position.tile_x,
@@ -619,6 +628,7 @@ function focusMonsterReferencePoint(point: MonsterReferencePoint) {
 function focusMonsterReferenceCell(
   cell: MonsterReferenceArea['cells'][number],
 ) {
+  stopFollowing()
   const floor = profileArea.value?.floors.find(
     (item) => item.id === floorID.value,
   )
@@ -999,6 +1009,15 @@ const currentCharacter = computed(() =>
     ),
   ),
 )
+const followedCharacter = computed(() =>
+  withRealtimePosition(
+    fleetCharacters.value.find(
+      (character) =>
+        character.character_id === followedCharacterID.value &&
+        character.server.toLowerCase() === server.value.toLowerCase(),
+    ),
+  ),
+)
 const currentRegion = computed(
   () => regionID.value || currentCharacter.value?.region,
 )
@@ -1101,6 +1120,15 @@ const destinationRasterPosition = computed(() => {
     destination.z,
   )
 })
+const followedRasterPosition = computed(() => {
+  const character = followedCharacter.value
+  const profile = mapProfile.value
+  if (!profile || !character || !positionCanBeDisplayed(character)) return null
+  const view = mapFollowView(profile, character, areaID.value, floorID.value)
+  if (!view || view.areaID !== areaID.value || view.floorID !== floorID.value)
+    return null
+  return view.position
+})
 const mapInitialPosition = computed(() => {
   const linked = linkedEventLocation.value
   if (
@@ -1109,6 +1137,7 @@ const mapInitialPosition = computed(() => {
     linked.floorID === floorID.value
   )
     return linked.position
+  if (followedRasterPosition.value) return followedRasterPosition.value
   if (destinationRasterPosition.value) return destinationRasterPosition.value
   if (selectedCharacterID.value) return characterRasterPosition.value
   if (!mapProfile.value) return null
@@ -1610,12 +1639,74 @@ async function focusMapCharacter(id: string) {
     (item) => item.character_id === id,
   )
   if (!character || !canFocusCharacter(character)) return
+  if (followedCharacterID.value && followedCharacterID.value !== id)
+    followedCharacterID.value = ''
   inspectorOpen.value = true
   trainingEditor.select('')
   selectedCharacterID.value = id
   await nextTick()
   await jumpToCharacter()
 }
+function stopFollowing() {
+  followedCharacterID.value = ''
+}
+async function toggleFollowCharacter(id: string) {
+  const next = toggleMapFollow(followedCharacterID.value, id)
+  if (next) {
+    const character = fleetCharacters.value.find(
+      (item) => item.character_id === id,
+    )
+    if (!character || !canFocusCharacter(character)) return
+  }
+  followedCharacterID.value = next
+  if (!next) return
+  inspectorOpen.value = true
+  trainingEditor.select('')
+  selectedCharacterID.value = id
+  const character = followedCharacter.value
+  const view =
+    character && mapProfile.value
+      ? mapFollowView(mapProfile.value, character, areaID.value, floorID.value)
+      : null
+  if (view && view.areaID === areaID.value && view.floorID === floorID.value) {
+    maybeClearRegionFilterForCharacterRegion(character?.region)
+    if (view.position) mapCanvas.value?.focusAt(view.position)
+    return
+  }
+  await jumpToCharacter()
+}
+function syncFollowedCharacterView() {
+  if (!followedCharacterID.value) return
+  const character = followedCharacter.value
+  const profile = mapProfile.value
+  if (!character || !profile) {
+    if (mapSnapshotInFeedScope.value) stopFollowing()
+    return
+  }
+  if (!canFocusCharacter(character)) return
+  maybeClearRegionFilterForCharacterRegion(character.region)
+  const view = mapFollowView(profile, character, areaID.value, floorID.value)
+  if (!view) return
+  if (view.areaID !== areaID.value || view.floorID !== floorID.value) {
+    areaID.value = view.areaID
+    floorID.value = view.floorID
+    regionID.value = 0
+    updateRouteQuery()
+  }
+}
+watch(
+  () =>
+    followedCharacter.value
+      ? [
+          followedCharacter.value.character_id,
+          followedCharacter.value.region,
+          followedCharacter.value.x,
+          followedCharacter.value.y,
+          followedCharacter.value.z,
+        ].join('\u0000')
+      : followedCharacterID.value,
+  syncFollowedCharacterView,
+)
 function chooseGoTo(id: string) {
   if (id.startsWith('character:')) {
     void focusMapCharacter(id.slice('character:'.length))
@@ -1739,6 +1830,7 @@ function eventAge(at: string) {
 }
 function focusMapEvent(event: ActivityEvent) {
   if (!mapProfile.value) return
+  stopFollowing()
   const location = mapEventLocation(mapProfile.value, event)
   areaID.value = location.areaID
   floorID.value = location.floorID
@@ -2243,6 +2335,7 @@ function updateRouteQuery() {
 }
 
 function selectArea(area: MapAreaProfile) {
+  stopFollowing()
   areaID.value = area.id
   floorID.value = area.floors[0]?.id || 'world'
   regionID.value = 0
@@ -2287,7 +2380,14 @@ async function jumpToCharacter() {
   jumpSequence.value++
 }
 
+function selectFloor(id: string) {
+  if (floorID.value === id) return
+  stopFollowing()
+  floorID.value = id
+}
+
 function selectQuickDestination(destinationID: string) {
+  stopFollowing()
   if (destinationID.startsWith('floor:')) {
     const [, area, floor] = destinationID.split(':')
     if (
@@ -2368,6 +2468,7 @@ async function performHeatmapReset() {
 }
 
 watch(server, (value) => {
+  stopFollowing()
   analyticsCharacterID.value = ''
   analyticsMobType.value = ''
   void loadProfile(value)
@@ -2377,6 +2478,7 @@ watch([mapProfile, linkedEvent], ([profile, event]) => {
   const eventKey = `${server.value.toLowerCase()}\u0000${event.event_id}`
   if (appliedLinkedEventKey.value === eventKey) return
   appliedLinkedEventKey.value = eventKey
+  stopFollowing()
   const location = mapEventLocation(profile, event)
   areaID.value = location.areaID
   floorID.value = location.floorID
@@ -2725,7 +2827,7 @@ useHead({ title: 'Map · PhMon' })
           :class="{ selected: floorID === floor.id }"
           type="button"
           :aria-pressed="floorID === floor.id"
-          @click="floorID = floor.id"
+          @click="selectFloor(floor.id)"
         >
           {{ floor.label }}
         </button>
@@ -2784,6 +2886,10 @@ useHead({ title: 'Map · PhMon' })
               ref="mapCanvas"
               :external-controls="true"
               :focusedCharacterID="selectedCharacterID"
+              :followedCharacterID="followedCharacterID"
+              :initialZoomPercent="
+                followedCharacterID ? mapView.zoomPercent : undefined
+              "
               v-if="canvasProfile?.tiles.status === 'available-for-inspection'"
               :key="`${server}:${areaID}:${floorID}:${mapProfile?.dataset_id}:${mapProfile?.dataset_version}`"
               :profile="canvasProfile"
@@ -2819,6 +2925,7 @@ useHead({ title: 'Map · PhMon' })
               @teleportercontext="openTeleporterContext"
               @mapdrag="
                 () => {
+                  stopFollowing()
                   navigationAction.close(false)
                   teleportAction.close(false)
                 }
@@ -4017,11 +4124,14 @@ useHead({ title: 'Map · PhMon' })
                 :targeted="actionTargetIDs.has(character.character_id)"
                 :position-fresh="positionIsFresh(character)"
                 :focus-disabled="!canFocusCharacter(character)"
+                :follow-active="followedCharacterID === character.character_id"
+                :follow-disabled="!canFocusCharacter(character)"
                 :now="freshnessNow"
                 :trace-lines="characterTraceLines(character)"
                 @toggle-target="toggleActionTarget(character.character_id)"
                 @select="selectMapCharacter(character.character_id)"
                 @focus="focusMapCharacter(character.character_id)"
+                @follow="toggleFollowCharacter(character.character_id)"
               />
               <p v-if="!scopedCharacters.length" class="map-empty-copy">
                 No characters on this server.

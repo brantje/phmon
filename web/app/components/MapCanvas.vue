@@ -53,9 +53,9 @@ import {
   type RasterPosition,
 } from '~/utils/mapCoordinates'
 import {
-  INITIAL_MAP_ZOOM,
   MAP_ZOOM_OPTIONS,
   MAP_ZOOM_PERCENT_STEP,
+  mapCanvasInitialZoomLevel,
   mapZoomLevelForPercent,
   mapZoomPercentForLevel,
   snapMapZoomPercent,
@@ -98,6 +98,8 @@ const props = defineProps<{
   compact?: boolean
   externalControls?: boolean
   focusedCharacterID?: string
+  followedCharacterID?: string
+  initialZoomPercent?: number
   initialPosition?: RasterPosition | null
   focusRequest?: number
   initialTile?: { x: number; y: number }
@@ -234,6 +236,7 @@ function syncPanBounds() {
 
 function setInitialView() {
   if (!map || !createLatLng) return
+  const zoom = mapCanvasInitialZoomLevel(props.initialZoomPercent)
   if (props.initialPosition) {
     initialPositionApplied = true
     lastFocusedTile = `${props.initialPosition.tileX}:${props.initialPosition.tileY}`
@@ -245,7 +248,7 @@ function setInitialView() {
         -(row * 256 + props.initialPosition.pixelY),
         column * 256 + props.initialPosition.pixelX,
       ),
-      INITIAL_MAP_ZOOM,
+      zoom,
     )
     return
   }
@@ -258,7 +261,7 @@ function setInitialView() {
     initial.y,
   )
   if (center) {
-    map.setView(createLatLng(center.lat, center.lng), INITIAL_MAP_ZOOM)
+    map.setView(createLatLng(center.lat, center.lng), zoom)
     return
   }
   const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
@@ -271,10 +274,7 @@ function setInitialView() {
     0,
     Math.min(rows - 1, props.profile.tiles.max_y - initial.y),
   )
-  map.setView(
-    createLatLng(-(row * 256 + 128), column * 256 + 128),
-    INITIAL_MAP_ZOOM,
-  )
+  map.setView(createLatLng(-(row * 256 + 128), column * 256 + 128), zoom)
 }
 
 function publishView() {
@@ -317,6 +317,7 @@ function moveMarker(
   if (distance < 0.01) {
     markerAnimationFrames.delete(markerKey)
     marker.setLatLng(target)
+    panFollowedCharacter(markerKey, target, false)
     return
   }
 
@@ -338,6 +339,39 @@ function moveMarker(
     markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
   }
   markerAnimationFrames.set(markerKey, requestAnimationFrame(animate))
+  panFollowedCharacter(markerKey, target, durationMs > 0)
+}
+
+function followedCharacterMarkerKey() {
+  return props.followedCharacterID
+    ? `character:${props.followedCharacterID}`
+    : ''
+}
+
+function panFollowedCharacter(
+  markerKey: string,
+  point: LatLng,
+  animate: boolean,
+) {
+  if (
+    !map ||
+    props.compact ||
+    !props.followedCharacterID ||
+    markerKey !== followedCharacterMarkerKey()
+  )
+    return
+  map.panTo(point, {
+    animate,
+    duration: animate ? CHARACTER_MARKER_ANIMATION_DURATION_MS / 1000 : 0,
+    easeLinearity: 0.25,
+    noMoveStart: true,
+  })
+}
+
+function panToFollowedCharacter(animate = false) {
+  const key = followedCharacterMarkerKey()
+  const marker = key ? renderedMarkers.get(key) : undefined
+  if (marker) panFollowedCharacter(key, marker.getLatLng(), animate)
 }
 
 function syncMarkers() {
@@ -1823,6 +1857,7 @@ onMounted(async () => {
       })
     rendered.addTo(markerLayer!)
     popupMarker = rendered
+    panFollowedCharacter(`${marker.kind}:${marker.id}`, point, false)
     return rendered
   }
 
@@ -1981,6 +2016,10 @@ function focusAt(point: RasterPosition) {
     )
 }
 watch(() => props.focusedCharacterID, layoutCharacterLabels)
+watch(
+  () => props.followedCharacterID,
+  () => panToFollowedCharacter(),
+)
 defineExpose({
   focus: focusCanvas,
   zoomIn: () => zoomBy(1),
