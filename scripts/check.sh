@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
   unformatted=$(gofmt -l .)
   if [[ -n "$unformatted" ]]; then
     echo "Run gofmt on: $unformatted" >&2
+    gofmt -d $unformatted >&2
     exit 1
   fi
   go vet ./...
