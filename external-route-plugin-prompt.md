@@ -45,16 +45,21 @@ submit_route_to_phmon({
 
 - `sequence` is an integer starting at 1. Increase it for every new path. Repeating the same sequence does not reset the line already on the map.
 - `active` is `True`.
-- `source` is the character's region, x, y, and z when the route starts. Walk points do not carry a region, and this is what places the path, including the cave floor.
-- `lines` are the points your plugin is actually following, in phBot game coordinates. At most 256 lines. Each line is at most 256 characters. The whole route must include at least one `walk`.
+- `source` is the character's region, x, y, and z when the route starts. A walk without its own region uses this to place the path. A walk that includes a region uses that region instead.
+- `lines` are the points your plugin is actually following, in phBot game coordinates. At most 4096 lines, and the encoded route must fit in 512 KiB. Each line is at most 256 characters. The whole route must include at least one `walk`.
 
-Only these three line forms are accepted:
+Only these line forms are accepted:
 
 ```text
 walk,6430.0,1090.0,-32.6
+walk,25000,6420.0,1080.0,0
+walk,-32767,-24200,10,0
 wait,500
 teleport,Hotan,Jangan
+teleport,Ferry Ticket Seller Doji,Ferry Ticket Seller Tayun
 ```
+
+`walk` may start with the phBot script region. That form is how ferry and cave scripts name the area of each point. Coordinates stay the in-game X/Y/Z. A region of 0 is rejected.
 
 `walk` coordinates are finite and within 10,000,000. `wait` is a duration in milliseconds, from 0 through 999999. `teleport` is a break in the drawn line; PhMon does not use the names to teleport. Any other command makes the whole submission return `False`, and the previous shown route stays as it was.
 

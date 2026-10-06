@@ -5787,6 +5787,13 @@ and the map draws the remaining line without a Stop control. The other plugin's
 contract is `external-route-plugin-prompt.md`. PhMon does not start or stop the
 other plugin's navigation.
 
+Plugin 1.9.25 accepts ferry/cave `walk,region,x,y,z` lines and teleport names
+that contain spaces on that display path only. The walk region selects the map
+area, including a cave floor. Display routes may contain 4096 lines when the
+frame fits in 512 KiB, and the live map keeps up to 384 KiB of route geometry.
+Generated `character.navigate` scripts use the same 4096-line and 512 KiB
+budget. Protocol stays 17.
+
 ### Resume — 2026-10-05 realtime controlled-character map positions
 
 Focused user-requested branch: `feat/realtime-map-positions`, based on

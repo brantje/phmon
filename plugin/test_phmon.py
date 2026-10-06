@@ -3454,8 +3454,10 @@ class BackoffTests(unittest.TestCase):
         self.assertEqual(len(oversized_frame), 250)
         for invalid in (
             ['walk,nan,1,2'], ['walk,10000001,1,2'], ['walk,1,2,3', 'exec,unsafe'],
-            ['wait,1000000'], ['teleport,PRIVATE-NAME,TARGET'], [], ['walk,1,2,3'] * 257,
-            ['walk,' + ('1' * 257) + ',1,1'], [oversized_frame] * 256,
+            ['wait,1000000'], ['teleport,PRIVATE-NAME,TARGET'], [],
+            ['walk,1,2,3'] * (plugin.MAX_EXTERNAL_ROUTE_LINES + 1),
+            ['walk,' + ('1' * 257) + ',1,1'],
+            [oversized_frame] * ((plugin.MAX_EXTERNAL_ROUTE_BYTES // len(oversized_frame)) + 2),
         ):
             with self.subTest(invalid=invalid[:1]):
                 with self.assertRaises(ValueError):
@@ -3531,6 +3533,40 @@ class BackoffTests(unittest.TestCase):
             self.assertEqual(calls, [])
         finally:
             plugin._worker = previous
+
+    def test_external_route_accepts_region_walks_and_long_ferry_scripts(self):
+        lines = [
+            'walk,-32767,-24200,10,0',
+            'wait,500',
+            'teleport,Ferry Ticket Seller Doji,Ferry Ticket Seller Tayun',
+        ]
+        lines.extend(['walk,25000,6420.%d,1080,0' % (index % 10) for index in range(300)])
+        parsed = plugin._parse_external_route_lines(lines)
+        self.assertEqual(parsed[0], {
+            'index': 0, 'kind': 'walk', 'region': -32767, 'x': -24200.0, 'y': 10.0, 'z': 0.0,
+        })
+        self.assertEqual(parsed[2], {'index': 2, 'kind': 'teleport'})
+        self.assertEqual(parsed[-1]['region'], 25000)
+        self.assertEqual(len(parsed), 303)
+        route = {
+            'sequence': 4, 'active': True,
+            'source': {'region': 25000, 'x': 6410.0, 'y': 1080.0, 'z': 0.0},
+            'lines': lines,
+        }
+        accepted = plugin._validate_external_route(route)
+        self.assertIsNotNone(accepted)
+        self.assertEqual(accepted['instructions'][0]['region'], -32767)
+        self.assertIsNone(plugin._validate_external_route(dict(route, lines=['walk,0,1,2,3'])))
+        self.assertIsNone(plugin._validate_external_route(dict(
+            route, lines=['walk,1,2,0'] * (plugin.MAX_EXTERNAL_ROUTE_LINES + 1),
+        )))
+        long_script, long_route = plugin._parse_generated_navigation_script(['walk,1,2,0'] * 300)
+        self.assertEqual(len(long_route), 300)
+        self.assertIn('walk,1,2,0', long_script)
+        with self.assertRaises(ValueError):
+            plugin._parse_generated_navigation_script(['walk,25000,1,2,0'])
+        with self.assertRaises(ValueError):
+            plugin._parse_generated_navigation_script(['walk,1,2,0'] * (plugin.MAX_EXTERNAL_ROUTE_LINES + 1))
 
     def test_navigation_route_is_cleared_on_profile_replacement_and_revocation(self):
         worker = plugin.AgentWorker({

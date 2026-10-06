@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.24'
+pVersion = '1.9.25'
 pUrl = ''
 
 PROTOCOL_VERSION = 17
@@ -103,6 +103,9 @@ POSITION_COORDINATE_LIMIT = 10000000.0
 POSITION_MOVEMENT_OPCODE = 0xB021
 NETWORK_LOOP_MAX_WAIT_SECONDS = 0.05
 MAX_MESSAGE_BYTES = 256 * 1024
+# character.navigate and display-only ferry routes share one route budget.
+MAX_EXTERNAL_ROUTE_LINES = 4096
+MAX_EXTERNAL_ROUTE_BYTES = 512 * 1024
 MAX_RESOURCE_SLOTS = 2048
 MAX_ITEM_TYPE_CACHE_ENTRIES = 4096
 RESOURCE_SAMPLE_INTERVAL_SECONDS = 2.0
@@ -285,7 +288,7 @@ def _number(value):
 
 def _parse_generated_navigation_script(generated):
     """Validate once and return executable text plus script-free map geometry."""
-    if not isinstance(generated, (list, tuple)) or not generated or len(generated) > 256:
+    if not isinstance(generated, (list, tuple)) or not generated or len(generated) > MAX_EXTERNAL_ROUTE_LINES:
         raise ValueError('invalid_path')
     lines = []
     instructions = []
@@ -306,9 +309,82 @@ def _parse_generated_navigation_script(generated):
             raise ValueError('invalid_path')
         lines.append(line)
     script = '\n'.join(lines)
-    if len(script.encode('utf-8')) > 32768:
+    if len(script.encode('utf-8')) > MAX_EXTERNAL_ROUTE_BYTES:
         raise ValueError('invalid_path')
     return script, instructions
+
+def _external_coordinate(text):
+    if not re.fullmatch(r'-?\d+(?:\.\d+)?', text):
+        return None
+    value = float(text)
+    if not _number(value) or abs(value) > 10000000:
+        return None
+    return value
+
+
+def _parse_external_route_lines(lines):
+    """Parse a display-only script. Ferry walks may carry a region."""
+    if not isinstance(lines, (list, tuple)) or not lines or len(lines) > MAX_EXTERNAL_ROUTE_LINES:
+        raise ValueError('invalid_path')
+    instructions = []
+    for index, line in enumerate(lines):
+        if not isinstance(line, str) or len(line) > 256:
+            raise ValueError('invalid_path')
+        region_walk = re.fullmatch(
+            r'walk,(-?\d+),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)', line)
+        plain_walk = re.fullmatch(
+            r'walk,(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)', line)
+        if region_walk:
+            region = int(region_walk.group(1))
+            if not _valid_position_region(region):
+                raise ValueError('invalid_path')
+            coordinates = [_external_coordinate(region_walk.group(part)) for part in (2, 3, 4)]
+            if any(value is None for value in coordinates):
+                raise ValueError('invalid_path')
+            instructions.append({
+                'index': index, 'kind': 'walk', 'region': region,
+                'x': coordinates[0], 'y': coordinates[1], 'z': coordinates[2],
+            })
+        elif plain_walk:
+            coordinates = [_external_coordinate(plain_walk.group(part)) for part in (1, 2, 3)]
+            if any(value is None for value in coordinates):
+                raise ValueError('invalid_path')
+            instructions.append({
+                'index': index, 'kind': 'walk',
+                'x': coordinates[0], 'y': coordinates[1], 'z': coordinates[2],
+            })
+        elif re.fullmatch(r'wait,\d{1,6}', line):
+            instructions.append({'index': index, 'kind': 'wait', 'duration_ms': int(line.split(',')[1])})
+        elif re.fullmatch(r'teleport,[A-Za-z0-9_ ]+,[A-Za-z0-9_ ]+', line):
+            _, source_name, destination_name = line.split(',', 2)
+            if not source_name.strip() or not destination_name.strip():
+                raise ValueError('invalid_path')
+            instructions.append({'index': index, 'kind': 'teleport'})
+        else:
+            raise ValueError('invalid_path')
+    return instructions
+
+
+def _external_route_frame_size(instructions):
+    frame = {
+        'type': 'navigation.observed',
+        'protocol_version': PROTOCOL_VERSION,
+        'observed': {
+            'schema_version': 1,
+            'character_id': '00000000-0000-4000-8000-000000000000',
+            'session_id': '00000000-0000-4000-8000-000000000000',
+            'route_sequence': 2 ** 63 - 1,
+            'active': True,
+            'invoked_at': '2026-01-01T00:00:00.000000Z',
+            'source': {
+                'region': -32768, 'x': -10000000.0, 'y': -10000000.0, 'z': -10000000.0,
+                'observed_at': '2026-01-01T00:00:00.000000Z',
+            },
+            'instructions': instructions,
+        },
+    }
+    return len(json.dumps(frame, separators=(',', ':'), allow_nan=False).encode('utf-8'))
+
 
 def _validate_external_route(route):
     """Accept another plugin's display snapshot. Never executes script text."""
@@ -337,10 +413,15 @@ def _validate_external_route(route):
     if not isinstance(lines, (list, tuple)):
         return None
     try:
-        _, instructions = _parse_generated_navigation_script(list(lines))
+        instructions = _parse_external_route_lines(list(lines))
     except ValueError:
         return None
     if not any(item.get('kind') == 'walk' for item in instructions):
+        return None
+    try:
+        if _external_route_frame_size(instructions) > MAX_EXTERNAL_ROUTE_BYTES:
+            return None
+    except Exception:
         return None
     return {
         'sequence': sequence,
@@ -2426,7 +2507,7 @@ def _encode_client_frame(opcode, payload, mask_key=None):
     if len(mask_key) != 4:
         raise ValueError('mask key must be four bytes')
     length = len(payload)
-    if length > MAX_MESSAGE_BYTES:
+    if length > MAX_EXTERNAL_ROUTE_BYTES:
         raise ValueError('WebSocket message exceeds limit')
     header = bytearray([0x80 | (opcode & 0x0f)])
     if length < 126:
@@ -3900,7 +3981,7 @@ class AgentWorker(object):
                 encoded_size = len(json.dumps(frame, separators=(',', ':'), allow_nan=False).encode('utf-8'))
             except Exception:
                 return False
-            if encoded_size > 64 * 1024:
+            if encoded_size > MAX_EXTERNAL_ROUTE_BYTES:
                 return False
             if route.get('active'):
                 route['dirty'] = False
@@ -4173,7 +4254,7 @@ class AgentWorker(object):
                 }, separators=(',', ':'), allow_nan=False).encode('utf-8'))
             except Exception:
                 return False
-            if encoded_size > 64 * 1024:
+            if encoded_size > MAX_EXTERNAL_ROUTE_BYTES:
                 return False
             self._navigation_sequence = sequence
             self._latest_navigation_route = route

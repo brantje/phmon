@@ -23,6 +23,13 @@ func TestValidBoundsAndRejectsUnrecognizedOrUnsafeInstructions(t *testing.T) {
 	if err := Valid(valid); err != nil {
 		t.Fatalf("valid route: %v", err)
 	}
+	longRoute := routeInput(1)
+	for i := 0; i < 300; i++ {
+		longRoute.Instructions = append(longRoute.Instructions, Instruction{Index: i, Kind: "walk", X: float64(i), Y: 1})
+	}
+	if err := Valid(longRoute); err != nil {
+		t.Fatalf("route within the shared cap: %v", err)
+	}
 	for name, bad := range map[string]Input{
 		"nan":                      routeInput(1, Instruction{Index: 0, Kind: "walk", X: math.NaN()}),
 		"unknown":                  routeInput(1, Instruction{Index: 0, Kind: "script", X: 1}),
@@ -576,5 +583,56 @@ func TestObservedRouteTrimsIndependentlyOfTheCommandRoute(t *testing.T) {
 	store.RemoveSession(command.SessionID)
 	if remaining := store.Snapshot("Greatest", profile, invoked); len(remaining) != 0 {
 		t.Fatalf("session cleanup left %#v", remaining)
+	}
+}
+
+func TestObservedFerryWalkUsesItsOwnRegion(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	cave := -32767
+	outdoor := 25000
+	steps := []Instruction{{Index: 0, Kind: "walk", Region: &cave, X: -24200, Y: 10, Z: 0}}
+	for index := 1; index < 300; index++ {
+		steps = append(steps, Instruction{Index: index, Kind: "walk", Region: &outdoor, X: 6420 + float64(index)/100, Y: 1080, Z: 0})
+	}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-ferry", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source:       &Position{Region: outdoor, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: steps,
+	}
+	if err := ValidObserved(observed); err != nil {
+		t.Fatal(err)
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("ferry route not stored")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if len(view.Blocks) < 2 || view.Blocks[0].AreaID != "donwhang-stone-cave" || view.Blocks[0].FloorID != "1F" ||
+		view.Blocks[0].Points[0].Region != cave || view.Blocks[1].AreaID != "world" || view.Destination.Region != outdoor {
+		t.Fatalf("ferry geometry = %#v destination %#v", view.Blocks, view.Destination)
+	}
+	if view.InstructionCount != 300 {
+		t.Fatalf("instruction count = %d", view.InstructionCount)
+	}
+	regionWalk := routeInput(1, Instruction{Index: 0, Kind: "walk", Region: &outdoor, X: 6420, Y: 1080, Z: 0})
+	if Valid(regionWalk) == nil {
+		t.Fatal("command route accepted a per-walk region")
+	}
+	zero := 0
+	observed.Instructions = []Instruction{{Index: 0, Kind: "walk", Region: &zero, X: 1, Y: 2, Z: 0}}
+	if ValidObserved(observed) == nil {
+		t.Fatal("accepted region 0")
+	}
+	observed.Instructions = nil
+	for index := 0; index < MaxObservedInstructions+1; index++ {
+		observed.Instructions = append(observed.Instructions, Instruction{Index: index, Kind: "walk", X: 6420, Y: 1080, Z: 0})
+	}
+	if ValidObserved(observed) == nil {
+		t.Fatal("accepted a route past the display cap")
 	}
 }

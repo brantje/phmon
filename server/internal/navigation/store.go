@@ -15,11 +15,13 @@ import (
 )
 
 const (
-	SchemaVersion   = 1
-	MaxInstructions = 256
-	MaxFrameBytes   = 64 * 1024
-	ArrivalRadius   = 12.0
-	MaxLiveBytes    = 128 * 1024
+	SchemaVersion           = 1
+	MaxInstructions         = 4096
+	MaxObservedInstructions = 4096
+	MaxFrameBytes           = 512 * 1024
+	MaxObservedFrameBytes   = 512 * 1024
+	ArrivalRadius           = 12.0
+	MaxLiveBytes            = 384 * 1024
 )
 
 var ErrInvalid = errors.New("invalid navigation route")
@@ -35,6 +37,7 @@ type Position struct {
 type Instruction struct {
 	Index      int     `json:"index"`
 	Kind       string  `json:"kind"`
+	Region     *int    `json:"region,omitempty"`
 	X          float64 `json:"x,omitempty"`
 	Y          float64 `json:"y,omitempty"`
 	Z          float64 `json:"z,omitempty"`
@@ -152,7 +155,7 @@ func Valid(input Input) error {
 		input.SchemaVersion != SchemaVersion || input.InvokedAt.IsZero() || len(input.Instructions) == 0 || len(input.Instructions) > MaxInstructions {
 		return ErrInvalid
 	}
-	if err := validInstructions(input.Instructions); err != nil {
+	if err := validInstructions(input.Instructions, MaxInstructions, false); err != nil {
 		return err
 	}
 	if input.Source != nil && (!validRegion(input.Source.Region) || !coordinate(input.Source.X) || !coordinate(input.Source.Y) ||
@@ -173,10 +176,10 @@ func ValidObserved(input ObservedInput) error {
 		}
 		return nil
 	}
-	if input.Source == nil || len(input.Instructions) == 0 || len(input.Instructions) > MaxInstructions {
+	if input.Source == nil || len(input.Instructions) == 0 || len(input.Instructions) > MaxObservedInstructions {
 		return ErrInvalid
 	}
-	if err := validInstructions(input.Instructions); err != nil {
+	if err := validInstructions(input.Instructions, MaxObservedInstructions, true); err != nil {
 		return err
 	}
 	if !validRegion(input.Source.Region) || !coordinate(input.Source.X) || !coordinate(input.Source.Y) ||
@@ -191,10 +194,10 @@ func ValidObserved(input ObservedInput) error {
 	return ErrInvalid
 }
 
-func validInstructions(steps []Instruction) error {
+func validInstructions(steps []Instruction, maxCount int, allowWalkRegion bool) error {
 	lastIndex := -1
 	for _, step := range steps {
-		if step.Index <= lastIndex || step.Index >= MaxInstructions {
+		if step.Index <= lastIndex || step.Index >= maxCount {
 			return ErrInvalid
 		}
 		lastIndex = step.Index
@@ -203,12 +206,15 @@ func validInstructions(steps []Instruction) error {
 			if !coordinate(step.X) || !coordinate(step.Y) || !coordinate(step.Z) || step.DurationMS != 0 {
 				return ErrInvalid
 			}
+			if step.Region != nil && (!allowWalkRegion || !validRegion(*step.Region)) {
+				return ErrInvalid
+			}
 		case "wait":
-			if step.DurationMS < 0 || step.DurationMS > 999999 || step.X != 0 || step.Y != 0 || step.Z != 0 {
+			if step.Region != nil || step.DurationMS < 0 || step.DurationMS > 999999 || step.X != 0 || step.Y != 0 || step.Z != 0 {
 				return ErrInvalid
 			}
 		case "teleport":
-			if step.DurationMS != 0 || step.X != 0 || step.Y != 0 || step.Z != 0 {
+			if step.Region != nil || step.DurationMS != 0 || step.X != 0 || step.Y != 0 || step.Z != 0 {
 				return ErrInvalid
 			}
 		default:
@@ -294,6 +300,9 @@ func ObservedDestination(server, dataset string, input ObservedInput) (Point, bo
 	}
 	if last == nil {
 		return Point{}, false
+	}
+	if last.Region != nil {
+		return Point{Region: *last.Region, X: last.X, Y: last.Y, Z: last.Z}, true
 	}
 	profile, err := mapprofile.ForServer(server, dataset)
 	if err != nil {
@@ -985,6 +994,11 @@ func scopeStep(route route, step Instruction) (Point, string, string, bool) {
 	if err != nil {
 		return Point{}, "", "", false
 	}
+	// A ferry walk names its own region. Cave coordinates must use that region
+	// instead of the outdoor grid or the character's starting area.
+	if step.Region != nil {
+		return scopeExplicitRegion(profile, *step.Region, step)
+	}
 	// X/Y can numerically land inside the outdoor tile grid even when they
 	// came from a cave. Prefer the captured or latest observed cave context;
 	// generated walk instructions do not carry a region of their own.
@@ -1007,6 +1021,23 @@ func scopeStep(route route, step Instruction) (Point, string, string, bool) {
 	}
 	if region, ok := outdoorRegion(profile, step.X, step.Y); ok {
 		return Point{Region: region, X: step.X, Y: step.Y, Z: step.Z}, "world", "world", true
+	}
+	return Point{}, "", "", false
+}
+
+func scopeExplicitRegion(profile mapprofile.Profile, region int, step Instruction) (Point, string, string, bool) {
+	z := step.Z
+	if area, floor, ok := mapprofile.ClassifyCave(profile, &region, &z); ok {
+		if area == "job-temple" && floor != "1F" {
+			return Point{}, "", "", false
+		}
+		return Point{Region: region, X: step.X, Y: step.Y, Z: step.Z}, area, floor, true
+	}
+	if knownCaveRegion(profile, region) {
+		return Point{}, "", "", false
+	}
+	if area, floor, ok := classify(profile, region, nil); ok && area == "world" {
+		return Point{Region: region, X: step.X, Y: step.Y, Z: step.Z}, area, floor, true
 	}
 	return Point{}, "", "", false
 }

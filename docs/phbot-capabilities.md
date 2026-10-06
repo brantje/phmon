@@ -1694,3 +1694,10 @@ overlay and shortens it from live character positions. Observed routes do not
 create a navigation command, tray row, or Stop action. The other plugin's
 contract is [external-route-plugin-prompt.md](../external-route-plugin-prompt.md).
 
+Plugin **1.9.25** accepts the documented ferry/cave walk form
+`walk,region,x,y,z` on that display path, including teleport names that contain
+spaces. The region is kept on the walk and selects its map area. Display routes
+may contain 4096 lines when the frame fits in 512 KiB. Generated
+`character.navigate` scripts use that same 4096-line and 512 KiB budget.
+They still accept only `walk,x,y,z`, not a per-walk region.
+

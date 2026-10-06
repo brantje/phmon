@@ -187,8 +187,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	frameLimit := resources.MaxFrameBytes
-	if events.MaxBatchBytes < frameLimit {
+	if events.MaxBatchBytes > frameLimit {
 		frameLimit = events.MaxBatchBytes
+	}
+	if navigation.MaxObservedFrameBytes > frameLimit {
+		frameLimit = navigation.MaxObservedFrameBytes
 	}
 	conn.SetReadLimit(int64(frameLimit))
 	defer conn.Close(websocket.StatusNormalClosure, "")
@@ -506,7 +509,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		case "navigation.observed":
 			frame := message.ObservedRoute
 			encoded, marshalErr := json.Marshal(message)
-			if hello.ProtocolVersion < 17 || frame == nil || marshalErr != nil || len(encoded) > navigation.MaxFrameBytes ||
+			if hello.ProtocolVersion < 17 || frame == nil || marshalErr != nil || len(encoded) > navigation.MaxObservedFrameBytes ||
 				h.navigation == nil || h.characters == nil || h.resources == nil || navigation.ValidObserved(*frame) != nil {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid observed navigation", hello.AgentID, hello.ProtocolVersion)
 				return

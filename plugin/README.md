@@ -1,9 +1,10 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.24**, using agent protocol **17**. It
+The current local plugin release is **1.9.25**, using agent protocol **17**. It
 accepts a display-only route from another plugin in the same phBot process through
 `submit_external_route` and publishes `navigation.observed`. PhMon does not start
-or stop that route. Protocol **16** behavior is unchanged: it
+or stop that route. `character.navigate` accepts the same 4096-line and 512 KiB
+route budget. Protocol **16** behavior is unchanged: it
 adds the session-fenced, latest-value `character.position` transport used by the live
 Map for controlled characters, while retaining navigation transport fixes, script
 diagnostics, direct `move_to` support and scoped recall-point packet submission for

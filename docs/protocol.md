@@ -1114,8 +1114,9 @@ session cleanup so a duplicate cannot resurrect an arrived or cleared route.
 or a teleport barrier; generated script text and teleporter identifiers remain local
 to the plugin. The worker parses and validates the script once, then executes that
 exact validated text. The entire script is rejected if any line is malformed,
-oversized, non-finite, or outside the coordinate bounds. The generated route is
-limited to 256 instructions and its encoded route frame to 64 KiB.
+oversized, non-finite, or outside the coordinate bounds. A generated
+`character.navigate` route may contain 4096 instructions when the script and
+its encoded route frame each fit in 512 KiB.
 
 The server derives server and destination from the authenticated active character and
 the exact durable `character.navigate` command, including commands already completed.
@@ -1135,7 +1136,7 @@ tolerance and compatible region/floor. Neither `start_script` acceptance nor dur
 command completion claims arrival.
 
 The browser live protocol v1 `map` snapshot adds optional navigation records. This
-does not add another socket. Navigation is limited to 128 KiB aggregate per live map
+does not add another socket. Navigation is limited to 384 KiB aggregate per live map
 frame and is reduced further to preserve the 512 KiB live-frame ceiling; when needed,
 complete geometry is omitted while status and omission counts remain available.
 
@@ -1479,6 +1480,19 @@ path. Command-owned `navigation.route` is unchanged and still requires a complet
 does not replace a current route or return after it was cleared. The plugin may
 repeat the current active snapshot at most every five seconds. The frame is not
 spooled.
+
+A display walk may include the optional phBot script region:
+
+```json
+{"index": 0, "kind": "walk", "region": -32767, "x": -24200.0, "y": 10.0, "z": 0.0}
+```
+
+Ferry and cave scripts use `walk,region,x,y,z`. The region places that point,
+including a cave floor, instead of borrowing the character's starting area.
+Outdoor `walk,x,y,z` lines stay unchanged. Command-owned `navigation.route`
+rejects a per-walk region. Both command routes and observed routes may contain
+4096 instructions when the frame fits in 512 KiB.
+Teleport names may contain spaces; the names are not stored.
 
 Admission requires protocol 17, the authenticated agent's current character
 session, and the current connection generation. There is no command lookup. The
