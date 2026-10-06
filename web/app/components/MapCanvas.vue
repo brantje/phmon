@@ -184,6 +184,7 @@ const renderedMarkers = new Map<string, LeafletMarker>()
 const markerIconSignatures = new Map<string, string>()
 const markerAnimationFrames = new Map<string, number>()
 const MARKER_ANIMATION_DURATION_MS = 120
+const CHARACTER_MARKER_ANIMATION_DURATION_MS = 190
 /** On-map display size for 8×8 minimap sign PNGs (party / other player / NPC). */
 const MINIMAP_SIGN_ICON_PX = 16
 
@@ -302,7 +303,12 @@ function snapZoomToPercentStep() {
   if (Math.abs(map.getZoom() - targetZoom) > 1e-9) map.setZoom(targetZoom)
 }
 
-function moveMarker(markerKey: string, marker: LeafletMarker, target: LatLng) {
+function moveMarker(
+  markerKey: string,
+  marker: LeafletMarker,
+  target: LatLng,
+  durationMs = MARKER_ANIMATION_DURATION_MS,
+) {
   const previousFrame = markerAnimationFrames.get(markerKey)
   if (previousFrame != null) cancelAnimationFrame(previousFrame)
 
@@ -321,10 +327,7 @@ function moveMarker(markerKey: string, marker: LeafletMarker, target: LatLng) {
       return
     }
     startedAt ??= timestamp
-    const progress = Math.min(
-      1,
-      (timestamp - startedAt) / MARKER_ANIMATION_DURATION_MS,
-    )
+    const progress = Math.min(1, (timestamp - startedAt) / durationMs)
     const position = interpolateMarkerPosition(start, target, progress)
     marker.setLatLng(createLatLng!(position.lat, position.lng))
     if (progress >= 1) {
@@ -1756,7 +1759,14 @@ onMounted(async () => {
         : undefined
     markerIconSignatures.set(markerKey, signature)
     if (existing) {
-      moveMarker(markerKey, existing, point)
+      moveMarker(
+        markerKey,
+        existing,
+        point,
+        marker.kind === 'character'
+          ? CHARACTER_MARKER_ANIMATION_DURATION_MS
+          : MARKER_ANIMATION_DURATION_MS,
+      )
       if (icon) existing.setIcon(icon)
       if (marker.monster) {
         const bubble = existing

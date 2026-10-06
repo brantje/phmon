@@ -8,6 +8,7 @@ import type {
   MapOtherPlayer,
   MapPartyMember,
   MapSnapshot,
+  RealtimePosition,
 } from '~~/shared/types/live'
 import type { MapAreaProfile, MapProfile } from '~~/shared/types/map'
 import type { HeatmapLayerID } from '~~/shared/types/mapAnalytics'
@@ -34,6 +35,7 @@ import {
   displayableMapCharacters,
 } from '~/utils/mapCharacterMarkers'
 import { characterPositionIsFresh } from '~/utils/characterPositionFreshness'
+import { withRealtimePosition as overlayRealtimePosition } from '~/utils/realtimePositions'
 import { npcDisplayLabel, npcMapMarkers } from '~/utils/mapNpcMarkers'
 import { playerMapMarkers, playerZoneLabel } from '~/utils/mapPlayerMarkers'
 import { partyMapMarkers } from '~/utils/mapPartyMarkers'
@@ -99,12 +101,15 @@ const reviewActions = useReviewActionsPreference()
 const {
   mapFeeds,
   mapFeedCurrent,
+  mapPositionFeeds,
   fleetCharacters,
   groups,
   connectionState,
   freshnessNow,
   setMapFeed,
   clearMapFeed,
+  setMapPositionFeed,
+  clearMapPositionFeed,
   liveStale,
   setCommandFanOutTargets,
   clearCommandFanOutOwner,
@@ -129,6 +134,7 @@ const { serverScope } = useServerScope()
 const route = useRoute()
 const router = useRouter()
 const subscriptionID = 'map-page'
+const positionSubscriptionID = 'map-positions'
 const regionOptions = computed(() => {
   const set = new Set<number>()
   const floor = mapProfile.value?.areas
@@ -633,6 +639,16 @@ const streamCurrent = computed(
 )
 const snapshot = computed(() => mapFeeds.value[subscriptionID])
 const mapSnapshot = computed(() => snapshot.value as MapSnapshot | undefined)
+const realtimePositions = computed<Record<string, RealtimePosition>>(
+  () => mapPositionFeeds.value[positionSubscriptionID] || {},
+)
+function withRealtimePosition(character?: CharacterView) {
+  if (!character) return character
+  return overlayRealtimePosition(
+    character,
+    realtimePositions.value[character.character_id],
+  )
+}
 const mapSnapshotInFeedScope = computed(
   () =>
     Boolean(mapSnapshot.value) &&
@@ -975,10 +991,12 @@ const linkedEventMessage = computed(() => {
   return `Linked event location resolved in ${linkedEventLocation.value?.areaID} / ${linkedEventLocation.value?.floorID}.`
 })
 const currentCharacter = computed(() =>
-  fleetCharacters.value.find(
-    (character) =>
-      character.character_id === selectedCharacterID.value &&
-      character.server.toLowerCase() === server.value.toLowerCase(),
+  withRealtimePosition(
+    fleetCharacters.value.find(
+      (character) =>
+        character.character_id === selectedCharacterID.value &&
+        character.server.toLowerCase() === server.value.toLowerCase(),
+    ),
   ),
 )
 const currentRegion = computed(
@@ -1449,7 +1467,11 @@ watch(
   },
 )
 const scopedCharacters = computed(() =>
-  mapSnapshotInFeedScope.value ? mapSnapshot.value?.characters || [] : [],
+  mapSnapshotInFeedScope.value
+    ? (mapSnapshot.value?.characters || []).map(
+        (character) => withRealtimePosition(character) || character,
+      )
+    : [],
 )
 const markerCharacters = computed(() =>
   regionID.value === 0
@@ -2480,6 +2502,14 @@ watch(
   { immediate: true },
 )
 watch(
+  server,
+  (selectedServer) => {
+    if (selectedServer)
+      setMapPositionFeed(positionSubscriptionID, selectedServer)
+  },
+  { immediate: true },
+)
+watch(
   [
     server,
     areaID,
@@ -2614,6 +2644,7 @@ onBeforeUnmount(() => {
   if (actionNotificationTimer) clearTimeout(actionNotificationTimer)
   profileRequestID++
   clearCommandFanOutOwner(MAP_ACTIVITY_OWNER)
+  clearMapPositionFeed(positionSubscriptionID)
   clearMapFeed(subscriptionID)
 })
 

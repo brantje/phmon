@@ -421,6 +421,8 @@ def run_navigation(worker, stopping, api_calls, position):
                          "y": float(os.environ["PHMON_SIMULATOR_PROGRESS_Y"])})
         state.update(position)
         worker.update_character(identity, state)
+        if PhMon.PROTOCOL_VERSION >= 16:
+            worker.update_position(position)
         print("NAVIGATION_PROGRESS_SAMPLE_SENT", flush=True)
         instruction = sys.stdin.readline().strip()
     if instruction != "arrive":
@@ -431,13 +433,21 @@ def run_navigation(worker, stopping, api_calls, position):
                      "x": destination_x, "y": destination_y})
     state.update(position)
     worker.update_character(identity, state)
-    wait_until(
-        lambda: worker._latest_sample is not None
-        and worker._latest_sample.get("state", {}).get("x") == destination_x
-        and worker._latest_sample.get("state", {}).get("y") == destination_y,
-        command_timeout,
-        "controlled arrival position sample",
-    )
+    if PhMon.PROTOCOL_VERSION >= 16:
+        worker.update_position(position)
+        wait_until(
+            lambda: worker._latest_position is None,
+            command_timeout,
+            "controlled realtime arrival position flush",
+        )
+    else:
+        wait_until(
+            lambda: worker._latest_sample is not None
+            and worker._latest_sample.get("state", {}).get("x") == destination_x
+            and worker._latest_sample.get("state", {}).get("y") == destination_y,
+            command_timeout,
+            "controlled arrival position sample",
+        )
     print("NAVIGATION_ARRIVAL_SAMPLE_SENT", flush=True)
     sys.stdin.readline()
     stopping[0] = True

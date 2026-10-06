@@ -1600,3 +1600,83 @@ Both repeated eight-character short/long cases then had eight observed arrivals;
 all sixteen native `start_script` results were True/api_confirmed. The requested
 live gate is closed. The underlying cause of the earlier False is unknown, and
 the new Windows diagnostic lines have not been copied to this host.
+
+## Realtime controlled-character map positions (2026-10-05)
+
+PhMon protocol 16 / plugin 1.9.23 adds a dedicated realtime position path for
+characters directly controlled by connected PhMon/phBot agents. This path is
+intentionally separate from nearby-player polling and from the durable character
+state snapshot.
+
+The official phBot plugin documentation establishes the safe API boundary used here:
+
+- `event_loop()` runs every 500 ms, so it cannot by itself provide a genuine
+  200 ms / 5 Hz source.
+- `handle_joymax(opcode, data)` and `handle_silkroad(opcode, data)` are packet
+  callbacks, and `get_position()` returns the controlled character's current
+  region/x/y/z position.
+- PhMon does not call phBot APIs from a new timer/background polling thread.
+  `event_loop()` remains the initial/fallback sampler.
+
+For the fast path, vSRO/Silkroad protocol evidence commonly identifies server
+opcode `0xB021` as entity movement. PhMon treats that only as a wake-up signal:
+it does not decode the packet to decide whose movement it contains. The callback
+first enforces a 200 ms monotonic throttle and only then calls `get_position()`
+for the controlled character. Callback failures never alter packet forwarding.
+The ordinary 500 ms character sample remains a fallback and does not reset the
+fast-path sampling clock.
+
+The implementation also has an independent 200 ms publish throttle. Meaningful
+same-region coordinate changes therefore remain latest-value and emit at most
+about five realtime frames per second, while a character-session or region
+transition may force an immediate position. A small coordinate tolerance
+suppresses stationary float jitter. The network worker owns WebSocket writes and
+retains only one unsent position; position frames never enter the durable event
+or mob spools. A failed socket write does not consume that latest position or its
+sequence, so a stationary or teleport coordinate can be retried after reconnect
+unless a newer observation replaces it first.
+
+The transport split is deliberate:
+
+```text
+realtime controlled-character position
+= ephemeral latest-value stream
+
+durable character state / heatmap history
+= slower checkpointed state
+```
+
+The Go server keeps one current in-memory position per controlled character,
+fenced by character ID, session ID, agent ID, connection generation and
+monotonic session sequence. Accepted positions feed the existing navigation
+observer immediately and the existing `/api/live` WebSocket's `positions`
+stream directly. Subscribe and explicit refresh may produce replacement position
+snapshots; unrelated global live invalidations deliberately skip this stream so a
+stale snapshot cannot follow a newer delta. Browser deltas are coalesced over
+approximately 100 ms and keep only each character's newest coordinate. Movement does
+not call global `LiveHub.Invalidate()` and does not rebuild a full map snapshot.
+PostgreSQL location state and movement analytics are admitted at most approximately
+once per second per character.
+
+Only `/map` subscribes to the fast browser stream. The normal map snapshot
+remains authoritative for character identity, online/session state and other
+metadata; a matching realtime session overrides coordinates only. The browser
+falls back to durable map coordinates when no matching ephemeral position
+exists. Controlled-character markers use approximately 190 ms requestAnimationFrame
+interpolation; other marker timing is unchanged.
+
+### Runtime evidence boundary
+
+Automated tests verify the 200 ms throttle logic, latest-value replacement,
+session/sequence fencing, 50-character bounded batching, and the 100 ms browser
+coalescing design. Those tests do **not** prove that a particular live vSRO server
+delivers `0xB021` callbacks frequently enough to achieve 200 ms observations.
+
+No real phBot runtime was available during this branch implementation to measure
+the `0xB021` callback cadence. Runtime verification therefore remains required
+for stationary, continuous walking, phBot automatic movement, applicable
+manual/clientless movement, teleport and reconnect. If the target server does not
+provide a sufficiently frequent verified packet trigger, PhMon must keep the safe
+500 ms fallback and report that limitation rather than adding an unverified
+background phBot API polling thread.
+

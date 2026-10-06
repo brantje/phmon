@@ -21,11 +21,12 @@ import (
 	"phmon/server/internal/navigation"
 	"phmon/server/internal/npcs"
 	"phmon/server/internal/players"
+	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
 )
 
 const (
-	agentProtocolVersion    = 15
+	agentProtocolVersion    = 16
 	agentMinProtocolVersion = 2
 )
 
@@ -61,6 +62,7 @@ type agentHandler struct {
 	mobLive    *mobs.LiveStore
 	npcLive    *npcs.LiveStore
 	playerLive *players.LiveStore
+	positions  *positions.Store
 	analytics  *mapanalytics.Store
 	navigation *navigation.Store
 }
@@ -76,6 +78,13 @@ type agentMonsterSnapshot struct {
 	Monsters    []mobs.Monster   `json:"monsters"`
 	NPCs        []npcs.NPC       `json:"npcs"`
 	Players     []players.Player `json:"players"`
+}
+
+type agentPosition struct {
+	Region int      `json:"region"`
+	X      float64  `json:"x"`
+	Y      float64  `json:"y"`
+	Z      *float64 `json:"z,omitempty"`
 }
 
 type agentCapability struct {
@@ -98,6 +107,8 @@ type agentMessage struct {
 	Guild            *string                    `json:"guild,omitempty"`
 	State            characters.State           `json:"state,omitempty"`
 	SessionID        string                     `json:"session_id,omitempty"`
+	Sequence         uint64                     `json:"sequence,omitempty"`
+	Position         *agentPosition             `json:"position,omitempty"`
 	SchemaVersion    int                        `json:"schema_version,omitempty"`
 	Commands         []agentCapability          `json:"commands,omitempty"`
 	CommandID        string                     `json:"command_id,omitempty"`
@@ -264,6 +275,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.navigation != nil {
 			h.navigation.RemoveAgentGeneration(hello.AgentID, generation)
+		}
+		if h.positions != nil {
+			for _, removal := range h.positions.RemoveAgentGeneration(hello.AgentID, generation) {
+				h.live.PublishPositionRemoval(removal)
+			}
 		}
 		if h.playerLive != nil {
 			h.playerLive.RemoveAgentGeneration(hello.AgentID, generation)
@@ -740,6 +756,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if h.playerLive != nil && previous.SessionID != "" && previous.SessionID != sessionID {
 				h.playerLive.RemoveSession(previous.SessionID)
 			}
+			if h.positions != nil {
+				for _, removal := range h.positions.Claim(message.Server, hello.AgentID, generation, id, sessionID) {
+					h.live.PublishPositionRemoval(removal)
+				}
+			}
 			if previous.SessionID != "" && (previous.AgentID != hello.AgentID || previous.Generation != generation) {
 				revokeCtx, revokeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
 				previousProtocol := h.registry.ProtocolVersion(previous.AgentID, previous.Generation)
@@ -755,6 +776,53 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			if e = writer.Send(sessionCtx, reply); e != nil {
 				return
+			}
+		case "character.position":
+			if hello.ProtocolVersion < 16 || h.positions == nil || message.Position == nil ||
+				!agentdomain.ValidAgentID(message.CharacterID) || !agentdomain.ValidAgentID(message.SessionID) ||
+				message.Sequence == 0 || !validMessageTime(message.SentAt) {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character position", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			observedAt, parseErr := time.Parse(time.RFC3339, message.SentAt)
+			if parseErr != nil {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character position timestamp", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			input := positions.Position{
+				AgentID: hello.AgentID, Generation: generation, CharacterID: message.CharacterID,
+				SessionID: message.SessionID, Sequence: message.Sequence,
+				Region: message.Position.Region, X: message.Position.X, Y: message.Position.Y, Z: message.Position.Z,
+				ObservedAt: observedAt.UTC(),
+			}
+			accepted, ok := h.applyRealtimePosition(input, time.Now().UTC())
+			if !ok {
+				continue
+			}
+			if h.characters != nil && h.positions.CheckpointDue(accepted, time.Now().UTC(), time.Second) {
+				checkpointCtx, checkpointCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				checkpointErr := h.characters.UpdatePositionSession(
+					checkpointCtx, hello.AgentID, accepted.CharacterID, generation, accepted.SessionID,
+					accepted.Region, accepted.X, accepted.Y, accepted.Z,
+				)
+				checkpointCancel()
+				if checkpointErr != nil {
+					slog.Warn("realtime position checkpoint failed", "agent_id", hello.AgentID, "character_id", accepted.CharacterID, "reason", checkpointErr.Error())
+				}
+				if h.analytics != nil && h.resources != nil {
+					if datasetID, known := h.resources.DatasetIDForServer(accepted.Server); known {
+						analyticsCtx, analyticsCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+						_, analyticsErr := h.analytics.RecordPosition(analyticsCtx, mapanalytics.PositionSample{
+							AgentID: hello.AgentID, CharacterID: accepted.CharacterID, SessionID: accepted.SessionID,
+							DatasetID: datasetID, SampledAt: accepted.ObservedAt, Region: accepted.Region,
+							X: accepted.X, Y: accepted.Y, Z: accepted.Z,
+						}, time.Now().UTC())
+						analyticsCancel()
+						if analyticsErr != nil && !errors.Is(analyticsErr, mapanalytics.ErrStaleSession) {
+							slog.Warn("movement analytics persistence failed", "agent_id", hello.AgentID, "character_id", accepted.CharacterID, "reason", analyticsErr.Error())
+						}
+					}
+				}
 			}
 		case "character.snapshot", "character.state":
 			if !agentdomain.ValidAgentID(message.CharacterID) || !validWireState(message.State) || h.characters == nil ||
@@ -800,7 +868,12 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					})
 				}
 			}
-			if hello.ProtocolVersion >= 3 && h.analytics != nil && h.resources != nil && message.State.Region != nil && message.State.X != nil && message.State.Y != nil {
+			// Protocol 16+ moves movement analytics to the throttled realtime
+			// position checkpoint path. Preserve the established state-frame
+			// behavior for older compatible agents that do not know that frame.
+			if hello.ProtocolVersion >= 3 && hello.ProtocolVersion < 16 &&
+				h.analytics != nil && h.resources != nil &&
+				message.State.Region != nil && message.State.X != nil && message.State.Y != nil {
 				if sampledAt, parseErr := time.Parse(time.RFC3339, message.SentAt); parseErr == nil {
 					analyticsCtx, analyticsCancel := context.WithTimeout(sessionCtx, 2*time.Second)
 					if character, characterErr := h.characters.GetScoped(analyticsCtx, message.CharacterID, ""); characterErr == nil {
@@ -811,7 +884,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 								X: *message.State.X, Y: *message.State.Y, Z: message.State.Z,
 							}, time.Now().UTC())
 							if analyticsErr != nil && !errors.Is(analyticsErr, mapanalytics.ErrStaleSession) {
-								slog.Warn("movement analytics persistence failed", "agent_id", hello.AgentID, "character_id", message.CharacterID, "reason", analyticsErr.Error())
+								slog.Warn("legacy movement analytics persistence failed", "agent_id", hello.AgentID, "character_id", message.CharacterID, "reason", analyticsErr.Error())
 							}
 						}
 					}
@@ -894,6 +967,11 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			if h.navigation != nil && message.SessionID != "" {
 				h.navigation.RemoveSession(message.SessionID)
 			}
+			if h.positions != nil && message.SessionID != "" {
+				for _, removal := range h.positions.RemoveSession(message.SessionID) {
+					h.live.PublishPositionRemoval(removal)
+				}
+			}
 			h.live.Invalidate()
 		case "resource.snapshot", "resource.delta":
 			if hello.ProtocolVersion < 4 || h.resources == nil || h.characters == nil ||
@@ -967,6 +1045,29 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (h *agentHandler) applyRealtimePosition(input positions.Position, now time.Time) (positions.Position, bool) {
+	if h == nil || h.positions == nil {
+		return positions.Position{}, false
+	}
+	accepted, ok := h.positions.Apply(input, now)
+	if !ok {
+		return positions.Position{}, false
+	}
+	if h.live != nil {
+		h.live.PublishPosition(accepted)
+	}
+	if h.navigation != nil {
+		h.navigation.Observe(accepted.CharacterID, accepted.SessionID, navigation.Position{
+			Region: accepted.Region,
+			X:      accepted.X,
+			Y:      accepted.Y,
+			Z:      accepted.Z,
+			At:     accepted.ObservedAt,
+		})
+	}
+	return accepted, true
 }
 
 func navigationRouteOwnerMatches(route navigation.Input, command commands.Command, character characters.Character, agentID string, generation uint64) bool {

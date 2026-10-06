@@ -16,6 +16,9 @@ import {
   type RemoteCommand,
   type GroupsSnapshot,
   type MapSnapshot,
+  type RealtimePosition,
+  type RealtimePositionDelta,
+  type RealtimePositionSnapshot,
   type LiveClientFrame,
   type LiveConnectionState,
   type LiveFilter,
@@ -23,6 +26,10 @@ import {
   type LiveStream,
 } from '~~/shared/types/live'
 import { mapSnapshotMatchesScope } from '~/utils/mapRefresh'
+import {
+  applyRealtimePositionDeltaState,
+  realtimePositionSnapshotState,
+} from '~/utils/realtimePositions'
 import { chunkFanOutValues } from '~/utils/commandFanOut'
 
 type Subscription = {
@@ -63,6 +70,9 @@ const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const chatFeedCurrent = ref<Record<string, boolean>>({})
 const mapFeeds = ref<Record<string, MapSnapshot>>({})
 const mapFeedCurrent = ref<Record<string, boolean>>({})
+const mapPositionFeeds = ref<Record<string, Record<string, RealtimePosition>>>(
+  {},
+)
 const commandFanOutFeeds = ref<Record<string, CommandFanOutLiveFeed>>({})
 const connectionState = ref<LiveConnectionState>('idle')
 const freshnessNow = ref(Date.now())
@@ -388,6 +398,66 @@ function clearEventFeed(subscriptionID: string) {
   removeSubscription(subscriptionID, () => {
     removeEventFeedSnapshot(subscriptionID)
   })
+}
+
+function setMapPositionFeed(subscriptionID: string, server: string) {
+  if (!server) return
+  ensureSubscription(
+    subscriptionID,
+    'positions',
+    { server },
+    () => {
+      mapPositionFeeds.value = Object.fromEntries(
+        Object.entries(mapPositionFeeds.value).filter(
+          ([id]) => id !== subscriptionID,
+        ),
+      )
+    },
+    false,
+  )
+}
+
+function clearMapPositionFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    mapPositionFeeds.value = Object.fromEntries(
+      Object.entries(mapPositionFeeds.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
+  })
+}
+
+function applyRealtimePositionSnapshot(
+  subscription: Subscription,
+  data: unknown,
+) {
+  const snapshot = data as RealtimePositionSnapshot
+  if (!snapshot || !Array.isArray(snapshot.positions)) return false
+  const next = realtimePositionSnapshotState(
+    snapshot.positions,
+    mapPositionFeeds.value[subscription.id] || {},
+  )
+  mapPositionFeeds.value = {
+    ...mapPositionFeeds.value,
+    [subscription.id]: next,
+  }
+  return true
+}
+
+function applyRealtimePositionDelta(subscription: Subscription, data: unknown) {
+  const delta = data as RealtimePositionDelta
+  if (!delta || typeof delta !== 'object' || Array.isArray(delta)) return false
+  if (delta.positions != null && !Array.isArray(delta.positions)) return false
+  if (delta.removed != null && !Array.isArray(delta.removed)) return false
+
+  const current = mapPositionFeeds.value[subscription.id] || {}
+  const next = applyRealtimePositionDeltaState(current, delta)
+  // One incoming batch deliberately causes one Vue reactive replacement.
+  mapPositionFeeds.value = {
+    ...mapPositionFeeds.value,
+    [subscription.id]: next,
+  }
+  return true
 }
 
 function setMapFeed(subscriptionID: string, filter: LiveFilter) {
@@ -896,6 +966,15 @@ function handleFrame(frame: LiveServerFrame) {
     }
     return
   }
+  if (frame.type === 'delta') {
+    if (
+      subscription.stream !== 'positions' ||
+      !applyRealtimePositionDelta(subscription, frame.data)
+    ) {
+      socket?.close(1002, 'invalid live position delta')
+    }
+    return
+  }
   if (frame.type !== 'snapshot') return
 
   if (!applySnapshot(subscription, frame.data)) {
@@ -912,6 +991,8 @@ function applySnapshot(subscription: Subscription, data: unknown) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return false
   if (subscription.id.startsWith('fanout-'))
     return applyCommandFanOutSnapshot(subscription, data)
+  if (subscription.stream === 'positions')
+    return applyRealtimePositionSnapshot(subscription, data)
   switch (subscription.id) {
     case 'agents': {
       const snapshot = data as AgentsSnapshot
@@ -1200,6 +1281,7 @@ export function useLiveData() {
     chatFeedCurrent: readonly(chatFeedCurrent),
     mapFeeds: readonly(mapFeeds),
     mapFeedCurrent: readonly(mapFeedCurrent),
+    mapPositionFeeds: readonly(mapPositionFeeds),
     commandFanOutFeeds: readonly(commandFanOutFeeds),
     connectionState: readonly(connectionState),
     freshnessNow: readonly(freshnessNow),
@@ -1208,6 +1290,8 @@ export function useLiveData() {
     startLiveData,
     stopLiveData,
     setCharacterListFilter,
+    setMapPositionFeed,
+    clearMapPositionFeed,
     clearCharacterListFilter,
     setCharacterDetail,
     setCharacterResources,

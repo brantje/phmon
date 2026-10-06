@@ -231,6 +231,32 @@ func (s *Store) UpdateSession(ctx context.Context, agentID, characterID string, 
 	}
 	return tx.Commit(ctx)
 }
+func (s *Store) UpdatePositionSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, region int, x, y float64, z *float64) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
+		return err
+	}
+	var sessionID string
+	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND session_id=$4::uuid AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation, expectedSessionID).Scan(&sessionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE characters SET region=$2,x=$3,y=$4,z=$5,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, region, x, y, z); err != nil {
+		return fmt.Errorf("update character realtime position: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE session_id=$1`, sessionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) End(ctx context.Context, agentID, characterID string, generation uint64, reason string) error {
 	return s.EndSession(ctx, agentID, characterID, generation, "", reason)
 }

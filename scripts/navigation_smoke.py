@@ -266,6 +266,10 @@ def main():
             blocks = route_snapshot.get("blocks", [])
             if len(blocks) != 1 or len(blocks[0].get("points", [])) != 6:
                 raise RuntimeError("outdoor tile seam split the initial walk block")
+            # Plugin observation timestamps have second precision while route
+            # invocation timestamps may have sub-second precision. Ensure this
+            # controlled progress sample is strictly newer than route admission.
+            time.sleep(1.1)
             simulator.stdin.write("progress\n")
             simulator.stdin.flush()
             remaining = wait_for_subscription(

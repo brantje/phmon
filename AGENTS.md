@@ -5777,3 +5777,43 @@ identified that a pre-existing stale marker could satisfy the handshake early;
 `outage_session_smoke.py` now clears that marker at startup. Exact next action:
 validate, commit and push this fix, reply to its PR #74 review with the SHA, and
 wait for CI.
+
+### Resume — 2026-10-05 realtime controlled-character map positions
+
+Focused user-requested branch: `feat/realtime-map-positions`, based on
+`39e5b66539bd924aae563c7d68484a6bc5eddd06`. This scope is limited to realtime
+positions for characters directly controlled by connected PhMon/phBot agents;
+nearby `get_players()` movement and the remaining roadmap are unchanged.
+
+Plugin 1.9.23 / agent protocol 16 adds a latest-only `character.position`
+frame. Server movement opcode `0xB021` is used only as a throttled callback wake
+for `get_position()`; the documented 500 ms `event_loop()` remains the
+initial/fallback observation path. The callback never owns WebSocket I/O and no
+background phBot API polling thread was introduced. Same-region x/y/z movement
+no longer churns normal `character.state`; periodic state still carries
+coordinates as a fallback.
+
+The Go backend has a bounded in-memory position store fenced by character,
+session, agent generation and sequence. Accepted realtime coordinates feed the
+existing navigation observer immediately. PostgreSQL position checkpoints and
+movement analytics are admitted at most approximately 1 Hz. Protocol 3–15 keeps
+its legacy state-frame analytics path. Protocol 16 realtime movement does not
+call global `LiveHub.Invalidate()` or rebuild `MapSnapshot`.
+
+The existing `/api/live` browser socket has an additive `positions` stream.
+Subscribe/explicit refresh own its replacement snapshots; ordinary global live
+invalidations skip this stream, while movement uses approximately 100 ms
+latest-per-character deltas. Only `/map` subscribes; Nuxt keeps this state separate
+from `mapFeeds`, guards updates/removals by session and sequence, overlays coordinates
+onto matching MapSnapshot character metadata, and uses approximately 190 ms
+interpolation only for controlled-character markers. The plugin also retains the
+latest coordinate across a failed WebSocket write without consuming its sequence.
+
+Automated coverage includes plugin packet/publish throttling and latest-slot
+behavior, Go store authority/cleanup/checkpoint tests, a deterministic
+50-character × 5-update batching test, and browser session/sequence/removal merge
+tests. Real phBot `0xB021` cadence was not available to verify in this execution
+environment; do not claim the 200 ms runtime source proven until it is measured
+on the target server. The branch must remain unmerged. Run/inspect the full
+`bash scripts/check.sh`/CI validation before declaring the branch ready.
+

@@ -40,7 +40,7 @@ Current `main` includes:
 - **Mob history and heatmaps** — bounded historical monster sampling, density/heatmap queries, facets,
   filters and scoped reset controls. Live nearby monsters remain separate from historical density.
 
-The bundled phBot plugin is currently **1.5.6** and reports agent transport **protocol 7**.
+The bundled phBot plugin is currently **1.9.23** and reports agent transport **protocol 16**.
 
 ## Roadmap
 
