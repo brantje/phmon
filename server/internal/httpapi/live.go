@@ -104,6 +104,10 @@ type liveControlTarget struct {
 	UnavailableReason string                `json:"unavailable_reason,omitempty"`
 }
 
+type livePositionTimer interface {
+	Stop() bool
+}
+
 type LiveHub struct {
 	agents     AgentStore
 	registry   *agentdomain.Registry
@@ -123,7 +127,8 @@ type LiveHub struct {
 	positionDeliveryMu sync.Mutex
 	positionPending    map[string]positions.Position
 	positionRemoved    map[string]positions.Removal
-	positionFlush      *time.Timer
+	positionAfterFunc  func(time.Duration, func()) livePositionTimer
+	positionFlush      livePositionTimer
 
 	mu         sync.RWMutex
 	clients    map[*liveClient]struct{}
@@ -176,6 +181,9 @@ func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStor
 		navigation:      navigation.NewStore(),
 		positionPending: make(map[string]positions.Position),
 		positionRemoved: make(map[string]positions.Removal),
+		positionAfterFunc: func(delay time.Duration, function func()) livePositionTimer {
+			return time.AfterFunc(delay, function)
+		},
 	}
 }
 
@@ -211,9 +219,16 @@ func (h *LiveHub) PublishPositionRemoval(removal positions.Removal) {
 }
 
 func (h *LiveHub) schedulePositionFlushLocked() {
-	if h.positionFlush == nil {
-		h.positionFlush = time.AfterFunc(livePositionCoalesce, h.flushPositionDeltas)
+	if h.positionFlush != nil {
+		return
 	}
+	afterFunc := h.positionAfterFunc
+	if afterFunc == nil {
+		afterFunc = func(delay time.Duration, function func()) livePositionTimer {
+			return time.AfterFunc(delay, function)
+		}
+	}
+	h.positionFlush = afterFunc(livePositionCoalesce, h.flushPositionDeltas)
 }
 
 func (h *LiveHub) flushPositionDeltas() {

@@ -433,6 +433,134 @@ func TestPositionBatchUsesClientVisibleSessionAcrossSnapshotBetweenReplacements(
 	}
 }
 
+
+type fakePositionTimer struct {
+	due      time.Duration
+	function func()
+	active   bool
+}
+
+func (timer *fakePositionTimer) Stop() bool {
+	wasActive := timer.active
+	timer.active = false
+	return wasActive
+}
+
+type fakePositionScheduler struct {
+	now    time.Duration
+	timers []*fakePositionTimer
+}
+
+func (scheduler *fakePositionScheduler) afterFunc(delay time.Duration, function func()) livePositionTimer {
+	timer := &fakePositionTimer{
+		due: scheduler.now + delay, function: function, active: true,
+	}
+	scheduler.timers = append(scheduler.timers, timer)
+	return timer
+}
+
+func (scheduler *fakePositionScheduler) advance(delta time.Duration) {
+	scheduler.now += delta
+	for {
+		var next *fakePositionTimer
+		for _, timer := range scheduler.timers {
+			if !timer.active || timer.due > scheduler.now {
+				continue
+			}
+			if next == nil || timer.due < next.due {
+				next = timer
+			}
+		}
+		if next == nil {
+			return
+		}
+		next.active = false
+		next.function()
+	}
+}
+
+func TestPositionBatchSchedulerSustainsFiftyCharactersAtFiveHz(t *testing.T) {
+	hub := NewLiveHub(nil, nil, nil)
+	scheduler := &fakePositionScheduler{}
+	hub.positionAfterFunc = scheduler.afterFunc
+	client := &liveClient{
+		hub: hub, ctx: context.Background(),
+		outgoing: make(chan []byte, liveOutgoingQueueSize),
+		snapshotWake: make(chan struct{}, 1),
+		subscriptions: map[string]liveSubscription{
+			"map-positions": {
+				ID: "map-positions", Revision: 1, Stream: "positions",
+				Filter: liveFilter{Server: "Greatest"},
+			},
+		},
+		revisions: map[string]uint64{"map-positions": 1},
+		positionSessions: make(map[string]map[string]string),
+	}
+	hub.register(client)
+	defer hub.unregister(client)
+
+	now := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	batches := 0
+	expectedSequence := uint64(0)
+	for tick := 0; tick < 20; tick++ {
+		if tick%2 == 0 {
+			expectedSequence++
+			for index := 0; index < 50; index++ {
+				hub.PublishPosition(positions.Position{
+					Server: "Greatest", AgentID: testPositionUUID(index + 200), Generation: 1,
+					CharacterID: testPositionUUID(index), SessionID: testPositionUUID(index + 100),
+					Sequence: expectedSequence, Region: 25000,
+					X: float64(expectedSequence*100) + float64(index), Y: float64(index),
+					ObservedAt: now.Add(time.Duration(tick) * 100 * time.Millisecond),
+				})
+			}
+			hub.positionMu.Lock()
+			pending := len(hub.positionPending)
+			hub.positionMu.Unlock()
+			if pending != 50 {
+				t.Fatalf("pending map grew beyond one position per character: %d", pending)
+			}
+		}
+		if len(client.snapshotWake) != 0 {
+			t.Fatal("realtime batching triggered global snapshot invalidation")
+		}
+
+		scheduler.advance(100 * time.Millisecond)
+		for len(client.outgoing) > 0 {
+			batches++
+			var frame struct {
+				Data struct {
+					Positions []positions.Position `json:"positions"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(<-client.outgoing, &frame); err != nil {
+				t.Fatal(err)
+			}
+			if len(frame.Data.Positions) != 50 {
+				t.Fatalf("batch %d carried %d positions, want 50", batches, len(frame.Data.Positions))
+			}
+			for _, position := range frame.Data.Positions {
+				if position.Sequence != uint64(batches) {
+					t.Fatalf("batch %d leaked non-latest sequence %d", batches, position.Sequence)
+				}
+			}
+		}
+	}
+
+	if batches != 10 {
+		t.Fatalf("two seconds at 5 Hz produced %d batches, want 10", batches)
+	}
+	if batches > 20 {
+		t.Fatalf("batch rate exceeded 10/sec: %d batches in two seconds", batches)
+	}
+	if state := client.positionSessionState("map-positions"); len(state) != 50 {
+		t.Fatalf("delivered session state is not bounded per character: %d", len(state))
+	}
+	if len(client.snapshotWake) != 0 {
+		t.Fatal("realtime batching triggered global snapshot invalidation")
+	}
+}
+
 func testPositionUUID(value int) string {
 	const hex = "0123456789abcdef"
 	last := make([]byte, 12)
