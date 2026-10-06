@@ -1680,3 +1680,17 @@ provide a sufficiently frequent verified packet trigger, PhMon must keep the saf
 500 ms fallback and report that limitation rather than adding an unverified
 background phBot API polling thread.
 
+## Display-only routes from another plugin (2026-10-06)
+
+Plugin **1.9.24** / agent protocol **17** adds `submit_external_route`. Another
+plugin loaded in the same phBot process calls that function when its own
+navigation starts, changes, or stops. The function only stores the snapshot. It
+does not call `generate_script`, `start_script`, `stop_script`, or `move_to`.
+
+The public Script API still has no getter for a running script. This path works
+only when the other plugin submits the lines it is already following. A bare
+`move_to` still has no path to draw. The map reuses the existing remaining-walk
+overlay and shortens it from live character positions. Observed routes do not
+create a navigation command, tray row, or Stop action. The other plugin's
+contract is [external-route-plugin-prompt.md](../external-route-plugin-prompt.md).
+

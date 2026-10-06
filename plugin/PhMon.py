@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.23'
+pVersion = '1.9.24'
 pUrl = ''
 
-PROTOCOL_VERSION = 16
+PROTOCOL_VERSION = 17
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -309,6 +309,62 @@ def _parse_generated_navigation_script(generated):
     if len(script.encode('utf-8')) > 32768:
         raise ValueError('invalid_path')
     return script, instructions
+
+def _validate_external_route(route):
+    """Accept another plugin's display snapshot. Never executes script text."""
+    if not isinstance(route, dict):
+        return None
+    sequence = route.get('sequence')
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1 or sequence > 2 ** 63 - 1:
+        return None
+    active = route.get('active')
+    if not isinstance(active, bool):
+        return None
+    if not active:
+        if route.get('lines') not in (None, []):
+            return None
+        return {'sequence': sequence, 'active': False, 'source': None, 'instructions': []}
+    source = route.get('source')
+    if not isinstance(source, dict) or not _valid_position_region(source.get('region')):
+        return None
+    coordinates = []
+    for key in ('x', 'y', 'z'):
+        value = source.get(key)
+        if not _number(value) or abs(value) > 10000000:
+            return None
+        coordinates.append(float(value))
+    lines = route.get('lines')
+    if not isinstance(lines, (list, tuple)):
+        return None
+    try:
+        _, instructions = _parse_generated_navigation_script(list(lines))
+    except ValueError:
+        return None
+    if not any(item.get('kind') == 'walk' for item in instructions):
+        return None
+    return {
+        'sequence': sequence,
+        'active': True,
+        'source': {
+            'region': source.get('region'),
+            'x': coordinates[0],
+            'y': coordinates[1],
+            'z': coordinates[2],
+        },
+        'instructions': instructions,
+    }
+
+def submit_external_route(route):
+    """Store a display-only route from another plugin in this phBot process.
+
+    The caller submits when its own navigation starts, changes, or stops.
+    This function does not call phBot movement or script APIs and does not
+    perform network I/O.
+    """
+    worker = _worker
+    if worker is None:
+        return False
+    return worker.submit_external_route(route)
 
 def _valid_position_region(value):
     return (isinstance(value, int) and not isinstance(value, bool) and
@@ -3007,6 +3063,9 @@ class AgentWorker(object):
         self._navigation_sequence = 0
         self._latest_navigation_route = None
         self._navigation_route_sent_at = 0.0
+        self._external_lock = threading.Lock()
+        self._external_route = None
+        self._external_sent_at = 0.0
         self._last_navigation_evidence = None
         self._active_navigation = None
         self._trace_requested_name = None
@@ -3125,6 +3184,7 @@ class AgentWorker(object):
         self._flush_map_npcs(client)
         self._flush_map_players(client)
         self._flush_navigation_route(client)
+        self._flush_external_route(client)
         now = _monotonic()
         for sample in self._mob_spool.pending():
             sample_id = sample.get('sample_id')
@@ -3772,6 +3832,84 @@ class AgentWorker(object):
         self._last_navigation_evidence = None
         self._active_navigation = None
 
+    def _clear_external_route(self):
+        with self._external_lock:
+            self._external_route = None
+            self._external_sent_at = 0.0
+
+    def _rewind_external_route(self):
+        with self._external_lock:
+            route = self._external_route
+            if route is None or not route.get('active'):
+                self._external_route = None
+                self._external_sent_at = 0.0
+                return
+            route['dirty'] = True
+            self._external_sent_at = 0.0
+
+    def submit_external_route(self, route):
+        parsed = _validate_external_route(route)
+        if parsed is None:
+            return False
+        with self._external_lock:
+            current = self._external_route
+            if (current is not None and current.get('active') and parsed['active'] and
+                    current.get('sequence') == parsed['sequence']):
+                return True
+            if not parsed['active'] and (current is None or not current.get('active') or
+                    current.get('sequence') != parsed['sequence']):
+                return False
+            parsed['submitted_at'] = _worker_utc_now(self)
+            parsed['dirty'] = True
+            self._external_route = parsed
+            self._external_sent_at = 0.0
+        return True
+
+    def _flush_external_route(self, client):
+        with self._external_lock:
+            route = self._external_route
+            if (route is None or self.character_id is None or self.session_id is None):
+                return False
+            now = _monotonic()
+            if not route.get('dirty') and now - self._external_sent_at < 5.0:
+                return False
+            payload = {
+                'schema_version': 1,
+                'character_id': self.character_id,
+                'session_id': self.session_id,
+                'route_sequence': route['sequence'],
+                'active': bool(route.get('active')),
+                'invoked_at': route['submitted_at'],
+            }
+            if route.get('active'):
+                source = route['source']
+                payload['source'] = {
+                    'region': source['region'],
+                    'x': source['x'],
+                    'y': source['y'],
+                    'z': source['z'],
+                    'observed_at': route['submitted_at'],
+                }
+                payload['instructions'] = route['instructions']
+            frame = {
+                'type': 'navigation.observed',
+                'protocol_version': PROTOCOL_VERSION,
+                'observed': payload,
+            }
+            try:
+                encoded_size = len(json.dumps(frame, separators=(',', ':'), allow_nan=False).encode('utf-8'))
+            except Exception:
+                return False
+            if encoded_size > 64 * 1024:
+                return False
+            if route.get('active'):
+                route['dirty'] = False
+            else:
+                self._external_route = None
+            self._external_sent_at = now
+        client.send_json(frame)
+        return True
+
     def _run(self):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
@@ -3801,6 +3939,7 @@ class AgentWorker(object):
                 next_heartbeat = _monotonic() + interval
                 self._clear_navigation_route()
                 self.invalidate_position_authority()
+                self._rewind_external_route()
                 self.character_id = None
                 self.session_id = None
                 self._current_identity = None
@@ -3829,6 +3968,7 @@ class AgentWorker(object):
                             self.session_id = None
                             self._current_identity = None
                             self._clear_navigation_route()
+                            self._clear_external_route()
                             self._latest_sample = None
                             self.clear_position()
                             self._latest_resources = None
@@ -3952,6 +4092,7 @@ class AgentWorker(object):
             self.invalidate_position_authority()
             if self._current_identity is not None and identity != self._current_identity:
                 self._discard_pending_commands('character_changed')
+                self._clear_external_route()
             if self.character_id is not None and self._current_identity is not None:
                 previous_key = (self._current_identity.get('server','').lower(), self._current_identity.get('name','').lower())
                 next_key = (identity.get('server','').lower(), identity.get('name','').lower())

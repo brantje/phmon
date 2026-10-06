@@ -3461,6 +3461,77 @@ class BackoffTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     plugin._parse_generated_navigation_script(invalid)
 
+    def test_external_route_submission_is_display_only(self):
+        calls = []
+        adapter = plugin.PhBotAdapter({
+            'generate_script': lambda *args: calls.append(('generate', args)) or ['walk,1,2,0'],
+            'start_script': lambda script: calls.append(('start', script)) or True,
+            'stop_script': lambda: calls.append('stop') or True,
+        })
+        worker = plugin.AgentWorker({
+            'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,
+            'agent_token': 'token',
+        }, 'fixture', api_adapter=adapter)
+        worker.character_id = AGENT_ID
+        worker.session_id = '22222222-3333-4444-8555-666666666666'
+        worker._current_identity = {
+            'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileOne',
+        }
+        route = {
+            'sequence': 1, 'active': True,
+            'source': {'region': 25000, 'x': 6410.0, 'y': 1080.0, 'z': 0.0},
+            'lines': ['walk,6420,1080,0', 'wait,500', 'walk,6430,1090,0'],
+        }
+        previous = plugin._worker
+        plugin._worker = worker
+        try:
+            self.assertFalse(plugin.submit_external_route(None))
+            self.assertFalse(plugin.submit_external_route({
+                'sequence': 1, 'active': True,
+                'source': {'region': 25000, 'x': 1, 'y': 2, 'z': 0},
+                'lines': ['exec,unsafe'],
+            }))
+            self.assertTrue(plugin.submit_external_route(route))
+            self.assertTrue(plugin.submit_external_route(dict(route, lines=['walk,1,1,0'])))
+            self.assertEqual(worker._external_route['instructions'][0]['x'], 6420.0)
+            sent = []
+
+            class CaptureClient:
+                def send_json(self, value):
+                    sent.append(value)
+
+            self.assertTrue(worker._flush_external_route(CaptureClient()))
+            self.assertEqual(calls, [])
+            self.assertEqual(sent[0]['type'], 'navigation.observed')
+            self.assertEqual(sent[0]['protocol_version'], plugin.PROTOCOL_VERSION)
+            observed = sent[0]['observed']
+            self.assertNotIn('command_id', observed)
+            self.assertTrue(observed['active'])
+            self.assertEqual([item['kind'] for item in observed['instructions']], ['walk', 'wait', 'walk'])
+            self.assertFalse(worker._flush_external_route(CaptureClient()))
+            self.assertTrue(plugin.submit_external_route({'sequence': 1, 'active': False}))
+            sent[:] = []
+            self.assertTrue(worker._flush_external_route(CaptureClient()))
+            self.assertFalse(sent[0]['observed']['active'])
+            self.assertNotIn('instructions', sent[0]['observed'])
+            self.assertIsNone(worker._external_route)
+
+            self.assertTrue(plugin.submit_external_route(route))
+            registered = {
+                'type': 'character.registered', 'protocol_version': plugin.PROTOCOL_VERSION,
+                'character_id': '33333333-4444-4555-8666-777777777777',
+                'session_id': '44444444-5555-4666-8777-888888888888',
+            }
+            with patch.object(worker, '_wait_for_registration', return_value=registered):
+                worker._publish_sample(CaptureClient(), {
+                    'identity': {'server': 'Greatest', 'name': 'Alpha', 'profile_key': 'ProfileTwo'},
+                    'state': {'region': 25000, 'x': 1.0, 'y': 2.0, 'z': 0.0},
+                }, False)
+            self.assertIsNone(worker._external_route)
+            self.assertEqual(calls, [])
+        finally:
+            plugin._worker = previous
+
     def test_navigation_route_is_cleared_on_profile_replacement_and_revocation(self):
         worker = plugin.AgentWorker({
             'backend_url': 'ws://127.0.0.1:8081/agent', 'agent_id': AGENT_ID,

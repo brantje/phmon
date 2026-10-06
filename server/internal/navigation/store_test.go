@@ -509,3 +509,72 @@ func TestCanStopNavigationAndMarkStopped(t *testing.T) {
 		t.Fatalf("expected stopped status, got %#v", view)
 	}
 }
+
+func TestObservedRouteTrimsIndependentlyOfTheCommandRoute(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	command := routeInput(1, Instruction{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0}, Instruction{Index: 1, Kind: "walk", X: 6430, Y: 1090, Z: 0})
+	destination := Point{Region: 25000, X: 6430, Y: 1090, Z: 0}
+	if !store.Replace(command, "agent-one", 4, "Greatest", profile.DatasetID, destination, invoked) {
+		t.Fatal("command route not stored")
+	}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: command.CharacterID, SessionID: command.SessionID, Sequence: 3, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: []Instruction{
+			{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0},
+			{Index: 1, Kind: "walk", X: 6430, Y: 1090, Z: 0},
+		},
+	}
+	if store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return false }) {
+		t.Fatal("stale owner stored an observed route")
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("observed route not stored")
+	}
+	if store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(time.Second), func() bool { return true }) {
+		t.Fatal("duplicate observed sequence reset the route")
+	}
+	views := store.Snapshot("Greatest", profile, invoked.Add(time.Second))
+	if len(views) != 2 {
+		t.Fatalf("expected command and observed routes, got %#v", views)
+	}
+	if !store.Observe(command.CharacterID, command.SessionID, Position{Region: 25000, X: 6420, Y: 1080, At: invoked.Add(2 * time.Second)}) {
+		t.Fatal("fresh position did not advance a route")
+	}
+	views = store.Snapshot("Greatest", profile, invoked.Add(2*time.Second))
+	for _, view := range views {
+		if len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 1 || view.Blocks[0].Points[0].X != 6430 {
+			t.Fatalf("passed waypoint remained: %#v", view)
+		}
+		if view.CommandID == "" && (view.Sequence != 3 || view.Status != "moving") {
+			t.Fatalf("observed view: %#v", view)
+		}
+	}
+	cleared := ObservedInput{SchemaVersion: SchemaVersion, CharacterID: command.CharacterID, SessionID: command.SessionID, Sequence: 3, Active: false, InvokedAt: invoked.Add(3 * time.Second)}
+	if store.ClearObserved(cleared, "agent-one", 9, func() bool { return true }) {
+		t.Fatal("wrong generation cleared the observed route")
+	}
+	if store.ClearObserved(cleared, "agent-one", 4, func() bool { return false }) {
+		t.Fatal("stale owner cleared the observed route")
+	}
+	if !store.ClearObserved(cleared, "agent-one", 4, func() bool { return true }) {
+		t.Fatal("clear failed")
+	}
+	if store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(4*time.Second), func() bool { return true }) {
+		t.Fatal("cleared sequence was resurrected")
+	}
+	views = store.Snapshot("Greatest", profile, invoked.Add(4*time.Second))
+	if len(views) != 1 || views[0].CommandID == "" {
+		t.Fatalf("command route did not remain: %#v", views)
+	}
+	store.RemoveSession(command.SessionID)
+	if remaining := store.Snapshot("Greatest", profile, invoked); len(remaining) != 0 {
+		t.Fatalf("session cleanup left %#v", remaining)
+	}
+}

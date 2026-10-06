@@ -5778,6 +5778,15 @@ identified that a pre-existing stale marker could satisfy the handshake early;
 validate, commit and push this fix, reply to its PR #74 review with the SHA, and
 wait for CI.
 
+### Resume — 2026-10-06 display-only routes from another plugin
+
+Plugin 1.9.24 / protocol 17 accepts `submit_external_route` from another plugin
+in the same phBot process and publishes `navigation.observed`. The server stores
+that route separately from `character.navigate`, trims it from live positions,
+and the map draws the remaining line without a Stop control. The other plugin's
+contract is `external-route-plugin-prompt.md`. PhMon does not start or stop the
+other plugin's navigation.
+
 ### Resume — 2026-10-05 realtime controlled-character map positions
 
 Focused user-requested branch: `feat/realtime-map-positions`, based on

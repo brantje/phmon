@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 16
+	agentProtocolVersion    = 17
 	agentMinProtocolVersion = 2
 )
 
@@ -130,6 +130,7 @@ type agentMessage struct {
 	EventResults     []events.AppendResult      `json:"results,omitempty"`
 	MapSnapshot      *agentMonsterSnapshot      `json:"map_snapshot,omitempty"`
 	NavigationRoute  *navigation.Input          `json:"route,omitempty"`
+	ObservedRoute    *navigation.ObservedInput  `json:"observed,omitempty"`
 	MobSample        *mobs.Sample               `json:"sample,omitempty"`
 }
 
@@ -500,6 +501,43 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				return ownerErr == nil && navigationCharacterOwnerMatches(current, frame.CharacterID, frame.SessionID, hello.AgentID) &&
 					h.registry.IsCurrent(hello.AgentID, generation)
 			}) {
+				h.live.Invalidate()
+			}
+		case "navigation.observed":
+			frame := message.ObservedRoute
+			encoded, marshalErr := json.Marshal(message)
+			if hello.ProtocolVersion < 17 || frame == nil || marshalErr != nil || len(encoded) > navigation.MaxFrameBytes ||
+				h.navigation == nil || h.characters == nil || h.resources == nil || navigation.ValidObserved(*frame) != nil {
+				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid observed navigation", hello.AgentID, hello.ProtocolVersion)
+				return
+			}
+			ownerCurrent := func() bool {
+				if !h.registry.IsCurrent(hello.AgentID, generation) {
+					return false
+				}
+				ownerCtx, ownerCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				defer ownerCancel()
+				current, ownerErr := h.characters.GetScoped(ownerCtx, frame.CharacterID, "")
+				return ownerErr == nil && navigationCharacterOwnerMatches(current, frame.CharacterID, frame.SessionID, hello.AgentID) &&
+					h.registry.IsCurrent(hello.AgentID, generation)
+			}
+			if !frame.Active {
+				if h.navigation.ClearObserved(*frame, hello.AgentID, generation, ownerCurrent) {
+					h.live.Invalidate()
+				}
+				continue
+			}
+			ctx, cancel := context.WithTimeout(sessionCtx, 3*time.Second)
+			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
+			cancel()
+			if characterErr != nil || !navigationCharacterOwnerMatches(character, frame.CharacterID, frame.SessionID, hello.AgentID) {
+				continue
+			}
+			dataset, known := h.resources.DatasetIDForServer(character.Server)
+			if !known {
+				continue
+			}
+			if h.navigation.ReplaceObserved(*frame, hello.AgentID, generation, character.Server, dataset, time.Now().UTC(), ownerCurrent) {
 				h.live.Invalidate()
 			}
 		case "mob.sample":

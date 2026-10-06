@@ -52,6 +52,19 @@ type Input struct {
 	Instructions  []Instruction `json:"instructions"`
 }
 
+// ObservedInput is a display-only route submitted by another plugin. It has no
+// PhMon command and must not be treated as a navigation the server started.
+type ObservedInput struct {
+	SchemaVersion int           `json:"schema_version"`
+	CharacterID   string        `json:"character_id"`
+	SessionID     string        `json:"session_id"`
+	Sequence      uint64        `json:"route_sequence"`
+	Active        bool          `json:"active"`
+	InvokedAt     time.Time     `json:"invoked_at"`
+	Source        *Position     `json:"source,omitempty"`
+	Instructions  []Instruction `json:"instructions,omitempty"`
+}
+
 type Point struct {
 	Region int     `json:"region"`
 	X      float64 `json:"x"`
@@ -115,14 +128,23 @@ type routeOwner struct {
 }
 
 type Store struct {
-	mu        sync.RWMutex
-	routes    map[string]route // one latest route, including terminal sequence, per session
-	pending   map[string]routeOwner
-	lifecycle [128]sync.Mutex
+	mu              sync.RWMutex
+	routes          map[string]route // one latest command route, including terminal sequence, per session
+	pending         map[string]routeOwner
+	observed        map[string]route // display-only routes from another plugin
+	observedFloor   map[string]uint64
+	observedPending map[string]routeOwner
+	lifecycle       [128]sync.Mutex
 }
 
 func NewStore() *Store {
-	return &Store{routes: make(map[string]route), pending: make(map[string]routeOwner)}
+	return &Store{
+		routes:          make(map[string]route),
+		pending:         make(map[string]routeOwner),
+		observed:        make(map[string]route),
+		observedFloor:   make(map[string]uint64),
+		observedPending: make(map[string]routeOwner),
+	}
 }
 
 func Valid(input Input) error {
@@ -130,8 +152,48 @@ func Valid(input Input) error {
 		input.SchemaVersion != SchemaVersion || input.InvokedAt.IsZero() || len(input.Instructions) == 0 || len(input.Instructions) > MaxInstructions {
 		return ErrInvalid
 	}
-	lastIndex := -1
+	if err := validInstructions(input.Instructions); err != nil {
+		return err
+	}
+	if input.Source != nil && (!validRegion(input.Source.Region) || !coordinate(input.Source.X) || !coordinate(input.Source.Y) ||
+		input.Source.Z != nil && !coordinate(*input.Source.Z) || input.Source.At.IsZero()) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func ValidObserved(input ObservedInput) error {
+	if input.CharacterID == "" || input.SessionID == "" || input.Sequence == 0 ||
+		input.SchemaVersion != SchemaVersion || input.InvokedAt.IsZero() {
+		return ErrInvalid
+	}
+	if !input.Active {
+		if len(input.Instructions) != 0 || input.Source != nil {
+			return ErrInvalid
+		}
+		return nil
+	}
+	if input.Source == nil || len(input.Instructions) == 0 || len(input.Instructions) > MaxInstructions {
+		return ErrInvalid
+	}
+	if err := validInstructions(input.Instructions); err != nil {
+		return err
+	}
+	if !validRegion(input.Source.Region) || !coordinate(input.Source.X) || !coordinate(input.Source.Y) ||
+		input.Source.Z == nil || !coordinate(*input.Source.Z) || input.Source.At.IsZero() {
+		return ErrInvalid
+	}
 	for _, step := range input.Instructions {
+		if step.Kind == "walk" {
+			return nil
+		}
+	}
+	return ErrInvalid
+}
+
+func validInstructions(steps []Instruction) error {
+	lastIndex := -1
+	for _, step := range steps {
 		if step.Index <= lastIndex || step.Index >= MaxInstructions {
 			return ErrInvalid
 		}
@@ -152,10 +214,6 @@ func Valid(input Input) error {
 		default:
 			return ErrInvalid
 		}
-	}
-	if input.Source != nil && (!validRegion(input.Source.Region) || !coordinate(input.Source.X) || !coordinate(input.Source.Y) ||
-		input.Source.Z != nil && !coordinate(*input.Source.Z) || input.Source.At.IsZero()) {
-		return ErrInvalid
 	}
 	return nil
 }
@@ -222,8 +280,120 @@ func (s *Store) ReplaceIf(input Input, agentID string, generation uint64, server
 	return true
 }
 
+// ObservedDestination is the last walk point. Its region comes from the source
+// cave context, or from the outdoor grid when the source is not inside a cave.
+func ObservedDestination(server, dataset string, input ObservedInput) (Point, bool) {
+	if input.Source == nil {
+		return Point{}, false
+	}
+	var last *Instruction
+	for index := range input.Instructions {
+		if input.Instructions[index].Kind == "walk" {
+			last = &input.Instructions[index]
+		}
+	}
+	if last == nil {
+		return Point{}, false
+	}
+	profile, err := mapprofile.ForServer(server, dataset)
+	if err != nil {
+		return Point{}, false
+	}
+	if input.Source.Z != nil {
+		if area, floor, ok := mapprofile.ClassifyCave(profile, &input.Source.Region, input.Source.Z); ok {
+			if !(area == "job-temple" && floor != "1F") {
+				return Point{Region: input.Source.Region, X: last.X, Y: last.Y, Z: last.Z}, true
+			}
+		}
+	}
+	if knownCaveRegion(profile, input.Source.Region) {
+		return Point{}, false
+	}
+	region, ok := outdoorRegion(profile, last.X, last.Y)
+	if !ok {
+		return Point{}, false
+	}
+	return Point{Region: region, X: last.X, Y: last.Y, Z: last.Z}, true
+}
+
+// ReplaceObserved stores a display-only route without touching the command route
+// for the same session. An equal or older sequence does not reset progress.
+func (s *Store) ReplaceObserved(input ObservedInput, agentID string, generation uint64, server, dataset string, now time.Time, ownerCurrent func() bool) bool {
+	if s == nil || !input.Active || ValidObserved(input) != nil || server == "" || dataset == "" {
+		return false
+	}
+	destination, ok := ObservedDestination(server, dataset, input)
+	if !ok {
+		return false
+	}
+	lifecycle := s.sessionLifecycleLock(input.SessionID)
+	lifecycle.Lock()
+	defer lifecycle.Unlock()
+	s.mu.Lock()
+	s.observedPending[input.SessionID] = routeOwner{agentID: agentID, generation: generation}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.observedPending, input.SessionID)
+		s.mu.Unlock()
+	}()
+	if ownerCurrent != nil && !ownerCurrent() {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.observedSequenceUsed(input.SessionID, input.Sequence) {
+		return false
+	}
+	storedInput := Input{
+		SchemaVersion: input.SchemaVersion, CharacterID: input.CharacterID, SessionID: input.SessionID,
+		Sequence: input.Sequence, InvokedAt: input.InvokedAt, Source: input.Source, Instructions: input.Instructions,
+	}
+	stored := route{Input: storedInput, agentID: agentID, generation: generation, server: server, datasetID: dataset, destination: destination,
+		status: "waiting_for_movement", updatedAt: now.UTC()}
+	copySource := *input.Source
+	stored.anchor = &copySource
+	s.observed[input.SessionID] = stored
+	return true
+}
+
+// ClearObserved removes the display-only route when the submitted sequence is
+// still the current one. The sequence cannot be shown again.
+func (s *Store) ClearObserved(input ObservedInput, agentID string, generation uint64, ownerCurrent func() bool) bool {
+	if s == nil || input.Active || ValidObserved(input) != nil {
+		return false
+	}
+	lifecycle := s.sessionLifecycleLock(input.SessionID)
+	lifecycle.Lock()
+	defer lifecycle.Unlock()
+	if ownerCurrent != nil && !ownerCurrent() {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.observed[input.SessionID]
+	if !ok || current.Sequence != input.Sequence || current.CharacterID != input.CharacterID ||
+		current.agentID != agentID || current.generation != generation {
+		return false
+	}
+	delete(s.observed, input.SessionID)
+	if s.observedFloor[input.SessionID] < input.Sequence {
+		s.observedFloor[input.SessionID] = input.Sequence
+	}
+	return true
+}
+
+func (s *Store) observedSequenceUsed(sessionID string, sequence uint64) bool {
+	if current, ok := s.observed[sessionID]; ok && sequence <= current.Sequence {
+		return true
+	}
+	floor, ok := s.observedFloor[sessionID]
+	return ok && sequence <= floor
+}
+
 // Observe advances only from a fresh character state already accepted by the
 // session-fenced character store. Repeated/out-of-order observations do nothing.
+// Command routes and display-only observed routes advance independently.
 func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 	if s == nil || characterID == "" || sessionID == "" || position.At.IsZero() || !validRegion(position.Region) ||
 		!coordinate(position.X) || !coordinate(position.Y) || position.Z != nil && !coordinate(*position.Z) {
@@ -231,24 +401,36 @@ func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	current, ok := s.routes[sessionID]
-	if !ok || current.stopped || current.CharacterID != characterID || position.At.Before(current.InvokedAt) ||
+	reported := false
+	for _, routes := range []map[string]route{s.routes, s.observed} {
+		current, present := routes[sessionID]
+		next, write, signal := advanceStoredRoute(current, present, characterID, position)
+		if write {
+			routes[sessionID] = next
+		}
+		if signal {
+			reported = true
+		}
+	}
+	return reported
+}
+
+func advanceStoredRoute(current route, present bool, characterID string, position Position) (route, bool, bool) {
+	if !present || current.stopped || current.CharacterID != characterID || position.At.Before(current.InvokedAt) ||
 		current.lastPosition != nil && !position.At.After(current.lastPosition.At) {
-		return false
+		return current, false, false
 	}
 	previous := current.lastPosition
 	copyPosition := position
 	current.lastPosition = &copyPosition
 	current.updatedAt = position.At.UTC()
 	if current.arrived {
-		s.routes[sessionID] = current
-		return false
+		return current, true, false
 	}
 	if closeToDestination(current, position) {
 		current.arrived = true
 		current.status = "arrived"
-		s.routes[sessionID] = current
-		return true
+		return current, true, true
 	}
 
 	// A barrier is crossed only by a fresh sample showing movement from the
@@ -260,8 +442,7 @@ func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 		} else {
 			current.status = "transition_awaiting_evidence"
 		}
-		s.routes[sessionID] = current
-		return true
+		return current, true, true
 	}
 	progressed, uncertain := advanceWalk(&current, position)
 	if uncertain {
@@ -285,8 +466,7 @@ func (s *Store) Observe(characterID, sessionID string, position Position) bool {
 	if progressed && current.status == "moving" {
 		appendRecentMove(&current, position)
 	}
-	s.routes[sessionID] = current
-	return true
+	return current, true, true
 }
 
 // CanStopNavigation reports whether a stop command may be admitted for the
@@ -344,6 +524,9 @@ func (s *Store) RemoveSession(sessionID string) {
 		s.mu.Lock()
 		delete(s.routes, sessionID)
 		delete(s.pending, sessionID)
+		delete(s.observed, sessionID)
+		delete(s.observedFloor, sessionID)
+		delete(s.observedPending, sessionID)
 		s.mu.Unlock()
 	}
 }
@@ -373,14 +556,18 @@ func (s *Store) sessionsForOwner(agentID string, generation *uint64) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	seen := make(map[string]struct{})
-	for id, item := range s.routes {
-		if item.agentID == agentID && (generation == nil || item.generation == *generation) {
-			seen[id] = struct{}{}
+	for _, routes := range []map[string]route{s.routes, s.observed} {
+		for id, item := range routes {
+			if item.agentID == agentID && (generation == nil || item.generation == *generation) {
+				seen[id] = struct{}{}
+			}
 		}
 	}
-	for id, owner := range s.pending {
-		if owner.agentID == agentID && (generation == nil || owner.generation == *generation) {
-			seen[id] = struct{}{}
+	for _, owners := range []map[string]routeOwner{s.pending, s.observedPending} {
+		for id, owner := range owners {
+			if owner.agentID == agentID && (generation == nil || owner.generation == *generation) {
+				seen[id] = struct{}{}
+			}
 		}
 	}
 	ids := make([]string, 0, len(seen))
@@ -407,10 +594,24 @@ func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Tim
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	views := make([]View, 0, len(s.routes))
-	for sessionID, route := range s.routes {
+	views := make([]View, 0, len(s.routes)+len(s.observed))
+	for _, routes := range []map[string]route{s.routes, s.observed} {
+		views = append(views, snapshotRoutes(routes, server, profile, now)...)
+	}
+	sort.Slice(views, func(i, j int) bool {
+		if views[i].SessionID == views[j].SessionID {
+			return views[i].CommandID < views[j].CommandID
+		}
+		return views[i].SessionID < views[j].SessionID
+	})
+	return views
+}
+
+func snapshotRoutes(routes map[string]route, server string, profile mapprofile.Profile, now time.Time) []View {
+	views := make([]View, 0, len(routes))
+	for sessionID, route := range routes {
 		if equalFold(route.server, server) && route.datasetID != profile.DatasetID {
-			delete(s.routes, sessionID)
+			delete(routes, sessionID)
 			continue
 		}
 		if !equalFold(route.server, server) {
@@ -495,7 +696,6 @@ func (s *Store) Snapshot(server string, profile mapprofile.Profile, now time.Tim
 		view.Progress, view.ETASeconds = navigationProgress(route, now)
 		views = append(views, view)
 	}
-	sort.Slice(views, func(i, j int) bool { return views[i].SessionID < views[j].SessionID })
 	return views
 }
 

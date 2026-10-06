@@ -1446,3 +1446,45 @@ server delivers `0xB021` callbacks frequently enough for 200 ms observations. Ke
 the safe 500 ms fallback and record live runtime cadence before claiming that rate on a
 real server.
 
+## Agent protocol 17: display-only observed routes — 2026-10-06
+
+Protocol 17 adds `navigation.observed` for a path that another plugin in the same
+phBot process is already following. PhMon does not generate, start, or stop that
+path. Command-owned `navigation.route` is unchanged and still requires a completed
+`character.navigate` command.
+
+```json
+{
+  "type": "navigation.observed",
+  "protocol_version": 17,
+  "observed": {
+    "schema_version": 1,
+    "character_id": "<character UUID>",
+    "session_id": "<active session UUID>",
+    "route_sequence": 1,
+    "active": true,
+    "invoked_at": "<UTC RFC3339>",
+    "source": {"region": 25000, "x": 6410.0, "y": 1080.0, "z": 0.0, "observed_at": "<UTC RFC3339>"},
+    "instructions": [
+      {"index": 0, "kind": "walk", "x": 6420.0, "y": 1080.0, "z": 0.0},
+      {"index": 1, "kind": "wait", "duration_ms": 500},
+      {"index": 2, "kind": "walk", "x": 6430.0, "y": 1090.0, "z": 0.0}
+    ]
+  }
+}
+```
+
+`active: false` repeats the same `route_sequence` and omits `source` and
+`instructions`. The server removes that display route. An equal or older sequence
+does not replace a current route or return after it was cleared. The plugin may
+repeat the current active snapshot at most every five seconds. The frame is not
+spooled.
+
+Admission requires protocol 17, the authenticated agent's current character
+session, and the current connection generation. There is no command lookup. The
+route is stored separately from a PhMon `character.navigate` route for the same
+session. Its arrival point is the last `walk` instruction. Live character
+positions trim walked prefixes with the existing 12-unit rule. The live map view
+uses an empty `command_id`, so the browser draws the remaining line and does not
+offer Stop.
+
