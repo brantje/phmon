@@ -330,9 +330,9 @@ func TestPositionBatchUsesClientVisibleSessionAcrossSnapshotBetweenReplacements(
 	}
 	client := &liveClient{
 		hub: hub, ctx: context.Background(),
-		outgoing: make(chan []byte, liveOutgoingQueueSize),
-		subscriptions: map[string]liveSubscription{subscription.ID: subscription},
-		revisions: map[string]uint64{subscription.ID: subscription.Revision},
+		outgoing:         make(chan []byte, liveOutgoingQueueSize),
+		subscriptions:    map[string]liveSubscription{subscription.ID: subscription},
+		revisions:        map[string]uint64{subscription.ID: subscription.Revision},
 		positionSessions: make(map[string]map[string]string),
 	}
 	hub.register(client)
@@ -485,7 +485,7 @@ func TestPositionBatchSchedulerSustainsFiftyCharactersAtFiveHz(t *testing.T) {
 	hub.positionAfterFunc = scheduler.afterFunc
 	client := &liveClient{
 		hub: hub, ctx: context.Background(),
-		outgoing: make(chan []byte, liveOutgoingQueueSize),
+		outgoing:     make(chan []byte, liveOutgoingQueueSize),
 		snapshotWake: make(chan struct{}, 1),
 		subscriptions: map[string]liveSubscription{
 			"map-positions": {
@@ -493,7 +493,7 @@ func TestPositionBatchSchedulerSustainsFiftyCharactersAtFiveHz(t *testing.T) {
 				Filter: liveFilter{Server: "Greatest"},
 			},
 		},
-		revisions: map[string]uint64{"map-positions": 1},
+		revisions:        map[string]uint64{"map-positions": 1},
 		positionSessions: make(map[string]map[string]string),
 	}
 	hub.register(client)
