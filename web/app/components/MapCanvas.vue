@@ -53,9 +53,9 @@ import {
   type RasterPosition,
 } from '~/utils/mapCoordinates'
 import {
-  INITIAL_MAP_ZOOM,
   MAP_ZOOM_OPTIONS,
   MAP_ZOOM_PERCENT_STEP,
+  mapCanvasInitialZoomLevel,
   mapZoomLevelForPercent,
   mapZoomPercentForLevel,
   snapMapZoomPercent,
@@ -99,6 +99,7 @@ const props = defineProps<{
   externalControls?: boolean
   focusedCharacterID?: string
   followedCharacterID?: string
+  initialZoomPercent?: number
   initialPosition?: RasterPosition | null
   focusRequest?: number
   initialTile?: { x: number; y: number }
@@ -235,6 +236,7 @@ function syncPanBounds() {
 
 function setInitialView() {
   if (!map || !createLatLng) return
+  const zoom = mapCanvasInitialZoomLevel(props.initialZoomPercent)
   if (props.initialPosition) {
     initialPositionApplied = true
     lastFocusedTile = `${props.initialPosition.tileX}:${props.initialPosition.tileY}`
@@ -246,7 +248,7 @@ function setInitialView() {
         -(row * 256 + props.initialPosition.pixelY),
         column * 256 + props.initialPosition.pixelX,
       ),
-      INITIAL_MAP_ZOOM,
+      zoom,
     )
     return
   }
@@ -259,7 +261,7 @@ function setInitialView() {
     initial.y,
   )
   if (center) {
-    map.setView(createLatLng(center.lat, center.lng), INITIAL_MAP_ZOOM)
+    map.setView(createLatLng(center.lat, center.lng), zoom)
     return
   }
   const columns = props.profile.tiles.max_x - props.profile.tiles.min_x + 1
@@ -272,10 +274,7 @@ function setInitialView() {
     0,
     Math.min(rows - 1, props.profile.tiles.max_y - initial.y),
   )
-  map.setView(
-    createLatLng(-(row * 256 + 128), column * 256 + 128),
-    INITIAL_MAP_ZOOM,
-  )
+  map.setView(createLatLng(-(row * 256 + 128), column * 256 + 128), zoom)
 }
 
 function publishView() {

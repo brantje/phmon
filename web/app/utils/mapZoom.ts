@@ -24,3 +24,8 @@ export const MAP_ZOOM_OPTIONS = Object.freeze({
 })
 
 export const INITIAL_MAP_ZOOM = mapZoomLevelForPercent(INITIAL_MAP_ZOOM_PERCENT)
+
+export function mapCanvasInitialZoomLevel(percent?: number | null) {
+  if (percent == null || !Number.isFinite(percent)) return INITIAL_MAP_ZOOM
+  return mapZoomLevelForPercent(snapMapZoomPercent(percent))
+}

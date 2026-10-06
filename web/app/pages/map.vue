@@ -69,6 +69,7 @@ import {
   toggleMapActionTarget,
 } from '~/utils/mapActionTargets'
 import { mapFollowView, toggleMapFollow } from '~/utils/mapFollow'
+import { INITIAL_MAP_ZOOM_PERCENT } from '~/utils/mapZoom'
 import {
   mapNavigationRouteOverlays,
   mapNavigationStatusLabel,
@@ -334,7 +335,11 @@ const layerDrops = ref(false)
 const mapProfile = ref<MapProfile | null>(null)
 const profileLoading = ref(false)
 const profileError = ref('')
-const mapView = ref({ tileX: 168, tileY: 97, zoomPercent: 100 })
+const mapView = ref({
+  tileX: 168,
+  tileY: 97,
+  zoomPercent: INITIAL_MAP_ZOOM_PERCENT,
+})
 const referenceViewport = ref<MonsterReferenceBounds | null>(null)
 const referenceAreas = ref<MonsterReferenceArea[]>([])
 const referenceGuideRows = ref<MonsterReferenceGuideRow[]>([])
@@ -2882,6 +2887,9 @@ useHead({ title: 'Map · PhMon' })
               :external-controls="true"
               :focusedCharacterID="selectedCharacterID"
               :followedCharacterID="followedCharacterID"
+              :initialZoomPercent="
+                followedCharacterID ? mapView.zoomPercent : undefined
+              "
               v-if="canvasProfile?.tiles.status === 'available-for-inspection'"
               :key="`${server}:${areaID}:${floorID}:${mapProfile?.dataset_id}:${mapProfile?.dataset_version}`"
               :profile="canvasProfile"

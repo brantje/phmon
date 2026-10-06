@@ -2370,4 +2370,5 @@ map centered on that character as live/realtime positions update, including
 detected cave/world floor changes, without changing zoom. Dragging the map,
 choosing another destination/floor/area, focusing a different character, or
 changing server turns Follow off. Manual pan/zoom stays preserved when Follow is
-off.
+off. Follow floor/world remounts pass the last stored zoom into the replacement
+MapCanvas so `setInitialView()` does not reset to 125%.
