@@ -2038,7 +2038,7 @@ class CanonicalCallbackTests(unittest.TestCase):
             event = self.callback(plugin.handle_event, plugin.EVENT_THIEF_SPAWN, 'bandit')
         self.assertEqual(event['kind'], 'job.thief_seen')
         self.assertEqual(event['payload']['position_source'], 'thief')
-        self.assertEqual(event['payload']['plugin_version'], '1.9.24')
+        self.assertEqual(event['payload']['plugin_version'], plugin.pVersion)
         self.assertEqual(event['payload']['thief'], {'name': 'Bandit', 'region': 25735, 'x': 12.5, 'y': -3.0})
         self.assertEqual(event['region'], 25273)
         self.assertEqual(event['z'], 0)
