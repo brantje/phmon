@@ -604,7 +604,7 @@ func TestObservedIdenticalResubmitPreservesTrimmedProgress(t *testing.T) {
 	}
 	observed := ObservedInput{
 		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-trade", Sequence: 1, Active: true, InvokedAt: invoked,
-		Source: &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Source:       &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked},
 		Instructions: instructions,
 	}
 	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
