@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"phmon/server/internal/analytics"
 )
 
 type Store struct {
@@ -109,6 +110,18 @@ ON CONFLICT (observer_character_id,resource_key) DO UPDATE SET
  updated_at=now()`, characterID, serverKey, guildKey, key, sessionID, revisionValue, observation.Availability, observation.Payload, hash[:], now)
 		if err != nil {
 			return fmt.Errorf("save %s observation: %w", key, err)
+		}
+		if key == "guild_storage" && observation.Availability == "observed" {
+			var value struct {
+				Gold *int64 `json:"gold"`
+			}
+			// Gold is optional in the resource contract. A malformed optional field
+			// must not reject otherwise valid inventory/resource evidence.
+			if err := json.Unmarshal(observation.Payload, &value); err == nil && value.Gold != nil && *value.Gold >= 0 && normalizeGuild(observerGuild) != "" {
+				if _, err := analytics.RecordGuildGold(ctx, tx, observerServer, observerGuild, characterID, sessionID, agentID, generation, revision, *value.Gold); err != nil {
+					return fmt.Errorf("record guild storage gold history: %w", err)
+				}
+			}
 		}
 		if observation.Availability != "observed" {
 			continue
@@ -216,37 +229,42 @@ ORDER BY o.resource_key,o.observed_at DESC NULLS LAST,o.updated_at DESC,o.observ
 // DeleteGuildStorage removes the saved current snapshots for one normalized
 // server/guild scope. It does not alter anything in phBot or the game. A later
 // agent observation can create a new saved snapshot.
-func (s *Store) DeleteGuildStorage(ctx context.Context, server, guild string) (observations, items int64, err error) {
+func (s *Store) DeleteGuildStorage(ctx context.Context, server, guild string) (observations, items, goldSamples int64, err error) {
 	if s == nil || s.pool == nil {
-		return 0, 0, ErrInvalid
+		return 0, 0, 0, ErrInvalid
 	}
 	serverKey := strings.ToLower(strings.TrimSpace(server))
 	guildKey := normalizeGuild(guild)
 	if serverKey == "" || guildKey == "" {
-		return 0, 0, ErrInvalid
+		return 0, 0, 0, ErrInvalid
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "guild-storage:"+serverKey+":"+guildKey); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	result, err := tx.Exec(ctx, `DELETE FROM character_resource_items WHERE container_key='guild_storage' AND server_key=$1 AND guild_key=$2`, serverKey, guildKey)
+	result, err := tx.Exec(ctx, `DELETE FROM guild_gold_samples WHERE server_key=$1 AND guild_key=$2`, serverKey, guildKey)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
+	}
+	goldSamples = result.RowsAffected()
+	result, err = tx.Exec(ctx, `DELETE FROM character_resource_items WHERE container_key='guild_storage' AND server_key=$1 AND guild_key=$2`, serverKey, guildKey)
+	if err != nil {
+		return 0, 0, 0, err
 	}
 	items = result.RowsAffected()
 	result, err = tx.Exec(ctx, `DELETE FROM character_resource_observations WHERE resource_key='guild_storage' AND server_key=$1 AND guild_key=$2`, serverKey, guildKey)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	observations = result.RowsAffected()
 	if err = tx.Commit(ctx); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
-	return observations, items, nil
+	return observations, items, goldSamples, nil
 }
 
 func normalizeGuild(value string) string { return strings.ToLower(strings.TrimSpace(value)) }

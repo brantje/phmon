@@ -204,6 +204,7 @@ network deployment.
 | `WEB_BIND_ADDR`                       | `0.0.0.0`               | Host address for the Compose web UI; use `127.0.0.1` for host-only access                        |
 | `HTTP_ADDR`                           | `127.0.0.1:8081`        | Host Go listener; Compose uses `0.0.0.0:8081`                                                    |
 | `DATABASE_URL`                        | See `.env.example`      | Required host Go PostgreSQL URL                                                                  |
+| `ANALYTICS_RETENTION_DAYS`             | `90`                    | Retention for sampled balance and performance history (1–3650 days)                              |
 | `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt relay upstream; Compose uses `http://server:8081`; never exposed to browsers        |
 | `NUXT_PUBLIC_INSTANCE_URL`            | Unset                   | Optional reachable browser-facing origin for the mobile QR/copy panel                            |
 | `TEST_DATABASE_URL`                   | Unset                   | Enables real PostgreSQL Go integration test                                                      |

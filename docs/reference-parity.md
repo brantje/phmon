@@ -4,6 +4,71 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Slice 12 baseline and implementation — 2026-10-07
+
+The five operator-supplied Analytics captures
+[`12-analytics-01.png`](../phmonitor_screenshots/12-analytics-01.png) through
+[`12-analytics-05.png`](../phmonitor_screenshots/12-analytics-05.png), plus
+[`02-stats-04.png`](../phmonitor_screenshots/02-stats-04.png) and
+[`05-alchemy.png`](../phmonitor_screenshots/05-alchemy.png), were reviewed as
+layout evidence at 2560×1315. They establish the five analytics tabs, compact date
+filters, two-chart/summary proportions, Progress tiles and Alchemy weekday summary.
+They do not establish calculation formulas or source semantics.
+
+The public demo's accessible page text was rechecked on 2026-10-07 and lists Deaths,
+Rare Drops, Normal Drops, Economy and Academy plus Alchemy Sessions/Statistics.
+Opening the demo in the Codex browser was queued, but interactive filtering,
+tooltips, Advanced mode and mobile analytics behavior were not observable during
+this run. Those comparisons remain an implementation-time browser gate; public
+connection-error UI remains outside the PhMon target.
+
+The baseline PhMon has no `/analytics` route, these analytics are disabled in the
+sidebar, and Alchemy only lists attempt events. The first implementation provides
+new sample history from accepted post-migration observations, so its empty/limited
+state must name the beginning of available history. It must not show the supplied
+screenshots' example values.
+
+### Slice 12 implementation evidence and remaining visual gates
+
+The app now exposes `/analytics?view=deaths|rare_drops|normal_drops|economy|academy`
+inside the existing shell, with scoped live snapshots, date/timezone and
+hour/day/week controls, grouping/taxonomy filters, two charts, summary metrics,
+occurrence paging and event/map drill-downs. Drop rows reuse the Events item detail
+popup with the same profile metadata and stored instance payload. Empty, limited,
+unsupported, insufficient-history, stale-connection and error states have separate
+labels. The visible Analytics UI is independently authored; no demo bundle/assets
+or service are used.
+
+Character Progress uses accepted 10-second-or-transition state samples and exposes
+same-level XP%, SP and net gold rates, level-up projection where eligible, observed
+coverage, true/false/unknown bot-state durations, observed location coverage,
+24-hour event counts, session history and typed-name Reset Rates. Returns remain
+unavailable because a teleport callback does not prove a return action. Alchemy
+Statistics adds Sessions/Statistics route tabs, known-outcome denominators, highest
+observed plus and weekday empirical share; item-run target probabilities remain
+unsupported. Economy shows observed character/guild balance series and supported
+leading balances; stall receipts and reconciled guild net change remain unsupported.
+Academy analytics count observed joins/departures and group new records by optional
+numeric academy ID; graduation, bans, member-role meaning and exact duration remain
+unsupported. Drop type and degree unknowns remain distinct from degree zero.
+
+The isolated Compose smoke now emits one `EVENT_DIED` callback through the
+production plugin worker and verifies the persisted result in Analytics totals,
+time-series, occurrence table and Events drill-down. A second authenticated live
+client returns the same canonical event ID. The same fixture verifies accepted
+Progress rates and durable Reset Rates. This is protocol/simulator evidence, not a
+Windows/phBot run.
+
+Code-level and automated evidence is recorded in
+[`analytics-calculations.md`](analytics-calculations.md),
+[`phbot-capabilities.md`](phbot-capabilities.md), and
+[`slice-12-implementation-plan.md`](slice-12-implementation-plan.md). The CI stack
+now has a fixture-only production-worker smoke for Deaths, Progress and Reset Rates.
+The same-stack visual comparison has **not** been run: public demo interaction was not
+available, and no browser screenshots were captured at 1440×1000, 1280×800 or
+390×844 for Analytics/Progress/Alchemy. No Windows/phBot runtime was used. Do not
+claim visual or real-runtime parity from fixture/API tests.
+
 ## Map fullscreen toggle — 2026-10-05
 
 Operator-requested addition: the existing right-side map controls now place a

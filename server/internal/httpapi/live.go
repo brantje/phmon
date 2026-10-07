@@ -15,6 +15,7 @@ import (
 	"github.com/coder/websocket"
 
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/analytics"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/chat"
 	"phmon/server/internal/commands"
@@ -30,18 +31,19 @@ import (
 )
 
 const (
-	liveProtocolVersion       = 1
-	liveMaxClientMessageBytes = 16 * 1024
-	liveMaxServerMessageBytes = 512 * 1024
-	liveMaxSubscriptions      = 32
-	liveOutgoingQueueSize     = 64
-	liveSnapshotTimeout       = 3 * time.Second
-	liveWriteTimeout          = 3 * time.Second
-	liveHeartbeatInterval     = 10 * time.Second
-	liveHeartbeatTimeout      = 35 * time.Second
-	liveSnapshotCoalesce      = 500 * time.Millisecond
-	livePositionCoalesce      = 100 * time.Millisecond
-	liveMaxConcurrentBuilds   = 2
+	liveProtocolVersion              = 1
+	liveMaxClientMessageBytes        = 16 * 1024
+	liveMaxServerMessageBytes        = 512 * 1024
+	liveMaxSubscriptions             = 32
+	liveOutgoingQueueSize            = 64
+	liveSnapshotTimeout              = 3 * time.Second
+	liveWriteTimeout                 = 3 * time.Second
+	liveHeartbeatInterval            = 10 * time.Second
+	liveHeartbeatTimeout             = 35 * time.Second
+	liveSnapshotCoalesce             = 500 * time.Millisecond
+	livePositionCoalesce             = 100 * time.Millisecond
+	liveMaxConcurrentBuilds          = 2
+	liveMaxConcurrentAnalyticsBuilds = 1
 )
 
 type liveFilter struct {
@@ -69,6 +71,15 @@ type liveFilter struct {
 	Area              string   `json:"area,omitempty"`
 	Floor             string   `json:"floor,omitempty"`
 	Region            int      `json:"region,omitempty"`
+	AnalyticsView     string   `json:"view,omitempty"`
+	Timezone          string   `json:"timezone,omitempty"`
+	Bucket            string   `json:"bucket,omitempty"`
+	GroupBy           string   `json:"group_by,omitempty"`
+	Guild             string   `json:"guild,omitempty"`
+	BalanceScope      string   `json:"balance_scope,omitempty"`
+	ItemType          string   `json:"item_type,omitempty"`
+	ItemDegree        string   `json:"item_degree,omitempty"`
+	PageSize          int      `json:"page_size,omitempty"`
 }
 
 type liveClientMessage struct {
@@ -113,6 +124,7 @@ type LiveHub struct {
 	agents         AgentStore
 	registry       *agentdomain.Registry
 	characters     *characters.Store
+	analytics      *analytics.Store
 	commands       *commands.Service
 	resources      *resources.Store
 	events         *events.Store
@@ -132,12 +144,14 @@ type LiveHub struct {
 	positionAfterFunc  func(time.Duration, func()) livePositionTimer
 	positionFlush      livePositionTimer
 
-	mu         sync.RWMutex
-	clients    map[*liveClient]struct{}
-	buildSlots chan struct{}
+	mu                  sync.RWMutex
+	clients             map[*liveClient]struct{}
+	buildSlots          chan struct{}
+	analyticsBuildSlots chan struct{}
 }
 
 func (h *LiveHub) SetCommands(service *commands.Service)     { h.commands = service }
+func (h *LiveHub) SetAnalytics(store *analytics.Store)       { h.analytics = store }
 func (h *LiveHub) SetResources(store *resources.Store)       { h.resources = store }
 func (h *LiveHub) SetEvents(store *events.Store)             { h.events = store }
 func (h *LiveHub) SetChat(store *chat.Store)                 { h.chat = store }
@@ -176,14 +190,15 @@ func (h *LiveHub) NavigationAdmission() *navigation.Store {
 
 func NewLiveHub(agents AgentStore, registry *agentdomain.Registry, characterStore *characters.Store) *LiveHub {
 	return &LiveHub{
-		agents:          agents,
-		registry:        registry,
-		characters:      characterStore,
-		clients:         make(map[*liveClient]struct{}),
-		buildSlots:      make(chan struct{}, liveMaxConcurrentBuilds),
-		navigation:      navigation.NewStore(),
-		positionPending: make(map[string]positions.Position),
-		positionRemoved: make(map[string]positions.Removal),
+		agents:              agents,
+		registry:            registry,
+		characters:          characterStore,
+		clients:             make(map[*liveClient]struct{}),
+		buildSlots:          make(chan struct{}, liveMaxConcurrentBuilds),
+		analyticsBuildSlots: make(chan struct{}, liveMaxConcurrentAnalyticsBuilds),
+		navigation:          navigation.NewStore(),
+		positionPending:     make(map[string]positions.Position),
+		positionRemoved:     make(map[string]positions.Removal),
 		positionAfterFunc: func(delay time.Duration, function func()) livePositionTimer {
 			return time.AfterFunc(delay, function)
 		},
@@ -350,7 +365,7 @@ func (h *LiveHub) flushPositionDeltas() {
 	}
 }
 
-// Invalidate schedules replacement snapshots for every active browser subscription.
+// Invalidate schedules replacement snapshots for standard browser subscriptions.
 // Each client owns a capacity-one trigger, so bursts coalesce while a snapshot is
 // being built. If another committed change arrives during snapshot creation, the
 // trigger remains queued and a second pass follows; the latest commit is never lost.
@@ -361,7 +376,20 @@ func (h *LiveHub) Invalidate() {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for client := range h.clients {
-		client.notify()
+		client.notifyStandard()
+	}
+}
+
+// InvalidateAnalytics is called after sampled character facts or canonical
+// analytics events commit. Unsampled state frames never rebuild history.
+func (h *LiveHub) InvalidateAnalytics() {
+	if h == nil {
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.clients {
+		client.notifyAnalytics()
 	}
 }
 
@@ -463,8 +491,10 @@ type liveClient struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	outgoing     chan []byte
-	snapshotWake chan struct{}
+	outgoing        chan []byte
+	snapshotWake    chan struct{}
+	invalidateMu    sync.Mutex
+	invalidateFlags uint8
 
 	mu                sync.RWMutex
 	subscriptions     map[string]liveSubscription
@@ -530,6 +560,27 @@ func positionSessionStateFromSnapshot(data any) map[string]string {
 }
 
 func (c *liveClient) notify() {
+	c.invalidateMu.Lock()
+	c.invalidateFlags = 3
+	c.invalidateMu.Unlock()
+	c.signalSnapshot()
+}
+
+func (c *liveClient) notifyStandard() {
+	c.invalidateMu.Lock()
+	c.invalidateFlags |= 1
+	c.invalidateMu.Unlock()
+	c.signalSnapshot()
+}
+
+func (c *liveClient) notifyAnalytics() {
+	c.invalidateMu.Lock()
+	c.invalidateFlags |= 2
+	c.invalidateMu.Unlock()
+	c.signalSnapshot()
+}
+
+func (c *liveClient) signalSnapshot() {
 	select {
 	case c.snapshotWake <- struct{}{}:
 	default:
@@ -760,21 +811,31 @@ func (c *liveClient) snapshotLoop() {
 			break
 		}
 
-		subscriptions := c.snapshotSubscriptionsForPass()
-
-		select {
-		case c.hub.buildSlots <- struct{}{}:
-		case <-c.ctx.Done():
-			return
+		flags := c.takeInvalidateFlags()
+		if flags == 0 {
+			continue
 		}
+		subscriptions := c.snapshotSubscriptionsForFlags(flags)
+
 		keepGoing := true
 		for _, subscription := range subscriptions {
+			buildSlots := c.hub.buildSlots
+			if subscription.Stream == "analytics" && c.hub.analyticsBuildSlots != nil {
+				buildSlots = c.hub.analyticsBuildSlots
+			}
+			select {
+			case buildSlots <- struct{}{}:
+			case <-c.ctx.Done():
+				return
+			}
 			if !c.snapshot(subscription) {
 				keepGoing = false
+			}
+			<-buildSlots
+			if !keepGoing {
 				break
 			}
 		}
-		<-c.hub.buildSlots
 		if !keepGoing {
 			return
 		}
@@ -782,6 +843,18 @@ func (c *liveClient) snapshotLoop() {
 }
 
 func (c *liveClient) snapshotSubscriptionsForPass() []liveSubscription {
+	return c.snapshotSubscriptionsForFlags(3)
+}
+
+func (c *liveClient) takeInvalidateFlags() uint8 {
+	c.invalidateMu.Lock()
+	defer c.invalidateMu.Unlock()
+	flags := c.invalidateFlags
+	c.invalidateFlags = 0
+	return flags
+}
+
+func (c *liveClient) snapshotSubscriptionsForFlags(flags uint8) []liveSubscription {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -789,6 +862,15 @@ func (c *liveClient) snapshotSubscriptionsForPass() []liveSubscription {
 	c.positionSnapshots = make(map[string]uint64)
 	subscriptions := make([]liveSubscription, 0, len(c.subscriptions))
 	for _, subscription := range c.subscriptions {
+		if flags == 1 && subscription.Stream == "analytics" {
+			continue
+		}
+		if flags == 2 && subscription.Stream != "analytics" {
+			continue
+		}
+		if flags == 0 {
+			continue
+		}
 		if subscription.Stream == "positions" &&
 			positionSnapshots[subscription.ID] != subscription.Revision {
 			continue
@@ -986,6 +1068,15 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		}
 		page, err := h.events.List(ctx, filter)
 		return eventsWithPortraits(page, h.resources), err
+	case "analytics":
+		if h.analytics == nil {
+			return nil, errors.New("analytics unavailable")
+		}
+		filter, err := analyticsFilter(subscription.Filter)
+		if err != nil {
+			return nil, err
+		}
+		return h.analytics.Query(ctx, filter)
 	case "chat":
 		if h.chat == nil {
 			return nil, errors.New("chat history unavailable")
@@ -1192,6 +1283,10 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			IncludeOwnedGains: message.Filter.IncludeOwnedGains,
 			Channel:           message.Filter.Channel, Peer: message.Filter.Peer,
 			Area: message.Filter.Area, Floor: message.Filter.Floor, Region: message.Filter.Region,
+			AnalyticsView: message.Filter.AnalyticsView, Timezone: message.Filter.Timezone,
+			Bucket: message.Filter.Bucket, GroupBy: message.Filter.GroupBy, Guild: message.Filter.Guild,
+			PageSize: message.Filter.PageSize, BalanceScope: message.Filter.BalanceScope,
+			ItemType: message.Filter.ItemType, ItemDegree: message.Filter.ItemDegree,
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
@@ -1201,6 +1296,9 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		return liveSubscription{}, false
 	}
 	if subscription.Stream != "commands" && subscription.Filter.IdempotencyKeys != nil {
+		return liveSubscription{}, false
+	}
+	if subscription.Stream != "analytics" && hasAnalyticsFilters(subscription.Filter) {
 		return liveSubscription{}, false
 	}
 	switch subscription.Stream {
@@ -1332,6 +1430,21 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			len(subscription.Filter.ResourceKeys) != 0 || hasEventSpecificFilters(subscription.Filter) ||
 			subscription.Filter.Channel != "" || subscription.Filter.Peer != "" ||
 			subscription.Filter.Area != "" || subscription.Filter.Floor != "" || subscription.Filter.Region != 0 {
+			return liveSubscription{}, false
+		}
+	case "analytics":
+		filter := subscription.Filter
+		if !validServerFilter(filter.Server) ||
+			filter.CharacterID != "" && !agentdomain.ValidAgentID(filter.CharacterID) ||
+			filter.GroupID != "" && !agentdomain.ValidAgentID(filter.GroupID) ||
+			filter.Query != "" || filter.CommandName != "" || filter.CommandState != "" ||
+			filter.Limit != 0 || len(filter.ResourceKeys) != 0 || filter.Kind != "" ||
+			filter.Category != "" || filter.Item != "" || filter.EventID != "" ||
+			filter.IncludePetPickups || filter.IncludeOwnedGains || filter.Channel != "" ||
+			filter.Peer != "" || filter.Area != "" || filter.Floor != "" || filter.Region != 0 {
+			return liveSubscription{}, false
+		}
+		if _, err := analyticsFilter(filter); err != nil {
 			return liveSubscription{}, false
 		}
 	case "map":

@@ -64,6 +64,7 @@ func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	if len(servers) != 1 || servers[0] != "greatest" {
 		t.Fatalf("servers were not trimmed and deduped: %#v", servers)
 	}
+	expectThievesSnapshot(t, listener, 0)
 
 	reporter := dialTradeNexus(t, server.URL)
 	defer reporter.CloseNow()
@@ -96,6 +97,7 @@ func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	expectType(t, outsider, "hello")
 	writeFrame(t, outsider, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Other"}})
 	expectType(t, outsider, "subscribed")
+	expectThievesSnapshot(t, outsider, 0)
 	writeFrame(t, reporter, map[string]any{
 		"v": 1, "type": "thief.report", "ref": "ref-2", "server": "Greatest",
 		"thief": map[string]string{"name": "Second"},
@@ -191,6 +193,7 @@ func TestTradeNexusReplacesStaleObservedTimeAndBroadcastsStoreFailure(t *testing
 	expectType(t, conn, "hello")
 	writeFrame(t, conn, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Greatest"}})
 	expectType(t, conn, "subscribed")
+	expectThievesSnapshot(t, conn, 0)
 	writeFrame(t, conn, map[string]any{
 		"v": 1, "type": "thief.report", "server": "Greatest", "thief": map[string]string{"name": "Bandit"},
 		"observed_at": now.Add(-time.Hour).Format(time.RFC3339),
@@ -287,6 +290,69 @@ func dialTradeNexus(t *testing.T, httpURL string) *websocket.Conn {
 	return conn
 }
 
+func TestTradeNexusActiveThiefSnapshot(t *testing.T) {
+	start := time.Date(2026, 10, 6, 19, 0, 0, 0, time.UTC)
+	current := start
+	store := &memorySightings{}
+	hub := NewHub(Options{Store: store, Now: func() time.Time { return current }})
+	server := httptest.NewServer(hub)
+	defer server.Close()
+
+	publisher := dialTradeNexus(t, server.URL)
+	defer publisher.CloseNow()
+	expectType(t, publisher, "hello")
+	writeFrame(t, publisher, map[string]any{
+		"v": 1, "type": "thief.report", "server": "Greatest",
+		"thief":    map[string]string{"name": "Bandit"},
+		"position": map[string]any{"region": 25735, "x": 1, "y": 2},
+	})
+	expectType(t, publisher, "ack")
+
+	late := dialTradeNexus(t, server.URL)
+	defer late.CloseNow()
+	expectType(t, late, "hello")
+	writeFrame(t, late, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Greatest"}})
+	expectType(t, late, "subscribed")
+	snapshot := expectThievesSnapshot(t, late, 1)
+	sightings, _ := snapshot["sightings"].([]any)
+	first, _ := sightings[0].(map[string]any)
+	if first["type"] != "thief.sighting" || first["thief"].(map[string]any)["name"] != "Bandit" {
+		t.Fatalf("snapshot sighting: %#v", first)
+	}
+
+	writeFrame(t, late, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Other"}})
+	expectType(t, late, "subscribed")
+	expectThievesSnapshot(t, late, 0)
+
+	current = start.Add(11 * time.Minute)
+	expired := dialTradeNexus(t, server.URL)
+	defer expired.CloseNow()
+	expectType(t, expired, "hello")
+	writeFrame(t, expired, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Greatest"}})
+	expectType(t, expired, "subscribed")
+	expectThievesSnapshot(t, expired, 0)
+
+	current = start.Add(2 * time.Minute)
+	writeFrame(t, publisher, map[string]any{
+		"v": 1, "type": "thief.report", "server": "Greatest",
+		"thief":    map[string]string{"name": "Bandit"},
+		"position": map[string]any{"region": 25735, "x": 9, "y": 8},
+	})
+	expectType(t, publisher, "ack")
+	updatedConn := dialTradeNexus(t, server.URL)
+	defer updatedConn.CloseNow()
+	expectType(t, updatedConn, "hello")
+	writeFrame(t, updatedConn, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Greatest"}})
+	expectType(t, updatedConn, "subscribed")
+	snapshot = expectThievesSnapshot(t, updatedConn, 1)
+	sightings, _ = snapshot["sightings"].([]any)
+	updated, _ := sightings[0].(map[string]any)
+	position, _ := updated["position"].(map[string]any)
+	if position["x"] != 9.0 || position["y"] != 8.0 {
+		t.Fatalf("latest position was not retained: %#v", updated)
+	}
+}
+
 func TestTradeNexusInvalidateCoalescesBursts(t *testing.T) {
 	var invalidated atomic.Int32
 	hub := NewHub(Options{Invalidate: func() { invalidated.Add(1) }})
@@ -331,4 +397,17 @@ func expectType(t *testing.T, conn *websocket.Conn, kind string) {
 	if frame["type"] != kind {
 		t.Fatalf("frame type = %#v, want %s (%#v)", frame["type"], kind, frame)
 	}
+}
+
+func expectThievesSnapshot(t *testing.T, conn *websocket.Conn, wantCount int) map[string]any {
+	t.Helper()
+	frame := readFrame(t, conn)
+	if frame["type"] != "thieves" {
+		t.Fatalf("frame type = %#v, want thieves", frame)
+	}
+	sightings, _ := frame["sightings"].([]any)
+	if len(sightings) != wantCount {
+		t.Fatalf("thieves snapshot count = %d, want %d (%#v)", len(sightings), wantCount, frame)
+	}
+	return frame
 }

@@ -135,6 +135,9 @@ def main() -> int:
         subscribed = listener.recv()
         if subscribed.get("type") != "subscribed" or subscribed.get("servers") != ["Greatest"]:
             raise SmokeError(f"subscribe: {subscribed}")
+        snapshot = listener.recv()
+        if snapshot.get("type") != "thieves" or snapshot.get("sightings") != []:
+            raise SmokeError(f"initial thieves snapshot: {snapshot}")
         publisher.send(
             {
                 "v": 1,

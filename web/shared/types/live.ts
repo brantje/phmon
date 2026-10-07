@@ -412,6 +412,139 @@ export interface AlchemySummary {
   highest_plus?: number
 }
 
+export interface AnalyticsPoint {
+  bucket: string
+  label: string
+  value: string
+  series?: string
+  character_id?: string
+}
+
+export interface AnalyticsMetric {
+  key: string
+  label: string
+  value?: string
+  number?: number
+  unit?: string
+  status:
+    'available' | 'limited' | 'insufficient_history' | 'unsupported' | 'empty'
+  reason?: string
+  href?: string
+}
+
+export interface AnalyticsOccurrence {
+  event_id: string
+  kind: string
+  character_id: string
+  character: string
+  server: string
+  occurred_at: string
+  detail?: string
+  location?: string
+  region?: number
+  item_model?: number
+  item_code?: string
+  success?: boolean
+  plus?: number
+  payload: Record<string, unknown>
+  item_metadata?: Record<string, unknown>
+  item_details?: Record<string, unknown>
+  item_name?: string
+  item_icon_url?: string
+}
+
+export interface AnalyticsSnapshot {
+  filter: {
+    server?: string
+    character_id?: string
+    group_id?: string
+    view: string
+    from: string
+    to: string
+    timezone: string
+    bucket: string
+    group_by: string
+    guild?: string
+    balance_scope?: 'characters' | 'guild_storage'
+    item_type?: string
+    item_degree?: string
+    page_size: number
+    cursor?: string
+  }
+  calculation_version: string
+  as_of: string
+  status:
+    'available' | 'limited' | 'unsupported' | 'empty' | 'insufficient_history'
+  reason?: string
+  coverage: {
+    status: string
+    reason?: string
+    oldest_sample?: string
+    newest_sample?: string
+    retention_days?: number
+  }
+  total: string
+  summary: AnalyticsMetric[]
+  time_series: AnalyticsPoint[]
+  breakdown: AnalyticsPoint[]
+  occurrences: AnalyticsOccurrence[]
+  next_cursor?: string
+  truncated?: boolean
+  performance?: CharacterPerformance
+  taxonomy?: AnalyticsPoint[]
+  taxonomy_options?: Array<{ type: string; degree?: string }>
+  taxonomy_known: number
+  taxonomy_unknown: number
+  taxonomy_degree_unknown: number
+  taxonomy_complete: boolean
+}
+
+export interface CharacterPerformance {
+  character_id: string
+  character: string
+  server: string
+  rates: Record<
+    string,
+    {
+      delta: number
+      per_hour: number
+      has_rate: boolean
+      eligible_seconds: number
+      general_coverage_seconds: number
+      unknown_bot_seconds: number
+      botting_seconds: number
+      idle_seconds: number
+      status: string
+      reason?: string
+    }
+  >
+  coverage_seconds: number
+  unknown_bot_seconds: number
+  botting_seconds: number
+  idle_seconds: number
+  last_sample_at?: string
+  current_level?: number
+  current_xp?: number
+  max_xp?: number
+  level_eta_seconds?: number
+  xp_percent_per_hour?: number
+  deaths_24h: number
+  normal_drops_24h: number
+  rare_drops_24h: number
+  training: Array<{ region?: number; zone?: string; covered_seconds: number }>
+  session_count: number
+  truncated?: boolean
+  stale?: boolean
+  sessions: Array<{
+    session_id: string
+    started_at: string
+    first_seen: string
+    last_seen: string
+    ended_at?: string
+    covered_seconds: number
+  }>
+}
+
 export interface CharacterGroup {
   group_id: string
   name: string
@@ -427,6 +560,7 @@ export type LiveStream =
   | 'controls'
   | 'resources'
   | 'events'
+  | 'analytics'
   | 'chat'
   | 'map'
   | 'positions'
@@ -456,6 +590,15 @@ export interface LiveFilter {
   area?: string
   floor?: string
   region?: number
+  view?: string
+  timezone?: string
+  bucket?: 'hour' | 'day' | 'week'
+  group_by?: 'character' | 'group' | 'location' | 'item' | 'type' | 'degree'
+  guild?: string
+  balance_scope?: 'characters' | 'guild_storage'
+  item_type?: string
+  item_degree?: string
+  page_size?: number
 }
 
 export interface LiveClientFrame {

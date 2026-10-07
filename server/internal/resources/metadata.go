@@ -9,9 +9,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"phmon/server/internal/analytics"
 )
 
 // Static SRO item definitions are shared by stable item code across servers.
@@ -267,6 +270,127 @@ func (m *ItemMetadata) ItemDropClassification(server string, model *int64, code 
 		return "rare", "item-profile-rarity-v1"
 	}
 	return "normal", "item-profile-rarity-v1"
+}
+
+func (m *ItemMetadata) AnalyticsTaxonomy(server string, model int64, code string) (itemType, degree string, known bool) {
+	if m == nil || model < 0 {
+		return "", "", false
+	}
+	presentation := m.ItemPresentation(server, &model, code)
+	if presentation == nil {
+		return "", "", false
+	}
+	itemType, _ = presentation["sort_type"].(string)
+	if itemType == "" {
+		return "", "", false
+	}
+	switch value := presentation["degree"].(type) {
+	case json.Number:
+		if parsed, err := value.Int64(); err == nil && parsed > 0 && parsed <= 20 {
+			degree = strconv.FormatInt(parsed, 10)
+		}
+	case int:
+		if value > 0 && value <= 20 {
+			degree = strconv.Itoa(value)
+		}
+	case float64:
+		if value > 0 && value <= 20 && value == float64(int(value)) {
+			degree = strconv.Itoa(int(value))
+		}
+	case string:
+		if parsed, err := strconv.Atoi(value); err == nil && parsed > 0 && parsed <= 20 {
+			degree = strconv.Itoa(parsed)
+		}
+	}
+	return itemType, degree, true
+}
+
+func (m *ItemMetadata) AnalyticsTaxonomyOptions(server string) []analytics.TaxonomyOption {
+	if m == nil {
+		return nil
+	}
+	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	catalog, ok := m.Catalogs[dataset]
+	if !ok {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	options := make([]analytics.TaxonomyOption, 0)
+	for _, item := range catalog.Items {
+		itemType, degree := "", ""
+		itemType, _ = item.Presentation["sort_type"].(string)
+		if value, ok := item.Presentation["degree"].(json.Number); ok {
+			if parsed, err := value.Int64(); err == nil && parsed > 0 && parsed <= 20 {
+				degree = strconv.FormatInt(parsed, 10)
+			}
+		}
+		if itemType == "" {
+			continue
+		}
+		key := itemType + "\x00" + degree
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		options = append(options, analytics.TaxonomyOption{Type: itemType, Degree: degree})
+	}
+	sort.Slice(options, func(i, j int) bool {
+		if options[i].Type == options[j].Type {
+			return options[i].Degree < options[j].Degree
+		}
+		return options[i].Type < options[j].Type
+	})
+	return options
+}
+
+func (s *Store) AnalyticsItemTaxonomy(server string, model int64, code string) (string, string, bool) {
+	if s == nil {
+		return "", "", false
+	}
+	return s.metadata.AnalyticsTaxonomy(server, model, code)
+}
+
+func (s *Store) AnalyticsTaxonomyOptions(server string) []analytics.TaxonomyOption {
+	if s == nil {
+		return nil
+	}
+	return s.metadata.AnalyticsTaxonomyOptions(server)
+}
+
+func (s *Store) AnalyticsItemDetails(server string, model *int64, code string, payloadItem map[string]any) (map[string]any, map[string]any) {
+	metadata := s.ItemPresentation(server, model, code)
+	if len(payloadItem) == 0 {
+		return metadata, nil
+	}
+	return metadata, s.EnrichItemRecord(server, payloadItem)
+}
+
+func (s *Store) AnalyticsItemModels(server, itemType, degree string) ([]int64, bool) {
+	if s == nil || s.metadata == nil {
+		return nil, false
+	}
+	dataset := s.metadata.Servers[strings.ToLower(strings.TrimSpace(server))]
+	catalog, ok := s.metadata.Catalogs[dataset]
+	if !ok {
+		return nil, false
+	}
+	models := make([]int64, 0)
+	for model, item := range catalog.Items {
+		staticType, _ := item.Presentation["sort_type"].(string)
+		staticDegree := ""
+		if value, ok := item.Presentation["degree"].(json.Number); ok {
+			if parsed, err := value.Int64(); err == nil && parsed > 0 && parsed <= 20 {
+				staticDegree = strconv.FormatInt(parsed, 10)
+			}
+		}
+		if (itemType == "" || staticType == itemType) && (degree == "" || staticDegree == degree) && staticType != "" {
+			if parsed, err := strconv.ParseInt(model, 10, 64); err == nil {
+				models = append(models, parsed)
+			}
+		}
+	}
+	sort.Slice(models, func(i, j int) bool { return models[i] < models[j] })
+	return models, true
 }
 
 // EnrichItemRecord resolves a historical item snapshot through the same

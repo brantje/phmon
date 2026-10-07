@@ -54,6 +54,8 @@ type Hub struct {
 	invalidateMu    sync.Mutex
 	lastInvalidate  time.Time
 	invalidateTimer *time.Timer
+
+	active *activeCache
 }
 
 type client struct {
@@ -94,6 +96,7 @@ func NewHub(options Options) *Hub {
 		maxServers: options.MaxServers, reportsPerWindow: options.ReportsPerWindow,
 		sendQueue: options.SendQueue, maxInvalidFrames: options.MaxInvalidFrames,
 		clients: map[*client]struct{}{}, perIP: map[string]int{},
+		active: newActiveCache(),
 	}
 }
 
@@ -170,6 +173,7 @@ func (h *Hub) prepare(sighting Sighting) (Sighting, error) {
 }
 
 func (h *Hub) Broadcast(sighting Sighting) {
+	h.active.remember(h.clock(), sighting)
 	payload, err := marshalSighting(sighting)
 	if err != nil {
 		slog.Warn("tradenexus sighting could not be encoded", "reason", err.Error())
@@ -179,6 +183,16 @@ func (h *Hub) Broadcast(sighting Sighting) {
 		h.enqueue(subscriber, outbound{payload: payload})
 	}
 	h.scheduleInvalidate()
+}
+
+func (h *Hub) pushActiveThieves(subscriber *client, servers []string) {
+	sightings, truncated := h.active.snapshot(h.clock(), servers)
+	payload, err := marshalThievesSnapshot(sightings, truncated)
+	if err != nil {
+		slog.Warn("tradenexus thieves snapshot could not be encoded", "reason", err.Error())
+		return
+	}
+	h.enqueue(subscriber, outbound{payload: payload})
 }
 
 // scheduleInvalidate rebuilds operator snapshots at most once per second.
@@ -456,6 +470,7 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 			subscriber.setServers(servers)
 			body, _ := json.Marshal(map[string]any{"v": ProtocolVersion, "type": "subscribed", "servers": servers})
 			h.enqueue(subscriber, outbound{payload: body})
+			h.pushActiveThieves(subscriber, servers)
 		case "thief.report":
 			if !subscriber.allowReport(h.clock()) {
 				invalid = 0

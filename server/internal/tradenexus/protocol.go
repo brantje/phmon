@@ -28,7 +28,8 @@ const (
 	MaxInvalidFrames   = 5
 	ReadLimitBytes     = 8192
 	ObservedAtSkew     = 5 * time.Minute
-	MarkerTTL          = 5 * time.Minute
+	MarkerTTL          = 10 * time.Minute
+	ActiveTTL          = 10 * time.Minute
 	MaxRecentSightings = 256
 	MaxPageSize        = 100
 

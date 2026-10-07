@@ -96,8 +96,12 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	if err := store.ClaimSession(ctx, credential.AgentID, a, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Snapshot(ctx, credential.AgentID, a, 1, fullState); err != nil {
-		t.Fatal(err)
+	if sampled, err := store.SnapshotWithAnalyticsSample(ctx, credential.AgentID, a, 1, fullState); err != nil || !sampled {
+		t.Fatalf("first accepted snapshot did not create an analytics sample: sampled=%v err=%v", sampled, err)
+	}
+	var initialSamples int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_metric_samples WHERE character_id=$1`, a).Scan(&initialSamples); err != nil || initialSamples != 1 {
+		t.Fatalf("first accepted snapshot should create one history sample, count=%d err=%v", initialSamples, err)
 	}
 	secondPool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -127,6 +131,23 @@ func TestCharacterIdentitySessionsSearchAndGroups(t *testing.T) {
 	}
 	if !alpha.Online || alpha.Level == nil || *alpha.Level != 110 || alpha.Dead == nil || !*alpha.Dead || alpha.ModelID == nil || *alpha.ModelID != model {
 		t.Fatalf("alpha presence/state incorrect: %+v", alpha)
+	}
+	if sampled, err := store.UpdateWithAnalyticsSample(ctx, credential.AgentID, a, 1, fullState); err != nil || sampled {
+		t.Fatalf("unchanged sub-cadence sample was unexpectedly inserted: sampled=%v err=%v", sampled, err)
+	}
+	var unchangedSamples int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_metric_samples WHERE character_id=$1`, a).Scan(&unchangedSamples); err != nil || unchangedSamples != 1 {
+		t.Fatalf("unchanged sub-cadence state caused a write storm, count=%d err=%v", unchangedSamples, err)
+	}
+	alive := false
+	transition := fullState
+	transition.Dead = &alive
+	if sampled, err := store.UpdateWithAnalyticsSample(ctx, credential.AgentID, a, 1, transition); err != nil || !sampled {
+		t.Fatalf("dead-state transition was not inserted: sampled=%v err=%v", sampled, err)
+	}
+	var transitionSamples int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_metric_samples WHERE character_id=$1`, a).Scan(&transitionSamples); err != nil || transitionSamples != 2 {
+		t.Fatalf("death-state transition should be captured promptly, count=%d err=%v", transitionSamples, err)
 	}
 	beta, err := store.Get(ctx, b)
 	if err != nil {

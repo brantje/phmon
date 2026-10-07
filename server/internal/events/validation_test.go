@@ -95,6 +95,23 @@ func TestValidateAgentEventAcceptsInferredDeathReason(t *testing.T) {
 	}
 }
 
+func TestAcademyIDContextIsOptionalAndBounded(t *testing.T) {
+	event := validTestEvent("academy.member_joined", "academy", "phbot.state_diff", "academy", `{"member_id":"17","member":{"name":"Student"}}`)
+	if err := validateAgentEvent(event); err != nil {
+		t.Fatalf("legacy context-free academy event rejected: %v", err)
+	}
+	event.Payload = json.RawMessage(`{"academy_id":42,"member_id":"17","member":{"name":"Student"}}`)
+	if err := validateAgentEvent(event); err != nil {
+		t.Fatalf("bounded academy context rejected: %v", err)
+	}
+	for _, payload := range []string{`{"academy_id":-1,"member_id":"17","member":{"name":"Student"}}`, `{"academy_id":9223372036854775808,"member_id":"17","member":{"name":"Student"}}`} {
+		event.Payload = json.RawMessage(payload)
+		if err := validateAgentEvent(event); err == nil {
+			t.Fatalf("invalid academy ID was accepted: %s", payload)
+		}
+	}
+}
+
 func TestNormalizeLevelUpEventPreservesRawCallbackAndIsIdempotent(t *testing.T) {
 	event := validTestEvent("character.level_up", "character", "phbot.callback", "EVENT_LEVEL_UP", `{"level":71}`)
 	if err := normalizeLevelUpEvent(&event, "20.1.2"); err != nil {

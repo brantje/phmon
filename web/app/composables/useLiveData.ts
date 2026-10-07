@@ -6,6 +6,7 @@ import {
   type CharacterSnapshot,
   type CharacterResourcesView,
   type EventPage,
+  type AnalyticsSnapshot,
   type CharactersSnapshot,
   type CharacterView,
   type CommandsSnapshot,
@@ -66,6 +67,10 @@ const characterResources = ref<Record<string, CharacterResourcesView>>({})
 const commandHistory = ref<RemoteCommand[]>([])
 const characterControls = ref<ControlsSnapshot | null>(null)
 const eventFeeds = ref<Record<string, EventPage>>({})
+const analyticsFeeds = ref<Record<string, AnalyticsSnapshot>>({})
+const analyticsFeedStatus = ref<
+  Record<string, 'loading' | 'current' | 'unavailable'>
+>({})
 const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const chatFeedCurrent = ref<Record<string, boolean>>({})
 const mapFeeds = ref<Record<string, MapSnapshot>>({})
@@ -127,7 +132,16 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
       (right.character_ids || []).join('\u0000') &&
     (left.idempotency_keys || []).join('\u0000') ===
       (right.idempotency_keys || []).join('\u0000') &&
-    (left.cursor || '') === (right.cursor || '')
+    (left.cursor || '') === (right.cursor || '') &&
+    (left.view || '') === (right.view || '') &&
+    (left.timezone || '') === (right.timezone || '') &&
+    (left.bucket || '') === (right.bucket || '') &&
+    (left.group_by || '') === (right.group_by || '') &&
+    (left.guild || '') === (right.guild || '') &&
+    (left.balance_scope || '') === (right.balance_scope || '') &&
+    (left.item_type || '') === (right.item_type || '') &&
+    (left.item_degree || '') === (right.item_degree || '') &&
+    (left.page_size || 0) === (right.page_size || 0)
   )
 }
 
@@ -397,6 +411,35 @@ function setEventFeed(subscriptionID: string, filter: LiveFilter) {
 function clearEventFeed(subscriptionID: string) {
   removeSubscription(subscriptionID, () => {
     removeEventFeedSnapshot(subscriptionID)
+  })
+}
+
+function setAnalyticsFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'analytics', filter, () => {
+    analyticsFeeds.value = Object.fromEntries(
+      Object.entries(analyticsFeeds.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
+    analyticsFeedStatus.value = {
+      ...analyticsFeedStatus.value,
+      [subscriptionID]: 'loading',
+    }
+  })
+}
+
+function clearAnalyticsFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    analyticsFeeds.value = Object.fromEntries(
+      Object.entries(analyticsFeeds.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
+    analyticsFeedStatus.value = Object.fromEntries(
+      Object.entries(analyticsFeedStatus.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
   })
 }
 
@@ -945,6 +988,12 @@ function handleFrame(frame: LiveServerFrame) {
         [subscription.id]: false,
       }
     }
+    if (subscription.stream === 'analytics') {
+      analyticsFeedStatus.value = {
+        ...analyticsFeedStatus.value,
+        [subscription.id]: 'unavailable',
+      }
+    }
     return
   }
   if (frame.type === 'subscription.rejected') {
@@ -962,6 +1011,15 @@ function handleFrame(frame: LiveServerFrame) {
       mapFeedCurrent.value = {
         ...mapFeedCurrent.value,
         [subscription.id]: false,
+      }
+    }
+    if (
+      subscription.stream === 'analytics' &&
+      frame.reason !== 'obsolete_revision'
+    ) {
+      analyticsFeedStatus.value = {
+        ...analyticsFeedStatus.value,
+        [subscription.id]: 'unavailable',
       }
     }
     return
@@ -1069,6 +1127,33 @@ function applySnapshot(subscription: Subscription, data: unknown) {
         )
           return false
         eventFeeds.value = { ...eventFeeds.value, [subscription.id]: page }
+        return true
+      }
+      if (subscription.stream === 'analytics') {
+        const snapshot = data as AnalyticsSnapshot
+        if (
+          typeof snapshot.calculation_version !== 'string' ||
+          typeof snapshot.as_of !== 'string' ||
+          typeof snapshot.status !== 'string' ||
+          typeof snapshot.total !== 'string' ||
+          !snapshot.filter ||
+          typeof snapshot.filter !== 'object' ||
+          !snapshot.coverage ||
+          typeof snapshot.coverage !== 'object' ||
+          !Array.isArray(snapshot.summary) ||
+          !Array.isArray(snapshot.time_series) ||
+          !Array.isArray(snapshot.breakdown) ||
+          !Array.isArray(snapshot.occurrences)
+        )
+          return false
+        analyticsFeeds.value = {
+          ...analyticsFeeds.value,
+          [subscription.id]: snapshot,
+        }
+        analyticsFeedStatus.value = {
+          ...analyticsFeedStatus.value,
+          [subscription.id]: 'current',
+        }
         return true
       }
       if (subscription.stream === 'resources') {
@@ -1277,6 +1362,8 @@ export function useLiveData() {
     commandHistory: readonly(commandHistory),
     characterControls: readonly(characterControls),
     eventFeeds: readonly(eventFeeds),
+    analyticsFeeds: readonly(analyticsFeeds),
+    analyticsFeedStatus: readonly(analyticsFeedStatus),
     chatFeeds: readonly(chatFeeds),
     chatFeedCurrent: readonly(chatFeedCurrent),
     mapFeeds: readonly(mapFeeds),
@@ -1300,6 +1387,8 @@ export function useLiveData() {
     setCharacterControls,
     setEventFeed,
     clearEventFeed,
+    setAnalyticsFeed,
+    clearAnalyticsFeed,
     setMapFeed,
     clearMapFeed,
     setChatFeed,

@@ -18,6 +18,7 @@ type Config struct {
 	OperatorAllowInsecureHTTP bool
 	TradeNexusEnabled         bool
 	TradeNexusRetentionDays   int
+	AnalyticsRetentionDays    int
 }
 
 func Load() (Config, error) {
@@ -78,6 +79,14 @@ func Load() (Config, error) {
 			return Config{}, errors.New("TRADENEXUS_RETENTION_DAYS must be between 1 and 3650")
 		}
 		c.TradeNexusRetentionDays = days
+	}
+	c.AnalyticsRetentionDays = 90
+	if raw := strings.TrimSpace(os.Getenv("ANALYTICS_RETENTION_DAYS")); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err != nil || days < 1 || days > 3650 {
+			return Config{}, errors.New("ANALYTICS_RETENTION_DAYS must be between 1 and 3650")
+		}
+		c.AnalyticsRetentionDays = days
 	}
 	return c, nil
 }

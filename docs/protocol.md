@@ -1,4 +1,4 @@
-# Agent protocol versions 2–15
+# Agent protocol versions 2–18
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -33,9 +33,9 @@ extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: latest 13. Version 1 agents are rejected with an explicit
+Protocol version: latest 18. Version 1 agents are rejected with an explicit
 unsupported protocol close reason because the character identity/state contract is
-required. Versions 2–12 remain accepted for rolling deployment compatibility.
+required. Versions 2–18 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -1511,3 +1511,13 @@ positions trim walked prefixes with the existing 12-unit rule. The live map view
 uses an empty `command_id`, so the browser draws the remaining line and does not
 offer Stop.
 
+## Agent protocol 18: academy identity on membership events — 2026-10-07
+
+Plugin 1.9.27 adds the optional numeric `academy_id` to
+`academy.member_joined` and `academy.member_left` event payloads when the academy ID
+is available in the accepted `get_academy()` snapshot. Existing `member_id` and
+`member` fields are unchanged;
+older agents and observations without an ID remain valid and contextless. When the
+observed academy ID changes, the plugin emits departures with the old ID and joins
+with the new ID so analytics can attribute each transition to the correct academy.
+This does not establish graduation, bans, or a lifetime-unique member identity.

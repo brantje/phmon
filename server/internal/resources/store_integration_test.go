@@ -73,7 +73,7 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	ownerFull := Snapshot{Revision: 1, Full: true, Resources: map[string]json.RawMessage{
 		"inventory":       json.RawMessage(`{"availability":"observed","capacity":2,"used_slots":1,"slots":[{"source_slot":13,"displayed_slot":0,"item":{"model":7,"name":"Stack","servername":"ITEM_STACK","quantity":9007199254740993}} ,null]}`),
 		"storage":         json.RawMessage(`{"availability":"not_observed","reason":"getter_unavailable_or_not_open"}`),
-		"guild_storage":   json.RawMessage(`{"availability":"observed","capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":8,"quantity":3}}]}`),
+		"guild_storage":   json.RawMessage(`{"availability":"observed","gold":4000,"capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":8,"quantity":3}}]}`),
 		"item_enrichment": json.RawMessage(`{"availability":"unavailable","protocol":"unknown","reason":"passive_item_packet_decoder_not_enabled"}`),
 	}}
 	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 1, ownerSession, ownerFull); err != nil {
@@ -164,9 +164,13 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	// A second guild observer's fresh contents remain authoritative when the
 	// first observer repeats a cached poll with older observed_at evidence.
 	if err := store.Apply(ctx, credential.AgentID, observerID, 1, 1, observerSession, Snapshot{Revision: 1, Full: true, Resources: map[string]json.RawMessage{
-		"guild_storage": json.RawMessage(`{"availability":"observed","capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":99,"quantity":1}}]}`),
+		"guild_storage": json.RawMessage(`{"availability":"observed","gold":10000,"capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":99,"quantity":1}}]}`),
 	}}); err != nil {
 		t.Fatal(err)
+	}
+	var observerCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM guild_gold_samples WHERE server_key=$1 AND guild_key=$2`, strings.ToLower(server), guild).Scan(&observerCount); err != nil || observerCount != 2 {
+		t.Fatalf("guild balance must retain one observation per observer rather than summing, count=%d err=%v", observerCount, err)
 	}
 	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 5, ownerSession, Snapshot{Revision: 5, BaseRevision: 4, Resources: map[string]json.RawMessage{
 		"guild_storage": ownerFull.Resources["guild_storage"],
@@ -194,9 +198,9 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	if len(guildRows) != 1 || len(newestGuild.Slots) != 1 || newestGuild.Slots[0].Item.Model.String() != "99" || guildRows[0].ObserverName != "observer" || guildRows[0].ObserverCharacterID != observerID {
 		t.Fatalf("stale observer replaced newer guild evidence: %+v", guildRows)
 	}
-	deletedObservations, deletedItems, err := store.DeleteGuildStorage(ctx, server, guild)
-	if err != nil || deletedObservations != 2 || deletedItems != 2 {
-		t.Fatalf("guild storage purge observations=%d items=%d err=%v", deletedObservations, deletedItems, err)
+	deletedObservations, deletedItems, deletedGoldSamples, err := store.DeleteGuildStorage(ctx, server, guild)
+	if err != nil || deletedObservations != 2 || deletedItems != 2 || deletedGoldSamples != 2 {
+		t.Fatalf("guild storage purge observations=%d items=%d gold samples=%d err=%v", deletedObservations, deletedItems, deletedGoldSamples, err)
 	}
 	guildRows, err = store.GuildStorage(ctx, server, guild)
 	if err != nil || len(guildRows) != 0 {
@@ -210,6 +214,10 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	guildRows, err = store.GuildStorage(ctx, server, guild)
 	if err != nil || len(guildRows) != 1 {
 		t.Fatalf("fresh phBot observation did not repopulate a cleared scope: rows=%+v err=%v", guildRows, err)
+	}
+	var repopulatedGoldSamples int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM guild_gold_samples WHERE server_key=$1 AND guild_key=$2`, strings.ToLower(server), guild).Scan(&repopulatedGoldSamples); err != nil || repopulatedGoldSamples != 1 {
+		t.Fatalf("fresh observation did not create fresh guild balance history, count=%d err=%v", repopulatedGoldSamples, err)
 	}
 
 	var quantity string

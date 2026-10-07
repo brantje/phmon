@@ -578,9 +578,107 @@ def run_remote_controls(worker, stopping, api_calls, area, position):
     return 0
 
 
+def run_analytics_history(worker, stopping):
+    """Publish fixture balances and one death callback for analytics smoke."""
+    timeout = float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))
+    run_seconds = float(os.environ.get("PHMON_SIMULATOR_RUN_SECONDS", "80"))
+    wait_until(lambda: "Connected" in worker.status, timeout, "backend connection")
+    identity = {
+        "server": required("PHMON_SIMULATOR_SERVER"),
+        "name": required("PHMON_SIMULATOR_CHARACTER"),
+        "guild": "Fixture Guild",
+    }
+    state = {
+        "level": 80,
+        "current_exp": 1000,
+        "max_exp": 10000,
+        "sp": 400,
+        "gold": 50000,
+        "region": 25000,
+        "zone": "Fixture Jangan",
+        "botting": True,
+        "dead": False,
+    }
+    worker.update_character(identity, dict(state))
+    wait_until(lambda: worker.character_id and worker.session_id, timeout, "analytics fixture session")
+    death_ack_statuses = []
+    original_handler = worker._handle_server_message
+
+    def record_death_ack(message):
+        result = original_handler(message)
+        if isinstance(message, dict) and message.get("type") == "event.ack":
+            death_ack_statuses.append({"status": message.get("status"), "reason": message.get("reason")})
+        elif isinstance(message, dict) and message.get("type") == "event.batch.ack":
+            death_ack_statuses.extend(
+                {"status": item.get("status"), "reason": item.get("reason")}
+                for item in message.get("results", [])
+                if isinstance(item, dict)
+            )
+        return result
+
+    worker._handle_server_message = record_death_ack
+
+    old_values = {
+        "worker": PhMon._worker,
+        "available": PhMon._PHBOT_AVAILABLE,
+        "joined": PhMon._character_joined,
+        "death_active": PhMon._death_callback_active,
+        "recent_attack": PhMon._recent_player_attack,
+        "character_getter": PhMon._get_character_data,
+        "position_getter": PhMon._get_position,
+        "zone_getter": PhMon._get_zone_name,
+    }
+    PhMon._worker = worker
+    PhMon._PHBOT_AVAILABLE = True
+    PhMon._character_joined = True
+    PhMon._death_callback_active = False
+    PhMon._recent_player_attack = None
+    PhMon._get_character_data = lambda: {
+        "server": identity["server"],
+        "name": identity["name"],
+        "guild": identity["guild"],
+    }
+    PhMon._get_position = lambda: {"region": 25000, "x": 6400.0, "y": 1080.0, "z": 0.0}
+    PhMon._get_zone_name = lambda _region: "Fixture Jangan"
+    try:
+        PhMon.handle_event(PhMon.EVENT_DIED, "")
+        wait_until(lambda: death_ack_statuses, timeout, "analytics death event acknowledgement")
+        if death_ack_statuses[0]["status"] != "persisted":
+            raise SystemExit("analytics death callback was not persisted: " + str(death_ack_statuses[0]))
+    finally:
+        PhMon._worker = old_values["worker"]
+        PhMon._PHBOT_AVAILABLE = old_values["available"]
+        PhMon._character_joined = old_values["joined"]
+        PhMon._death_callback_active = old_values["death_active"]
+        PhMon._recent_player_attack = old_values["recent_attack"]
+        PhMon._get_character_data = old_values["character_getter"]
+        PhMon._get_position = old_values["position_getter"]
+        PhMon._get_zone_name = old_values["zone_getter"]
+        worker._handle_server_message = original_handler
+
+    start = time.monotonic()
+    next_update = start + 5.0
+    update_index = 0
+    while not stopping[0] and time.monotonic() - start < run_seconds:
+        now = time.monotonic()
+        if now >= next_update:
+            update_index += 1
+            state["current_exp"] = 1000 + update_index * 100
+            state["sp"] = 400 + update_index * 10
+            state["gold"] = 50000 + update_index * 250
+            worker.update_character(identity, dict(state))
+            next_update = now + 5.0
+        time.sleep(0.1)
+    stopping[0] = True
+    worker.stop()
+    worker.join(3.0)
+    print("PASS fixture analytics history published through the production agent worker", flush=True)
+    return 0
+
+
 def main():
     scenario = os.environ.get("PHMON_SIMULATOR_SCENARIO")
-    spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario in ("death-events", "map-observations") else None
+    spool_directory = tempfile.mkdtemp(prefix="phmon-agent-simulator-") if scenario in ("death-events", "map-observations", "analytics-history") else None
     config = {
         'backend_url': required('PHMON_AGENT_URL'),
         'agent_id': required('PHMON_AGENT_ID'),
@@ -778,6 +876,9 @@ def main():
 
     if scenario == "remote-controls":
         return run_remote_controls(worker, stopping, fake_calls, training_area, training_position)
+
+    if scenario == "analytics-history":
+        return run_analytics_history(worker, stopping)
 
     if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "character-lifecycle":
         deadline = time.time() + float(os.environ.get("PHMON_SIMULATOR_CONNECT_TIMEOUT", "30"))

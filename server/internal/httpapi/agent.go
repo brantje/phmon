@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 17
+	agentProtocolVersion    = 18
 	agentMinProtocolVersion = 2
 )
 
@@ -622,6 +622,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			if changed {
 				h.live.Invalidate()
+				h.live.InvalidateAnalytics()
 			}
 			ack := map[string]any{"type": "event.batch.ack", "protocol_version": hello.ProtocolVersion, "results": results}
 			writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
@@ -877,17 +878,18 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			var e error
+			var analyticsSampled bool
 			if message.Type == "character.snapshot" {
 				if hello.ProtocolVersion >= 3 {
-					e = h.characters.SnapshotSession(ctx, hello.AgentID, message.CharacterID, generation, message.SessionID, message.State)
+					analyticsSampled, e = h.characters.SnapshotSessionWithAnalyticsSample(ctx, hello.AgentID, message.CharacterID, generation, message.SessionID, message.State)
 				} else {
-					e = h.characters.Snapshot(ctx, hello.AgentID, message.CharacterID, generation, message.State)
+					analyticsSampled, e = h.characters.SnapshotWithAnalyticsSample(ctx, hello.AgentID, message.CharacterID, generation, message.State)
 				}
 			} else {
 				if hello.ProtocolVersion >= 3 {
-					e = h.characters.UpdateSession(ctx, hello.AgentID, message.CharacterID, generation, message.SessionID, message.State)
+					analyticsSampled, e = h.characters.UpdateSessionWithAnalyticsSample(ctx, hello.AgentID, message.CharacterID, generation, message.SessionID, message.State)
 				} else {
-					e = h.characters.Update(ctx, hello.AgentID, message.CharacterID, generation, message.State)
+					analyticsSampled, e = h.characters.UpdateWithAnalyticsSample(ctx, hello.AgentID, message.CharacterID, generation, message.State)
 				}
 			}
 			cancel()
@@ -933,6 +935,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			h.live.Invalidate()
+			if analyticsSampled {
+				h.live.InvalidateAnalytics()
+			}
 		case "character.died":
 			if hello.ProtocolVersion < 5 || h.events == nil ||
 				!agentdomain.ValidAgentID(message.CharacterID) || !agentdomain.ValidAgentID(message.SessionID) ||
@@ -948,6 +953,7 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				ack["status"] = "persisted"
 				if persisted {
 					h.live.Invalidate()
+					h.live.InvalidateAnalytics()
 				}
 			} else if errors.Is(eventErr, events.ErrInvalidEvent) {
 				ack["status"] = "rejected"

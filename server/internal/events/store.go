@@ -512,6 +512,14 @@ func validateAgentEvent(event AgentEvent) error {
 			return fmt.Errorf("%w: invalid membership transition", ErrInvalidEvent)
 		}
 	}
+	if strings.HasPrefix(event.Kind, "academy.") {
+		var fields struct {
+			AcademyID *int64 `json:"academy_id"`
+		}
+		if json.Unmarshal(payload, &fields) != nil || fields.AcademyID != nil && *fields.AcademyID < 0 {
+			return fmt.Errorf("%w: invalid academy identity context", ErrInvalidEvent)
+		}
+	}
 	if strings.HasPrefix(event.Kind, "pet.") && event.Kind != "pet.transport_died" {
 		var fields struct {
 			PetID string         `json:"pet_id"`

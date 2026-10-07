@@ -166,6 +166,11 @@ jobs:
           EXPECT_AGENT_CONNECTED=0 python3 scripts/agent_smoke.py
           trap - EXIT
           cat /tmp/phmon-agent.log
+      - name: Verify accepted analytics history and rate reset
+        env:
+          OPERATOR_ACCESS_SECRET: phmon-local-development-operator-secret-change-me-2026
+          SMOKE_WEB_URL: http://127.0.0.1:3005
+        run: python3 scripts/analytics_smoke.py
       - name: Verify database outage and live recovery synchronization
         id: outage
         continue-on-error: true

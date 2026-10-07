@@ -27,6 +27,23 @@ type liveEnvelope struct {
 	Data            json.RawMessage `json:"data"`
 }
 
+func TestTakeInvalidateFlagsLeavesRedundantWakeAsNoop(t *testing.T) {
+	client := &liveClient{}
+	if got := client.takeInvalidateFlags(); got != 0 {
+		t.Fatalf("empty invalidation flags = %d, want 0", got)
+	}
+
+	client.invalidateMu.Lock()
+	client.invalidateFlags = 2
+	client.invalidateMu.Unlock()
+	if got := client.takeInvalidateFlags(); got != 2 {
+		t.Fatalf("analytics invalidation flags = %d, want 2", got)
+	}
+	if got := client.takeInvalidateFlags(); got != 0 {
+		t.Fatalf("cleared invalidation flags = %d, want 0", got)
+	}
+}
+
 func TestLiveAgentSubscriptionInitialAndReplacementSnapshots(t *testing.T) {
 	store := newFakeAgentStore()
 	now := time.Now().UTC()
@@ -582,6 +599,22 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Server: "Example", Kind: events.DeathKind, From: "2026-09-01", To: "2026-09-28", Limit: 25}},
 			valid:   true,
 		},
+		"analytics deaths": {
+			message: liveClientMessage{SubscriptionID: "analytics", Revision: 1, Stream: "analytics", Filter: liveFilter{Server: "Example", AnalyticsView: "deaths", From: "2026-09-01T00:00:00Z", To: "2026-09-02T00:00:00Z", Timezone: "Europe/Amsterdam", Bucket: "day", GroupBy: "location", PageSize: 25}},
+			valid:   true,
+		},
+		"analytics item grouping rejects death view": {
+			message: liveClientMessage{SubscriptionID: "analytics", Revision: 1, Stream: "analytics", Filter: liveFilter{AnalyticsView: "deaths", From: "2026-09-01", To: "2026-09-02", GroupBy: "item"}},
+			valid:   false,
+		},
+		"analytics invalid timezone": {
+			message: liveClientMessage{SubscriptionID: "analytics", Revision: 1, Stream: "analytics", Filter: liveFilter{AnalyticsView: "deaths", From: "2026-09-01", To: "2026-09-02", Timezone: "Not/AZone"}},
+			valid:   false,
+		},
+		"analytics fields cannot be smuggled into another stream": {
+			message: liveClientMessage{SubscriptionID: "characters", Revision: 1, Stream: "characters", Filter: liveFilter{AnalyticsView: "deaths"}},
+			valid:   false,
+		},
 		"normal drops include pet pickups": {
 			message: liveClientMessage{SubscriptionID: "normal-drops", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", IncludePetPickups: true}},
 			valid:   true,
@@ -649,6 +682,25 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 				t.Fatalf("valid=%v want=%v message=%+v", ok, tc.valid, tc.message)
 			}
 		})
+	}
+}
+
+func TestAnalyticsSnapshotsRequireAnalyticsInvalidation(t *testing.T) {
+	client := &liveClient{subscriptions: map[string]liveSubscription{
+		"events":    {ID: "events", Revision: 1, Stream: "events"},
+		"analytics": {ID: "analytics", Revision: 1, Stream: "analytics"},
+	}}
+	standard := client.snapshotSubscriptionsForFlags(1)
+	if len(standard) != 1 || standard[0].Stream != "events" {
+		t.Fatalf("state invalidation included expensive analytics query: %+v", standard)
+	}
+	historical := client.snapshotSubscriptionsForFlags(2)
+	if len(historical) != 1 || historical[0].Stream != "analytics" {
+		t.Fatalf("canonical event invalidation missed analytics subscription: %+v", historical)
+	}
+	all := client.snapshotSubscriptionsForFlags(3)
+	if len(all) != 2 {
+		t.Fatalf("explicit refresh should include both feeds: %+v", all)
 	}
 }
 

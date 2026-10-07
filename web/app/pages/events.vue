@@ -89,8 +89,10 @@ const description = computed(() =>
 )
 const fromDate = ref(dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)))
 const toDate = ref(dateInput(new Date()))
-const characterInput = ref('')
-const characterQuery = ref('')
+const characterInput = ref(
+  typeof route.query.q === 'string' ? route.query.q : '',
+)
+const characterQuery = ref(characterInput.value.trim())
 const itemInput = ref(
   typeof route.query.item === 'string' ? route.query.item : '',
 )
@@ -186,6 +188,16 @@ watch(itemInput, (value) => {
     itemQuery.value = value.trim()
   }, 250)
 })
+watch(
+  () => route.query.q,
+  (value) => {
+    const next = typeof value === 'string' ? value : ''
+    if (characterSearchTimer) clearTimeout(characterSearchTimer)
+    characterSearchTimer = undefined
+    characterInput.value = next
+    characterQuery.value = next.trim()
+  },
+)
 watch(
   () => route.query.item,
   (value) => {

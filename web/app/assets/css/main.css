@@ -2921,6 +2921,107 @@ button.item-detail-name {
   background: rgba(6, 11, 18, 0.52);
   text-align: left;
 }
+.progress-history-note h4,
+.progress-session-history h4 {
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  color: #e5d58e;
+  font-size: 0.68rem;
+}
+.progress-history-note p,
+.progress-history-note > span {
+  display: block;
+  margin: 0;
+  padding: 0 0.55rem 0.4rem;
+  color: #8f9cae;
+  font-size: 0.62rem;
+}
+.progress-history-note ul {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0 0.55rem 0.45rem 1.45rem;
+  color: #b6c1d0;
+  font-size: 0.64rem;
+}
+.progress-behavior-bar {
+  display: flex;
+  height: 0.72rem;
+  margin: 0 0.55rem 0.42rem;
+  overflow: hidden;
+  border: 1px solid #334256;
+  border-radius: 3px;
+  background: #121a27;
+}
+.progress-behavior-bar span {
+  min-width: 0;
+  transition: width 160ms ease;
+}
+.progress-behavior-bar .is-botting,
+.progress-behavior-legend .is-botting {
+  background: #438a7b;
+}
+.progress-behavior-bar .is-idle,
+.progress-behavior-legend .is-idle {
+  background: #7389a7;
+}
+.progress-behavior-bar .is-unknown,
+.progress-behavior-legend .is-unknown {
+  background: #667080;
+}
+.progress-behavior-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.65rem;
+  padding: 0 0.55rem 0.5rem;
+  color: #aeb9c8;
+  font-size: 0.59rem;
+}
+.progress-behavior-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+.progress-behavior-legend i {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 1px;
+}
+.progress-session-history {
+  min-width: 0;
+  margin-top: 0.65rem;
+  border: 1px solid #29374a;
+  border-radius: 4px;
+  background: rgba(6, 11, 18, 0.52);
+}
+.progress-session-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+.progress-session-history table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #bac5d4;
+  font-size: 0.61rem;
+  text-align: left;
+}
+.progress-session-history th,
+.progress-session-history td {
+  padding: 0.38rem 0.5rem;
+  border-top: 1px solid #263346;
+  white-space: nowrap;
+}
+.progress-session-history th {
+  color: #8f9cae;
+  font-weight: 600;
+}
+.progress-session-history p {
+  margin: 0;
+  padding: 0 0.55rem 0.5rem;
+  color: #8f9cae;
+  font-size: 0.62rem;
+}
 .equipment-view .mapping-note,
 .mapping-note {
   margin: 0.6rem 0 0;

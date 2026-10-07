@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
+	"phmon/server/internal/analytics"
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/chat"
@@ -51,6 +52,7 @@ type Dependencies struct {
 	PlayerLive     *players.LiveStore
 	Positions      *positions.Store
 	MapAnalytics   *mapanalytics.Store
+	Analytics      *analytics.Store
 	TradeNexus     *tradenexus.Hub
 	ThiefSightings *tradenexus.Store
 }
@@ -86,13 +88,16 @@ func New(deps Dependencies) http.Handler {
 		sightings := &thiefSightingHandler{store: deps.ThiefSightings}
 		register("GET /api/thief-sightings", false, sightings.list)
 	}
+	analyticsLive := deps.Live
 	if deps.Agents != nil && deps.Registry != nil {
 		live := deps.Live
 		if live == nil {
 			live = NewLiveHub(deps.Agents, deps.Registry, deps.Characters)
 		}
+		analyticsLive = live
 		live.SetResources(deps.Resources)
 		live.SetEvents(deps.Events)
+		live.SetAnalytics(deps.Analytics)
 		live.SetChat(deps.Chat)
 		mobLive := deps.MobLive
 		if mobLive == nil {
@@ -188,6 +193,10 @@ func New(deps Dependencies) http.Handler {
 		guildStorageAPI := &guildStorageHandler{store: deps.Resources}
 		register("GET /api/guild-storage", false, guildStorageAPI.get)
 		register("DELETE /api/guild-storage", true, guildStorageAPI.delete)
+	}
+	if deps.Analytics != nil {
+		analyticsAPI := &analyticsRateResetHandler{store: deps.Analytics, live: analyticsLive}
+		register("POST /api/analytics/rate-resets", true, analyticsAPI.reset)
 	}
 	return mux
 }

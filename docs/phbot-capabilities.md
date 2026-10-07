@@ -1,5 +1,49 @@
 # phBot capability evidence
 
+## Slice 12 source review — 2026-10-07
+
+Official [Character](https://plugins.phbot.org/phbot-api/character),
+[Events](https://plugins.phbot.org/phbot-api/events),
+[Alchemy](https://plugins.phbot.org/phbot-api/alchemy),
+[Academy](https://plugins.phbot.org/phbot-api/academy),
+[Botting](https://plugins.phbot.org/phbot-api/botting),
+[Drops](https://plugins.phbot.org/phbot-api/drops), and
+[Game Data](https://plugins.phbot.org/phbot-api/game-data) documentation was
+rechecked for Slice 12. The character-data example includes current/max EXP, SP,
+gold, dead and `exp_ratio`, but the docs do not define a history stream, multi-level
+XP requirements, or a training-state duration contract. Existing PhMon must treat
+these numeric values as balances and build history from newly accepted state
+frames. `handle_event` documents death, drop, level-up and alchemy completion IDs;
+`alchemy_update(slot, success, plus)` supplies the existing attempt fact. The
+Academy API example includes academy and member IDs/type but does not document
+graduation/ban callbacks, identity lifetime, or role-code semantics.
+
+Local exported profiles were also checked on 2026-10-07. Their top-level data is
+limited to the dataset ID, item definitions, magic options and character portraits;
+they contain no level EXP-requirement table. XP%/hour and rollover-derived rates
+therefore remain unavailable until a versioned, server-applicable requirement
+source is verified.
+
+Plugin **1.9.27** / protocol **18** adds an optional numeric `academy_id` to
+membership-diff event payloads when the accepted `get_academy()` resource exposes
+its numeric ID. An academy switch emits old-scope departures and new-scope joins.
+This enriches attribution only; it does not interpret member type codes or infer
+graduation, bans, join time, or lifetime identity. Older event records remain valid
+and contextless.
+
+The API index checked during this review lists no dedicated stall-transaction or
+sale-history callback/read API. Existing canonical PhMon event kinds likewise have
+no verified sale event. This is a documented capability gap, not evidence that
+private services or guessed packet layouts should be used. Do not infer a sale from
+an offer message, balance change or item movement. No Windows/phBot runtime or
+mutation was used in this source review.
+
+Slice 12 history begins when the backend accepts and commits new character samples
+and validated guild-storage gold observations. Existing current rows and
+academy/item snapshots are not backfilled into dated history. See
+[`analytics-calculations.md`](analytics-calculations.md) for calculations and
+missing-data rules.
+
 Slice 1 starts the real phBot integration. This document records only capabilities
 verified from public phBot plugin documentation or an actual runtime. Simulator
 coverage is tracked separately and is never treated as proof of a real phBot run.
@@ -1705,4 +1749,3 @@ Plugin **1.9.26** keeps those walks when the submitted script also contains blan
 lines, comments, shop commands, or a teleport name with punctuation. Those lines
 are omitted. The route is rejected only when no walk remains. `lines` may be a
 list or one script string.
-

@@ -5,8 +5,12 @@ relays thief sightings between AdvancedAutoTrade clients and PhMon. The socket
 does not use operator cookies or agent tokens. PhMon stores every accepted
 sighting and broadcasts it to clients subscribed to that game server.
 
-TradeNexus itself does not remember sightings for clients that connect later.
-A new subscriber receives only sightings published after it subscribes.
+The WebSocket hub keeps the latest sighting per thief name for each server in
+memory for **10 minutes** from `received_at`. When a client sends `subscribe`,
+the server replies with `subscribed` and then a `thieves` snapshot of every
+active sighting for the subscribed servers. Live `thief.sighting` frames still
+follow for new reports. A process restart clears the hub memory; PostgreSQL
+history and the operator map layer use separate retention rules.
 
 ## Transport
 
@@ -66,6 +70,21 @@ to that server, and can ignore the echo by comparing `sighting_id` with `ack`.
 ```json
 { "v": 1, "type": "subscribed", "servers": ["Greatest"] }
 ```
+
+```json
+{
+  "v": 1,
+  "type": "thieves",
+  "sightings": [],
+  "truncated": false
+}
+```
+
+Sent immediately after `subscribed`. Each `sightings` entry uses the same JSON
+shape as `thief.sighting` below, ordered oldest `received_at` first. An empty
+list still means the snapshot finished. `truncated` is true when a subscribed
+server hit the 256-name active cap and dropped older thieves. Outbound snapshot
+frames are not limited to 4096 bytes; inbound client frames remain capped.
 
 ```json
 { "v": 1, "type": "ack", "ref": "client-chosen-id-123", "sighting_id": "8c1f..." }

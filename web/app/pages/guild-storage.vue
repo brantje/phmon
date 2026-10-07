@@ -164,6 +164,7 @@ async function deleteGuildStorage() {
     const result = await $fetch<{
       deleted_observations: number
       deleted_items: number
+      deleted_gold_samples: number
     }>('/api/guild-storage', {
       method: 'DELETE',
       body: {
@@ -177,7 +178,7 @@ async function deleteGuildStorage() {
     deleteConfirmation.value = ''
     snapshot.value = null
     requestFailed.value = false
-    deleteResult.value = `Removed ${result.deleted_observations} saved observation(s) and ${result.deleted_items} item row(s) for ${scope.server} · ${scope.guild}. A later phBot observation may create a new saved snapshot; in-game contents were not changed.`
+    deleteResult.value = `Removed ${result.deleted_observations} saved observation(s), ${result.deleted_items} item row(s), and ${result.deleted_gold_samples} gold history sample(s) for ${scope.server} · ${scope.guild}. A later phBot observation may create a new saved snapshot; in-game contents were not changed.`
     await loadGuildStorage()
   } catch {
     deleteError.value =
