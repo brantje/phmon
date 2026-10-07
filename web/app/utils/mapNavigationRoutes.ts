@@ -59,6 +59,38 @@ function segmentsForBlock(
   return segments
 }
 
+function routeConnectorFromCharacter(
+  character: CharacterView,
+  profile: MapProfile,
+  areaID: string,
+  floorID: string,
+  selectedRegion: number,
+): RasterPosition | undefined {
+  if (
+    character.region == null ||
+    character.x == null ||
+    character.y == null ||
+    !Number.isFinite(character.x) ||
+    !Number.isFinite(character.y)
+  ) {
+    return undefined
+  }
+  if (selectedRegion !== 0 && character.region !== selectedRegion) {
+    return undefined
+  }
+  return (
+    worldPositionToRaster(
+      profile,
+      areaID,
+      floorID,
+      character.region,
+      character.x,
+      character.y,
+      character.z,
+    ) || undefined
+  )
+}
+
 export function mapNavigationRouteOverlays(input: {
   routes: NavigationRoute[] | undefined
   characters: CharacterView[]
@@ -124,7 +156,23 @@ export function mapNavigationRouteOverlays(input: {
       firstRaster.tileY === firstVisible.tileY &&
       firstRaster.pixelX === firstVisible.pixelX &&
       firstRaster.pixelY === firstVisible.pixelY
-    const anchor =
+    const routeOnCurrentView =
+      blocks.length > 0 &&
+      (blocks[0]?.length ?? 0) > 0 &&
+      route.blocks[0]?.area_id === input.areaID &&
+      route.blocks[0]?.floor_id === input.floorID &&
+      route.dataset_version === input.profile.dataset_version
+    const characterConnector =
+      !stale && route.status === 'moving' && routeOnCurrentView
+        ? routeConnectorFromCharacter(
+            character,
+            input.profile,
+            input.areaID,
+            input.floorID,
+            input.region,
+          )
+        : undefined
+    const serverAnchor =
       !stale &&
       route.status === 'moving' &&
       route.current_anchor &&
@@ -145,6 +193,7 @@ export function mapNavigationRouteOverlays(input: {
             route.current_anchor.z,
           ) || undefined
         : undefined
+    const anchor = characterConnector || serverAnchor
     overlays.push({
       id: `${route.character_id}:${route.session_id}:${route.route_sequence}`,
       characterID: route.character_id,

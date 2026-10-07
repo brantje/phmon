@@ -2,7 +2,9 @@ package analytics
 
 import (
 	"math"
+	"math/big"
 	"sort"
+	"strconv"
 	"time"
 )
 
@@ -25,6 +27,7 @@ type MetricSample struct {
 
 type RateResult struct {
 	Delta                 float64 `json:"delta"`
+	DeltaExact            string  `json:"delta_exact,omitempty"`
 	PerHour               float64 `json:"per_hour"`
 	HasRate               bool    `json:"has_rate"`
 	EligibleSeconds       float64 `json:"eligible_seconds"`
@@ -47,6 +50,7 @@ func calculateBalanceRate(samples []MetricSample, metric func(MetricSample) *int
 	ordered := append([]MetricSample(nil), samples...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].At.Before(ordered[j].At) })
 	result := RateResult{Status: "insufficient_history", Reason: "insufficient_history"}
+	exactDelta := new(big.Int)
 	if metric == nil || from.IsZero() || to.IsZero() || !to.After(from) {
 		result.Status, result.Reason = "unsupported", "invalid_window_or_metric"
 		return result
@@ -93,9 +97,12 @@ func calculateBalanceRate(samples []MetricSample, metric func(MetricSample) *int
 		if requireComparableLevel && (before.Level == nil || after.Level == nil || *before.Level != *after.Level || before.MaxXP == nil || after.MaxXP == nil || *before.MaxXP != *after.MaxXP) {
 			continue
 		}
-		result.Delta += float64(*newValue) - float64(*oldValue)
+		intervalDelta := new(big.Int).Sub(big.NewInt(*newValue), big.NewInt(*oldValue))
+		exactDelta.Add(exactDelta, intervalDelta)
 		result.EligibleSeconds += span.Seconds()
 	}
+	result.DeltaExact = exactDelta.String()
+	result.Delta, _ = new(big.Float).SetInt(exactDelta).Float64()
 	if result.EligibleSeconds >= MinimumRateHistory.Seconds() {
 		result.PerHour = result.Delta * 3600 / result.EligibleSeconds
 		if math.IsInf(result.PerHour, 0) || math.IsNaN(result.PerHour) {

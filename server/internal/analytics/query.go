@@ -337,6 +337,9 @@ GROUP BY lower(e.server_name),e.item_model,COALESCE(e.item_code,'') ORDER BY cou
 	if complete {
 		unknown = total - known
 	}
+	// Degree reconciliation must include observations whose item type or entire
+	// taxonomy is unknown. They remain a distinct Unknown bucket, never degree 0.
+	degreeUnknown += unknown
 	types = taxonomyPoints(grouped.byType, "item type")
 	degrees = taxonomyPoints(grouped.byDegree, "item degree")
 	if degreeUnknown > 0 {
@@ -687,14 +690,21 @@ func optionalInt(value *int) string {
 	return strconv.Itoa(*value)
 }
 func leaderMetric(key, label string, points []Point, hrefPrefix string) Metric {
+	// "Other" is a presentation aggregate, not a real character or location.
+	for _, point := range points {
+		if strings.EqualFold(strings.TrimSpace(point.Label), "other") {
+			continue
+		}
+		metric := Metric{Key: key, Label: label, Value: point.Label, Status: "available"}
+		if point.CharacterID != "" && hrefPrefix != "" {
+			metric.Href = hrefPrefix + url.QueryEscape(point.Label)
+		}
+		return metric
+	}
 	if len(points) == 0 {
 		return Metric{Key: key, Label: label, Status: "empty", Reason: "no_recorded_occurrences"}
 	}
-	metric := Metric{Key: key, Label: label, Value: points[0].Label, Status: "available"}
-	if points[0].CharacterID != "" && hrefPrefix != "" {
-		metric.Href = hrefPrefix + url.QueryEscape(points[0].Label)
-	}
-	return metric
+	return Metric{Key: key, Label: label, Status: "empty", Reason: "no_ranked_entity"}
 }
 
 func dropEventKind(view View) string {

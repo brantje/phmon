@@ -140,7 +140,7 @@ ORDER BY bucket,guild_key LIMIT 501`, args...)
 SELECT DISTINCT ON(s.server_key,s.guild_key) s.server_key,s.guild_key,s.gold,s.sampled_at,s.observer_character_id
 FROM guild_gold_samples s WHERE `+where+`
 ORDER BY s.server_key,s.guild_key,s.sampled_at DESC,s.observer_character_id) latest
-ORDER BY gold DESC,guild_key LIMIT 20`, filter.From, filter.To, filter.Server, filter.Guild, filter.CharacterID)
+	ORDER BY gold::numeric DESC,guild_key,s.server_key LIMIT 20`, filter.From, filter.To, filter.Server, filter.Guild, filter.CharacterID)
 	if err != nil {
 		return err
 	}

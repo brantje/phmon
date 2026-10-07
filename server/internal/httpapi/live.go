@@ -858,25 +858,31 @@ func (c *liveClient) snapshotSubscriptionsForFlags(flags uint8) []liveSubscripti
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if flags == 0 {
+		return nil
+	}
 	positionSnapshots := c.positionSnapshots
-	c.positionSnapshots = make(map[string]uint64)
+	remainingPositionSnapshots := make(map[string]uint64, len(positionSnapshots))
 	subscriptions := make([]liveSubscription, 0, len(c.subscriptions))
 	for _, subscription := range c.subscriptions {
-		if flags == 1 && subscription.Stream == "analytics" {
+		if flags&1 == 0 && subscription.Stream != "analytics" {
 			continue
 		}
-		if flags == 2 && subscription.Stream != "analytics" {
+		if flags&2 == 0 && subscription.Stream == "analytics" {
 			continue
 		}
-		if flags == 0 {
-			continue
-		}
-		if subscription.Stream == "positions" &&
-			positionSnapshots[subscription.ID] != subscription.Revision {
-			continue
+		if subscription.Stream == "positions" {
+			if positionSnapshots[subscription.ID] != subscription.Revision {
+				continue
+			}
+			delete(positionSnapshots, subscription.ID)
 		}
 		subscriptions = append(subscriptions, subscription)
 	}
+	for id, revision := range positionSnapshots {
+		remainingPositionSnapshots[id] = revision
+	}
+	c.positionSnapshots = remainingPositionSnapshots
 	return subscriptions
 }
 
