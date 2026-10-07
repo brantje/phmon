@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { AnalyticsMetric, AnalyticsOccurrence } from '~~/shared/types/live'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
-import { normalizeAnalyticsDateRange } from '~/utils/analyticsDateRange'
+import {
+  analyticsGrouping,
+  normalizeAnalyticsDateRange,
+} from '~/utils/analyticsDateRange'
 
 const route = useRoute()
 const router = useRouter()
@@ -267,7 +270,7 @@ watch(
       to: dates.to,
       timezone,
       bucket: bucket.value,
-      group_by: grouping,
+      group_by: analyticsGrouping(nextView, grouping),
       drop_source:
         nextView === 'rare_drops' || nextView === 'normal_drops'
           ? dropSource.value
@@ -299,13 +302,17 @@ watch([fromDate, toDate], ([from, to]) => {
   const query = { ...route.query, from: from || undefined, to: to || undefined }
   void router.replace({ path: route.path, query, hash: route.hash })
 })
-watch(groupBy, (value) => {
-  const query = {
-    ...route.query,
-    group_by: value === 'character' ? undefined : value,
-  }
-  void router.replace({ path: route.path, query, hash: route.hash })
-})
+watch(
+  groupBy,
+  (value) => {
+    const query = {
+      ...route.query,
+      group_by: value === 'character' ? undefined : value,
+    }
+    void router.replace({ path: route.path, query, hash: route.hash })
+  },
+  { immediate: true },
+)
 watch([characterID, groupID, guildName], ([character, group, guild]) => {
   const query = {
     ...route.query,
@@ -349,7 +356,7 @@ watch(
       grouping === 'degree' ||
       grouping === 'academy'
     ) {
-      groupBy.value = grouping
+      groupBy.value = analyticsGrouping(view.value, grouping)
     }
     characterID.value = typeof character === 'string' ? character : ''
     groupID.value = typeof group === 'string' ? group : ''
@@ -488,7 +495,15 @@ function mapHref(item: AnalyticsOccurrence) {
   }
 }
 function openView(next: string) {
-  router.push({ path: '/analytics', query: { ...route.query, view: next } })
+  const grouping = analyticsGrouping(next, groupBy.value)
+  router.push({
+    path: '/analytics',
+    query: {
+      ...route.query,
+      view: next,
+      group_by: grouping === 'character' ? undefined : grouping,
+    },
+  })
 }
 function nextPage() {
   const next = snapshot.value?.next_cursor

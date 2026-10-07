@@ -1,5 +1,33 @@
 const MAX_ANALYTICS_RANGE_MS = 366 * 24 * 60 * 60 * 1000
 
+export type AnalyticsGroupBy =
+  | 'character'
+  | 'group'
+  | 'location'
+  | 'item'
+  | 'type'
+  | 'degree'
+  | 'academy'
+
+/** Keep a grouping the selected analytics view is allowed to query. */
+export function analyticsGrouping(
+  view: string,
+  groupBy: string,
+): AnalyticsGroupBy {
+  const drops = view === 'rare_drops' || view === 'normal_drops'
+  if (
+    (groupBy === 'item' || groupBy === 'type' || groupBy === 'degree') &&
+    drops
+  ) {
+    return groupBy
+  }
+  if (groupBy === 'group' && view === 'deaths') return 'group'
+  if (groupBy === 'academy' && view === 'academy') return 'academy'
+  if (groupBy === 'location' && view !== 'academy') return 'location'
+  if (groupBy === 'character') return 'character'
+  return 'character'
+}
+
 function validDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)

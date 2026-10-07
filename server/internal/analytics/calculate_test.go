@@ -7,6 +7,16 @@ import (
 
 func int64Ptr(value int64) *int64 { return &value }
 
+func TestEuropeAmsterdamTimezoneLoadsWithoutHostZoneinfo(t *testing.T) {
+	location, err := time.LoadLocation("Europe/Amsterdam")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if location.String() != "Europe/Amsterdam" {
+		t.Fatalf("location = %s", location)
+	}
+}
+
 func TestCalculateBalanceRateUsesOnlyComparableCoveredIntervals(t *testing.T) {
 	from := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	to := from.Add(3 * time.Minute)

@@ -1037,7 +1037,7 @@ function handleFrame(frame: LiveServerFrame) {
     subscription.unavailable = true
     if (subscription.id.startsWith('fanout-')) {
       markCommandFanOutUnavailable(subscription.id)
-    } else {
+    } else if (subscription.stream !== 'analytics') {
       staleCycle.value = true
       connectionState.value = 'stale'
     }
@@ -1061,7 +1061,7 @@ function handleFrame(frame: LiveServerFrame) {
       subscription.unavailable = true
       if (subscription.id.startsWith('fanout-')) {
         markCommandFanOutUnavailable(subscription.id)
-      } else {
+      } else if (subscription.stream !== 'analytics') {
         staleCycle.value = true
         connectionState.value = 'stale'
       }

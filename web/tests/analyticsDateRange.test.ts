@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { normalizeAnalyticsDateRange } from '../app/utils/analyticsDateRange.ts'
+import {
+  analyticsGrouping,
+  normalizeAnalyticsDateRange,
+} from '../app/utils/analyticsDateRange.ts'
 
 test('date filters require two ordered valid dates within the analytics limit', () => {
   assert.match(normalizeAnalyticsDateRange('', '2026-10-07').error, /both/)
@@ -16,6 +19,16 @@ test('date filters require two ordered valid dates within the analytics limit', 
     normalizeAnalyticsDateRange('2026-01-01', '2027-01-03').error,
     /366 normalized days/,
   )
+})
+
+test('groupings that another analytics view cannot query fall back to character', () => {
+  assert.equal(analyticsGrouping('economy', 'item'), 'character')
+  assert.equal(analyticsGrouping('economy', 'type'), 'character')
+  assert.equal(analyticsGrouping('academy', 'location'), 'character')
+  assert.equal(analyticsGrouping('deaths', 'degree'), 'character')
+  assert.equal(analyticsGrouping('deaths', 'group'), 'group')
+  assert.equal(analyticsGrouping('normal_drops', 'item'), 'item')
+  assert.equal(analyticsGrouping('academy', 'academy'), 'academy')
 })
 
 test('inclusive local dates normalize DST days to their actual UTC duration', () => {
