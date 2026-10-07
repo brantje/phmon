@@ -589,6 +589,113 @@ func TestObservedRouteTrimsIndependentlyOfTheCommandRoute(t *testing.T) {
 	}
 }
 
+func TestObservedIdenticalResubmitAfterArrivalResetsTerminalState(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	instructions := []Instruction{{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0}}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-trade", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked}, Instructions: instructions,
+	}
+	destination := Point{Region: 25000, X: 6420, Y: 1080, Z: 0}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("observed route not stored")
+	}
+	store.mu.Lock()
+	arrivedRoute := store.observed[observed.SessionID]
+	arrivedRoute.arrived = true
+	arrivedRoute.status = "arrived"
+	store.observed[observed.SessionID] = arrivedRoute
+	store.mu.Unlock()
+	resubmit := observed
+	resubmit.Sequence = 2
+	resubmit.InvokedAt = invoked.Add(3 * time.Second)
+	if !store.ReplaceObserved(resubmit, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(3*time.Second), func() bool { return true }) {
+		t.Fatal("identical resubmit rejected")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(3*time.Second))[0]
+	if view.Arrived || view.Status == "arrived" {
+		t.Fatalf("resubmit after arrival should reset terminal state: %#v", view)
+	}
+	if view.Destination.X != destination.X || view.Destination.Y != destination.Y {
+		t.Fatalf("destination preserved: %#v", view.Destination)
+	}
+}
+
+func TestObservedIdenticalResubmitPreservesTrimmedProgress(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	instructions := []Instruction{
+		{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0},
+		{Index: 1, Kind: "walk", X: 6430, Y: 1090, Z: 0},
+		{Index: 2, Kind: "walk", X: 6460, Y: 1080, Z: 0},
+	}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-trade", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source:       &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: instructions,
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("observed route not stored")
+	}
+	if !store.Observe(observed.CharacterID, observed.SessionID, Position{Region: 25000, X: 6420, Y: 1080, Z: &z, At: invoked.Add(2 * time.Second)}) {
+		t.Fatal("position observation ignored")
+	}
+	resubmit := observed
+	resubmit.Sequence = 2
+	resubmit.InvokedAt = invoked.Add(3 * time.Second)
+	if !store.ReplaceObserved(resubmit, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(3*time.Second), func() bool { return true }) {
+		t.Fatal("identical resubmit rejected")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(3*time.Second))[0]
+	if view.CompletedInstructions != 1 || len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 2 || view.Blocks[0].Points[0].X != 6430 {
+		t.Fatalf("resubmit reset walked prefix: %#v", view)
+	}
+}
+
+func TestTeleportBarrierSuppressesAnchorUntilCrossed(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	north := 25000
+	south := 25001
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-ferry", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: north, X: 6410, Y: 1080, Z: &z, At: invoked},
+		Instructions: []Instruction{
+			{Index: 0, Kind: "walk", Region: &north, X: 6420, Y: 1080, Z: 0},
+			{Index: 1, Kind: "teleport"},
+			{Index: 2, Kind: "walk", Region: &south, X: 6700, Y: 900, Z: 0},
+			{Index: 3, Kind: "walk", Region: &south, X: 6800, Y: 880, Z: 0},
+		},
+	}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("ferry route not stored")
+	}
+	if !store.Observe(observed.CharacterID, observed.SessionID, Position{Region: north, X: 6420, Y: 1080, Z: &z, At: invoked.Add(time.Second)}) {
+		t.Fatal("north-shore observation ignored")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if view.Status != "transition_awaiting_evidence" || view.CurrentAnchor != nil ||
+		len(view.Blocks) != 1 || len(view.Blocks[0].Points) != 2 || view.Blocks[0].Points[0].Region != south {
+		t.Fatalf("expected far-shore block without anchor at teleport: %#v", view)
+	}
+}
+
 func TestTeleportKeepsTheFollowingFerryWalksVisible(t *testing.T) {
 	store := NewStore()
 	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)

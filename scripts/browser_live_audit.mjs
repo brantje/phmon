@@ -124,6 +124,9 @@ function forbiddenLiveRead(url, method, type) {
     return null
   }
   if (method !== 'GET') return null
+  if (parsed.pathname === '/api/analytics' || parsed.pathname.startsWith('/api/analytics/')) {
+    return `HTTP live read ${method} ${parsed.pathname}`
+  }
   if (parsed.pathname === '/api/agents') return `HTTP live read ${method} ${parsed.pathname}`
   if (parsed.pathname === '/api/groups') return `HTTP live read ${method} ${parsed.pathname}`
   if (

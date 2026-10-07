@@ -311,14 +311,14 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
 		OccurredAt: databaseNow.UTC().Add(time.Second), Sequence: &alchemySequence,
 		Source: "phbot.alchemy_callback", SourceRef: "alchemy_update",
-		Payload: json.RawMessage(`{"slot":13,"success":true,"plus":5}`),
+		Payload: json.RawMessage(`{"slot":13,"success":null,"plus":5}`),
 	}
 	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{alchemy})
 	if err != nil || !changed || results[0].Status != "persisted" {
 		t.Fatalf("alchemy attempt batch = %+v, changed=%v, err=%v", results, changed, err)
 	}
 	page, err = store.List(ctx, Filter{Server: server, Kind: "alchemy.attempt", Limit: 10})
-	if err != nil || page.Total != 1 || page.Alchemy == nil || page.Alchemy.Attempts != 1 || page.Alchemy.Successes != 1 || page.Alchemy.HighestPlus == nil || *page.Alchemy.HighestPlus != 5 {
+	if err != nil || page.Total != 1 || page.Alchemy == nil || page.Alchemy.Attempts != 1 || page.Alchemy.Unknown != 1 || page.Alchemy.Successes != 0 || page.Alchemy.HighestPlus == nil || *page.Alchemy.HighestPlus != 5 {
 		t.Fatalf("alchemy summary = %+v, err=%v", page, err)
 	}
 

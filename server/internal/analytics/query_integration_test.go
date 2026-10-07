@@ -89,6 +89,18 @@ VALUES($1::uuid,1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8,'phmon.test','analytics
 	modelWithoutDegree := int64(78)
 	insert(aria, ariaSession, "drop.rare", "drop", now.Add(-2*time.Hour), "Jangan", 1, &model, "ITEM_RARE", `{"model":77,"item":{"name":"Fixture Blade","plus":3}}`)
 	insert(aria, ariaSession, "drop.rare", "drop", now.Add(-90*time.Minute), "Jangan", 1, &modelWithoutDegree, "ITEM_RARE_NO_DEGREE", `{"model":78,"item":{"name":"Fixture Hood","plus":2}}`)
+	var ownedGainID, transferID string
+	if err := pool.QueryRow(ctx, `SELECT gen_random_uuid()::text,gen_random_uuid()::text`).Scan(&ownedGainID, &transferID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,zone_name,item_model,item_code,item_drop_class,item_drop_class_version,payload)
+VALUES($1::uuid,1,'item.acquired','item',$2::uuid,$3::uuid,$4::uuid,$5,$6,'phbot.state_diff','item_container',1,'Jangan',77,'ITEM_RARE','rare','fixture-v1',
+'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":2,"destination_container":{"type":"inventory","slot":4},"acquisition_method":"unknown"}'::jsonb),
+($7::uuid,1,'item.transferred','item',$2::uuid,$3::uuid,$4::uuid,$5,$6+interval '1 second','phbot.state_diff','item_container',1,'Jangan',77,'ITEM_RARE','rare','fixture-v1',
+'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,"destination_container":{"type":"pets","id":"17","slot":2}}'::jsonb)`, ownedGainID, credential.AgentID, aria, ariaSession, server, now.Add(-time.Hour), transferID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	insert(aria, ariaSession, "academy.member_joined", "academy", now.Add(-time.Hour), "Jangan", 1, nil, "", `{"academy_id":7,"member_id":"peer-1","member":{"name":"Peer"}}`)
 	insert(bard, bardSession, "academy.member_left", "academy", now.Add(-30*time.Minute), "Donwhang", 2, nil, "", `{"academy_id":7,"member_id":"peer-2","member":{"name":"Peer 2"}}`)
 	insert(aria, ariaSession, "alchemy.attempt", "alchemy", now.Add(-15*time.Minute), "Jangan", 1, nil, "", `{"slot":1,"success":true,"plus":4}`)
@@ -175,6 +187,22 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	if len(drops.Occurrences) != 2 || drops.Occurrences[0].ItemDetails["name"] != "Fixture Hood" || drops.Occurrences[0].ItemMetadata["icon_url"] != "/game-assets/fixture.png" {
 		t.Fatalf("drop evidence did not carry shared item detail metadata: %+v", drops.Occurrences)
 	}
+	owned, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewRareDrops, DropSource: "owned_gains", From: from, To: to, Timezone: "UTC", GroupBy: "item"})
+	if err != nil || owned.Total != "1" || len(owned.Occurrences) != 1 || owned.Occurrences[0].ID != ownedGainID {
+		t.Fatalf("owned-gain population included world observations or transfers: snapshot=%+v err=%v", owned, err)
+	}
+	quantitySeen := false
+	for _, metric := range owned.Summary {
+		if metric.Key == "owned_gain_quantity" {
+			quantitySeen = true
+			if metric.Value != "2" {
+				t.Fatalf("owned-gain quantity should use the accepted delta, got %+v", metric)
+			}
+		}
+	}
+	if !quantitySeen {
+		t.Fatal("owned-gain quantity denominator was not included in its summary")
+	}
 	filteredDrops, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewRareDrops, From: from, To: to, Timezone: "UTC", GroupBy: "type", ItemType: "Accessory", ItemDegree: "10"})
 	if err != nil || filteredDrops.Total != "1" || len(filteredDrops.Breakdown) != 1 || filteredDrops.Breakdown[0].Label != "Accessory" {
 		t.Fatalf("profile-aware item type/degree filtering failed: snapshot=%+v err=%v", filteredDrops, err)
@@ -201,7 +229,7 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	if alchemy.Total != "2" || alchemy.Summary[1].Value != "1" || alchemy.Summary[3].Value != "1" || alchemy.Summary[5].Value != "4" {
 		t.Fatalf("alchemy outcome query incorrect: %+v", alchemy)
 	}
-	if len(alchemy.TimeSeries) != 1 || alchemy.TimeSeries[0].Value != "100.00" || !strings.Contains(alchemy.TimeSeries[0].Series, "1 successes of 1 known outcomes") {
+	if len(alchemy.TimeSeries) != 1 || alchemy.TimeSeries[0].Value != "100.00" || !strings.Contains(alchemy.TimeSeries[0].Detail, "1 successes / 1 known outcomes") {
 		t.Fatalf("alchemy weekday share omitted its observed denominator: %+v", alchemy.TimeSeries)
 	}
 	progress, err := store.Query(ctx, analytics.Filter{Server: server, CharacterID: aria, View: analytics.ViewPerformance, From: now.Add(-23 * time.Hour), To: now.Add(time.Minute), Timezone: "UTC"})
@@ -213,6 +241,21 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	}
 	if progress.Performance.Training == nil || len(progress.Performance.Training) != 1 || progress.Performance.Training[0].CoveredSecond < 50 || progress.Performance.BottingSeconds < 50 {
 		t.Fatalf("performance coverage did not use verified adjacent states: %+v", progress.Performance)
+	}
+	var daily, weekly bool
+	for _, period := range progress.Performance.Periods {
+		if period.Granularity == "day" {
+			daily = true
+			if period.XPGain == nil || *period.XPGain != "300" || period.SPNet == nil || *period.SPNet != "15" || period.GoldNet == nil || *period.GoldNet != "-20" || period.Deaths != 2 || period.RareDrops != 2 {
+				t.Fatalf("daily summary lost eligible deltas, denominators or canonical counts: %+v", period)
+			}
+		}
+		if period.Granularity == "week" {
+			weekly = true
+		}
+	}
+	if !daily || !weekly || len(progress.Performance.Locations) != 1 || progress.Performance.Locations[0].Region == nil || *progress.Performance.Locations[0].Region != 1 || progress.Performance.Locations[0].XPGain == nil || *progress.Performance.Locations[0].XPGain != "300" {
+		t.Fatalf("weekly summary or same-location gain comparison is missing: %+v", progress.Performance)
 	}
 	characterEconomy, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewEconomy, From: from, To: to, Timezone: "UTC", BalanceScope: "characters"})
 	if err != nil || len(characterEconomy.TimeSeries) == 0 || characterEconomy.Summary[0].Status != "available" {

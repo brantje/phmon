@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,9 +27,20 @@ type Store struct {
 	itemModels      func(server, itemType, degree string) ([]int64, bool)
 	taxonomyOptions func(server string) []TaxonomyOption
 	itemDetails     func(server string, model *int64, code string, payloadItem map[string]any) (metadata, details map[string]any)
+	retentionDays   atomic.Int64
 }
 
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool) *Store {
+	store := &Store{pool: pool}
+	store.retentionDays.Store(90)
+	return store
+}
+
+func (s *Store) SetRetentionDays(days int) {
+	if s != nil && days >= 1 && days <= 3650 {
+		s.retentionDays.Store(int64(days))
+	}
+}
 
 func (s *Store) SetItemTaxonomy(
 	resolve func(server string, model int64, code string) (itemType, degree string, known bool),
@@ -139,7 +151,7 @@ FROM (
 	return nil, nil
 }
 
-func (s *Store) RunRetention(ctx context.Context, days int, interval time.Duration) {
+func (s *Store) RunRetention(ctx context.Context, days int, interval time.Duration, onChange ...func()) {
 	if days < 1 || days > 3650 {
 		slog.Error("analytics retention disabled: invalid day count")
 		return
@@ -147,6 +159,7 @@ func (s *Store) RunRetention(ctx context.Context, days int, interval time.Durati
 	if interval < time.Minute {
 		interval = 15 * time.Minute
 	}
+	s.SetRetentionDays(days)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -160,6 +173,9 @@ func (s *Store) RunRetention(ctx context.Context, days int, interval time.Durati
 		total += deleted
 		if total > 0 {
 			slog.Info("expired analytics samples pruned", "rows", total, "retention_days", days)
+			if len(onChange) > 0 && onChange[0] != nil {
+				onChange[0]()
+			}
 		}
 		select {
 		case <-ctx.Done():

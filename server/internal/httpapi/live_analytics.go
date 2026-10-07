@@ -17,15 +17,15 @@ func analyticsFilter(input liveFilter) (analytics.Filter, error) {
 		return analytics.Filter{}, errors.New("invalid analytics end time")
 	}
 	return analytics.NormalizeFilter(analytics.Filter{
-		Server: strings.TrimSpace(input.Server), CharacterID: input.CharacterID, GroupID: input.GroupID,
+		Server: strings.TrimSpace(input.Server), CharacterID: input.CharacterID, CharacterIDs: input.CharacterIDs, CharacterQuery: input.Query, GroupID: input.GroupID,
 		View: analytics.View(input.AnalyticsView), From: from, To: to,
 		Timezone: input.Timezone, Bucket: input.Bucket, GroupBy: input.GroupBy,
-		Guild: input.Guild, BalanceScope: input.BalanceScope, ItemType: input.ItemType, ItemDegree: input.ItemDegree,
+		Guild: input.Guild, BalanceScope: input.BalanceScope, DropSource: input.DropSource, ItemType: input.ItemType, ItemDegree: input.ItemDegree, ItemQuery: input.Item,
 		PageSize: input.PageSize, Cursor: input.Cursor,
 	})
 }
 
 func hasAnalyticsFilters(filter liveFilter) bool {
 	return filter.AnalyticsView != "" || filter.Timezone != "" || filter.Bucket != "" ||
-		filter.GroupBy != "" || filter.Guild != "" || filter.PageSize != 0 || filter.BalanceScope != "" || filter.ItemType != "" || filter.ItemDegree != ""
+		filter.GroupBy != "" || filter.Guild != "" || filter.PageSize != 0 || filter.BalanceScope != "" || filter.DropSource != "" || filter.ItemType != "" || filter.ItemDegree != ""
 }

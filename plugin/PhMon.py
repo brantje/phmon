@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.27'
+pVersion = '1.9.28'
 pUrl = ''
 
 PROTOCOL_VERSION = 18
@@ -3522,11 +3522,19 @@ class AgentWorker(object):
             after = current.get(group)
             if before is None or after is None:
                 continue
-            if group == 'academy' and previous.get('academy_id') != current.get('academy_id'):
+            previous_academy_id = previous.get('academy_id')
+            current_academy_id = current.get('academy_id')
+            known_academy_switch = (
+                group == 'academy' and
+                isinstance(previous_academy_id, int) and not isinstance(previous_academy_id, bool) and previous_academy_id >= 0 and
+                isinstance(current_academy_id, int) and not isinstance(current_academy_id, bool) and current_academy_id >= 0 and
+                previous_academy_id != current_academy_id
+            )
+            if known_academy_switch:
                 for key in sorted(before):
-                    self._emit_state_change(identity, leave_kind, ref, key, before[key], observed_at, position, previous.get('academy_id'))
+                    self._emit_state_change(identity, leave_kind, ref, key, before[key], observed_at, position, previous_academy_id)
                 for key in sorted(after):
-                    self._emit_state_change(identity, join_kind, ref, key, after[key], observed_at, position, current.get('academy_id'))
+                    self._emit_state_change(identity, join_kind, ref, key, after[key], observed_at, position, current_academy_id)
             else:
                 for key in sorted(set(after) - set(before)):
                     context_id = current.get('academy_id') if group == 'academy' else None

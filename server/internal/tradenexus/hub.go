@@ -117,6 +117,8 @@ func (h *Hub) Record(ctx context.Context, sighting Sighting) (Sighting, error) {
 			slog.Warn("tradenexus sighting was not stored", "server", prepared.Server, "reason", err.Error())
 		}
 	}
+	// Remember before any subscriber ack so subscribe snapshots cannot race the report handler.
+	h.active.remember(h.clock(), prepared)
 	return prepared, nil
 }
 
@@ -323,7 +325,7 @@ func (c *client) wants(server string) bool {
 func (c *client) setServers(servers []string) {
 	next := make(map[string]struct{}, len(servers))
 	for _, server := range servers {
-		next[server] = struct{}{}
+		next[activeServerKey(server)] = struct{}{}
 	}
 	c.mu.Lock()
 	c.servers = next

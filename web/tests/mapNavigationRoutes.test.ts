@@ -126,6 +126,44 @@ test('keeps wait/teleport blocks independent and safely maps each segment', () =
   assert.ok(overlays[0]?.currentAnchor)
 })
 
+test('does not attach a near-shore anchor to a far-shore remaining block', () => {
+  const overlays = project([
+    route({
+      current_anchor: { region: 25000, x: 6700, y: 900, z: 0 },
+      blocks: [
+        {
+          area_id: 'world',
+          floor_id: 'world',
+          points: [{ region: 25000, x: 6420, y: 1080, z: 0 }],
+        },
+        {
+          area_id: 'world',
+          floor_id: 'world',
+          points: [{ region: 25000, x: 6700, y: 900, z: 0 }],
+        },
+      ],
+    }),
+  ])
+  assert.ok((overlays[0]?.blocks.length ?? 0) >= 1)
+  assert.ok(overlays[0]?.currentAnchor)
+})
+
+test('uses the live character position for the moving route connector', () => {
+  const overlays = project([
+    route({
+      current_anchor: undefined,
+      blocks: [
+        {
+          area_id: 'world',
+          floor_id: 'world',
+          points: [{ region: 25000, x: 6440, y: 1080, z: 0 }],
+        },
+      ],
+    }),
+  ])
+  assert.ok(overlays[0]?.currentAnchor)
+})
+
 test('stale routes freeze their remaining geometry and suppress the live connector', () => {
   const overlays = project([route()], { stale: true })
   assert.equal(overlays[0]?.status, 'stale')

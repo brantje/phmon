@@ -14,8 +14,8 @@ const {
   clearCharacterResources,
   analyticsFeeds,
   analyticsFeedStatus,
-  setAnalyticsFeed,
-  clearAnalyticsFeed,
+  registerVisibleProgressCharacter,
+  refreshLiveData,
   connectionState,
   freshnessNow,
 } = useLiveData()
@@ -32,14 +32,18 @@ const resourceSubscriptionID = `resources-${useId()
 const performanceSubscriptionID = `analytics-progress-${useId()
   .replace(/[^a-zA-Z0-9_-]/g, '')
   .slice(-24)}`
+const performanceBatchFeedID = 'analytics-visible-progress'
 const trainingTitleID = `${performanceSubscriptionID}-training-title`
 const sessionsTitleID = `${performanceSubscriptionID}-sessions-title`
 const performanceFeed = computed(
-  () => analyticsFeeds.value[performanceSubscriptionID],
+  () => analyticsFeeds.value[performanceBatchFeedID],
 )
-const performance = computed(() => performanceFeed.value?.performance)
+const performance = computed(
+  () =>
+    performanceFeed.value?.performance_batch?.[props.character.character_id],
+)
 const performanceStatus = computed(
-  () => analyticsFeedStatus.value[performanceSubscriptionID] || 'loading',
+  () => analyticsFeedStatus.value[performanceBatchFeedID] || 'loading',
 )
 const performanceBehavior = computed(() => {
   const current = performance.value
@@ -117,21 +121,7 @@ const activeResourceKeys = computed(() => {
   if (selectedTab.value === 'Academy') return ['academy']
   return []
 })
-let performanceWindowTimer: ReturnType<typeof setInterval> | undefined
-
-function subscribePerformanceWindow(characterID: string, server: string) {
-  const to = new Date()
-  const from = new Date(to.getTime() - 24 * 60 * 60 * 1000)
-  setAnalyticsFeed(performanceSubscriptionID, {
-    view: 'performance',
-    character_id: characterID,
-    server,
-    from: from.toISOString(),
-    to: to.toISOString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    bucket: 'hour',
-  })
-}
+let releaseProgressCharacter: (() => void) | undefined
 
 watch(
   [
@@ -140,30 +130,16 @@ watch(
     () => props.character.character_id,
     () => props.character.server,
   ],
-  ([tab, visible, characterID, server]) => {
-    if (performanceWindowTimer) {
-      clearInterval(performanceWindowTimer)
-      performanceWindowTimer = undefined
-    }
+  ([tab, visible, characterID]) => {
+    releaseProgressCharacter?.()
+    releaseProgressCharacter = undefined
     if (tab !== 'Progress' || !visible) {
-      clearAnalyticsFeed(performanceSubscriptionID)
       return
     }
-    subscribePerformanceWindow(characterID, server)
-    performanceWindowTimer = setInterval(() => {
-      if (selectedTab.value === 'Progress') {
-        subscribePerformanceWindow(
-          props.character.character_id,
-          props.character.server,
-        )
-      }
-    }, 60_000)
+    releaseProgressCharacter = registerVisibleProgressCharacter(characterID)
   },
 )
-onBeforeUnmount(() => {
-  if (performanceWindowTimer) clearInterval(performanceWindowTimer)
-  clearAnalyticsFeed(performanceSubscriptionID)
-})
+onBeforeUnmount(() => releaseProgressCharacter?.())
 
 function performanceRate(key: 'xp' | 'sp' | 'gold') {
   const rate = performance.value?.rates[key]
@@ -185,6 +161,17 @@ function progressTimestamp(value?: string) {
     ? `${new Date(value).toISOString().replace('T', ' ').slice(0, 19)} UTC`
     : '—'
 }
+function periodDelta(value: string | undefined, seconds: number) {
+  if (value === undefined) return '—'
+  let amount: string
+  try {
+    const exact = BigInt(value)
+    amount = `${exact > 0n ? '+' : ''}${exact.toLocaleString()}`
+  } catch {
+    amount = value
+  }
+  return `${amount} · ${durationLabel(seconds)}`
+}
 async function resetPerformanceRates() {
   rateResetMessage.value = ''
   const typedName = window.prompt(
@@ -202,10 +189,7 @@ async function resetPerformanceRates() {
     })
     rateResetMessage.value =
       'Rate window reset. New observations will build the next rate.'
-    subscribePerformanceWindow(
-      props.character.character_id,
-      props.character.server,
-    )
+    refreshLiveData([performanceBatchFeedID])
   } catch {
     rateResetMessage.value =
       'Could not reset rates. Check the character name and try again.'
@@ -732,6 +716,106 @@ onBeforeUnmount(() => {
             </table>
           </div>
           <p v-else>No observed sessions in this 24-hour window.</p>
+        </section>
+        <section
+          class="progress-session-history"
+          aria-label="Seven-day performance summary"
+        >
+          <h4>Observed daily and weekly comparison · last 7 days</h4>
+          <p>
+            Signed EXP/SP/gold changes use only comparable intervals. The time
+            shown is each metric's eligible sample denominator; event counts are
+            canonical recorded occurrences, not proof of continuous observation.
+          </p>
+          <div class="progress-session-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Local period</th>
+                  <th scope="col">EXP gain · coverage</th>
+                  <th scope="col">SP net · coverage</th>
+                  <th scope="col">Gold net · coverage</th>
+                  <th scope="col">Deaths / normal / rare</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="period in performance.periods || []"
+                  :key="`${period.granularity}-${period.start_date}`"
+                >
+                  <th scope="row">
+                    {{ period.granularity === 'week' ? 'Week of ' : ''
+                    }}{{ period.start_date }}
+                  </th>
+                  <td>{{ periodDelta(period.xp_gain, period.xp_seconds) }}</td>
+                  <td>{{ periodDelta(period.sp_net, period.sp_seconds) }}</td>
+                  <td>
+                    {{ periodDelta(period.gold_net, period.gold_seconds) }}
+                  </td>
+                  <td>
+                    {{ period.deaths }} / {{ period.normal_drops }} /
+                    {{ period.rare_drops }}
+                  </td>
+                </tr>
+                <tr v-if="!performance.periods?.length">
+                  <td colspan="5">
+                    No comparable daily/weekly sample intervals or canonical
+                    events in this window.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section
+          class="progress-session-history"
+          aria-label="Observed location comparison"
+        >
+          <h4>Observed location comparison · last 7 days</h4>
+          <p>
+            Location is attributed only when adjacent samples agree on region
+            and zone. This does not establish a farming area.
+          </p>
+          <div class="progress-session-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Observed region / zone</th>
+                  <th scope="col">Coverage</th>
+                  <th scope="col">EXP / SP / gold net</th>
+                  <th scope="col">Deaths / normal / rare</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(location, index) in (
+                    performance.locations || []
+                  ).slice(0, 10)"
+                  :key="`${location.region}-${location.zone}-${index}`"
+                >
+                  <th scope="row">
+                    Region {{ location.region ?? 'unknown' }} ·
+                    {{ location.zone || 'unknown zone' }}
+                  </th>
+                  <td>{{ durationLabel(location.covered_seconds) }}</td>
+                  <td>
+                    {{ periodDelta(location.xp_gain, location.xp_seconds) }} /
+                    {{ periodDelta(location.sp_net, location.sp_seconds) }} /
+                    {{ periodDelta(location.gold_net, location.gold_seconds) }}
+                  </td>
+                  <td>
+                    {{ location.deaths }} / {{ location.normal_drops }} /
+                    {{ location.rare_drops }}
+                  </td>
+                </tr>
+                <tr v-if="!performance.locations?.length">
+                  <td colspan="4">
+                    No same-location sample intervals were observed.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
         <p class="mapping-note">
           Bot-state coverage:
