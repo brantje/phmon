@@ -12,6 +12,10 @@ const {
   characterResources,
   setCharacterResources,
   clearCharacterResources,
+  analyticsFeeds,
+  analyticsFeedStatus,
+  setAnalyticsFeed,
+  clearAnalyticsFeed,
   connectionState,
   freshnessNow,
 } = useLiveData()
@@ -25,6 +29,30 @@ const cardVisible = ref(false)
 const resourceSubscriptionID = `resources-${useId()
   .replace(/[^a-zA-Z0-9_-]/g, '')
   .slice(-24)}`
+const performanceSubscriptionID = `analytics-progress-${useId()
+  .replace(/[^a-zA-Z0-9_-]/g, '')
+  .slice(-24)}`
+const performanceFeed = computed(
+  () => analyticsFeeds.value[performanceSubscriptionID],
+)
+const performance = computed(() => performanceFeed.value?.performance)
+const performanceStatus = computed(
+  () => analyticsFeedStatus.value[performanceSubscriptionID] || 'loading',
+)
+const performanceBehavior = computed(() => {
+  const current = performance.value
+  const total = current?.coverage_seconds || 0
+  if (!current || total <= 0) return []
+  return [
+    { key: 'botting', label: 'Botting', seconds: current.botting_seconds },
+    { key: 'idle', label: 'Not botting', seconds: current.idle_seconds },
+    { key: 'unknown', label: 'Unknown', seconds: current.unknown_bot_seconds },
+  ].map((segment) => ({
+    ...segment,
+    percent: Math.max(0, (segment.seconds / total) * 100),
+  }))
+})
+const rateResetMessage = ref('')
 const resources = computed(
   () => characterResources.value[props.character.character_id],
 )
@@ -87,6 +115,100 @@ const activeResourceKeys = computed(() => {
   if (selectedTab.value === 'Academy') return ['academy']
   return []
 })
+let performanceWindowTimer: ReturnType<typeof setInterval> | undefined
+
+function subscribePerformanceWindow(characterID: string, server: string) {
+  const to = new Date()
+  const from = new Date(to.getTime() - 24 * 60 * 60 * 1000)
+  setAnalyticsFeed(performanceSubscriptionID, {
+    view: 'performance',
+    character_id: characterID,
+    server,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    bucket: 'hour',
+  })
+}
+
+watch(
+  [
+    selectedTab,
+    cardVisible,
+    () => props.character.character_id,
+    () => props.character.server,
+  ],
+  ([tab, visible, characterID, server]) => {
+    if (performanceWindowTimer) {
+      clearInterval(performanceWindowTimer)
+      performanceWindowTimer = undefined
+    }
+    if (tab !== 'Progress' || !visible) {
+      clearAnalyticsFeed(performanceSubscriptionID)
+      return
+    }
+    subscribePerformanceWindow(characterID, server)
+    performanceWindowTimer = setInterval(() => {
+      if (selectedTab.value === 'Progress') {
+        subscribePerformanceWindow(
+          props.character.character_id,
+          props.character.server,
+        )
+      }
+    }, 60_000)
+  },
+)
+onBeforeUnmount(() => {
+  if (performanceWindowTimer) clearInterval(performanceWindowTimer)
+  clearAnalyticsFeed(performanceSubscriptionID)
+})
+
+function performanceRate(key: 'xp' | 'sp' | 'gold') {
+  const rate = performance.value?.rates[key]
+  return rate?.has_rate ? rate.per_hour : null
+}
+function displayRate(value: number | null, unit: string) {
+  return value === null
+    ? '—'
+    : `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${unit}`
+}
+function durationLabel(seconds: number | undefined) {
+  if (seconds === undefined || !Number.isFinite(seconds)) return '—'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`
+}
+function progressTimestamp(value?: string) {
+  return value
+    ? `${new Date(value).toISOString().replace('T', ' ').slice(0, 19)} UTC`
+    : '—'
+}
+async function resetPerformanceRates() {
+  rateResetMessage.value = ''
+  const typedName = window.prompt(
+    `Type ${props.character.name} to reset this character's rate window. 24-hour event totals will stay unchanged.`,
+  )
+  if (typedName === null) return
+  try {
+    await $fetch('/api/analytics/rate-resets', {
+      method: 'POST',
+      body: {
+        character_id: props.character.character_id,
+        character_name: typedName,
+        idempotency_key: crypto.randomUUID(),
+      },
+    })
+    rateResetMessage.value =
+      'Rate window reset. New observations will build the next rate.'
+    subscribePerformanceWindow(
+      props.character.character_id,
+      props.character.server,
+    )
+  } catch {
+    rateResetMessage.value =
+      'Could not reset rates. Check the character name and try again.'
+  }
+}
 
 function available(key: string) {
   return observation(key)?.availability || 'unavailable'
@@ -423,32 +545,202 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="selectedTab === 'Progress'" class="character-card-content">
-      <div class="inventory-topline"><h3>Progress</h3></div>
-      <dl class="character-stats">
-        <div>
-          <dt>Level</dt>
-          <dd>{{ character.level ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt>Current XP</dt>
-          <dd>{{ formatProgress(character) }}</dd>
-        </div>
-        <div>
-          <dt>Current SP</dt>
-          <dd>{{ character.sp?.toLocaleString() ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt>Current gold</dt>
-          <dd>{{ character.gold?.toLocaleString() ?? '—' }}</dd>
-        </div>
-      </dl>
-      <div class="inventory-unavailable progress-history-note" role="status">
-        <strong>Historical metrics unavailable</strong>
-        <span
-          >XP/hour, SP/hour, gold/hour and drop rates appear when historical
-          tracking is available.</span
+      <div class="inventory-topline">
+        <h3>Progress · observed last 24 hours</h3>
+        <button
+          class="compact-button"
+          type="button"
+          @click="resetPerformanceRates"
         >
+          Reset Rates
+        </button>
       </div>
+      <p v-if="rateResetMessage" class="inventory-stale" role="status">
+        {{ rateResetMessage }}
+      </p>
+      <div
+        v-if="performanceStatus === 'loading' && !performance"
+        class="inventory-unavailable"
+        role="status"
+      >
+        Loading accepted state history…
+      </div>
+      <div
+        v-else-if="performanceStatus === 'unavailable'"
+        class="inventory-unavailable"
+        role="status"
+      >
+        Historical metrics are temporarily unavailable. Reconnect to retry.
+      </div>
+      <div v-else-if="!performance" class="inventory-unavailable" role="status">
+        No accepted state sample has been recorded for this character in the
+        selected window.
+      </div>
+      <template v-else>
+        <dl class="character-stats">
+          <div>
+            <dt>Level</dt>
+            <dd>{{ performance.current_level ?? '—' }}</dd>
+          </div>
+          <div>
+            <dt>Current XP</dt>
+            <dd>{{ formatProgress(character) }}</dd>
+          </div>
+          <div>
+            <dt>XP progress</dt>
+            <dd>
+              {{
+                displayRate(performance.xp_percent_per_hour ?? null, '% / hour')
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>Level up estimate</dt>
+            <dd>{{ durationLabel(performance.level_eta_seconds) }}</dd>
+          </div>
+          <div>
+            <dt>SP net / hour</dt>
+            <dd>{{ displayRate(performanceRate('sp'), 'SP') }}</dd>
+          </div>
+          <div>
+            <dt>Gold net / hour</dt>
+            <dd>{{ displayRate(performanceRate('gold'), 'gold') }}</dd>
+          </div>
+          <div>
+            <dt>Normal drops · 24h</dt>
+            <dd>{{ performance.normal_drops_24h.toLocaleString() }}</dd>
+          </div>
+          <div>
+            <dt>Rare drops · 24h</dt>
+            <dd>{{ performance.rare_drops_24h.toLocaleString() }}</dd>
+          </div>
+          <div>
+            <dt>Deaths · 24h</dt>
+            <dd>{{ performance.deaths_24h.toLocaleString() }}</dd>
+          </div>
+          <div>
+            <dt>Time between returns</dt>
+            <dd>Unavailable</dd>
+          </div>
+        </dl>
+        <p class="mapping-note">
+          Rates are net observed balance changes. Eligible XP history:
+          {{ durationLabel(performance.rates.xp?.eligible_seconds) }}; SP:
+          {{ durationLabel(performance.rates.sp?.eligible_seconds) }}; gold:
+          {{ durationLabel(performance.rates.gold?.eligible_seconds) }}. Stale
+          or missing intervals do not count toward the denominator.
+          <span v-if="performance.stale">
+            Latest accepted sample is stale; level-up timing is
+            suppressed.</span
+          >
+        </p>
+        <section class="progress-history-note" aria-labelledby="training-title">
+          <h4 id="training-title">Training behavior · last 24h</h4>
+          <p>
+            Observed state coverage only; commands do not establish bot uptime.
+          </p>
+          <div
+            v-if="performanceBehavior.length"
+            class="progress-behavior-bar"
+            role="img"
+            :aria-label="`Observed coverage: ${durationLabel(performance.botting_seconds)} botting, ${durationLabel(performance.idle_seconds)} not botting, ${durationLabel(performance.unknown_bot_seconds)} unknown.`"
+          >
+            <span
+              v-for="segment in performanceBehavior"
+              :key="segment.key"
+              :class="`is-${segment.key}`"
+              :style="{ width: `${segment.percent}%` }"
+              :title="`${segment.label}: ${durationLabel(segment.seconds)}`"
+            />
+          </div>
+          <p v-else>No continuous state intervals were observed.</p>
+          <div
+            v-if="performanceBehavior.length"
+            class="progress-behavior-legend"
+          >
+            <span v-for="segment in performanceBehavior" :key="segment.key">
+              <i :class="`is-${segment.key}`" aria-hidden="true" />
+              {{ segment.label }} · {{ durationLabel(segment.seconds) }}
+            </span>
+          </div>
+          <h4>Observed location coverage</h4>
+          <p>Location is not proof that the character was training there.</p>
+          <ul v-if="performance.training.length">
+            <li
+              v-for="point in performance.training.slice(0, 5)"
+              :key="`${point.region}-${point.zone}`"
+            >
+              Region {{ point.region ?? 'unknown' }} ·
+              {{ point.zone || 'unknown zone' }} —
+              {{ durationLabel(point.covered_seconds) }} observed
+            </li>
+          </ul>
+          <span v-else>No continuous location intervals were observed.</span>
+        </section>
+        <section
+          class="progress-session-history"
+          aria-labelledby="sessions-title"
+        >
+          <h4 id="sessions-title">
+            Session history ·
+            {{ performance.session_count ?? performance.sessions.length }}
+            observed
+          </h4>
+          <div
+            v-if="performance.sessions.length"
+            class="progress-session-scroll"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Started</th>
+                  <th scope="col">Last sample</th>
+                  <th scope="col">Ended</th>
+                  <th scope="col">Covered</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="session in performance.sessions"
+                  :key="session.session_id"
+                >
+                  <td>
+                    <time :datetime="session.started_at">{{
+                      progressTimestamp(session.started_at)
+                    }}</time>
+                  </td>
+                  <td>
+                    <time :datetime="session.last_seen">{{
+                      progressTimestamp(session.last_seen)
+                    }}</time>
+                  </td>
+                  <td>
+                    {{
+                      session.ended_at
+                        ? progressTimestamp(session.ended_at)
+                        : 'Active or unreconciled'
+                    }}
+                  </td>
+                  <td>{{ durationLabel(session.covered_seconds) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else>No observed sessions in this 24-hour window.</p>
+        </section>
+        <p class="mapping-note">
+          Bot-state coverage:
+          {{ durationLabel(performance.botting_seconds) }} botting,
+          {{ durationLabel(performance.idle_seconds) }} not botting,
+          {{ durationLabel(performance.unknown_bot_seconds) }} unknown across
+          {{ durationLabel(performance.coverage_seconds) }} covered.
+          <span v-if="performance.truncated">
+            Some history rows are omitted by response bounds.</span
+          >
+          “Time between returns” is unavailable because teleport events do not
+          prove a return action.
+        </p>
+      </template>
     </div>
 
     <div v-else-if="selectedTab === 'Inventory'" class="character-card-content">

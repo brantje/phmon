@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"phmon/server/internal/analytics"
 )
 
 var ErrNotFound = errors.New("character not found")
@@ -165,72 +166,112 @@ func (s *Store) Snapshot(ctx context.Context, agentID, characterID string, gener
 	return s.SnapshotSession(ctx, agentID, characterID, generation, "", state)
 }
 
+func (s *Store) SnapshotWithAnalyticsSample(ctx context.Context, agentID, characterID string, generation uint64, state State) (bool, error) {
+	return s.SnapshotSessionWithAnalyticsSample(ctx, agentID, characterID, generation, "", state)
+}
+
 func (s *Store) SnapshotSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, state State) error {
+	_, err := s.SnapshotSessionWithAnalyticsSample(ctx, agentID, characterID, generation, expectedSessionID, state)
+	return err
+}
+
+func (s *Store) SnapshotSessionWithAnalyticsSample(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, state State) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
-		return err
+		return false, err
 	}
 	var sessionID string
 	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ($4='' OR session_id=$4::uuid) AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation, expectedSessionID).Scan(&sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
+		return false, ErrNotFound
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE characters SET model_id=$2,level=$3,hp=$4,hp_max=$5,mp=$6,mp_max=$7,current_exp=$8,max_exp=$9,sp=$10,gold=$11,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Model, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold); err != nil {
-		return fmt.Errorf("update character snapshot state: %w", err)
+		return false, fmt.Errorf("update character snapshot state: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE characters SET region=$2,zone_name=$3,x=$4,y=$5,z=$6,botting=$7,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
-		return fmt.Errorf("update character snapshot location: %w", err)
+		return false, fmt.Errorf("update character snapshot location: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE characters SET dead=$2,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Dead); err != nil {
-		return fmt.Errorf("update character death state: %w", err)
+		return false, fmt.Errorf("update character death state: %w", err)
+	}
+	sampled, err := analytics.RecordCharacterState(ctx, tx, characterID, sessionID, agentID, generation, analyticsState(state))
+	if err != nil {
+		return false, fmt.Errorf("record character analytics state: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return sampled, nil
 }
 func (s *Store) Update(ctx context.Context, agentID, characterID string, generation uint64, state State) error {
 	return s.UpdateSession(ctx, agentID, characterID, generation, "", state)
 }
 
+func (s *Store) UpdateWithAnalyticsSample(ctx context.Context, agentID, characterID string, generation uint64, state State) (bool, error) {
+	return s.UpdateSessionWithAnalyticsSample(ctx, agentID, characterID, generation, "", state)
+}
+
 func (s *Store) UpdateSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, state State) error {
+	_, err := s.UpdateSessionWithAnalyticsSample(ctx, agentID, characterID, generation, expectedSessionID, state)
+	return err
+}
+
+func (s *Store) UpdateSessionWithAnalyticsSample(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, state State) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, characterID); err != nil {
-		return err
+		return false, err
 	}
 	var sessionID string
 	err = tx.QueryRow(ctx, `SELECT session_id::text FROM character_sessions WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ($4='' OR session_id=$4::uuid) AND ended_at IS NULL FOR UPDATE`, characterID, agentID, generation, expectedSessionID).Scan(&sessionID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrNotFound
+		return false, ErrNotFound
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE characters SET model_id=$2,level=$3,hp=$4,hp_max=$5,mp=$6,mp_max=$7,current_exp=$8,max_exp=$9,sp=$10,gold=$11,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Model, state.Level, state.HP, state.HPMax, state.MP, state.MPMax, state.CurrentEXP, state.MaxEXP, state.SP, state.Gold); err != nil {
-		return fmt.Errorf("update character state: %w", err)
+		return false, fmt.Errorf("update character state: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE characters SET region=$2,zone_name=$3,x=$4,y=$5,z=$6,botting=$7,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Region, state.Zone, state.X, state.Y, state.Z, state.Botting); err != nil {
-		return fmt.Errorf("update character location: %w", err)
+		return false, fmt.Errorf("update character location: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE characters SET dead=$2,state_updated_at=now(),updated_at=now() WHERE character_id=$1`, characterID, state.Dead); err != nil {
-		return fmt.Errorf("update character death state: %w", err)
+		return false, fmt.Errorf("update character death state: %w", err)
+	}
+	sampled, err := analytics.RecordCharacterState(ctx, tx, characterID, sessionID, agentID, generation, analyticsState(state))
+	if err != nil {
+		return false, fmt.Errorf("record character analytics state: %w", err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE character_sessions SET last_activity_at=now() WHERE character_id=$1 AND agent_id=$2 AND connection_generation=$3 AND ended_at IS NULL`, characterID, agentID, generation); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return sampled, nil
 }
+func analyticsState(state State) analytics.CharacterState {
+	return analytics.CharacterState{
+		Level: state.Level, CurrentXP: state.CurrentEXP, MaxXP: state.MaxEXP,
+		SP: state.SP, Gold: state.Gold, Region: state.Region, Zone: state.Zone,
+		Botting: state.Botting, Dead: state.Dead,
+	}
+}
+
 func (s *Store) UpdatePositionSession(ctx context.Context, agentID, characterID string, generation uint64, expectedSessionID string, region int, x, y float64, z *float64) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

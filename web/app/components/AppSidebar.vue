@@ -20,6 +20,16 @@ const currentEventView = computed(() => {
   if (route.query.category === 'custom') return 'custom'
   return 'all'
 })
+const currentAnalyticsView = computed(() =>
+  typeof route.query.view === 'string' ? route.query.view : 'deaths',
+)
+const analyticsNavigation = [
+  { label: 'Deaths', key: 'deaths' },
+  { label: 'Rare Drops', key: 'rare_drops' },
+  { label: 'Normal Drops', key: 'normal_drops' },
+  { label: 'Economy', key: 'economy' },
+  { label: 'Academy', key: 'academy' },
+]
 const eventNavigation = [
   { label: 'All', key: 'all', query: {} },
   {
@@ -72,7 +82,11 @@ const primaryNavigation = [
 ]
 
 const advancedNavigation = [
-  { label: 'Analytics', icon: 'i-lucide-chart-no-axes-column-increasing' },
+  {
+    label: 'Analytics',
+    icon: 'i-lucide-chart-no-axes-column-increasing',
+    href: '/analytics?view=deaths',
+  },
   { label: 'Map', icon: 'i-lucide-map', href: '/map' },
   { label: 'Item Search', icon: 'i-lucide-search' },
   { label: 'Skill Builder', icon: 'i-lucide-git-branch' },
@@ -205,18 +219,61 @@ const advancedNavigation = [
 
       <template v-if="advancedMode">
         <p class="nav-heading">Tools</p>
-        <NuxtLink
+        <template
           v-for="item in advancedNavigation.filter((item) => item.href)"
           :key="item.label"
-          :to="item.href"
-          class="nav-item"
-          :class="{ active: route.path === item.href }"
-          :aria-current="route.path === item.href ? 'page' : undefined"
-          :title="collapsed ? item.label : undefined"
         >
-          <UIcon :name="item.icon" />
-          <span>{{ item.label }}</span>
-        </NuxtLink>
+          <NuxtLink
+            :to="item.href"
+            class="nav-item"
+            :class="{
+              active:
+                item.label === 'Analytics'
+                  ? route.path === '/analytics'
+                  : route.path === item.href,
+            }"
+            :aria-current="
+              (
+                item.label === 'Analytics'
+                  ? route.path === '/analytics'
+                  : route.path === item.href
+              )
+                ? 'page'
+                : undefined
+            "
+            :title="collapsed ? item.label : undefined"
+          >
+            <UIcon :name="item.icon" />
+            <span>{{ item.label }}</span>
+          </NuxtLink>
+          <nav
+            v-if="item.label === 'Analytics'"
+            class="sidebar-groups"
+            aria-label="Analytics views"
+          >
+            <NuxtLink
+              v-for="view in analyticsNavigation"
+              :key="view.key"
+              class="sidebar-group-link"
+              :to="{
+                path: '/analytics',
+                query: { ...route.query, view: view.key },
+              }"
+              :class="{
+                active:
+                  route.path === '/analytics' &&
+                  currentAnalyticsView === view.key,
+              }"
+              :aria-current="
+                route.path === '/analytics' && currentAnalyticsView === view.key
+                  ? 'page'
+                  : undefined
+              "
+              :title="collapsed ? view.label : undefined"
+              >{{ view.label }}</NuxtLink
+            >
+          </nav>
+        </template>
         <button
           v-for="item in advancedNavigation.filter((item) => !item.href)"
           :key="item.label"

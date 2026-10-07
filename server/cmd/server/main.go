@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"phmon/server/internal/agents"
+	"phmon/server/internal/analytics"
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/characters"
 	"phmon/server/internal/chat"
@@ -68,6 +69,8 @@ func run() error {
 	}
 
 	store := agents.NewStore(pool)
+	analyticsStore := analytics.NewStore(pool)
+	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 6*time.Hour)
 	characterStore := characters.NewStore(pool)
 	resourceStore := resources.NewStore(pool)
 	eventStore := events.NewStore(pool)
@@ -87,6 +90,12 @@ func run() error {
 		return fmt.Errorf("load item metadata: %w", metadataErr)
 	}
 	resourceStore.SetItemMetadata(metadata)
+	analyticsStore.SetItemTaxonomy(
+		resourceStore.AnalyticsItemTaxonomy,
+		resourceStore.AnalyticsItemModels,
+		resourceStore.AnalyticsTaxonomyOptions,
+	)
+	analyticsStore.SetItemDetailsResolver(resourceStore.AnalyticsItemDetails)
 	eventStore.SetDropClassifier(metadata.ItemDropClassification)
 	mobStore.SetLevelLookup(metadata.MonsterLevel)
 	reconcileCtx, reconcileCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -158,6 +167,7 @@ func run() error {
 		PlayerLive:     playerLive,
 		Positions:      positionStore,
 		MapAnalytics:   mapAnalyticsStore,
+		Analytics:      analyticsStore,
 		TradeNexus:     tradeHub,
 		ThiefSightings: thiefSightings,
 	})

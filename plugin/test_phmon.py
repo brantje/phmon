@@ -1686,7 +1686,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
             'inventory': container(bag),
             'pets': {'availability': 'observed', 'pets': pets},
             'party': {'availability': 'observed', 'members': []},
-            'academy': {'availability': 'observed', 'value': {'members': []}},
+            'academy': {'availability': 'observed', 'value': {'id': 1, 'members': []}},
             **({'job_pouch': container(job)} if job is not None else {}),
             **({'storage': container(storage)} if storage is not None else {}),
         }
@@ -1709,6 +1709,26 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, self.item(4))]))
         self.observe(self.resources(bag=[(14, self.item(1)), (15, self.item(3))]))
         self.assertEqual(self.drain(), [])
+
+    def test_academy_membership_events_keep_academy_context_and_scope_switches(self):
+        self.observe(self.resources())
+        member = {'member_id': '42', 'name': 'Student'}
+        joined = self.resources()
+        joined['academy'] = {'availability': 'observed', 'value': {'id': 7, 'members': [member]}}
+        self.observe(joined)
+        first = self.drain()
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0]['kind'], 'academy.member_joined')
+        self.assertEqual(first[0]['payload']['academy_id'], 7)
+
+        switched = self.resources()
+        switched['academy'] = {'availability': 'observed', 'value': {'id': 8, 'members': [member]}}
+        self.observe(switched)
+        transitions = self.drain()
+        self.assertEqual({event['kind'] for event in transitions}, {'academy.member_joined', 'academy.member_left'})
+        contexts = {event['kind']: event['payload']['academy_id'] for event in transitions}
+        self.assertEqual(contexts['academy.member_left'], 7)
+        self.assertEqual(contexts['academy.member_joined'], 8)
 
     def test_bag_and_job_pouch_positive_quantity_deltas_keep_unknown_cause(self):
         self.observe(self.resources(bag=[] , job=[]))

@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.26'
+pVersion = '1.9.27'
 pUrl = ''
 
 PROTOCOL_VERSION = 17
@@ -1696,7 +1696,12 @@ def _event_resource_snapshot(resources):
         return result
 
     party = membership(resources.get('party'), ('members',))
-    academy = membership(resources.get('academy'), ('value', 'members'))
+    academy_resource = resources.get('academy')
+    academy_value = academy_resource.get('value') if isinstance(academy_resource, dict) and academy_resource.get('availability') == 'observed' else None
+    academy = membership(academy_resource, ('value', 'members'))
+    academy_id = academy_value.get('id') if isinstance(academy_value, dict) else None
+    if not isinstance(academy_id, int) or isinstance(academy_id, bool) or academy_id < 0 or academy_id > 9223372036854775807:
+        academy_id = None
     pets = None
     if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
         pets = {}
@@ -1716,7 +1721,7 @@ def _event_resource_snapshot(resources):
             continue
         pet_key = 'pets:' + str(pet['pet_id'])[:64]
         containers[pet_key] = _event_item_quantities(pet.get('slots', []))
-    return {'party': party, 'academy': academy, 'pets': pets, 'containers': containers}
+    return {'party': party, 'academy': academy, 'academy_id': academy_id, 'pets': pets, 'containers': containers}
 
 
 def _event_item_quantities(slots):
@@ -3517,10 +3522,18 @@ class AgentWorker(object):
             after = current.get(group)
             if before is None or after is None:
                 continue
-            for key in sorted(set(after) - set(before)):
-                self._emit_state_change(identity, join_kind, ref, key, after[key], observed_at, position)
-            for key in sorted(set(before) - set(after)):
-                self._emit_state_change(identity, leave_kind, ref, key, before[key], observed_at, position)
+            if group == 'academy' and previous.get('academy_id') != current.get('academy_id'):
+                for key in sorted(before):
+                    self._emit_state_change(identity, leave_kind, ref, key, before[key], observed_at, position, previous.get('academy_id'))
+                for key in sorted(after):
+                    self._emit_state_change(identity, join_kind, ref, key, after[key], observed_at, position, current.get('academy_id'))
+            else:
+                for key in sorted(set(after) - set(before)):
+                    context_id = current.get('academy_id') if group == 'academy' else None
+                    self._emit_state_change(identity, join_kind, ref, key, after[key], observed_at, position, context_id)
+                for key in sorted(set(before) - set(after)):
+                    context_id = previous.get('academy_id') if group == 'academy' else None
+                    self._emit_state_change(identity, leave_kind, ref, key, before[key], observed_at, position, context_id)
 
         old_containers = previous.get('containers', {})
         new_containers = current.get('containers', {})
@@ -3538,8 +3551,10 @@ class AgentWorker(object):
                                observed_at, position, uncertain)
         self._event_diff = current
 
-    def _emit_state_change(self, identity, kind, source_ref, key, value, occurred_at, position):
+    def _emit_state_change(self, identity, kind, source_ref, key, value, occurred_at, position, context_id=None):
         payload = {'member_id': key, 'member': value}
+        if source_ref == 'academy' and isinstance(context_id, int) and not isinstance(context_id, bool) and context_id >= 0:
+            payload['academy_id'] = context_id
         if source_ref == 'pet':
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)

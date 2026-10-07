@@ -15,7 +15,7 @@ import (
 
 type guildStorageStore interface {
 	GuildStorage(context.Context, string, string) ([]resources.Observation, error)
-	DeleteGuildStorage(context.Context, string, string) (int64, int64, error)
+	DeleteGuildStorage(context.Context, string, string) (int64, int64, int64, error)
 }
 
 type guildStorageHandler struct{ store guildStorageStore }
@@ -64,13 +64,13 @@ func (h *guildStorageHandler) delete(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
 	defer cancel()
-	observationCount, itemCount, err := h.store.DeleteGuildStorage(ctx, body.Server, body.Guild)
+	observationCount, itemCount, goldSampleCount, err := h.store.DeleteGuildStorage(ctx, body.Server, body.Guild)
 	if err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "guild storage removal failed"})
 		return
 	}
-	slog.Info("guild storage records removed", "operator", "operator", "server", strings.ToLower(strings.TrimSpace(body.Server)), "guild", strings.ToLower(strings.TrimSpace(body.Guild)), "observations", observationCount, "items", itemCount)
-	respondJSON(w, http.StatusOK, map[string]any{"server": body.Server, "guild": body.Guild, "deleted_observations": observationCount, "deleted_items": itemCount, "retention": "A later phBot observation may create a new saved snapshot; no in-game contents were changed."})
+	slog.Info("guild storage records removed", "operator", "operator", "server", strings.ToLower(strings.TrimSpace(body.Server)), "guild", strings.ToLower(strings.TrimSpace(body.Guild)), "observations", observationCount, "items", itemCount, "gold_samples", goldSampleCount)
+	respondJSON(w, http.StatusOK, map[string]any{"server": body.Server, "guild": body.Guild, "deleted_observations": observationCount, "deleted_items": itemCount, "deleted_gold_samples": goldSampleCount, "retention": "A later phBot observation may create a new saved snapshot; no in-game contents were changed."})
 }
 
 func validGuildScope(server, guild string) bool {

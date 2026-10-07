@@ -250,6 +250,50 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-07 Slice 12 Analytics implementation
+
+The operator requested implementation of the Slice 12 plan and then asked to
+implement it. Work remains in the existing checkout; no worktree was created and
+the running Compose stack was not restarted. A separate disposable Compose project
+was built for analytics smoke tests and removed afterward. Official Character, Events, Alchemy,
+Academy, Botting, Drops and Game Data sources were reviewed. Operator-provided
+2560×1315 Analytics, Progress and Alchemy captures were inspected. The public demo
+could not be interactively inspected in this environment, and no Windows/phBot
+runtime is available.
+
+**Completed increments:** migration 25 and transactionally accepted character/guild
+gold history with 90-day retention; bounded Go analytics for Deaths, Rare/Normal
+Drops, Economy, Academy and Alchemy; profile-aware type/degree breakdown and shared
+item detail evidence; Progress/session/coverage/rates and audited idempotent reset;
+plugin 1.9.27 optional academy ID event context; analytics live subscription/reset
+relay; selectable hour/day/week buckets; five-tab and Alchemy Statistics UI; bounded
+response handling; and a fixture-only production-worker analytics smoke wired into
+CI. The smoke emits one production `EVENT_DIED`, checks Analytics totals/chart/
+occurrence/drill-down, confirms a second authenticated live client returns the same
+event ID, then checks Progress rates and durable Reset Rates. `docs/analytics-calculations.md`, `docs/phbot-capabilities.md`,
+`docs/reference-parity.md` and `docs/slice-12-implementation-plan.md` track sources,
+formulas, implementation evidence and remaining gates.
+
+**Validation:** `bash scripts/check.sh` passed against a disposable PostgreSQL
+database: Go vet/race tests/builds, 222 plugin tests, live transport audit, 218
+frontend unit tests, Nuxt typecheck and production build, Prettier, Compose config,
+and lint with zero errors/74 warnings. The isolated production-worker smoke passed.
+The million-event test covered 1/7/30/90-day windows over 50 characters/locations:
+first 90-day 1.636 s, warm 30-day 676 ms, 7-day 166 ms and 1-day 47 ms. Python
+syntax, gofmt and `git diff --check` pass. The fixture runs `ANALYZE`; physical
+cache-cold and simultaneous chart/map delivery timing were not measured.
+
+**Open required gates:** actual phBot/Windows validation; same-viewport public-demo
+comparison at 1440×1000, 1280×800 and 390×844; physical cache-cold and concurrent
+chart/map delivery measurement; and unsupported
+facts (stall sale source, continuous/reconciled guild net change, graduation/ban
+evidence, return cause, a verified XP requirement table, and alchemy item-run
+identity). The local game-data files contain no EXP table. Exact next action: use an
+interactive browser for the supplied viewport comparisons; run cache-cold and
+concurrent-chart/map load checks on a disposable stack; validate sources on
+Windows/phBot; and continue source investigations without inferring missing facts.
+Stop at Slice 12; do not start Slice 13.
+
 ### Resume — 2026-10-05 Map fullscreen toggle
 
 Completed the operator's targeted Slice 7 presentation follow-up: `/map` has a
@@ -5863,4 +5907,3 @@ pan/zoom when Follow is off.
 Files: `web/app/utils/mapFollow.ts`, `web/tests/mapFollow.test.ts`,
 `web/app/components/MapCharacterStatusRow.vue`, `web/app/components/MapCanvas.vue`,
 `web/app/pages/map.vue`, `docs/reference-parity.md`, this guide.
-

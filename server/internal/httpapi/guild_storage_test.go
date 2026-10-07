@@ -38,10 +38,10 @@ func (*guildStorageTestStore) GuildStorage(context.Context, string, string) ([]r
 	return nil, nil
 }
 
-func (s *guildStorageTestStore) DeleteGuildStorage(_ context.Context, server, guild string) (int64, int64, error) {
+func (s *guildStorageTestStore) DeleteGuildStorage(_ context.Context, server, guild string) (int64, int64, int64, error) {
 	s.deleteCalls++
 	s.deletedServer, s.deletedGuild = server, guild
-	return 2, 11, nil
+	return 2, 11, 3, nil
 }
 
 func TestGuildStorageRemovalRequiresExactTypedGuildConfirmation(t *testing.T) {
