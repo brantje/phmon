@@ -56,11 +56,14 @@ Multi-level jumps require a verified profile-specific XP requirement table;
 otherwise that interval is unavailable. Level decreases, changed profiles and
 implausible rollovers do not yield fabricated positive XP.
 
-XP percent/hour is eligible same-level EXP/hour divided by that level's verified
-requirement. Projected level-up time uses fresh `max_exp-current_exp` divided by
-positive comparable recent EXP/second, with at least 60 seconds of coverage. A
-missing requirement, cap, stale state, nonpositive pace or incompatible rollover
-returns null and a reason.
+Current-level XP percent/hour is eligible same-level EXP/hour divided by the latest
+sample's positive observed `max_exp`; every included interval must have the same
+level and the same requirement at both endpoints. Projected level-up time uses
+fresh `max_exp-current_exp` divided by positive comparable current-level EXP/second,
+with at least 60 seconds of coverage. A missing requirement, cap, stale state,
+nonpositive pace or incompatible rollover returns null and a reason. Multi-level
+and rollover-derived EXP remain unavailable without a verified, versioned
+requirement source.
 
 Known botting true/false time is accumulated only over short intervals where both
 endpoints have the same known state. Unknown or changing intervals remain unknown;
@@ -153,3 +156,47 @@ filters, calculation version, per-source coverage/status, and truncation. Timeou
 unavailable source and insufficient history stay distinct from an empty supported
 window. Out-of-window predecessor/successor samples can define rate coverage at a
 boundary, but never add event counts to the requested window.
+
+## Review repair additions — 2026-10-07
+
+The Rare/Normal source selector is either **world-drop observations** or
+**owned-item gains**. World mode counts canonical `drop.rare` / `drop.item` rows.
+Owned mode counts classified `item.acquired` and `item.quantity_increased` rows
+only from accepted state-diff inventory/pet destinations or the validated pet
+inventory receipt source. It never includes `item.transferred`. The headline is
+an acquisition-event count; a separate exact integer quantity is the sum of the
+accepted `quantity_delta` payloads. These are not unique physical drops. Evidence
+rows retain their canonical event kind and destination details.
+
+Progress includes daily and ISO-week summaries over the seven days ending at the
+request's `to` time, in its selected IANA timezone. EXP gains include only
+same-level intervals with the same observed `max_exp` requirement and nondecreasing
+current EXP. SP and gold remain signed net balance changes. Each metric returns
+its own eligible seconds; intervals crossing a local day/week boundary are not
+assigned to that bucket. The summary also counts canonical deaths and world drops
+by occurrence time. A zero event count means no matching canonical records were
+stored, not proven inactivity. Large balance deltas are decimal strings.
+
+The seven-day location comparison attributes sample deltas only when both interval
+endpoints have the same recorded region and zone, are in the same session, and
+remain within the 30-second interval bound. EXP/SP/gold denominators are reported
+separately. Death/drop counts use their own canonical event region/zone; they do
+not establish that the character was farming at that location. Results are limited
+to the 20 locations with the most eligible observed coverage.
+
+Alchemy Statistics counts unknown outcomes separately and labels each weekday's
+empirical success percentage with its known-outcome denominator. The Sessions view
+may show bounded candidate attempt segments from the current page when character,
+session, slot, stable item traits, and a gap of at most one minute match. These
+segments are explicitly ambiguous and page-local. Slot/model/fingerprint similarity
+does not prove continued physical item identity; they are not used to calculate
+chance-to-target or attempts-to-target.
+
+The reusable Chart.js view fills missing occurrence buckets with zero counts and
+keeps missing economy observations as null gaps. Local-hour bucket generation
+follows timezone transitions: skipped spring hours stay absent and repeated
+fall-back wall hours coalesce just as the SQL grouping does. Count axes use integer
+ticks. The keyboard/touch range input and expandable numerical table expose exact
+returned strings; gold plot coordinates are offset from the exact lowest balance
+before conversion to chart coordinates so small changes around large balances are
+not erased by JavaScript's integer precision limit.

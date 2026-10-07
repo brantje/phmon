@@ -19,13 +19,25 @@ func queryCharacterGold(ctx context.Context, tx pgx.Tx, filter Filter, snapshot 
 AND ($4='' OR s.character_id=$4::uuid)
 AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$5::uuid))`
 	args := []any{filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Bucket, filter.Timezone}
-	rows, err := tx.Query(ctx, `SELECT to_char(bucket,'YYYY-MM-DD HH24:MI:SS'),character_name,character_id,gold
-FROM (SELECT DISTINCT ON(s.character_id,date_trunc($6,s.sampled_at AT TIME ZONE $7))
-date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket,c.character_name,s.character_id,s.gold,s.sampled_at
-FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
-WHERE `+where+` AND s.gold IS NOT NULL
-ORDER BY s.character_id,date_trunc($6,s.sampled_at AT TIME ZONE $7),s.sampled_at DESC,s.sample_id DESC) latest
-ORDER BY bucket,character_name LIMIT 501`, args...)
+	var entityCount int64
+	if err := tx.QueryRow(ctx, `SELECT count(DISTINCT s.character_id) FROM character_metric_samples s WHERE `+where+` AND s.gold IS NOT NULL`, args[:5]...).Scan(&entityCount); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `WITH eligible AS (
+    SELECT s.character_id,c.character_name,s.gold,s.sampled_at,s.sample_id,
+           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
+    FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
+    WHERE `+where+` AND s.gold IS NOT NULL
+), selected AS (
+    SELECT character_id FROM eligible GROUP BY character_id
+    ORDER BY max(sampled_at) DESC,character_id LIMIT 20
+), latest AS (
+    SELECT DISTINCT ON(e.character_id,e.bucket) e.bucket,e.character_name,e.character_id,e.gold
+    FROM eligible e JOIN selected selected_character ON selected_character.character_id=e.character_id
+    ORDER BY e.character_id,e.bucket,e.sampled_at DESC,e.sample_id DESC
+)
+SELECT to_char(bucket,'YYYY-MM-DD HH24:MI:SS'),character_name,character_id,gold::text
+FROM latest ORDER BY bucket,character_name,character_id`, args...)
 	if err != nil {
 		return err
 	}
@@ -42,9 +54,9 @@ ORDER BY bucket,character_name LIMIT 501`, args...)
 		return err
 	}
 	rows.Close()
-	if len(snapshot.TimeSeries) > 500 {
-		snapshot.TimeSeries = snapshot.TimeSeries[:500]
+	if entityCount > 20 {
 		snapshot.Truncated = true
+		snapshot.Summary = append(snapshot.Summary, Metric{Key: "balance_series_omitted", Label: "Omitted character balance series", Value: strconv.FormatInt(entityCount-20, 10), Unit: "characters", Status: "limited", Reason: "chart is bounded to the 20 most recently observed characters"})
 	}
 
 	leaders, err := tx.Query(ctx, `SELECT character_name,character_id::text,gold::text FROM (
@@ -98,7 +110,7 @@ SELECT COALESCE(sum(delta),0)::float8,count(DISTINCT(character_id,local_day)) FR
 		snapshot.Summary = append(snapshot.Summary, Metric{Key: "highest_character_balance", Label: "Character with highest observed balance", Status: "empty", Reason: "no_observed_character_gold_in_selected_window"})
 	}
 	snapshot.Summary = append(snapshot.Summary, Metric{Key: "stall_sales", Label: "Recorded stall sales", Status: "unsupported", Reason: "no verified sale transaction source is available"})
-	snapshot.Total = strconv.Itoa(len(snapshot.TimeSeries))
+	snapshot.Total = strconv.FormatInt(entityCount, 10)
 	if len(snapshot.TimeSeries) == 0 {
 		snapshot.Status = "empty"
 		snapshot.Reason = "no_character_balance_samples_in_selected_window"
@@ -110,47 +122,67 @@ func queryGuildGold(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Sna
 	where := `s.sampled_at >= $1 AND s.sampled_at < $2 AND ($3='' OR s.server_key=$3)
 AND ($4='' OR s.guild_key=$4) AND ($5='' OR s.observer_character_id=$5::uuid)`
 	args := []any{filter.From, filter.To, filter.Server, filter.Guild, filter.CharacterID, filter.Bucket, filter.Timezone}
-	rows, err := tx.Query(ctx, `SELECT to_char(bucket,'YYYY-MM-DD HH24:MI:SS'),guild_key,gold::text FROM (
-SELECT DISTINCT ON(s.server_key,s.guild_key,date_trunc($6,s.sampled_at AT TIME ZONE $7))
-date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket,s.server_key,s.guild_key,s.gold,s.sampled_at,s.observer_character_id
-FROM guild_gold_samples s WHERE `+where+`
-ORDER BY s.server_key,s.guild_key,date_trunc($6,s.sampled_at AT TIME ZONE $7),s.sampled_at DESC,s.observer_character_id) latest
-ORDER BY bucket,guild_key LIMIT 501`, args...)
+	var entityCount int64
+	if err := tx.QueryRow(ctx, `SELECT count(DISTINCT (s.server_key,s.guild_key)) FROM guild_gold_samples s WHERE `+where, args[:5]...).Scan(&entityCount); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `WITH eligible AS (
+    SELECT s.server_key,s.guild_key,s.gold,s.sampled_at,s.observer_character_id,
+           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
+    FROM guild_gold_samples s WHERE `+where+`
+), selected AS (
+    SELECT server_key,guild_key FROM eligible GROUP BY server_key,guild_key
+    ORDER BY max(sampled_at) DESC,server_key,guild_key LIMIT 20
+), latest AS (
+    SELECT DISTINCT ON(e.server_key,e.guild_key,e.bucket) e.bucket,e.server_key,e.guild_key,e.gold
+    FROM eligible e JOIN selected selected_guild ON selected_guild.server_key=e.server_key AND selected_guild.guild_key=e.guild_key
+    ORDER BY e.server_key,e.guild_key,e.bucket,e.sampled_at DESC,e.observer_character_id
+)
+SELECT to_char(bucket,'YYYY-MM-DD HH24:MI:SS'),server_key,guild_key,gold::text
+FROM latest ORDER BY bucket,server_key,guild_key`, args...)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
-		var bucket, guild, gold string
-		if err := rows.Scan(&bucket, &guild, &gold); err != nil {
+		var bucket, server, guild, gold string
+		if err := rows.Scan(&bucket, &server, &guild, &gold); err != nil {
 			rows.Close()
 			return err
 		}
-		snapshot.TimeSeries = append(snapshot.TimeSeries, Point{Bucket: bucket, Label: bucket, Value: gold, Series: guild})
+		series := guild
+		if filter.Server == "" {
+			series = server + "/" + guild
+		}
+		snapshot.TimeSeries = append(snapshot.TimeSeries, Point{Bucket: bucket, Label: bucket, Value: gold, Series: series, Server: server})
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
 		return err
 	}
 	rows.Close()
-	if len(snapshot.TimeSeries) > 500 {
-		snapshot.TimeSeries = snapshot.TimeSeries[:500]
+	if entityCount > 20 {
 		snapshot.Truncated = true
+		snapshot.Summary = append(snapshot.Summary, Metric{Key: "balance_series_omitted", Label: "Omitted guild balance series", Value: strconv.FormatInt(entityCount-20, 10), Unit: "guilds", Status: "limited", Reason: "chart is bounded to the 20 most recently observed guild/server scopes"})
 	}
-	leaders, err := tx.Query(ctx, `SELECT guild_key,gold::text FROM (
+	leaders, err := tx.Query(ctx, `SELECT server_key,guild_key,gold::text FROM (
 SELECT DISTINCT ON(s.server_key,s.guild_key) s.server_key,s.guild_key,s.gold,s.sampled_at,s.observer_character_id
 FROM guild_gold_samples s WHERE `+where+`
 ORDER BY s.server_key,s.guild_key,s.sampled_at DESC,s.observer_character_id) latest
-ORDER BY gold DESC,guild_key LIMIT 20`, filter.From, filter.To, filter.Server, filter.Guild, filter.CharacterID)
+		ORDER BY gold::numeric DESC,guild_key,server_key LIMIT 20`, filter.From, filter.To, filter.Server, filter.Guild, filter.CharacterID)
 	if err != nil {
 		return err
 	}
 	for leaders.Next() {
-		var guild, gold string
-		if err := leaders.Scan(&guild, &gold); err != nil {
+		var server, guild, gold string
+		if err := leaders.Scan(&server, &guild, &gold); err != nil {
 			leaders.Close()
 			return err
 		}
-		snapshot.Breakdown = append(snapshot.Breakdown, Point{Label: guild, Value: gold, Series: "gold"})
+		label := guild
+		if filter.Server == "" {
+			label = server + "/" + guild
+		}
+		snapshot.Breakdown = append(snapshot.Breakdown, Point{Label: label, Value: gold, Series: "gold", Server: server})
 	}
 	if err := leaders.Err(); err != nil {
 		leaders.Close()
@@ -166,7 +198,7 @@ ORDER BY gold DESC,guild_key LIMIT 20`, filter.From, filter.To, filter.Server, f
 	snapshot.Summary = append(snapshot.Summary,
 		Metric{Key: "guild_balance_change", Label: "Guild storage net change", Status: "unsupported", Reason: "overlapping observers cannot yet be reconciled into one continuous guild balance series"},
 		Metric{Key: "stall_sales", Label: "Recorded stall sales", Status: "unsupported", Reason: "no verified sale transaction source is available"})
-	snapshot.Total = strconv.Itoa(len(snapshot.TimeSeries))
+	snapshot.Total = strconv.FormatInt(entityCount, 10)
 	if len(snapshot.TimeSeries) == 0 {
 		snapshot.Status = "empty"
 		snapshot.Reason = "no_guild_storage_gold_samples_in_selected_window"

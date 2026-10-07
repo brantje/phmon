@@ -194,6 +194,25 @@ func ValidObserved(input ObservedInput) error {
 	return ErrInvalid
 }
 
+func instructionsEqual(left, right []Instruction) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		a, b := left[index], right[index]
+		if a.Index != b.Index || a.Kind != b.Kind || a.X != b.X || a.Y != b.Y || a.Z != b.Z || a.DurationMS != b.DurationMS {
+			return false
+		}
+		if (a.Region == nil) != (b.Region == nil) {
+			return false
+		}
+		if a.Region != nil && b.Region != nil && *a.Region != *b.Region {
+			return false
+		}
+	}
+	return true
+}
+
 func validInstructions(steps []Instruction, maxCount int, allowWalkRegion bool) error {
 	lastIndex := -1
 	for _, step := range steps {
@@ -359,10 +378,36 @@ func (s *Store) ReplaceObserved(input ObservedInput, agentID string, generation 
 		SchemaVersion: input.SchemaVersion, CharacterID: input.CharacterID, SessionID: input.SessionID,
 		Sequence: input.Sequence, InvokedAt: input.InvokedAt, Source: input.Source, Instructions: input.Instructions,
 	}
+	var preservedLast *Position
+	if current, ok := s.observed[input.SessionID]; ok && current.CharacterID == input.CharacterID &&
+		current.agentID == agentID && current.generation == generation {
+		if instructionsEqual(current.Instructions, input.Instructions) {
+			stored := current
+			stored.Input = storedInput
+			stored.destination = destination
+			stored.updatedAt = now.UTC()
+			s.observed[input.SessionID] = stored
+			return true
+		}
+		if current.lastPosition != nil {
+			copyPosition := *current.lastPosition
+			preservedLast = &copyPosition
+		}
+	}
 	stored := route{Input: storedInput, agentID: agentID, generation: generation, server: server, datasetID: dataset, destination: destination,
 		status: "waiting_for_movement", updatedAt: now.UTC()}
 	copySource := *input.Source
 	stored.anchor = &copySource
+	if preservedLast != nil {
+		seed := *preservedLast
+		if seed.At.Before(stored.InvokedAt) {
+			seed.At = stored.InvokedAt
+		}
+		synced, wrote, _ := advanceStoredRoute(stored, true, input.CharacterID, seed)
+		if wrote {
+			stored = synced
+		}
+	}
 	s.observed[input.SessionID] = stored
 	return true
 }
@@ -686,12 +731,19 @@ func snapshotRoutes(routes map[string]route, server string, profile mapprofile.P
 				lastArea, lastFloor, lastScopeOK = classify(profile, route.lastPosition.Region, route.lastPosition.Z)
 			}
 			if route.lastPosition != nil && lastScopeOK && route.status == "moving" && route.cursor < len(route.Instructions) &&
-				len(blocks) > 0 && (lastArea == "world" || blocks[0].Points[0].Region == route.lastPosition.Region) &&
-				blocks[0].AreaID == lastArea && blocks[0].FloorID == lastFloor &&
-				nearWalkBlock(&route, *route.lastPosition, route.cursor) {
-				view.CurrentAnchor = &Point{Region: route.lastPosition.Region, X: route.lastPosition.X, Y: route.lastPosition.Y}
-				if route.lastPosition.Z != nil {
-					view.CurrentAnchor.Z = *route.lastPosition.Z
+				len(blocks) > 0 && route.Instructions[route.cursor].Kind == "walk" {
+				_, stepArea, stepFloor, stepOK := scopeStep(route, route.Instructions[route.cursor])
+				cursorStep := route.Instructions[route.cursor]
+				regionOK := lastArea == "world"
+				if !regionOK && cursorStep.Region != nil {
+					regionOK = route.lastPosition.Region == *cursorStep.Region
+				}
+				if stepOK && stepArea == lastArea && stepFloor == lastFloor && regionOK &&
+					nearWalkBlock(&route, *route.lastPosition, route.cursor) {
+					view.CurrentAnchor = &Point{Region: route.lastPosition.Region, X: route.lastPosition.X, Y: route.lastPosition.Y}
+					if route.lastPosition.Z != nil {
+						view.CurrentAnchor.Z = *route.lastPosition.Z
+					}
 				}
 			}
 			if len(blocks) == 0 && route.cursor < len(route.Instructions) {
@@ -817,6 +869,15 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 		}
 	}
 	if len(matches) == 0 {
+		for i := len(vertices) - 1; i >= 0; i-- {
+			vertex := vertices[i]
+			if !closeToMapped(position, vertex.point, vertex.area, vertex.floor, current.datasetID, current.server) {
+				continue
+			}
+			current.cursor = vertex.instruction + 1
+			current.anchor = positionAnchor(position)
+			return true, false
+		}
 		return false, true
 	}
 	best := matches[0]

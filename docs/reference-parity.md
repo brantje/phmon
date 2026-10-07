@@ -2445,6 +2445,45 @@ errors. Live screenshots stay under `/tmp/phmon-nav-final-{desktop,1280,mobile}.
 The public demo again stayed on Dashboard when Map was selected, so no newly
 verified demo Map parity is claimed.
 
+## Slice 12 review repairs — 2026-10-07
+
+The Slice 12 repair increment adds a persisted-safe date guard on Analytics and
+Alchemy subscriptions, strict inclusive local-date normalization with DST tests,
+and an owned-gains source selector for Rare/Normal views. Owned gains are counted
+separately from world-drop callbacks and transfers; exact quantity deltas have a
+separate summary. The Analytics filter route restores dates, grouping, character,
+group, guild and drop-source scope, and filter changes reset the event cursor.
+Occurrence links carry the recorded server, stable character ID and exact
+one-second bounds; map links preserve server, character and event region.
+
+The hand-built SVG was replaced by pinned Chart.js 4.5.1 with independent series,
+null economy gaps, zero-filled occurrence buckets, integer count ticks, explicit
+gold/percent units, responsive sizing, hover details, a keyboard/touch point
+selector and an expandable numerical table. Local time keys are generated with
+the same wall-clock/DST grouping behavior as the PostgreSQL chart query. Alchemy
+Statistics now displays success/failure/unknown counts, the known-outcome
+denominator, latest matching attempt and all requested filters. Sessions shows
+page-bounded candidate runs only when stable item traits match; each is labeled
+ambiguous. Academy offers its verified academy-ID grouping and identifies the
+observer/member in its evidence table.
+
+Progress uses one shared live batch for up to 50 visible cards, cleans it up when
+the last card leaves, and refreshes that batch after rate reset. Its added seven-day
+daily/weekly rows show exact signed EXP/SP/gold changes with metric-specific
+eligible seconds and canonical deaths/drop counts. The location comparison
+attributes gains only to adjacent intervals with a matching region and zone.
+These rows are source summaries, not claims of continuous activity or a verified
+farming area. Full Statistics/Progress composition and responsive visual parity
+remain open until same-screen captures are compared at the planned viewports.
+
+Static and browser transport audits now reject analytics GET reads while retaining
+the authenticated rate-reset POST. Focused PostgreSQL integration tests cover
+owned gains versus transfers, exact quantity, daily/weekly/location progress and
+the 50-character batch. Frontend unit coverage checks range/DST behavior, chart
+bucket DST transitions and ambiguous attempt segmentation. No local screenshot or
+public-demo interaction was available during this repair increment. The physical
+cache-cold and concurrent map/analytics live-delivery gates remain open.
+
 ### Map character Follow — 2026-10-06
 
 Each Map character row has a Follow toggle beside Focus. Follow is opt-in and

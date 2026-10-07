@@ -87,12 +87,16 @@ const staleCycle = ref(false)
 const subscriptions = new Map<string, Subscription>()
 const subscriptionRevisions = new Map<string, number>()
 const commandFanOutOwners = new Map<string, CommandFanOutOwner>()
+const visibleProgressRegistrations = new Map<string, number>()
+const progressBatchFeedID = 'analytics-visible-progress'
 let socket: WebSocket | null = null
 let reconnectTimer: number | undefined
 let watchdogTimer: number | undefined
 let reconnectAttempt = 0
 let lastMessageAt = 0
 let liveDataStarted = false
+let progressBatchTimer: ReturnType<typeof setTimeout> | undefined
+let progressBatchRefreshTimer: ReturnType<typeof setInterval> | undefined
 
 const liveStale = computed(() => hasSnapshot.value && staleCycle.value)
 const liveLoading = computed(
@@ -139,6 +143,7 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.group_by || '') === (right.group_by || '') &&
     (left.guild || '') === (right.guild || '') &&
     (left.balance_scope || '') === (right.balance_scope || '') &&
+    (left.drop_source || '') === (right.drop_source || '') &&
     (left.item_type || '') === (right.item_type || '') &&
     (left.item_degree || '') === (right.item_degree || '') &&
     (left.page_size || 0) === (right.page_size || 0)
@@ -440,6 +445,60 @@ function clearAnalyticsFeed(subscriptionID: string) {
         ([id]) => id !== subscriptionID,
       ),
     )
+  })
+}
+
+function registerVisibleProgressCharacter(characterID: string): () => void {
+  if (!characterID) return () => {}
+  visibleProgressRegistrations.set(
+    characterID,
+    (visibleProgressRegistrations.get(characterID) || 0) + 1,
+  )
+  scheduleVisibleProgressBatch()
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    const remaining = (visibleProgressRegistrations.get(characterID) || 1) - 1
+    if (remaining > 0) visibleProgressRegistrations.set(characterID, remaining)
+    else visibleProgressRegistrations.delete(characterID)
+    scheduleVisibleProgressBatch()
+  }
+}
+
+function scheduleVisibleProgressBatch() {
+  if (progressBatchTimer) clearTimeout(progressBatchTimer)
+  progressBatchTimer = setTimeout(() => {
+    progressBatchTimer = undefined
+    sendVisibleProgressBatch()
+    if (!visibleProgressRegistrations.size) return
+    if (!progressBatchRefreshTimer) {
+      progressBatchRefreshTimer = setInterval(() => {
+        sendVisibleProgressBatch()
+      }, 60_000)
+    }
+  }, 100)
+}
+
+function sendVisibleProgressBatch() {
+  const characterIDs = [...visibleProgressRegistrations.keys()]
+    .sort()
+    .slice(0, 50)
+  if (!characterIDs.length) {
+    if (progressBatchRefreshTimer) clearInterval(progressBatchRefreshTimer)
+    progressBatchRefreshTimer = undefined
+    clearAnalyticsFeed(progressBatchFeedID)
+    return
+  }
+  const to = new Date()
+  const from = new Date(to.getTime() - 24 * 60 * 60 * 1000)
+  setAnalyticsFeed(progressBatchFeedID, {
+    view: 'performance',
+    character_ids: characterIDs,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    bucket: 'hour',
   })
 }
 
@@ -1389,6 +1448,7 @@ export function useLiveData() {
     clearEventFeed,
     setAnalyticsFeed,
     clearAnalyticsFeed,
+    registerVisibleProgressCharacter,
     setMapFeed,
     clearMapFeed,
     setChatFeed,

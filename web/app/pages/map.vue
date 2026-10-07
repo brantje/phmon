@@ -2095,7 +2095,9 @@ const mapNavigationRoutes = computed(() => {
   if (!profile) return []
   return mapNavigationRouteOverlays({
     routes: mapSnapshot.value?.navigation,
-    characters: [...fleetCharacters.value],
+    characters: fleetCharacters.value.map(
+      (character) => withRealtimePosition(character) || character,
+    ),
     profile,
     server: server.value,
     areaID: areaID.value,

@@ -51,13 +51,22 @@ func (s *Store) Query(ctx context.Context, input Filter) (Snapshot, error) {
 			return Snapshot{}, ErrCharacterScope
 		}
 	}
+	if len(filter.CharacterIDs) > 0 {
+		var matched int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM characters WHERE character_id=ANY($1::uuid[]) AND ($2='' OR server_key=$2)`, filter.CharacterIDs, filter.Server).Scan(&matched); err != nil {
+			return Snapshot{}, err
+		}
+		if matched != len(filter.CharacterIDs) {
+			return Snapshot{}, ErrCharacterScope
+		}
+	}
 	snapshot := Snapshot{
 		Filter: filter, CalculationVersion: CalculationVersion, AsOf: asOf.UTC(), Status: "available",
 		Coverage: Coverage{Status: "limited", Reason: "event totals include recorded occurrences only; monitoring coverage is not continuous"},
 		Summary:  []Metric{}, TimeSeries: []Point{}, Breakdown: []Point{}, Occurrences: []Occurrence{},
 		Taxonomy: []Point{}, TaxonomyOptions: []TaxonomyOption{}, TaxonomyComplete: true,
 	}
-	if err := s.sampleCoverage(ctx, tx, filter.Server, &snapshot.Coverage); err != nil {
+	if err := s.sampleCoverage(ctx, tx, filter, &snapshot.Coverage); err != nil {
 		return Snapshot{}, err
 	}
 	switch filter.View {
@@ -70,7 +79,16 @@ func (s *Store) Query(ctx context.Context, input Filter) (Snapshot, error) {
 			return Snapshot{}, err
 		}
 	case ViewPerformance:
-		if err := queryPerformance(ctx, tx, filter, &snapshot); err != nil {
+		var err error
+		if len(filter.CharacterIDs) > 0 {
+			err = queryPerformanceBatch(ctx, tx, filter, &snapshot)
+		} else {
+			err = queryPerformance(ctx, tx, filter, &snapshot)
+		}
+		if err == nil {
+			err = queryPerformancePeriods(ctx, tx, filter, &snapshot)
+		}
+		if err != nil {
 			return Snapshot{}, err
 		}
 	default:
@@ -80,18 +98,60 @@ func (s *Store) Query(ctx context.Context, input Filter) (Snapshot, error) {
 	if err := tx.Commit(ctx); err != nil {
 		return Snapshot{}, err
 	}
-	if len(snapshot.TimeSeries) > 500 {
-		snapshot.TimeSeries = snapshot.TimeSeries[:500]
-		snapshot.Truncated = true
-	}
+	snapshot.TimeSeries, snapshot.Truncated = boundTimeSeries(snapshot.TimeSeries, 500, snapshot.Truncated)
 	return snapshot, nil
 }
 
-func (s *Store) sampleCoverage(ctx context.Context, tx pgx.Tx, server string, coverage *Coverage) error {
+// boundTimeSeries keeps the most recent points independently for each series.
+// A single global limit can remove the end of the requested range as soon as
+// more than one character or guild is present.
+func boundTimeSeries(points []Point, perSeries int, alreadyTruncated bool) ([]Point, bool) {
+	if perSeries < 1 {
+		return []Point{}, true
+	}
+	counts := make(map[string]int)
+	for _, point := range points {
+		counts[point.Series]++
+	}
+	kept := make([]Point, 0, len(points))
+	seen := make(map[string]int, len(counts))
+	truncated := alreadyTruncated
+	for _, point := range points {
+		series := point.Series
+		if counts[series] > perSeries {
+			truncated = true
+			if seen[series] < counts[series]-perSeries {
+				seen[series]++
+				continue
+			}
+		}
+		kept = append(kept, point)
+	}
+	return kept, truncated
+}
+
+func (s *Store) sampleCoverage(ctx context.Context, tx pgx.Tx, filter Filter, coverage *Coverage) error {
 	var oldest, newest *time.Time
-	err := tx.QueryRow(ctx, `SELECT min(sampled_at),max(sampled_at) FROM character_metric_samples WHERE ($1='' OR server_key=$1)`, server).Scan(&oldest, &newest)
+	var count int64
+	var err error
+	if filter.View == ViewEconomy && filter.BalanceScope == "guild_storage" {
+		err = tx.QueryRow(ctx, `SELECT count(*),min(sampled_at),max(sampled_at) FROM guild_gold_samples
+WHERE ($1='' OR server_key=$1) AND ($2='' OR guild_key=$2) AND ($3='' OR observer_character_id=$3::uuid)`,
+			filter.Server, filter.Guild, filter.CharacterID).Scan(&count, &oldest, &newest)
+	} else {
+		err = tx.QueryRow(ctx, `SELECT count(*),min(s.sampled_at),max(s.sampled_at) FROM character_metric_samples s
+WHERE ($1='' OR s.server_key=$1) AND ($2='' OR s.character_id=$2::uuid)
+AND ($3='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$3::uuid))`,
+			filter.Server, filter.CharacterID, filter.GroupID).Scan(&count, &oldest, &newest)
+	}
 	if err != nil {
 		return err
+	}
+	coverage.SampleCount = count
+	coverage.RetentionDays = int(s.retentionDays.Load())
+	if count == 0 {
+		coverage.Status = "unavailable"
+		coverage.Reason = "no numeric samples match the selected server/character/group scope"
 	}
 	if oldest != nil {
 		value := oldest.UTC()
@@ -104,13 +164,19 @@ func (s *Store) sampleCoverage(ctx context.Context, tx pgx.Tx, server string, co
 	return nil
 }
 
-func eventKinds(view View) string {
+func eventKinds(view View, source string) string {
 	switch view {
 	case ViewDeaths:
 		return "e.kind='character.died'"
 	case ViewRareDrops:
+		if source == "owned_gains" {
+			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type' IN ('inventory','pets')) OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='rare'`
+		}
 		return "e.kind='drop.rare'"
 	case ViewNormalDrops:
+		if source == "owned_gains" {
+			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type' IN ('inventory','pets')) OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='normal'`
+		}
 		return "e.kind='drop.item'"
 	case ViewAcademy:
 		return "e.kind IN ('academy.member_joined','academy.member_left')"
@@ -125,12 +191,17 @@ func eventScope() string {
 	return `lower(e.server_name)=CASE WHEN $1='' THEN lower(e.server_name) ELSE $1 END
  AND e.occurred_at >= $4 AND e.occurred_at < $5
  AND ($2='' OR e.character_id=$2::uuid)
- AND ($3='' OR EXISTS (SELECT 1 FROM character_group_members scope_member WHERE scope_member.character_id=e.character_id AND scope_member.group_id=$3::uuid))`
+ AND ($3='' OR EXISTS (SELECT 1 FROM character_group_members scope_member WHERE scope_member.character_id=e.character_id AND scope_member.group_id=$3::uuid))
+ AND ($6='' OR EXISTS (SELECT 1 FROM characters scope_character WHERE scope_character.character_id=e.character_id AND scope_character.character_name ILIKE '%'||$6||'%'))
+ AND ($7='' OR coalesce(e.item_code,'') ILIKE '%'||$7||'%' OR coalesce(e.payload->>'item_name',e.payload->>'name','') ILIKE '%'||$7||'%')`
 }
 
 func (s *Store) queryEventView(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
-	where := eventScope() + " AND " + eventKinds(filter.View)
-	args := []any{filter.Server, filter.CharacterID, filter.GroupID, filter.From, filter.To}
+	where := eventScope() + " AND " + eventKinds(filter.View, filter.DropSource)
+	args := []any{filter.Server, filter.CharacterID, filter.GroupID, filter.From, filter.To, filter.CharacterQuery, filter.ItemQuery}
+	if filter.Server != "" && s.taxonomyOptions != nil {
+		snapshot.TaxonomyOptions = s.taxonomyOptions(filter.Server)
+	}
 	if filter.ItemType != "" || filter.ItemDegree != "" {
 		if filter.Server == "" || s.itemModels == nil {
 			snapshot.Status, snapshot.Reason = "unsupported", "select a server with a loaded item profile to filter by type or degree"
@@ -141,7 +212,7 @@ func (s *Store) queryEventView(ctx context.Context, tx pgx.Tx, filter Filter, sn
 			snapshot.Status, snapshot.Reason = "unsupported", "the selected server has no versioned item taxonomy profile"
 			return nil
 		}
-		where += " AND e.item_model=ANY($6::bigint[])"
+		where += fmt.Sprintf(" AND e.item_model=ANY($%d::bigint[])", len(args)+1)
 		args = append(args, models)
 	}
 	if filter.View == ViewDeaths {
@@ -209,7 +280,7 @@ AND ($3='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_i
 		return err
 	}
 	snapshot.Summary = append(snapshot.Summary,
-		leaderMetric("most_deaths_character", "Character with most recorded deaths", charRows, "/events?kind=character.died&q="),
+		leaderMetric("most_deaths_character", "Character with most recorded deaths", charRows, eventEvidencePrefix(filter, "character.died", false)),
 		leaderMetric("most_deaths_location", "Location with most recorded deaths", locationRows, ""),
 	)
 	return queryOccurrences(ctx, tx, filter, where, args, &snapshot.Occurrences, &snapshot.NextCursor)
@@ -219,6 +290,9 @@ func (s *Store) queryDrops(ctx context.Context, tx pgx.Tx, filter Filter, where 
 	kind := "Rare drops"
 	if filter.View == ViewNormalDrops {
 		kind = "Normal drops"
+	}
+	if filter.DropSource == "owned_gains" {
+		kind = strings.TrimSuffix(kind, " drops") + " owned gains"
 	}
 	if _, err := queryTimeline(ctx, tx, filter, where, args, kind, &snapshot.TimeSeries); err != nil {
 		return err
@@ -260,12 +334,36 @@ func (s *Store) queryDrops(ctx context.Context, tx pgx.Tx, filter Filter, where 
 		degreeUnknownStatus, degreeUnknownReason = "limited", "item taxonomy coverage is incomplete"
 	}
 	snapshot.Summary = append(snapshot.Summary,
-		Metric{Key: "drop_total", Label: "Recorded world-drop observations", Value: strconv.FormatInt(total, 10), Number: float64Ptr(float64(total)), Unit: "observations", Status: "available"},
-		leaderMetric("leading_drop_character", "Character with most drop observations", chars, "/events?kind="+dropEventKind(filter.View)+"&q="),
+		Metric{Key: "drop_total", Label: dropPopulationLabel(filter.DropSource), Value: strconv.FormatInt(total, 10), Number: float64Ptr(float64(total)), Unit: dropPopulationUnit(filter.DropSource), Status: "available"},
+		leaderMetric("leading_drop_character", "Character with most drop observations", chars, dropLeaderHref(filter)),
 		Metric{Key: "item_taxonomy_known", Label: "Classified item observations", Value: strconv.FormatInt(taxonomyKnown, 10), Unit: "observations", Status: taxonomyStatus(complete), Reason: taxonomyReason(complete)},
 		Metric{Key: "item_taxonomy_unknown", Label: "Unknown item taxonomy", Value: unknownTaxonomyValue, Unit: "observations", Status: unknownTaxonomyStatus, Reason: unknownTaxonomyReason},
 		Metric{Key: "item_degree_unknown", Label: "Unknown item degree", Value: strconv.FormatInt(taxonomyDegreeUnknown, 10), Unit: "observations", Status: degreeUnknownStatus, Reason: degreeUnknownReason},
 	)
+	knownTypeIndex := 0
+	for _, point := range taxonomyType {
+		if point.Label == "Other" || point.Label == "Unknown" || taxonomyKnown == 0 || knownTypeIndex == 5 {
+			continue
+		}
+		count, parseErr := strconv.ParseInt(point.Value, 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		share := float64(count) / float64(taxonomyKnown) * 100
+		snapshot.Summary = append(snapshot.Summary, Metric{
+			Key: fmt.Sprintf("item_type_share_%d", knownTypeIndex+1), Label: "Known type share · " + point.Label,
+			Value: fmt.Sprintf("%d / %d (%.1f%%)", count, taxonomyKnown, share), Number: float64Ptr(share),
+			Unit: "% of classified observations", Status: taxonomyStatus(complete), Reason: taxonomyReason(complete),
+		})
+		knownTypeIndex++
+	}
+	if filter.DropSource == "owned_gains" {
+		var quantity int64
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN e.payload->>'quantity_delta' ~ '^[0-9]{1,9}$' THEN (e.payload->>'quantity_delta')::bigint ELSE 1 END),0) FROM activity_events e WHERE `+where, args...).Scan(&quantity); err != nil {
+			return err
+		}
+		snapshot.Summary = append(snapshot.Summary, Metric{Key: "owned_gain_quantity", Label: "Observed item quantity gained", Value: strconv.FormatInt(quantity, 10), Unit: "items", Status: "available", Reason: "sum of accepted quantity deltas; destination transfers are excluded"})
+	}
 	if !complete {
 		snapshot.TaxonomyComplete = false
 		snapshot.Status = "limited"
@@ -337,6 +435,9 @@ GROUP BY lower(e.server_name),e.item_model,COALESCE(e.item_code,'') ORDER BY cou
 	if complete {
 		unknown = total - known
 	}
+	// Degree reconciliation must include observations whose item type or entire
+	// taxonomy is unknown. They remain a distinct Unknown bucket, never degree 0.
+	degreeUnknown += unknown
 	types = taxonomyPoints(grouped.byType, "item type")
 	degrees = taxonomyPoints(grouped.byDegree, "item degree")
 	if degreeUnknown > 0 {
@@ -460,11 +561,13 @@ func queryAlchemy(ctx context.Context, tx pgx.Tx, filter Filter, where string, a
 }
 
 func queryAlchemyWeekdays(ctx context.Context, tx pgx.Tx, filter Filter, where string, args []any, target *[]Point) error {
-	rows, err := tx.Query(ctx, `SELECT EXTRACT(ISODOW FROM e.occurred_at AT TIME ZONE $6)::integer AS weekday,
+	timezoneArg := len(args) + 1
+	query := fmt.Sprintf(`SELECT EXTRACT(ISODOW FROM e.occurred_at AT TIME ZONE $%d)::integer AS weekday,
 count(*) FILTER(WHERE e.payload->>'success'='true'),
 count(*) FILTER(WHERE e.payload->>'success'='false'),
 count(*) FILTER(WHERE e.payload->>'success' IS NULL OR e.payload->>'success' NOT IN ('true','false'))
-FROM activity_events e WHERE `+where+` GROUP BY weekday ORDER BY weekday`, append(args, filter.Timezone)...)
+FROM activity_events e WHERE %s GROUP BY weekday ORDER BY weekday`, timezoneArg, where)
+	rows, err := tx.Query(ctx, query, append(args, filter.Timezone)...)
 	if err != nil {
 		return err
 	}
@@ -481,7 +584,7 @@ FROM activity_events e WHERE `+where+` GROUP BY weekday ORDER BY weekday`, appen
 			continue
 		}
 		value := float64(successes) / float64(known) * 100
-		*target = append(*target, Point{Bucket: strconv.Itoa(weekday), Label: weekdays[weekday-1], Value: strconv.FormatFloat(value, 'f', 2, 64), Series: fmt.Sprintf("%d successes of %d known outcomes · %d unknown", successes, known, unknown)})
+		*target = append(*target, Point{Bucket: strconv.Itoa(weekday), Label: weekdays[weekday-1], Value: strconv.FormatFloat(value, 'f', 2, 64), Series: "Observed success share", Detail: fmt.Sprintf("%d successes / %d known outcomes · %d unknown", successes, known, unknown)})
 	}
 	return rows.Err()
 }
@@ -529,10 +632,10 @@ func queryBreakdown(ctx context.Context, tx pgx.Tx, filter Filter, where string,
 	}
 	rows, err := tx.Query(ctx, `WITH grouped AS (
  SELECT `+labelSQL+` AS label,`+idSQL+` AS character_id,count(*) AS amount FROM activity_events e `+joins+` WHERE `+where+` GROUP BY `+groupSQL+`
-), ranked AS (SELECT label,character_id,amount,row_number() OVER (ORDER BY amount DESC,label) AS ranking FROM grouped)
+), ranked AS (SELECT label,character_id,amount,row_number() OVER (ORDER BY amount DESC,label,character_id NULLS LAST) AS ranking FROM grouped)
 SELECT label,character_id,amount FROM ranked WHERE ranking<=20
 UNION ALL SELECT 'Other',NULL::text,sum(amount) FROM ranked WHERE ranking>20 HAVING count(*)>0
-ORDER BY amount DESC,label`, args...)
+ORDER BY amount DESC,label,character_id NULLS LAST`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -687,14 +790,21 @@ func optionalInt(value *int) string {
 	return strconv.Itoa(*value)
 }
 func leaderMetric(key, label string, points []Point, hrefPrefix string) Metric {
+	// "Other" is a presentation aggregate, not a real character or location.
+	for _, point := range points {
+		if strings.EqualFold(strings.TrimSpace(point.Label), "other") {
+			continue
+		}
+		metric := Metric{Key: key, Label: label, Value: point.Label, Status: "available"}
+		if point.CharacterID != "" && hrefPrefix != "" {
+			metric.Href = hrefPrefix + "&character_id=" + url.QueryEscape(point.CharacterID)
+		}
+		return metric
+	}
 	if len(points) == 0 {
 		return Metric{Key: key, Label: label, Status: "empty", Reason: "no_recorded_occurrences"}
 	}
-	metric := Metric{Key: key, Label: label, Value: points[0].Label, Status: "available"}
-	if points[0].CharacterID != "" && hrefPrefix != "" {
-		metric.Href = hrefPrefix + url.QueryEscape(points[0].Label)
-	}
-	return metric
+	return Metric{Key: key, Label: label, Status: "empty", Reason: "no_ranked_entity"}
 }
 
 func dropEventKind(view View) string {
@@ -702,6 +812,40 @@ func dropEventKind(view View) string {
 		return "drop.rare"
 	}
 	return "drop.item"
+}
+
+func dropPopulationLabel(source string) string {
+	if source == "owned_gains" {
+		return "Recorded owned-item gain events"
+	}
+	return "Recorded world-drop observations"
+}
+
+func dropPopulationUnit(source string) string {
+	if source == "owned_gains" {
+		return "gain events"
+	}
+	return "observations"
+}
+
+func dropLeaderHref(filter Filter) string {
+	if filter.DropSource == "owned_gains" {
+		return ""
+	}
+	return eventEvidencePrefix(filter, dropEventKind(filter.View), true)
+}
+
+func eventEvidencePrefix(filter Filter, kind string, worldDrops bool) string {
+	prefix := "/events?kind=" + url.QueryEscape(kind) +
+		"&from_ts=" + url.QueryEscape(filter.From.UTC().Format(time.RFC3339Nano)) +
+		"&to_ts=" + url.QueryEscape(filter.To.UTC().Format(time.RFC3339Nano))
+	if filter.Server != "" {
+		prefix += "&server=" + url.QueryEscape(filter.Server)
+	}
+	if worldDrops {
+		prefix += "&include_owned_gains=false&include_pet_pickups=false"
+	}
+	return prefix
 }
 
 // Ensure the production store and tests use the same pool/transaction contract.

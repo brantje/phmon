@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import type { ActivityEvent, AnalyticsMetric } from '~~/shared/types/live'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
+import { normalizeAnalyticsDateRange } from '~/utils/analyticsDateRange'
+import { buildAlchemyAttemptSegments } from '~/utils/alchemyAttemptSegments'
 
 const route = useRoute()
 const {
   eventFeeds,
   analyticsFeeds,
+  analyticsFeedStatus,
   connectionState,
   liveStale,
   setEventFeed,
@@ -20,6 +23,8 @@ const characterInput = ref('')
 const characterQuery = ref('')
 const itemInput = ref('')
 const itemQuery = ref('')
+const itemType = ref('')
+const itemDegree = ref('')
 const pageSize = ref(10)
 const cursor = ref('')
 const previousCursors = ref<string[]>([])
@@ -28,13 +33,39 @@ const page = computed(() => eventFeeds.value[feedID])
 const statisticsView = computed(() => route.query.view === 'statistics')
 const statisticsFeedID = 'alchemy-statistics'
 const statistics = computed(() => analyticsFeeds.value[statisticsFeedID])
+const statisticsStatus = computed(
+  () => analyticsFeedStatus.value[statisticsFeedID] || 'loading',
+)
 const statisticsMetrics = computed(() => statistics.value?.summary || [])
+const taxonomyTypes = computed(() =>
+  [
+    ...new Set(
+      (statistics.value?.taxonomy_options || []).map((option) => option.type),
+    ),
+  ].sort(),
+)
+const taxonomyDegrees = computed(() =>
+  [
+    ...new Set(
+      (statistics.value?.taxonomy_options || [])
+        .filter((option) => !itemType.value || option.type === itemType.value)
+        .map((option) => option.degree)
+        .filter((degree): degree is string => !!degree),
+    ),
+  ].sort((a, b) => Number(a) - Number(b)),
+)
 const statistic = (key: string): AnalyticsMetric | undefined =>
   statisticsMetrics.value.find((metric) => metric.key === key)
 const summary = computed(() => page.value?.alchemy_summary)
-const invalidDateRange = computed(
-  () => !!fromDate.value && !!toDate.value && fromDate.value > toDate.value,
+const attemptSegments = computed(() =>
+  buildAlchemyAttemptSegments(page.value?.events || []),
 )
+const latestAttempt = computed(() => statistics.value?.occurrences?.[0])
+const normalizedDates = computed(() =>
+  normalizeAnalyticsDateRange(fromDate.value, toDate.value),
+)
+const dateRangeError = computed(() => normalizedDates.value.error)
+const invalidDateRange = computed(() => !!dateRangeError.value)
 let characterTimer: ReturnType<typeof setTimeout> | undefined
 let itemTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -53,14 +84,15 @@ watch(itemInput, (value) => {
 watch(
   [serverScope, fromDate, toDate, characterQuery, itemQuery, cursor, pageSize],
   ([server, from, to, character, item, pageCursor, size]) => {
-    if (from && to && from > to) {
+    const dates = normalizeAnalyticsDateRange(from, to)
+    if (dates.error) {
       clearEventFeed(feedID)
       return
     }
     setEventFeed(feedID, {
       server: server === 'all' ? undefined : server,
-      from: from ? localDateBoundary(from, 0) : undefined,
-      to: to ? localDateBoundary(to, 1) : undefined,
+      from: dates.from,
+      to: dates.to,
       q: character || undefined,
       item: item || undefined,
       kind: 'alchemy.attempt',
@@ -71,17 +103,31 @@ watch(
   { immediate: true },
 )
 watch(
-  [statisticsView, serverScope, fromDate, toDate],
-  ([enabled, server, from, to]) => {
-    if (!enabled) {
+  [
+    statisticsView,
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    itemQuery,
+    itemType,
+    itemDegree,
+  ],
+  ([enabled, server, from, to, character, item, type, degree]) => {
+    const dates = normalizeAnalyticsDateRange(from, to)
+    if (!enabled || dates.error) {
       clearAnalyticsFeed(statisticsFeedID)
       return
     }
     setAnalyticsFeed(statisticsFeedID, {
       view: 'alchemy',
       server: server === 'all' ? undefined : server,
-      from: from ? localDateBoundary(from, 0) : undefined,
-      to: to ? localDateBoundary(to, 1) : undefined,
+      from: dates.from,
+      to: dates.to,
+      q: character || undefined,
+      item: item || undefined,
+      item_type: type || undefined,
+      item_degree: degree || undefined,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
       bucket: 'day',
       group_by: 'character',
@@ -131,11 +177,6 @@ function dateInput(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
   return local.toISOString().slice(0, 10)
 }
-function localDateBoundary(value: string, addDays: number) {
-  const boundary = new Date(`${value}T00:00:00`)
-  boundary.setDate(boundary.getDate() + addDays)
-  return boundary.toISOString()
-}
 </script>
 
 <template>
@@ -162,11 +203,93 @@ function localDateBoundary(value: string, addDays: number) {
         >Statistics</NuxtLink
       >
     </nav>
+    <div v-if="invalidDateRange" class="status-banner warning" role="alert">
+      {{ dateRangeError }}
+    </div>
+    <div
+      v-else-if="statisticsView && statisticsStatus === 'unavailable'"
+      class="status-banner warning"
+      role="status"
+    >
+      Alchemy Statistics are temporarily unavailable. Retry the live connection
+      to reload this range.
+    </div>
+    <div
+      v-else-if="statisticsView && liveStale"
+      class="status-banner warning"
+      role="status"
+    >
+      Showing the last delivered Alchemy Statistics snapshot as stale.
+    </div>
     <template v-if="statisticsView">
+      <section class="events-filters" aria-label="Alchemy statistics filters">
+        <label
+          ><span>Character</span
+          ><input
+            v-model="characterInput"
+            maxlength="64"
+            placeholder="Filter by character"
+        /></label>
+        <label
+          ><span>Item</span
+          ><input
+            v-model="itemInput"
+            maxlength="128"
+            placeholder="Filter by item"
+        /></label>
+        <label
+          ><span>Item type</span
+          ><select v-model="itemType">
+            <option value="">All types</option>
+            <option v-for="type in taxonomyTypes" :key="type" :value="type">
+              {{ type }}
+            </option>
+          </select></label
+        >
+        <label
+          ><span>Degree</span
+          ><select v-model="itemDegree">
+            <option value="">All degrees</option>
+            <option
+              v-for="degree in taxonomyDegrees"
+              :key="degree"
+              :value="degree"
+            >
+              {{ degree }}
+            </option>
+          </select></label
+        >
+        <label
+          ><span>From date</span><input v-model="fromDate" type="date"
+        /></label>
+        <label
+          ><span>To date</span><input v-model="toDate" type="date"
+        /></label>
+        <button class="compact-button" type="button" @click="resetFilters">
+          Reset
+        </button>
+      </section>
+      <p
+        v-if="statisticsStatus === 'loading' && !statistics"
+        class="status-banner"
+        role="status"
+      >
+        Loading Alchemy Statistics…
+      </p>
+      <p
+        v-else-if="statistics?.status === 'empty'"
+        class="status-banner"
+        role="status"
+      >
+        {{ statistics.reason || 'No attempts match these filters.' }}
+      </p>
       <section class="alchemy-summary-grid" aria-label="Alchemy statistics">
         <article
           v-for="key in [
             'alchemy_attempts',
+            'alchemy_successes',
+            'alchemy_failures',
+            'alchemy_unknown',
             'alchemy_success_rate',
             'alchemy_highest_plus',
             'alchemy_reach_target',
@@ -184,12 +307,52 @@ function localDateBoundary(value: string, addDays: number) {
           <small v-if="statistic(key)?.reason">{{
             statistic(key)?.reason
           }}</small>
+          <small v-if="key === 'alchemy_success_rate'">
+            Known-outcome denominator:
+            {{ statistic('alchemy_successes')?.value || '0' }} successes +
+            {{ statistic('alchemy_failures')?.value || '0' }} failures
+          </small>
+        </article>
+        <article class="panel alchemy-summary-card alchemy-latest-attempt">
+          <span>Latest recorded attempt</span>
+          <strong v-if="latestAttempt">
+            {{ latestAttempt.character || 'Character' }} ·
+            {{
+              latestAttempt.payload.success === true
+                ? 'Success'
+                : latestAttempt.payload.success === false
+                  ? 'Failure'
+                  : 'Outcome unknown'
+            }}
+          </strong>
+          <strong v-else>Unavailable</strong>
+          <small v-if="latestAttempt"
+            >{{ formatTimestamp(latestAttempt.occurred_at) }} ·
+            {{
+              latestAttempt.item_name ||
+              latestAttempt.item_code ||
+              'Item details unavailable'
+            }}</small
+          >
+          <small v-else>There are no matching recorded attempts.</small>
         </article>
       </section>
       <AnalyticsChart
         title="Observed success share by weekday"
         description="Successes divided by attempts with known outcomes, grouped by the selected local timezone. Unknown outcomes are excluded and shown in each bar's details."
         :points="statistics?.time_series || []"
+        variant="category"
+        :category-labels="[
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+          'Sunday',
+        ]"
+        unit="percent"
+        :zero-fill-missing="false"
         empty-label="No attempts with known outcomes were recorded in this range."
       />
       <section class="panel events-panel">
@@ -221,11 +384,74 @@ function localDateBoundary(value: string, addDays: number) {
           ><strong>{{ summary?.failures ?? '—' }}</strong>
         </article>
         <article class="panel alchemy-summary-card">
+          <span>Unknown outcomes</span
+          ><strong>{{ summary?.unknown ?? '—' }}</strong>
+        </article>
+        <article class="panel alchemy-summary-card">
           <span>Highest observed plus</span
           ><strong>{{
             summary?.highest_plus == null ? '—' : `+${summary.highest_plus}`
           }}</strong>
         </article>
+      </section>
+
+      <section
+        class="panel events-panel alchemy-attempt-segments"
+        aria-label="Conservative alchemy attempt segments"
+      >
+        <header class="panel-header compact">
+          <div>
+            <h2>Conservative attempt segments</h2>
+            <p>
+              Candidate runs from this visible page only. Same session,
+              character, slot, stable item traits and a gap of at most one
+              minute are required; every run remains ambiguous because these
+              observations do not prove physical item continuity.
+            </p>
+          </div>
+        </header>
+        <div class="event-table-scroll">
+          <table class="event-table">
+            <thead>
+              <tr>
+                <th>Observed period</th>
+                <th>Character / item</th>
+                <th>Slot</th>
+                <th>Attempts</th>
+                <th>Success / failure / unknown</th>
+                <th>Continuity</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="segment in attemptSegments"
+                :key="`${segment.key}|${segment.firstAt}`"
+              >
+                <td>
+                  {{ formatTimestamp(segment.firstAt)
+                  }}<span v-if="segment.lastAt !== segment.firstAt">
+                    – {{ formatTimestamp(segment.lastAt) }}</span
+                  >
+                </td>
+                <td>{{ segment.character }} · {{ segment.item }}</td>
+                <td>{{ segment.slot ?? 'Unknown' }}</td>
+                <td>{{ segment.attempts }}</td>
+                <td>
+                  {{ segment.successes }} / {{ segment.failures }} /
+                  {{ segment.unknown }}
+                </td>
+                <td>
+                  <span class="status-chip warning">Ambiguous candidate</span>
+                </td>
+              </tr>
+              <tr v-if="!attemptSegments.length">
+                <td colspan="6" class="event-table-empty">
+                  No attempt segments are available on this page.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section
@@ -260,9 +486,6 @@ function localDateBoundary(value: string, addDays: number) {
           <button class="compact-button" type="button" @click="resetFilters">
             Reset
           </button>
-        </div>
-        <div v-if="invalidDateRange" class="status-banner warning" role="alert">
-          The start date must be on or before the end date.
         </div>
         <div v-if="liveStale" class="status-banner warning" role="status">
           Showing the last received attempt page as stale while PhMon

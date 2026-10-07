@@ -77,6 +77,7 @@ type liveFilter struct {
 	GroupBy           string   `json:"group_by,omitempty"`
 	Guild             string   `json:"guild,omitempty"`
 	BalanceScope      string   `json:"balance_scope,omitempty"`
+	DropSource        string   `json:"drop_source,omitempty"`
 	ItemType          string   `json:"item_type,omitempty"`
 	ItemDegree        string   `json:"item_degree,omitempty"`
 	PageSize          int      `json:"page_size,omitempty"`
@@ -96,6 +97,11 @@ type liveSubscription struct {
 	Revision uint64
 	Stream   string
 	Filter   liveFilter
+}
+
+type activeLiveSnapshot struct {
+	revision uint64
+	cancel   context.CancelFunc
 }
 
 type liveServerMessage struct {
@@ -501,6 +507,7 @@ type liveClient struct {
 	revisions         map[string]uint64
 	positionSnapshots map[string]uint64
 	positionSessions  map[string]map[string]string
+	activeSnapshots   map[string]activeLiveSnapshot
 }
 
 func (c *liveClient) positionSessionState(subscriptionID string) map[string]string {
@@ -668,6 +675,15 @@ func (c *liveClient) readLoop() {
 func (c *liveClient) subscribe(message liveClientMessage) bool {
 	subscription, ok := validateLiveSubscription(message)
 	if !ok {
+		// An invalid analytics filter must not tear down the shared socket and
+		// its unrelated character, map, chat, and command streams.
+		if message.Stream == "analytics" && validSubscriptionID(message.SubscriptionID) && message.Revision > 0 {
+			return c.enqueue(liveServerMessage{
+				Type: "subscription.rejected", ProtocolVersion: liveProtocolVersion,
+				SubscriptionID: message.SubscriptionID, Revision: message.Revision,
+				Stream: "analytics", Reason: "invalid_filter",
+			})
+		}
 		c.fail(websocket.StatusPolicyViolation, "invalid subscription")
 		return false
 	}
@@ -694,6 +710,10 @@ func (c *liveClient) subscribe(message liveClientMessage) bool {
 	}
 	c.subscriptions[subscription.ID] = subscription
 	c.revisions[subscription.ID] = subscription.Revision
+	if active, exists := c.activeSnapshots[subscription.ID]; exists && active.revision != subscription.Revision {
+		active.cancel()
+		delete(c.activeSnapshots, subscription.ID)
+	}
 	if subscription.Stream == "positions" {
 		if c.positionSnapshots == nil {
 			c.positionSnapshots = make(map[string]uint64)
@@ -720,6 +740,10 @@ func (c *liveClient) unsubscribe(message liveClientMessage) {
 	current, exists := c.subscriptions[message.SubscriptionID]
 	if exists && message.Revision >= current.Revision {
 		delete(c.subscriptions, message.SubscriptionID)
+		if active, activeExists := c.activeSnapshots[message.SubscriptionID]; activeExists {
+			active.cancel()
+			delete(c.activeSnapshots, message.SubscriptionID)
+		}
 		delete(c.positionSnapshots, message.SubscriptionID)
 		delete(c.positionSessions, message.SubscriptionID)
 	}
@@ -817,25 +841,44 @@ func (c *liveClient) snapshotLoop() {
 		}
 		subscriptions := c.snapshotSubscriptionsForFlags(flags)
 
-		keepGoing := true
+		var standard, analyticsSubscriptions []liveSubscription
 		for _, subscription := range subscriptions {
-			buildSlots := c.hub.buildSlots
-			if subscription.Stream == "analytics" && c.hub.analyticsBuildSlots != nil {
-				buildSlots = c.hub.analyticsBuildSlots
-			}
-			select {
-			case buildSlots <- struct{}{}:
-			case <-c.ctx.Done():
-				return
-			}
-			if !c.snapshot(subscription) {
-				keepGoing = false
-			}
-			<-buildSlots
-			if !keepGoing {
-				break
+			if subscription.Stream == "analytics" {
+				analyticsSubscriptions = append(analyticsSubscriptions, subscription)
+			} else {
+				standard = append(standard, subscription)
 			}
 		}
+		var workers sync.WaitGroup
+		if len(standard) > 0 {
+			workers.Add(1)
+			go c.snapshotClass(standard, c.hub.buildSlots, &workers)
+		}
+		if len(analyticsSubscriptions) > 0 {
+			slots := c.hub.analyticsBuildSlots
+			if slots == nil {
+				slots = c.hub.buildSlots
+			}
+			workers.Add(1)
+			go c.snapshotClass(analyticsSubscriptions, slots, &workers)
+		}
+		workers.Wait()
+		if c.ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+func (c *liveClient) snapshotClass(subscriptions []liveSubscription, slots chan struct{}, workers *sync.WaitGroup) {
+	defer workers.Done()
+	for _, subscription := range subscriptions {
+		select {
+		case slots <- struct{}{}:
+		case <-c.ctx.Done():
+			return
+		}
+		keepGoing := c.snapshot(subscription)
+		<-slots
 		if !keepGoing {
 			return
 		}
@@ -858,31 +901,41 @@ func (c *liveClient) snapshotSubscriptionsForFlags(flags uint8) []liveSubscripti
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if flags == 0 {
+		return nil
+	}
 	positionSnapshots := c.positionSnapshots
-	c.positionSnapshots = make(map[string]uint64)
+	remainingPositionSnapshots := make(map[string]uint64, len(positionSnapshots))
 	subscriptions := make([]liveSubscription, 0, len(c.subscriptions))
 	for _, subscription := range c.subscriptions {
-		if flags == 1 && subscription.Stream == "analytics" {
+		if flags&1 == 0 && subscription.Stream != "analytics" {
 			continue
 		}
-		if flags == 2 && subscription.Stream != "analytics" {
+		if flags&2 == 0 && subscription.Stream == "analytics" {
 			continue
 		}
-		if flags == 0 {
-			continue
-		}
-		if subscription.Stream == "positions" &&
-			positionSnapshots[subscription.ID] != subscription.Revision {
-			continue
+		if subscription.Stream == "positions" {
+			if positionSnapshots[subscription.ID] != subscription.Revision {
+				continue
+			}
+			delete(positionSnapshots, subscription.ID)
 		}
 		subscriptions = append(subscriptions, subscription)
 	}
+	for id, revision := range positionSnapshots {
+		remainingPositionSnapshots[id] = revision
+	}
+	c.positionSnapshots = remainingPositionSnapshots
 	return subscriptions
 }
 
 func (c *liveClient) snapshot(subscription liveSubscription) bool {
 	ctx, cancel := context.WithTimeout(c.ctx, liveSnapshotTimeout)
 	defer cancel()
+	if !c.beginSnapshot(subscription, cancel) {
+		return true
+	}
+	defer c.endSnapshot(subscription)
 
 	if subscription.Stream == "positions" {
 		c.hub.positionDeliveryMu.Lock()
@@ -921,6 +974,31 @@ func (c *liveClient) snapshot(subscription liveSubscription) bool {
 		c.replacePositionSessionState(subscription.ID, positionSessionStateFromSnapshot(data))
 	}
 	return enqueued
+}
+
+func (c *liveClient) beginSnapshot(subscription liveSubscription, cancel context.CancelFunc) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	current, ok := c.subscriptions[subscription.ID]
+	if !ok || current.Revision != subscription.Revision {
+		return false
+	}
+	if c.activeSnapshots == nil {
+		c.activeSnapshots = make(map[string]activeLiveSnapshot)
+	}
+	if active, exists := c.activeSnapshots[subscription.ID]; exists && active.revision != subscription.Revision {
+		active.cancel()
+	}
+	c.activeSnapshots[subscription.ID] = activeLiveSnapshot{revision: subscription.Revision, cancel: cancel}
+	return true
+}
+
+func (c *liveClient) endSnapshot(subscription liveSubscription) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if active, exists := c.activeSnapshots[subscription.ID]; exists && active.revision == subscription.Revision {
+		delete(c.activeSnapshots, subscription.ID)
+	}
 }
 
 func (c *liveClient) subscriptionCurrent(subscription liveSubscription) bool {
@@ -1436,10 +1514,13 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		filter := subscription.Filter
 		if !validServerFilter(filter.Server) ||
 			filter.CharacterID != "" && !agentdomain.ValidAgentID(filter.CharacterID) ||
+			len(filter.CharacterIDs) > 50 ||
+			!validAnalyticsCharacterIDs(filter.CharacterIDs) ||
+			len(filter.CharacterIDs) > 0 && (filter.AnalyticsView != string(analytics.ViewPerformance) || filter.CharacterID != "") ||
 			filter.GroupID != "" && !agentdomain.ValidAgentID(filter.GroupID) ||
-			filter.Query != "" || filter.CommandName != "" || filter.CommandState != "" ||
+			filter.CommandName != "" || filter.CommandState != "" ||
 			filter.Limit != 0 || len(filter.ResourceKeys) != 0 || filter.Kind != "" ||
-			filter.Category != "" || filter.Item != "" || filter.EventID != "" ||
+			filter.Category != "" || filter.EventID != "" ||
 			filter.IncludePetPickups || filter.IncludeOwnedGains || filter.Channel != "" ||
 			filter.Peer != "" || filter.Area != "" || filter.Floor != "" || filter.Region != 0 {
 			return liveSubscription{}, false
@@ -1488,6 +1569,20 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		return liveSubscription{}, false
 	}
 	return subscription, true
+}
+
+func validAnalyticsCharacterIDs(ids []string) bool {
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if !agentdomain.ValidAgentID(id) {
+			return false
+		}
+		if _, exists := seen[id]; exists {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
 }
 
 func hasEventFilters(filter liveFilter) bool {

@@ -116,6 +116,7 @@ func (h *characterHandler) createGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.live.Invalidate()
+	h.live.InvalidateAnalytics()
 	respondJSON(w, 201, g)
 }
 func (h *characterHandler) renameGroup(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +141,7 @@ func (h *characterHandler) renameGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.live.Invalidate()
+	h.live.InvalidateAnalytics()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *characterHandler) deleteGroup(w http.ResponseWriter, r *http.Request) {
@@ -159,6 +161,7 @@ func (h *characterHandler) deleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.live.Invalidate()
+	h.live.InvalidateAnalytics()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *characterHandler) member(w http.ResponseWriter, r *http.Request, add bool) {
@@ -178,6 +181,7 @@ func (h *characterHandler) member(w http.ResponseWriter, r *http.Request, add bo
 		return
 	}
 	h.live.Invalidate()
+	h.live.InvalidateAnalytics()
 	w.WriteHeader(http.StatusNoContent)
 }
 func (h *characterHandler) addMember(w http.ResponseWriter, r *http.Request) { h.member(w, r, true) }

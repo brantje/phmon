@@ -18,6 +18,32 @@ type observedMetricSample struct {
 	EndedAt   *time.Time
 }
 
+func queryPerformanceBatch(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
+	results := make(map[string]*CharacterPerformance, len(filter.CharacterIDs))
+	limited := false
+	for _, characterID := range filter.CharacterIDs {
+		characterFilter := filter
+		characterFilter.CharacterID = characterID
+		characterFilter.CharacterIDs = nil
+		child := Snapshot{Status: "available"}
+		if err := queryPerformance(ctx, tx, characterFilter, &child); err != nil {
+			return err
+		}
+		if child.Performance == nil {
+			continue
+		}
+		results[characterID] = child.Performance
+		limited = limited || child.Status == "limited" || child.Status == "insufficient_history"
+	}
+	snapshot.PerformanceBatch = results
+	snapshot.Total = strconv.Itoa(len(results))
+	if limited {
+		snapshot.Status = "limited"
+		snapshot.Reason = "one or more visible characters have stale or insufficient metric history"
+	}
+	return nil
+}
+
 // queryPerformance reads at most one character's 24-hour sample window. The
 // 30-second lookback supplies a possible predecessor without bridging gaps.
 func queryPerformance(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
@@ -75,10 +101,21 @@ ORDER BY s.sampled_at,s.sample_id`, filter.CharacterID, filter.Server, filter.Fr
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='character.died'),
+count(*) FILTER(WHERE kind='drop.item'),count(*) FILTER(WHERE kind='drop.rare')
+FROM activity_events WHERE character_id=$1::uuid AND lower(server_name)=CASE WHEN $2='' THEN lower(server_name) ELSE $2 END
+AND occurred_at >= $3 AND occurred_at < $4`, filter.CharacterID, filter.Server,
+		filter.To.Add(-24*time.Hour), filter.To).Scan(&performance.Deaths24h, &performance.NormalDrops24h, &performance.RareDrops24h); err != nil {
+		return err
+	}
 	if len(samples) == 0 {
 		snapshot.Status = "insufficient_history"
 		snapshot.Reason = "no_accepted_state_samples_in_window"
-		snapshot.Performance = &CharacterPerformance{CharacterID: filter.CharacterID, Rates: map[string]RateResult{}, Training: []TrainingPoint{}, Sessions: []SessionPerformance{}}
+		snapshot.Performance = &CharacterPerformance{
+			CharacterID: filter.CharacterID, Rates: unavailableProgressRates("no_accepted_state_samples_in_window"),
+			Training: []TrainingPoint{}, Sessions: []SessionPerformance{},
+			Deaths24h: performance.Deaths24h, NormalDrops24h: performance.NormalDrops24h, RareDrops24h: performance.RareDrops24h,
+		}
 		return nil
 	}
 	if len(samples) > maxPerformanceSamples {
@@ -106,10 +143,21 @@ ORDER BY s.sampled_at,s.sample_id`, filter.CharacterID, filter.Server, filter.Fr
 		return err
 	}
 	rateFrom := filter.From
-	if resetAt != nil && resetAt.After(rateFrom) && resetAt.Before(filter.To) {
-		rateFrom = *resetAt
+	if resetAt != nil && resetAt.After(rateFrom) {
+		if resetAt.Before(filter.To) {
+			rateFrom = *resetAt
+		} else if resetAt.Sub(filter.To) <= 5*time.Minute {
+			// A live client may still be subscribed with its pre-reset fixed To.
+			// Treat a nearby reset as the effective end of that live rate window;
+			// old, genuinely historical windows remain unchanged.
+			rateFrom = filter.To
+		}
 	}
-	performance.Rates = CalculateProgressRates(metricSamples, rateFrom, filter.To)
+	if rateFrom.Before(filter.To) {
+		performance.Rates = CalculateProgressRates(metricSamples, rateFrom, filter.To)
+	} else {
+		performance.Rates = unavailableProgressRates("rate_window_reset")
+	}
 	performance.Training = trainingCoverage(samples, filter.From, filter.To)
 	var trainingLimited bool
 	performance.Training, trainingLimited = boundTrainingPoints(performance.Training, maxPerformanceTrainingPoints)
@@ -156,7 +204,7 @@ ORDER BY s.sampled_at,s.sample_id`, filter.CharacterID, filter.Server, filter.Fr
 	performance.Stale = !latest.At.After(time.Now().UTC().Add(-90 * time.Second))
 	performance.CurrentLevel, performance.CurrentXP, performance.MaxXP = latest.Level, latest.CurrentXP, latest.MaxXP
 	if !performance.Stale && latest.Level != nil && latest.CurrentXP != nil && latest.MaxXP != nil && *latest.MaxXP > *latest.CurrentXP {
-		currentLevelRate := calculateCurrentLevelXPRate(samples, *latest.Level, rateFrom, filter.To)
+		currentLevelRate := calculateCurrentLevelXPRate(samples, *latest.Level, *latest.MaxXP, rateFrom, filter.To)
 		if currentLevelRate.HasRate && currentLevelRate.PerHour > 0 {
 			percentRate := currentLevelRate.PerHour / float64(*latest.MaxXP) * 100
 			performance.XPPercentPerHour = &percentRate
@@ -167,13 +215,6 @@ ORDER BY s.sampled_at,s.sample_id`, filter.CharacterID, filter.Server, filter.Fr
 		}
 	}
 
-	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='character.died'),
-count(*) FILTER(WHERE kind='drop.item'),count(*) FILTER(WHERE kind='drop.rare')
-FROM activity_events WHERE character_id=$1::uuid AND lower(server_name)=CASE WHEN $2='' THEN lower(server_name) ELSE $2 END
-AND occurred_at >= $3 AND occurred_at < $4`, filter.CharacterID, filter.Server,
-		filter.To.Add(-24*time.Hour), filter.To).Scan(&performance.Deaths24h, &performance.NormalDrops24h, &performance.RareDrops24h); err != nil {
-		return err
-	}
 	snapshot.Status = "available"
 	snapshot.Reason = ""
 	if performance.Truncated || performance.Stale {
@@ -222,14 +263,22 @@ func latestRateReset(ctx context.Context, tx pgx.Tx, characterID string) (*time.
 	return resetAt, nil
 }
 
-func calculateCurrentLevelXPRate(samples []observedMetricSample, level int, from, to time.Time) RateResult {
+func unavailableProgressRates(reason string) map[string]RateResult {
+	result := make(map[string]RateResult, 3)
+	for _, metric := range []string{"xp", "sp", "gold"} {
+		result[metric] = RateResult{Status: "insufficient_history", Reason: reason, DeltaExact: "0"}
+	}
+	return result
+}
+
+func calculateCurrentLevelXPRate(samples []observedMetricSample, level int, requirement int64, from, to time.Time) RateResult {
 	result := RateResult{Status: "insufficient_history", Reason: "insufficient_history"}
 	for index := 1; index < len(samples); index++ {
 		before, after := samples[index-1], samples[index]
 		if before.SessionID == "" || before.SessionID != after.SessionID || !after.At.After(before.At) || after.At.Sub(before.At) > MaxSampleGap {
 			continue
 		}
-		if before.Level == nil || after.Level == nil || *before.Level != level || *after.Level != level || before.MaxXP == nil || after.MaxXP == nil || *before.MaxXP <= 0 || *before.MaxXP != *after.MaxXP || before.CurrentXP == nil || after.CurrentXP == nil {
+		if before.Level == nil || after.Level == nil || *before.Level != level || *after.Level != level || before.MaxXP == nil || after.MaxXP == nil || *before.MaxXP <= 0 || *before.MaxXP != requirement || *after.MaxXP != requirement || before.CurrentXP == nil || after.CurrentXP == nil {
 			continue
 		}
 		if before.At.Before(from) || after.At.After(to) {

@@ -1,7 +1,10 @@
 # Slice 12 — Analytics implementation plan for Luna
 
 Prepared **2026-10-07** against `main` at `b13b036` in `/var/www/phmon`.
-Status: **in progress**. Implementation increments through P8 are in the checkout.
+Status: **in progress**. Implementation increments through P8 are in the checkout;
+the 2026-10-07 review repair reopened P3, P4 and P7 because their full exit criteria
+still need evidence. Their supported code paths have additional fixes, but the
+remaining reference-composition and acceptance gaps are not marked complete.
 A one-million-event, 50-character fixture meets the measured first-request 90-day
 and warm 30/7/1-day targets, and the isolated production-worker analytics smoke
 passes. P8 remains open for a physical cache-cold run and concurrent chart/map
@@ -685,11 +688,11 @@ parity/setup docs and report exact verification and remaining gates.
 - [x] P0 — source/formula/reference contract frozen from official sources and supplied captures; interactive demo controls are a P9 gate
 - [x] P1 — accepted durable samples and guild-gold history
 - [x] P2 — Deaths end-to-end vertical increment
-- [x] P3 — Progress, rates, sessions, summaries and baseline reset
-- [x] P4 — Rare/Normal Drop analytics and shared details
+- [ ] P3 — Progress, rates, sessions, summaries and baseline reset (repair delivered; full exit evidence remains open)
+- [ ] P4 — Rare/Normal Drop analytics and shared details (owned-gain support delivered; full exit evidence remains open)
 - [x] P5 — Economy balance analytics and transaction capability evidence
 - [x] P6 — Academy context and supported lifecycle analytics
-- [x] P7 — Alchemy Statistics and defensible historical runs
+- [ ] P7 — Alchemy Statistics and defensible historical runs (unknown outcomes and ambiguous candidate segments delivered; full exit evidence remains open)
 - [ ] P8 — physical cache-cold and concurrent chart/map load acceptance (large/warm query targets passed)
 - [ ] P9 — full tests, browser comparisons, docs and honest final gate status
 
@@ -728,3 +731,37 @@ Analytics/Progress/Alchemy at 1440×1000, 1280×800 and 390×844; measure analyt
 queries alongside map/character delivery; validate sources on Windows/phBot; and
 continue the remaining capability investigations without inferring missing facts.
 Stop at Slice 12; do not start Slice 13.
+
+### Review repair checkpoint — 2026-10-07
+
+The repair prompt's reproducible code findings have been addressed in the current
+checkout after verifying the already-present retention fix, empty-invalidation
+wake behavior and protocol/accessibility fixes. Additional regressions cover date
+range fencing, pending position snapshots, independent analytics delivery and
+invalidation, exact rates and balances, numeric guild leaders, per-series bounds,
+unknown taxonomy, academy ID continuity, canonical event totals without samples,
+current-level XP requirement compatibility, shareable evidence links, owned item
+gains versus transfers, summaries/location comparisons and batched Progress. The
+UI repair adds DST-correct charts, accessible series inspection, Alchemy outcome
+denominators and conservative explicitly ambiguous attempt segments.
+
+P3/P4/P7 are deliberately reopened pending complete exit evidence; P8 and P9 remain
+open. Focused PostgreSQL race tests for analytics, events, HTTP API and resources
+passed on a 256 MiB tmpfs database. Plugin tests passed (223), frontend unit tests
+passed (225), frontend format check/typecheck/lint passed (zero errors, 80 style
+warnings), Python compile, browser-audit syntax and static transport audit passed,
+Go vet/builds passed, Compose config passed with a validation-only secret
+placeholder, and `git diff --check` passed. The repository check script stopped at
+its formatting gate because the committed, unchanged
+`server/internal/navigation/store_test.go` is not gofmt-clean. A broader race run
+exhausted space in the disposable PostgreSQL WAL during an unrelated mapanalytics
+test; its test container/volume was removed, and the operator stack was left
+untouched. The full script/build chain is not claimed as passing. Reference browser
+captures, Windows/phBot validation, physical cache-cold measurement and simultaneous
+chart/map load remain open.
+
+Exact next action: use an interactive browser to capture and compare the public demo
+and local Analytics/Progress/Alchemy at 1440×1000, 1280×800 and 390×844; measure
+physical cache-cold queries and simultaneous chart/map/character delivery on a
+disposable host; validate remaining source behavior on Windows/phBot. Keep
+P3/P4/P7/P8/P9 open until their stated acceptance gates are evidenced.

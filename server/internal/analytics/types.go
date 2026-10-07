@@ -23,21 +23,25 @@ var ErrInvalidFilter = errors.New("invalid analytics filter")
 var ErrCharacterScope = errors.New("character is outside the selected server scope")
 
 type Filter struct {
-	Server       string    `json:"server,omitempty"`
-	CharacterID  string    `json:"character_id,omitempty"`
-	GroupID      string    `json:"group_id,omitempty"`
-	View         View      `json:"view"`
-	From         time.Time `json:"from"`
-	To           time.Time `json:"to"`
-	Timezone     string    `json:"timezone"`
-	Bucket       string    `json:"bucket"`
-	GroupBy      string    `json:"group_by"`
-	Guild        string    `json:"guild,omitempty"`
-	BalanceScope string    `json:"balance_scope,omitempty"`
-	ItemType     string    `json:"item_type,omitempty"`
-	ItemDegree   string    `json:"item_degree,omitempty"`
-	PageSize     int       `json:"page_size"`
-	Cursor       string    `json:"cursor,omitempty"`
+	Server         string    `json:"server,omitempty"`
+	CharacterID    string    `json:"character_id,omitempty"`
+	CharacterIDs   []string  `json:"character_ids,omitempty"`
+	CharacterQuery string    `json:"character_query,omitempty"`
+	GroupID        string    `json:"group_id,omitempty"`
+	View           View      `json:"view"`
+	From           time.Time `json:"from"`
+	To             time.Time `json:"to"`
+	Timezone       string    `json:"timezone"`
+	Bucket         string    `json:"bucket"`
+	GroupBy        string    `json:"group_by"`
+	Guild          string    `json:"guild,omitempty"`
+	BalanceScope   string    `json:"balance_scope,omitempty"`
+	DropSource     string    `json:"drop_source,omitempty"`
+	ItemType       string    `json:"item_type,omitempty"`
+	ItemDegree     string    `json:"item_degree,omitempty"`
+	ItemQuery      string    `json:"item_query,omitempty"`
+	PageSize       int       `json:"page_size"`
+	Cursor         string    `json:"cursor,omitempty"`
 }
 
 type Point struct {
@@ -45,7 +49,9 @@ type Point struct {
 	Label       string `json:"label"`
 	Value       string `json:"value"`
 	Series      string `json:"series,omitempty"`
+	Detail      string `json:"detail,omitempty"`
 	CharacterID string `json:"character_id,omitempty"`
+	Server      string `json:"server,omitempty"`
 }
 
 type Metric struct {
@@ -62,6 +68,7 @@ type Metric struct {
 type Coverage struct {
 	Status        string     `json:"status"`
 	Reason        string     `json:"reason,omitempty"`
+	SampleCount   int64      `json:"sample_count,omitempty"`
 	OldestSample  *time.Time `json:"oldest_sample,omitempty"`
 	NewestSample  *time.Time `json:"newest_sample,omitempty"`
 	RetentionDays int        `json:"retention_days,omitempty"`
@@ -89,26 +96,27 @@ type Occurrence struct {
 }
 
 type Snapshot struct {
-	Filter                Filter                `json:"filter"`
-	CalculationVersion    string                `json:"calculation_version"`
-	AsOf                  time.Time             `json:"as_of"`
-	Status                string                `json:"status"`
-	Reason                string                `json:"reason,omitempty"`
-	Coverage              Coverage              `json:"coverage"`
-	Total                 string                `json:"total"`
-	Summary               []Metric              `json:"summary"`
-	TimeSeries            []Point               `json:"time_series"`
-	Breakdown             []Point               `json:"breakdown"`
-	Occurrences           []Occurrence          `json:"occurrences"`
-	NextCursor            string                `json:"next_cursor,omitempty"`
-	Truncated             bool                  `json:"truncated,omitempty"`
-	Performance           *CharacterPerformance `json:"performance,omitempty"`
-	Taxonomy              []Point               `json:"taxonomy,omitempty"`
-	TaxonomyOptions       []TaxonomyOption      `json:"taxonomy_options,omitempty"`
-	TaxonomyKnown         int64                 `json:"taxonomy_known"`
-	TaxonomyUnknown       int64                 `json:"taxonomy_unknown"`
-	TaxonomyDegreeUnknown int64                 `json:"taxonomy_degree_unknown"`
-	TaxonomyComplete      bool                  `json:"taxonomy_complete"`
+	Filter                Filter                           `json:"filter"`
+	CalculationVersion    string                           `json:"calculation_version"`
+	AsOf                  time.Time                        `json:"as_of"`
+	Status                string                           `json:"status"`
+	Reason                string                           `json:"reason,omitempty"`
+	Coverage              Coverage                         `json:"coverage"`
+	Total                 string                           `json:"total"`
+	Summary               []Metric                         `json:"summary"`
+	TimeSeries            []Point                          `json:"time_series"`
+	Breakdown             []Point                          `json:"breakdown"`
+	Occurrences           []Occurrence                     `json:"occurrences"`
+	NextCursor            string                           `json:"next_cursor,omitempty"`
+	Truncated             bool                             `json:"truncated,omitempty"`
+	Performance           *CharacterPerformance            `json:"performance,omitempty"`
+	PerformanceBatch      map[string]*CharacterPerformance `json:"performance_batch,omitempty"`
+	Taxonomy              []Point                          `json:"taxonomy,omitempty"`
+	TaxonomyOptions       []TaxonomyOption                 `json:"taxonomy_options,omitempty"`
+	TaxonomyKnown         int64                            `json:"taxonomy_known"`
+	TaxonomyUnknown       int64                            `json:"taxonomy_unknown"`
+	TaxonomyDegreeUnknown int64                            `json:"taxonomy_degree_unknown"`
+	TaxonomyComplete      bool                             `json:"taxonomy_complete"`
 }
 
 type TaxonomyOption struct {
@@ -131,6 +139,38 @@ type SessionPerformance struct {
 	CoveredSeconds float64    `json:"covered_seconds"`
 }
 
+type PerformancePeriod struct {
+	Granularity     string  `json:"granularity"`
+	StartDate       string  `json:"start_date"`
+	XPGain          *string `json:"xp_gain,omitempty"`
+	XPSeconds       float64 `json:"xp_seconds"`
+	SPNet           *string `json:"sp_net,omitempty"`
+	SPSeconds       float64 `json:"sp_seconds"`
+	GoldNet         *string `json:"gold_net,omitempty"`
+	GoldSeconds     float64 `json:"gold_seconds"`
+	CoveredSeconds  float64 `json:"covered_seconds"`
+	SampleIntervals int64   `json:"sample_intervals"`
+	Deaths          int64   `json:"deaths"`
+	NormalDrops     int64   `json:"normal_drops"`
+	RareDrops       int64   `json:"rare_drops"`
+}
+
+type PerformanceLocation struct {
+	Region          *int    `json:"region,omitempty"`
+	Zone            string  `json:"zone,omitempty"`
+	CoveredSeconds  float64 `json:"covered_seconds"`
+	XPSeconds       float64 `json:"xp_seconds"`
+	XPGain          *string `json:"xp_gain,omitempty"`
+	SPSeconds       float64 `json:"sp_seconds"`
+	SPNet           *string `json:"sp_net,omitempty"`
+	GoldSeconds     float64 `json:"gold_seconds"`
+	GoldNet         *string `json:"gold_net,omitempty"`
+	SampleIntervals int64   `json:"sample_intervals"`
+	Deaths          int64   `json:"deaths"`
+	NormalDrops     int64   `json:"normal_drops"`
+	RareDrops       int64   `json:"rare_drops"`
+}
+
 type CharacterPerformance struct {
 	CharacterID       string                `json:"character_id"`
 	Character         string                `json:"character"`
@@ -142,8 +182,8 @@ type CharacterPerformance struct {
 	IdleSeconds       float64               `json:"idle_seconds"`
 	LastSampleAt      *time.Time            `json:"last_sample_at,omitempty"`
 	CurrentLevel      *int                  `json:"current_level,omitempty"`
-	CurrentXP         *int64                `json:"current_xp,omitempty"`
-	MaxXP             *int64                `json:"max_xp,omitempty"`
+	CurrentXP         *int64                `json:"current_xp,string,omitempty"`
+	MaxXP             *int64                `json:"max_xp,string,omitempty"`
 	LevelETASeconds   *float64              `json:"level_eta_seconds,omitempty"`
 	XPPercentPerHour  *float64              `json:"xp_percent_per_hour,omitempty"`
 	Deaths24h         int64                 `json:"deaths_24h"`
@@ -154,23 +194,42 @@ type CharacterPerformance struct {
 	SessionCount      int                   `json:"session_count"`
 	Truncated         bool                  `json:"truncated,omitempty"`
 	Stale             bool                  `json:"stale,omitempty"`
+	Periods           []PerformancePeriod   `json:"periods"`
+	Locations         []PerformanceLocation `json:"locations"`
 }
 
 func NormalizeFilter(input Filter) (Filter, error) {
 	input.Server = strings.ToLower(strings.TrimSpace(input.Server))
 	input.CharacterID = strings.ToLower(strings.TrimSpace(input.CharacterID))
+	if len(input.CharacterIDs) > 50 {
+		return Filter{}, fmt.Errorf("%w: at most 50 character IDs are allowed", ErrInvalidFilter)
+	}
+	for index := range input.CharacterIDs {
+		input.CharacterIDs[index] = strings.ToLower(strings.TrimSpace(input.CharacterIDs[index]))
+		if len(input.CharacterIDs[index]) != 36 || strings.Count(input.CharacterIDs[index], "-") != 4 {
+			return Filter{}, fmt.Errorf("%w: invalid character ID in batch", ErrInvalidFilter)
+		}
+		for previous := 0; previous < index; previous++ {
+			if input.CharacterIDs[previous] == input.CharacterIDs[index] {
+				return Filter{}, fmt.Errorf("%w: duplicate character ID in batch", ErrInvalidFilter)
+			}
+		}
+	}
+	input.CharacterQuery = strings.TrimSpace(input.CharacterQuery)
 	input.GroupID = strings.ToLower(strings.TrimSpace(input.GroupID))
 	input.Guild = strings.ToLower(strings.TrimSpace(input.Guild))
 	input.BalanceScope = strings.TrimSpace(input.BalanceScope)
+	input.DropSource = strings.TrimSpace(input.DropSource)
 	input.ItemType = strings.TrimSpace(input.ItemType)
 	input.ItemDegree = strings.TrimSpace(input.ItemDegree)
+	input.ItemQuery = strings.TrimSpace(input.ItemQuery)
 	input.Timezone = strings.TrimSpace(input.Timezone)
 	input.Bucket = strings.TrimSpace(input.Bucket)
 	input.GroupBy = strings.TrimSpace(input.GroupBy)
 	if input.View != ViewDeaths && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewEconomy && input.View != ViewAcademy && input.View != ViewAlchemy && input.View != ViewPerformance {
 		return Filter{}, fmt.Errorf("%w: unknown view", ErrInvalidFilter)
 	}
-	if len(input.Server) > 100 || len(input.CharacterID) > 36 || len(input.GroupID) > 36 || len(input.Guild) > 100 {
+	if len(input.Server) > 100 || len(input.CharacterID) > 36 || len(input.GroupID) > 36 || len(input.Guild) > 100 || len(input.CharacterQuery) > 64 || len(input.ItemQuery) > 128 {
 		return Filter{}, fmt.Errorf("%w: scope too long", ErrInvalidFilter)
 	}
 	if input.From.IsZero() || input.To.IsZero() || !input.To.After(input.From) || input.To.Sub(input.From) > 366*24*time.Hour {
@@ -192,10 +251,10 @@ func NormalizeFilter(input Filter) (Filter, error) {
 		return Filter{}, fmt.Errorf("%w: invalid time bucket", ErrInvalidFilter)
 	}
 	span := input.To.Sub(input.From)
-	if input.Bucket == "hour" && span > 500*time.Hour {
+	if input.Bucket == "hour" && span >= 499*time.Hour {
 		input.Bucket = "day"
 	}
-	if input.Bucket == "day" && span > 500*24*time.Hour {
+	if input.Bucket == "day" && span >= 499*24*time.Hour {
 		input.Bucket = "week"
 	}
 	if input.GroupBy == "" {
@@ -209,8 +268,17 @@ func NormalizeFilter(input Filter) (Filter, error) {
 	if input.GroupBy == "group" && input.View != ViewDeaths {
 		return Filter{}, fmt.Errorf("%w: current-group breakdown applies only to deaths", ErrInvalidFilter)
 	}
-	if input.View == ViewPerformance && (input.CharacterID == "" || input.To.Sub(input.From) > 24*time.Hour) {
-		return Filter{}, fmt.Errorf("%w: character performance requires one character and a window of at most 24 hours", ErrInvalidFilter)
+	if input.DropSource != "" && input.View != ViewRareDrops && input.View != ViewNormalDrops {
+		return Filter{}, fmt.Errorf("%w: drop source applies only to drop views", ErrInvalidFilter)
+	}
+	if input.DropSource != "" && input.DropSource != "world" && input.DropSource != "owned_gains" {
+		return Filter{}, fmt.Errorf("%w: invalid drop source", ErrInvalidFilter)
+	}
+	if input.View == ViewPerformance && ((input.CharacterID == "" && len(input.CharacterIDs) == 0) || (input.CharacterID != "" && len(input.CharacterIDs) > 0) || input.To.Sub(input.From) > 24*time.Hour) {
+		return Filter{}, fmt.Errorf("%w: performance requires one character or a batch of up to 50 characters and a window of at most 24 hours", ErrInvalidFilter)
+	}
+	if input.View != ViewPerformance && len(input.CharacterIDs) > 0 {
+		return Filter{}, fmt.Errorf("%w: character batches apply only to performance", ErrInvalidFilter)
 	}
 	if input.GroupBy == "item" && input.View != ViewRareDrops && input.View != ViewNormalDrops {
 		return Filter{}, fmt.Errorf("%w: item breakdown applies only to drop views", ErrInvalidFilter)
@@ -221,6 +289,9 @@ func NormalizeFilter(input Filter) (Filter, error) {
 	if input.GroupBy == "academy" && input.View != ViewAcademy {
 		return Filter{}, fmt.Errorf("%w: academy grouping applies only to academy view", ErrInvalidFilter)
 	}
+	if (input.CharacterQuery != "" || input.ItemQuery != "") && input.View != ViewDeaths && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewAcademy && input.View != ViewAlchemy {
+		return Filter{}, fmt.Errorf("%w: text search applies only to recorded event views", ErrInvalidFilter)
+	}
 	if input.PageSize == 0 {
 		input.PageSize = 25
 	}
@@ -230,7 +301,7 @@ func NormalizeFilter(input Filter) (Filter, error) {
 	if input.BalanceScope != "characters" && input.BalanceScope != "guild_storage" {
 		return Filter{}, fmt.Errorf("%w: invalid balance scope", ErrInvalidFilter)
 	}
-	if len(input.ItemType) > 64 || len(input.ItemDegree) > 2 || (input.ItemDegree != "" && (input.View != ViewRareDrops && input.View != ViewNormalDrops)) || (input.ItemType != "" && (input.View != ViewRareDrops && input.View != ViewNormalDrops)) {
+	if len(input.ItemType) > 64 || len(input.ItemDegree) > 2 || (input.ItemDegree != "" && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewAlchemy) || (input.ItemType != "" && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewAlchemy) {
 		return Filter{}, fmt.Errorf("%w: invalid item taxonomy filter", ErrInvalidFilter)
 	}
 	if input.PageSize < 1 || input.PageSize > 100 {

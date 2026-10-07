@@ -250,6 +250,57 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-07 Slice 12 review repairs
+
+Active slice: **12 only**. The current checkout is branch
+`codex/slice-12-analytics` at local commit `1627689`; the immediately preceding
+commits `6132be1` and `3fca132` are preserved, as is the separate TradeNexus commit
+`e47f737`. No worktree was created, no user changes were removed, and the operator
+Compose stack was not restarted. Do not publish or reply externally while following
+the review prompt's explicit no-publish/no-external-messages boundary.
+
+**Completed repair increment:** verified the already-present retention batch/time
+budget, zero-invalidation wake and protocol/accessibility fixes before editing.
+Implemented the remaining applicable review repairs across Go analytics/query and
+retention, `/api/live` scheduling/invalidation, plugin academy continuity, Analytics,
+Alchemy and Progress UI, chart/date utilities, and browser/transport audits. Added
+regressions for date/DST bounds, pending position subscriptions, separate stream
+classes, exact numeric rates, leaders and bounds, unknown taxonomy, academy identity,
+event counts without samples, current-level XP compatibility, evidence links,
+owned gains versus transfers, daily/weekly/location summaries, batch delivery and
+ambiguous Alchemy candidate segments. Updated calculations, phBot capability and
+reference parity notes. P3/P4/P7 have been reopened in the Slice 12 plan; P8/P9
+remain open.
+
+**Files affected:** `plugin/PhMon.py` and its tests; analytics, events, HTTP API and
+server startup Go packages and tests; web Analytics/Alchemy/Progress/chart/live
+types and composables plus date/chart/session utilities and tests; both live
+transport audits; `docs/analytics-calculations.md`, `docs/phbot-capabilities.md`,
+`docs/reference-parity.md`,
+`docs/slice-12-implementation-plan.md`, and this ledger.
+
+**Validation:** focused PostgreSQL tests passed for analytics, events, HTTP API and
+resources under `go test -race -p 1`; 223 plugin tests and 225 frontend unit tests
+passed; frontend format check, typecheck and lint passed (zero errors, 80 existing
+style warnings); Python compile, browser-audit syntax check and the static live
+transport audit passed; Go vet and server/CLI builds passed; Compose config passed
+with a validation-only secret placeholder; `git diff --check` passed.
+`bash scripts/check.sh` stopped at its gofmt gate because the already-committed,
+unchanged `server/internal/navigation/store_test.go` is not formatted. The broader
+race run exhausted disk in disposable PostgreSQL WAL during an unrelated mapanalytics
+test; its test container and volume were removed. Focused Slice 12 race tests then
+passed on a 256 MiB tmpfs PostgreSQL instance. The operator stack was untouched.
+The all-repository script/build chain is not claimed as passing. No same-viewport
+browser comparison or Windows/phBot run was performed; physical cache-cold and
+concurrent analytics/map load remain open.
+
+**Exact next action:** use an interactive browser to capture and compare the public
+demo and local Analytics/Progress/Alchemy at 1440×1000, 1280×800 and 390×844; measure
+physical cache-cold queries and simultaneous chart/map/character delivery on a
+disposable host; validate remaining source behavior on Windows/phBot. Do not format
+or modify the unrelated committed file. Keep P3/P4/P7/P8/P9 open until their exit
+criteria have evidence; continue no further than Slice 12.
+
 ### Resume — 2026-10-07 Slice 12 Analytics implementation
 
 The operator requested implementation of the Slice 12 plan and then asked to
