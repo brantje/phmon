@@ -5895,6 +5895,16 @@ otherwise keeps the observer position. The contract is `docs/tradenexus.md`.
 still a separate runtime gate; no character was operated and this was not
 deployed.
 
+### Resume — 2026-10-07 TradeNexus active thief snapshot
+
+The TradeNexus hub now retains the latest sighting per server and thief name in
+memory for ten minutes (`ActiveTTL`). After each successful `subscribe`, clients
+receive a `thieves` snapshot frame listing active sightings for the subscribed
+servers, then continue to receive live `thief.sighting` broadcasts. Map marker
+`MarkerTTL` remains five minutes. Files: `server/internal/tradenexus/{protocol,
+active,hub}.go`, `hub_test.go`, `scripts/tradenexus_smoke.py`,
+`docs/tradenexus.md`. Validation: `go test ./internal/tradenexus` passed.
+
 ### Resume — 2026-10-06 Map character Follow
 
 Added a per-character **Follow** toggle beside Focus on the Map character list.
