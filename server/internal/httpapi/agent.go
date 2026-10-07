@@ -1080,13 +1080,28 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusInternalError, "resource snapshot unavailable", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
+			guildGoldChanged := false
+			if rawObservation, ok := assembled.Resources["guild_storage"]; ok {
+				var observation struct {
+					Availability string          `json:"availability"`
+					Payload      json.RawMessage `json:"payload"`
+				}
+				var value struct {
+					Gold *int64 `json:"gold"`
+				}
+				guildGoldChanged = json.Unmarshal(rawObservation, &observation) == nil && observation.Availability == "observed" &&
+					json.Unmarshal(observation.Payload, &value) == nil && value.Gold != nil && *value.Gold >= 0
+			}
+			h.live.Invalidate()
+			if guildGoldChanged {
+				h.live.InvalidateAnalytics()
+			}
 			writeCtx, writeCancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			err = writer.Send(writeCtx, map[string]any{"type": "resource.ack", "protocol_version": hello.ProtocolVersion, "character_id": message.CharacterID, "session_id": message.SessionID, "revision": message.ResourceRevision})
 			writeCancel()
 			if err != nil {
 				return
 			}
-			h.live.Invalidate()
 		default:
 			rejectAgentFrame(conn, websocket.StatusPolicyViolation, "unexpected agent message", hello.AgentID, hello.ProtocolVersion)
 			return

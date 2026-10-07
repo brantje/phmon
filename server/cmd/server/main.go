@@ -70,7 +70,7 @@ func run() error {
 
 	store := agents.NewStore(pool)
 	analyticsStore := analytics.NewStore(pool)
-	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 15*time.Minute)
+	analyticsStore.SetRetentionDays(cfg.AnalyticsRetentionDays)
 	characterStore := characters.NewStore(pool)
 	resourceStore := resources.NewStore(pool)
 	eventStore := events.NewStore(pool)
@@ -109,6 +109,7 @@ func run() error {
 	commandService.SetReverseReturnContext(resourceStore)
 	commandService.SetReverseReturnLocations(metadata)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
+	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 15*time.Minute, live.InvalidateAnalytics)
 	live.SetCommands(commandService)
 	live.SetResources(resourceStore)
 	live.SetEvents(eventStore)

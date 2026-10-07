@@ -20,6 +20,7 @@
   "dependencies": {
     "@iconify-json/lucide": "1.2.137",
     "@nuxt/ui": "4.11.2",
+    "chart.js": "4.5.1",
     "h3": "1.15.11",
     "leaflet": "^1.9.4",
     "nuxt": "4.5.2",

@@ -1,58 +1,295 @@
 <script setup lang="ts">
+import {
+  Chart,
+  registerables,
+  type ChartConfiguration,
+  type ChartDataset,
+} from 'chart.js'
 import type { AnalyticsPoint } from '~~/shared/types/live'
+import { buildAnalyticsTimeBuckets } from '~/utils/analyticsTimeBuckets'
 
-const props = defineProps<{
-  title: string
-  description: string
-  points: readonly AnalyticsPoint[]
-  emptyLabel?: string
-}>()
+Chart.register(...registerables)
 
-const width = 760
-const height = 228
-const inset = { left: 36, right: 12, top: 12, bottom: 34 }
-const plotWidth = width - inset.left - inset.right
-const plotHeight = height - inset.top - inset.bottom
-const values = computed(() =>
-  props.points.map((point) => {
-    const value = Number(point.value)
-    return Number.isFinite(value) ? value : 0
-  }),
+const props = withDefaults(
+  defineProps<{
+    title: string
+    description: string
+    points: readonly AnalyticsPoint[]
+    emptyLabel?: string
+    categoryLabels?: string[]
+    variant?: 'category' | 'time'
+    chartType?: 'bar' | 'line'
+    unit?: 'count' | 'percent' | 'gold'
+    zeroFillMissing?: boolean
+    from?: string
+    to?: string
+    bucket?: 'hour' | 'day' | 'week'
+    timezone?: string
+  }>(),
+  {
+    emptyLabel: '',
+    categoryLabels: () => [],
+    variant: 'category',
+    chartType: 'bar',
+    unit: 'count',
+    zeroFillMissing: true,
+    from: '',
+    to: '',
+    bucket: 'day',
+    timezone: 'UTC',
+  },
 )
-const maxValue = computed(() => Math.max(0, ...values.value))
-const minValue = computed(() => Math.min(0, ...values.value))
-const chartBars = computed(() => {
-  const count = props.points.length
-  if (!count) return []
-  const range = maxValue.value - minValue.value || 1
-  const slot = plotWidth / count
-  const baseline = inset.top + (maxValue.value / range) * plotHeight
-  return props.points.map((point, index) => {
-    const value = values.value[index] || 0
-    const valueY = inset.top + ((maxValue.value - value) / range) * plotHeight
-    const y = Math.min(baseline, valueY)
-    const barHeight = Math.max(1, Math.abs(valueY - baseline))
-    return {
-      ...point,
-      x: inset.left + index * slot + Math.max(1, slot * 0.12),
-      y,
-      width: Math.max(1, slot * 0.76),
-      height: barHeight,
-      baseline,
-      showLabel:
-        count <= 12 ||
-        index === 0 ||
-        index === count - 1 ||
-        index % Math.ceil(count / 7) === 0,
+
+const canvas = ref<HTMLCanvasElement>()
+const chartID = `analytics-chart-${useId().replace(/\W/g, '')}`
+const selectedIndex = ref(0)
+const selectedSeries = ref(0)
+let chart: Chart | undefined
+
+const palette = [
+  '#82a9d8',
+  '#d7bd77',
+  '#86b7a1',
+  '#d28d82',
+  '#a99bd4',
+  '#78b7c4',
+  '#d29dbd',
+  '#b9c686',
+]
+
+function seriesColor(name: string) {
+  let hash = 0
+  for (const character of name)
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return palette[hash % palette.length]!
+}
+
+function bucketLabel(bucket: string, unit: 'hour' | 'day' | 'week') {
+  const [date = '', time = ''] = bucket.split(' ')
+  if (unit === 'hour') return `${date.slice(5)} ${time.slice(0, 5)}`
+  if (unit === 'week') return `Week of ${date}`
+  return date
+}
+
+const model = computed(() => {
+  const category = props.variant === 'category'
+  const unit = props.bucket
+  const pointByKey = new Map<string, AnalyticsPoint[]>()
+  for (const point of props.points) {
+    const key = category ? point.label : point.bucket
+    const current = pointByKey.get(key) || []
+    current.push(point)
+    pointByKey.set(key, current)
+  }
+
+  let keys: string[]
+  if (category) {
+    keys = props.categoryLabels.length
+      ? props.categoryLabels
+      : [...new Set(props.points.map((point) => point.label))]
+  } else {
+    const generated = new Set(
+      buildAnalyticsTimeBuckets(props.from, props.to, unit, props.timezone),
+    )
+    for (const key of pointByKey.keys()) generated.add(key)
+    keys = [...generated].sort()
+  }
+
+  const seriesNames = category
+    ? [props.title]
+    : [...new Set(props.points.map((point) => point.series || props.title))]
+  if (!seriesNames.length && keys.length) seriesNames.push(props.title)
+  let goldOrigin = 0n
+  if (props.unit === 'gold') {
+    const exactValues = props.points
+      .map((point) => point.value)
+      .filter((value) => /^-?\d+$/.test(value))
+      .map((value) => BigInt(value))
+    if (exactValues.length)
+      goldOrigin = exactValues.reduce((minimum, value) =>
+        value < minimum ? value : minimum,
+      )
+  }
+  const labels = keys.map((key) => (category ? key : bucketLabel(key, unit)))
+  const datasets = seriesNames.map((seriesName) => {
+    const sourceName = category ? undefined : seriesName
+    const exact = keys.map((key) => {
+      const matching = (pointByKey.get(key) || []).find((point) =>
+        category ? true : (point.series || props.title) === sourceName,
+      )
+      return matching
+    })
+    const data = exact.map((point) => {
+      if (!point) return category || props.zeroFillMissing ? 0 : null
+      if (props.unit === 'gold') {
+        if (!/^-?\d+$/.test(point.value)) return null
+        return Number(BigInt(point.value) - goldOrigin)
+      }
+      const value = Number(point.value)
+      return Number.isFinite(value) ? value : null
+    })
+    const color = seriesColor(seriesName)
+    const dataset: ChartDataset<'bar' | 'line', (number | null)[]> = {
+      label: seriesName,
+      data,
+      borderColor: color,
+      backgroundColor: props.chartType === 'line' ? `${color}22` : `${color}d9`,
+      borderWidth: props.chartType === 'line' ? 2 : 1,
+      pointRadius: props.chartType === 'line' ? 2 : 0,
+      pointHoverRadius: 5,
+      tension: 0.18,
+      spanGaps: false,
+      ...(props.chartType === 'bar'
+        ? { borderRadius: 2, maxBarThickness: category ? 42 : 18 }
+        : {}),
     }
+    return { dataset, exact }
   })
+
+  return {
+    keys,
+    labels,
+    seriesNames,
+    datasets,
+    goldOrigin: goldOrigin.toString(),
+  }
 })
-const ticks = computed(() => {
-  const max = maxValue.value
-  const min = minValue.value
-  if (min < 0) return [max, 0, min]
-  return [max, max / 2, 0]
+
+const selectedPoint = computed(() => {
+  const points = model.value.datasets[selectedSeries.value]?.exact || []
+  return points[selectedIndex.value]
 })
+const selectedValue = computed(() => {
+  const point = selectedPoint.value
+  if (!point)
+    return props.zeroFillMissing ? '0 occurrences' : 'No recorded value'
+  if (props.unit === 'percent') return `${point.value}%`
+  if (props.unit === 'gold') return `${point.value} gold`
+  return `${point.value} occurrences`
+})
+
+function numberLabel(value: number) {
+  if (props.unit === 'percent')
+    return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`
+  if (props.unit === 'gold') {
+    try {
+      return `${(BigInt(model.value.goldOrigin) + BigInt(Math.round(value))).toLocaleString()} gold`
+    } catch {
+      return 'Gold'
+    }
+  }
+  return Math.round(value).toLocaleString()
+}
+
+function showPoint(index: number, series = selectedSeries.value) {
+  selectedIndex.value = Math.max(
+    0,
+    Math.min(index, model.value.keys.length - 1),
+  )
+  selectedSeries.value = Math.max(
+    0,
+    Math.min(series, model.value.datasets.length - 1),
+  )
+}
+
+function buildChart() {
+  if (!canvas.value || !model.value.keys.length) {
+    chart?.destroy()
+    chart = undefined
+    return
+  }
+  const datasets = model.value.datasets.map(({ dataset }) => dataset)
+  const config: ChartConfiguration<'bar' | 'line', (number | null)[], string> =
+    {
+      type: props.chartType,
+      data: { labels: model.value.labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: datasets.length > 1,
+            labels: { color: '#aab7c9', boxWidth: 10, boxHeight: 10 },
+          },
+          tooltip: {
+            callbacks: {
+              title(items) {
+                const index = items[0]?.dataIndex ?? 0
+                return model.value.labels[index] || ''
+              },
+              label(item) {
+                const point =
+                  model.value.datasets[item.datasetIndex]?.exact[item.dataIndex]
+                if (!point) return `${item.dataset.label}: no observation`
+                const unitValue =
+                  props.unit === 'percent'
+                    ? `${point.value}%`
+                    : props.unit === 'gold'
+                      ? `${point.value} gold`
+                      : `${point.value} occurrences`
+                return `${item.dataset.label}: ${unitValue}${point.detail ? ` · ${point.detail}` : ''}`
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#8f9db0',
+              maxTicksLimit: 8,
+              maxRotation: 0,
+              autoSkip: true,
+            },
+            grid: { color: 'rgba(134, 155, 184, 0.12)' },
+          },
+          y: {
+            beginAtZero: props.unit !== 'gold',
+            ticks: {
+              color: '#8f9db0',
+              precision: props.unit === 'count' ? 0 : undefined,
+              callback(value) {
+                return numberLabel(Number(value))
+              },
+            },
+            grid: { color: 'rgba(134, 155, 184, 0.12)' },
+          },
+        },
+        onClick(_event, elements) {
+          const element = elements[0]
+          if (element) showPoint(element.index, element.datasetIndex)
+        },
+        onHover(_event, elements) {
+          const element = elements[0]
+          if (element) showPoint(element.index, element.datasetIndex)
+        },
+      },
+    }
+  chart?.destroy()
+  chart = new Chart(canvas.value, config)
+  showPoint(Math.min(selectedIndex.value, model.value.keys.length - 1))
+}
+
+watch(
+  () => [
+    props.points,
+    props.variant,
+    props.chartType,
+    props.unit,
+    props.zeroFillMissing,
+    props.from,
+    props.to,
+    props.bucket,
+    props.timezone,
+    props.title,
+    props.categoryLabels,
+  ],
+  () => nextTick(buildChart),
+  { deep: true },
+)
+onMounted(buildChart)
+onBeforeUnmount(() => chart?.destroy())
 </script>
 
 <template>
@@ -63,100 +300,95 @@ const ticks = computed(() => {
         <p>{{ description }}</p>
       </div>
     </header>
-    <div v-if="chartBars.length" class="analytics-chart-wrap">
-      <svg
-        class="analytics-chart"
-        :viewBox="`0 0 ${width} ${height}`"
-        role="img"
-        :aria-label="`${title}. ${points.length} recorded buckets.`"
-      >
-        <title>{{ title }}</title>
-        <desc>
-          {{ description }} Values are recorded occurrences or observed balance
-          changes.
-        </desc>
-        <g v-for="(tick, index) in ticks" :key="`${tick}-${index}`">
-          <line
-            :x1="inset.left"
-            :x2="width - inset.right"
-            :y1="inset.top + (index * plotHeight) / (ticks.length - 1)"
-            :y2="inset.top + (index * plotHeight) / (ticks.length - 1)"
-            class="chart-gridline"
-          />
-          <text
-            :x="inset.left - 8"
-            :y="inset.top + (index * plotHeight) / (ticks.length - 1) + 4"
-            text-anchor="end"
-            class="chart-axis-label"
-          >
-            {{
-              Number(tick).toLocaleString(undefined, {
-                maximumFractionDigits: 1,
-              })
-            }}
-          </text>
-        </g>
-        <line
-          v-if="minValue < 0"
-          :x1="inset.left"
-          :x2="width - inset.right"
-          :y1="chartBars[0]?.baseline"
-          :y2="chartBars[0]?.baseline"
-          class="chart-zero-line"
+    <div v-if="model.keys.length" class="analytics-chart-wrap">
+      <div class="analytics-chart-canvas">
+        <canvas
+          ref="canvas"
+          role="img"
+          :aria-label="`${title}. ${points.length} recorded observations.`"
+          :aria-describedby="`${chartID}-selected`"
         />
-        <g
-          v-for="(bar, index) in chartBars"
-          :key="`${bar.bucket}-${bar.series || ''}-${index}`"
-        >
-          <rect
-            :x="bar.x"
-            :y="bar.y"
-            :width="bar.width"
-            :height="bar.height"
-            :class="['chart-bar', { 'is-negative': Number(bar.value) < 0 }]"
-            rx="2"
+      </div>
+      <div class="chart-inspector">
+        <label>
+          Inspect a value
+          <input
+            type="range"
+            min="0"
+            :max="Math.max(0, model.keys.length - 1)"
+            :value="selectedIndex"
+            :aria-label="`${title} value selector`"
+            @input="
+              showPoint(Number(($event.target as HTMLInputElement).value))
+            "
+          />
+        </label>
+        <p :id="`${chartID}-selected`" aria-live="polite">
+          <strong>{{ model.labels[selectedIndex] || 'No bucket' }}</strong>
+          <span v-if="model.datasets.length > 1">
+            · {{ model.seriesNames[selectedSeries] }}</span
           >
-            <title>
-              {{ bar.label }}{{ bar.series ? ` · ${bar.series}` : '' }}:
-              {{ Number(bar.value).toLocaleString() }}
-            </title>
-          </rect>
-          <text
-            v-if="bar.showLabel"
-            :x="bar.x + bar.width / 2"
-            :y="height - 10"
-            text-anchor="middle"
-            class="chart-axis-label chart-x-label"
+          · {{ selectedValue }}
+          <small v-if="selectedPoint?.detail">
+            · {{ selectedPoint.detail }}</small
           >
-            {{ bar.label.slice(0, 12) }}
-          </text>
-        </g>
-      </svg>
-      <table class="sr-only">
-        <caption>
-          {{
-            title
-          }}
-          values
-        </caption>
-        <thead>
-          <tr>
-            <th>Bucket</th>
-            <th>Series</th>
-            <th>Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="(point, index) in points"
-            :key="`${point.bucket}-${index}`"
-          >
-            <td>{{ point.label }}</td>
-            <td>{{ point.series || title }}</td>
-            <td>{{ point.value }}</td>
-          </tr>
-        </tbody>
-      </table>
+        </p>
+      </div>
+      <details class="chart-data-table">
+        <summary>Accessible numerical data</summary>
+        <div class="chart-table-scroll">
+          <table>
+            <caption>
+              {{
+                title
+              }}
+              ·
+              {{
+                unit === 'count' ? 'occurrences' : unit
+              }}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Bucket</th>
+                <th scope="col">Series</th>
+                <th scope="col">Value</th>
+                <th scope="col">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(key, index) in model.keys" :key="key">
+                <th scope="row">{{ model.labels[index] }}</th>
+                <td>
+                  {{
+                    model.seriesNames.length > 1
+                      ? model.seriesNames.join(', ')
+                      : title
+                  }}
+                </td>
+                <td>
+                  {{
+                    model.datasets
+                      .map(
+                        (entry) =>
+                          entry.exact[index]?.value ??
+                          (zeroFillMissing ? '0' : 'No observation'),
+                      )
+                      .join(' · ')
+                  }}
+                </td>
+                <td>
+                  {{
+                    model.datasets
+                      .map((entry) => entry.exact[index]?.detail)
+                      .filter(Boolean)
+                      .join(' · ') || 'Recorded value'
+                  }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
     <div v-else class="analytics-chart-empty" role="status">
       <span aria-hidden="true">⌁</span>
@@ -171,42 +403,74 @@ const ticks = computed(() => {
   min-height: 330px;
 }
 .analytics-chart-wrap {
-  padding: 14px 12px 4px;
-  overflow-x: auto;
+  padding: 12px;
 }
-.analytics-chart {
-  display: block;
+.analytics-chart-canvas {
+  position: relative;
+  height: 230px;
   width: 100%;
-  min-width: 420px;
-  height: auto;
-  overflow: visible;
 }
-.chart-gridline {
-  stroke: rgba(134, 155, 184, 0.17);
-  stroke-width: 1;
+.chart-inspector {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  color: #9baabe;
+  font-size: 11px;
 }
-.chart-zero-line {
-  stroke: rgba(254, 246, 195, 0.58);
-  stroke-width: 1;
+.chart-inspector label {
+  display: grid;
+  gap: 3px;
 }
-.chart-axis-label {
-  fill: #8f9db0;
-  font:
-    11px 'Segoe UI',
-    Tahoma,
-    Arial,
-    sans-serif;
+.chart-inspector input {
+  width: 100%;
+  accent-color: #82a9d8;
+  min-height: 24px;
 }
-.chart-bar {
-  fill: #688db8;
-  opacity: 0.88;
+.chart-inspector p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
-.chart-bar:hover {
-  fill: #9cbbdf;
-  opacity: 1;
+.chart-inspector strong {
+  color: #d8e4f3;
+  font-weight: 500;
 }
-.chart-bar.is-negative {
-  fill: #d18d78;
+.chart-inspector small {
+  color: #8898ad;
+}
+.chart-data-table {
+  margin-top: 5px;
+  color: #9baabe;
+  font-size: 11px;
+}
+.chart-data-table summary {
+  cursor: pointer;
+  width: fit-content;
+  padding: 5px 0;
+}
+.chart-table-scroll {
+  max-height: 180px;
+  overflow: auto;
+}
+.chart-data-table table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.chart-data-table caption {
+  text-align: left;
+  padding: 5px;
+  color: #c6d3e3;
+}
+.chart-data-table th,
+.chart-data-table td {
+  padding: 5px 7px;
+  border-bottom: 1px solid #263448;
+}
+.chart-data-table th {
+  color: #aab7c9;
+  font-weight: 500;
 }
 .analytics-chart-empty {
   min-height: 230px;
@@ -225,10 +489,14 @@ const ticks = computed(() => {
 }
 @media (max-width: 640px) {
   .analytics-chart-panel {
-    min-height: 280px;
+    min-height: 310px;
   }
-  .analytics-chart-wrap {
-    padding-inline: 6px;
+  .analytics-chart-canvas {
+    height: 210px;
+  }
+  .chart-inspector {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
 </style>

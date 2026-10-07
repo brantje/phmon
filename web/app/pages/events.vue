@@ -221,6 +221,10 @@ watch(
     includePetPickups,
     includeOwnedGains,
     thievesView,
+    () => route.query.from_ts,
+    () => route.query.to_ts,
+    () => route.query.character_id,
+    () => route.query.server,
     cursor,
     pageSize,
   ],
@@ -235,6 +239,10 @@ watch(
     includePickups,
     includeGains,
     _thieves,
+    _fromTs,
+    _toTs,
+    routeCharacterID,
+    routeServer,
     pageCursor,
     size,
   ]) => {
@@ -247,9 +255,26 @@ watch(
       return
     }
     setEventFeed(feedID, {
-      server: server === 'all' ? undefined : server,
-      from: from ? localDateBoundary(from, 0) : undefined,
-      to: to ? localDateBoundary(to, 1) : undefined,
+      server:
+        typeof routeServer === 'string'
+          ? routeServer
+          : server === 'all'
+            ? undefined
+            : server,
+      character_id:
+        typeof routeCharacterID === 'string' ? routeCharacterID : undefined,
+      from:
+        typeof _fromTs === 'string'
+          ? _fromTs
+          : from
+            ? localDateBoundary(from, 0)
+            : undefined,
+      to:
+        typeof _toTs === 'string'
+          ? _toTs
+          : to
+            ? localDateBoundary(to, 1)
+            : undefined,
       q: character || undefined,
       item: itemTab.value ? item || undefined : undefined,
       kind: kind || undefined,

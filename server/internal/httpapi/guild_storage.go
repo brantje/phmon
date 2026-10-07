@@ -18,7 +18,10 @@ type guildStorageStore interface {
 	DeleteGuildStorage(context.Context, string, string) (int64, int64, int64, error)
 }
 
-type guildStorageHandler struct{ store guildStorageStore }
+type guildStorageHandler struct {
+	store guildStorageStore
+	live  *LiveHub
+}
 
 func (h *guildStorageHandler) get(w http.ResponseWriter, r *http.Request) {
 	server := strings.TrimSpace(r.URL.Query().Get("server"))
@@ -68,6 +71,9 @@ func (h *guildStorageHandler) delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "guild storage removal failed"})
 		return
+	}
+	if h.live != nil && goldSampleCount > 0 {
+		h.live.InvalidateAnalytics()
 	}
 	slog.Info("guild storage records removed", "operator", "operator", "server", strings.ToLower(strings.TrimSpace(body.Server)), "guild", strings.ToLower(strings.TrimSpace(body.Guild)), "observations", observationCount, "items", itemCount, "gold_samples", goldSampleCount)
 	respondJSON(w, http.StatusOK, map[string]any{"server": body.Server, "guild": body.Guild, "deleted_observations": observationCount, "deleted_items": itemCount, "deleted_gold_samples": goldSampleCount, "retention": "A later phBot observation may create a new saved snapshot; no in-game contents were changed."})

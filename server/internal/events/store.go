@@ -183,6 +183,7 @@ type AlchemySummary struct {
 	Attempts    int64 `json:"attempts"`
 	Successes   int64 `json:"successes"`
 	Failures    int64 `json:"failures"`
+	Unknown     int64 `json:"unknown"`
 	HighestPlus *int  `json:"highest_plus,omitempty"`
 }
 
@@ -1169,8 +1170,8 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.Ch
 	if filter.Kind == "alchemy.attempt" {
 		var summary AlchemySummary
 		var highest *int
-		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),max((e.payload->>'plus')::integer) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &highest); err != nil {
+		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),count(*) FILTER (WHERE e.payload->>'success' IS NULL OR e.payload->>'success' NOT IN ('true','false')),max(CASE WHEN e.payload->>'plus' ~ '^[0-9]{1,3}$' THEN (e.payload->>'plus')::integer END) `+base,
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest

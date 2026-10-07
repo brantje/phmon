@@ -13,15 +13,22 @@ rechecked for Slice 12. The character-data example includes current/max EXP, SP,
 gold, dead and `exp_ratio`, but the docs do not define a history stream, multi-level
 XP requirements, or a training-state duration contract. Existing PhMon must treat
 these numeric values as balances and build history from newly accepted state
-frames. `handle_event` documents death, drop, level-up and alchemy completion IDs;
+frames. For current-level progress only, the accepted character sample's positive
+`max_exp` is the observed requirement: same-level XP pace and percent/hour are
+available when fresh compatible samples meet the coverage rule. This does not make
+`exp_ratio` a historical rate or verify multi-level rollover arithmetic. Rates
+across level changes remain unavailable without a versioned, server-applicable
+requirement source. `handle_event` documents death, drop, level-up and alchemy completion IDs;
 `alchemy_update(slot, success, plus)` supplies the existing attempt fact. The
 Academy API example includes academy and member IDs/type but does not document
 graduation/ban callbacks, identity lifetime, or role-code semantics.
 
 Local exported profiles were also checked on 2026-10-07. Their top-level data is
 limited to the dataset ID, item definitions, magic options and character portraits;
-they contain no level EXP-requirement table. XP%/hour and rollover-derived rates
-therefore remain unavailable until a versioned, server-applicable requirement
+they contain no level EXP-requirement table. A current-level XP%/hour may use the
+positive `max_exp` captured in the same character samples, fenced to intervals
+whose level and requirement match the latest sample. Multi-level and rollover
+reconstruction remain unavailable until a versioned, server-applicable requirement
 source is verified.
 
 Plugin **1.9.27** / protocol **18** adds an optional numeric `academy_id` to

@@ -17,7 +17,7 @@ sources = {
     if path.suffix in {".ts", ".vue"}
 }
 
-live_endpoint = re.compile(r"/api/(?:agents(?:\b|/)|characters(?:\b|/)|groups(?:\b|/))")
+live_endpoint = re.compile(r"/api/(?:agents(?:\b|/)|characters(?:\b|/)|groups(?:\b|/)|analytics(?:\b|/))")
 
 for path, text in sources.items():
     rel = path.relative_to(ROOT)
@@ -54,6 +54,17 @@ for path, text in sources.items():
             continue
         endpoint = match.group("endpoint")
         errors.append(f"{rel}: {endpoint} is a prohibited browser live HTTP read")
+
+    for match in re.finditer(
+        r"\$fetch(?:<[^>]+>)?\s*\(\s*['\"](?P<endpoint>\/api\/analytics(?:\/[^'\"]*)?)['\"]",
+        text,
+    ):
+        endpoint = match.group("endpoint")
+        window = text[match.start() : match.start() + 500]
+        method = re.search(r"method\s*:\s*['\"](POST|PATCH|PUT|DELETE)['\"]", window)
+        if endpoint == "/api/analytics/rate-resets" and method and method.group(1) == "POST":
+            continue
+        errors.append(f"{rel}: {endpoint} is a prohibited analytics HTTP read/action")
 
     for match in re.finditer(r"\$fetch(?:<[^>]+>)?\s*\(\s*['\"]\/api\/groups", text):
         window = text[match.start() : match.start() + 500]

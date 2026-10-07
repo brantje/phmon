@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { AnalyticsMetric, AnalyticsOccurrence } from '~~/shared/types/live'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
+import { normalizeAnalyticsDateRange } from '~/utils/analyticsDateRange'
 
 const route = useRoute()
 const router = useRouter()
 const {
   analyticsFeeds,
   analyticsFeedStatus,
+  characters,
+  groups,
   connectionState,
   liveStale,
   setAnalyticsFeed,
@@ -32,17 +35,42 @@ const selected = computed(
 )
 const validBucket = (value: unknown): value is 'hour' | 'day' | 'week' =>
   value === 'hour' || value === 'day' || value === 'week'
+const validGroupBy = (
+  value: unknown,
+): value is
+  'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy' =>
+  value === 'character' ||
+  value === 'group' ||
+  value === 'location' ||
+  value === 'item' ||
+  value === 'type' ||
+  value === 'degree' ||
+  value === 'academy'
+const validDate = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime()) &&
+  new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
+const initialDate = (value: unknown, fallback: string) =>
+  validDate(value) ? value : fallback
 const bucket = ref<'hour' | 'day' | 'week'>(
   validBucket(route.query.bucket) ? route.query.bucket : 'day',
 )
-const fromDate = ref(dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)))
-const toDate = ref(dateInput(new Date()))
+const fromDate = ref(
+  initialDate(
+    route.query.from,
+    dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)),
+  ),
+)
+const toDate = ref(initialDate(route.query.to, dateInput(new Date())))
 const groupBy = ref<
-  'character' | 'group' | 'location' | 'item' | 'type' | 'degree'
+  'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy'
 >(
-  route.query.view === 'rare_drops' || route.query.view === 'normal_drops'
-    ? 'item'
-    : 'character',
+  validGroupBy(route.query.group_by)
+    ? route.query.group_by
+    : route.query.view === 'rare_drops' || route.query.view === 'normal_drops'
+      ? 'item'
+      : 'character',
 )
 const balanceScope = ref<'characters' | 'guild_storage'>(
   route.query.balance_scope === 'guild_storage'
@@ -55,17 +83,39 @@ const itemType = ref(
 const itemDegree = ref(
   typeof route.query.item_degree === 'string' ? route.query.item_degree : '',
 )
+const characterID = ref(
+  typeof route.query.character_id === 'string' ? route.query.character_id : '',
+)
+const groupID = ref(
+  typeof route.query.group_id === 'string' ? route.query.group_id : '',
+)
+const guildName = ref(
+  typeof route.query.guild === 'string' ? route.query.guild : '',
+)
+const dropSource = ref<'world' | 'owned_gains'>(
+  route.query.drop_source === 'owned_gains' ? 'owned_gains' : 'world',
+)
 const cursor = ref('')
 const previousCursors = ref<string[]>([])
 const pageNumber = ref(1)
+const availableCharacters = computed(() =>
+  characters.value.filter(
+    (character) =>
+      serverScope.value === 'all' ||
+      character.server.toLowerCase() === serverScope.value.toLowerCase(),
+  ),
+)
+const availableGroups = computed(() => groups.value)
 const feedID = 'analytics'
 const snapshot = computed(() => analyticsFeeds.value[feedID])
 const feedStatus = computed(
   () => analyticsFeedStatus.value[feedID] || 'loading',
 )
-const invalidDateRange = computed(
-  () => !!fromDate.value && !!toDate.value && fromDate.value > toDate.value,
+const normalizedDates = computed(() =>
+  normalizeAnalyticsDateRange(fromDate.value, toDate.value),
 )
+const dateRangeError = computed(() => normalizedDates.value.error)
+const invalidDateRange = computed(() => !!dateRangeError.value)
 const filterTimezone = ref('UTC')
 const pageDescription = computed(() => {
   switch (view.value) {
@@ -83,9 +133,10 @@ const pageDescription = computed(() => {
 })
 const leftChartTitle = computed(() => {
   if (view.value === 'deaths') return `Deaths by ${groupLabel.value}`
-  if (view.value === 'rare_drops') return `Rare drops by ${groupLabel.value}`
+  if (view.value === 'rare_drops')
+    return `${dropSource.value === 'owned_gains' ? 'Rare owned gains' : 'Rare drops'} by ${groupLabel.value}`
   if (view.value === 'normal_drops')
-    return `Normal drops by ${groupLabel.value}`
+    return `${dropSource.value === 'owned_gains' ? 'Normal owned gains' : 'Normal drops'} by ${groupLabel.value}`
   if (view.value === 'economy')
     return balanceScope.value === 'guild_storage'
       ? 'Observed guild-storage balances'
@@ -111,12 +162,19 @@ const groupLabel = computed(() => {
       return 'item type'
     case 'degree':
       return 'item degree'
+    case 'academy':
+      return 'observed academy ID'
     default:
       return 'character'
   }
 })
 const leftPoints = computed(() => snapshot.value?.breakdown || [])
 const rightPoints = computed(() => snapshot.value?.time_series || [])
+const effectiveBucket = computed(() =>
+  validBucket(snapshot.value?.filter.bucket)
+    ? snapshot.value!.filter.bucket
+    : bucket.value,
+)
 const taxonomyTypes = computed(() =>
   [
     ...new Set(
@@ -189,21 +247,36 @@ watch(
     balanceScope,
     itemType,
     itemDegree,
+    characterID,
+    groupID,
+    guildName,
+    dropSource,
   ],
   ([nextView, server, from, to, grouping, pageCursor, timezone]) => {
-    if (from && to && from > to) {
+    const dates = normalizeAnalyticsDateRange(from, to)
+    if (dates.error) {
       clearAnalyticsFeed(feedID)
       return
     }
     setAnalyticsFeed(feedID, {
       view: nextView,
       server: server === 'all' ? undefined : server,
-      from: from ? localDateBoundary(from, 0) : undefined,
-      to: to ? localDateBoundary(to, 1) : undefined,
+      character_id: characterID.value || undefined,
+      group_id: groupID.value || undefined,
+      from: dates.from,
+      to: dates.to,
       timezone,
       bucket: bucket.value,
       group_by: grouping,
+      drop_source:
+        nextView === 'rare_drops' || nextView === 'normal_drops'
+          ? dropSource.value
+          : undefined,
       balance_scope: nextView === 'economy' ? balanceScope.value : undefined,
+      guild:
+        nextView === 'economy' && balanceScope.value === 'guild_storage'
+          ? guildName.value || undefined
+          : undefined,
       item_type:
         nextView === 'rare_drops' || nextView === 'normal_drops'
           ? itemType.value || undefined
@@ -222,6 +295,67 @@ watch(bucket, (value) => {
   const query = { ...route.query, bucket: value === 'day' ? undefined : value }
   void router.replace({ path: route.path, query, hash: route.hash })
 })
+watch([fromDate, toDate], ([from, to]) => {
+  const query = { ...route.query, from: from || undefined, to: to || undefined }
+  void router.replace({ path: route.path, query, hash: route.hash })
+})
+watch(groupBy, (value) => {
+  const query = {
+    ...route.query,
+    group_by: value === 'character' ? undefined : value,
+  }
+  void router.replace({ path: route.path, query, hash: route.hash })
+})
+watch([characterID, groupID, guildName], ([character, group, guild]) => {
+  const query = {
+    ...route.query,
+    character_id: character || undefined,
+    group_id: group || undefined,
+    guild: guild || undefined,
+  }
+  void router.replace({ path: route.path, query, hash: route.hash })
+})
+watch(dropSource, (source) => {
+  const query = {
+    ...route.query,
+    drop_source: source === 'world' ? undefined : source,
+  }
+  void router.replace({ path: route.path, query, hash: route.hash })
+})
+watch(
+  () => route.query.drop_source,
+  (source) => {
+    dropSource.value = source === 'owned_gains' ? 'owned_gains' : 'world'
+  },
+)
+watch(
+  () => [
+    route.query.from,
+    route.query.to,
+    route.query.group_by,
+    route.query.character_id,
+    route.query.group_id,
+    route.query.guild,
+  ],
+  ([from, to, grouping, character, group, guild]) => {
+    fromDate.value = initialDate(from, fromDate.value)
+    toDate.value = initialDate(to, toDate.value)
+    if (
+      grouping === 'character' ||
+      grouping === 'group' ||
+      grouping === 'location' ||
+      grouping === 'item' ||
+      grouping === 'type' ||
+      grouping === 'degree' ||
+      grouping === 'academy'
+    ) {
+      groupBy.value = grouping
+    }
+    characterID.value = typeof character === 'string' ? character : ''
+    groupID.value = typeof group === 'string' ? group : ''
+    guildName.value = typeof guild === 'string' ? guild : ''
+  },
+)
 watch(
   () => route.query.bucket,
   (value) => {
@@ -232,6 +366,13 @@ watch(balanceScope, (scope) => {
   const query = { ...route.query, balance_scope: scope }
   void router.replace({ path: route.path, query, hash: route.hash })
 })
+watch(
+  () => route.query.balance_scope,
+  (scope) => {
+    balanceScope.value =
+      scope === 'guild_storage' ? 'guild_storage' : 'characters'
+  },
+)
 watch([itemType, itemDegree], ([type, degree]) => {
   if (degree && !taxonomyDegrees.value.includes(degree)) {
     itemDegree.value = ''
@@ -257,7 +398,29 @@ watch(view, (next) => {
     itemDegree.value = ''
   }
 })
-watch([view, serverScope, fromDate, toDate, groupBy, bucket], () => {
+watch(
+  [
+    view,
+    serverScope,
+    fromDate,
+    toDate,
+    groupBy,
+    bucket,
+    characterID,
+    groupID,
+    balanceScope,
+    guildName,
+    itemType,
+    itemDegree,
+    dropSource,
+  ],
+  () => {
+    cursor.value = ''
+    pageNumber.value = 1
+    previousCursors.value = []
+  },
+)
+watch([balanceScope, itemType, itemDegree], () => {
   cursor.value = ''
   pageNumber.value = 1
   previousCursors.value = []
@@ -279,11 +442,50 @@ function isLinkMetric(metric: AnalyticsMetric) {
   return !!metric.href
 }
 function eventHref(item: AnalyticsOccurrence) {
-  const kind = item.kind
-  return { path: '/events', query: { kind, q: item.character } }
+  const occurredAt = new Date(item.occurred_at)
+  const from = occurredAt.toISOString()
+  const to = new Date(occurredAt.getTime() + 1000).toISOString()
+  const worldDrop = item.kind === 'drop.item' || item.kind === 'drop.rare'
+  return {
+    path: '/events',
+    query: {
+      kind: item.kind,
+      server: item.server,
+      character_id: item.character_id,
+      from_ts: from,
+      to_ts: to,
+      include_owned_gains: worldDrop ? 'false' : undefined,
+      include_pet_pickups: worldDrop ? 'false' : undefined,
+    },
+  }
+}
+function occurrenceDetail(item: AnalyticsOccurrence) {
+  if (item.kind.startsWith('academy.')) {
+    const academyID = item.payload.academy_id
+    const member = item.payload.member
+    const memberName =
+      member && typeof member === 'object' && 'name' in member
+        ? String(member.name)
+        : typeof item.payload.member_name === 'string'
+          ? item.payload.member_name
+          : 'member identity unavailable'
+    const action = item.kind.endsWith('joined')
+      ? 'Observed join'
+      : 'Observed departure'
+    return `${action} · ${memberName} · academy ${academyID ?? 'unknown'}`
+  }
+  return item.detail || item.kind
 }
 function mapHref(item: AnalyticsOccurrence) {
-  return { path: '/map', query: { event_id: item.event_id } }
+  return {
+    path: '/map',
+    query: {
+      event_id: item.event_id,
+      server: item.server,
+      character_id: item.character_id,
+      region: item.region ?? undefined,
+    },
+  }
 }
 function openView(next: string) {
   router.push({ path: '/analytics', query: { ...route.query, view: next } })
@@ -303,11 +505,6 @@ function previousPage() {
 function dateInput(value: Date) {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
   return local.toISOString().slice(0, 10)
-}
-function localDateBoundary(value: string, addDays: number) {
-  const boundary = new Date(`${value}T00:00:00`)
-  boundary.setDate(boundary.getDate() + addDays)
-  return boundary.toISOString()
 }
 </script>
 
@@ -340,6 +537,32 @@ function localDateBoundary(value: string, addDays: number) {
       <label>From <input v-model="fromDate" type="date" /></label>
       <label>To <input v-model="toDate" type="date" /></label>
       <label>
+        Character
+        <select v-model="characterID">
+          <option value="">All characters</option>
+          <option
+            v-for="character in availableCharacters"
+            :key="character.character_id"
+            :value="character.character_id"
+          >
+            {{ character.name }} · {{ character.server }}
+          </option>
+        </select>
+      </label>
+      <label v-if="view === 'deaths'">
+        Group scope
+        <select v-model="groupID">
+          <option value="">All groups</option>
+          <option
+            v-for="group in availableGroups"
+            :key="group.group_id"
+            :value="group.group_id"
+          >
+            {{ group.name }}
+          </option>
+        </select>
+      </label>
+      <label>
         Time bucket
         <select v-model="bucket">
           <option value="hour">Hour</option>
@@ -352,6 +575,17 @@ function localDateBoundary(value: string, addDays: number) {
         <select v-model="balanceScope">
           <option value="characters">Characters</option>
           <option value="guild_storage">Guild storage</option>
+        </select>
+      </label>
+      <label v-if="view === 'economy' && balanceScope === 'guild_storage'">
+        Guild
+        <input v-model="guildName" maxlength="100" placeholder="Guild name" />
+      </label>
+      <label v-if="view === 'rare_drops' || view === 'normal_drops'">
+        Source
+        <select v-model="dropSource">
+          <option value="world">World drop observations</option>
+          <option value="owned_gains">Owned item gains</option>
         </select>
       </label>
       <label
@@ -367,6 +601,9 @@ function localDateBoundary(value: string, addDays: number) {
           <option value="character">Character</option>
           <option v-if="view === 'deaths'" value="group">Current group</option>
           <option v-if="view !== 'academy'" value="location">Location</option>
+          <option v-if="view === 'academy'" value="academy">
+            Observed academy ID
+          </option>
           <option
             v-if="view === 'rare_drops' || view === 'normal_drops'"
             value="item"
@@ -422,7 +659,7 @@ function localDateBoundary(value: string, addDays: number) {
     </section>
 
     <p v-if="invalidDateRange" class="analytics-inline-state" role="alert">
-      Choose a From date on or before the To date.
+      {{ dateRangeError }}
     </p>
     <p
       v-else-if="statusText"
@@ -443,6 +680,8 @@ function localDateBoundary(value: string, addDays: number) {
               : 'Recorded occurrences in the selected scope.'
           "
           :points="leftPoints"
+          variant="category"
+          :unit="view === 'economy' ? 'gold' : 'count'"
           :empty-label="
             snapshot?.status === 'unsupported' ? snapshot.reason : undefined
           "
@@ -451,6 +690,14 @@ function localDateBoundary(value: string, addDays: number) {
           :title="rightChartTitle"
           :description="`Local ${snapshot?.filter.bucket || 'day'} buckets · ${snapshot?.filter.timezone || filterTimezone}`"
           :points="rightPoints"
+          variant="time"
+          :chart-type="view === 'economy' ? 'line' : 'bar'"
+          :unit="view === 'economy' ? 'gold' : 'count'"
+          :zero-fill-missing="view !== 'economy'"
+          :from="normalizedDates.from"
+          :to="normalizedDates.to"
+          :bucket="effectiveBucket"
+          :timezone="snapshot?.filter.timezone || filterTimezone"
           :empty-label="
             snapshot?.status === 'unsupported' ? snapshot.reason : undefined
           "
@@ -526,7 +773,9 @@ function localDateBoundary(value: string, addDays: number) {
           <thead>
             <tr>
               <th>Time</th>
-              <th>Character</th>
+              <th>
+                {{ view === 'academy' ? 'Observer character' : 'Character' }}
+              </th>
               <th>Detail</th>
               <th>Location</th>
               <th>Open</th>
@@ -548,7 +797,7 @@ function localDateBoundary(value: string, addDays: number) {
                   :to="eventHref(item)"
                 />
                 <template v-else>
-                  {{ item.detail || item.kind
+                  {{ occurrenceDetail(item)
                   }}<span v-if="item.plus !== undefined">
                     · +{{ item.plus }}</span
                   ><span v-if="item.success !== undefined">

@@ -1730,6 +1730,25 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(contexts['academy.member_left'], 7)
         self.assertEqual(contexts['academy.member_joined'], 8)
 
+    def test_missing_academy_id_does_not_invent_scope_switch_events(self):
+        member = {'member_id': '42', 'name': 'Student'}
+        known = self.resources()
+        known['academy'] = {'availability': 'observed', 'value': {'id': 7, 'members': [member]}}
+        missing = self.resources()
+        missing['academy'] = {'availability': 'observed', 'value': {'members': [member]}}
+        self.observe(known)
+        self.observe(missing)
+        self.assertEqual(self.drain(), [])
+        self.observe(known)
+        self.assertEqual(self.drain(), [])
+
+        invalid = self.resources()
+        invalid['academy'] = {'availability': 'observed', 'value': {'id': True, 'members': [member]}}
+        self.observe(invalid)
+        self.assertEqual(self.drain(), [])
+        self.observe(known)
+        self.assertEqual(self.drain(), [])
+
     def test_bag_and_job_pouch_positive_quantity_deltas_keep_unknown_cause(self):
         self.observe(self.resources(bag=[] , job=[]))
         self.observe(self.resources(bag=[(13, self.item(5))], job=[(0, self.item(2))]))

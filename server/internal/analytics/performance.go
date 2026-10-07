@@ -18,6 +18,32 @@ type observedMetricSample struct {
 	EndedAt   *time.Time
 }
 
+func queryPerformanceBatch(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
+	results := make(map[string]*CharacterPerformance, len(filter.CharacterIDs))
+	limited := false
+	for _, characterID := range filter.CharacterIDs {
+		characterFilter := filter
+		characterFilter.CharacterID = characterID
+		characterFilter.CharacterIDs = nil
+		child := Snapshot{Status: "available"}
+		if err := queryPerformance(ctx, tx, characterFilter, &child); err != nil {
+			return err
+		}
+		if child.Performance == nil {
+			continue
+		}
+		results[characterID] = child.Performance
+		limited = limited || child.Status == "limited" || child.Status == "insufficient_history"
+	}
+	snapshot.PerformanceBatch = results
+	snapshot.Total = strconv.Itoa(len(results))
+	if limited {
+		snapshot.Status = "limited"
+		snapshot.Reason = "one or more visible characters have stale or insufficient metric history"
+	}
+	return nil
+}
+
 // queryPerformance reads at most one character's 24-hour sample window. The
 // 30-second lookback supplies a possible predecessor without bridging gaps.
 func queryPerformance(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
@@ -85,7 +111,11 @@ AND occurred_at >= $3 AND occurred_at < $4`, filter.CharacterID, filter.Server,
 	if len(samples) == 0 {
 		snapshot.Status = "insufficient_history"
 		snapshot.Reason = "no_accepted_state_samples_in_window"
-		snapshot.Performance = &CharacterPerformance{CharacterID: filter.CharacterID, Rates: map[string]RateResult{}, Training: []TrainingPoint{}, Sessions: []SessionPerformance{}}
+		snapshot.Performance = &CharacterPerformance{
+			CharacterID: filter.CharacterID, Rates: unavailableProgressRates("no_accepted_state_samples_in_window"),
+			Training: []TrainingPoint{}, Sessions: []SessionPerformance{},
+			Deaths24h: performance.Deaths24h, NormalDrops24h: performance.NormalDrops24h, RareDrops24h: performance.RareDrops24h,
+		}
 		return nil
 	}
 	if len(samples) > maxPerformanceSamples {

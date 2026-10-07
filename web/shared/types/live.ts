@@ -409,6 +409,7 @@ export interface AlchemySummary {
   attempts: number
   successes: number
   failures: number
+  unknown: number
   highest_plus?: number
 }
 
@@ -417,7 +418,9 @@ export interface AnalyticsPoint {
   label: string
   value: string
   series?: string
+  detail?: string
   character_id?: string
+  server?: string
 }
 
 export interface AnalyticsMetric {
@@ -457,6 +460,7 @@ export interface AnalyticsSnapshot {
   filter: {
     server?: string
     character_id?: string
+    character_ids?: string[]
     group_id?: string
     view: string
     from: string
@@ -466,6 +470,7 @@ export interface AnalyticsSnapshot {
     group_by: string
     guild?: string
     balance_scope?: 'characters' | 'guild_storage'
+    drop_source?: 'world' | 'owned_gains'
     item_type?: string
     item_degree?: string
     page_size: number
@@ -479,6 +484,7 @@ export interface AnalyticsSnapshot {
   coverage: {
     status: string
     reason?: string
+    sample_count?: number
     oldest_sample?: string
     newest_sample?: string
     retention_days?: number
@@ -491,6 +497,7 @@ export interface AnalyticsSnapshot {
   next_cursor?: string
   truncated?: boolean
   performance?: CharacterPerformance
+  performance_batch?: Record<string, CharacterPerformance>
   taxonomy?: AnalyticsPoint[]
   taxonomy_options?: Array<{ type: string; degree?: string }>
   taxonomy_known: number
@@ -507,6 +514,7 @@ export interface CharacterPerformance {
     string,
     {
       delta: number
+      delta_exact?: string
       per_hour: number
       has_rate: boolean
       eligible_seconds: number
@@ -524,14 +532,44 @@ export interface CharacterPerformance {
   idle_seconds: number
   last_sample_at?: string
   current_level?: number
-  current_xp?: number
-  max_xp?: number
+  current_xp?: string
+  max_xp?: string
   level_eta_seconds?: number
   xp_percent_per_hour?: number
   deaths_24h: number
   normal_drops_24h: number
   rare_drops_24h: number
   training: Array<{ region?: number; zone?: string; covered_seconds: number }>
+  periods?: Array<{
+    granularity: 'day' | 'week'
+    start_date: string
+    xp_gain?: string
+    xp_seconds: number
+    sp_net?: string
+    sp_seconds: number
+    gold_net?: string
+    gold_seconds: number
+    covered_seconds: number
+    sample_intervals: number
+    deaths: number
+    normal_drops: number
+    rare_drops: number
+  }>
+  locations?: Array<{
+    region?: number
+    zone?: string
+    covered_seconds: number
+    xp_seconds: number
+    xp_gain?: string
+    sp_seconds: number
+    sp_net?: string
+    gold_seconds: number
+    gold_net?: string
+    sample_intervals: number
+    deaths: number
+    normal_drops: number
+    rare_drops: number
+  }>
   session_count: number
   truncated?: boolean
   stale?: boolean
@@ -593,9 +631,11 @@ export interface LiveFilter {
   view?: string
   timezone?: string
   bucket?: 'hour' | 'day' | 'week'
-  group_by?: 'character' | 'group' | 'location' | 'item' | 'type' | 'degree'
+  group_by?:
+    'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy'
   guild?: string
   balance_scope?: 'characters' | 'guild_storage'
+  drop_source?: 'world' | 'owned_gains'
   item_type?: string
   item_degree?: string
   page_size?: number

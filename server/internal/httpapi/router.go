@@ -190,7 +190,7 @@ func New(deps Dependencies) http.Handler {
 		}
 	}
 	if deps.Resources != nil {
-		guildStorageAPI := &guildStorageHandler{store: deps.Resources}
+		guildStorageAPI := &guildStorageHandler{store: deps.Resources, live: analyticsLive}
 		register("GET /api/guild-storage", false, guildStorageAPI.get)
 		register("DELETE /api/guild-storage", true, guildStorageAPI.delete)
 	}
