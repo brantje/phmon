@@ -12,6 +12,11 @@ import (
 
 const MaxRetentionDeleteBatch = 10000
 
+const (
+	analyticsRetentionBatchSize = 5000
+	analyticsRetentionRunBudget = 2 * time.Minute
+)
+
 var ErrRateResetNameMismatch = errors.New("character name confirmation does not match")
 var ErrRateResetNotFound = errors.New("character not found")
 
@@ -140,29 +145,19 @@ func (s *Store) RunRetention(ctx context.Context, days int, interval time.Durati
 		return
 	}
 	if interval < time.Minute {
-		interval = 6 * time.Hour
+		interval = 15 * time.Minute
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
 		total := int64(0)
-		for batch := 0; batch < 10; batch++ {
-			batchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			characterRows, guildRows, err := s.PruneOldSamples(batchCtx, cutoff, 1000)
-			cancel()
-			if err != nil {
-				if ctx.Err() == nil {
-					slog.Warn("analytics retention batch failed", "error", err)
-				}
-				break
-			}
-			deleted := characterRows + guildRows
-			total += deleted
-			if deleted < 2000 {
-				break
-			}
+		runDeadline := time.Now().Add(analyticsRetentionRunBudget)
+		deleted, err := pruneOldSamplesUntil(ctx, cutoff, analyticsRetentionBatchSize, runDeadline, s.PruneOldSamples)
+		if err != nil && ctx.Err() == nil {
+			slog.Warn("analytics retention batch failed", "error", err)
 		}
+		total += deleted
 		if total > 0 {
 			slog.Info("expired analytics samples pruned", "rows", total, "retention_days", days)
 		}
@@ -172,4 +167,27 @@ func (s *Store) RunRetention(ctx context.Context, days int, interval time.Durati
 		case <-ticker.C:
 		}
 	}
+}
+
+func pruneOldSamplesUntil(
+	ctx context.Context,
+	cutoff time.Time,
+	batchSize int,
+	deadline time.Time,
+	prune func(context.Context, time.Time, int) (int64, int64, error),
+) (int64, error) {
+	var total int64
+	for ctx.Err() == nil && time.Now().Before(deadline) {
+		batchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		characterRows, guildRows, err := prune(batchCtx, cutoff, batchSize)
+		cancel()
+		if err != nil {
+			return total, err
+		}
+		total += characterRows + guildRows
+		if characterRows < int64(batchSize) && guildRows < int64(batchSize) {
+			break
+		}
+	}
+	return total, ctx.Err()
 }

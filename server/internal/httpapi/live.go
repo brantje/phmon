@@ -812,6 +812,9 @@ func (c *liveClient) snapshotLoop() {
 		}
 
 		flags := c.takeInvalidateFlags()
+		if flags == 0 {
+			continue
+		}
 		subscriptions := c.snapshotSubscriptionsForFlags(flags)
 
 		keepGoing := true
@@ -848,9 +851,6 @@ func (c *liveClient) takeInvalidateFlags() uint8 {
 	defer c.invalidateMu.Unlock()
 	flags := c.invalidateFlags
 	c.invalidateFlags = 0
-	if flags == 0 {
-		return 3
-	}
 	return flags
 }
 

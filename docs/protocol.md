@@ -1513,9 +1513,10 @@ offer Stop.
 
 ## Agent protocol 18: academy identity on membership events — 2026-10-07
 
-Plugin 1.9.27 adds the optional numeric `academy_id` to `academy.joined` and
-`academy.left` event payloads when the academy ID is available in the accepted
-`get_academy()` snapshot. Existing `member_id` and `member` fields are unchanged;
+Plugin 1.9.27 adds the optional numeric `academy_id` to
+`academy.member_joined` and `academy.member_left` event payloads when the academy ID
+is available in the accepted `get_academy()` snapshot. Existing `member_id` and
+`member` fields are unchanged;
 older agents and observations without an ID remain valid and contextless. When the
 observed academy ID changes, the plugin emits departures with the old ID and joins
 with the new ID so analytics can attribute each transition to the correct academy.

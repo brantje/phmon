@@ -70,7 +70,7 @@ func run() error {
 
 	store := agents.NewStore(pool)
 	analyticsStore := analytics.NewStore(pool)
-	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 6*time.Hour)
+	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 15*time.Minute)
 	characterStore := characters.NewStore(pool)
 	resourceStore := resources.NewStore(pool)
 	eventStore := events.NewStore(pool)

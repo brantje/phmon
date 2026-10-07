@@ -24,7 +24,7 @@ they contain no level EXP-requirement table. XP%/hour and rollover-derived rates
 therefore remain unavailable until a versioned, server-applicable requirement
 source is verified.
 
-Plugin **1.9.27** / protocol **17** adds an optional numeric `academy_id` to
+Plugin **1.9.27** / protocol **18** adds an optional numeric `academy_id` to
 membership-diff event payloads when the accepted `get_academy()` resource exposes
 its numeric ID. An academy switch emits old-scope departures and new-scope joins.
 This enriches attribution only; it does not interpret member type codes or infer

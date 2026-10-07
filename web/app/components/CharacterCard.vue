@@ -32,6 +32,8 @@ const resourceSubscriptionID = `resources-${useId()
 const performanceSubscriptionID = `analytics-progress-${useId()
   .replace(/[^a-zA-Z0-9_-]/g, '')
   .slice(-24)}`
+const trainingTitleID = `${performanceSubscriptionID}-training-title`
+const sessionsTitleID = `${performanceSubscriptionID}-sessions-title`
 const performanceFeed = computed(
   () => analyticsFeeds.value[performanceSubscriptionID],
 )
@@ -634,8 +636,11 @@ onBeforeUnmount(() => {
             suppressed.</span
           >
         </p>
-        <section class="progress-history-note" aria-labelledby="training-title">
-          <h4 id="training-title">Training behavior · last 24h</h4>
+        <section
+          class="progress-history-note"
+          :aria-labelledby="trainingTitleID"
+        >
+          <h4 :id="trainingTitleID">Training behavior · last 24h</h4>
           <p>
             Observed state coverage only; commands do not establish bot uptime.
           </p>
@@ -679,9 +684,9 @@ onBeforeUnmount(() => {
         </section>
         <section
           class="progress-session-history"
-          aria-labelledby="sessions-title"
+          :aria-labelledby="sessionsTitleID"
         >
-          <h4 id="sessions-title">
+          <h4 :id="sessionsTitleID">
             Session history ·
             {{ performance.session_count ?? performance.sessions.length }}
             observed

@@ -27,6 +27,23 @@ type liveEnvelope struct {
 	Data            json.RawMessage `json:"data"`
 }
 
+func TestTakeInvalidateFlagsLeavesRedundantWakeAsNoop(t *testing.T) {
+	client := &liveClient{}
+	if got := client.takeInvalidateFlags(); got != 0 {
+		t.Fatalf("empty invalidation flags = %d, want 0", got)
+	}
+
+	client.invalidateMu.Lock()
+	client.invalidateFlags = 2
+	client.invalidateMu.Unlock()
+	if got := client.takeInvalidateFlags(); got != 2 {
+		t.Fatalf("analytics invalidation flags = %d, want 2", got)
+	}
+	if got := client.takeInvalidateFlags(); got != 0 {
+		t.Fatalf("cleared invalidation flags = %d, want 0", got)
+	}
+}
+
 func TestLiveAgentSubscriptionInitialAndReplacementSnapshots(t *testing.T) {
 	store := newFakeAgentStore()
 	now := time.Now().UTC()
