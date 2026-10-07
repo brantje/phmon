@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 17
+	agentProtocolVersion    = 18
 	agentMinProtocolVersion = 2
 )
 

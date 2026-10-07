@@ -115,7 +115,7 @@ otherwise explain why those summaries are unavailable.
 
 Academy join/leave counts mean observed membership changes. A disappearance or
 level/type code does not establish graduation or a ban. First-seen members have
-unknown join time. Plugin 1.9.27 / protocol 17 adds optional `academy_id` context
+unknown join time. Plugin 1.9.27 / protocol 18 adds optional `academy_id` context
 from the accepted academy snapshot; older events stay contextless. An academy ID
 change emits a departure in the previous academy and a join in the new one. This
 does not prove graduation, a ban, or lifetime uniqueness of member IDs. Graduate
