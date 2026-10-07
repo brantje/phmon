@@ -132,7 +132,12 @@ def main() -> None:
             (metric for metric in deaths.get("summary", []) if metric.get("key") == "most_deaths_character"),
             None,
         )
-        if not event_id or not leader or "AnalyticsFixture" not in leader.get("href", ""):
+        if (
+            not event_id
+            or not leader
+            or leader.get("value") != character
+            or fixture["character_id"] not in leader.get("href", "")
+        ):
             raise AssertionError(f"death summary did not preserve the character drill-down: {deaths}")
 
         observer = WebSocketClient(live_url(), WEB_URL, live_smoke_cookie).connect()

@@ -2,7 +2,7 @@
 
 Review date: 2026-10-07. Reviewed PR [#80](https://github.com/brantje/phmon/pull/80)
 at `b7542adc6d21316ea923f1bbb84f0c029a3a2255`, against
-[`slice-12-implementation-plan.md`](/var/www/phmon/docs/slice-12-implementation-plan.md).
+[`slice-12-implementation-plan.md`](docs/slice-12-implementation-plan.md).
 The instructions below are the ready-to-use repair prompt. Final recheck: PR #80
 and the checkout advanced to `3fca132` on `codex/slice12-review-fixes`. A concurrent
 task addressed all five CodeRabbit comments in that commit; it also includes
@@ -10,7 +10,7 @@ task addressed all five CodeRabbit comments in that commit; it also includes
 items 2 and 17 and the empty-wake portion of item 3 are already addressed and are
 verification notes, not instructions to duplicate those fixes.
 
-Work in `/var/www/phmon`. Read `AGENTS.md`, the Slice 12 plan, and this review.
+Work in the repository root. Read `AGENTS.md`, the Slice 12 plan, and this review.
 Fix the still-valid findings below and finish the omitted, unblocked Slice 12
 work. Scope this request to Slice 12; do not begin Slices 10/11 or 13–15.
 Recheck the current branch and code before changing anything. Use the existing
@@ -35,7 +35,7 @@ review.
 Address correctness and transport failures first:
 
 1. **[P1] Validate dates before changing a live subscription.**
-   [analytics.vue:193](/var/www/phmon/web/app/pages/analytics.vue:193) checks only
+   [analytics.vue:193](web/app/pages/analytics.vue:193) checks only
    `from > to`. Clearing either date sends a missing required bound; ranges over
    366 days also get sent. The backend rejects these filters and closes the shared
    socket in `liveClient.subscribe`. Reconnect resends the invalid subscription,
@@ -47,7 +47,7 @@ Address correctness and transport failures first:
 
 2. **[Fixed locally; verify load] Make retention keep pace with ingestion.**
    At the reviewed PR head,
-   [store.go:150](/var/www/phmon/server/internal/analytics/store.go:150) stopped when
+   [store.go:150](server/internal/analytics/store.go:150) stopped when
    the combined deletion count is below 2,000. With no expired guild rows it stopped
    after deleting only 1,000 character rows. The initial probe left 1,500 of 2,500
    expired rows behind. Even without that early exit, ten batches every six hours
@@ -59,7 +59,7 @@ Address correctness and transport failures first:
    This incorporates CodeRabbit's retention finding.
 
 3. **[P1] Preserve pending map snapshots across selective analytics passes.**
-   [live.go:861](/var/www/phmon/server/internal/httpapi/live.go:861) clears
+   [live.go:861](server/internal/httpapi/live.go:861) clears
    `positionSnapshots` before determining which stream class this pass serves.
    An analytics-only pass discards a pending position subscribe/refresh; the
    following standard pass then skips it. This can occur when a position request
@@ -71,7 +71,7 @@ Address correctness and transport failures first:
    explicit position refresh, empty wakes and revision changes.
 
 4. **[P2] Complete analytics invalidation and isolate heavy work.**
-   [agent.go:1089](/var/www/phmon/server/internal/httpapi/agent.go:1089) calls only
+   [agent.go:1089](server/internal/httpapi/agent.go:1089) calls only
    standard invalidation after resources commit, although that transaction can
    insert guild gold history. Group mutations and guild-history deletion likewise
    do not invalidate analytics. Open charts can retain removed data or old group
@@ -85,7 +85,7 @@ Address correctness and transport failures first:
    samples from a fleet do not continuously rebuild every 90-day chart.
 
 5. **[P2] Compute leaders from real entities before adding Other.**
-   [query.go:532](/var/www/phmon/server/internal/analytics/query.go:532) sorts the
+   [query.go:532](server/internal/analytics/query.go:532) sorts the
    aggregate Other bucket together with actual entities. `leaderMetric` then takes
    its first row. Fifty characters with one death each return “Other” as the
    character with most deaths; locations and drop leaders have the same problem.
@@ -94,14 +94,14 @@ Address correctness and transport failures first:
    Other bucket plus same-name characters on different servers.
 
 6. **[P2] Sort guild balances numerically.**
-   [economy.go:139](/var/www/phmon/server/internal/analytics/economy.go:139) selects
+   [economy.go:139](server/internal/analytics/economy.go:139) selects
    `gold::text` and orders by the output alias `gold`. A 900-gold guild precedes a
    10,000-gold guild and becomes the summary leader. Order by the underlying numeric
    balance; serialize to text afterward. Preserve server/guild identity and
    deterministic observer ties. Add the 900-versus-10,000 regression.
 
 7. **[P2] Bound series without discarding the end of the selected range.**
-   [economy.go:28](/var/www/phmon/server/internal/analytics/economy.go:28) and the
+   [economy.go:28](server/internal/analytics/economy.go:28) and the
    guild equivalent limit all series together to 501 rows ordered oldest first.
    Query-level truncation then keeps 500. Ten characters over 60 days lose the most
    recent ten days despite each series having only 60 points. Bound series and
@@ -111,7 +111,7 @@ Address correctness and transport failures first:
    500-hour request: elapsed-duration checks alone can permit 501 calendar buckets.
 
 8. **[P2] Include unknown taxonomy in degree chart reconciliation.**
-   [query.go:243](/var/www/phmon/server/internal/analytics/query.go:243) uses a degree
+   [query.go:243](server/internal/analytics/query.go:243) uses a degree
    breakdown that includes unknown degrees for known types but drops rows whose
    entire taxonomy is unknown. One known D10 drop plus one unknown model returns
    total 2 and a displayed degree breakdown totaling 1. Keep distinguishable unknown
@@ -119,7 +119,7 @@ Address correctness and transport failures first:
    degree into zero; reconcile chart, summary, evidence table and source counts.
 
 9. **[P2] Do not invent academy changes when ID context disappears.**
-   [PhMon.py:3525](/var/www/phmon/plugin/PhMon.py:3525) treats transitions between a
+   [PhMon.py:3525](plugin/PhMon.py:3525) treats transitions between a
    numeric ID and `None` as an academy switch. An unchanged member list with IDs
    `7 -> missing -> 7` produces four join/leave events. Treat missing/invalid ID
    context as unavailable continuity and rebaseline conservatively; emit a full
@@ -128,7 +128,7 @@ Address correctness and transport failures first:
    attribution and server-qualified academy identity explicit.
 
 10. **[P2] Calculate event tiles independently of numeric rate history.**
-    [performance.go:78](/var/www/phmon/server/internal/analytics/performance.go:78)
+    [performance.go:78](server/internal/analytics/performance.go:78)
     returns before querying canonical events when there are no metric samples.
     A character with one recorded death then returns `deaths_24h=0`. This affects
     pre-install history, outages and characters without fresh numeric observations.
@@ -137,11 +137,11 @@ Address correctness and transport failures first:
     Reset Rates; insufficient rate history must never manufacture zero activity.
 
 11. **[P2] Keep live Progress windows current across browsers and resets.**
-    [CharacterCard.vue:120](/var/www/phmon/web/app/components/CharacterCard.vue:120)
+    [CharacterCard.vue:120](web/app/components/CharacterCard.vue:120)
     freezes `to` when subscribing and moves it once a minute. New accepted samples
     trigger builds but remain outside that window. After another browser resets
     rates, its reset can be later than this client's `to`; the reset condition in
-    [performance.go:109](/var/www/phmon/server/internal/analytics/performance.go:109)
+    [performance.go:109](server/internal/analytics/performance.go:109)
     ignores it and returns the old rate as current. The initiating browser alone
     advances its window immediately. Establish a bounded live rolling-window
     contract or refresh affected clients' effective windows after reset. Preserve
@@ -153,7 +153,7 @@ Address correctness and transport failures first:
     pagination at 24 cards is not evidence that the required batched contract exists.
 
 12. **[P2] Fence current-level pace to compatible XP requirements.**
-    [performance.go:225](/var/www/phmon/server/internal/analytics/performance.go:225)
+    [performance.go:225](server/internal/analytics/performance.go:225)
     checks the requirement only within each adjacent pair, then combines intervals
     from different requirements. XP% and ETA divide that pooled pace by the latest
     requirement. The same-level probe changes requirement 1,000 to 10,000 and pace
@@ -165,7 +165,7 @@ Address correctness and transport failures first:
     document current-level field semantics separately from unsupported rollovers.
 
 13. **[P2] Preserve integer precision before calculating rates.**
-    [calculate.go:96](/var/www/phmon/server/internal/analytics/calculate.go:96)
+    [calculate.go:96](server/internal/analytics/calculate.go:96)
     converts each balance to float before subtracting. A one-gold gain from
     `9007199254740992` over 60 eligible seconds becomes delta 0 and rate 0 instead
     of delta 1 and 60 gold/h. Subtract/accumulate exactly before converting a bounded
@@ -175,11 +175,11 @@ Address correctness and transport failures first:
 14. **[P2] Restore scope, pagination and canonical evidence links.**
     The Analytics page has no character/group or guild selection despite backend
     fields, and it does not restore dates/grouping from shareable route state.
-    [analytics.vue:260](/var/www/phmon/web/app/pages/analytics.vue:260) fails to reset
+    [analytics.vue:260](web/app/pages/analytics.vue:260) fails to reset
     occurrence pagination when item type/degree change. Filter changes can keep a
     cursor from another population. Centralize filter validation, route restoration
     and cursor reset, including browser back/forward and balance scope.
-    [analytics.vue:281](/var/www/phmon/web/app/pages/analytics.vue:281) links to Events
+    [analytics.vue:281](web/app/pages/analytics.vue:281) links to Events
     with only kind/name: the destination defaults to seven days and drop tabs also
     include owned gains, so a 90-day world-drop chart drills into a different
     population. Preserve server, stable character ID, exact time bounds and source
@@ -216,7 +216,7 @@ Finish the plan's missing deliverables without inventing unavailable facts:
     have actual evidence.
 
 16. **[P2] Use the planned accessible chart wrapper and finish P8/P9 gates.**
-    [AnalyticsChart.vue:50](/var/www/phmon/web/app/components/AnalyticsChart.vue:50)
+    [AnalyticsChart.vue:50](web/app/components/AnalyticsChart.vue:50)
     creates fractional count ticks (`3 / 2 = 1.5`), draws every series as one flat
     sequence, spaces omitted dates as if contiguous, and exposes bar values only
     through non-focusable SVG titles plus a hidden table. It has no keyboard/touch
@@ -237,12 +237,12 @@ Finish the plan's missing deliverables without inventing unavailable facts:
 Preserve and validate the other CodeRabbit fixes already committed concurrently:
 
 17. **[Fixed locally] Correct protocol and accessibility references.**
-    In [phbot-capabilities.md:27](/var/www/phmon/docs/phbot-capabilities.md:27), plugin
+    In [phbot-capabilities.md:27](docs/phbot-capabilities.md:27), plugin
     1.9.27 uses protocol **18**, not 17. In
-    [protocol.md:1516](/var/www/phmon/docs/protocol.md:1516), canonical kinds are
+    [protocol.md:1516](docs/protocol.md:1516), canonical kinds are
     `academy.member_joined` and `academy.member_left`, not `academy.joined/left`.
     Do not rewrite accurate historical protocol-17 planning baselines. In
-    [CharacterCard.vue:637](/var/www/phmon/web/app/components/CharacterCard.vue:637),
+    [CharacterCard.vue:637](web/app/components/CharacterCard.vue:637),
     training/session heading IDs and both `aria-labelledby` attributes need a
     per-card `useId()` value. All three fixes are already present in `3fca132`.
     Check them in the final combined state and verify multiple Progress cards;
