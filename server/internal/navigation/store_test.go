@@ -589,6 +589,44 @@ func TestObservedRouteTrimsIndependentlyOfTheCommandRoute(t *testing.T) {
 	}
 }
 
+func TestObservedIdenticalResubmitAfterArrivalResetsTerminalState(t *testing.T) {
+	store := NewStore()
+	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoked := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	z := 0.0
+	instructions := []Instruction{{Index: 0, Kind: "walk", X: 6420, Y: 1080, Z: 0}}
+	observed := ObservedInput{
+		SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-trade", Sequence: 1, Active: true, InvokedAt: invoked,
+		Source: &Position{Region: 25000, X: 6410, Y: 1080, Z: &z, At: invoked}, Instructions: instructions,
+	}
+	destination := Point{Region: 25000, X: 6420, Y: 1080, Z: 0}
+	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("observed route not stored")
+	}
+	store.mu.Lock()
+	arrivedRoute := store.observed[observed.SessionID]
+	arrivedRoute.arrived = true
+	arrivedRoute.status = "arrived"
+	store.observed[observed.SessionID] = arrivedRoute
+	store.mu.Unlock()
+	resubmit := observed
+	resubmit.Sequence = 2
+	resubmit.InvokedAt = invoked.Add(3 * time.Second)
+	if !store.ReplaceObserved(resubmit, "agent-one", 4, "Greatest", profile.DatasetID, invoked.Add(3*time.Second), func() bool { return true }) {
+		t.Fatal("identical resubmit rejected")
+	}
+	view := store.Snapshot("Greatest", profile, invoked.Add(3*time.Second))[0]
+	if view.Arrived || view.Status == "arrived" {
+		t.Fatalf("resubmit after arrival should reset terminal state: %#v", view)
+	}
+	if view.Destination.X != destination.X || view.Destination.Y != destination.Y {
+		t.Fatalf("destination preserved: %#v", view.Destination)
+	}
+}
+
 func TestObservedIdenticalResubmitPreservesTrimmedProgress(t *testing.T) {
 	store := NewStore()
 	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)

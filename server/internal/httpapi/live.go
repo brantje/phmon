@@ -1365,6 +1365,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			Bucket: message.Filter.Bucket, GroupBy: message.Filter.GroupBy, Guild: message.Filter.Guild,
 			PageSize: message.Filter.PageSize, BalanceScope: message.Filter.BalanceScope,
 			ItemType: message.Filter.ItemType, ItemDegree: message.Filter.ItemDegree,
+			DropSource: message.Filter.DropSource,
 		},
 	}
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {

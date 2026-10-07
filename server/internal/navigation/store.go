@@ -386,6 +386,13 @@ func (s *Store) ReplaceObserved(input ObservedInput, agentID string, generation 
 			stored.Input = storedInput
 			stored.destination = destination
 			stored.updatedAt = now.UTC()
+			if input.Sequence > current.Sequence && current.arrived {
+				stored.arrived = false
+				stored.stopped = false
+				stored.cursor = 0
+				stored.status = "waiting_for_movement"
+				stored.reason = ""
+			}
 			s.observed[input.SessionID] = stored
 			return true
 		}

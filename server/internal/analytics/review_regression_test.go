@@ -160,7 +160,11 @@ func TestReviewCurrentLevelPaceMustNotMixXPRequirements(t *testing.T) {
 	}
 	p := f.query(t, analytics.ViewPerformance).Performance
 	if p.XPPercentPerHour == nil || math.Abs(*p.XPPercentPerHour-360) > 0.01 {
-		t.Fatalf("current requirement pace should be 360 percent/hour from latest compatible 80s; got %v percent/hour", *p.XPPercentPerHour)
+		got := "nil"
+		if p.XPPercentPerHour != nil {
+			got = fmt.Sprintf("%g", *p.XPPercentPerHour)
+		}
+		t.Fatalf("current requirement pace should be 360 percent/hour from latest compatible 80s; got %s percent/hour", got)
 	}
 }
 func TestReviewRollingEventTilesMustWorkWithoutNumericHistory(t *testing.T) {

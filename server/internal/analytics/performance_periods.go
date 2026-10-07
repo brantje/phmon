@@ -168,8 +168,6 @@ FROM period_rows`, characterIDs, filter.Server, start, end, filter.Timezone)
 		if len(target.Locations) > maxPerformanceLocationComparisons {
 			target.Locations = target.Locations[:maxPerformanceLocationComparisons]
 			target.Truncated = true
-			snapshot.Status = "limited"
-			snapshot.Reason = "seven_day_location_comparison_bounded"
 		}
 	}
 	return nil
