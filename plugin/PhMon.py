@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.31'
+pVersion = '1.9.30'
 pUrl = ''
 
 PROTOCOL_VERSION = 18
@@ -607,82 +607,6 @@ def collect_player_observation(api=None):
         seen.add(player_id)
         players.append(row)
     return ('truncated' if truncated else 'observed'), players, truncated
-
-
-def inspect_visible_player_equipment(target, api=None):
-    """One local read of the documented getter; never publish its item list."""
-    target = target.strip() if isinstance(target, str) else ''
-    if not target or len(target) > 64:
-        return {'outcome': 'invalid_target'}
-    client_function = (api or {}).get('get_client') if isinstance(api, dict) else _optional_phbot_api('get_client')
-    client_running = None
-    if callable(client_function):
-        try:
-            client = client_function()
-            if isinstance(client, dict) and isinstance(client.get('running'), bool):
-                client_running = client['running']
-        except Exception:
-            pass
-    function = (api or {}).get('get_players') if isinstance(api, dict) else _optional_phbot_api('get_players')
-    if not callable(function):
-        return {'outcome': 'getter_unavailable', 'client_running': client_running}
-    try:
-        raw = function()
-    except Exception as error:
-        return {'outcome': 'getter_error', 'error_type': error.__class__.__name__[:64],
-                'client_running': client_running}
-    if not isinstance(raw, dict):
-        return {'outcome': 'getter_none' if raw is None else 'unexpected_result',
-                'result_type': type(raw).__name__[:64], 'client_running': client_running}
-    report = {'outcome': 'target_missing', 'player_count': len(raw), 'target': target,
-              'client_running': client_running}
-    matches = []
-    for identifier, player in itertools.islice(raw.items(), MAX_PLAYERS_PER_SNAPSHOT):
-        if not isinstance(player, dict):
-            continue
-        if target == str(identifier) or target.casefold() == str(player.get('name', '')).casefold():
-            matches.append(player)
-    if len(matches) != 1:
-        report['outcome'] = 'target_ambiguous' if matches else 'target_missing'
-        report['inspected_players'] = min(len(raw), MAX_PLAYERS_PER_SNAPSHOT)
-        return report
-    player = matches[0]
-    report['fields'] = sorted(str(key)[:64] for key in player if isinstance(key, str))[:32]
-    report['fields_truncated'] = len(report['fields']) < len(player)
-    if 'items' not in player:
-        report['outcome'] = 'items_missing'
-        return report
-    items = player['items']
-    if items is None:
-        report['outcome'] = 'items_none'
-        return report
-    if not isinstance(items, list):
-        report['outcome'] = 'items_unexpected_type'
-        report['items_type'] = type(items).__name__[:64]
-        return report
-    report['outcome'] = 'items_observed'
-    report['item_count'] = len(items)
-    report['items_truncated'] = len(items) > 32
-    report['items'] = []
-    for index, item in enumerate(items[:32]):
-        row = {'source_index': index, 'type': type(item).__name__[:64]}
-        if isinstance(item, dict):
-            row['fields'] = sorted(str(key)[:64] for key in item if isinstance(key, str))[:24]
-            row['fields_truncated'] = len(row['fields']) < len(item)
-            for key in ('name', 'servername'):
-                value = item.get(key)
-                if isinstance(value, str):
-                    row[key] = value[:128]
-            for key in ('model', 'degree', 'level', 'plus'):
-                value = item.get(key)
-                if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 4294967295:
-                    row[key] = value
-        report['items'].append(row)
-        if len(json.dumps(report, separators=(',', ':'), allow_nan=False).encode('utf-8')) > 8192:
-            report['items'].pop()
-            report['items_truncated'] = True
-            break
-    return report
 
 
 def _player_snapshot_signature(status, region, observer_z, players):
@@ -2091,14 +2015,9 @@ class PassivePlayerCapture(object):
         self._bytes = 0
         self._captured_count = 0
         self._records = []
-        self._server_packets = []
-        self._server_overflow = False
-        self._client_packets = []
-        self._client_overflow = False
         self._groups = []
         self._group = None
         self._deadline = 0
-        self._started_at = 0
         self._epoch = 0
         self._sequence = 0
         self._reason = 'disabled'
@@ -2112,17 +2031,12 @@ class PassivePlayerCapture(object):
             self._bytes = 0
             self._captured_count = 0
             self._records = []
-            self._server_packets = []
-            self._server_overflow = False
-            self._client_packets = []
-            self._client_overflow = False
             self._groups = []
             self._group = None
             self._sequence = 0
             self._epoch += 1
             self._context = {key: str(context.get(key, ''))[:100] for key in ('server', 'session_id', 'phbot_version')}
-            self._started_at = _monotonic()
-            self._deadline = self._started_at + seconds
+            self._deadline = _monotonic() + seconds
             self._reason = 'capturing'
         return True
 
@@ -2132,14 +2046,9 @@ class PassivePlayerCapture(object):
             self._bytes = 0
             self._captured_count = 0
             self._records = []
-            self._server_packets = []
-            self._server_overflow = False
-            self._client_packets = []
-            self._client_overflow = False
             self._groups = []
             self._group = None
             self._deadline = 0
-            self._started_at = 0
             self._reason = reason
             self._epoch += 1
 
@@ -2168,36 +2077,6 @@ class PassivePlayerCapture(object):
             self._queue.append((opcode, payload, self._sequence, self._epoch))
             self._bytes += len(payload)
         return True
-
-    def enqueue_client(self, opcode, data):
-        """Record outgoing opcode/length only; never retain client payload bytes."""
-        with self._lock:
-            if not self._deadline or _monotonic() >= self._deadline:
-                return False
-            if not isinstance(opcode, int) or isinstance(opcode, bool) or not 0 <= opcode <= 65535 or not isinstance(data, (bytes, bytearray)):
-                return False
-            if len(self._client_packets) >= 128:
-                self._client_overflow = True
-                return False
-            self._client_packets.append({'opcode': '0x%04X' % opcode,
-                                         'length': len(data),
-                                         'elapsed_ms': int((_monotonic() - self._started_at) * 1000)})
-            return True
-
-    def enqueue_server_metadata(self, opcode, data):
-        """Record unknown response opcodes without retaining their payloads."""
-        with self._lock:
-            if not self._deadline or _monotonic() >= self._deadline:
-                return False
-            if not isinstance(opcode, int) or isinstance(opcode, bool) or not 0 <= opcode <= 65535 or not isinstance(data, (bytes, bytearray)):
-                return False
-            if len(self._server_packets) >= 128:
-                self._server_overflow = True
-                return False
-            self._server_packets.append({'opcode': '0x%04X' % opcode,
-                                         'length': len(data),
-                                         'elapsed_ms': int((_monotonic() - self._started_at) * 1000)})
-            return True
 
     def drain(self):
         with self._lock:
@@ -2253,13 +2132,9 @@ class PassivePlayerCapture(object):
     def report(self):
         self.drain()
         with self._lock:
-            return {'schema_version': 2, 'decoder_enabled': False, 'sanitized': False,
+            return {'schema_version': 1, 'decoder_enabled': False, 'sanitized': False,
                     'reason': self._reason, 'context': dict(self._context), 'epoch': self._epoch,
                     'records': [dict(row) for row in self._records],
-                    'server_packets': [dict(row) for row in self._server_packets],
-                    'server_packets_truncated': self._server_overflow,
-                    'client_packets': [dict(row) for row in self._client_packets],
-                    'client_packets_truncated': self._client_overflow,
                     'groups': [dict(row) for row in self._groups]}
 
 
@@ -4029,12 +3904,8 @@ class AgentWorker(object):
 
     def capture_joymax_packet(self, opcode, data):
         """Copy only allowlisted packets; decoding is performed by the network worker."""
-        self._player_capture.enqueue_server_metadata(opcode, data)
         self._player_capture.enqueue(opcode, data)
         return self._item_tracker.enqueue(opcode, data)
-
-    def capture_silkroad_packet(self, opcode, data):
-        return self._player_capture.enqueue_client(opcode, data)
 
     def _export_player_capture_if_requested(self):
         if not self._player_capture_export:
@@ -5619,9 +5490,6 @@ _gui_agent_token = None
 _gui_ignore_potions = None
 _gui_ignore_pills = None
 _gui_status = None
-_gui_player_equipment_target = None
-_gui_player_equipment_status = None
-_last_player_equipment_probe_at = float('-inf')
 _last_character_signature = None
 _last_character_sample_at = 0.0
 _last_resources_sample_at = 0.0
@@ -5975,16 +5843,6 @@ def handle_joymax(opcode, data):
     except Exception:
         # A monitoring failure must never interfere with the game packet.
         pass
-    return True
-
-
-def handle_silkroad(opcode, data):
-    """Passively count outgoing opcodes during a manual local capture."""
-    if _worker is not None:
-        try:
-            _worker.capture_silkroad_packet(opcode, data)
-        except Exception:
-            pass
     return True
 
 
@@ -6631,23 +6489,6 @@ def begin_player_packet_capture():
     return started
 
 
-def inspect_visible_player_equipment_button():
-    """Manual, read-only local getter probe; never sends an opcode or backend data."""
-    global _last_player_equipment_probe_at
-    now = _monotonic()
-    if now - _last_player_equipment_probe_at < 2.0:
-        return False
-    _last_player_equipment_probe_at = now
-    target = _QtBind.text(_gui, _gui_player_equipment_target) if _QtBind is not None and _gui is not None else ''
-    report = inspect_visible_player_equipment(target)
-    report['plugin_version'] = pVersion
-    report['phbot_version'] = _worker.phbot_version if _worker is not None else 'unknown'
-    _log('visible player equipment diagnostic: ' + json.dumps(report, separators=(',', ':'), sort_keys=True, allow_nan=False))
-    if _QtBind is not None and _gui is not None and _gui_player_equipment_status is not None:
-        _QtBind.setText(_gui, _gui_player_equipment_status, report['outcome'] + ' — see phBot log')
-    return report
-
-
 def export_player_packet_capture():
     if _worker is None:
         return False
@@ -6668,10 +6509,6 @@ if _PHBOT_AVAILABLE and _QtBind is not None:
     _QtBind.setChecked(_gui, _gui_ignore_potions, True)
     _QtBind.setChecked(_gui, _gui_ignore_pills, True)
     _QtBind.createLabel(_gui, 'Apply changes with Save & Connect.', 390, 118)
-    _QtBind.createLabel(_gui, 'Nearby player name or ID', 390, 150)
-    _gui_player_equipment_target = _QtBind.createLineEdit(_gui, '', 390, 171, 250, 20)
-    _QtBind.createButton(_gui, 'inspect_visible_player_equipment_button', 'Inspect visible gear', 390, 200)
-    _gui_player_equipment_status = _QtBind.createLabel(_gui, 'Read-only local diagnostic', 390, 230)
     _QtBind.createLabel(_gui, 'Backend WebSocket URL', 10, 10)
     _gui_backend_url = _QtBind.createLineEdit(_gui, '', 10, 30, 360, 20)
     _QtBind.createLabel(_gui, 'Agent ID', 10, 60)

@@ -1788,26 +1788,3 @@ The implemented operator review can classify/correct an observed alias and
 confirm/reject/link/unlink identities, with reasons, revisions and retained source
 evidence. Registry APIs/UI and simulator validation are tracked in the
 [focused plan](plans/player-registry-job-identities.md).
-
-### phBot 20.1.3 `nuke4` screenshot follow-up (2026-10-08)
-
-The operator supplied a native phBot Players-panel screenshot showing nearby
-`v_6` with six Cloth armor pieces, Copper Sword and Copper Shield, each at +5.
-This proves the panel displays those eight labels for that player at that moment.
-It does not show a `get_players()` return, item model IDs, packet bytes, equipment
-instance attributes or an active player-detail request opcode. The official
-[Players API](https://plugins.phbot.org/phbot-api/players) still documents an
-`items` list while marking `get_players()` disabled. The official
-[events API](https://plugins.phbot.org/phbot-api/events) distinguishes server
-`handle_joymax()` from client `handle_silkroad()` callbacks. No primary source
-found here establishes a target-server request opcode/payload for full details;
-none is sent by PhMon.
-
-Plugin **1.9.31** / protocol **18** adds an exact-name/ID, one-call local getter
-inspection and passive 15-second incoming/outgoing opcode metadata to compare
-with the panel. The getter result and capture stay local, with bounded counts and
-explicit unavailable/truncated states. The capture export is schema 2; existing
-allowlisted server payloads remain unsanitized. Synthetic tests verify bounds,
-payload omission for metadata and continued packet forwarding. The real nuke4
-getter result and packet correlation are still pending, so player equipment
-transport, decoding and automatic identity gates remain disabled.
