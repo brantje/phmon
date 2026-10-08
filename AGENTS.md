@@ -6072,3 +6072,14 @@ Pre-publication validation is recorded in
 `git diff --check` also pass. Exact next action: publish the branch/PR, inspect
 current-head CI and CodeRabbit, resolve actionable findings with focused tests,
 and reply with the fixing SHA. Record final publication/review state in the PR.
+
+
+PR #82 is open at the initial implementation commit `f6dfcc0`; the plugin version
+guard and validation job passed while stack/CodeRabbit checks continue. A local
+review found that manual decisions over-retained unrelated routine sightings.
+The follow-up pins only cited latest observations per reviewed source, locks them
+against retention, and stores evidence IDs plus player revisions in the decision
+audit. Its PostgreSQL race regression preserves two cited rows and expires 14
+routine rows. Focused players/HTTP race tests pass. Next action: push this fix with
+any applicable CodeRabbit findings, reply with its commit SHA and wait for final-head
+checks/review. Target-runtime capability gates remain unchanged.

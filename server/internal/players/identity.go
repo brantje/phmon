@@ -274,7 +274,28 @@ func (s *Store) Decide(ctx context.Context, r LinkRequest, actor string) (string
 		}
 	}
 	now := time.Now().UTC()
-	audit, _ := json.Marshal(map[string]any{"action": r.Action, "actor": actor, "reason": r.Reason, "at": now})
+	// Preserve the current supporting observation for each source in the reviewed
+	// projection. Lock before pinning so retention cannot remove cited evidence;
+	// routine sightings that were not used by this decision may still expire.
+	rows, err := tx.Query(ctx, `SELECT o.id::text FROM player_observations o JOIN (SELECT DISTINCT ON (player_id) id FROM player_observations WHERE player_id=ANY($1::uuid[]) OR player_id IN (SELECT linked_player_id FROM player_identity_links WHERE canonical_player_id=$2::uuid AND status='confirmed') ORDER BY player_id,observed_at DESC,id DESC) latest USING(id) ORDER BY o.id FOR UPDATE OF o`, ids, r.CanonicalID)
+	if err != nil {
+		return "", err
+	}
+	evidenceIDs := []string{}
+	for rows.Next() {
+		var evidenceID string
+		if err = rows.Scan(&evidenceID); err != nil {
+			rows.Close()
+			return "", err
+		}
+		evidenceIDs = append(evidenceIDs, evidenceID)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return "", err
+	}
+	audit, _ := json.Marshal(map[string]any{"action": r.Action, "actor": actor, "reason": r.Reason, "at": now, "evidence_observation_ids": evidenceIDs, "canonical_revision": r.CanonicalRevision, "linked_revision": r.LinkedRevision})
 	status := "confirmed"
 	if r.Action == "reject" {
 		status = "rejected"
@@ -289,8 +310,7 @@ func (s *Store) Decide(ctx context.Context, r LinkRequest, actor string) (string
 	if err != nil {
 		return "", err
 	}
-	// Pin original evidence for both identities before ordinary retention runs.
-	_, err = tx.Exec(ctx, `UPDATE player_observations SET pinned=true WHERE player_id=ANY($1::uuid[])`, ids)
+	_, err = tx.Exec(ctx, `UPDATE player_observations SET pinned=true WHERE id=ANY($1::uuid[])`, evidenceIDs)
 	if err != nil {
 		return "", err
 	}

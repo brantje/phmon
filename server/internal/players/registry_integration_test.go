@@ -196,6 +196,54 @@ func TestRegistryEquipmentIntervalsAndManualLinkReversal(t *testing.T) {
 	}
 }
 
+func TestRegistryDecisionPinsOnlyReferencedEvidence(t *testing.T) {
+	ctx, s, server := registryFixture(t)
+	base := time.Now().Add(-100 * 24 * time.Hour).UTC().Truncate(time.Microsecond)
+	for _, name := range []string{"RetentionNormal", "RetentionJob"} {
+		for i := 0; i < 8; i++ {
+			o := fixtureObservation(server, name, base.Add(time.Duration(i)*time.Minute))
+			o.SessionID = name + "-observer"
+			if err := s.ApplyObservations(ctx, []Observation{o}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	players := registryList(t, ctx, s, server)
+	if len(players) != 2 {
+		t.Fatal("missing fixture players")
+	}
+	r := LinkRequest{CanonicalID: players[0].ID, LinkedID: players[1].ID, Action: "confirm", Reason: "fixture reviewed association", Confirmed: true, CanonicalRevision: players[0].Revision, LinkedRevision: players[1].Revision}
+	if _, err := s.Decide(ctx, r, "fixture_operator"); err != nil {
+		t.Fatal(err)
+	}
+	var pinned int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM player_observations WHERE server_key=$1 AND pinned`, ServerKey(server)).Scan(&pinned); err != nil || pinned != 2 {
+		t.Fatalf("decision pinned unrelated routine sightings: %d %v", pinned, err)
+	}
+	links, err := s.Links(ctx, server, "", "confirmed", 25, "")
+	if err != nil || len(links.Items) != 1 {
+		t.Fatal("missing decision audit", err)
+	}
+	var evidence struct {
+		Audit []struct {
+			IDs []string `json:"evidence_observation_ids"`
+		} `json:"audit"`
+	}
+	if err = decodeJSON(links.Items[0].Evidence, &evidence); err != nil || len(evidence.Audit) != 1 || len(evidence.Audit[0].IDs) != 2 {
+		t.Fatal("decision evidence references missing", err)
+	}
+	if _, err = s.pool.Exec(ctx, `UPDATE player_observations SET received_at=now()-interval '100 days' WHERE server_key=$1`, ServerKey(server)); err != nil {
+		t.Fatal(err)
+	}
+	if deleted, err := s.Prune(ctx, 90); err != nil || deleted != 14 {
+		t.Fatalf("routine retention: removed %d, %v", deleted, err)
+	}
+	var retained int
+	if err = s.pool.QueryRow(ctx, `SELECT count(*) FROM player_observations WHERE id=ANY($1::uuid[])`, evidence.Audit[0].IDs).Scan(&retained); err != nil || retained != 2 {
+		t.Fatal("decision supporting evidence was removed", err)
+	}
+}
+
 func TestRegistryDelayedEquipmentSplitsIntervalsAndKeepsEvidence(t *testing.T) {
 	ctx, s, server := registryFixture(t)
 	base := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)

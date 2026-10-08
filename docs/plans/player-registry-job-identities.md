@@ -74,7 +74,10 @@ records actor `operator`; it does not invent a multi-user identity system.
 Routine sightings expire after **90 days**, configurable through
 `PLAYER_OBSERVATION_RETENTION_DAYS` (1–3650). Retention deletes at most 5,000 rows
 per batch, 12 batches per hourly run, with a one-minute run deadline. Player
-records, aliases, decisions and meaningful equipment evidence survive. History
+records, aliases, decisions and meaningful equipment evidence survive. Manual
+decisions record and pin only their cited latest source observations, including
+current canonical members; they do not exempt every routine sighting from retention.
+History
 pins its original observations and copies its latest endpoint evidence so delayed
 changes can split an interval after routine sightings expire. A→B→A retains three
 intervals rather than globally deduplicating equal hashes. Thief reports are
