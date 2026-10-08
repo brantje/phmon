@@ -219,6 +219,23 @@ func (o Observation) signature() string {
 	return hex.EncodeToString(sum[:])
 }
 
+// ClassifyVisibleName separates a nearby player's visible name into a normal
+// character name or a job alias. Silkroad job suits replace the character name
+// with an alias that ends in Trader, Hunter, or Thief. A bare job word is left
+// as a normal name so an exact character name is not treated as a suit.
+func ClassifyVisibleName(name string) (nameType, job string) {
+	for _, candidate := range []struct{ suffix, job string }{
+		{"Trader", "trader"},
+		{"Hunter", "hunter"},
+		{"Thief", "thief"},
+	} {
+		if len(name) > len(candidate.suffix) && strings.HasSuffix(name, candidate.suffix) {
+			return "job", candidate.job
+		}
+	}
+	return "normal", ""
+}
+
 func LiveObservations(snapshot LiveSnapshot) []Observation {
 	if snapshot.Status == "unavailable" {
 		return nil
@@ -238,7 +255,13 @@ func LiveObservations(snapshot LiveSnapshot) []Observation {
 			g := p.Guild
 			guild = &g
 		}
-		out = append(out, Observation{Server: snapshot.Server, Name: p.Name, NameType: "unknown", AgentID: snapshot.AgentID, CharacterID: snapshot.CharacterID, SessionID: snapshot.SessionID, RuntimeID: p.PlayerID, Epoch: fmt.Sprint(snapshot.Generation), Level: p.Level, Guild: guild, Source: "map.players", ObservedAt: snapshot.ObservedAt, AliasConflict: names[strings.ToLower(p.Name)] > 1, Location: &Location{Region: region, X: p.X, Y: p.Y, Zone: p.Zone}})
+		nameType, job := ClassifyVisibleName(p.Name)
+		var jobRef *string
+		if job != "" {
+			value := job
+			jobRef = &value
+		}
+		out = append(out, Observation{Server: snapshot.Server, Name: p.Name, NameType: nameType, Job: jobRef, AgentID: snapshot.AgentID, CharacterID: snapshot.CharacterID, SessionID: snapshot.SessionID, RuntimeID: p.PlayerID, Epoch: fmt.Sprint(snapshot.Generation), Level: p.Level, Guild: guild, Source: "map.players", ObservedAt: snapshot.ObservedAt, AliasConflict: names[strings.ToLower(p.Name)] > 1, Location: &Location{Region: region, X: p.X, Y: p.Y, Zone: p.Zone}})
 	}
 	return out
 }

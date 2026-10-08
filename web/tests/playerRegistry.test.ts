@@ -4,6 +4,7 @@ import {
   normalizePlayerQuery,
   safePlayerReturn,
   playerJobLabel,
+  playerLabel,
   equipmentLabel,
   playerRelativeTime,
 } from '../app/utils/playerRegistry.ts'
@@ -69,6 +70,14 @@ test('profile return links remain inside the player list', () => {
     assert.equal(safePlayerReturn(value), '/players')
 })
 test('unknown roles, equipment and timestamps do not become invented values', () => {
+  assert.equal(
+    playerLabel({ name: null, observed_name: 'NoobTrader' }),
+    'NoobTrader',
+  )
+  assert.equal(
+    playerLabel({ name: 'Veyra', observed_name: 'NoobTrader' }),
+    'Veyra',
+  )
   assert.equal(playerJobLabel(null), 'Unknown')
   assert.equal(playerJobLabel('none'), 'None')
   assert.equal(equipmentLabel(null), 'Unavailable')

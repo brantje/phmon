@@ -4,6 +4,7 @@ import {
   normalizePlayerQuery,
   playerJobs,
   playerJobLabel,
+  playerLabel,
   equipmentLabel,
   playerRelativeTime,
 } from '~/utils/playerRegistry'
@@ -369,8 +370,13 @@ const dateValue = (event: Event) => (event.target as HTMLInputElement).value
                     query: { return_to: route.fullPath },
                   }"
                   @click.stop
-                  >{{ player.name || 'Unknown' }}</NuxtLink
-                ><small v-if="!player.name"
+                  >{{ playerLabel(player) }}</NuxtLink
+                ><small
+                  v-if="
+                    player.name &&
+                    player.observed_name &&
+                    player.observed_name !== player.name
+                  "
                   >Observed: {{ player.observed_name }}</small
                 ><small
                   >{{ player.server }} ·

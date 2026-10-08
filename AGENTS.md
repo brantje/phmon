@@ -6132,6 +6132,15 @@ TradeNexus/players/HTTP regressions pass. Production hub behavior is unchanged.
 Next action: push this test-only CI repair, reply with its SHA, and continue
 monitoring final-head checks; retry CodeRabbit after the reported quota reset.
 
+### Resume — 2026-10-08 player names and job aliases
+
+Nearby `map.players` names are the character name. A visible alias longer than
+and ending in Trader, Hunter, or Thief is that job's suit name: the role and
+job name are stored, and the normal character name stays empty until a non-job
+sighting or reviewed link. The player list shows the normal name, or the visible
+alias when that is the only name. Existing Greatest rows were reclassified,
+including NoobTrader as trader. Plugin protocol is unchanged.
+
 ### Resume — 2026-10-08 visible player equipment diagnostic
 
 The operator reported that PhMon does not detect nearby-player equipment and

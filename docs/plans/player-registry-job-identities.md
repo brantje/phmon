@@ -52,8 +52,12 @@ canonical projection view. Server keys use lowercase trimmed existing-store
 normalization. Confirmed active normal names are unique within their server;
 equipment hashes are never unique.
 
-An unclassified name is an observed alias. Its normal name and role remain unknown;
-the table displays **Unknown** beside the recognizable alias. Unique server-scoped
+A nearby-player name is the character name, except a visible alias that ends in
+Trader, Hunter, or Thief. Those suffixes are the job suit name: the role is
+trader, hunter, or thief, and the alias is the job name. The character's normal
+name stays empty until a non-job sighting or a reviewed link provides it. The
+list shows the normal name, or the visible alias when that is the only name.
+Unique server-scoped
 aliases may be reused provisionally across observers. Contradictory model,
 classification or simultaneous-presence evidence creates independent unresolved
 records and a retained `alias-conflict-v1` candidate. Ambiguous aliases are never
