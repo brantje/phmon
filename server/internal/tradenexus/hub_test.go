@@ -48,7 +48,14 @@ func (m *memorySightings) callCount() int {
 func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	store := &memorySightings{}
 	var invalidated atomic.Int32
-	hub := NewHub(Options{Store: store, Invalidate: func() { invalidated.Add(1) }})
+	invalidatedSignal := make(chan struct{}, 1)
+	hub := NewHub(Options{Store: store, Invalidate: func() {
+		invalidated.Add(1)
+		select {
+		case invalidatedSignal <- struct{}{}:
+		default:
+		}
+	}})
 	server := httptest.NewServer(hub)
 	defer server.Close()
 
@@ -83,6 +90,12 @@ func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	echo := readFrame(t, listener)
 	if echo["type"] != "thief.sighting" || echo["sighting_id"] != ack["sighting_id"] || echo["origin"] != "external" {
 		t.Fatalf("broadcast: %#v", echo)
+	}
+	// Socket delivery can finish before Broadcast invokes its refresh callback.
+	select {
+	case <-invalidatedSignal:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sighting did not invalidate the operator snapshot")
 	}
 	if echo["server"] != "GREATEST" || invalidated.Load() != 1 || store.callCount() != 1 {
 		t.Fatalf("stored=%d invalidated=%d broadcast=%#v", store.callCount(), invalidated.Load(), echo)

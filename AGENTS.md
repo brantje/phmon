@@ -6120,3 +6120,14 @@ thread and the protocol note with its full SHA, resolve verified threads, and
 monitor current-head CI/review. CodeRabbit reported its included hourly review
 quota exhausted on the initial review; record any resulting delay accurately.
 Keep the PR open and unmerged; clean up only this run's disposable test container.
+
+The review fixes were pushed as `7df958e3bbbbe3776324fea84977d9624d141468`,
+all seven inline threads received that SHA and were resolved, and the outside-diff
+protocol note received a SHA reply. Full local checks passed; CodeRabbit's fresh
+review was rate-limited until approximately 07:33 UTC. CI caught another existing
+TradeNexus test ordering assumption: socket delivery can precede the invalidation
+callback. The test now waits for an explicit callback signal with a bounded
+deadline. Fifty race-instrumented repetitions and PostgreSQL-backed
+TradeNexus/players/HTTP regressions pass. Production hub behavior is unchanged.
+Next action: push this test-only CI repair, reply with its SHA, and continue
+monitoring final-head checks; retry CodeRabbit after the reported quota reset.

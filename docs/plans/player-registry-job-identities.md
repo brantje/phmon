@@ -240,6 +240,10 @@ required Prettier formatting. PR CI also exposed a concurrent fake-clock read/wr
 in the existing TradeNexus active-snapshot test; its clock now uses atomic immutable
 time values and is checked with 50 race-instrumented repetitions. These are test
 and formatting repairs, not changes to production analytics/TradeNexus behavior.
+The next CI run exposed a second existing TradeNexus test ordering assumption:
+socket delivery may precede operator snapshot invalidation. The test now waits
+for the callback signal with a bounded deadline; 50 race repetitions pass without
+changing the production hub.
 
 PR #82 review follow-up adds migration 000027 for durable invalid thief-source
 rejections. Each source is validated independently; invalid sources leave the
