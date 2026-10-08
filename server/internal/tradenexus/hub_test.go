@@ -292,9 +292,10 @@ func dialTradeNexus(t *testing.T, httpURL string) *websocket.Conn {
 
 func TestTradeNexusActiveThiefSnapshot(t *testing.T) {
 	start := time.Date(2026, 10, 6, 19, 0, 0, 0, time.UTC)
-	current := start
+	var current atomic.Value
+	current.Store(start)
 	store := &memorySightings{}
-	hub := NewHub(Options{Store: store, Now: func() time.Time { return current }})
+	hub := NewHub(Options{Store: store, Now: func() time.Time { return current.Load().(time.Time) }})
 	server := httptest.NewServer(hub)
 	defer server.Close()
 
@@ -324,7 +325,7 @@ func TestTradeNexusActiveThiefSnapshot(t *testing.T) {
 	expectType(t, late, "subscribed")
 	expectThievesSnapshot(t, late, 0)
 
-	current = start.Add(11 * time.Minute)
+	current.Store(start.Add(11 * time.Minute))
 	expired := dialTradeNexus(t, server.URL)
 	defer expired.CloseNow()
 	expectType(t, expired, "hello")
@@ -332,7 +333,7 @@ func TestTradeNexusActiveThiefSnapshot(t *testing.T) {
 	expectType(t, expired, "subscribed")
 	expectThievesSnapshot(t, expired, 0)
 
-	current = start.Add(2 * time.Minute)
+	current.Store(start.Add(2 * time.Minute))
 	writeFrame(t, publisher, map[string]any{
 		"v": 1, "type": "thief.report", "server": "Greatest",
 		"thief":    map[string]string{"name": "Bandit"},

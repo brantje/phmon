@@ -6083,3 +6083,13 @@ audit. Its PostgreSQL race regression preserves two cited rows and expires 14
 routine rows. Focused players/HTTP race tests pass. Next action: push this fix with
 any applicable CodeRabbit findings, reply with its commit SHA and wait for final-head
 checks/review. Target-runtime capability gates remain unchanged.
+
+
+Hosted validation on `2c1c1f0` exposed a pre-existing race in
+`TestTradeNexusActiveThiefSnapshot`: the mutable fake clock was written by the test
+while WebSocket handlers read it. The duplicate validation run passed, but the
+race is fixed rather than dismissed. The test now stores immutable time values
+through `atomic.Value`; production TradeNexus behavior is unchanged. Validate the
+clock with 50 race-instrumented repetitions and the affected Go integration suites,
+then push and include the fixing SHA in the CodeRabbit reply. Both stack jobs on
+`2c1c1f0` passed; CodeRabbit's initial review is still processing at this entry.

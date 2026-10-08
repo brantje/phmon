@@ -234,9 +234,12 @@ A fresh fixture is required for a repeated browser run because review acceptance
 intentionally changes its identity classifications. The disposable backend must
 allow the local frontend origin. Fixture secrets are not production credentials.
 
-Two existing validation defects were repaired: analytics integration fixtures now
+Existing validation defects were repaired: analytics integration fixtures now
 stay within one UTC day even at midnight; the analytics date-range type follows
-required Prettier formatting. Neither changes production analytics behavior.
+required Prettier formatting. PR CI also exposed a concurrent fake-clock read/write
+in the existing TradeNexus active-snapshot test; its clock now uses atomic immutable
+time values and is checked with 50 race-instrumented repetitions. These are test
+and formatting repairs, not changes to production analytics/TradeNexus behavior.
 
 ## Capability blockers and exact next action
 
