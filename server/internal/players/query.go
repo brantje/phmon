@@ -399,26 +399,32 @@ func (s *Store) Observations(ctx context.Context, id string, limit int, token st
 	if limit < 1 || limit > 100 {
 		return page, ErrInvalid
 	}
-	rows, err := s.pool.Query(ctx, `SELECT evidence FROM player_observations WHERE player_id=ANY($1::uuid[]) AND ($2='' OR (observed_at,id)<($3::timestamptz,$4::uuid)) ORDER BY observed_at DESC,id DESC LIMIT $5`, ids, token, nullableString(c.Key), nullableString(c.ID), limit+1)
+	rows, err := s.pool.Query(ctx, `SELECT id::text,observed_at,evidence FROM player_observations WHERE player_id=ANY($1::uuid[]) AND ($2='' OR (observed_at,id)<($3::timestamptz,$4::uuid)) ORDER BY observed_at DESC,id DESC LIMIT $5`, ids, token, nullableString(c.Key), nullableString(c.ID), limit+1)
 	if err != nil {
 		return page, err
 	}
 	defer rows.Close()
+	var lastID string
+	var lastObserved time.Time
 	for rows.Next() {
 		var raw []byte
 		var o Observation
-		if err = rows.Scan(&raw); err != nil {
+		var storedID string
+		var storedObserved time.Time
+		if err = rows.Scan(&storedID, &storedObserved, &raw); err != nil {
 			return page, err
 		}
 		if err = decodeJSON(raw, &o); err != nil {
 			return page, err
 		}
 		page.Items = append(page.Items, o)
+		if len(page.Items) <= limit {
+			lastID, lastObserved = storedID, storedObserved
+		}
 	}
 	if len(page.Items) > limit {
 		page.Items = page.Items[:limit]
-		o := page.Items[len(page.Items)-1]
-		page.NextCursor = encodeCursor(cursor{context, o.ObservedAt.UTC().Format(time.RFC3339Nano), o.ID, time.Now().UTC(), false})
+		page.NextCursor = encodeCursor(cursor{context, lastObserved.UTC().Format(time.RFC3339Nano), lastID, time.Now().UTC(), false})
 	}
 	return page, rows.Err()
 }

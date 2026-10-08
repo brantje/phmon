@@ -47,6 +47,85 @@ func registryList(t *testing.T, ctx context.Context, s *Store, server string) []
 	}
 	return page.Players
 }
+
+func TestRegistryObservationCursorPreservesDatabasePrecision(t *testing.T) {
+	ctx, s, server := registryFixture(t)
+	base := time.Now().Add(-time.Hour).UTC().Truncate(time.Second).Add(123456789 * time.Nanosecond)
+	expected := map[string]time.Time{}
+	batch := []Observation{}
+	for _, offset := range []time.Duration{0, 100 * time.Nanosecond, time.Second} {
+		o := fixtureObservation(server, "Precise", base.Add(offset))
+		o.ID = newID()
+		o.Guild = textRef("Fixture Guild " + offset.String())
+		expected[o.ID] = o.ObservedAt
+		batch = append(batch, o)
+	}
+	if err := s.ApplyObservations(ctx, batch); err != nil {
+		t.Fatal(err)
+	}
+	id := registryList(t, ctx, s, server)[0].ID
+	seen := map[string]bool{}
+	token := ""
+	for i := 0; i < 4; i++ {
+		page, err := s.Observations(ctx, id, 1, token)
+		if err != nil || len(page.Items) != 1 {
+			t.Fatalf("page %d: %+v, %v", i, page, err)
+		}
+		o := page.Items[0]
+		if seen[o.ID] || !o.ObservedAt.Equal(expected[o.ID]) {
+			t.Fatalf("repeated boundary or lost original precision: %+v", o)
+		}
+		seen[o.ID] = true
+		token = page.NextCursor
+		if token == "" {
+			break
+		}
+	}
+	if token != "" || len(seen) != len(expected) {
+		t.Fatalf("pagination missed observations: %v", seen)
+	}
+}
+
+func TestRegistryIdentityLookupTimeoutIsNotMissingRecord(t *testing.T) {
+	ctx, s, server := registryFixture(t)
+	base := time.Now().Add(-time.Minute)
+	if err := s.ApplyObservations(ctx, []Observation{fixtureObservation(server, "One", base), fixtureObservation(server, "Two", base.Add(time.Second))}); err != nil {
+		t.Fatal(err)
+	}
+	records := registryList(t, ctx, s, server)
+	r := LinkRequest{CandidateID: newID(), CanonicalID: records[0].ID, LinkedID: records[1].ID, CanonicalRevision: records[0].Revision, LinkedRevision: records[1].Revision, Revision: 1, Action: "reject", Confirmed: true, Reason: "synthetic timeout fixture"}
+	c := Classification{Name: records[0].ObservedName, Type: "normal", Confirmed: true, Revision: records[0].Revision, Reason: "synthetic timeout fixture"}
+	if _, err := s.Decide(ctx, r, "fixture_operator"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("absent candidate: %v", err)
+	}
+	if err := s.Classify(ctx, newID(), c, "fixture_operator"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("absent player: %v", err)
+	}
+	for _, table := range []string{"players", "player_identity_links"} {
+		t.Run(table, func(t *testing.T) {
+			lock, err := s.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = lock.Rollback(context.Background()) }()
+			// Table names are a fixed test allowlist, never request input.
+			if _, err = lock.Exec(ctx, "LOCK TABLE "+table+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+				t.Fatal(err)
+			}
+			deadline, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+			defer cancel()
+			if table == "players" {
+				err = s.Classify(deadline, records[0].ID, c, "fixture_operator")
+			} else {
+				_, err = s.Decide(deadline, r, "fixture_operator")
+			}
+			if errors.Is(err, ErrNotFound) || !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("database timeout reported incorrectly: %v", err)
+			}
+		})
+	}
+}
+
 func TestRegistryPersistenceObserversOutOfOrderAndFilters(t *testing.T) {
 	ctx, s, server := registryFixture(t)
 	base := time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond)

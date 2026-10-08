@@ -1283,7 +1283,10 @@ floor is ambiguous.
 `map.players` carries one character's current `get_players()` view. It is accepted only
 from a hello that negotiated protocol 10 or newer. The frame uses the same
 `map_snapshot` envelope as monsters and NPCs, with `players` instead of `monsters` or
-`npcs`, plus required `observer_z`. There is no acknowledgement and no durable table.
+`npcs`, plus required `observer_z`. The original v10 implementation had no durable
+table; the [persistent registry](#player-registry-persistence-and-local-capture)
+now stores validated sightings independently of the live map. Legacy `map.players`
+frames still have no acknowledgement.
 A new snapshot for the same session replaces the previous one. `unavailable` or a
 matching `character.left` clears that session. Every socket disconnect removes
 snapshots owned by that socket generation; the last socket for an agent does not use
@@ -1522,9 +1525,9 @@ observed academy ID changes, the plugin emits departures with the old ID and joi
 with the new ID so analytics can attribute each transition to the correct academy.
 This does not establish graduation, bans, or a lifetime-unique member identity.
 
-## Player registry persistence and local capture — 2026-10-07/08
+## Player registry persistence and local capture
 
-Plugin 1.9.29 keeps **protocol 18** and the existing `map.players` wire semantics.
+Plugin 1.9.30 keeps **protocol 18** and the existing `map.players` wire semantics.
 The backend submits accepted snapshots to registry persistence only after existing
 session/generation and row validation. Unclassified getter names become aliases;
 the transport does not start asserting normal names, job types or equipment.

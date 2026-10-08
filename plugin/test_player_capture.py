@@ -1,7 +1,9 @@
 """Synthetic diagnostic envelopes, not captured target-server packet fixtures."""
 import importlib.util
+import json
 import os
 import struct
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -11,6 +13,28 @@ spec.loader.exec_module(plugin)
 
 
 class PlayerCaptureTest(unittest.TestCase):
+    def test_export_with_bare_spool_filename(self):
+        worker = object.__new__(plugin.AgentWorker)
+        worker.config = {'death_spool_path': 'events.json'}
+        worker._player_capture_export = True
+        worker._player_capture = plugin.PassivePlayerCapture()
+        worker._player_capture.begin({'server': 'Synthetic Fixture'}, 15)
+        worker._player_capture.enqueue(0x3015, b'fixture')
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(plugin.os, 'getcwd', return_value=directory), patch.object(plugin, '_log') as log:
+                worker._export_player_capture_if_requested()
+            files = os.listdir(directory)
+            self.assertEqual(len(files), 1)
+            self.assertTrue(files[0].startswith('player-capture-'))
+            self.assertTrue(files[0].endswith('.json'))
+            with open(os.path.join(directory, files[0])) as stream:
+                report = json.load(stream)
+            self.assertEqual(report['records'][0]['payload_hex'], b'fixture'.hex())
+            self.assertFalse(report['decoder_enabled'])
+            self.assertFalse(report['sanitized'])
+            self.assertIn('saved', log.call_args[0][0])
+            self.assertFalse(worker._player_capture_export)
+
     def test_disabled_and_allowlisted_only(self):
         capture = plugin.PassivePlayerCapture()
         self.assertFalse(capture.enqueue(0x3015, b'fixture'))

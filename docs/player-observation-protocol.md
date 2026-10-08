@@ -2,7 +2,7 @@
 
 Investigated 2026-10-07/08. This document is evidence for the focused
 [player registry plan](plans/player-registry-job-identities.md), not an enabled
-packet contract. Agent protocol remains **18**, plugin becomes **1.9.29**.
+packet contract. Agent protocol remains **18**, plugin becomes **1.9.30**.
 
 The [follow-up enablement plan](plans/player-protocol-enablement.md) specifies
 implementation of profile gates, verified decoders, acknowledged observations and
@@ -63,7 +63,7 @@ identity hash/profile or transition auto-link policy is enabled for Greatest.
 
 The existing `handle_joymax()` callback calls the worker's capture admission. It
 only copies allowlisted bytes; conversion/envelope work and export use the existing
-worker. Buttons are **Capture players (15 s)** and **Save player capture** in the
+worker. Buttons are **Capture players (15 s)** and **Save local capture** in the
 local plugin. Capture is off by default; the internal maximum duration is 30 s.
 
 Budgets: 64 KiB per callback packet, 128 records, 2 MiB total payload, 256 KiB per
@@ -73,7 +73,7 @@ Malformed groups, overflow and session/connection changes invalidate continuity.
 Segment sequence numbers are retained rather than duplicated assembled payloads.
 Missing snapshots, truncation, overflow and timeout never establish despawns.
 
-Export creates a unique `PhMon-player-capture-*.json` in the existing local spool
+Export creates a unique `player-capture-*.json` in the existing local spool
 folder. No raw packet bytes are sent to the backend. Reports say
 `decoder_enabled: false` and `sanitized: false`. The operator must inspect/redact
 names, addresses, credentials and unrelated sensitive payloads before sharing.

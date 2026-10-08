@@ -166,8 +166,12 @@ func (s *Store) DeleteOlderThan(ctx context.Context, days int) (int64, error) {
 		return 0, errors.New("retention days must be positive")
 	}
 	// Do not let the source's shorter retention race the bounded registry importer.
-	// Only prune once the immutable source evidence has committed and been pinned.
-	tag, err := s.pool.Exec(ctx, `DELETE FROM thief_sightings t WHERE received_at < now() - make_interval(days => $1) AND EXISTS(SELECT 1 FROM player_observations o WHERE o.server_key=lower(trim(t.server_name)) AND o.source='thief_sighting' AND o.source_ref=t.sighting_id::text AND o.pinned)`, days)
+	// Prune copied evidence or invalid rows after a 24-hour rejection grace period.
+	// Valid pending evidence remains protected; each retention batch is bounded.
+	tag, err := s.pool.Exec(ctx, `DELETE FROM thief_sightings WHERE sighting_id IN (
+SELECT t.sighting_id FROM thief_sightings t WHERE received_at < now() - make_interval(days => $1)
+AND (registry_rejected_at < now() - interval '24 hours' OR EXISTS(SELECT 1 FROM player_observations o WHERE o.server_key=lower(trim(t.server_name)) AND o.source='thief_sighting' AND o.source_ref=t.sighting_id::text AND o.pinned))
+ORDER BY received_at,sighting_id LIMIT 1000)`, days)
 	if err != nil {
 		return 0, fmt.Errorf("delete old thief sightings: %w", err)
 	}

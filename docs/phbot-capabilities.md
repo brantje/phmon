@@ -1759,11 +1759,16 @@ list or one script string.
 
 ## Persistent external-player registry — 2026-10-07/08
 
-Plugin **1.9.29**, agent protocol **18**, adds only opt-in local diagnostic player
+Plugin **1.9.30**, agent protocol **18**, adds only opt-in local diagnostic player
 packet capture. The existing `get_players()` collector and `map.players` transport
 remain unchanged. Accepted nearby-player snapshots now feed a bounded durable
 registry after their existing validation/session/generation checks. Live map TTL,
 positioning, runtime IDs and deduplication remain unchanged.
+
+The PR review follow-up (1.9.30) resolves the spool directory to an absolute path,
+including when its configured path is just a filename. The local button is
+**Save local capture** and creates `player-capture-*.json`. This changes neither
+packet capabilities nor protocol 18; unsupported decoders remain disabled.
 
 The documented `items` example does not establish target equipment support:
 phBot **20.1.2 / Greatest**, inspected **2026-10-01**, exposed no items. Normal/job

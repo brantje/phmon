@@ -102,7 +102,7 @@ introduced without a verified additional packet source. A future negotiated
 message must provide stable IDs, bounded batches, post-commit acknowledgements,
 session fencing and exact replay.
 
-Plugin **1.9.29 / protocol 18** adds local Capture players (15 s) / Save player
+Plugin **1.9.30 / protocol 18** adds local Capture players (15 s) / Save local
 capture controls. Capture is off by default, server-to-client and allowlisted.
 The callback only admits copied bytes; worker processing/export performs no bot
 command or injection. Bounds: 64 KiB per packet, 128 records / 2 MiB payload
@@ -240,6 +240,17 @@ required Prettier formatting. PR CI also exposed a concurrent fake-clock read/wr
 in the existing TradeNexus active-snapshot test; its clock now uses atomic immutable
 time values and is checked with 50 race-instrumented repetitions. These are test
 and formatting repairs, not changes to production analytics/TradeNexus behavior.
+
+PR #82 review follow-up adds migration 000027 for durable invalid thief-source
+rejections. Each source is validated independently; invalid sources leave the
+import window, remain intact for a 24-hour grace period and then become eligible
+for the original source retention. Valid sources remain protected until their
+pinned registry copy commits. Retention deletes at most 1,000 source rows per run.
+Future timestamps are deferred without creating profiles or permanent rejections.
+Observation cursors use the stored PostgreSQL timestamp/UUID while retaining
+original JSON timestamp precision. Database lookup errors retain their unavailable
+status, and the map profile action follows the marker details. Plugin 1.9.30 fixes
+bare-filename spool exports and documents the exact capture button/filename.
 
 ## Capability blockers and exact next action
 

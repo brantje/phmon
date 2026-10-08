@@ -15,7 +15,7 @@ unsupported or revoked evidence keeps that capability disabled. A working spawn
 decoder must not implicitly enable equipment deltas, identity comparison or
 automatic links.
 
-Current baseline: plugin 1.9.29 / protocol 18 has local diagnostic capture only;
+Current baseline: plugin 1.9.30 / protocol 18 has local diagnostic capture only;
 `AssessTransition()` always returns `Automatic: false`. No production player entity
 decoder, acknowledged `player.observations` feed or target-profile transition policy
 is enabled. Existing `map.players`, LiveStore, confirmed alias reuse and manual

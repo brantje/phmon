@@ -247,8 +247,11 @@ func (s *Store) Decide(ctx context.Context, r LinkRequest, actor string) (string
 		var canonical, linked, status string
 		var revision int64
 		err = tx.QueryRow(ctx, `SELECT canonical_player_id::text,linked_player_id::text,status,revision FROM player_identity_links WHERE id=$1::uuid FOR UPDATE`, id).Scan(&canonical, &linked, &status, &revision)
-		if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return "", ErrNotFound
+		}
+		if err != nil {
+			return "", err
 		}
 		if canonical != r.CanonicalID || linked != r.LinkedID || status != "pending" || revision != r.Revision {
 			return "", ErrConflict
@@ -373,8 +376,11 @@ func (s *Store) Classify(ctx context.Context, id string, c Classification, actor
 	defer func() { _ = tx.Rollback(ctx) }()
 	var server string
 	err = tx.QueryRow(ctx, `SELECT server_name FROM players WHERE id=$1::uuid`, id).Scan(&server)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
+	}
+	if err != nil {
+		return err
 	}
 	_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,78113))`, ServerKey(server))
 	if err != nil {

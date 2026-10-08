@@ -365,7 +365,7 @@ operator restart, and both repeated eight-character short/long routes had eight
 observed arrivals. The earlier native False reason remains unknown; these logs
 are available if it recurs. See the [live report](../docs/reference/navigation-2026-10-04.md).
 
-## Player registry and local packet evidence (1.9.29)
+## Player registry and local packet evidence (1.9.30)
 
 Nearby players continue through the existing `get_players()` → `map.players`
 collector. PhMon now persists validated sightings independently of live-map
@@ -374,8 +374,8 @@ Player page shows Unknown alongside it. No extra getter polling or bot action is
 introduced. Protocol remains 18.
 
 The optional **Capture players (15 s)** button records a bounded server-to-client
-allowlist on the existing network worker. It is off by default. **Save player
-capture** requests a unique local `PhMon-player-capture-*.json` export in the
+allowlist on the existing network worker. It is off by default. **Save local
+capture** requests a unique local `player-capture-*.json` export in the
 existing spool folder. Session/connection changes reset it. The capture neither
 decodes identities nor injects packets; raw bytes are not uploaded to PhMon.
 

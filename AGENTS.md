@@ -6093,3 +6093,30 @@ through `atomic.Value`; production TradeNexus behavior is unchanged. Validate th
 clock with 50 race-instrumented repetitions and the affected Go integration suites,
 then push and include the fixing SHA in the CodeRabbit reply. Both stack jobs on
 `2c1c1f0` passed; CodeRabbit's initial review is still processing at this entry.
+
+### Resume — 2026-10-08 PR #82 review fixes
+
+CodeRabbit completed its initial review of `306d165` with seven inline findings
+(including duplicate export documentation feedback) and one outside-diff protocol
+note. All applicable findings are fixed in the next review commit: migration
+000027 records independent invalid thief-source rejections; a 24-hour grace period
+and 1,000-row retention batches preserve valid pending evidence. Future timestamps
+are deferred. Observation cursors use SQL timestamp/UUID keys without losing JSON
+precision; identity lookup timeouts remain service errors rather than false 404s.
+The map profile action follows marker details. Plugin 1.9.30 resolves bare spool
+filenames and its exact Save local capture / player-capture-*.json documentation;
+protocol 18 and all disabled target-runtime gates remain unchanged.
+
+Validation passed: full `scripts/check.sh` with Go 1.27.1, Node 24.20.0 and
+disposable PostgreSQL 18.6; 229 Python tests, 230 frontend tests, Go vet/full race/
+build, transport audit, formatting, lint (0 errors/90 warnings), typecheck,
+production build and Compose config. New PostgreSQL tests cover invalid/valid
+mixed import, replay, rejection grace/retention, deferred evidence recovery,
+nanosecond pagination and locked-query deadlines. Cursor/timeout tests passed
+three race-instrumented repetitions; plugin/protocol guard parity also passed.
+
+Exact next action: push this review commit to PR #82, reply to each CodeRabbit
+thread and the protocol note with its full SHA, resolve verified threads, and
+monitor current-head CI/review. CodeRabbit reported its included hourly review
+quota exhausted on the initial review; record any resulting delay accurately.
+Keep the PR open and unmerged; clean up only this run's disposable test container.

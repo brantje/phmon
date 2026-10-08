@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.29'
+pVersion = '1.9.30'
 pUrl = ''
 
 PROTOCOL_VERSION = 18
@@ -3916,7 +3916,7 @@ class AgentWorker(object):
         if not isinstance(spool, str) or not spool:
             _log('player capture export unavailable: configure the active profile first')
             return
-        directory = os.path.dirname(spool)
+        directory = os.path.dirname(os.path.abspath(spool))
         path = os.path.join(directory, 'player-capture-' + str(uuid.uuid4()) + '.json')
         try:
             if not os.path.isdir(directory):

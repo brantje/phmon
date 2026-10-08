@@ -1106,17 +1106,6 @@ function markerPopup(marker: MapCanvasMarker) {
     const other = marker.player
     title.textContent = other.name || `Player ${other.player_id}`
     subtitle.textContent = 'Other player'
-    if (other.registry_id && /^[0-9a-f-]{36}$/i.test(other.registry_id)) {
-      const link = document.createElement('a')
-      link.href = `/players/${other.registry_id}`
-      link.textContent = 'Open player profile'
-      link.className = 'compact-button'
-      link.addEventListener('click', (event) => {
-        event.preventDefault()
-        void navigateTo(`/players/${other.registry_id}`)
-      })
-      panel.append(link)
-    }
     const icon = document.createElement('img')
     icon.className = 'phmon-map-detail-player-icon'
     icon.src = OTHER_PLAYER_ICON
@@ -1140,6 +1129,20 @@ function markerPopup(marker: MapCanvasMarker) {
     if (rows.length) {
       details.append(...rows)
       panel.append(details)
+    }
+    if (other.registry_id && /^[0-9a-f-]{36}$/i.test(other.registry_id)) {
+      const link = document.createElement('a')
+      link.href = `/players/${other.registry_id}`
+      link.textContent = 'Open player profile'
+      link.className = 'compact-button'
+      link.addEventListener('click', (event) => {
+        event.preventDefault()
+        void navigateTo(`/players/${other.registry_id}`)
+      })
+      const actions = document.createElement('div')
+      actions.className = 'phmon-map-detail-actions'
+      actions.append(link)
+      panel.append(actions)
     }
   } else if (marker.kind === 'npc' && marker.npc) {
     const npc = marker.npc
@@ -2815,7 +2818,8 @@ onBeforeUnmount(() => {
   padding-top: 9px;
 }
 
-:global(.phmon-map-detail-actions button) {
+:global(.phmon-map-detail-actions button),
+:global(.phmon-map-detail-actions a) {
   padding: 5px 8px;
   border: 1px solid #a9a9a2;
   border-radius: 4px;

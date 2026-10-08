@@ -149,3 +149,10 @@ from the event payload. Replays of an already stored event are not published
 again. The plugin attaches the thief's own region and coordinates when
 `get_players()` returns exactly one case-insensitive name match; otherwise the
 sighting uses the observer's position and `position_source` `observer`.
+
+Registry import validates historical sources independently in batches of 128.
+Migration 000027 records invalid source IDs with a rejection timestamp/reason;
+these originals remain available for a 24-hour grace period and are then eligible
+for the configured TradeNexus retention. Future observations are deferred without
+permanent rejection. Valid sources remain protected until their pinned registry
+evidence commits. Source retention deletes at most 1,000 rows per run.
