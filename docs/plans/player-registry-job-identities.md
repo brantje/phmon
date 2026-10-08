@@ -17,6 +17,14 @@ now defines the pending capability-manifest, decoder, transport and automatic-ru
 increments. The completion statement above applies to the original registry run;
 it does not claim those follow-up increments implemented.
 
+2026-10-08 diagnostic follow-up: a phBot 20.1.3 `nuke4` Players-panel screenshot
+shows eight equipped labels for `v_6`, but no plugin getter or packet evidence.
+Plugin 1.9.31 adds a targeted, read-only local `get_players()` item inspection and
+passive opcode/length/timing metadata in capture schema 2. This is preparation
+for exact-profile evidence, not completion of the target equipment gate. See
+[capability evidence](../phbot-capabilities.md#phbot-2013-nuke4-screenshot-follow-up-2026-10-08)
+and [operator steps](../../plugin/README.md#diagnose-visible-player-equipment).
+
 | Slice | Implemented and verified | Remaining target-runtime gate |
 | --- | --- | --- |
 | 1. Registry and Player pages | Migration 000026, five durable tables, field timestamps, alias-safe admission, bounded persistence, historical server scopes, Player after Stats, filters/sorting/cursors/URL history, basic profiles | None for existing verified `map.players` facts |

@@ -6131,3 +6131,35 @@ deadline. Fifty race-instrumented repetitions and PostgreSQL-backed
 TradeNexus/players/HTTP regressions pass. Production hub behavior is unchanged.
 Next action: push this test-only CI repair, reply with its SHA, and continue
 monitoring final-head checks; retry CodeRabbit after the reported quota reset.
+
+### Resume — 2026-10-08 visible player equipment diagnostic
+
+The operator reported that PhMon does not detect nearby-player equipment and
+supplied a phBot 20.1.3 `nuke4` Players-panel screenshot showing eight +5 items
+for `v_6`. The operator proposed using opcodes, then selected a local diagnostic
+first. No exact target request opcode/payload or getter return was supplied, so
+no opcode was injected and no equipment capability was enabled. Current code
+intentionally omits `get_players().items` from `map.players`; the earlier 20.1.2
+Greatest getter sample had no `items` field.
+
+Plugin 1.9.31 now has a manual exact-name/ID **Inspect visible gear** getter
+probe, and the existing 15-second passive capture records bounded incoming and
+outgoing opcode/length/timing metadata (schema 2) alongside its original
+allowlisted incoming hex. Files changed: `plugin/PhMon.py`,
+`plugin/test_player_capture.py`, `plugin/README.md`,
+`docs/player-observation-protocol.md`, `docs/phbot-capabilities.md`,
+`docs/plans/player-registry-job-identities.md`, this guide. All diagnostic
+results stay local; packet forwarding is unchanged. The target-runtime gate
+remains open.
+
+Validation: `python -m unittest plugin.test_player_capture -v` (12 tests),
+full `python -m unittest discover -s plugin -p 'test_*.py' -q` (235 tests),
+`python -m py_compile plugin/PhMon.py`, and `git diff --check` passed at this
+entry; the 12 focused tests, compile and diff checks were repeated after the
+final client-running context field. Exact next action: reload the updated plugin in an authorized phBot
+session, enter `v_6` in the target field and use **Inspect visible gear** while
+it is visible; if needed, record a 15-second capture while opening/selecting
+that player, save locally and sanitize the export. Compare the getter item
+shape and any correlated opcode metadata with the panel before designing a
+verified transport or request decoder. Do not infer a request from the panel
+alone, and keep unsupported profile gates disabled.

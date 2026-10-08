@@ -79,6 +79,27 @@ folder. No raw packet bytes are sent to the backend. Reports say
 names, addresses, credentials and unrelated sensitive payloads before sharing.
 No raw runtime capture or invented sanitized fixture is committed here.
 
+### 2026-10-08 visible-equipment diagnostic
+
+Plugin 1.9.31 adds a manual, targeted `get_players()` inspection. It makes one
+read-only getter call for the entered nearby player name or ID and logs only
+bounded field names and documented item name/code/model/degree/level/plus values.
+It distinguishes missing `items`, `None`, empty, unexpected types, truncated and observed
+lists. The result stays in the local phBot log; it is not a production equipment
+observation or a capability gate. The supplied screenshot of phBot 20.1.3 on
+`nuke4` shows eight items for `v_6` in the native Players panel, but does not
+establish what the plugin getter returns or the packet layout.
+
+The opt-in 15-second capture report is schema 2. In addition to the existing
+allowlisted server payload hex, it records up to 128 incoming and 128 outgoing
+opcode/length/elapsed-time rows, each without payload bytes. Each direction has
+its own truncation flag. This can identify a candidate request/response when an
+operator opens/selects the Players panel. The callback always forwards packets;
+the diagnostic neither injects nor decodes them. Unknown incoming payloads and
+all outgoing payloads remain unavailable from this metadata. A quiet capture
+does not establish that there is no request path: the UI may use cached data or
+phBot-generated packets may not pass through the client callback.
+
 ## Equipment observation foundation
 
 Backend-only normalized equipment describes source/profile, coverage, latest

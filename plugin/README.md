@@ -365,7 +365,7 @@ operator restart, and both repeated eight-character short/long routes had eight
 observed arrivals. The earlier native False reason remains unknown; these logs
 are available if it recurs. See the [live report](../docs/reference/navigation-2026-10-04.md).
 
-## Player registry and local packet evidence (1.9.30)
+## Player registry and local packet evidence (1.9.31)
 
 Nearby players continue through the existing `get_players()` → `map.players`
 collector. PhMon now persists validated sightings independently of live-map
@@ -383,3 +383,23 @@ Exports are explicitly unsanitized. Inspect/redact sensitive fields before shari
 as evidence. Equipment/job packet decoding and transition auto-linking remain
 disabled until actual target-profile fixtures validate them. Limits and exact
 missing evidence are in [player-observation-protocol.md](../docs/player-observation-protocol.md).
+
+### Diagnose visible player equipment
+
+Plugin 1.9.31 adds a **Nearby player name or ID** field and **Inspect visible gear**
+button. After reloading `PhMon.py` in phBot, enter the exact visible name (for the
+reported case, `v_6`) and click the button once while that player is in range.
+The phBot log line `visible player equipment diagnostic` reports whether this
+runtime's `get_players()` record contains `items`, the client-running flag, and bounded documented item
+fields when present. It calls the getter once on the UI callback, sends no request
+packet, and uploads nothing to PhMon. Copy that one log line for comparison with
+the phBot Players panel. Redact character names if sharing it publicly.
+
+To identify any request/response associated with opening the Players panel, click
+**Capture players (15 s)**, open or select the visible player in phBot's Players
+panel, then click **Save local capture**. The export now includes bounded
+`client_packets` and `server_packets` opcode/length/timing metadata without their
+payload bytes. Existing allowlisted server packet records still contain raw hex.
+The export is local and unsanitized; review and redact it before sharing. No
+packet is injected, and a missing opcode in this window does not prove that phBot
+never requested player details.
