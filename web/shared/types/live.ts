@@ -219,6 +219,7 @@ export interface MapOtherPlayerObserver {
 }
 
 export interface MapOtherPlayer {
+  registry_id?: string
   id: string
   player_id: string
   name: string

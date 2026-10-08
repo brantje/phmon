@@ -1,7 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-09-26',
   modules: ['@nuxt/ui', '@nuxt/eslint'],
-  css: ['~/assets/css/main.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/players.css'],
   devtools: { enabled: false },
   nitro: { experimental: { websocket: true } },
   ui: { fonts: false },

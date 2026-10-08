@@ -205,6 +205,7 @@ network deployment.
 | `HTTP_ADDR`                           | `127.0.0.1:8081`        | Host Go listener; Compose uses `0.0.0.0:8081`                                                    |
 | `DATABASE_URL`                        | See `.env.example`      | Required host Go PostgreSQL URL                                                                  |
 | `ANALYTICS_RETENTION_DAYS`             | `90`                    | Retention for sampled balance and performance history (1–3650 days)                              |
+| `PLAYER_OBSERVATION_RETENTION_DAYS` | `90` | Routine player sighting retention (1–3650 days); preserve identities, equipment and decision evidence |
 | `NUXT_BACKEND_URL`                    | `http://127.0.0.1:8081` | Private Nuxt relay upstream; Compose uses `http://server:8081`; never exposed to browsers        |
 | `NUXT_PUBLIC_INSTANCE_URL`            | Unset                   | Optional reachable browser-facing origin for the mobile QR/copy panel                            |
 | `TEST_DATABASE_URL`                   | Unset                   | Enables real PostgreSQL Go integration test                                                      |
@@ -338,3 +339,19 @@ only a hash of the opaque eight-hour session token in bounded process memory, so
 backend restart requires sign-in again. The session cookie is HttpOnly and
 SameSite=Strict; HTTPS origins always receive a Secure cookie. Agent bearer
 credentials are a separate trust boundary and cannot authenticate operator APIs.
+
+
+## Persistent Player registry
+
+**Player** in the sidebar opens the server-scoped durable registry with searchable
+aliases, level/guild/job/date/identity/equipment filters, sorting and cursor
+pagination. Profiles preserve timestamps, sightings, available equipment history
+and identity decisions. Operator review supports classification, corrections and
+reversible associations without deleting the source records. Map Other Players
+markers link to an unambiguous canonical profile after persistence.
+
+The current target runtime has not established an other-player equipment or
+cross-mode identity packet source. Those decoders and transition auto-linking stay
+disabled; missing instance values remain unavailable. See the
+[feature plan](docs/plans/player-registry-job-identities.md) and
+[packet evidence gates](docs/player-observation-protocol.md).

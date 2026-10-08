@@ -50,21 +50,22 @@ func (o AgentOptions) withDefaults() AgentOptions {
 }
 
 type agentHandler struct {
-	store      AgentStore
-	registry   *agentdomain.Registry
-	options    AgentOptions
-	characters *characters.Store
-	live       *LiveHub
-	commands   *commands.Service
-	resources  *resources.Store
-	events     *events.Store
-	mobs       *mobs.Store
-	mobLive    *mobs.LiveStore
-	npcLive    *npcs.LiveStore
-	playerLive *players.LiveStore
-	positions  *positions.Store
-	analytics  *mapanalytics.Store
-	navigation *navigation.Store
+	store          AgentStore
+	registry       *agentdomain.Registry
+	options        AgentOptions
+	characters     *characters.Store
+	live           *LiveHub
+	commands       *commands.Service
+	resources      *resources.Store
+	events         *events.Store
+	mobs           *mobs.Store
+	mobLive        *mobs.LiveStore
+	npcLive        *npcs.LiveStore
+	playerLive     *players.LiveStore
+	playerRegistry *players.Store
+	positions      *positions.Store
+	analytics      *mapanalytics.Store
+	navigation     *navigation.Store
 }
 
 type agentMonsterSnapshot struct {
@@ -450,12 +451,18 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				activeNow.AgentID != hello.AgentID || activeNow.Generation != generation {
 				continue
 			}
-			h.playerLive.Apply(players.LiveSnapshot{
+			playerSnapshot := players.LiveSnapshot{
 				Server: character.Server, AgentID: hello.AgentID, Generation: generation,
 				CharacterID: frame.CharacterID, SessionID: frame.SessionID, Character: character.Name,
 				Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
 				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Players: frame.Players,
-			})
+			}
+			h.playerLive.Apply(playerSnapshot)
+			if h.playerRegistry != nil {
+				if !h.playerRegistry.SubmitLive(playerSnapshot) {
+					slog.Warn("player registry admission overflow", "agent_id", hello.AgentID)
+				}
+			}
 			h.live.Invalidate()
 		case "navigation.route":
 			frame := message.NavigationRoute

@@ -1521,3 +1521,34 @@ older agents and observations without an ID remain valid and contextless. When t
 observed academy ID changes, the plugin emits departures with the old ID and joins
 with the new ID so analytics can attribute each transition to the correct academy.
 This does not establish graduation, bans, or a lifetime-unique member identity.
+
+## Player registry persistence and local capture — 2026-10-07/08
+
+Plugin 1.9.29 keeps **protocol 18** and the existing `map.players` wire semantics.
+The backend submits accepted snapshots to registry persistence only after existing
+session/generation and row validation. Unclassified getter names become aliases;
+the transport does not start asserting normal names, job types or equipment.
+
+Live map updates do not wait for a database commit. Pending registry data is bounded
+at 4,096 observations/8 MiB, with batches at most 128 and 3-second database attempt
+timeouts. First/changed facts are submitted promptly; unchanged per-observer
+checkpoints use 30 seconds. Retries use deterministic evidence IDs and source
+references. Queue overflow/persistence failures are reported by registry APIs;
+legacy transient snapshots are not acknowledged as durable. Uncommitted pending
+data can be lost on process restart. The 35-second live TTL is unchanged.
+
+New `/api/players` routes use normal operator authentication and mutation origin
+checks, bounded bodies/timeouts, context-bound cursor pagination and parameterized
+queries. GET list, profile, equipment/history, aliases, observations, candidates
+and durable server options are implemented. `POST /api/players/links` decides
+candidates/manual associations; `DELETE /api/players/links/{id}` revokes an audited
+association. `POST /api/players/{id}/aliases` is an explicit revision-checked
+classification/correction of an already observed alias. Original source records
+remain accessible with `GET /api/players/{id}?source=1`.
+
+No `player.observations` message has been enabled without a verified packet
+source. Future verified supplementation requires protocol negotiation, bounded
+batches, stable observation IDs, session/generation fencing, post-commit
+acknowledgements and idempotent replay. It must not duplicate `map.players`.
+The allowlisted opt-in capture is local diagnostic tooling, not a new agent feed:
+see [packet evidence and enablement gates](player-observation-protocol.md).

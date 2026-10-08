@@ -23,6 +23,8 @@ type mapPlayerObserver struct {
 }
 
 type mapPlayer struct {
+	server              string
+	RegistryID          string              `json:"registry_id,omitempty"`
 	ID                  string              `json:"id"`
 	PlayerID            string              `json:"player_id"`
 	Name                string              `json:"name"`
@@ -81,7 +83,8 @@ func projectPlayers(profile mapprofile.Profile, snapshots []players.LiveSnapshot
 				continue
 			}
 			candidate := mapPlayer{
-				ID: player.PlayerID, PlayerID: player.PlayerID, Name: player.Name,
+				server: snapshot.Server,
+				ID:     player.PlayerID, PlayerID: player.PlayerID, Name: player.Name,
 				Guild: player.Guild, Grant: player.Grant, Dead: player.Dead, Level: player.Level,
 				Region: placementRegion, Zone: player.Zone, X: player.X, Y: player.Y,
 				ObserverRegion: snapshot.Region, ObserverZ: snapshot.ObserverZ,

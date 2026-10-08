@@ -5,26 +5,29 @@ export function useServerScope() {
     path: '/',
   })
   const { fleetCharacters, groups } = useLiveData()
+  const registryServers = useState<string[]>(
+    'player-registry-servers',
+    () => [],
+  )
   const serverOptions = computed(() => {
     const servers = new Map<string, string>()
     for (const character of fleetCharacters.value) {
       const key = character.server.toLocaleLowerCase()
       if (!servers.has(key)) servers.set(key, character.server)
     }
+    for (const server of registryServers.value) {
+      const key = server.toLocaleLowerCase()
+      if (!servers.has(key)) servers.set(key, server)
+    }
+    if (
+      serverScope.value !== 'all' &&
+      !servers.has(serverScope.value.toLocaleLowerCase())
+    ) {
+      servers.set(serverScope.value.toLocaleLowerCase(), serverScope.value)
+    }
     return [...servers.values()].sort((left, right) =>
       left.localeCompare(right),
     )
-  })
-  watch(serverOptions, (servers) => {
-    if (
-      serverScope.value !== 'all' &&
-      !servers.some(
-        (server) =>
-          server.toLocaleLowerCase() === serverScope.value.toLocaleLowerCase(),
-      )
-    ) {
-      serverScope.value = 'all'
-    }
   })
   const matchesServer = (server: string) =>
     serverScope.value === 'all' ||

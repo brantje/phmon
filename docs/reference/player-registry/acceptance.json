@@ -1,0 +1,60 @@
+{
+  "fixture": true,
+  "runtime_equipment_verified": false,
+  "target_job_transitions_verified": false,
+  "toolchain": {
+    "go": "1.27.1",
+    "node": "24.20.0",
+    "postgresql": "18.6",
+    "playwright": "1.58.2"
+  },
+  "repository_check": {
+    "result": "PASS",
+    "plugin_tests": 228,
+    "frontend_tests": 230,
+    "eslint_errors": 0,
+    "eslint_warnings": 90,
+    "postgresql_integration": true,
+    "go_race": true
+  },
+  "transport": {
+    "result": "PASS",
+    "fixture_server": "Fixture Player Registry 1791418963988780069",
+    "player_id": "aa288359-2086-4ce2-bf91-c50b048d5e99",
+    "players": 3,
+    "observing_agents": 2,
+    "reconnect": true,
+    "runtime_id_reuse": true,
+    "equipment_runtime_verified": false
+  },
+  "browser": {
+    "result": "PASS",
+    "fixture": true,
+    "filters": 22,
+    "sorts": 5,
+    "viewports": [
+      1440,
+      1280,
+      390
+    ],
+    "manual_review": true,
+    "error_recovery": true,
+    "errors": []
+  },
+  "restart": {
+    "result": "PASS",
+    "fixture": true,
+    "backend_restart": true,
+    "transport_players": 3,
+    "browser_players": 36,
+    "classification_persisted": true
+  },
+  "final_hardening": {
+    "result": "PASS",
+    "go_full_race_vet_build_after_edge_fixes": true,
+    "late_attribute_configuration_boundary": true,
+    "delayed_equipment_after_routine_retention": true,
+    "committed_A_then_queued_B_A_checkpoint": true,
+    "fixture_services_removed": true
+  }
+}

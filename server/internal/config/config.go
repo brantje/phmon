@@ -19,6 +19,7 @@ type Config struct {
 	TradeNexusEnabled         bool
 	TradeNexusRetentionDays   int
 	AnalyticsRetentionDays    int
+	PlayerRetentionDays       int
 }
 
 func Load() (Config, error) {
@@ -87,6 +88,14 @@ func Load() (Config, error) {
 			return Config{}, errors.New("ANALYTICS_RETENTION_DAYS must be between 1 and 3650")
 		}
 		c.AnalyticsRetentionDays = days
+	}
+	c.PlayerRetentionDays = 90
+	if raw := strings.TrimSpace(os.Getenv("PLAYER_OBSERVATION_RETENTION_DAYS")); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err != nil || days < 1 || days > 3650 {
+			return Config{}, errors.New("PLAYER_OBSERVATION_RETENTION_DAYS must be between 1 and 3650")
+		}
+		c.PlayerRetentionDays = days
 	}
 	return c, nil
 }

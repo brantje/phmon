@@ -139,6 +139,7 @@ type LiveHub struct {
 	mobLive        *mobs.LiveStore
 	npcLive        *npcs.LiveStore
 	playerLive     *players.LiveStore
+	playerRegistry *players.Store
 	positions      *positions.Store
 	navigation     *navigation.Store
 	thiefSightings *tradenexus.Store
@@ -1294,7 +1295,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			"region": subscription.Filter.Region, "scope_status": "mapped",
 			"characters": charRows, "party": party, "training_areas": training, "monsters": monsterRows,
 			"npcs":    projectNPCs(profile, h.npcSnapshots(subscription.Filter.Server), subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region),
-			"players": projectPlayers(profile, h.playerSnapshots(subscription.Filter.Server), subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, time.Now().UTC()),
+			"players": h.registryPlayerSnapshot(ctx, subscription.Filter.Server, projectPlayers(profile, h.playerSnapshots(subscription.Filter.Server), subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, time.Now().UTC())),
 			"thieves": h.mapThiefSnapshot(ctx, profile, subscription.Filter.Server, subscription.Filter.Area, subscription.Filter.Floor, subscription.Filter.Region, selectedArea.Kind),
 			"events":  activity,
 			"academy": map[string]any{"status": "unavailable_region_floor", "members": []any{}},

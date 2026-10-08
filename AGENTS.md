@@ -4,6 +4,14 @@ This is the canonical architecture and implementation plan. Read it before chang
 update it whenever decisions or slice status change. `prompt.md` is the historical
 original brief; the execution contract below is the current scope and authority.
 
+The focused 2026-10-07/08 player-registry request is tracked in
+[Persistent player registry, equipment and job identities](docs/plans/player-registry-job-identities.md).
+Its six-slice implementation/evidence ledger supplements this guide. Target-server
+packet/equipment/job verification remains an explicit gate, not a completed capability.
+The follow-up [packet and transition enablement plan](docs/plans/player-protocol-enablement.md)
+defines disabled-by-default profile gates and the implementation/acceptance sequence.
+Its 2026-10-08 request is documentation-only; it does not start implementation.
+
 ## Execution contract: read this and build
 
 When the user asks an agent to implement this guide (for example, “read AGENTS.md
@@ -5968,3 +5976,99 @@ pan/zoom when Follow is off.
 Files: `web/app/utils/mapFollow.ts`, `web/tests/mapFollow.test.ts`,
 `web/app/components/MapCharacterStatusRow.vue`, `web/app/components/MapCanvas.vue`,
 `web/app/pages/map.vue`, `docs/reference-parity.md`, this guide.
+
+
+### Resume — 2026-10-08 persistent player registry and job identities
+
+Focused authorized work on existing `main`, initially `721a486`; no merge, push,
+deployment, worktree or real-character operation. All six slices' independent
+implementation is complete. The exact ledger, architecture/API/retention decisions,
+reproduction and blockers are in
+[the focused plan](docs/plans/player-registry-job-identities.md). This does not
+mark the remaining original project roadmap or target-runtime gates complete.
+
+Migration 000026 adds the five player/alias/observation/equipment-history/link
+tables and canonical projection. Existing validated/session-fenced `map.players`
+admission feeds a bounded retry worker after live-map update; LiveStore/35-second
+TTL and protocol 18 are preserved. Unknown names remain aliases, conflicting
+identity facts create separate review records, and per-field timestamps preserve
+newer/partial knowledge. Meaningful A→B→A history, including delayed insertion and
+retained endpoint evidence, stays inspectable. Configurable 90-day routine
+retention preserves decisions/history/thief supporting evidence.
+
+`/players` follows Stats, with URL filters, five server sort keys, bidirectional
+context-bound cursors and durable server scope. Profiles expose source/canonical
+identity, aliases, equipment, observations and authenticated reviewed correction,
+confirm/reject/link/unlink. Source ownership remains intact, decision transactions
+lock deterministically and reject stale/conflicting submissions. Other-player map
+links resolve in server-scoped batches without changing marker coordinates/IDs.
+Plugin 1.9.29 adds opt-in bounded local capture; every entity decoder and
+transition automatic policy remains disabled pending verified target evidence.
+
+Files: migration 000026; `server/internal/players/{registry_types,registry_store,
+query,ingestion,equipment,identity,lifecycle,thief_evidence}.go` and tests;
+`server/internal/httpapi/players.go`, agent/live/map integration and tests;
+config/main/TradeNexus retention; plugin/capture tests; `web/app/pages/players/`,
+PlayerEquipment/PlayerIdentityReview, shared types, sidebar/server scope/map/item
+components, Nuxt proxies; two smoke scripts, `server/testsupport/player-registry`,
+capability/protocol/README/reference docs and fixture screenshots.
+
+Validation: full `bash scripts/check.sh` passed with Go 1.27.1, Node 24.20.0 and
+PostgreSQL 18.6 disposable integration: gofmt/vet/full Go race/build, 228 Python,
+live transport audit, Prettier, 230 frontend tests, ESLint (0 errors/90 warnings),
+typecheck, production build and Compose config. Local production collector/worker
+transport passed two observers, durable attribution, disconnect/reconnect and
+runtime-ID reuse. Integration covers delayed/replayed/missing data, partial and
+reversed equipment, retention, link races, and network refusal/recovery while
+LiveStore stays independent. Browser checks cover filters/sorts/URL history,
+review/canonical routing/tooltips/uint64/error recovery and planned viewport widths.
+Fixture artifacts and observed UI limits are in `docs/reference-parity.md`.
+
+Blocker/next action: existing phBot 20.1.2 / Greatest evidence has no `items` and
+there are no sanitized target player entity/equip/unequip or job-transition
+captures. Pinned sources and exact missing evidence are documented in
+[the opcode investigation](docs/player-observation-protocol.md). Obtain separately
+authorized, sanitized exact-profile runtime evidence, implement gated decoders and
+acknowledged supplemental observations, then verify comparison/transition rules.
+Independent registry work from this run is complete; simulator success is not
+real-runtime verification. Further production capability enablement is tracked in
+[the follow-up plan](docs/plans/player-protocol-enablement.md).
+Test services and containers created for this run are cleaned up.
+
+### Resume — 2026-10-08 player capability enablement documentation
+
+The operator requested a documentation plan for implementing packet decoding and
+automatic transition links while keeping unsupported target capabilities disabled.
+Added [the enablement plan](docs/plans/player-protocol-enablement.md) and linked it
+from the original focused plan and protocol investigation. Application/plugin
+behavior is unchanged by this increment; previous implementation changes remain
+in the existing checkout.
+
+The plan starts with backend-owned per-profile capability/evidence manifests that
+enable nothing. Subsequent increments cover exact runtime fixtures, pure bounded
+decoders, negotiated acknowledged supplemental observations, review-only lifecycle
+candidates and separately verified per-job/direction automatic rules. Revocation
+preserves observations/link audit history. Actual packet/equipment/job evidence
+remains missing; no runtime gate was marked complete. Next action, when an
+implementation run is requested: build increment 1, then continue independent
+work while obtaining the specifically missing authorized runtime captures.
+
+Validation: `git diff --check` and nine local documentation-link target checks
+passed; all six follow-up increments and runtime gates remain unchecked.
+
+
+### Resume — 2026-10-08 player registry PR publication and review
+
+The operator subsequently authorized committing/pushing this implementation and
+its follow-up documentation, opening a PR, monitoring CI/CodeRabbit, fixing
+applicable feedback and replying with commit SHAs. Work uses
+`codex/player-registry-job-identities` in the existing checkout; no worktree,
+merge, deployment or real-character operation is authorized. This supersedes the
+original no-push limit for this publication/review run only.
+
+The implementation and follow-up plan retain their explicit target-runtime gates.
+Pre-publication validation is recorded in
+`docs/reference/player-registry/acceptance.json`; documentation links and
+`git diff --check` also pass. Exact next action: publish the branch/PR, inspect
+current-head CI and CodeRabbit, resolve actionable findings with focused tests,
+and reply with the fixing SHA. Record final publication/review state in the PR.

@@ -1106,6 +1106,17 @@ function markerPopup(marker: MapCanvasMarker) {
     const other = marker.player
     title.textContent = other.name || `Player ${other.player_id}`
     subtitle.textContent = 'Other player'
+    if (other.registry_id && /^[0-9a-f-]{36}$/i.test(other.registry_id)) {
+      const link = document.createElement('a')
+      link.href = `/players/${other.registry_id}`
+      link.textContent = 'Open player profile'
+      link.className = 'compact-button'
+      link.addEventListener('click', (event) => {
+        event.preventDefault()
+        void navigateTo(`/players/${other.registry_id}`)
+      })
+      panel.append(link)
+    }
     const icon = document.createElement('img')
     icon.className = 'phmon-map-detail-player-icon'
     icon.src = OTHER_PLAYER_ICON

@@ -50,6 +50,7 @@ type Dependencies struct {
 	MobLive        *mobs.LiveStore
 	NPCLive        *npcs.LiveStore
 	PlayerLive     *players.LiveStore
+	PlayerRegistry *players.Store
 	Positions      *positions.Store
 	MapAnalytics   *mapanalytics.Store
 	Analytics      *analytics.Store
@@ -89,6 +90,7 @@ func New(deps Dependencies) http.Handler {
 		register("GET /api/thief-sightings", false, sightings.list)
 	}
 	analyticsLive := deps.Live
+	registerPlayers(register, deps.PlayerRegistry, deps.Resources, deps.Live)
 	if deps.Agents != nil && deps.Registry != nil {
 		live := deps.Live
 		if live == nil {
@@ -115,6 +117,7 @@ func New(deps Dependencies) http.Handler {
 			playerLive = players.NewLiveStore()
 		}
 		live.SetPlayerLive(playerLive)
+		live.playerRegistry = deps.PlayerRegistry
 		positionStore := deps.Positions
 		if positionStore == nil {
 			positionStore = positions.NewStore()
@@ -124,21 +127,22 @@ func New(deps Dependencies) http.Handler {
 			live.SetNavigation(navigation.NewStore())
 		}
 		handler := &agentHandler{
-			store:      deps.Agents,
-			registry:   deps.Registry,
-			options:    deps.AgentOptions.withDefaults(),
-			characters: deps.Characters,
-			live:       live,
-			commands:   deps.Commands,
-			resources:  deps.Resources,
-			events:     deps.Events,
-			mobs:       deps.Mobs,
-			mobLive:    mobLive,
-			npcLive:    npcLive,
-			playerLive: playerLive,
-			positions:  positionStore,
-			analytics:  deps.MapAnalytics,
-			navigation: live.navigation,
+			store:          deps.Agents,
+			registry:       deps.Registry,
+			options:        deps.AgentOptions.withDefaults(),
+			characters:     deps.Characters,
+			live:           live,
+			commands:       deps.Commands,
+			resources:      deps.Resources,
+			events:         deps.Events,
+			mobs:           deps.Mobs,
+			mobLive:        mobLive,
+			npcLive:        npcLive,
+			playerLive:     playerLive,
+			playerRegistry: deps.PlayerRegistry,
+			positions:      positionStore,
+			analytics:      deps.MapAnalytics,
+			navigation:     live.navigation,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		live.SetThiefSightings(deps.ThiefSightings)

@@ -80,6 +80,10 @@ func run() error {
 	mobLive := mobs.NewLiveStore()
 	npcLive := npcs.NewLiveStore()
 	playerLive := players.NewLiveStore()
+	playerRegistry := players.NewStore(pool)
+	go playerRegistry.Run(ctx)
+	go playerRegistry.RunRetention(ctx, cfg.PlayerRetentionDays)
+	go playerRegistry.RunThiefEvidence(ctx)
 	positionStore := positions.NewStore()
 	metadataDir := os.Getenv("ITEM_METADATA_DIR")
 	if metadataDir == "" {
@@ -166,6 +170,7 @@ func run() error {
 		MobLive:        mobLive,
 		NPCLive:        npcLive,
 		PlayerLive:     playerLive,
+		PlayerRegistry: playerRegistry,
 		Positions:      positionStore,
 		MapAnalytics:   mapAnalyticsStore,
 		Analytics:      analyticsStore,

@@ -2494,3 +2494,44 @@ choosing another destination/floor/area, focusing a different character, or
 changing server turns Follow off. Manual pan/zoom stays preserved when Follow is
 off. Follow floor/world remounts pass the last stored zoom into the replacement
 MapCanvas so `setInitialView()` does not reset to 125%.
+
+
+## Player registry, profiles and identity review — 2026-10-08
+
+The focused [six-slice plan](plans/player-registry-job-identities.md) adds a Player
+entry immediately after Stats using `i-lucide-users`; detail routes keep it active.
+The public v0.5.0 demo was opened in a real browser during this run; only its
+repeating connection-error overlay was suppressed. It exposes no Player registry
+screen. Clicking Stats did not yield a reliable new Stats comparison in the
+inspection session, so no new observed Stats layout or equipment workflow is
+claimed. The original reference captures remain the visual baseline. The Player
+screen independently extends PhMon's established dark/gold compact shell.
+
+| Area | Backend/plugin/UI evidence | Runtime or inspection limitation |
+| --- | --- | --- |
+| Registry | Existing session-fenced map collector/transport; durable first/change/checkpoint writes; all required columns, server/name/level/guild/job/date/identity/gear filters, five sorts and cursors; unknown normal identity plus alias | Map snapshots remain transient until DB commit; unsupported source fields remain unknown |
+| Equipment | Shared item enrichment/tooltips, unknown/empty/occupied slots, latest attempt availability, per-field times, decimal uint64s, partial history and A→B→A intervals | Synthetic backend fixtures only; target phBot session exposes no equipment source; catalog references do not supply instance rolls |
+| Job identities | Pinned thief evidence/observer attribution, server-scoped alias conflicts, transactional reviewed correction/link/unlink and canonical/source projection | Verified entity lifecycle/comparable target profile absent; no transition auto-link enabled |
+| Map | Batched profile UUID resolution with unchanged runtime IDs, coordinate/freshness behavior and ambiguous alias omission; regression tests and existing map viewport | A local map rendering capture is not proof of an active target character or runtime job transition |
+| Presentation | URL-owned 250 ms text filtering, reload/back/forward, responsive dense table, validated return link, keyboard tooltips/review fields, 404 and 503/retry recovery | No demo-equivalent Player screen exists for a same-screen comparison |
+
+[Acceptance results](reference/player-registry/acceptance.json) record 22 browser
+filter cases, five sorting controls, transport and backend restart persistence.
+Browser acceptance used clearly labeled local fixtures, not production monitoring.
+List and profile passed 1440×1000, 1280×800 and 390×844 without whole-page
+horizontal overflow or page errors. Filters and controls remain within the
+workspace; table scrolling stays local. Screenshots retain visible fixture naming
+and PhMon branding and are inspection evidence, not application assets:
+
+| Viewport | List | Profile |
+| --- | --- | --- |
+| 1440×1000 | [List](reference/player-registry/player-list-1440.png) | [Profile](reference/player-registry/player-profile-1440.png) |
+| 1280×800 | [List](reference/player-registry/player-list-1280.png) | [Profile](reference/player-registry/player-profile-1280.png) |
+| 390×844 | [List](reference/player-registry/player-list-390.png) | [Profile](reference/player-registry/player-profile-390.png) |
+
+[Map rendering regression](reference/player-registry/map-regression-1280.png)
+uses the same local test instance. Full repository checks and disposable PostgreSQL
+integration passed; the plan records commands, queue/write measurements and
+[exact runtime blockers](player-observation-protocol.md). No synthetic capture or
+fixture is labeled as actual protocol evidence. Target runtime acceptance is still
+required before declaring equipment/job-correlation completion.

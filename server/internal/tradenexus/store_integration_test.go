@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"phmon/server/internal/database"
+	"phmon/server/internal/players"
 )
 
 func TestThiefSightingStoreRecentListAndRetention(t *testing.T) {
@@ -30,6 +31,7 @@ func TestThiefSightingStoreRecentListAndRetention(t *testing.T) {
 	server := "TradeNexus-" + time.Now().UTC().Format("150405.000000")
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM thief_sightings WHERE server_name=$1`, server)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM players WHERE server_key=$1`, strings.ToLower(server))
 	})
 	base := time.Now().UTC().Truncate(time.Microsecond)
 	first := sampleSighting(server, "Bandit", base.Add(-time.Minute), 10)
@@ -58,6 +60,18 @@ func TestThiefSightingStoreRecentListAndRetention(t *testing.T) {
 	next, err := store.List(ctx, Filter{Server: server, Query: "band", Limit: 1, Cursor: page.NextCursor})
 	if err != nil || len(next.Sightings) != 1 || next.NextCursor != "" || next.Sightings[0].ID == page.Sightings[0].ID {
 		t.Fatalf("second page = %+v err=%v", next, err)
+	}
+	// Original evidence must survive while the registry importer is behind.
+	_, err = store.DeleteOlderThan(ctx, 1)
+	var pending int
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT count(*) FROM thief_sightings WHERE sighting_id=$1::uuid`, old.ID).Scan(&pending); err != nil || pending != 1 {
+		t.Fatal("source retention raced evidence preservation", err)
+	}
+	if _, err = players.NewStore(pool).ImportThiefSightings(ctx); err != nil {
+		t.Fatal(err)
 	}
 	removed, err := store.DeleteOlderThan(ctx, 1)
 	if err != nil || removed < 1 {

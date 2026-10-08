@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import base64
+import binascii
 import calendar
 import collections
 import hashlib
@@ -28,7 +29,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.28'
+pVersion = '1.9.29'
 pUrl = ''
 
 PROTOCOL_VERSION = 18
@@ -1994,6 +1995,149 @@ def parse_item_durability_update(data):
 
 
 
+class PassivePlayerCapture(object):
+    """Opt-in diagnostic evidence, never a player decoder or production source.
+
+    The callback only copies bounded allowlisted packets. Group envelopes are
+    inspected on the existing network worker. Raw captures stay local and must
+    be sanitized by the operator before being shared as runtime fixtures.
+    """
+    ALLOWED_OPCODES = (0x3015, 0x3016, 0x3017, 0x3019, 0x3018,
+                       0x3038, 0x3039, 0x3013, 0x3040)
+    MAX_RECORDS = 128
+    MAX_BYTES = 2 * 1024 * 1024
+    MAX_PACKET = 64 * 1024
+    MAX_GROUP_BYTES = 256 * 1024
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._queue = collections.deque()
+        self._bytes = 0
+        self._captured_count = 0
+        self._records = []
+        self._groups = []
+        self._group = None
+        self._deadline = 0
+        self._epoch = 0
+        self._sequence = 0
+        self._reason = 'disabled'
+        self._context = {}
+
+    def begin(self, context, seconds=15):
+        if not isinstance(context, dict) or not isinstance(seconds, (int, float)) or isinstance(seconds, bool) or seconds < 1 or seconds > 30:
+            return False
+        with self._lock:
+            self._queue.clear()
+            self._bytes = 0
+            self._captured_count = 0
+            self._records = []
+            self._groups = []
+            self._group = None
+            self._sequence = 0
+            self._epoch += 1
+            self._context = {key: str(context.get(key, ''))[:100] for key in ('server', 'session_id', 'phbot_version')}
+            self._deadline = _monotonic() + seconds
+            self._reason = 'capturing'
+        return True
+
+    def reset(self, reason='session_changed'):
+        with self._lock:
+            self._queue.clear()
+            self._bytes = 0
+            self._captured_count = 0
+            self._records = []
+            self._groups = []
+            self._group = None
+            self._deadline = 0
+            self._reason = reason
+            self._epoch += 1
+
+    def enqueue(self, opcode, data):
+        if opcode not in self.ALLOWED_OPCODES:
+            return False
+        with self._lock:
+            if not self._deadline or _monotonic() >= self._deadline:
+                return False
+            if not isinstance(data, (bytes, bytearray)) or len(data) > self.MAX_PACKET:
+                self._deadline = 0
+                self._reason = 'invalid_or_oversized_packet'
+                self._group = None
+                return False
+            # Captured plus queued memory shares one budget; drained packets do
+            # not create room for an unbounded record history.
+            if self._captured_count >= self.MAX_RECORDS or self._bytes + len(data) > self.MAX_BYTES:
+                self._deadline = 0
+                self._reason = 'overflow'
+                self._group = None
+                self._queue.clear()
+                return False
+            self._captured_count += 1
+            self._sequence += 1
+            payload = bytes(data)
+            self._queue.append((opcode, payload, self._sequence, self._epoch))
+            self._bytes += len(payload)
+        return True
+
+    def drain(self):
+        with self._lock:
+            queued = list(self._queue)
+            self._queue.clear()
+        for opcode, payload, sequence, epoch in queued:
+            payload_hex = binascii.hexlify(payload).decode('ascii')
+            with self._lock:
+                if epoch != self._epoch:
+                    continue
+                self._records.append({'opcode': '0x%04X' % opcode, 'payload_hex': payload_hex,
+                                      'sequence': sequence, 'epoch': epoch})
+                if opcode == 0x3017:
+                    # Pinned vSRO research envelope, diagnostic only. No entity
+                    # fields are decoded and unknown operation types fail closed.
+                    if self._group is not None or len(payload) != 3 or payload[0] not in (1, 2):
+                        self._group = None
+                        self._reason = 'malformed_group_begin'
+                        continue
+                    count = struct.unpack_from('<H', payload, 1)[0]
+                    if count > 128:
+                        self._reason = 'group_count_limit'
+                        self._group = None
+                        continue
+                    self._group = {'operation': payload[0], 'count': count, 'segments': [], 'bytes': 0,
+                                   'first_sequence': sequence, 'epoch': epoch}
+                elif opcode == 0x3019:
+                    if self._group is None:
+                        self._reason = 'group_data_without_begin'
+                    elif self._group['bytes'] + len(payload) > self.MAX_GROUP_BYTES:
+                        self._group = None
+                        self._reason = 'group_byte_limit'
+                    else:
+                        self._group['segments'].append(sequence)
+                        self._group['bytes'] += len(payload)
+                elif opcode == 0x3018:
+                    if self._group is None or payload:
+                        self._group = None
+                        self._reason = 'malformed_group_end'
+                    else:
+                        self._group['last_sequence'] = sequence
+                        self._groups.append(dict(self._group))
+                        self._group = None
+        with self._lock:
+            if self._deadline and _monotonic() >= self._deadline:
+                self._deadline = 0
+                if self._group is not None:
+                    self._group = None
+                    self._reason = 'incomplete_group'
+                elif self._reason == 'capturing':
+                    self._reason = 'completed'
+
+    def report(self):
+        self.drain()
+        with self._lock:
+            return {'schema_version': 1, 'decoder_enabled': False, 'sanitized': False,
+                    'reason': self._reason, 'context': dict(self._context), 'epoch': self._epoch,
+                    'records': [dict(row) for row in self._records],
+                    'groups': [dict(row) for row in self._groups]}
+
+
 class PassiveItemTracker(object):
     """Bounded packet queue plus session-local, fail-closed item observations."""
     ALLOWED_OPCODES = (0x3040, 0x3052, 0x30C8, 0xB034)
@@ -3195,6 +3339,8 @@ class AgentWorker(object):
         self._latest_resources = None
         self._latest_resources_identity = None
         self._item_tracker = PassiveItemTracker()
+        self._player_capture = PassivePlayerCapture()
+        self._player_capture_export = False
 
     def update_map_monsters(self, identity, status, region, monsters, sample=None, observer_z=None):
         observation = {
@@ -3758,7 +3904,28 @@ class AgentWorker(object):
 
     def capture_joymax_packet(self, opcode, data):
         """Copy only allowlisted packets; decoding is performed by the network worker."""
+        self._player_capture.enqueue(opcode, data)
         return self._item_tracker.enqueue(opcode, data)
+
+    def _export_player_capture_if_requested(self):
+        if not self._player_capture_export:
+            return
+        self._player_capture_export = False
+        report = self._player_capture.report()
+        spool = self.config.get('death_spool_path')
+        if not isinstance(spool, str) or not spool:
+            _log('player capture export unavailable: configure the active profile first')
+            return
+        directory = os.path.dirname(spool)
+        path = os.path.join(directory, 'player-capture-' + str(uuid.uuid4()) + '.json')
+        try:
+            if not os.path.isdir(directory):
+                os.makedirs(directory)
+            with open(path, 'w') as stream:
+                json.dump(report, stream, separators=(',', ':'), ensure_ascii=True)
+            _log('local player packet capture saved; sanitize before sharing: ' + path)
+        except Exception as error:
+            _log('local player capture export failed (' + error.__class__.__name__ + ')')
 
     def _queue_verified_pet_pickup(self, identity, item, quantity_delta, pet_id,
                                   source_slot, packet_observation, position=None):
@@ -4088,6 +4255,7 @@ class AgentWorker(object):
                 self._last_npc_sent_at = None
                 self._last_player_sent_at = None
                 self._item_tracker.reset('backend_reconnect')
+                self._player_capture.reset('session_or_connection_changed')
                 # Callbacks may have queued a leave while the backend was
                 # unavailable. Apply the newest queued fact before replaying
                 # the last sample so a departed character is never resurrected.
@@ -4115,6 +4283,7 @@ class AgentWorker(object):
                             self._resource_baseline_required = True
                             self._confirmed_resources = None
                             self._item_tracker.reset('character_left')
+                            self._player_capture.reset('session_or_connection_changed')
 
                         else:
                             self._latest_sample = sample
@@ -4157,6 +4326,8 @@ class AgentWorker(object):
                         self._item_tracker.decorate(self._latest_resources, self.session_id)
                         self._send_resource_snapshot(client, self._latest_resources)
                     now = _monotonic()
+                    self._player_capture.drain()
+                    self._export_player_capture_if_requested()
                     if now >= next_heartbeat:
                         client.send_json({
                             'type': 'heartbeat',
@@ -4194,6 +4365,7 @@ class AgentWorker(object):
                 self._latest_resources = None
                 self._latest_resources_identity = None
                 self._item_tracker.reset('backend_reconnect')
+                self._player_capture.reset('session_or_connection_changed')
 
             if not self.stop_event.is_set():
                 delay = backoff.next_delay()
@@ -4239,6 +4411,7 @@ class AgentWorker(object):
             self._clear_navigation_route()
             self._trace_requested_name = None
             self._item_tracker.reset('character_or_profile_changed')
+            self._player_capture.reset('session_or_connection_changed')
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_worker_utc_now(self)})
             reply = self._wait_for_registration(client)
             if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):
@@ -6302,6 +6475,27 @@ def _sample_players(identity, state, position, now=None):
     return True
 
 
+def begin_player_packet_capture():
+    """Local operator action: 15 seconds of passive diagnostic capture only."""
+    if _worker is None or _worker._current_identity is None:
+        _log('player capture requires a configured joined session')
+        return False
+    identity = _worker._current_identity
+    context = {'server': identity.get('server', ''), 'session_id': _worker.session_id,
+               'phbot_version': _worker.phbot_version}
+    started = _worker._player_capture.begin(context, 15)
+    if started:
+        _log('passive player capture started for 15 seconds; no player decoder is enabled')
+    return started
+
+
+def export_player_packet_capture():
+    if _worker is None:
+        return False
+    _worker._player_capture_export = True
+    return True
+
+
 def finished():
     _stop_worker()
 
@@ -6322,6 +6516,8 @@ if _PHBOT_AVAILABLE and _QtBind is not None:
     _QtBind.createLabel(_gui, 'Agent token (paste to set or replace)', 10, 110)
     _gui_agent_token = _QtBind.createLineEdit(_gui, '', 10, 130, 360, 20)
     _QtBind.createButton(_gui, 'save_config', 'Save & Connect', 10, 165)
+    _QtBind.createButton(_gui, 'begin_player_packet_capture', 'Capture players (15 s)', 10, 225)
+    _QtBind.createButton(_gui, 'export_player_packet_capture', 'Save local capture', 180, 225)
     _QtBind.createButton(_gui, 'probe_teleporters', 'Probe teleporters', 10, 195)
     _QtBind.createButton(_gui, 'test_teleport_hotan_jangan', 'Test Hotan→Jangan', 180, 195)
     _gui_status = _QtBind.createLabel(

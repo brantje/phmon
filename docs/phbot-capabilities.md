@@ -1756,3 +1756,30 @@ Plugin **1.9.26** keeps those walks when the submitted script also contains blan
 lines, comments, shop commands, or a teleport name with punctuation. Those lines
 are omitted. The route is rejected only when no walk remains. `lines` may be a
 list or one script string.
+
+## Persistent external-player registry — 2026-10-07/08
+
+Plugin **1.9.29**, agent protocol **18**, adds only opt-in local diagnostic player
+packet capture. The existing `get_players()` collector and `map.players` transport
+remain unchanged. Accepted nearby-player snapshots now feed a bounded durable
+registry after their existing validation/session/generation checks. Live map TTL,
+positioning, runtime IDs and deduplication remain unchanged.
+
+The documented `items` example does not establish target equipment support:
+phBot **20.1.2 / Greatest**, inspected **2026-10-01**, exposed no items. Normal/job
+classification, stable cross-mode IDs, other-player variance/blues and correct
+slot/empty semantics are still unverified. Unclassified names are stored as
+observed aliases, with normal name and job unknown. Existing thief reports supply
+attributed job-name evidence; observer coordinates are not thief coordinates and
+external reports cannot authorize automatic associations.
+
+Pinned source findings, capture budgets and per-opcode gaps are recorded in
+[player-observation-protocol.md](player-observation-protocol.md). There are no
+sanitized target-runtime player packet fixtures, enabled player entity decoders,
+new observation messages or enabled transition auto-link profiles. Internal
+synthetic equipment/lifecycle tests and browser fixtures do not close those gates.
+
+The implemented operator review can classify/correct an observed alias and
+confirm/reject/link/unlink identities, with reasons, revisions and retained source
+evidence. Registry APIs/UI and simulator validation are tracked in the
+[focused plan](plans/player-registry-job-identities.md).

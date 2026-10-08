@@ -3,6 +3,7 @@ defineProps<{
   item: Record<string, unknown> | null
   slotNumber: number
   label?: string
+  unknown?: boolean
 }>()
 </script>
 
@@ -19,7 +20,18 @@ defineProps<{
       class="item-slot"
       type="button"
       disabled
-      :aria-label="`Empty slot ${slotNumber + 1}`"
-    />
+      :aria-label="
+        unknown
+          ? `Unknown ${label || `slot ${slotNumber + 1}`}`
+          : `Empty slot ${slotNumber + 1}`
+      "
+      :title="
+        unknown
+          ? 'Equipment in this slot has not been observed'
+          : 'Observed empty slot'
+      "
+    >
+      <span v-if="unknown" aria-hidden="true">?</span>
+    </button>
   </div>
 </template>

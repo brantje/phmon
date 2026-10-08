@@ -56,6 +56,11 @@ func TestAnalyticsQueriesUseCanonicalEventsAndStableScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Second)
+	// This fixture asserts one daily bucket for three hours of activity. Keep
+	// those rows on the same UTC day when the suite runs just after midnight.
+	if now.Hour() < 4 {
+		now = now.Truncate(24 * time.Hour).Add(-time.Hour)
+	}
 	level := int(100)
 	xp, maxXP, sp, gold := int64(500), int64(1000), int64(12), int64(5000)
 	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, aria, 1, ariaSession, characters.State{Level: &level, CurrentEXP: &xp, MaxEXP: &maxXP, SP: &sp, Gold: &gold}); err != nil {

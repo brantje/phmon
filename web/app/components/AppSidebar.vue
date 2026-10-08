@@ -7,6 +7,7 @@ defineProps<{
   advancedMode: boolean
 }>()
 const route = useRoute()
+useRegistryServers()
 const { connectedAgents, fleetStatus } = useFleetSummary()
 const { liveStale, connectionState } = useLiveData()
 const { serverScope, serverOptions, matchesServer, scopedGroups } =
@@ -68,6 +69,7 @@ const agentsUnavailable = computed(
 const primaryNavigation = [
   { label: 'Dashboard', icon: 'i-lucide-layout-dashboard', href: '/' },
   { label: 'Stats', icon: 'i-lucide-chart-no-axes-combined', href: '/stats' },
+  { label: 'Player', icon: 'i-lucide-users', href: '/players' },
   { label: 'Events', icon: 'i-lucide-activity', href: '/events' },
   { label: 'Chat', icon: 'i-lucide-messages-square', href: '/chat' },
   { label: 'Economy', icon: 'i-lucide-coins' },
@@ -147,8 +149,17 @@ const advancedNavigation = [
           v-if="item.href"
           :to="item.href"
           class="nav-item"
-          :class="{ active: route.path === item.href }"
-          :aria-current="route.path === item.href ? 'page' : undefined"
+          :class="{
+            active:
+              route.path === item.href ||
+              (item.href === '/players' && route.path.startsWith('/players/')),
+          }"
+          :aria-current="
+            route.path === item.href ||
+            (item.href === '/players' && route.path.startsWith('/players/'))
+              ? 'page'
+              : undefined
+          "
         >
           <UIcon :name="item.icon" />
           <span>{{ item.label }}</span>
