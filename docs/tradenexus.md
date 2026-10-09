@@ -51,10 +51,11 @@ Report a thief. `ref` is optional, at most 64 bytes, and is echoed only to the
 sender. `origin` sent by a client is ignored. A report does not require a
 subscription. The sender receives its own broadcast only when it is subscribed
 to that server, and can ignore the echo by comparing `sighting_id` with `ack`.
-History lists one row per encounter: the latest stored row in a run of the
-same server and thief name whose successive reports are each within two
-minutes of the previous one. Region does not split the run. Grouping is done
-when the list is read. Stored rows are not rewritten.
+History lists one row per encounter in the filtered result: the latest stored
+row in a run of the same server and thief name whose successive reports in
+that result are each within two minutes of the previous one. Region does not
+split the run. Grouping is done when the list is read, after the name and date
+filters. Stored rows are not rewritten.
 
 ```json
 {

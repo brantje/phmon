@@ -155,8 +155,9 @@ minutes after the latest sighting for that server and name. Cave rows need a
 region and Z; known cave regions without a usable floor are not drawn on the
 world map. The Events **Thieves** tab lists the same stored rows with thief,
 time, reporter, source, location, and a map link that does not use an activity
-event id. The tab shows one row per encounter, grouping a same-server, same-thief run
-whose reports fall within two minutes regardless of region, and leaves
+event id. The tab shows one row per encounter in the filtered result, grouping a
+same-server, same-thief run whose remaining reports fall within two minutes
+regardless of region, and leaves
 the stored rows unchanged. The map pin still uses the latest stored row for
 that thief. A disposable fixture server showed the Thieves tab and a red Bandit123 pin
 with its name, reporter, and AdvancedAutoTrade source. The page did not
