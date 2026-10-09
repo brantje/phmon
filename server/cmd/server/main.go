@@ -133,12 +133,14 @@ func run() error {
 			}
 			hookCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
-			recorded, err := tradeHub.Record(hookCtx, sighting)
+			recorded, fresh, err := tradeHub.Record(hookCtx, sighting)
 			if err != nil {
 				slog.Warn("phmon thief sighting was not relayed", "reason", err.Error())
 				return
 			}
-			tradeHub.Broadcast(recorded)
+			if fresh {
+				tradeHub.Broadcast(recorded)
+			}
 		})
 	}
 	dispatchStore := commands.NewStore(pool)

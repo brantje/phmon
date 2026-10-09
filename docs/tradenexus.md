@@ -3,16 +3,22 @@
 TradeNexus is an open WebSocket on the PhMon server at `GET /tradenexus`. It
 relays thief sightings between AdvancedAutoTrade clients and PhMon, and accepts
 finished trade reports from those clients. The socket does not use operator
-cookies or agent tokens. PhMon stores every accepted sighting and broadcasts it
-to clients subscribed to that game server. Trade reports are stored and
-acknowledged only to the sender.
+cookies or agent tokens. PhMon stores a new thief sighting and broadcasts it
+to clients subscribed to that game server. A repeat of the same server, thief
+name within two minutes of the latest stored report is acknowledged
+with that stored sighting id. It is not inserted or broadcast, and the stored
+row is left unchanged. Trade reports are stored and acknowledged only to the
+sender.
 
 The WebSocket hub keeps the latest sighting per thief name for each server in
-memory for **10 minutes** from `received_at`. When a client sends `subscribe`,
-the server replies with `subscribed` and then a `thieves` snapshot of every
-active sighting for the subscribed servers. Live `thief.sighting` frames still
-follow for new reports. A process restart clears the hub memory; PostgreSQL
-history and the operator map layer use separate retention rules.
+memory for **10 minutes** from `received_at`. A repeat inside the two-minute
+window moves that in-memory pin to the new coordinates and keeps the stored
+sighting id. When a client sends `subscribe`, the server replies with
+`subscribed` and then a `thieves` snapshot of every active sighting for the
+subscribed servers. Live `thief.sighting` frames still follow for new reports.
+A process restart clears the hub memory; PostgreSQL history and the operator
+map layer use separate retention rules. The map pin keeps using the latest
+stored row until a later report is actually inserted.
 
 ## Transport
 
@@ -45,6 +51,10 @@ Report a thief. `ref` is optional, at most 64 bytes, and is echoed only to the
 sender. `origin` sent by a client is ignored. A report does not require a
 subscription. The sender receives its own broadcast only when it is subscribed
 to that server, and can ignore the echo by comparing `sighting_id` with `ack`.
+History lists one row per encounter: the latest stored row in a run of the
+same server and thief name whose successive reports are each within two
+minutes of the previous one. Region does not split the run. Grouping is done
+when the list is read. Stored rows are not rewritten.
 
 ```json
 {

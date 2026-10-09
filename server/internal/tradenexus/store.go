@@ -73,6 +73,31 @@ func (s *Store) Insert(ctx context.Context, sighting Sighting) error {
 	return nil
 }
 
+func (s *Store) Latest(ctx context.Context, server, thief string) (Sighting, bool, error) {
+	if s == nil || s.pool == nil {
+		return Sighting{}, false, errors.New("thief sighting store is unavailable")
+	}
+	rows, err := s.pool.Query(ctx, `SELECT sighting_id::text, server_name, thief_name, region, x, y, z,
+       position_source, reporter_name, reporter_app, reporter_version, origin,
+       event_id::text, observed_at, received_at
+FROM thief_sightings
+WHERE lower(server_name) = lower($1) AND lower(thief_name) = lower($2)
+ORDER BY received_at DESC, sighting_id DESC
+LIMIT 1`, server, thief)
+	if err != nil {
+		return Sighting{}, false, fmt.Errorf("load latest thief sighting: %w", err)
+	}
+	defer rows.Close()
+	sightings, err := scanSightings(rows)
+	if err != nil {
+		return Sighting{}, false, err
+	}
+	if len(sightings) == 0 {
+		return Sighting{}, false, nil
+	}
+	return sightings[0], true, nil
+}
+
 func (s *Store) Recent(ctx context.Context, server string, since time.Time, limit int) ([]Sighting, bool, error) {
 	if s == nil || s.pool == nil {
 		return nil, false, errors.New("thief sighting store is unavailable")
@@ -126,23 +151,62 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 		cursorTime = cursor.ReceivedAt.UTC()
 		cursorID = cursor.SightingID
 	}
-	const where = `WHERE ($1 = '' OR lower(server_name) = lower($1))
-  AND ($2 = '' OR thief_name ILIKE $2 ESCAPE '\' OR reporter_name ILIKE $2 ESCAPE '\')
-  AND ($3::timestamptz IS NULL OR received_at >= $3)
-  AND ($4::timestamptz IS NULL OR received_at < $4)`
+	gapSeconds := int(EncounterGap / time.Second)
+	const encounters = `WITH filtered AS (
+    SELECT sighting_id, server_name, thief_name, region, x, y, z, position_source,
+           reporter_name, reporter_app, reporter_version, origin, event_id, observed_at, received_at
+    FROM thief_sightings
+    WHERE ($1 = '' OR lower(server_name) = lower($1))
+      AND ($2 = '' OR thief_name ILIKE $2 ESCAPE '\' OR reporter_name ILIKE $2 ESCAPE '\')
+      AND ($3::timestamptz IS NULL OR received_at >= $3)
+      AND ($4::timestamptz IS NULL OR received_at < $4)
+),
+ordered AS (
+    SELECT filtered.*,
+           lag(received_at) OVER encounter AS prev_received_at
+    FROM filtered
+    WINDOW encounter AS (
+        PARTITION BY lower(server_name), lower(thief_name)
+        ORDER BY received_at ASC, sighting_id ASC
+    )
+),
+marked AS (
+    SELECT *,
+           CASE
+               WHEN prev_received_at IS NULL
+                 OR received_at > prev_received_at + ($5::int * interval '1 second')
+               THEN 1 ELSE 0
+           END AS encounter_boundary
+    FROM ordered
+),
+numbered AS (
+    SELECT *,
+           sum(encounter_boundary) OVER (
+               PARTITION BY lower(server_name), lower(thief_name)
+               ORDER BY received_at ASC, sighting_id ASC
+           ) AS encounter_no
+    FROM marked
+),
+encounters AS (
+    SELECT DISTINCT ON (lower(server_name), lower(thief_name), encounter_no)
+           sighting_id, server_name, thief_name, region, x, y, z, position_source,
+           reporter_name, reporter_app, reporter_version, origin, event_id, observed_at, received_at
+    FROM numbered
+    ORDER BY lower(server_name), lower(thief_name), encounter_no, received_at DESC, sighting_id DESC
+)
+`
 	var total int
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM thief_sightings `+where,
-		filter.Server, pattern, filter.From, filter.To).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, encounters+`SELECT count(*) FROM encounters`,
+		filter.Server, pattern, filter.From, filter.To, gapSeconds).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count thief sightings: %w", err)
 	}
-	rows, err := s.pool.Query(ctx, `SELECT sighting_id::text, server_name, thief_name, region, x, y, z,
+	rows, err := s.pool.Query(ctx, encounters+`SELECT sighting_id::text, server_name, thief_name, region, x, y, z,
        position_source, reporter_name, reporter_app, reporter_version, origin,
        event_id::text, observed_at, received_at
-FROM thief_sightings
-`+where+`
-  AND ($5::timestamptz IS NULL OR (received_at, sighting_id) < ($5, $6::uuid))
+FROM encounters
+WHERE ($6::timestamptz IS NULL OR (received_at, sighting_id) < ($6, $7::uuid))
 ORDER BY received_at DESC, sighting_id DESC
-LIMIT $7`, filter.Server, pattern, filter.From, filter.To, cursorTime, cursorID, filter.Limit+1)
+LIMIT $8`, filter.Server, pattern, filter.From, filter.To, gapSeconds, cursorTime, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list thief sightings: %w", err)
 	}

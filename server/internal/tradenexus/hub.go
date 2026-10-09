@@ -16,6 +16,7 @@ import (
 
 type Recorder interface {
 	Insert(context.Context, Sighting) error
+	Latest(context.Context, string, string) (Sighting, bool, error)
 }
 
 type TradeRecorder interface {
@@ -113,19 +114,58 @@ func (h *Hub) clock() time.Time {
 	return time.Now().UTC()
 }
 
-func (h *Hub) Record(ctx context.Context, sighting Sighting) (Sighting, error) {
+// Record stores a new sighting. A repeat of the same server and thief within
+// EncounterGap of the latest stored row is not inserted, including when the
+// region changes. The returned sighting is the stored row, and fresh is false
+// so the caller does not broadcast. The in-memory pin still moves to the
+// repeat's coordinates.
+func (h *Hub) Record(ctx context.Context, sighting Sighting) (stored Sighting, fresh bool, err error) {
 	prepared, err := h.prepare(sighting)
 	if err != nil {
-		return Sighting{}, err
+		return Sighting{}, false, err
 	}
 	if h.store != nil {
+		previous, found, lookupErr := h.store.Latest(ctx, prepared.Server, prepared.ThiefName)
+		if lookupErr != nil {
+			slog.Warn("tradenexus repeat check failed", "server", prepared.Server, "reason", lookupErr.Error())
+		} else if found && sameOpenEncounter(previous, prepared) {
+			moved := previous
+			moved.Position = clonePosition(prepared.Position)
+			if prepared.Position != nil {
+				moved.PositionSource = prepared.PositionSource
+			}
+			h.active.remember(h.clock(), moved)
+			return previous, false, nil
+		}
 		if err := h.store.Insert(ctx, prepared); err != nil {
 			slog.Warn("tradenexus sighting was not stored", "server", prepared.Server, "reason", err.Error())
 		}
 	}
 	// Remember before any subscriber ack so subscribe snapshots cannot race the report handler.
 	h.active.remember(h.clock(), prepared)
-	return prepared, nil
+	return prepared, true, nil
+}
+
+// sameOpenEncounter reports whether next continues the stored sighting.
+// A gap of exactly EncounterGap still continues it. Region is ignored.
+func sameOpenEncounter(previous, next Sighting) bool {
+	if previous.ID == "" || previous.ReceivedAt.IsZero() || next.ReceivedAt.IsZero() {
+		return false
+	}
+	gap := next.ReceivedAt.Sub(previous.ReceivedAt)
+	return gap >= 0 && gap <= EncounterGap
+}
+
+func clonePosition(position *Position) *Position {
+	if position == nil {
+		return nil
+	}
+	copied := *position
+	if position.Z != nil {
+		z := *position.Z
+		copied.Z = &z
+	}
+	return &copied
 }
 
 func (h *Hub) prepare(sighting Sighting) (Sighting, error) {
@@ -521,14 +561,16 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 				h.fail(subscriber, reportErr, &invalid)
 				continue
 			}
-			recorded, err := h.Record(ctx, sighting)
+			recorded, fresh, err := h.Record(ctx, sighting)
 			if err != nil {
 				h.fail(subscriber, parseError{Code: "invalid_message", Message: "sighting could not be accepted", Ref: frame.Ref}, &invalid)
 				continue
 			}
 			invalid = 0
 			h.enqueue(subscriber, outbound{payload: ackFrame(frame.Ref, recorded.ID)})
-			h.Broadcast(recorded)
+			if fresh {
+				h.Broadcast(recorded)
+			}
 		case "trade.report":
 			if !subscriber.allowReport(h.clock()) {
 				invalid = 0

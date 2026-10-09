@@ -31,6 +31,7 @@ const (
 	ObservedAtSkew     = 5 * time.Minute
 	MarkerTTL          = 10 * time.Minute
 	ActiveTTL          = 10 * time.Minute
+	EncounterGap       = 2 * time.Minute
 	MaxRecentSightings = 256
 	MaxPageSize        = 100
 
