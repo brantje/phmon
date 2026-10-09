@@ -295,7 +295,7 @@ func validTradeReason(outcome, reason string) bool {
 	case "success":
 		return reason == "sold" || reason == "already_empty"
 	case "failed":
-		return reason == "thief" || reason == "navigation" || reason == "error"
+		return reason == "thief" || reason == "navigation" || reason == "error" || reason == "transport_died"
 	case "cancelled":
 		return reason == "cancelled"
 	default:

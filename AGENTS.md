@@ -250,6 +250,14 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-09 TradeNexus transport death reason
+
+A failed trade report with reason `transport_died` was rejected as an outcome/reason
+mismatch. Failed reports now accept `thief`, `navigation`, `error`, and
+`transport_died`. Migration `000027_trade_transport_died.sql` replaces the
+`trade_reports` outcome/reason check. The optional transport label stays optional.
+The running Compose server still has the previous check until it is rebuilt.
+
 ### Resume — 2026-10-07 Slice 12 review repairs
 
 Active slice: **12 only**. The current checkout is branch

@@ -99,6 +99,10 @@ func TestTradeReportStoreInsertListAndRetention(t *testing.T) {
 	latest.Outcome = "failed"
 	latest.Thief = &tradeName{Name: "Bandit"}
 	latest.Goods = &[]TradeGood{{Name: "Silk", Quantity: 40}}
+	died := sampleTrade(serverName, "aat-died", base.Add(-2*time.Minute), 0)
+	died.Outcome = "failed"
+	died.Reason = "transport_died"
+	died.Transport = "Horse"
 	old := sampleTrade(serverName, "aat-old", base.Add(-48*time.Hour), 10)
 	old.ReceivedAt = base.Add(-48 * time.Hour)
 	stored, err := store.InsertTrade(ctx, first)
@@ -110,6 +114,9 @@ func TestTradeReportStoreInsertListAndRetention(t *testing.T) {
 		t.Fatalf("duplicate = %+v err=%v", again, err)
 	}
 	if _, err := store.InsertTrade(ctx, latest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InsertTrade(ctx, died); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.InsertTrade(ctx, old); err != nil {
@@ -124,7 +131,7 @@ func TestTradeReportStoreInsertListAndRetention(t *testing.T) {
 		t.Fatalf("thief page = %+v err=%v", page, err)
 	}
 	routePage, err := store.ListTrades(ctx, Filter{Server: serverName, Query: "Donwhang", Limit: 10})
-	if err != nil || routePage.Total != 3 {
+	if err != nil || routePage.Total != 4 {
 		t.Fatalf("route page = %+v err=%v", routePage, err)
 	}
 	removed, err := store.DeleteTradesOlderThan(ctx, 1)
@@ -132,7 +139,7 @@ func TestTradeReportStoreInsertListAndRetention(t *testing.T) {
 		t.Fatalf("removed = %d err=%v", removed, err)
 	}
 	var remaining int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM trade_reports WHERE server_name=$1`, serverName).Scan(&remaining); err != nil || remaining != 2 {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM trade_reports WHERE server_name=$1`, serverName).Scan(&remaining); err != nil || remaining != 3 {
 		t.Fatalf("remaining = %d err=%v", remaining, err)
 	}
 }

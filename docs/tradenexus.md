@@ -103,7 +103,7 @@ Required: `v`, `type`, `ref`, `server`, `outcome`, `reason`, `route.from`,
 
 - `outcome` is `success`, `failed`, or `cancelled`.
 - `reason` belongs to that outcome: success is `sold` or `already_empty`; failed
-  is `thief`, `navigation`, or `error`; cancelled is `cancelled`.
+  is `thief`, `navigation`, `error`, or `transport_died`; cancelled is `cancelled`.
 - Towns are `Jangan`, `Donwhang`, `Hotan`, `Samarkand`, `Constantinople`, and
   `Alexandria`. Matching ignores case. `from` and `to` must differ.
 - `waypoints` is the graph nodes the trip arrived at, in arrival order, at most

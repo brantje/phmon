@@ -34,6 +34,20 @@ func TestReportTradeReplacesSkewedFinishedAt(t *testing.T) {
 	}
 }
 
+func TestReportTradeAcceptsTransportDeath(t *testing.T) {
+	now := time.Date(2026, 10, 9, 7, 3, 30, 0, time.UTC)
+	payload := sampleTradePayload(t, now, map[string]any{
+		"outcome": "failed", "reason": "transport_died", "transport": "Horse",
+	})
+	report, err := reportTrade(payload, now)
+	if err.Code != "" || report.Outcome != "failed" || report.Reason != "transport_died" || report.Transport != "Horse" {
+		t.Fatalf("report=%+v err=%#v", report, err)
+	}
+	if report.Thief != nil || report.Detail != "" {
+		t.Fatalf("unexpected failure fields: %+v", report)
+	}
+}
+
 func TestReportTradeRejectsInvalidShapes(t *testing.T) {
 	now := time.Date(2026, 10, 9, 7, 3, 30, 0, time.UTC)
 	cases := []struct {
