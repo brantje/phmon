@@ -246,9 +246,6 @@ func (report TradeReport) valid() error {
 	if report.Reason == "already_empty" && report.Goods != nil && len(*report.Goods) > 0 {
 		return errInvalidTrade
 	}
-	if report.Gold != nil && (*report.Gold < math.MinInt32 || *report.Gold > math.MaxInt32) {
-		return errInvalidTrade
-	}
 	if report.DurationS != nil && (*report.DurationS < 0 || *report.DurationS > MaxTradeDurationS) {
 		return errInvalidTrade
 	}
