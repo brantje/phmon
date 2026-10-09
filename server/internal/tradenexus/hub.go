@@ -567,10 +567,13 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 				continue
 			}
 			invalid = 0
-			h.enqueue(subscriber, outbound{payload: ackFrame(frame.Ref, recorded.ID)})
+			// Broadcast before the ack is queued. Otherwise the sender can
+			// observe the ack and connect another subscriber before the
+			// sighting is delivered, and that new subscriber receives it.
 			if fresh {
 				h.Broadcast(recorded)
 			}
+			h.enqueue(subscriber, outbound{payload: ackFrame(frame.Ref, recorded.ID)})
 		case "trade.report":
 			if !subscriber.allowReport(h.clock()) {
 				invalid = 0
