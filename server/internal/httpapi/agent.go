@@ -50,21 +50,22 @@ func (o AgentOptions) withDefaults() AgentOptions {
 }
 
 type agentHandler struct {
-	store      AgentStore
-	registry   *agentdomain.Registry
-	options    AgentOptions
-	characters *characters.Store
-	live       *LiveHub
-	commands   *commands.Service
-	resources  *resources.Store
-	events     *events.Store
-	mobs       *mobs.Store
-	mobLive    *mobs.LiveStore
-	npcLive    *npcs.LiveStore
-	playerLive *players.LiveStore
-	positions  *positions.Store
-	analytics  *mapanalytics.Store
-	navigation *navigation.Store
+	store          AgentStore
+	registry       *agentdomain.Registry
+	options        AgentOptions
+	characters     *characters.Store
+	live           *LiveHub
+	commands       *commands.Service
+	resources      *resources.Store
+	events         *events.Store
+	mobs           *mobs.Store
+	mobLive        *mobs.LiveStore
+	npcLive        *npcs.LiveStore
+	playerLive     *players.LiveStore
+	playerRegistry *players.Registry
+	positions      *positions.Store
+	analytics      *mapanalytics.Store
+	navigation     *navigation.Store
 }
 
 type agentMonsterSnapshot struct {
@@ -456,6 +457,14 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				Status: frame.Status, Region: frame.Region, ObservedAt: frame.ObservedAt.UTC(),
 				ObserverZ: frame.ObserverZ, Truncated: frame.Truncated, Players: frame.Players,
 			})
+			if h.playerRegistry != nil && (frame.Status == "observed" || frame.Status == "truncated") {
+				registryCtx, registryCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+				registryErr := h.playerRegistry.ApplyLive(registryCtx, character.Server, hello.AgentID, frame.CharacterID, frame.SessionID, frame.ObservedAt.UTC(), frame.Players)
+				registryCancel()
+				if registryErr != nil {
+					slog.Warn("player registry update failed", "reason", registryErr.Error())
+				}
+			}
 			h.live.Invalidate()
 		case "navigation.route":
 			frame := message.NavigationRoute

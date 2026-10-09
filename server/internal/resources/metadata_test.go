@@ -48,6 +48,16 @@ func TestCharacterPortraitResolutionIsScopedToServerProfile(t *testing.T) {
 	if got := metadata.PortraitURL("Greatest", &model); got != "/game-assets/interface/character/char_ch_man1.png" {
 		t.Fatalf("Greatest portrait = %q", got)
 	}
+	if got := metadata.CharacterModelName("Greatest", &model); got != "CHAR_CH_MAN_ADVENTURER" {
+		t.Fatalf("Greatest model name = %q", got)
+	}
+	unknown := int64(999999)
+	if got := metadata.CharacterModelName("Greatest", &unknown); got != "" {
+		t.Fatalf("unknown model name = %q", got)
+	}
+	if got := metadata.CharacterModelName("unmapped", &model); got != "" {
+		t.Fatalf("unmapped server model name = %q", got)
+	}
 	if got := metadata.PortraitURL("other", &model); got != "/game-assets/interface/character/char_ch_man2.png" {
 		t.Fatalf("other profile portrait = %q", got)
 	}

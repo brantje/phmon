@@ -80,6 +80,7 @@ func run() error {
 	mobLive := mobs.NewLiveStore()
 	npcLive := npcs.NewLiveStore()
 	playerLive := players.NewLiveStore()
+	playerRegistry := players.NewRegistry(pool)
 	positionStore := positions.NewStore()
 	metadataDir := os.Getenv("ITEM_METADATA_DIR")
 	if metadataDir == "" {
@@ -90,6 +91,7 @@ func run() error {
 		return fmt.Errorf("load item metadata: %w", metadataErr)
 	}
 	resourceStore.SetItemMetadata(metadata)
+	playerRegistry.SetModelNamer(metadata)
 	analyticsStore.SetItemTaxonomy(
 		resourceStore.AnalyticsItemTaxonomy,
 		resourceStore.AnalyticsItemModels,
@@ -123,7 +125,28 @@ func run() error {
 	var thiefSightings *tradenexus.Store
 	if cfg.TradeNexusEnabled {
 		thiefSightings = tradenexus.NewStore(pool)
-		tradeHub = tradenexus.NewHub(tradenexus.Options{Store: thiefSightings, Trades: thiefSightings, Invalidate: live.Invalidate})
+		tradeHub = tradenexus.NewHub(tradenexus.Options{
+			Store: thiefSightings, Trades: thiefSightings, Invalidate: live.Invalidate,
+			PlayerRecorder: func(recordCtx context.Context, sighting tradenexus.Sighting) {
+				job := "thief"
+				obs := players.Observation{
+					Server: sighting.Server, ObservedName: sighting.ThiefName, Job: &job,
+					Source: players.SourceThiefSighting, ObservedAt: sighting.ObservedAt,
+				}
+				if sighting.Position != nil {
+					region := sighting.Position.Region
+					x := sighting.Position.X
+					y := sighting.Position.Y
+					obs.Region = &region
+					obs.X = &x
+					obs.Y = &y
+					obs.Z = sighting.Position.Z
+				}
+				if err := playerRegistry.Apply(recordCtx, []players.Observation{obs}); err != nil {
+					slog.Warn("player registry thief sighting was not stored", "reason", err.Error())
+				}
+			},
+		})
 		live.SetThiefSightings(thiefSightings)
 		go thiefSightings.RunRetention(ctx, cfg.TradeNexusRetentionDays, time.Hour)
 		eventStore.SetAcceptedHook(func(event events.Event) {
@@ -168,6 +191,7 @@ func run() error {
 		MobLive:        mobLive,
 		NPCLive:        npcLive,
 		PlayerLive:     playerLive,
+		PlayerRegistry: playerRegistry,
 		Positions:      positionStore,
 		MapAnalytics:   mapAnalyticsStore,
 		Analytics:      analyticsStore,

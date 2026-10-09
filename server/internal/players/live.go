@@ -19,16 +19,21 @@ const (
 )
 
 type Player struct {
-	PlayerID string  `json:"player_id"`
-	Name     string  `json:"name"`
-	Guild    string  `json:"guild,omitempty"`
-	Grant    string  `json:"grant,omitempty"`
-	Dead     *bool   `json:"dead,omitempty"`
-	Level    *int    `json:"level,omitempty"`
-	Region   *int    `json:"region,omitempty"`
-	Zone     string  `json:"zone,omitempty"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
+	PlayerID  string   `json:"player_id"`
+	Name      string   `json:"name"`
+	Guild     string   `json:"guild,omitempty"`
+	Grant     string   `json:"grant,omitempty"`
+	Dead      *bool    `json:"dead,omitempty"`
+	Level     *int     `json:"level,omitempty"`
+	Region    *int     `json:"region,omitempty"`
+	Zone      string   `json:"zone,omitempty"`
+	X         float64  `json:"x"`
+	Y         float64  `json:"y"`
+	Z         *float64 `json:"z,omitempty"`
+	Job       string   `json:"job,omitempty"`
+	JobLevel  *int     `json:"job_level,omitempty"`
+	IsJobbing *bool    `json:"is_jobbing,omitempty"`
+	ModelID   *int64   `json:"model_id,omitempty"`
 }
 
 type LiveSnapshot struct {
@@ -91,6 +96,20 @@ func validPlayer(observerRegion int, player Player) bool {
 		}
 	}
 	if player.Level != nil && (*player.Level < 1 || *player.Level > maxLevel) {
+		return false
+	}
+	if player.Z != nil && !validCoordinate(*player.Z) {
+		return false
+	}
+	switch player.Job {
+	case "", "none", "trader", "thief", "hunter", "unknown":
+	default:
+		return false
+	}
+	if player.JobLevel != nil && (*player.JobLevel < 0 || *player.JobLevel > maxLevel) {
+		return false
+	}
+	if player.ModelID != nil && (*player.ModelID < 1 || *player.ModelID > 4294967295) {
 		return false
 	}
 	return true

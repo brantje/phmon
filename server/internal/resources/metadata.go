@@ -214,6 +214,21 @@ func validPortraitURL(value string) bool {
 	return len(value) <= 160 && localCharacterPortrait.MatchString(value)
 }
 
+func (m *ItemMetadata) CharacterModelName(server string, model *int64) string {
+	if m == nil || model == nil || *model < 1 || *model > 4294967295 {
+		return ""
+	}
+	dataset := m.Servers[strings.ToLower(strings.TrimSpace(server))]
+	if dataset == "" {
+		return ""
+	}
+	portrait, ok := m.Catalogs[dataset].CharacterPortraits[strconv.FormatInt(*model, 10)]
+	if !ok || portrait.Code == "" {
+		return ""
+	}
+	return portrait.Code
+}
+
 func (m *ItemMetadata) PortraitURL(server string, model *int64) string {
 	if m == nil || model == nil || *model < 1 || *model > 4294967295 {
 		return ""

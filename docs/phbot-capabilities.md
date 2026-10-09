@@ -1756,3 +1756,15 @@ Plugin **1.9.26** keeps those walks when the submitted script also contains blan
 lines, comments, shop commands, or a teleport name with punctuation. Those lines
 are omitted. The route is rejected only when no walk remains. `lines` may be a
 list or one script string.
+
+## Observed player registry
+
+Plugin **1.9.29** keeps protocol **18**. `get_players()` still supplies the live
+name, guild, level, and position. It does not supply job type, job level, active
+job mode, or character model. Those optional `map.players` fields are accepted
+when a verified source sets them. The production `0x3015` / `0x3017` / `0x3019` /
+`0x3018` character decoder is disabled. Group framing can be exercised in tests,
+and it does not decode fields. A four-byte `0x3016` despawn removes a temporary
+runtime-id cache entry. Runtime ids are not player identities. A directly observed
+TradeNexus thief name is stored as its own player with job `thief` and unknown
+jobbing state. No selection packet is sent.

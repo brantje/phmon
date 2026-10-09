@@ -4600,5 +4600,80 @@ class ReverseReturnPartyFreshnessTests(unittest.TestCase):
         self.assertEqual(frames[-1]['revision'], 2)
 
 
+class SpawnObservationTests(unittest.TestCase):
+    def setUp(self):
+        plugin._reset_spawn_state()
+
+    def test_production_spawn_does_not_decode_character_fields(self):
+        self.assertFalse(plugin.SPAWN_CHARACTER_DECODER_ENABLED)
+        self.assertTrue(plugin.handle_joymax(0x3015, self._fixture(jobbing=False)))
+        self.assertEqual(plugin._spawn_entities, {})
+
+    def test_despawn_forgets_a_runtime_id(self):
+        record = plugin.decode_unverified_spawn_fixture(self._fixture(jobbing=False))
+        self.assertTrue(plugin.remember_verified_spawn(record))
+        self.assertTrue(plugin.handle_joymax(0x3016, (84631).to_bytes(4, 'little')))
+        self.assertEqual(plugin._spawn_entities, {})
+
+    def test_fixture_keeps_job_role_separate_from_jobbing(self):
+        normal = plugin.decode_unverified_spawn_fixture(self._fixture(jobbing=False))
+        active = plugin.decode_unverified_spawn_fixture(self._fixture(jobbing=True, name='SecretHunter'))
+        self.assertEqual(normal['job'], 'hunter')
+        self.assertEqual(normal['job_level'], 7)
+        self.assertFalse(normal['is_jobbing'])
+        self.assertEqual(normal['player_name'], 'DarkWizard')
+        self.assertNotIn('job_name', normal)
+        self.assertTrue(active['is_jobbing'])
+        self.assertEqual(active['job_name'], 'SecretHunter')
+        self.assertNotIn('player_name', active)
+
+    def test_unknown_appearance_does_not_invent_jobbing_or_names(self):
+        record = plugin.decode_unverified_spawn_fixture(self._fixture(appearance=0))
+        self.assertEqual(record['job'], 'hunter')
+        self.assertNotIn('is_jobbing', record)
+        self.assertNotIn('player_name', record)
+        self.assertNotIn('job_name', record)
+
+    def test_non_character_and_malformed_fixtures(self):
+        payload = bytearray(self._fixture())
+        payload[0] = 2
+        self.assertIsNone(plugin.decode_unverified_spawn_fixture(payload))
+        with self.assertRaises(ValueError):
+            plugin.decode_unverified_spawn_fixture(b'\x01\x02')
+
+    def test_group_fragments_complete_and_bad_frames_reset(self):
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3017, (2).to_bytes(2, 'little')))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3019, b'abc'))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3019, b'def'))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3018, b''))
+        self.assertEqual(plugin._last_completed_spawn_group['expected'], 2)
+        self.assertEqual(plugin._last_completed_spawn_group['chunks'], [b'abc', b'def'])
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b'orphan'))
+        self.assertIsNone(plugin._spawn_group)
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3017, (1).to_bytes(2, 'little')))
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b'x' * (plugin.SPAWN_GROUP_BYTE_LIMIT + 1)))
+        self.assertIsNone(plugin._spawn_group)
+
+    def test_runtime_id_reuse_replaces_cached_fields(self):
+        first = plugin.decode_unverified_spawn_fixture(self._fixture(job_level=4))
+        second = plugin.decode_unverified_spawn_fixture(self._fixture(job_level=7))
+        plugin.remember_verified_spawn(first)
+        plugin.remember_verified_spawn(second)
+        players = [{'player_id': '84631', 'name': 'DarkWizard'}]
+        plugin._attach_spawn_player_fields(players)
+        self.assertEqual(players[0]['job_level'], 7)
+        self.assertEqual(players[0]['model_id'], 1907)
+        plugin._reset_player_sample_state()
+        fresh = [{'player_id': '84631', 'name': 'DarkWizard'}]
+        plugin._attach_spawn_player_fields(fresh)
+        self.assertNotIn('job', fresh[0])
+
+    def _fixture(self, jobbing=False, name='DarkWizard', job_level=7, appearance=None):
+        if appearance is None:
+            appearance = 2 if jobbing else 1
+        encoded = name.encode('utf-8')
+        return bytes([1]) + (1907).to_bytes(4, 'little') + (84631).to_bytes(4, 'little') + bytes([len(encoded)]) + encoded + bytes([appearance, 3, job_level])
+
+
 if __name__ == '__main__':
     unittest.main()

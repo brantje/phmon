@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.28'
+pVersion = '1.9.29'
 pUrl = ''
 
 PROTOCOL_VERSION = 18
@@ -614,7 +614,8 @@ def _player_snapshot_signature(status, region, observer_z, players):
         rows.append((
             player.get('player_id'), player.get('name'), player.get('guild'), player.get('grant'),
             player.get('dead'), player.get('level'), player.get('region'), player.get('zone'),
-            player.get('x'), player.get('y'),
+            player.get('x'), player.get('y'), player.get('job'), player.get('job_level'),
+            player.get('is_jobbing'), player.get('model_id'),
         ))
     rows.sort()
     return (status, region, observer_z, tuple(rows))
@@ -5358,6 +5359,7 @@ def _reset_player_sample_state():
     _last_player_signature = None
     _last_player_publish_at = 0.0
     _player_sample_forced = False
+    _reset_spawn_state()
 _death_callback_active = False
 _recent_player_attack = None
 _phbot_connected_state = None
@@ -5567,6 +5569,7 @@ def teleported():
     _last_position_publish_at = 0.0
     _last_position_observed = None
     _player_sample_forced = True
+    _reset_spawn_state()
     if _worker is not None and hasattr(_worker, 'clear_position'):
         _worker.clear_position()
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
@@ -5651,6 +5654,156 @@ def _sample_realtime_position(now=None):
     return _publish_realtime_position(position, now)
 
 
+SPAWN_CHARACTER_DECODER_ENABLED = False
+SPAWN_SINGLE = 0x3015
+SPAWN_DESPAWN = 0x3016
+SPAWN_GROUP_BEGIN = 0x3017
+SPAWN_GROUP_END = 0x3018
+SPAWN_GROUP_DATA = 0x3019
+SPAWN_GROUP_BYTE_LIMIT = 65536
+SPAWN_GROUP_COUNT_LIMIT = 256
+_spawn_entities = {}
+_spawn_group = None
+_last_completed_spawn_group = None
+_JOB_TYPE_CANDIDATES = {0: 'none', 1: 'trader', 2: 'thief', 3: 'hunter'}
+
+
+def _reset_spawn_state():
+    global _spawn_entities, _spawn_group, _last_completed_spawn_group
+    _spawn_entities = {}
+    _spawn_group = None
+    _last_completed_spawn_group = None
+
+
+def _observe_spawn_opcode(opcode, data):
+    """Despawn cleanup is verified as a 4-byte runtime id. Character fields stay off."""
+    try:
+        opcode = int(opcode) & 0xFFFF
+    except Exception:
+        return False
+    if opcode == SPAWN_DESPAWN:
+        return _forget_spawn_entity(data)
+    if not SPAWN_CHARACTER_DECODER_ENABLED:
+        return False
+    return _assemble_unverified_spawn_group(opcode, data)
+
+
+def _forget_spawn_entity(data):
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 4:
+        return False
+    runtime_id = str(int.from_bytes(bytes(data[:4]), 'little'))
+    _spawn_entities.pop(runtime_id, None)
+    return True
+
+
+def _assemble_unverified_spawn_group(opcode, data):
+    """Keep group framing bounded. This does not decode character fields."""
+    global _spawn_group, _last_completed_spawn_group
+    if not isinstance(data, (bytes, bytearray)):
+        _spawn_group = None
+        return False
+    payload = bytes(data)
+    if opcode == SPAWN_GROUP_BEGIN:
+        if len(payload) < 2:
+            _spawn_group = None
+            return False
+        count = int.from_bytes(payload[:2], 'little')
+        if count > SPAWN_GROUP_COUNT_LIMIT:
+            _spawn_group = None
+            return False
+        _spawn_group = {'expected': count, 'chunks': [], 'size': 0}
+        return True
+    if opcode == SPAWN_GROUP_DATA:
+        if _spawn_group is None or _spawn_group['size'] + len(payload) > SPAWN_GROUP_BYTE_LIMIT:
+            _spawn_group = None
+            return False
+        _spawn_group['chunks'].append(payload)
+        _spawn_group['size'] += len(payload)
+        return True
+    if opcode == SPAWN_GROUP_END:
+        group = _spawn_group
+        _spawn_group = None
+        if group is None or not group['chunks']:
+            return False
+        group['complete'] = True
+        _last_completed_spawn_group = group
+        return True
+    return False
+
+
+def decode_unverified_spawn_fixture(payload):
+    """Read a test-only character record. This layout is not a live server decoder."""
+    if not isinstance(payload, (bytes, bytearray)) or len(payload) < 16:
+        raise ValueError('malformed spawn fixture')
+    data = bytes(payload)
+    if data[0] != 1:
+        return None
+    offset = 1
+    model_id = int.from_bytes(data[offset:offset + 4], 'little')
+    offset += 4
+    runtime_id = int.from_bytes(data[offset:offset + 4], 'little')
+    offset += 4
+    name_length = data[offset]
+    offset += 1
+    if name_length > 64 or offset + name_length + 3 > len(data):
+        raise ValueError('malformed spawn fixture')
+    name = data[offset:offset + name_length].decode('utf-8')
+    offset += name_length
+    appearance = data[offset]
+    job_code = data[offset + 1]
+    job_level = data[offset + 2]
+    offset += 3
+    if appearance not in (0, 1, 2) or offset > len(data):
+        raise ValueError('malformed spawn fixture')
+    record = {
+        'runtime_entity_id': str(runtime_id),
+        'observed_name': name,
+        'model_id': model_id,
+    }
+    if job_code in _JOB_TYPE_CANDIDATES:
+        record['job'] = _JOB_TYPE_CANDIDATES[job_code]
+    elif job_code != 255:
+        record['job'] = 'unknown'
+    if job_level != 255:
+        record['job_level'] = job_level
+    if appearance == 1:
+        record['is_jobbing'] = False
+        record['player_name'] = name
+    elif appearance == 2:
+        record['is_jobbing'] = True
+        record['job_name'] = name
+    return record
+
+
+def remember_verified_spawn(record):
+    if not isinstance(record, dict):
+        return False
+    runtime_id = _bounded_text(record.get('runtime_entity_id'), 64)
+    if runtime_id is None:
+        return False
+    if len(_spawn_entities) >= 256 and runtime_id not in _spawn_entities:
+        return False
+    stored = {}
+    for key in ('job', 'job_level', 'is_jobbing', 'model_id'):
+        if key in record and record[key] is not None:
+            stored[key] = record[key]
+    _spawn_entities[runtime_id] = stored
+    return True
+
+
+def _attach_spawn_player_fields(players):
+    if not isinstance(players, list):
+        return
+    for player in players:
+        if not isinstance(player, dict):
+            continue
+        cached = _spawn_entities.get(str(player.get('player_id')))
+        if not isinstance(cached, dict):
+            continue
+        for key, value in cached.items():
+            player[key] = value
+
+
 def handle_joymax(opcode, data):
     """Observe server packets passively and always forward them to phBot."""
     if opcode == POSITION_MOVEMENT_OPCODE:
@@ -5669,6 +5822,11 @@ def handle_joymax(opcode, data):
         _observe_unique_notice(opcode, data)
     except Exception:
         # A monitoring failure must never interfere with the game packet.
+        pass
+    try:
+        _observe_spawn_opcode(opcode, data)
+    except Exception:
+        # Spawn monitoring must never interfere with packet forwarding.
         pass
     return True
 
@@ -6281,6 +6439,7 @@ def _sample_players(identity, state, position, now=None):
         truncated = True
     if truncated:
         status = 'truncated'
+    _attach_spawn_player_fields(matching)
     if any(not player.get('zone') and not _valid_position_region(player.get('region'))
            for player in matching):
         observer_zone = _zone_name_for_region(region)
