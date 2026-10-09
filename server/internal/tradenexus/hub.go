@@ -250,6 +250,10 @@ func (h *Hub) RecordTrade(ctx context.Context, report TradeReport) (TradeReport,
 }
 
 func (h *Hub) Broadcast(sighting Sighting) {
+	h.broadcastTo(sighting, h.subscribers(sighting.Server))
+}
+
+func (h *Hub) broadcastTo(sighting Sighting, targets []*client) {
 	h.active.remember(h.clock(), sighting)
 	payload, err := marshalSighting(sighting)
 	if err != nil {
@@ -257,7 +261,7 @@ func (h *Hub) Broadcast(sighting Sighting) {
 		return
 	}
 	h.scheduleInvalidate()
-	for _, subscriber := range h.subscribers(sighting.Server) {
+	for _, subscriber := range targets {
 		h.enqueue(subscriber, outbound{payload: payload})
 	}
 }
@@ -567,13 +571,17 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 				continue
 			}
 			invalid = 0
-			// Broadcast before the ack is queued. Otherwise the sender can
-			// observe the ack and connect another subscriber before the
-			// sighting is delivered, and that new subscriber receives it.
+			// Freeze the recipient list before the ack is queued. The sender
+			// can read the ack and subscribe another connection before a later
+			// broadcast runs, and that connection must not receive this frame.
+			var targets []*client
 			if fresh {
-				h.Broadcast(recorded)
+				targets = h.subscribers(recorded.Server)
 			}
 			h.enqueue(subscriber, outbound{payload: ackFrame(frame.Ref, recorded.ID)})
+			if fresh {
+				h.broadcastTo(recorded, targets)
+			}
 		case "trade.report":
 			if !subscriber.allowReport(h.clock()) {
 				invalid = 0
