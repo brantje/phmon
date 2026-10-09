@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   ThiefSighting,
   ThiefSightingPage,
+  TradeReportPage,
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
@@ -47,14 +48,18 @@ const tabs = [
     query: { kind: 'world.unique_spawned' },
   },
   { label: 'Thieves', key: 'thieves', query: { view: 'thieves' } },
+  { label: 'Trades', key: 'trades', query: { view: 'trades' } },
 ]
 const selectedTab = computed(() => {
   if (route.query.view === 'thieves') return 'thieves'
+  if (route.query.view === 'trades') return 'trades'
   if (typeof route.query.kind === 'string') return route.query.kind
   if (route.query.category === 'custom') return 'custom'
   return 'all'
 })
 const thievesView = computed(() => selectedTab.value === 'thieves')
+const tradesView = computed(() => selectedTab.value === 'trades')
+const externalHistory = computed(() => thievesView.value || tradesView.value)
 const activeTab = computed(
   () => tabs.find((tab) => tab.key === selectedTab.value) || tabs[0],
 )
@@ -82,11 +87,30 @@ const pageTitle = computed(() =>
     ? 'History · All'
     : `History · ${activeTabLabel.value}`,
 )
-const description = computed(() =>
-  thievesView.value
-    ? 'Thief sightings reported by PhMon characters and AdvancedAutoTrade.'
-    : 'Recorded activity from phBot callbacks and reliable state observations.',
-)
+const description = computed(() => {
+  if (thievesView.value) {
+    return 'Thief sightings reported by PhMon characters and AdvancedAutoTrade.'
+  }
+  if (tradesView.value) {
+    return 'Finished trade trips reported by AdvancedAutoTrade.'
+  }
+  return 'Recorded activity from phBot callbacks and reliable state observations.'
+})
+const historyFilterLabel = computed(() => {
+  if (thievesView.value) return 'Name'
+  if (tradesView.value) return 'Trader'
+  return 'Character'
+})
+const historyFilterPlaceholder = computed(() => {
+  if (thievesView.value) return 'Filter by thief or reporter'
+  if (tradesView.value) return 'Filter by reporter, route, transport, or thief'
+  return 'Filter by character'
+})
+const historyFilterAria = computed(() => {
+  if (thievesView.value) return 'Filter thief sightings by name'
+  if (tradesView.value) return 'Filter trade reports'
+  return 'Filter events by character'
+})
 const fromDate = ref(dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)))
 const toDate = ref(dateInput(new Date()))
 const characterInput = ref(
@@ -110,6 +134,33 @@ const sightingCursor = ref('')
 const sightingPrevious = ref<string[]>([])
 let sightingTimer: ReturnType<typeof setInterval> | undefined
 let sightingRequest = 0
+const tradePage = ref<TradeReportPage | null>(null)
+const tradeStatus = ref<'loading' | 'current' | 'error'>('loading')
+const tradeCursor = ref('')
+const tradePrevious = ref<string[]>([])
+let tradeTimer: ReturnType<typeof setInterval> | undefined
+let tradeRequest = 0
+const historyTotalLabel = computed(() => {
+  if (tradesView.value) return tradePage.value ? tradePage.value.total : '—'
+  if (thievesView.value)
+    return sightingPage.value ? sightingPage.value.total : '—'
+  return page.value?.total ?? '—'
+})
+const historyPreviousCount = computed(() => {
+  if (tradesView.value) return tradePrevious.value.length
+  if (thievesView.value) return sightingPrevious.value.length
+  return previousCursors.value.length
+})
+const historyTotalCount = computed(() => {
+  if (tradesView.value) return tradePage.value?.total || 0
+  if (thievesView.value) return sightingPage.value?.total || 0
+  return page.value?.total || 0
+})
+const historyNextDisabled = computed(() => {
+  if (tradesView.value) return !tradePage.value?.next_cursor
+  if (thievesView.value) return !sightingPage.value?.next_cursor
+  return !page.value?.next_cursor
+})
 const eventMapProfiles = ref<Record<string, MapProfile>>({})
 const mapProfileRequests = new Map<string, Promise<MapProfile>>()
 const invalidDateRange = computed(
@@ -221,6 +272,7 @@ watch(
     includePetPickups,
     includeOwnedGains,
     thievesView,
+    tradesView,
     () => route.query.from_ts,
     () => route.query.to_ts,
     () => route.query.character_id,
@@ -239,6 +291,7 @@ watch(
     includePickups,
     includeGains,
     _thieves,
+    _trades,
     _fromTs,
     _toTs,
     routeCharacterID,
@@ -246,7 +299,7 @@ watch(
     pageCursor,
     size,
   ]) => {
-    if (_thieves) {
+    if (_thieves || _trades) {
       clearEventFeed(feedID)
       return
     }
@@ -334,10 +387,37 @@ watch(
 watch(sightingPage, (value) => {
   void rememberMapProfiles((value?.sightings || []).map((row) => row.server))
 })
+watch(
+  [
+    tradesView,
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    tradeCursor,
+    pageSize,
+  ],
+  () => {
+    if (tradeTimer) clearInterval(tradeTimer)
+    tradeTimer = undefined
+    if (!tradesView.value) return
+    void loadTrades()
+    tradeTimer = setInterval(() => void loadTrades(), 5000)
+  },
+  { immediate: true },
+)
+watch(
+  [tradesView, serverScope, fromDate, toDate, characterQuery, pageSize],
+  () => {
+    tradeCursor.value = ''
+    tradePrevious.value = []
+  },
+)
 onBeforeUnmount(() => {
   if (characterSearchTimer) clearTimeout(characterSearchTimer)
   if (itemSearchTimer) clearTimeout(itemSearchTimer)
   if (sightingTimer) clearInterval(sightingTimer)
+  if (tradeTimer) clearInterval(tradeTimer)
   clearEventFeed(feedID)
 })
 
@@ -376,6 +456,51 @@ function nextSightingPage() {
 function previousSightingPage() {
   if (!sightingPrevious.value.length) return
   sightingCursor.value = sightingPrevious.value.pop() || ''
+}
+async function loadTrades() {
+  const request = ++tradeRequest
+  if (!tradesView.value || invalidDateRange.value) {
+    tradePage.value = null
+    return
+  }
+  if (!tradePage.value) tradeStatus.value = 'loading'
+  try {
+    const next = await $fetch<TradeReportPage>('/api/trade-reports', {
+      query: {
+        server: serverScope.value === 'all' ? undefined : serverScope.value,
+        q: characterQuery.value || undefined,
+        from: fromDate.value ? localDateBoundary(fromDate.value, 0) : undefined,
+        to: toDate.value ? localDateBoundary(toDate.value, 1) : undefined,
+        cursor: tradeCursor.value || undefined,
+        limit: pageSize.value,
+      },
+    })
+    if (request !== tradeRequest) return
+    tradePage.value = next
+    tradeStatus.value = 'current'
+  } catch {
+    if (request !== tradeRequest) return
+    tradeStatus.value = 'error'
+  }
+}
+function nextTradePage() {
+  if (!tradePage.value?.next_cursor) return
+  tradePrevious.value.push(tradeCursor.value)
+  tradeCursor.value = tradePage.value.next_cursor
+}
+function previousTradePage() {
+  if (!tradePrevious.value.length) return
+  tradeCursor.value = tradePrevious.value.pop() || ''
+}
+function showPreviousHistory() {
+  if (tradesView.value) previousTradePage()
+  else if (thievesView.value) previousSightingPage()
+  else previousPage()
+}
+function showNextHistory() {
+  if (tradesView.value) nextTradePage()
+  else if (thievesView.value) nextSightingPage()
+  else nextPage()
 }
 function sightingSource(row: ThiefSighting) {
   if (row.origin === 'phmon') return 'PhMon'
@@ -616,27 +741,17 @@ function localDateBoundary(value: string, addDays: number) {
           :to="{ path: '/events', query: tab.query }"
           >{{ tab.label }}</NuxtLink
         >
-        <span class="event-count">{{
-          thievesView ? (sightingPage?.total ?? '—') : (page?.total ?? '—')
-        }}</span>
+        <span class="event-count">{{ historyTotalLabel }}</span>
       </div>
 
       <div class="events-filters">
         <label>
-          <span>{{ thievesView ? 'Name' : 'Character' }}</span>
+          <span>{{ historyFilterLabel }}</span>
           <input
             v-model="characterInput"
             maxlength="64"
-            :placeholder="
-              thievesView
-                ? 'Filter by thief or reporter'
-                : 'Filter by character'
-            "
-            :aria-label="
-              thievesView
-                ? 'Filter thief sightings by name'
-                : 'Filter events by character'
-            "
+            :placeholder="historyFilterPlaceholder"
+            :aria-label="historyFilterAria"
           />
         </label>
         <label v-if="itemTab">
@@ -666,7 +781,7 @@ function localDateBoundary(value: string, addDays: number) {
       </div>
 
       <div
-        v-if="liveStale && !thievesView"
+        v-if="liveStale && !externalHistory"
         class="status-banner warning"
         role="status"
       >
@@ -679,8 +794,47 @@ function localDateBoundary(value: string, addDays: number) {
       >
         Thief sightings could not be loaded.
       </div>
+      <div
+        v-if="tradesView && tradeStatus === 'error'"
+        class="status-banner warning"
+        role="alert"
+      >
+        Trade reports could not be loaded.
+      </div>
       <div class="event-rows-scroll">
-        <div v-if="thievesView" class="event-history-rows">
+        <div v-if="tradesView" class="event-history-rows">
+          <article
+            v-for="row in tradePage?.reports || []"
+            :key="row.trade_id"
+            class="event-row-grid event-row-trade"
+            :aria-label="`${tradeOutcomeLabel(row)} by ${row.reporter.name}`"
+          >
+            <div class="event-row-primary">
+              <strong>{{ tradeOutcomeLabel(row) }}</strong>
+            </div>
+            <time :datetime="row.finished_at">{{
+              formatTimestamp(row.finished_at)
+            }}</time>
+            <div class="event-row-character">{{ row.reporter.name }}</div>
+            <div>{{ tradeRouteLabel(row) }}</div>
+            <div class="event-row-detail">{{ tradeReportSummary(row) }}</div>
+          </article>
+          <div v-if="!tradePage?.reports.length" class="event-empty-state">
+            <strong>{{
+              tradeStatus === 'current'
+                ? 'No trade reports found'
+                : tradeStatus === 'error'
+                  ? 'Trade reports unavailable'
+                  : 'Loading trade reports'
+            }}</strong>
+            <span>{{
+              tradeStatus === 'current'
+                ? 'No trade reports match this server, trader and date range.'
+                : 'Waiting for trade report history.'
+            }}</span>
+          </div>
+        </div>
+        <div v-else-if="thievesView" class="event-history-rows">
           <article
             v-for="row in sightingPage?.sightings || []"
             :key="row.sighting_id"
@@ -909,40 +1063,25 @@ function localDateBoundary(value: string, addDays: number) {
           <button
             class="compact-button"
             type="button"
-            :disabled="
-              thievesView ? !sightingPrevious.length : !previousCursors.length
-            "
-            @click="thievesView ? previousSightingPage() : previousPage()"
+            :disabled="historyPreviousCount === 0"
+            @click="showPreviousHistory()"
           >
             Previous
           </button>
           <span>
             Page
-            {{
-              (thievesView ? sightingPrevious.length : previousCursors.length) +
-              1
-            }}
+            {{ historyPreviousCount + 1 }}
             /
-            {{
-              Math.max(
-                1,
-                Math.ceil(
-                  ((thievesView ? sightingPage?.total : page?.total) || 0) /
-                    pageSize,
-                ),
-              )
-            }}
+            {{ Math.max(1, Math.ceil(historyTotalCount / pageSize)) }}
             ·
-            {{ (thievesView ? sightingPage?.total : page?.total) || 0 }}
+            {{ historyTotalCount }}
             entries
           </span>
           <button
             class="compact-button"
             type="button"
-            :disabled="
-              thievesView ? !sightingPage?.next_cursor : !page?.next_cursor
-            "
-            @click="thievesView ? nextSightingPage() : nextPage()"
+            :disabled="historyNextDisabled"
+            @click="showNextHistory()"
           >
             Next
           </button>

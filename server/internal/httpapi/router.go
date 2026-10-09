@@ -87,6 +87,8 @@ func New(deps Dependencies) http.Handler {
 	if deps.ThiefSightings != nil {
 		sightings := &thiefSightingHandler{store: deps.ThiefSightings}
 		register("GET /api/thief-sightings", false, sightings.list)
+		trades := &tradeReportHandler{store: deps.ThiefSightings}
+		register("GET /api/trade-reports", false, trades.list)
 	}
 	analyticsLive := deps.Live
 	if deps.Agents != nil && deps.Registry != nil {

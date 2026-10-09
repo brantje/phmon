@@ -18,8 +18,13 @@ type Recorder interface {
 	Insert(context.Context, Sighting) error
 }
 
+type TradeRecorder interface {
+	InsertTrade(context.Context, TradeReport) (TradeReport, error)
+}
+
 type Options struct {
 	Store            Recorder
+	Trades           TradeRecorder
 	Invalidate       func()
 	Now              func() time.Time
 	MaxConnections   int
@@ -37,6 +42,7 @@ type outbound struct {
 
 type Hub struct {
 	store            Recorder
+	trades           TradeRecorder
 	invalidate       func()
 	now              func() time.Time
 	maxConnections   int
@@ -91,7 +97,7 @@ func NewHub(options Options) *Hub {
 		options.MaxInvalidFrames = MaxInvalidFrames
 	}
 	return &Hub{
-		store: options.Store, invalidate: options.Invalidate, now: options.Now,
+		store: options.Store, trades: options.Trades, invalidate: options.Invalidate, now: options.Now,
 		maxConnections: options.MaxConnections, maxPerIP: options.MaxPerIP,
 		maxServers: options.MaxServers, reportsPerWindow: options.ReportsPerWindow,
 		sendQueue: options.SendQueue, maxInvalidFrames: options.MaxInvalidFrames,
@@ -172,6 +178,35 @@ func (h *Hub) prepare(sighting Sighting) (Sighting, error) {
 		}
 	}
 	return sighting, nil
+}
+
+func (h *Hub) RecordTrade(ctx context.Context, report TradeReport) (TradeReport, error) {
+	if err := report.valid(); err != nil {
+		return TradeReport{}, err
+	}
+	if report.ID == "" {
+		id, err := newSightingID()
+		if err != nil {
+			return TradeReport{}, err
+		}
+		report.ID = id
+	}
+	now := h.clock()
+	if report.ReceivedAt.IsZero() {
+		report.ReceivedAt = now
+	}
+	if report.FinishedAt.IsZero() || report.FinishedAt.After(now.Add(ObservedAtSkew)) || report.FinishedAt.Before(now.Add(-ObservedAtSkew)) {
+		report.FinishedAt = report.ReceivedAt
+	}
+	if h.trades == nil {
+		return report, nil
+	}
+	stored, err := h.trades.InsertTrade(ctx, report)
+	if err != nil {
+		slog.Warn("tradenexus trade report was not stored", "server", report.Server, "reason", err.Error())
+		return TradeReport{}, err
+	}
+	return stored, nil
 }
 
 func (h *Hub) Broadcast(sighting Sighting) {
@@ -386,9 +421,10 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hello, _ := json.Marshal(map[string]any{
 		"v": ProtocolVersion, "type": "hello", "server_time": h.clock().Format(time.RFC3339),
 		"limits": map[string]int{
-			"max_frame_bytes": MaxFrameBytes,
-			"max_servers":     h.maxServers,
-			"reports_per_5s":  h.reportsPerWindow,
+			"max_frame_bytes":       MaxFrameBytes,
+			"max_trade_frame_bytes": MaxTradeFrameBytes,
+			"max_servers":           h.maxServers,
+			"reports_per_5s":        h.reportsPerWindow,
 		},
 	})
 	h.enqueue(subscriber, outbound{payload: hello})
@@ -449,8 +485,8 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 		if err != nil {
 			return
 		}
-		if len(payload) > MaxFrameBytes {
-			h.fail(subscriber, parseError{Code: "too_large", Message: "frame exceeds 4096 bytes"}, &invalid)
+		if len(payload) > MaxTradeFrameBytes {
+			h.fail(subscriber, parseError{Code: "too_large", Message: "frame exceeds 16384 bytes"}, &invalid)
 			continue
 		}
 		frame, parseErr := parseClientFrame(payload)
@@ -476,7 +512,7 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 		case "thief.report":
 			if !subscriber.allowReport(h.clock()) {
 				invalid = 0
-				body := errorFrame(frame.Ref, "rate_limited", "too many thief reports")
+				body := errorFrame(frame.Ref, "rate_limited", "too many reports")
 				h.enqueue(subscriber, outbound{payload: body})
 				continue
 			}
@@ -493,6 +529,25 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 			invalid = 0
 			h.enqueue(subscriber, outbound{payload: ackFrame(frame.Ref, recorded.ID)})
 			h.Broadcast(recorded)
+		case "trade.report":
+			if !subscriber.allowReport(h.clock()) {
+				invalid = 0
+				body := errorFrame(frame.Ref, "rate_limited", "too many reports")
+				h.enqueue(subscriber, outbound{payload: body})
+				continue
+			}
+			trade, tradeErr := reportTrade(payload, h.clock())
+			if tradeErr.Code != "" {
+				h.fail(subscriber, tradeErr, &invalid)
+				continue
+			}
+			storedTrade, tradeStoreErr := h.RecordTrade(ctx, trade)
+			if tradeStoreErr != nil {
+				h.fail(subscriber, parseError{Code: "invalid_message", Message: "trade could not be accepted", Ref: frame.Ref}, &invalid)
+				continue
+			}
+			invalid = 0
+			h.enqueue(subscriber, outbound{payload: tradeAckFrame(frame.Ref, storedTrade.ID)})
 		}
 	}
 }

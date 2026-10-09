@@ -16,6 +16,7 @@ import (
 const (
 	ProtocolVersion    = 1
 	MaxFrameBytes      = 4096
+	MaxTradeFrameBytes = 16384
 	MaxServers         = 25
 	MaxServerRunes     = 100
 	MaxNameBytes       = 64
@@ -26,7 +27,7 @@ const (
 	MaxConnectionsIP   = 25
 	SendQueue          = 64
 	MaxInvalidFrames   = 5
-	ReadLimitBytes     = 8192
+	ReadLimitBytes     = MaxTradeFrameBytes
 	ObservedAtSkew     = 5 * time.Minute
 	MarkerTTL          = 10 * time.Minute
 	ActiveTTL          = 10 * time.Minute
@@ -142,7 +143,10 @@ func validServer(value string) (string, bool) {
 }
 
 func parseClientFrame(payload []byte) (clientFrame, parseError) {
-	if len(payload) > MaxFrameBytes {
+	if len(payload) > MaxTradeFrameBytes {
+		return clientFrame{}, parseError{Code: "too_large", Message: "frame exceeds 16384 bytes"}
+	}
+	if len(payload) > MaxFrameBytes && !tradeReportFrame(payload) {
 		return clientFrame{}, parseError{Code: "too_large", Message: "frame exceeds 4096 bytes"}
 	}
 	var frame clientFrame
@@ -158,11 +162,21 @@ func parseClientFrame(payload []byte) (clientFrame, parseError) {
 	}
 	frame.Ref = ref
 	switch frame.Type {
-	case "subscribe", "thief.report":
+	case "subscribe", "thief.report", "trade.report":
 		return frame, parseError{}
 	default:
 		return clientFrame{}, parseError{Code: "unsupported_type", Message: "unsupported message type", Ref: frame.Ref}
 	}
+}
+
+func tradeReportFrame(payload []byte) bool {
+	var peek struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(payload, &peek); err != nil {
+		return false
+	}
+	return peek.Type == "trade.report"
 }
 
 func safeRef(value string) string {

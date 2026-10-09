@@ -289,6 +289,43 @@ export interface ThiefSightingPage {
   total: number
 }
 
+export interface TradeWaypoint {
+  name: string
+  x: number
+  y: number
+}
+
+export interface TradeGood {
+  name: string
+  quantity: number
+}
+
+export interface TradeReport {
+  trade_id: string
+  server: string
+  ref: string
+  outcome: 'success' | 'failed' | 'cancelled'
+  reason: string
+  route: { from: string; to: string }
+  waypoints: TradeWaypoint[]
+  goods?: TradeGood[]
+  gold?: number
+  duration_s?: number
+  stars?: string
+  detail?: string
+  thief?: { name: string }
+  transport?: string
+  reporter: { name: string; app?: string; version?: string }
+  finished_at: string
+  received_at: string
+}
+
+export interface TradeReportPage {
+  reports: TradeReport[]
+  next_cursor?: string
+  total: number
+}
+
 export interface MapPartySnapshot {
   status: 'observed' | 'unavailable' | 'truncated'
   truncated?: boolean

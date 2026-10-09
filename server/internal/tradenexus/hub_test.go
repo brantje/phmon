@@ -113,6 +113,79 @@ func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	}
 }
 
+func TestTradeReportAcksSenderWithoutBroadcast(t *testing.T) {
+	trades := &memoryTrades{}
+	var invalidated atomic.Int32
+	now := time.Date(2026, 10, 9, 7, 3, 30, 0, time.UTC)
+	hub := NewHub(Options{Trades: trades, Invalidate: func() { invalidated.Add(1) }, Now: func() time.Time { return now }})
+	server := httptest.NewServer(hub)
+	defer server.Close()
+
+	listener := dialTradeNexus(t, server.URL)
+	defer listener.CloseNow()
+	hello := readFrame(t, listener)
+	limits, _ := hello["limits"].(map[string]any)
+	if limits["max_frame_bytes"] != float64(MaxFrameBytes) || limits["max_trade_frame_bytes"] != float64(MaxTradeFrameBytes) {
+		t.Fatalf("hello limits: %#v", hello["limits"])
+	}
+	writeFrame(t, listener, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Greatest"}})
+	expectType(t, listener, "subscribed")
+	expectThievesSnapshot(t, listener, 0)
+
+	reporter := dialTradeNexus(t, server.URL)
+	defer reporter.CloseNow()
+	expectType(t, reporter, "hello")
+	payload := map[string]any{}
+	if err := json.Unmarshal(sampleTradePayload(t, now, nil), &payload); err != nil {
+		t.Fatal(err)
+	}
+	writeFrame(t, reporter, payload)
+	ack := readFrame(t, reporter)
+	if ack["type"] != "ack" || ack["ref"] != "aat-1728460800-3" || ack["trade_id"] == "" || ack["sighting_id"] != nil {
+		t.Fatalf("trade ack: %#v", ack)
+	}
+	listener.SetReadLimit(MaxTradeFrameBytes)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, _, err := listener.Read(ctx); err == nil {
+		t.Fatal("subscribed peer received a trade report")
+	}
+	if invalidated.Load() != 0 || trades.count() != 1 {
+		t.Fatalf("stored=%d invalidated=%d", trades.count(), invalidated.Load())
+	}
+
+	writeFrame(t, reporter, payload)
+	repeat := readFrame(t, reporter)
+	if repeat["trade_id"] != ack["trade_id"] || trades.count() != 1 {
+		t.Fatalf("duplicate ack=%#v stored=%d", repeat, trades.count())
+	}
+}
+
+type memoryTrades struct {
+	mu   sync.Mutex
+	rows map[string]TradeReport
+}
+
+func (m *memoryTrades) InsertTrade(_ context.Context, report TradeReport) (TradeReport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rows == nil {
+		m.rows = map[string]TradeReport{}
+	}
+	key := strings.ToLower(report.Server) + "|" + report.Ref
+	if existing, ok := m.rows[key]; ok {
+		return existing, nil
+	}
+	m.rows[key] = report
+	return report, nil
+}
+
+func (m *memoryTrades) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.rows)
+}
+
 func TestTradeNexusRejectsInvalidAndOversizedFrames(t *testing.T) {
 	hub := NewHub(Options{MaxInvalidFrames: 5})
 	server := httptest.NewServer(hub)

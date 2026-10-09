@@ -2056,6 +2056,12 @@ select:focus-visible {
     38px;
 }
 
+.event-row-trade {
+  min-width: 920px;
+  grid-template-columns:
+    minmax(160px, 1fr) 160px 140px minmax(160px, 0.8fr) minmax(240px, 1.6fr);
+}
+
 .event-row-primary,
 .event-row-character-primary,
 .event-row-generic-primary {

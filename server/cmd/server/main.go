@@ -123,7 +123,7 @@ func run() error {
 	var thiefSightings *tradenexus.Store
 	if cfg.TradeNexusEnabled {
 		thiefSightings = tradenexus.NewStore(pool)
-		tradeHub = tradenexus.NewHub(tradenexus.Options{Store: thiefSightings, Invalidate: live.Invalidate})
+		tradeHub = tradenexus.NewHub(tradenexus.Options{Store: thiefSightings, Trades: thiefSightings, Invalidate: live.Invalidate})
 		live.SetThiefSightings(thiefSightings)
 		go thiefSightings.RunRetention(ctx, cfg.TradeNexusRetentionDays, time.Hour)
 		eventStore.SetAcceptedHook(func(event events.Event) {
