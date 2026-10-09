@@ -16,10 +16,16 @@ import (
 
 type Recorder interface {
 	Insert(context.Context, Sighting) error
+	Latest(context.Context, string, string) (Sighting, bool, error)
+}
+
+type TradeRecorder interface {
+	InsertTrade(context.Context, TradeReport) (TradeReport, error)
 }
 
 type Options struct {
 	Store            Recorder
+	Trades           TradeRecorder
 	Invalidate       func()
 	Now              func() time.Time
 	MaxConnections   int
@@ -37,6 +43,7 @@ type outbound struct {
 
 type Hub struct {
 	store            Recorder
+	trades           TradeRecorder
 	invalidate       func()
 	now              func() time.Time
 	maxConnections   int
@@ -91,7 +98,7 @@ func NewHub(options Options) *Hub {
 		options.MaxInvalidFrames = MaxInvalidFrames
 	}
 	return &Hub{
-		store: options.Store, invalidate: options.Invalidate, now: options.Now,
+		store: options.Store, trades: options.Trades, invalidate: options.Invalidate, now: options.Now,
 		maxConnections: options.MaxConnections, maxPerIP: options.MaxPerIP,
 		maxServers: options.MaxServers, reportsPerWindow: options.ReportsPerWindow,
 		sendQueue: options.SendQueue, maxInvalidFrames: options.MaxInvalidFrames,
@@ -107,19 +114,58 @@ func (h *Hub) clock() time.Time {
 	return time.Now().UTC()
 }
 
-func (h *Hub) Record(ctx context.Context, sighting Sighting) (Sighting, error) {
+// Record stores a new sighting. A repeat of the same server and thief within
+// EncounterGap of the latest stored row is not inserted, including when the
+// region changes. The returned sighting is the stored row, and fresh is false
+// so the caller does not broadcast. The in-memory pin still moves to the
+// repeat's coordinates.
+func (h *Hub) Record(ctx context.Context, sighting Sighting) (stored Sighting, fresh bool, err error) {
 	prepared, err := h.prepare(sighting)
 	if err != nil {
-		return Sighting{}, err
+		return Sighting{}, false, err
 	}
 	if h.store != nil {
+		previous, found, lookupErr := h.store.Latest(ctx, prepared.Server, prepared.ThiefName)
+		if lookupErr != nil {
+			slog.Warn("tradenexus repeat check failed", "server", prepared.Server, "reason", lookupErr.Error())
+		} else if found && sameOpenEncounter(previous, prepared) {
+			moved := previous
+			moved.Position = clonePosition(prepared.Position)
+			if prepared.Position != nil {
+				moved.PositionSource = prepared.PositionSource
+			}
+			h.active.remember(h.clock(), moved)
+			return previous, false, nil
+		}
 		if err := h.store.Insert(ctx, prepared); err != nil {
 			slog.Warn("tradenexus sighting was not stored", "server", prepared.Server, "reason", err.Error())
 		}
 	}
 	// Remember before any subscriber ack so subscribe snapshots cannot race the report handler.
 	h.active.remember(h.clock(), prepared)
-	return prepared, nil
+	return prepared, true, nil
+}
+
+// sameOpenEncounter reports whether next continues the stored sighting.
+// A gap of exactly EncounterGap still continues it. Region is ignored.
+func sameOpenEncounter(previous, next Sighting) bool {
+	if previous.ID == "" || previous.ReceivedAt.IsZero() || next.ReceivedAt.IsZero() {
+		return false
+	}
+	gap := next.ReceivedAt.Sub(previous.ReceivedAt)
+	return gap >= 0 && gap <= EncounterGap
+}
+
+func clonePosition(position *Position) *Position {
+	if position == nil {
+		return nil
+	}
+	copied := *position
+	if position.Z != nil {
+		z := *position.Z
+		copied.Z = &z
+	}
+	return &copied
 }
 
 func (h *Hub) prepare(sighting Sighting) (Sighting, error) {
@@ -174,17 +220,50 @@ func (h *Hub) prepare(sighting Sighting) (Sighting, error) {
 	return sighting, nil
 }
 
+func (h *Hub) RecordTrade(ctx context.Context, report TradeReport) (TradeReport, error) {
+	if err := report.valid(); err != nil {
+		return TradeReport{}, err
+	}
+	if report.ID == "" {
+		id, err := newSightingID()
+		if err != nil {
+			return TradeReport{}, err
+		}
+		report.ID = id
+	}
+	now := h.clock()
+	if report.ReceivedAt.IsZero() {
+		report.ReceivedAt = now
+	}
+	if report.FinishedAt.IsZero() || report.FinishedAt.After(now.Add(ObservedAtSkew)) || report.FinishedAt.Before(now.Add(-ObservedAtSkew)) {
+		report.FinishedAt = report.ReceivedAt
+	}
+	if h.trades == nil {
+		return report, nil
+	}
+	stored, err := h.trades.InsertTrade(ctx, report)
+	if err != nil {
+		slog.Warn("tradenexus trade report was not stored", "server", report.Server, "reason", err.Error())
+		return TradeReport{}, err
+	}
+	return stored, nil
+}
+
 func (h *Hub) Broadcast(sighting Sighting) {
+	h.broadcastTo(sighting, h.subscribers(sighting.Server))
+}
+
+func (h *Hub) broadcastTo(sighting Sighting, targets []*client) {
 	h.active.remember(h.clock(), sighting)
 	payload, err := marshalSighting(sighting)
 	if err != nil {
 		slog.Warn("tradenexus sighting could not be encoded", "reason", err.Error())
 		return
 	}
-	for _, subscriber := range h.subscribers(sighting.Server) {
+	h.scheduleInvalidate()
+	for _, subscriber := range targets {
 		h.enqueue(subscriber, outbound{payload: payload})
 	}
-	h.scheduleInvalidate()
 }
 
 func (h *Hub) pushActiveThieves(subscriber *client, servers []string) {
@@ -386,9 +465,10 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hello, _ := json.Marshal(map[string]any{
 		"v": ProtocolVersion, "type": "hello", "server_time": h.clock().Format(time.RFC3339),
 		"limits": map[string]int{
-			"max_frame_bytes": MaxFrameBytes,
-			"max_servers":     h.maxServers,
-			"reports_per_5s":  h.reportsPerWindow,
+			"max_frame_bytes":       MaxFrameBytes,
+			"max_trade_frame_bytes": MaxTradeFrameBytes,
+			"max_servers":           h.maxServers,
+			"reports_per_5s":        h.reportsPerWindow,
 		},
 	})
 	h.enqueue(subscriber, outbound{payload: hello})
@@ -449,8 +529,8 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 		if err != nil {
 			return
 		}
-		if len(payload) > MaxFrameBytes {
-			h.fail(subscriber, parseError{Code: "too_large", Message: "frame exceeds 4096 bytes"}, &invalid)
+		if len(payload) > MaxTradeFrameBytes {
+			h.fail(subscriber, parseError{Code: "too_large", Message: "frame exceeds 16384 bytes"}, &invalid)
 			continue
 		}
 		frame, parseErr := parseClientFrame(payload)
@@ -476,7 +556,7 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 		case "thief.report":
 			if !subscriber.allowReport(h.clock()) {
 				invalid = 0
-				body := errorFrame(frame.Ref, "rate_limited", "too many thief reports")
+				body := errorFrame(frame.Ref, "rate_limited", "too many reports")
 				h.enqueue(subscriber, outbound{payload: body})
 				continue
 			}
@@ -485,14 +565,42 @@ func (h *Hub) read(ctx context.Context, subscriber *client) {
 				h.fail(subscriber, reportErr, &invalid)
 				continue
 			}
-			recorded, err := h.Record(ctx, sighting)
+			recorded, fresh, err := h.Record(ctx, sighting)
 			if err != nil {
 				h.fail(subscriber, parseError{Code: "invalid_message", Message: "sighting could not be accepted", Ref: frame.Ref}, &invalid)
 				continue
 			}
 			invalid = 0
+			// Freeze the recipient list before the ack is queued. The sender
+			// can read the ack and subscribe another connection before a later
+			// broadcast runs, and that connection must not receive this frame.
+			var targets []*client
+			if fresh {
+				targets = h.subscribers(recorded.Server)
+			}
 			h.enqueue(subscriber, outbound{payload: ackFrame(frame.Ref, recorded.ID)})
-			h.Broadcast(recorded)
+			if fresh {
+				h.broadcastTo(recorded, targets)
+			}
+		case "trade.report":
+			if !subscriber.allowReport(h.clock()) {
+				invalid = 0
+				body := errorFrame(frame.Ref, "rate_limited", "too many reports")
+				h.enqueue(subscriber, outbound{payload: body})
+				continue
+			}
+			trade, tradeErr := reportTrade(payload, h.clock())
+			if tradeErr.Code != "" {
+				h.fail(subscriber, tradeErr, &invalid)
+				continue
+			}
+			storedTrade, tradeStoreErr := h.RecordTrade(ctx, trade)
+			if tradeStoreErr != nil {
+				h.fail(subscriber, parseError{Code: "invalid_message", Message: "trade could not be accepted", Ref: frame.Ref}, &invalid)
+				continue
+			}
+			invalid = 0
+			h.enqueue(subscriber, outbound{payload: tradeAckFrame(frame.Ref, storedTrade.ID)})
 		}
 	}
 }

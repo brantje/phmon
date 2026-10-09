@@ -45,6 +45,27 @@ func (m *memorySightings) callCount() int {
 	return m.calls
 }
 
+func (m *memorySightings) Latest(_ context.Context, server, thief string) (Sighting, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var found Sighting
+	var ok bool
+	for _, row := range m.rows {
+		if !strings.EqualFold(row.Server, server) || !strings.EqualFold(row.ThiefName, thief) {
+			continue
+		}
+		if !ok || row.ReceivedAt.After(found.ReceivedAt) || (row.ReceivedAt.Equal(found.ReceivedAt) && row.ID > found.ID) {
+			found = row
+			ok = true
+		}
+	}
+	if !ok {
+		return Sighting{}, false, nil
+	}
+	found.Position = clonePosition(found.Position)
+	return found, true, nil
+}
+
 func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	store := &memorySightings{}
 	var invalidated atomic.Int32
@@ -111,6 +132,79 @@ func TestTradeNexusRelaysSubscribedSightings(t *testing.T) {
 	if _, _, err := outsider.Read(ctx); err == nil {
 		t.Fatal("unsubscribed server received a sighting")
 	}
+}
+
+func TestTradeReportAcksSenderWithoutBroadcast(t *testing.T) {
+	trades := &memoryTrades{}
+	var invalidated atomic.Int32
+	now := time.Date(2026, 10, 9, 7, 3, 30, 0, time.UTC)
+	hub := NewHub(Options{Trades: trades, Invalidate: func() { invalidated.Add(1) }, Now: func() time.Time { return now }})
+	server := httptest.NewServer(hub)
+	defer server.Close()
+
+	listener := dialTradeNexus(t, server.URL)
+	defer listener.CloseNow()
+	hello := readFrame(t, listener)
+	limits, _ := hello["limits"].(map[string]any)
+	if limits["max_frame_bytes"] != float64(MaxFrameBytes) || limits["max_trade_frame_bytes"] != float64(MaxTradeFrameBytes) {
+		t.Fatalf("hello limits: %#v", hello["limits"])
+	}
+	writeFrame(t, listener, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Greatest"}})
+	expectType(t, listener, "subscribed")
+	expectThievesSnapshot(t, listener, 0)
+
+	reporter := dialTradeNexus(t, server.URL)
+	defer reporter.CloseNow()
+	expectType(t, reporter, "hello")
+	payload := map[string]any{}
+	if err := json.Unmarshal(sampleTradePayload(t, now, nil), &payload); err != nil {
+		t.Fatal(err)
+	}
+	writeFrame(t, reporter, payload)
+	ack := readFrame(t, reporter)
+	if ack["type"] != "ack" || ack["ref"] != "aat-1728460800-3" || ack["trade_id"] == "" || ack["sighting_id"] != nil {
+		t.Fatalf("trade ack: %#v", ack)
+	}
+	listener.SetReadLimit(MaxTradeFrameBytes)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, _, err := listener.Read(ctx); err == nil {
+		t.Fatal("subscribed peer received a trade report")
+	}
+	if invalidated.Load() != 0 || trades.count() != 1 {
+		t.Fatalf("stored=%d invalidated=%d", trades.count(), invalidated.Load())
+	}
+
+	writeFrame(t, reporter, payload)
+	repeat := readFrame(t, reporter)
+	if repeat["trade_id"] != ack["trade_id"] || trades.count() != 1 {
+		t.Fatalf("duplicate ack=%#v stored=%d", repeat, trades.count())
+	}
+}
+
+type memoryTrades struct {
+	mu   sync.Mutex
+	rows map[string]TradeReport
+}
+
+func (m *memoryTrades) InsertTrade(_ context.Context, report TradeReport) (TradeReport, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rows == nil {
+		m.rows = map[string]TradeReport{}
+	}
+	key := strings.ToLower(report.Server) + "|" + report.Ref
+	if existing, ok := m.rows[key]; ok {
+		return existing, nil
+	}
+	m.rows[key] = report
+	return report, nil
+}
+
+func (m *memoryTrades) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.rows)
 }
 
 func TestTradeNexusRejectsInvalidAndOversizedFrames(t *testing.T) {
@@ -350,6 +444,136 @@ func TestTradeNexusActiveThiefSnapshot(t *testing.T) {
 	position, _ := updated["position"].(map[string]any)
 	if position["x"] != 9.0 || position["y"] != 8.0 {
 		t.Fatalf("latest position was not retained: %#v", updated)
+	}
+}
+
+func TestRepeatThiefSightingAcksTheStoredRow(t *testing.T) {
+	start := time.Date(2026, 10, 9, 18, 43, 0, 0, time.UTC)
+	current := start
+	store := &memorySightings{}
+	hub := NewHub(Options{Store: store, Now: func() time.Time { return current }})
+	server := httptest.NewServer(hub)
+	defer server.Close()
+
+	listener := dialTradeNexus(t, server.URL)
+	defer listener.CloseNow()
+	expectType(t, listener, "hello")
+	writeFrame(t, listener, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Kalypso"}})
+	expectType(t, listener, "subscribed")
+	expectThievesSnapshot(t, listener, 0)
+
+	reporter := dialTradeNexus(t, server.URL)
+	defer reporter.CloseNow()
+	expectType(t, reporter, "hello")
+	writeFrame(t, reporter, thiefReport("first", 24484, 5709))
+	ack := readFrame(t, reporter)
+	echo := readFrame(t, listener)
+	if ack["type"] != "ack" || ack["sighting_id"] == "" || echo["sighting_id"] != ack["sighting_id"] || store.callCount() != 1 {
+		t.Fatalf("first ack=%#v echo=%#v stored=%d", ack, echo, store.callCount())
+	}
+	storedID, _ := ack["sighting_id"].(string)
+
+	watcher := dialTradeNexus(t, server.URL)
+	defer watcher.CloseNow()
+	expectType(t, watcher, "hello")
+	writeFrame(t, watcher, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Kalypso"}})
+	expectType(t, watcher, "subscribed")
+	expectThievesSnapshot(t, watcher, 1)
+
+	current = start.Add(30 * time.Second)
+	writeFrame(t, reporter, thiefReport("repeat", 24484, 5741))
+	repeat := readFrame(t, reporter)
+	if repeat["type"] != "ack" || repeat["sighting_id"] != storedID || store.callCount() != 1 {
+		t.Fatalf("repeat ack=%#v stored=%d", repeat, store.callCount())
+	}
+	watcher.SetReadLimit(MaxFrameBytes)
+	quiet, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, _, err := watcher.Read(quiet); err == nil {
+		t.Fatal("repeat sighting was broadcast")
+	}
+	store.mu.Lock()
+	storedX := store.rows[0].Position.X
+	store.mu.Unlock()
+	if storedX != 5709 {
+		t.Fatalf("stored position changed to %v", storedX)
+	}
+
+	follower := dialTradeNexus(t, server.URL)
+	defer follower.CloseNow()
+	expectType(t, follower, "hello")
+	writeFrame(t, follower, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Kalypso"}})
+	expectType(t, follower, "subscribed")
+	snapshot := expectThievesSnapshot(t, follower, 1)
+	sightings, _ := snapshot["sightings"].([]any)
+	moved, _ := sightings[0].(map[string]any)
+	position, _ := moved["position"].(map[string]any)
+	if moved["sighting_id"] != storedID || position["x"] != 5741.0 {
+		t.Fatalf("in-memory pin = %#v", moved)
+	}
+
+	current = start.Add(45 * time.Second)
+	writeFrame(t, reporter, thiefReport("region", 25000, 10))
+	regionAck := readFrame(t, reporter)
+	if regionAck["type"] != "ack" || regionAck["sighting_id"] != storedID || store.callCount() != 1 {
+		t.Fatalf("region change ack=%#v stored=%d", regionAck, store.callCount())
+	}
+	movedRegion := dialTradeNexus(t, server.URL)
+	defer movedRegion.CloseNow()
+	expectType(t, movedRegion, "hello")
+	writeFrame(t, movedRegion, map[string]any{"v": 1, "type": "subscribe", "servers": []string{"Kalypso"}})
+	expectType(t, movedRegion, "subscribed")
+	regionSnapshot := expectThievesSnapshot(t, movedRegion, 1)
+	regionSightings, _ := regionSnapshot["sightings"].([]any)
+	regionPin, _ := regionSightings[0].(map[string]any)
+	regionPosition, _ := regionPin["position"].(map[string]any)
+	if regionPin["sighting_id"] != storedID || regionPosition["region"] != 25000.0 || regionPosition["x"] != 10.0 {
+		t.Fatalf("region pin = %#v", regionPin)
+	}
+
+	current = start.Add(45*time.Second + EncounterGap + time.Second)
+	writeFrame(t, reporter, thiefReport("later", 25000, 11))
+	laterAck := readFrame(t, reporter)
+	laterEcho := readFrame(t, listener)
+	if laterAck["sighting_id"] == storedID || laterEcho["sighting_id"] != laterAck["sighting_id"] || store.callCount() != 2 {
+		t.Fatalf("later sighting ack=%#v echo=%#v stored=%d", laterAck, laterEcho, store.callCount())
+	}
+}
+
+func TestSameOpenEncounterUsesRegionAndGap(t *testing.T) {
+	base := time.Date(2026, 10, 9, 18, 43, 0, 0, time.UTC)
+	previous := Sighting{
+		ID: "stored", Server: "Kalypso", ThiefName: "xDont", ReceivedAt: base,
+		Position: &Position{Region: 24484, X: 5709},
+	}
+	next := previous
+	next.ReceivedAt = base.Add(EncounterGap)
+	next.Position = &Position{Region: 24484, X: 5741}
+	if !sameOpenEncounter(previous, next) {
+		t.Fatal("a report exactly two minutes later continues the encounter")
+	}
+	next.ReceivedAt = base.Add(EncounterGap + time.Nanosecond)
+	if sameOpenEncounter(previous, next) {
+		t.Fatal("a report after two minutes is a new sighting")
+	}
+	next.ReceivedAt = base.Add(time.Second)
+	next.Position = &Position{Region: 25000, X: 5741}
+	if !sameOpenEncounter(previous, next) {
+		t.Fatal("a region change continues the encounter")
+	}
+	next.Position = nil
+	if !sameOpenEncounter(previous, next) {
+		t.Fatal("a missing position continues the encounter")
+	}
+}
+
+func thiefReport(ref string, region int, x float64) map[string]any {
+	return map[string]any{
+		"v": 1, "type": "thief.report", "ref": ref, "server": "Kalypso",
+		"thief":           map[string]string{"name": "xDont"},
+		"position_source": "thief",
+		"position":        map[string]any{"region": region, "x": x, "y": 686.5},
+		"reporter":        map[string]string{"name": "Kalypso", "app": "AdvancedAutoTrade"},
 	}
 }
 

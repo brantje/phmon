@@ -158,6 +158,45 @@ def main() -> int:
             raise SmokeError(f"broadcast: {seen}")
         if seen.get("origin") != "external" or seen["thief"]["name"] != "Bandit123":
             raise SmokeError(f"broadcast body: {seen}")
+        publisher.send(
+            {
+                "v": 1,
+                "type": "trade.report",
+                "ref": "aat-1728460800-3",
+                "server": "Greatest",
+                "outcome": "success",
+                "reason": "sold",
+                "route": {"from": "Jangan", "to": "Donwhang"},
+                "waypoints": [
+                    {"name": "chau_approach", "x": 37643, "y": 7342},
+                    {"name": "chau_mid", "x": 37000, "y": 7000},
+                    {"name": "doji_approach", "x": 36000, "y": 6800},
+                ],
+                "goods": [{"name": "Silk", "quantity": 120}],
+                "gold": 45000,
+                "duration_s": 842,
+                "stars": "Max",
+                "reporter": {"app": "AdvancedAutoTrade", "version": "1.0.0", "name": "CharName"},
+                "finished_at": "2026-10-09T07:03:00Z",
+            }
+        )
+        trade_ack = publisher.recv()
+        if (
+            trade_ack.get("type") != "ack"
+            or trade_ack.get("ref") != "aat-1728460800-3"
+            or not trade_ack.get("trade_id")
+            or trade_ack.get("sighting_id")
+        ):
+            raise SmokeError(f"trade ack: {trade_ack}")
+        listener.sock.settimeout(0.4)
+        try:
+            unexpected = listener.recv()
+        except TimeoutError:
+            unexpected = None
+        finally:
+            listener.sock.settimeout(5)
+        if unexpected is not None:
+            raise SmokeError(f"trade was broadcast: {unexpected}")
         publisher.send({"v": 1, "type": "thief.report", "ref": "bad", "server": "Greatest"})
         error = publisher.recv()
         if error.get("type") != "error" or error.get("ref") != "bad" or error.get("code") != "invalid_message":

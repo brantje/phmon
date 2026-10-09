@@ -1,13 +1,7 @@
 const MAX_ANALYTICS_RANGE_MS = 366 * 24 * 60 * 60 * 1000
 
 export type AnalyticsGroupBy =
-  | 'character'
-  | 'group'
-  | 'location'
-  | 'item'
-  | 'type'
-  | 'degree'
-  | 'academy'
+  'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy'
 
 /** Keep a grouping the selected analytics view is allowed to query. */
 export function analyticsGrouping(

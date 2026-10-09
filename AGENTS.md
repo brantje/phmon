@@ -250,6 +250,24 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-10 thief sighting repeats
+
+A repeat of the same server and thief name within two minutes of the latest
+stored `thief_sightings` row is acknowledged with that row's id, including
+when the region changes. It is not inserted or broadcast, and the stored row
+is not updated. The in-memory TradeNexus pin moves to the new coordinates. A
+later report is stored as its own row. History groups already saved rows by
+the same rule when listing them. The map continues to read the latest stored
+row.
+
+### Resume — 2026-10-09 TradeNexus transport death reason
+
+A failed trade report with reason `transport_died` was rejected as an outcome/reason
+mismatch. Failed reports now accept `thief`, `navigation`, `error`, and
+`transport_died`. Migration `000027_trade_transport_died.sql` replaces the
+`trade_reports` outcome/reason check. The optional transport label stays optional.
+The running Compose server still has the previous check until it is rebuilt.
+
 ### Resume — 2026-10-07 Slice 12 review repairs
 
 Active slice: **12 only**. The current checkout is branch

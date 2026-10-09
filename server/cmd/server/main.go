@@ -123,7 +123,7 @@ func run() error {
 	var thiefSightings *tradenexus.Store
 	if cfg.TradeNexusEnabled {
 		thiefSightings = tradenexus.NewStore(pool)
-		tradeHub = tradenexus.NewHub(tradenexus.Options{Store: thiefSightings, Invalidate: live.Invalidate})
+		tradeHub = tradenexus.NewHub(tradenexus.Options{Store: thiefSightings, Trades: thiefSightings, Invalidate: live.Invalidate})
 		live.SetThiefSightings(thiefSightings)
 		go thiefSightings.RunRetention(ctx, cfg.TradeNexusRetentionDays, time.Hour)
 		eventStore.SetAcceptedHook(func(event events.Event) {
@@ -133,12 +133,14 @@ func run() error {
 			}
 			hookCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
-			recorded, err := tradeHub.Record(hookCtx, sighting)
+			recorded, fresh, err := tradeHub.Record(hookCtx, sighting)
 			if err != nil {
 				slog.Warn("phmon thief sighting was not relayed", "reason", err.Error())
 				return
 			}
-			tradeHub.Broadcast(recorded)
+			if fresh {
+				tradeHub.Broadcast(recorded)
+			}
 		})
 	}
 	dispatchStore := commands.NewStore(pool)

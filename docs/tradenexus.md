@@ -1,29 +1,39 @@
 # TradeNexus protocol v1
 
 TradeNexus is an open WebSocket on the PhMon server at `GET /tradenexus`. It
-relays thief sightings between AdvancedAutoTrade clients and PhMon. The socket
-does not use operator cookies or agent tokens. PhMon stores every accepted
-sighting and broadcasts it to clients subscribed to that game server.
+relays thief sightings between AdvancedAutoTrade clients and PhMon, and accepts
+finished trade reports from those clients. The socket does not use operator
+cookies or agent tokens. PhMon stores a new thief sighting and broadcasts it
+to clients subscribed to that game server. A repeat of the same server, thief
+name within two minutes of the latest stored report is acknowledged
+with that stored sighting id. It is not inserted or broadcast, and the stored
+row is left unchanged. Trade reports are stored and acknowledged only to the
+sender.
 
 The WebSocket hub keeps the latest sighting per thief name for each server in
-memory for **10 minutes** from `received_at`. When a client sends `subscribe`,
-the server replies with `subscribed` and then a `thieves` snapshot of every
-active sighting for the subscribed servers. Live `thief.sighting` frames still
-follow for new reports. A process restart clears the hub memory; PostgreSQL
-history and the operator map layer use separate retention rules.
+memory for **10 minutes** from `received_at`. A repeat inside the two-minute
+window moves that in-memory pin to the new coordinates and keeps the stored
+sighting id. When a client sends `subscribe`, the server replies with
+`subscribed` and then a `thieves` snapshot of every active sighting for the
+subscribed servers. Live `thief.sighting` frames still follow for new reports.
+A process restart clears the hub memory; PostgreSQL history and the operator
+map layer use separate retention rules. The map pin keeps using the latest
+stored row until a later report is actually inserted.
 
 ## Transport
 
 - Endpoint: `GET /tradenexus`, upgraded to WebSocket.
 - Any `Origin` is accepted. Clients are expected to be non-browser bots as well
   as browsers. The route sets no cookies.
-- Frames are UTF-8 JSON text, at most 4096 bytes. Larger frames are rejected.
+- Frames are UTF-8 JSON text. Subscribe and `thief.report` frames are at most
+  4096 bytes. A `trade.report` frame may be 16384 bytes so its waypoint list
+  fits. Larger frames are rejected.
 - Every frame includes `"v": 1` and a `type`. Unknown fields are ignored.
 - Keepalive is WebSocket ping/pong. The server pings about every 30 seconds.
 - Unknown `type` values return `error` with code `unsupported_type` and leave
   the connection open. Five consecutive invalid frames close the connection.
 - Limits, per immediate peer address: 25 connections, 5000 connections total,
-  25 subscribed servers, and 100 `thief.report` frames per 5 seconds.
+  25 subscribed servers, and 100 `thief.report` or `trade.report` frames per 5 seconds.
   `rate_limited` is not an invalid frame. The peer cap uses the dialing
   address, so clients behind one reverse proxy share it.
 
@@ -41,6 +51,11 @@ Report a thief. `ref` is optional, at most 64 bytes, and is echoed only to the
 sender. `origin` sent by a client is ignored. A report does not require a
 subscription. The sender receives its own broadcast only when it is subscribed
 to that server, and can ignore the echo by comparing `sighting_id` with `ack`.
+History lists one row per encounter in the filtered result: the latest stored
+row in a run of the same server and thief name whose successive reports in
+that result are each within two minutes of the previous one. Region does not
+split the run. Grouping is done when the list is read, after the name and date
+filters. Stored rows are not rewritten.
 
 ```json
 {
@@ -51,10 +66,77 @@ to that server, and can ignore the echo by comparing `sighting_id` with `ack`.
   "thief": { "name": "Bandit123" },
   "position": { "region": 24999, "x": 1234.5, "y": 678.9, "z": 12.0 },
   "position_source": "thief",
-  "reporter": { "name": "trader1", "app": "AdvancedAutoTrade", "version": "1.0.0" },
+  "reporter": {
+    "name": "trader1",
+    "app": "AdvancedAutoTrade",
+    "version": "1.0.0"
+  },
   "observed_at": "2026-10-06T19:10:00Z"
 }
 ```
+
+Report a finished trade. `ref` is required and uses the same 1–64 byte text rule
+as a thief ref. AdvancedAutoTrade sends `aat-<unix>-<counter>`; PhMon does not
+parse that shape. The sender receives `ack` with `trade_id`. A repeat of the
+same server and `ref` returns the original `trade_id` and does not change the
+stored row. Subscribers do not receive the report. `reporter.app` and
+`reporter.version` match thief reports. `reporter.name` is required.
+
+```json
+{
+  "v": 1,
+  "type": "trade.report",
+  "ref": "aat-1728460800-3",
+  "server": "Server Name",
+  "outcome": "success",
+  "reason": "sold",
+  "route": { "from": "Jangan", "to": "Donwhang" },
+  "waypoints": [
+    { "name": "chau_approach", "x": 37643, "y": 7342 },
+    { "name": "chau_mid", "x": 37643, "y": 7342 },
+    { "name": "doji_approach", "x": 37643, "y": 7342 }
+  ],
+  "goods": [{ "name": "Silk", "quantity": 120 }],
+  "gold": 45000,
+  "duration_s": 842,
+  "stars": "Max",
+  "reporter": {
+    "app": "AdvancedAutoTrade",
+    "version": "1.0.0",
+    "name": "CharName"
+  },
+  "finished_at": "2026-10-09T07:03:00Z"
+}
+```
+
+Required: `v`, `type`, `ref`, `server`, `outcome`, `reason`, `route.from`,
+`route.to`, `waypoints`, `reporter.name`, and `finished_at`.
+
+- `outcome` is `success`, `failed`, or `cancelled`.
+- `reason` belongs to that outcome: success is `sold` or `already_empty`; failed
+  is `thief`, `navigation`, `error`, or `transport_died`; cancelled is `cancelled`.
+- Towns are `Jangan`, `Donwhang`, `Hotan`, `Samarkand`, `Constantinople`, and
+  `Alexandria`. Matching ignores case. `from` and `to` must differ.
+- `waypoints` is the graph nodes the trip arrived at, in arrival order, at most
+  200 objects. Each `name` is a `ROUTE_NODES` id: 1–64 characters, lowercase
+  letters, digits, and underscores. `x` and `y` are required finite numbers
+  within ±1,000,000. An empty list means the inter-town leg arrived at no graph
+  node. PhMon stores the coordinates and does not keep its own copy of the
+  graph. The node being walked when the trip stops is left off.
+- `goods` is optional, at most 16 items. Each name uses the text rule and each
+  quantity is an integer from 1 to 99999. Omit it when the transport reading is
+  missing. `already_empty` may send `[]` and cannot send a non-empty list.
+- `gold` is an optional signed 32-bit integer, gold now minus trip-start gold.
+- `duration_s` is optional whole seconds from 0 to 86400.
+- `stars` is optional: `"1"` through `"5"` or `"Max"`.
+- `detail` is optional, only for `navigation` and `error`, at most 256 bytes.
+- `thief.name` is required for reason `thief` and rejected otherwise.
+- `transport` is an optional display label using the name text rule.
+- `finished_at` is UTC RFC3339. A value more than 5 minutes from server time is
+  stored as `received_at`, the same replacement used for `observed_at`.
+
+Trade and thief reports share the 100-frames-per-5-seconds counter. The limit
+error says `too many reports`.
 
 ## Server to client
 
@@ -63,7 +145,12 @@ to that server, and can ignore the echo by comparing `sighting_id` with `ack`.
   "v": 1,
   "type": "hello",
   "server_time": "2026-10-06T19:10:00Z",
-  "limits": { "max_frame_bytes": 4096, "max_servers": 25, "reports_per_5s": 100 }
+  "limits": {
+    "max_frame_bytes": 4096,
+    "max_trade_frame_bytes": 16384,
+    "max_servers": 25,
+    "reports_per_5s": 100
+  }
 }
 ```
 
@@ -87,7 +174,12 @@ server hit the 256-name active cap and dropped older thieves. Outbound snapshot
 frames are not limited to 4096 bytes; inbound client frames remain capped.
 
 ```json
-{ "v": 1, "type": "ack", "ref": "client-chosen-id-123", "sighting_id": "8c1f..." }
+{
+  "v": 1,
+  "type": "ack",
+  "ref": "client-chosen-id-123",
+  "sighting_id": "8c1f..."
+}
 ```
 
 ```json
@@ -118,6 +210,19 @@ frames are not limited to 4096 bytes; inbound client frames remain capped.
 
 `origin` is `phmon` or `external`. `position` is omitted when the reporter had
 no coordinates. `reporter` is omitted when the client sent none.
+
+A trade ack uses `trade_id` instead of `sighting_id`:
+
+```json
+{ "v": 1, "type": "ack", "ref": "aat-1728460800-3", "trade_id": "8c1f..." }
+```
+
+Accepted trades are listed for the signed-in operator at `GET /api/trade-reports`
+and on Events → Trades. The list is filtered by server, finished time, and
+reporter, route, transport, thief, outcome, or reason. Waypoint coordinates are
+returned with each row and are not drawn on the map. Rows older than
+`TRADENEXUS_RETENTION_DAYS` are deleted with thief sightings, using
+`received_at`.
 
 ## Field rules
 
