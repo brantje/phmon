@@ -216,10 +216,10 @@ func (h *Hub) Broadcast(sighting Sighting) {
 		slog.Warn("tradenexus sighting could not be encoded", "reason", err.Error())
 		return
 	}
+	h.scheduleInvalidate()
 	for _, subscriber := range h.subscribers(sighting.Server) {
 		h.enqueue(subscriber, outbound{payload: payload})
 	}
-	h.scheduleInvalidate()
 }
 
 func (h *Hub) pushActiveThieves(subscriber *client, servers []string) {
