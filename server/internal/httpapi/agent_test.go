@@ -742,3 +742,38 @@ func (failingAgentStore) MarkDisconnected(context.Context, string, time.Time) er
 func (failingAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error) {
 	return nil, errors.New("unused")
 }
+
+func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
+	store := newFakeAgentStore()
+	registry := agentdomain.NewRegistry()
+	server := httptest.NewServer(New(Dependencies{Agents: store, Registry: registry}))
+	defer server.Close()
+	conn := dialAgent(t, server.URL, store.token)
+	defer conn.CloseNow()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := wsjson.Write(ctx, conn, agentMessage{Type: "hello", ProtocolVersion: agentProtocolVersion, AgentID: testAgentID, PluginVersion: "test", PhBotVersion: "fixture", SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	var ack helloAck
+	if err := wsjson.Read(ctx, conn, &ack); err != nil {
+		t.Fatal(err)
+	}
+	for i, kind := range []string{"map.players", "map.monsters", "map.npcs"} {
+		if err := wsjson.Write(ctx, conn, agentMessage{Type: kind, ProtocolVersion: agentProtocolVersion}); err != nil {
+			t.Fatal(err)
+		}
+		if err := wsjson.Write(ctx, conn, agentMessage{Type: "heartbeat", ProtocolVersion: agentProtocolVersion, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, time.Second, func() bool { store.mu.Lock(); defer store.mu.Unlock(); return store.seenCount == i+1 })
+		if registry.ConnectionCount(testAgentID) != 1 {
+			t.Fatalf("%s disconnected the agent", kind)
+		}
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.disconnectedCount != 0 {
+		t.Fatal("rejected observation ended the session")
+	}
+}

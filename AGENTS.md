@@ -6000,3 +6000,17 @@ pan/zoom when Follow is off.
 Files: `web/app/utils/mapFollow.ts`, `web/tests/mapFollow.test.ts`,
 `web/app/components/MapCharacterStatusRow.vue`, `web/app/components/MapCanvas.vue`,
 `web/app/pages/map.vue`, `docs/reference-parity.md`, this guide.
+
+### Resume — 2026-10-10 Nonfatal map observation rejection
+
+Changed validation failures for `map.players`, `map.monsters` and `map.npcs` to
+log and drop the frame while retaining the authenticated agent connection.
+Rejected observations still never reach live stores or durable player records.
+This addresses the repeated `invalid map player snapshot` policy closes observed
+in the running server logs. Authentication and transport checks retain their
+existing behavior. Files: `server/internal/httpapi/agent.go`, `agent_test.go`.
+Validation: `go test -race ./internal/httpapi`, focused same-socket heartbeat
+regression and `go vet ./internal/httpapi` passed. Not deployed. Running logs also
+show player-registry row-lock deadlocks and two-second persistence timeouts;
+these remain unresolved. Next action: deploy this patch when authorized and
+address consistent player-registry lock ordering separately.
