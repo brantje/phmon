@@ -4,7 +4,10 @@ import {
   formatCompactObservedGold,
   sumObservedFleetGold,
 } from '../app/utils/fleetGold.ts'
-import type { CharacterView, GuildStorageGoldEntry } from '../shared/types/live.ts'
+import type {
+  CharacterView,
+  GuildStorageGoldEntry,
+} from '../shared/types/live.ts'
 
 const characters: CharacterView[] = [
   {
@@ -46,11 +49,17 @@ test('sumObservedFleetGold includes character and guild gold within server scope
 })
 
 test('sumObservedFleetGold includes every server when scope is all', () => {
-  assert.equal(sumObservedFleetGold(characters, guildGold, () => true), 18776)
+  assert.equal(
+    sumObservedFleetGold(characters, guildGold, () => true),
+    18776,
+  )
 })
 
 test('sumObservedFleetGold returns null when no gold is available in scope', () => {
-  assert.equal(sumObservedFleetGold(characters, guildGold, () => false), null)
+  assert.equal(
+    sumObservedFleetGold(characters, guildGold, () => false),
+    null,
+  )
 })
 
 test('formatCompactObservedGold formats totals with compact notation', () => {

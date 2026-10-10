@@ -1,7 +1,4 @@
-import type {
-  CharacterView,
-  GuildStorageGoldEntry,
-} from '~~/shared/types/live'
+import type { CharacterView, GuildStorageGoldEntry } from '~~/shared/types/live'
 
 export function sumObservedFleetGold(
   characters: CharacterView[],
@@ -17,7 +14,11 @@ export function sumObservedFleetGold(
   }
   for (const entry of guildStorageGold) {
     if (!matchesServer(entry.server)) continue
-    if (typeof entry.gold === 'number' && Number.isFinite(entry.gold) && entry.gold >= 0) {
+    if (
+      typeof entry.gold === 'number' &&
+      Number.isFinite(entry.gold) &&
+      entry.gold >= 0
+    ) {
       values.push(entry.gold)
     }
   }
