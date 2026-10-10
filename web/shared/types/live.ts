@@ -707,8 +707,15 @@ export interface AgentsSnapshot {
   agents: AgentView[]
 }
 
+export interface GuildStorageGoldEntry {
+  server: string
+  guild: string
+  gold: number
+}
+
 export interface CharactersSnapshot {
   characters: CharacterView[]
+  guild_storage_gold?: GuildStorageGoldEntry[]
 }
 
 export interface CharacterSnapshot {

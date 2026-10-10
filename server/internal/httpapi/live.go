@@ -1032,7 +1032,17 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		for i := range items {
 			items[i] = characterWithPortrait(items[i], h.resources)
 		}
-		return map[string]any{"characters": items}, nil
+		payload := map[string]any{"characters": items}
+		if h.resources != nil {
+			guildGold, err := h.resources.GuildStorageGold(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if len(guildGold) > 0 {
+				payload["guild_storage_gold"] = guildGold
+			}
+		}
+		return payload, nil
 	case "character":
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")

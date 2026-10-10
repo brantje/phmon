@@ -8,6 +8,7 @@ import {
   type EventPage,
   type AnalyticsSnapshot,
   type CharactersSnapshot,
+  type GuildStorageGoldEntry,
   type CharacterView,
   type CommandsSnapshot,
   type CommandFanOutLiveFeed,
@@ -60,6 +61,7 @@ type CachedDeathState = {
 const agents = ref<AgentView[]>([])
 const characters = ref<CharacterView[]>([])
 const fleetCharacters = ref<CharacterView[]>([])
+const guildStorageGold = ref<GuildStorageGoldEntry[]>([])
 const cachedDeathStates = ref<Record<string, CachedDeathState>>({})
 const groups = ref<CharacterGroup[]>([])
 const characterDetail = ref<CharacterView | null>(null)
@@ -1121,12 +1123,18 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       const snapshot = data as CharactersSnapshot
       if (!Array.isArray(snapshot.characters)) return false
       fleetCharacters.value = rememberDeathStates(snapshot.characters)
+      guildStorageGold.value = Array.isArray(snapshot.guild_storage_gold)
+        ? snapshot.guild_storage_gold
+        : []
       return true
     }
     case 'character-list': {
       const snapshot = data as CharactersSnapshot
       if (!Array.isArray(snapshot.characters)) return false
       characters.value = rememberDeathStates(snapshot.characters)
+      if (Array.isArray(snapshot.guild_storage_gold)) {
+        guildStorageGold.value = snapshot.guild_storage_gold
+      }
       return true
     }
     case 'groups': {
@@ -1408,6 +1416,7 @@ function stopLiveData() {
   current?.close(1000, 'view closed')
   connectionState.value = 'idle'
   cachedDeathStates.value = {}
+  guildStorageGold.value = []
 }
 
 export function useLiveData() {
@@ -1415,6 +1424,7 @@ export function useLiveData() {
     agents: readonly(agents),
     characters: readonly(characters),
     fleetCharacters: readonly(fleetCharacters),
+    guildStorageGold: readonly(guildStorageGold),
     groups: readonly(groups),
     characterDetail: readonly(characterDetail),
     characterResources: readonly(characterResources),
