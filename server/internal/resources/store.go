@@ -226,6 +226,44 @@ ORDER BY o.resource_key,o.observed_at DESC NULLS LAST,o.updated_at DESC,o.observ
 	return result, nil
 }
 
+func (s *Store) GuildStorageGold(ctx context.Context) ([]GuildStorageGoldEntry, error) {
+	if s == nil || s.pool == nil {
+		return nil, ErrInvalid
+	}
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (o.server_key, o.guild_key) c.server_name, c.guild_name, o.payload
+FROM character_resource_observations o
+JOIN characters c ON c.character_id = o.observer_character_id
+WHERE o.resource_key = 'guild_storage' AND o.guild_key <> '' AND o.availability = 'observed'
+ORDER BY o.server_key, o.guild_key, o.observed_at DESC NULLS LAST, o.updated_at DESC, o.observer_character_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []GuildStorageGoldEntry
+	for rows.Next() {
+		var server, guild string
+		var payload json.RawMessage
+		if err := rows.Scan(&server, &guild, &payload); err != nil {
+			return nil, err
+		}
+		var value struct {
+			Gold *int64 `json:"gold"`
+		}
+		if err := json.Unmarshal(payload, &value); err != nil || value.Gold == nil || *value.Gold < 0 {
+			continue
+		}
+		guild = strings.TrimSpace(guild)
+		if guild == "" {
+			continue
+		}
+		result = append(result, GuildStorageGoldEntry{Server: server, Guild: guild, Gold: *value.Gold})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // DeleteGuildStorage removes the saved current snapshots for one normalized
 // server/guild scope. It does not alter anything in phBot or the game. A later
 // agent observation can create a new saved snapshot.

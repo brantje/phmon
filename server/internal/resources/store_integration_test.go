@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -352,5 +353,107 @@ func TestCurrentPartyObservationsFenceSessionAndAvailability(t *testing.T) {
 	rows, _, err = store.CurrentPartyObservations(ctx, server)
 	if err != nil || len(rows) != 1 || rows[0].SessionID != newSession || len(rows[0].Members) != 1 {
 		t.Fatalf("replacement session party baseline unavailable: rows=%+v err=%v", rows, err)
+	}
+}
+
+func TestGuildStorageGoldDistinctPerGuild(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run resource integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.NewStore(pool).CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	serverA := "guild-gold-a-" + credential.AgentID[:8]
+	serverB := "guild-gold-b-" + credential.AgentID[:8]
+	guildOne := "AlphaGuild"
+	guildTwo := "BetaGuild"
+	charactersStore := characters.NewStore(pool)
+	applyGuild := func(name, guild string, server string, gold int64, revision uint64, full bool, base uint64) (string, string, error) {
+		g := guild
+		id, err := charactersStore.Resolve(ctx, characters.Identity{Server: server, Name: name, Guild: &g})
+		if err != nil {
+			return "", "", err
+		}
+		session, err := charactersStore.ClaimSessionID(ctx, credential.AgentID, id, 1)
+		if err != nil {
+			return "", "", err
+		}
+		if err := charactersStore.SnapshotSession(ctx, credential.AgentID, id, 1, session, characters.State{}); err != nil {
+			return "", "", err
+		}
+		snapshot := Snapshot{Revision: revision, Full: full, BaseRevision: base, Resources: map[string]json.RawMessage{
+			"guild_storage": json.RawMessage(`{"availability":"observed","gold":` + strconv.FormatInt(gold, 10) + `,"capacity":1,"used_slots":0,"slots":[]}`),
+		}}
+		if err := NewStore(pool).Apply(ctx, credential.AgentID, id, 1, revision, session, snapshot); err != nil {
+			return "", "", err
+		}
+		return id, session, nil
+	}
+	t.Cleanup(func() {
+		cleanup := context.Background()
+		_, _ = pool.Exec(cleanup, `DELETE FROM characters WHERE server_key IN ($1,$2)`, strings.ToLower(serverA), strings.ToLower(serverB))
+		_, _ = pool.Exec(cleanup, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+	_, _, err = applyGuild("owner", guildOne, serverA, 4000, 1, true, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observerID, observerSession, err := applyGuild("observer", guildOne, serverA, 9000, 1, true, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	if err := NewStore(pool).Apply(ctx, credential.AgentID, observerID, 1, 2, observerSession, Snapshot{
+		Revision: 2, BaseRevision: 1, Resources: map[string]json.RawMessage{
+			"guild_storage": json.RawMessage(`{"availability":"observed","gold":10000,"capacity":1,"used_slots":0,"slots":[]}`),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = applyGuild("beta", guildTwo, serverA, 2500, 1, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = applyGuild("remote", guildOne, serverB, 777, 1, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	negativeGuild := "NoGold"
+	if _, _, err = applyGuild("nogold", negativeGuild, serverA, -5, 1, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := NewStore(pool).GuildStorageGold(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]int64{}
+	for _, entry := range entries {
+		key := strings.ToLower(entry.Server) + "\u0000" + strings.ToLower(entry.Guild)
+		byKey[key] = entry.Gold
+	}
+	if byKey[strings.ToLower(serverA)+"\u0000"+strings.ToLower(guildOne)] != 10000 {
+		t.Fatalf("expected newest observer gold for one guild, got %#v", entries)
+	}
+	if byKey[strings.ToLower(serverA)+"\u0000"+strings.ToLower(guildTwo)] != 2500 {
+		t.Fatalf("expected second guild gold, got %#v", entries)
+	}
+	if byKey[strings.ToLower(serverB)+"\u0000"+strings.ToLower(guildOne)] != 777 {
+		t.Fatalf("expected other-server gold, got %#v", entries)
+	}
+	if _, exists := byKey[strings.ToLower(serverA)+"\u0000"+strings.ToLower(negativeGuild)]; exists {
+		t.Fatalf("negative guild gold must be omitted: %#v", entries)
 	}
 }

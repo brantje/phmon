@@ -1,10 +1,14 @@
-export const MIN_MAP_ZOOM_PERCENT = 25
+export const MIN_MAP_ZOOM_PERCENT = 0
 export const MAX_MAP_ZOOM_PERCENT = 2000
 export const INITIAL_MAP_ZOOM_PERCENT = 125
 export const MAP_ZOOM_PERCENT_STEP = 5
 
 export function mapZoomLevelForPercent(percent: number) {
-  return Math.log2(percent / 100)
+  // 0% is not a finite map scale. The tile compositor treats that zoom as an
+  // infinite grid, so the rendered floor is the lowest 5-point step.
+  const safePercent =
+    Number.isFinite(percent) && percent > 0 ? percent : MAP_ZOOM_PERCENT_STEP
+  return Math.log2(safePercent / 100)
 }
 
 export function mapZoomPercentForLevel(level: number) {

@@ -52,6 +52,13 @@ type GuildView struct {
 	Items  []Observation `json:"items"`
 }
 
+// GuildStorageGoldEntry is the latest observed guild-chest gold for one server/guild scope.
+type GuildStorageGoldEntry struct {
+	Server string `json:"server"`
+	Guild  string `json:"guild"`
+	Gold   int64  `json:"gold"`
+}
+
 type Assembly struct {
 	full       bool
 	revision   uint64
