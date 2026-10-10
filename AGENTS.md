@@ -6000,3 +6000,16 @@ pan/zoom when Follow is off.
 Files: `web/app/utils/mapFollow.ts`, `web/tests/mapFollow.test.ts`,
 `web/app/components/MapCharacterStatusRow.vue`, `web/app/components/MapCanvas.vue`,
 `web/app/pages/map.vue`, `docs/reference-parity.md`, this guide.
+
+### Resume — 2026-10-10 Nonfatal map observation rejection
+
+Ported the disconnect fix onto `codex/nonfatal-agent-observations` from main.
+Validation failures for `map.players`, `map.monsters` and `map.npcs` log and drop
+only the frame, preserving the authenticated agent session. Rejected data never
+reaches live stores or durable player records. Regression coverage sends missing
+and expired snapshots for all three types, then verifies a heartbeat on the same
+socket. Authentication and transport checks keep existing behavior. Main already
+includes stable server/name player-registry lock ordering. Files:
+`server/internal/httpapi/agent.go`, `agent_test.go`. Validation: HTTP API race
+tests and vet passed before port; rerun and monitor PR CI/review for this branch.
+The running Docker deployment remains main until separately updated.
