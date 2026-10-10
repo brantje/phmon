@@ -1132,9 +1132,6 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       const snapshot = data as CharactersSnapshot
       if (!Array.isArray(snapshot.characters)) return false
       characters.value = rememberDeathStates(snapshot.characters)
-      if (Array.isArray(snapshot.guild_storage_gold)) {
-        guildStorageGold.value = snapshot.guild_storage_gold
-      }
       return true
     }
     case 'groups': {

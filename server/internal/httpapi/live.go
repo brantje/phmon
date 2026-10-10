@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -1036,9 +1037,8 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if h.resources != nil {
 			guildGold, err := h.resources.GuildStorageGold(ctx)
 			if err != nil {
-				return nil, err
-			}
-			if len(guildGold) > 0 {
+				slog.Warn("guild storage gold unavailable", "reason", err.Error())
+			} else if len(guildGold) > 0 {
 				payload["guild_storage_gold"] = guildGold
 			}
 		}
