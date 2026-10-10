@@ -392,10 +392,7 @@ watch(
               </tr>
             </thead>
             <tbody>
-              <tr
-                v-for="row in history?.observations || []"
-                :key="row.id"
-              >
+              <tr v-for="row in history?.observations || []" :key="row.id">
                 <td>{{ formatPlayerTime(row.observed_at) }}</td>
                 <td>{{ row.observed_name }}</td>
                 <td>{{ textOrUnknown(row.level) }}</td>
