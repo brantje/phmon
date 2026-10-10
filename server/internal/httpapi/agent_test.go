@@ -762,7 +762,7 @@ func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 	z := 0.0
 	frames := []*agentMonsterSnapshot{nil, {
 		Status: "observed", CharacterID: testAgentID, SessionID: testAgentID,
-		Region: 25000, ObserverZ: &z, ObservedAt: time.Now().UTC().Add(-time.Minute),
+		Region: 25000, ObserverZ: &z, ObservedAt: time.Now().UTC().Add(-24 * time.Hour),
 	}}
 	count := 0
 	for _, kind := range []string{"map.players", "map.monsters", "map.npcs"} {
