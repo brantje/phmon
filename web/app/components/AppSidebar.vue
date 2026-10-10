@@ -7,6 +7,14 @@ defineProps<{
   advancedMode: boolean
 }>()
 const route = useRoute()
+
+function navigationActive(href?: string) {
+  if (!href) return false
+  if (href === '/players') {
+    return route.path === '/players' || route.path.startsWith('/players/')
+  }
+  return route.path === href
+}
 const { connectedAgents, fleetStatus } = useFleetSummary()
 const { liveStale, connectionState } = useLiveData()
 const { serverScope, serverOptions, matchesServer, scopedGroups } =
@@ -78,6 +86,7 @@ const primaryNavigation = [
     icon: 'i-lucide-warehouse',
     href: '/guild-storage',
   },
+  { label: 'Player', icon: 'i-lucide-users', href: '/players' },
   { label: 'phBot', icon: 'i-lucide-bot', href: '/phbot/client' },
 ]
 
@@ -147,8 +156,8 @@ const advancedNavigation = [
           v-if="item.href"
           :to="item.href"
           class="nav-item"
-          :class="{ active: route.path === item.href }"
-          :aria-current="route.path === item.href ? 'page' : undefined"
+          :class="{ active: navigationActive(item.href) }"
+          :aria-current="navigationActive(item.href) ? 'page' : undefined"
         >
           <UIcon :name="item.icon" />
           <span>{{ item.label }}</span>

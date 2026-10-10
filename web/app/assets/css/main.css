@@ -3890,3 +3890,82 @@ button.item-detail-name {
     justify-content: flex-start;
   }
 }
+
+.player-page {
+  display: grid;
+  gap: 14px;
+}
+.player-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+.player-filters label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted, #8e9caf);
+  font-size: 12px;
+}
+.player-filters input,
+.player-filters select,
+.player-clear,
+.player-pager button {
+  min-height: 32px;
+  border: 1px solid #243246;
+  border-radius: 4px;
+  background: #101822;
+  color: #eaf1ff;
+  padding: 4px 8px;
+}
+.player-table tbody tr {
+  cursor: pointer;
+}
+.player-card,
+.player-note {
+  color: #c5d0df;
+}
+.player-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #243246;
+  border-radius: 6px;
+  background: rgb(13 19 29 / 72%);
+}
+.player-card h2,
+.player-facts dt {
+  color: #fef6c3;
+}
+.player-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+.player-facts div {
+  display: grid;
+  gap: 2px;
+}
+.player-facts dd {
+  margin: 0;
+}
+.player-back {
+  color: #d7bd77;
+  width: fit-content;
+}
+.player-pager {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.player-level-chart-canvas {
+  height: 240px;
+}
+.player-table button {
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}

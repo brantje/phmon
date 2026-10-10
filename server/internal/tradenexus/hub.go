@@ -28,6 +28,7 @@ type Options struct {
 	Trades           TradeRecorder
 	Invalidate       func()
 	Now              func() time.Time
+	PlayerRecorder   func(context.Context, Sighting)
 	MaxConnections   int
 	MaxPerIP         int
 	MaxServers       int
@@ -63,6 +64,8 @@ type Hub struct {
 	invalidateTimer *time.Timer
 
 	active *activeCache
+
+	playerRecorder func(context.Context, Sighting)
 }
 
 type client struct {
@@ -103,7 +106,7 @@ func NewHub(options Options) *Hub {
 		maxServers: options.MaxServers, reportsPerWindow: options.ReportsPerWindow,
 		sendQueue: options.SendQueue, maxInvalidFrames: options.MaxInvalidFrames,
 		clients: map[*client]struct{}{}, perIP: map[string]int{},
-		active: newActiveCache(),
+		active: newActiveCache(), playerRecorder: options.PlayerRecorder,
 	}
 }
 
@@ -123,6 +126,9 @@ func (h *Hub) Record(ctx context.Context, sighting Sighting) (stored Sighting, f
 	prepared, err := h.prepare(sighting)
 	if err != nil {
 		return Sighting{}, false, err
+	}
+	if h.playerRecorder != nil {
+		defer h.playerRecorder(ctx, prepared)
 	}
 	if h.store != nil {
 		previous, found, lookupErr := h.store.Latest(ctx, prepared.Server, prepared.ThiefName)

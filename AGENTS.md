@@ -250,6 +250,20 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-10 player registry and level snapshots
+
+Observed players now persist by server and observed name in `players`,
+`player_observations`, and `player_level_snapshots` (migration 000028). The
+existing `map.players` path still feeds the in-memory live store, and accepted
+rows are also written to the registry. A new verified character level creates
+one snapshot; missing intermediate levels are not invented, and a delayed older
+level does not replace newer current state. `/players` and `/players/:id` list
+that registry, including a sampled level chart. Plugin **1.9.32** keeps protocol
+**18**. Production `0x3015` / `0x3019` character decoding stays disabled. A
+four-byte `0x3016` only clears the temporary runtime-id cache. TradeNexus thief
+names are stored as their own players with job `thief` and unknown jobbing
+state. The map UI is unchanged. No merge or deployment.
+
 ### Resume — 2026-10-10 thief sighting repeats
 
 A repeat of the same server and thief name within two minutes of the latest

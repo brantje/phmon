@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -243,18 +244,26 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 		t.Fatalf("performance coverage did not use verified adjacent states: %+v", progress.Performance)
 	}
 	var daily, weekly bool
+	var xpGain, spNet, goldNet, dailyDeaths, rareDrops int64
 	for _, period := range progress.Performance.Periods {
 		if period.Granularity == "day" {
 			daily = true
-			if period.XPGain == nil || *period.XPGain != "300" || period.SPNet == nil || *period.SPNet != "15" || period.GoldNet == nil || *period.GoldNet != "-20" || period.Deaths != 2 || period.RareDrops != 2 {
-				t.Fatalf("daily summary lost eligible deltas, denominators or canonical counts: %+v", period)
-			}
+			// Metric samples are about a minute old and deaths are up to three
+			// hours old, so a run near UTC midnight stores them on two days.
+			xpGain += periodAmount(t, period.XPGain)
+			spNet += periodAmount(t, period.SPNet)
+			goldNet += periodAmount(t, period.GoldNet)
+			dailyDeaths += period.Deaths
+			rareDrops += period.RareDrops
 		}
 		if period.Granularity == "week" {
 			weekly = true
 		}
 	}
-	if !daily || !weekly || len(progress.Performance.Locations) != 1 || progress.Performance.Locations[0].Region == nil || *progress.Performance.Locations[0].Region != 1 || progress.Performance.Locations[0].XPGain == nil || *progress.Performance.Locations[0].XPGain != "300" {
+	if !daily || xpGain != 300 || spNet != 15 || goldNet != -20 || dailyDeaths != 2 || rareDrops != 2 {
+		t.Fatalf("daily summary lost eligible deltas, denominators or canonical counts: xp=%d sp=%d gold=%d deaths=%d rare=%d periods=%+v", xpGain, spNet, goldNet, dailyDeaths, rareDrops, progress.Performance.Periods)
+	}
+	if !weekly || len(progress.Performance.Locations) != 1 || progress.Performance.Locations[0].Region == nil || *progress.Performance.Locations[0].Region != 1 || progress.Performance.Locations[0].XPGain == nil || *progress.Performance.Locations[0].XPGain != "300" {
 		t.Fatalf("weekly summary or same-location gain comparison is missing: %+v", progress.Performance)
 	}
 	characterEconomy, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewEconomy, From: from, To: to, Timezone: "UTC", BalanceScope: "characters"})
@@ -276,4 +285,16 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	if err != nil || !resetAt.Equal(replayedResetAt) {
 		t.Fatalf("rate reset retry was not idempotent: first=%s retry=%s error=%v", resetAt, replayedResetAt, err)
 	}
+}
+
+func periodAmount(t *testing.T, value *string) int64 {
+	t.Helper()
+	if value == nil {
+		return 0
+	}
+	parsed, err := strconv.ParseInt(*value, 10, 64)
+	if err != nil {
+		t.Fatalf("period amount %q: %v", *value, err)
+	}
+	return parsed
 }

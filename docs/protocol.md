@@ -1283,7 +1283,9 @@ floor is ambiguous.
 `map.players` carries one character's current `get_players()` view. It is accepted only
 from a hello that negotiated protocol 10 or newer. The frame uses the same
 `map_snapshot` envelope as monsters and NPCs, with `players` instead of `monsters` or
-`npcs`, plus required `observer_z`. There is no acknowledgement and no durable table.
+`npcs`, plus required `observer_z`. There is no acknowledgement. The live projection stays
+in memory. Accepted `observed` and `truncated` rows are also written to the player
+registry. A persistence failure does not drop the live snapshot or close the socket.
 A new snapshot for the same session replaces the previous one. `unavailable` or a
 matching `character.left` clears that session. Every socket disconnect removes
 snapshots owned by that socket generation; the last socket for an agent does not use
@@ -1293,7 +1295,13 @@ session. Rows expire from the live map 35 seconds after `observed_at`, with the 
 
 Each row has a canonical decimal-string `player_id`, required `name`, finite `x`/`y`,
 optional `guild`, `grant`, boolean `dead`, integer `level`, optional `region`, and
-optional `zone`. `zone` is the `get_zone_name` result for that player's region.
+optional `zone`. Protocol 18 plugins may also send optional `job`
+(`none`, `trader`, `thief`, `hunter`, or `unknown`), `job_level`, boolean
+`is_jobbing`, `model_id`, and `z`. Omitted fields leave stored values unchanged.
+`get_players()` does not supply job or model fields. Character-field decoding of
+`0x3015` and `0x3019` stays disabled until a Greatest layout is verified. `0x3016`
+with a four-byte runtime id only clears that session's temporary spawn cache.
+`zone` is the `get_zone_name` result for that player's region.
 When the row has no region, it is the observer's zone, because the map places the
 player in the observer region. Older plugins omit `zone`. The map popup uses the
 sent name, and otherwise the zone already known for that region from a character
@@ -1304,6 +1312,12 @@ The plugin caps a snapshot at 128 rows and 64 KiB serialized payload, marking
 to 16 observer attributions, and caps the union at 256 players. Cave placement uses
 the observer's current Z and fails closed when the floor is ambiguous. Contradictory
 player regions relative to the observer are withheld.
+
+Authenticated reads are `GET /api/players`, `GET /api/players/{id}`,
+`GET /api/players/{id}/observations`, and `GET /api/players/{id}/levels`. Identity
+is the server plus the observed name. The registry does not link a job-mode name
+to a normal name. A level snapshot is created only for a verified character level
+and is unique per player and level.
 
 ```json
 {"type":"map.players","protocol_version":13,"map_snapshot":{"character_id":"...","session_id":"...","region":25273,"status":"observed","observed_at":"...","truncated":false,"observer_z":0,"players":[{"player_id":"8654977","name":"Nearby","guild":"Guild","grant":"Member","dead":false,"level":71,"region":25273,"zone":"Taklamakan","x":30,"y":40}]}}

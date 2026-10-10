@@ -50,6 +50,7 @@ type Dependencies struct {
 	MobLive        *mobs.LiveStore
 	NPCLive        *npcs.LiveStore
 	PlayerLive     *players.LiveStore
+	PlayerRegistry *players.Registry
 	Positions      *positions.Store
 	MapAnalytics   *mapanalytics.Store
 	Analytics      *analytics.Store
@@ -126,21 +127,22 @@ func New(deps Dependencies) http.Handler {
 			live.SetNavigation(navigation.NewStore())
 		}
 		handler := &agentHandler{
-			store:      deps.Agents,
-			registry:   deps.Registry,
-			options:    deps.AgentOptions.withDefaults(),
-			characters: deps.Characters,
-			live:       live,
-			commands:   deps.Commands,
-			resources:  deps.Resources,
-			events:     deps.Events,
-			mobs:       deps.Mobs,
-			mobLive:    mobLive,
-			npcLive:    npcLive,
-			playerLive: playerLive,
-			positions:  positionStore,
-			analytics:  deps.MapAnalytics,
-			navigation: live.navigation,
+			store:          deps.Agents,
+			registry:       deps.Registry,
+			options:        deps.AgentOptions.withDefaults(),
+			characters:     deps.Characters,
+			live:           live,
+			commands:       deps.Commands,
+			resources:      deps.Resources,
+			events:         deps.Events,
+			mobs:           deps.Mobs,
+			mobLive:        mobLive,
+			npcLive:        npcLive,
+			playerLive:     playerLive,
+			playerRegistry: deps.PlayerRegistry,
+			positions:      positionStore,
+			analytics:      deps.MapAnalytics,
+			navigation:     live.navigation,
 		}
 		mux.HandleFunc("GET /agent", handler.connect)
 		live.SetThiefSightings(deps.ThiefSightings)
@@ -195,6 +197,13 @@ func New(deps Dependencies) http.Handler {
 		guildStorageAPI := &guildStorageHandler{store: deps.Resources, live: analyticsLive}
 		register("GET /api/guild-storage", false, guildStorageAPI.get)
 		register("DELETE /api/guild-storage", true, guildStorageAPI.delete)
+	}
+	if deps.PlayerRegistry != nil {
+		playerAPI := &playerHandler{store: deps.PlayerRegistry}
+		register("GET /api/players", false, playerAPI.list)
+		register("GET /api/players/{id}", false, playerAPI.get)
+		register("GET /api/players/{id}/observations", false, playerAPI.observations)
+		register("GET /api/players/{id}/levels", false, playerAPI.levels)
 	}
 	if deps.Analytics != nil {
 		analyticsAPI := &analyticsRateResetHandler{store: deps.Analytics, live: analyticsLive}

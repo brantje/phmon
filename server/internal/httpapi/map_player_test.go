@@ -43,6 +43,31 @@ func TestProjectPlayersDedupesByPlayerID(t *testing.T) {
 	}
 }
 
+func TestProjectPlayersOmitsObserver(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	z := 0.0
+	snapshots := []players.LiveSnapshot{{
+		Server: "Greatest", CharacterID: "char-a", SessionID: "session-a", Character: "Alpha",
+		Status: "observed", Region: 25000, ObservedAt: now, ObserverZ: &z,
+		Players: []players.Player{
+			{PlayerID: "1", Name: "alpha", X: 10, Y: 20},
+			{PlayerID: "7", Name: "Nearby", X: 11, Y: 21},
+		},
+	}}
+	profile := mapprofile.Profile{
+		Areas: []mapprofile.Area{{ID: "world", Kind: "outdoor", Floors: []mapprofile.Floor{{ID: "world"}}}},
+		CoordinateTransforms: []mapprofile.CoordinateTransform{{
+			AreaID: "world", FloorID: "world", Region: 25000, Status: "validated",
+			WorldOriginX: 6400, WorldOriginY: 1000, TileOriginX: 30, TileOriginY: 40,
+			UnitsPerTileX: 192, UnitsPerTileY: 192, AxisX: 1, AxisY: 1,
+		}},
+	}
+	result := projectPlayers(profile, snapshots, "world", "world", 0, now)
+	if len(result.Players) != 1 || result.Players[0].Name != "Nearby" {
+		t.Fatalf("observer row remained in the other-player projection: %+v", result.Players)
+	}
+}
+
 func TestProjectPlayersWithholdsContradictoryRegion(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	z := 0.0

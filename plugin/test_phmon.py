@@ -4600,5 +4600,343 @@ class ReverseReturnPartyFreshnessTests(unittest.TestCase):
         self.assertEqual(frames[-1]['revision'], 2)
 
 
+class OwnCharacterJobObservationTests(unittest.TestCase):
+    def setUp(self):
+        self.data = {'server': 'Greatest', 'name': 'Observer', 'player_id': 123,
+                     'job_type': 'trader', 'job_level': 7, 'job_name': 'AssignedAlias',
+                     'job_current_exp': 2147486899, 'job_max_exp': 4524,
+                     'level': 94, 'model': 1907, 'guild': 'Guild',
+                     'region': 25000, 'x': 120.6, 'y': 33.3, 'z': 244.0}
+        self.identity = {'server': 'Greatest', 'name': 'Observer'}
+        self.state = {'region': 25000, 'x': 121.0, 'y': 34.0, 'z': 244.0, 'zone': 'Jangan'}
+
+    def test_observed_api_job_fields_are_independent_of_level_alias_and_exp(self):
+        row = plugin._observed_own_job_player(self.data, self.identity, self.state)
+        self.assertEqual(row['job'], 'trader')
+        self.assertEqual(row['job_level'], 7)
+        self.assertEqual(row['level'], 94)
+        self.assertEqual(row['name'], 'Observer')
+        self.assertEqual(row['model_id'], 1907)
+        self.assertEqual(row['x'], 121.0)
+        for key in ('job_name', 'player_name', 'is_jobbing', 'job_current_exp', 'job_max_exp'):
+            self.assertNotIn(key, row)
+
+    def test_missing_or_invalid_job_fields_are_not_invented(self):
+        for changes in ({'job_type': 1, 'job_level': None},
+                        {'job_type': 'wizard', 'job_level': True},
+                        {'job_type': None, 'job_level': 256},
+                        {'job_type': '', 'job_level': -1}):
+            self.assertIsNone(plugin._observed_own_job_player(dict(self.data, **changes), self.identity, self.state))
+        for job in ('none', 'trader', 'thief', 'hunter', 'unknown'):
+            row = plugin._observed_own_job_player(dict(self.data, job_type=job, job_level=None), self.identity, self.state)
+            self.assertEqual(row['job'], job)
+            self.assertNotIn('job_level', row)
+        row = plugin._observed_own_job_player(dict(self.data, job_type=None), self.identity, self.state)
+        self.assertEqual(row['job_level'], 7)
+        self.assertNotIn('job', row)
+
+    def test_identity_world_and_position_fences(self):
+        for change in ({'server': 'Other'}, {'name': 'Other'}, {'player_id': 0},
+                       {'region': 26753}):
+            self.assertIsNone(plugin._observed_own_job_player(dict(self.data, **change), self.identity, self.state))
+        for change in ({'region': 0}, {'x': float('nan')}, {'y': 1000001}):
+            self.assertIsNone(plugin._observed_own_job_player(self.data, self.identity, dict(self.state, **change)))
+
+    def test_same_runtime_id_alias_remains_an_independent_observation(self):
+        own = plugin._observed_own_job_player(self.data, self.identity, self.state)
+        alias = {'player_id': '123', 'name': 'VisibleAlias', 'x': 1.0, 'y': 2.0}
+        rows, dropped = plugin._merge_own_job_player([alias], own)
+        self.assertFalse(dropped)
+        self.assertEqual(rows, [alias])
+        self.assertNotIn('job', alias)
+        normal = dict(alias, name='Observer', grant='Title')
+        rows, dropped = plugin._merge_own_job_player([normal], own)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['job_level'], 7)
+        self.assertEqual(rows[0]['grant'], 'Title')
+
+    def test_rows_and_bytes_remain_bounded_with_own_observation(self):
+        own = plugin._observed_own_job_player(self.data, self.identity, self.state)
+        neighbors = [{'player_id': str(i + 1000), 'name': 'P', 'x': 1.0, 'y': 2.0}
+                     for i in range(plugin.MAX_PLAYERS_PER_SNAPSHOT)]
+        rows, dropped = plugin._merge_own_job_player(neighbors, own)
+        self.assertTrue(dropped)
+        self.assertEqual(len(rows), plugin.MAX_PLAYERS_PER_SNAPSHOT)
+        self.assertEqual(rows[0], own)
+        own_bytes = len(json.dumps([own], separators=(',', ':'), sort_keys=True).encode('utf-8'))
+        with patch.object(plugin, 'MAX_PLAYERS_SNAPSHOT_BYTES', own_bytes):
+            rows, dropped = plugin._merge_own_job_player(neighbors, own)
+        self.assertTrue(dropped)
+        self.assertEqual(rows, [own])
+
+    def test_existing_sampler_and_transport_publish_actual_job_fields(self):
+        worker = plugin.AgentWorker({'backend_url': 'ws://127.0.0.1/agent', 'agent_id': AGENT_ID,
+                                     'agent_token': 'fixture'}, '20.1.3')
+        worker.character_id = AGENT_ID
+        worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        worker._current_identity = dict(self.identity)
+        with patch.object(plugin, '_worker', worker), \
+                patch.object(plugin, 'collect_player_observation', return_value=('observed', [], False)):
+            plugin._reset_player_sample_state()
+            self.addCleanup(plugin._reset_player_sample_state)
+            self.assertTrue(plugin._sample_players(self.identity, self.state, self.state, 100, self.data))
+            client = Mock()
+            worker._flush_map_players(client)
+            frame = client.send_json.call_args.args[0]
+            self.assertEqual(frame['type'], 'map.players')
+            self.assertEqual(frame['protocol_version'], 18)
+            row = frame['map_snapshot']['players'][0]
+            self.assertEqual(row['job'], 'trader')
+            self.assertEqual(row['job_level'], 7)
+            self.assertEqual(row['player_id'], '123')
+            self.assertFalse(plugin._sample_players(self.identity, self.state, self.state, 100.5, self.data))
+            changed = dict(self.data, job_level=8)
+            with patch.object(plugin, '_worker_utc_now', return_value='2026-10-10T00:00:02Z'):
+                self.assertTrue(plugin._sample_players(self.identity, self.state, self.state, 101, changed))
+            worker._flush_map_players(client)
+            self.assertEqual(client.send_json.call_args.args[0]['map_snapshot']['players'][0]['job_level'], 8)
+
+    def test_unavailable_neighbors_remain_partial_when_own_is_observed(self):
+        worker = Mock()
+        with patch.object(plugin, '_worker', worker), \
+                patch.object(plugin, 'collect_player_observation', return_value=('unavailable', [], False)):
+            plugin._reset_player_sample_state()
+            self.addCleanup(plugin._reset_player_sample_state)
+            self.assertTrue(plugin._sample_players(self.identity, self.state, self.state, 100, self.data))
+            self.assertEqual(worker.update_map_players.call_args.args[1], 'truncated')
+            self.assertEqual(worker.update_map_players.call_args.args[3][0]['job_level'], 7)
+
+
+class SpawnObservationTests(unittest.TestCase):
+    def setUp(self):
+        plugin._reset_spawn_state()
+
+    def test_production_spawn_does_not_decode_character_fields(self):
+        self.assertFalse(plugin.SPAWN_CHARACTER_DECODER_ENABLED)
+        self.assertTrue(plugin.handle_joymax(0x3015, self._fixture(jobbing=False)))
+        self.assertEqual(plugin._spawn_entities, {})
+
+    def test_despawn_forgets_a_runtime_id(self):
+        record = self._verified_record()
+        self.assertTrue(plugin.remember_verified_spawn(record))
+        self.assertTrue(plugin.handle_joymax(0x3016, (84631).to_bytes(4, 'little')))
+        self.assertEqual(plugin._spawn_entities, {})
+
+    def test_fixture_keeps_job_role_separate_from_jobbing(self):
+        normal = self._decode(self._fixture(jobbing=False))
+        active = self._decode(self._fixture(jobbing=True, name='SecretHunter'))
+        self.assertEqual(normal['job'], 'hunter')
+        self.assertEqual(normal['job_level'], 7)
+        self.assertFalse(normal['is_jobbing'])
+        self.assertEqual(normal['player_name'], 'DarkWizard')
+        self.assertNotIn('job_name', normal)
+        self.assertTrue(active['is_jobbing'])
+        self.assertEqual(active['job_name'], 'SecretHunter')
+        self.assertNotIn('player_name', active)
+
+    def test_candidate_results_cannot_enter_verified_cache(self):
+        record = self._decode(self._fixture())
+        self.assertTrue(record['candidate_only'])
+        self.assertFalse(plugin.remember_verified_spawn(record))
+        self.assertEqual(plugin._spawn_entities, {})
+
+    def test_non_character_and_malformed_fixtures(self):
+        payload = bytearray(self._fixture())
+        payload[:4] = (999).to_bytes(4, 'little')
+        with self.assertRaises(ValueError):
+            self._decode(payload)
+        # Every truncation is rejected, including a valid-looking name/job prefix.
+        for size in range(len(self._fixture())):
+            with self.subTest(size=size), self.assertRaises(ValueError):
+                self._decode(self._fixture()[:size])
+
+    def test_group_fragments_complete_and_bad_frames_reset(self):
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3017, b'\x01\x02\x00'))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3019, b'abc'))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3019, b'def'))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3018, b''))
+        self.assertEqual(plugin._last_completed_spawn_group['expected'], 2)
+        self.assertEqual(plugin._last_completed_spawn_group['action'], 1)
+        self.assertEqual(plugin._last_completed_spawn_group['chunks'], [b'abc', b'def'])
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b'orphan'))
+        self.assertIsNone(plugin._spawn_group)
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3017, b'\x01\x01\x00'))
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b'x' * (plugin.SPAWN_GROUP_BYTE_LIMIT + 1)))
+        self.assertIsNone(plugin._spawn_group)
+
+    def test_runtime_id_reuse_replaces_cached_fields(self):
+        first = self._verified_record(job_level=4)
+        second = self._verified_record(job_level=7)
+        plugin.remember_verified_spawn(first)
+        plugin.remember_verified_spawn(second)
+        players = [{'player_id': '84631', 'name': 'DarkWizard'}]
+        plugin._attach_spawn_player_fields(players)
+        self.assertEqual(players[0]['job_level'], 7)
+        self.assertEqual(players[0]['model_id'], 1907)
+        plugin._reset_player_sample_state()
+        fresh = [{'player_id': '84631', 'name': 'DarkWizard'}]
+        plugin._attach_spawn_player_fields(fresh)
+        self.assertNotIn('job', fresh[0])
+
+    def test_job_codes_are_independent_of_appearance(self):
+        for code, job in [(0, 'none'), (1, 'trader'), (2, 'thief'), (3, 'hunter'), (9, 'unknown')]:
+            for jobbing in (False, True):
+                with self.subTest(code=code, jobbing=jobbing):
+                    record = self._decode(self._fixture(job_code=code, jobbing=jobbing))
+                    self.assertEqual(record['job'], job)
+                    self.assertEqual(record['job_level'], 7)
+                    self.assertEqual(record['is_jobbing'], jobbing)
+
+    def test_variable_item_shapes_movement_riding_and_stall_do_not_shift_jobs(self):
+        for region in (25000, 32769):
+            for moving in (False, True):
+                for riding in (False, True):
+                    record = self._decode(self._fixture(region=region, moving=moving, riding=riding, stall=True))
+                    self.assertEqual(record['observed_name'], 'DarkWizard')
+                    self.assertEqual(record['job_level'], 7)
+                    self.assertEqual(record['packet_x'], 120.0)
+                    self.assertEqual(record['packet_y'], 240.0)
+                    self.assertEqual(record['packet_z'], 5.0)
+                    self.assertNotIn('x', record)
+                    for key in ('equipment', 'items', 'inventory', 'avatar', 'plus'):
+                        self.assertNotIn(key, record)
+
+    def test_mask_buff_unknown_item_and_wrong_variant_fail_closed(self):
+        for changes in ({'mask': True}, {'buffs': 1}, {'item': 999}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self._decode(self._fixture(**changes))
+        for protocol in ('unknown', 'vsro-1.193', 'vsro-1.274'):
+            with self.assertRaises(ValueError):
+                plugin.decode_candidate_spawn(self._fixture(), {1907}, {}, protocol)
+
+    def test_names_and_trailing_bytes_are_strict(self):
+        for name in ('', ' ', 'A\x00B', 'A' * 65, '\u00e9'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self._decode(self._fixture(name=name))
+        with self.assertRaises(ValueError):
+            self._decode(self._fixture() + b'\x00')
+
+    def test_complete_group_validates_all_entities_and_exact_count(self):
+        first = self._fixture(single=False)
+        second = self._fixture(single=False, runtime_id=2, name='Other', job_code=1)
+        kwargs = dict(protocol='vsro-1.188', count=2, single=False)
+        records = plugin.decode_candidate_spawn(first + second, {1907}, self._types(), **kwargs)
+        self.assertEqual([r['job'] for r in records], ['hunter', 'trader'])
+        for payload in (first, first + second + b'\x00', first + second[:-1], first + first,
+                        first + (999).to_bytes(4, 'little')):
+            with self.subTest(size=len(payload)), self.assertRaises(ValueError):
+                plugin.decode_candidate_spawn(payload, {1907}, self._types(), **kwargs)
+        self.assertEqual(plugin._spawn_entities, {})
+
+    def test_group_header_end_chunk_and_timeout_bounds(self):
+        for header in (b'', b'\x02\x00', b'\x03\x01\x00', b'\x01\x00\x00', b'\x01\x01\x01', b'\x01\x01\x00\x00'):
+            self.assertFalse(plugin._assemble_unverified_spawn_group(0x3017, header))
+        plugin._assemble_unverified_spawn_group(0x3017, b'\x01\x01\x00')
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b''))
+        with patch.object(plugin, '_monotonic', return_value=10):
+            plugin._assemble_unverified_spawn_group(0x3017, b'\x01\x01\x00')
+        with patch.object(plugin, '_monotonic', return_value=15):
+            self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b'data'))
+        plugin._assemble_unverified_spawn_group(0x3017, b'\x01\x01\x00')
+        plugin._assemble_unverified_spawn_group(0x3019, b'data')
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3018, b'extra'))
+        self.assertIsNone(plugin._last_completed_spawn_group)
+        plugin._assemble_unverified_spawn_group(0x3017, b'\x01\x01\x00')
+        with patch.object(plugin, 'SPAWN_GROUP_CHUNK_LIMIT', 1):
+            self.assertTrue(plugin._assemble_unverified_spawn_group(0x3019, b'first'))
+            self.assertFalse(plugin._assemble_unverified_spawn_group(0x3019, b'second'))
+
+    def test_despawn_group_has_different_action_and_exact_id_count(self):
+        plugin._assemble_unverified_spawn_group(0x3017, b'\x02\x02\x00')
+        plugin._assemble_unverified_spawn_group(0x3019, struct.pack('<II', 1, 2))
+        self.assertTrue(plugin._assemble_unverified_spawn_group(0x3018, b''))
+        self.assertEqual(plugin._last_completed_spawn_group['action'], 2)
+        plugin._assemble_unverified_spawn_group(0x3017, b'\x02\x02\x00')
+        plugin._assemble_unverified_spawn_group(0x3019, struct.pack('<I', 1))
+        self.assertFalse(plugin._assemble_unverified_spawn_group(0x3018, b''))
+
+    def test_cached_fields_do_not_follow_reused_runtime_id_or_alias(self):
+        plugin.remember_verified_spawn(self._verified_record())
+        for name in ('Other', 'SecretHunter'):
+            row = {'player_id': '84631', 'name': name}
+            plugin._attach_spawn_player_fields([row])
+            self.assertNotIn('job', row)
+        self.assertFalse(plugin._forget_spawn_entity(struct.pack('<II', 84631, 1)))
+        self.assertIn('84631', plugin._spawn_entities)
+
+    def test_invalid_verified_fields_do_not_replace_good_record(self):
+        good = self._verified_record()
+        plugin.remember_verified_spawn(good)
+        for change in ({'job_level': True}, {'job_level': 256}, {'job': 'wizard'},
+                       {'model_id': 0}, {'model_id': 2**32}, {'is_jobbing': 1},
+                       {'observed_name': ''}, {'runtime_entity_id': 0}):
+            with self.subTest(change=change):
+                self.assertFalse(plugin.remember_verified_spawn(dict(good, **change)))
+        self.assertEqual(plugin._spawn_entities['84631']['job_level'], 7)
+
+    def test_cache_is_fenced_by_server_profile_character_worker_and_session(self):
+        identity = {'server': 'Greatest', 'name': 'Observer', 'profile_key': 'default'}
+        worker = SimpleNamespace(_current_identity=identity, session_id='session-one')
+        with patch.object(plugin, '_worker', worker):
+            for key, value in [('server', 'Other'), ('name', 'OtherObserver'), ('profile_key', 'other')]:
+                plugin.remember_verified_spawn(self._verified_record())
+                worker._current_identity = dict(worker._current_identity, **{key: value})
+                row = {'player_id': '84631', 'name': 'DarkWizard'}
+                plugin._attach_spawn_player_fields([row])
+                self.assertNotIn('job', row)
+            plugin.remember_verified_spawn(self._verified_record())
+            worker.session_id = 'session-two'
+            row = {'player_id': '84631', 'name': 'DarkWizard'}
+            plugin._attach_spawn_player_fields([row])
+            self.assertNotIn('job', row)
+            plugin.remember_verified_spawn(self._verified_record())
+            with patch.object(plugin, '_worker', SimpleNamespace(_current_identity=worker._current_identity, session_id=worker.session_id)):
+                plugin._attach_spawn_player_fields([row])
+                self.assertNotIn('job', row)
+
+    @staticmethod
+    def _verified_record(**changes):
+        return dict({'runtime_entity_id': '84631', 'observed_name': 'DarkWizard',
+                     'model_id': 1907, 'job': 'hunter', 'job_level': 7, 'is_jobbing': False}, **changes)
+
+    @staticmethod
+    def _types():
+        return {4247: (1, 1), 62: (3, 4), 7461: (1, 7), 36167: (1, 13)}
+
+    def _decode(self, payload):
+        return plugin.decode_candidate_spawn(payload, {1907}, self._types(), 'vsro-1.188')[0]
+
+    @staticmethod
+    def _fixture(jobbing=False, name='DarkWizard', job_level=7, job_code=3,
+                 runtime_id=84631, region=25000, moving=False, riding=False,
+                 stall=False, single=True, mask=False, buffs=0, item=4247):
+        # Synthetic classic-layout structure, not a captured Greatest packet.
+        def text(value):
+            encoded = value.encode('utf-8')
+            return struct.pack('<H', len(encoded)) + encoded
+        data = struct.pack('<I', 1907) + bytes([100, 0, 0, 0])
+        data += bytes([13, 3 if jobbing else 2]) + struct.pack('<IBI', item, 5, 62)
+        if jobbing:
+            data += struct.pack('<IB', 7461, 0)
+        data += bytes([5, 1]) + struct.pack('<IB', 36167, 0) + bytes([int(mask)])
+        data += struct.pack('<IHfffH', runtime_id, region, 120, 5, 240, 0)
+        data += bytes([int(moving), 1])
+        if moving:
+            data += struct.pack('<Hiii', region, 100, 5, 200) if region & 0x8000 else struct.pack('<HHHH', region, 100, 5, 200)
+        else:
+            data += b'\x00\x00\x00'
+        data += bytes([1, 0, 0, 0]) + struct.pack('<fff', 16, 50, 100) + bytes([buffs])
+        data += text(name) + bytes([job_code, job_level, 0, int(riding), 0])
+        if riding:
+            data += struct.pack('<I', 456)
+        data += bytes([0, 4 if stall else 0, 0]) + text('Guild')
+        if not jobbing:
+            data += struct.pack('<I', 123) + text('Title') + struct.pack('<III', 0, 0, 0) + b'\x00\x00'
+        if stall:
+            data += text('Sale') + struct.pack('<I', 0)
+        data += b'\x00\xff'
+        return data + (b'\x00' if single else b'')
+
+
 if __name__ == '__main__':
     unittest.main()

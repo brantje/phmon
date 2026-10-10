@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.28'
+pVersion = '1.9.32'
 pUrl = ''
 
 PROTOCOL_VERSION = 18
@@ -614,10 +614,87 @@ def _player_snapshot_signature(status, region, observer_z, players):
         rows.append((
             player.get('player_id'), player.get('name'), player.get('guild'), player.get('grant'),
             player.get('dead'), player.get('level'), player.get('region'), player.get('zone'),
-            player.get('x'), player.get('y'),
+            player.get('x'), player.get('y'), player.get('job'), player.get('job_level'),
+            player.get('is_jobbing'), player.get('model_id'),
         ))
     rows.sort()
     return (status, region, observer_z, tuple(rows))
+
+
+def _observed_own_job_player(data, identity, state):
+    """Use the already-sampled character API, never an alias or inferred role.
+
+    Greatest/phBot 20.1.3 capture 12456dfc-80a2-4da8-bf21-b24a503e2950
+    proves textual job_type and integer job_level on get_character_data().
+    The existing protocol-18 player envelope accepts these optional fields.
+    job_name and trading do not establish active job mode and are not used.
+    """
+    if (not isinstance(data, dict) or not isinstance(identity, dict) or
+            not isinstance(state, dict) or data.get('server') != identity.get('server') or
+            data.get('name') != identity.get('name')):
+        return None
+    fields = {}
+    job = data.get('job_type')
+    if isinstance(job, str) and job in ('none', 'trader', 'thief', 'hunter', 'unknown'):
+        fields['job'] = job
+    job_level = data.get('job_level')
+    if isinstance(job_level, int) and not isinstance(job_level, bool) and 0 <= job_level <= 255:
+        fields['job_level'] = job_level
+    if not fields:
+        return None
+    player_id = _canonical_player_id(data.get('player_id'))
+    name = _bounded_player_text(data.get('name'))
+    region = state.get('region')
+    if (player_id is None or name is None or '\x00' in name or
+            not _valid_position_region(region)):
+        return None
+    # Avoid attributing job data across a world transition between API samples.
+    if data.get('region') is not None and not _mob_region_matches(region, data['region']):
+        return None
+    row = {'player_id': player_id, 'name': name, 'region': region, **fields}
+    for axis in ('x', 'y'):
+        value = state.get(axis, data.get(axis))
+        if not _number(value) or abs(value) > 1000000:
+            return None
+        row[axis] = float(value)
+    z = state.get('z', data.get('z'))
+    if _number(z) and abs(z) <= 1000000:
+        row['z'] = float(z)
+    level = data.get('level')
+    if isinstance(level, int) and not isinstance(level, bool) and 1 <= level <= 255:
+        row['level'] = level
+    model = data.get('model')
+    if isinstance(model, int) and not isinstance(model, bool) and 1 <= model <= 0xffffffff:
+        row['model_id'] = model
+    guild = _bounded_player_text(data.get('guild'))
+    if guild is not None and '\x00' not in guild:
+        row['guild'] = guild
+    if isinstance(data.get('dead'), bool):
+        row['dead'] = data['dead']
+    zone = _bounded_text(state.get('zone'), 100)
+    if zone is not None and '\x00' not in zone:
+        row['zone'] = zone
+    return row
+
+
+def _merge_own_job_player(players, own):
+    """One current player observation, bounded by the existing player contract."""
+    if own is not None:
+        duplicate = next((row for row in players if row.get('player_id') == own['player_id']), None)
+        if duplicate is None or duplicate.get('name') == own['name']:
+            # Never replace an independently observed alias with the own name.
+            # The envelope requires unique runtime IDs, so a conflicting name
+            # keeps its original nearby observation without attaching own facts.
+            merged = dict(duplicate or {})
+            merged.update(own)
+            players = [merged] + [row for row in players if row.get('player_id') != own['player_id']]
+    truncated = False
+    while (len(players) > MAX_PLAYERS_PER_SNAPSHOT or
+           len(json.dumps(players, separators=(',', ':'), sort_keys=True,
+                          allow_nan=False).encode('utf-8')) > MAX_PLAYERS_SNAPSHOT_BYTES):
+        players.pop()
+        truncated = True
+    return players, truncated
 
 
 def collect_monster_observation(api=None):
@@ -5358,6 +5435,7 @@ def _reset_player_sample_state():
     _last_player_signature = None
     _last_player_publish_at = 0.0
     _player_sample_forced = False
+    _reset_spawn_state()
 _death_callback_active = False
 _recent_player_attack = None
 _phbot_connected_state = None
@@ -5393,6 +5471,7 @@ def item_filter_changed(state):
 
 def _stop_worker():
     global _worker
+    _reset_spawn_state()
     if _worker is not None:
         _worker.stop()
         _worker = None
@@ -5567,6 +5646,7 @@ def teleported():
     _last_position_publish_at = 0.0
     _last_position_observed = None
     _player_sample_forced = True
+    _reset_spawn_state()
     if _worker is not None and hasattr(_worker, 'clear_position'):
         _worker.clear_position()
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
@@ -5651,6 +5731,312 @@ def _sample_realtime_position(now=None):
     return _publish_realtime_position(position, now)
 
 
+SPAWN_CHARACTER_DECODER_ENABLED = False
+SPAWN_SINGLE = 0x3015
+SPAWN_DESPAWN = 0x3016
+SPAWN_GROUP_BEGIN = 0x3017
+SPAWN_GROUP_END = 0x3018
+SPAWN_GROUP_DATA = 0x3019
+SPAWN_GROUP_BYTE_LIMIT = 65536
+SPAWN_GROUP_COUNT_LIMIT = 256
+SPAWN_GROUP_CHUNK_LIMIT = 256
+SPAWN_GROUP_TIMEOUT_SECONDS = 5.0
+_spawn_entities = {}
+_spawn_scope = None
+_spawn_group = None
+_last_completed_spawn_group = None
+_JOB_TYPE_CANDIDATES = {0: 'none', 1: 'trader', 2: 'thief', 3: 'hunter'}
+
+
+def _reset_spawn_state():
+    global _spawn_entities, _spawn_scope, _spawn_group, _last_completed_spawn_group
+    _spawn_entities = {}
+    _spawn_scope = None
+    _spawn_group = None
+    _last_completed_spawn_group = None
+
+
+def _fence_spawn_scope():
+    global _spawn_scope
+    worker = _worker
+    identity = getattr(worker, '_current_identity', None)
+    identity = identity if isinstance(identity, dict) else {}
+    session = getattr(worker, 'session_id', None)
+    scope = (id(worker), identity.get('server'), identity.get('name'),
+             identity.get('profile_key'), session if isinstance(session, str) else None)
+    if _spawn_scope != scope:
+        _reset_spawn_state()
+        _spawn_scope = scope
+
+
+def _observe_spawn_opcode(opcode, data):
+    """Despawn cleanup is verified as a 4-byte runtime id. Character fields stay off."""
+    try:
+        opcode = int(opcode) & 0xFFFF
+    except Exception:
+        return False
+    if opcode == SPAWN_DESPAWN:
+        return _forget_spawn_entity(data)
+    if not SPAWN_CHARACTER_DECODER_ENABLED:
+        return False
+    return _assemble_unverified_spawn_group(opcode, data)
+
+
+def _forget_spawn_entity(data):
+    if not isinstance(data, (bytes, bytearray)) or len(data) != 4:
+        return False
+    runtime_id = str(int.from_bytes(bytes(data[:4]), 'little'))
+    _spawn_entities.pop(runtime_id, None)
+    return True
+
+
+def _assemble_unverified_spawn_group(opcode, data):
+    """Candidate classic framing: action byte, uint16 count, then fragments.
+
+    Completion validates framing only, never entity boundaries or field semantics.
+    No bytes or candidate records from this helper are sent to the backend.
+    """
+    global _spawn_group, _last_completed_spawn_group
+    now = _monotonic()
+    if _spawn_group is not None and now - _spawn_group['started_at'] >= SPAWN_GROUP_TIMEOUT_SECONDS:
+        _spawn_group = None
+    if not isinstance(data, (bytes, bytearray)):
+        _spawn_group = None
+        _last_completed_spawn_group = None
+        return False
+    payload = bytes(data)
+    if opcode == SPAWN_GROUP_BEGIN:
+        _last_completed_spawn_group = None
+        if len(payload) != 3 or payload[0] not in (1, 2):
+            _spawn_group = None
+            return False
+        count = int.from_bytes(payload[1:3], 'little')
+        if not 1 <= count <= SPAWN_GROUP_COUNT_LIMIT:
+            _spawn_group = None
+            return False
+        _spawn_group = {'action': payload[0], 'expected': count, 'chunks': [],
+                        'size': 0, 'started_at': now}
+        return True
+    if opcode == SPAWN_GROUP_DATA:
+        if (_spawn_group is None or not payload or
+                len(_spawn_group['chunks']) >= SPAWN_GROUP_CHUNK_LIMIT or
+                _spawn_group['size'] + len(payload) > SPAWN_GROUP_BYTE_LIMIT):
+            _spawn_group = None
+            _last_completed_spawn_group = None
+            return False
+        _spawn_group['chunks'].append(payload)
+        _spawn_group['size'] += len(payload)
+        return True
+    if opcode == SPAWN_GROUP_END:
+        group = _spawn_group
+        _spawn_group = None
+        _last_completed_spawn_group = None
+        if payload or group is None or not group['chunks']:
+            return False
+        if group['action'] == 2 and group['size'] != group['expected'] * 4:
+            return False
+        group['complete'] = True
+        _last_completed_spawn_group = group
+        return True
+    return False
+
+
+class _SpawnReader(object):
+    def __init__(self, payload):
+        if not isinstance(payload, (bytes, bytearray)) or len(payload) > SPAWN_GROUP_BYTE_LIMIT:
+            raise ValueError('invalid spawn payload')
+        self.data = bytes(payload)
+        self.offset = 0
+
+    def take(self, size):
+        end = self.offset + size
+        if end > len(self.data):
+            raise ValueError('truncated spawn payload')
+        value = self.data[self.offset:end]
+        self.offset = end
+        return value
+
+    def uint(self, size):
+        return int.from_bytes(self.take(size), 'little')
+
+    def flag(self):
+        value = self.uint(1)
+        if value not in (0, 1):
+            raise ValueError('invalid spawn flag')
+        return bool(value)
+
+    def text(self, required=False):
+        size = self.uint(2)
+        if size > 64:
+            raise ValueError('oversized spawn name')
+        try:
+            value = self.take(size).decode('ascii')
+        except UnicodeDecodeError:
+            raise ValueError('unsupported spawn name encoding')
+        if '\x00' in value or (required and not value.strip()):
+            raise ValueError('invalid spawn name')
+        return value
+
+
+def _read_candidate_character_spawn(reader, character_models, item_types):
+    """Independent classic-layout candidate; not evidence of Greatest support.
+
+    Reference: xBot PacketParser.EntitySpawn at commit
+    5fc222aceb6e2d2eb21b7790002b7b864273c312. Items are structurally
+    skipped, never retained. Reject masks/buffs until their metadata-dependent
+    branches are verified. Unknown entities invalidate a mixed group rather
+    than searching its bytes for a plausible player name.
+    """
+    model_id = reader.uint(4)
+    if model_id not in character_models:
+        raise ValueError('unsupported spawn entity')
+    reader.take(4)  # Scale, hwan level, PVP cape, experience icon.
+    jobbing = False
+    for _ in range(2):  # Visible equipment and avatar model lists.
+        capacity, count = reader.uint(1), reader.uint(1)
+        if count > capacity or count > 64:
+            raise ValueError('invalid spawn item count')
+        for _ in range(count):
+            item_type = item_types.get(reader.uint(4))
+            if (not isinstance(item_type, tuple) or len(item_type) != 2 or
+                    any(not isinstance(tid, int) or isinstance(tid, bool) or
+                        not 0 <= tid <= 255 for tid in item_type)):
+                raise ValueError('unknown spawn item shape')
+            # phBot get_item TIDs omit the outer item discriminator: tid1=1
+            # denotes equipment; tid2=7 is the classic job-suit branch.
+            if item_type[0] == 1:
+                reader.take(1)  # Plus, discarded immediately.
+                jobbing = jobbing or item_type[1] == 7
+    if reader.flag():
+        raise ValueError('unsupported masked spawn')
+    runtime_id = reader.uint(4)
+    if runtime_id == 0:
+        raise ValueError('invalid spawn runtime id')
+    region = reader.uint(2)
+    coordinates = struct.unpack('<fff', reader.take(12))  # Packet X, Z, Y.
+    if region == 0 or any(not math.isfinite(v) or abs(v) > 10000000 for v in coordinates):
+        raise ValueError('invalid spawn position')
+    reader.take(2)  # Heading.
+    moving = reader.flag()
+    reader.take(1)  # Movement mode.
+    if moving:
+        reader.take(14 if region & 0x8000 else 8)
+    else:
+        reader.take(3)  # Movement action and heading.
+    reader.take(16)  # Four state bytes and three speeds.
+    if reader.uint(1) != 0:
+        raise ValueError('unsupported buffed spawn')
+    name = reader.text(required=True)
+    job_code, job_level = reader.uint(1), reader.uint(1)
+    reader.take(1)  # PVP state, independent of job role.
+    riding = reader.flag()
+    reader.flag()  # Combat state.
+    if riding:
+        reader.take(4)
+    reader.take(1)  # Scroll state.
+    interaction = reader.uint(1)
+    reader.take(1)
+    guild = reader.text()
+    if not jobbing:
+        reader.take(4)
+        reader.text()  # Guild title, not an alternate character identity.
+        reader.take(12)
+        reader.flag()
+        reader.take(1)
+    if interaction == 4:
+        reader.text()  # Stall title.
+        reader.take(4)
+    reader.take(2)  # Equipment cooldown and CTF team.
+    record = {
+        'candidate_only': True,
+        'runtime_entity_id': str(runtime_id),
+        'observed_name': name,
+        'model_id': model_id,
+        'is_jobbing': jobbing,
+        # Keep raw packet coordinates distinct from phBot/world coordinates.
+        'packet_region': region, 'packet_x': coordinates[0],
+        'packet_z': coordinates[1], 'packet_y': coordinates[2],
+    }
+    if job_code in _JOB_TYPE_CANDIDATES:
+        record['job'] = _JOB_TYPE_CANDIDATES[job_code]
+    else:
+        record['job'] = 'unknown'
+    record['job_level'] = job_level
+    record['job_name' if jobbing else 'player_name'] = name
+    if guild:
+        record['guild'] = guild
+    return record
+
+
+def decode_candidate_spawn(payload, character_models, item_types, protocol, count=1, single=True):
+    """Offline candidate decoder, deliberately disconnected from handle_joymax.
+
+    All entities and trailing bytes must validate before any record is returned.
+    Synthetic success must never enable SPAWN_CHARACTER_DECODER_ENABLED.
+    """
+    if (protocol != 'vsro-1.188' or not isinstance(count, int) or
+            isinstance(count, bool) or not 1 <= count <= SPAWN_GROUP_COUNT_LIMIT or
+            not isinstance(single, bool) or (single and count != 1)):
+        raise ValueError('unsupported spawn variant')
+    reader = _SpawnReader(payload)
+    records = []
+    seen = set()
+    for _ in range(count):
+        record = _read_candidate_character_spawn(reader, character_models, item_types)
+        if record['runtime_entity_id'] in seen:
+            raise ValueError('duplicate spawn runtime id')
+        seen.add(record['runtime_entity_id'])
+        records.append(record)
+        if single:
+            reader.take(1)  # Single-spawn-only trailing state.
+    if reader.offset != len(reader.data):
+        raise ValueError('unexpected spawn trailing bytes')
+    return records
+
+
+def remember_verified_spawn(record):
+    if not isinstance(record, dict) or record.get('candidate_only'):
+        return False
+    _fence_spawn_scope()
+    runtime_id = _canonical_player_id(record.get('runtime_entity_id'))
+    name = record.get('observed_name')
+    if (runtime_id is None or not isinstance(name, str) or not name.strip() or
+            '\x00' in name or len(name.encode('utf-8')) > 64):
+        return False
+    if len(_spawn_entities) >= 256 and runtime_id not in _spawn_entities:
+        return False
+    stored = {'observed_name': name}
+    for key in ('job', 'job_level', 'is_jobbing', 'model_id'):
+        if key in record and record[key] is not None:
+            value = record[key]
+            if key == 'job' and value not in ('none', 'trader', 'thief', 'hunter', 'unknown'):
+                return False
+            if key in ('job_level', 'model_id') and (
+                    not isinstance(value, int) or isinstance(value, bool) or
+                    not (0 if key == 'job_level' else 1) <= value <= (255 if key == 'job_level' else 0xffffffff)):
+                return False
+            if key == 'is_jobbing' and not isinstance(value, bool):
+                return False
+            stored[key] = value
+    _spawn_entities[runtime_id] = stored
+    return True
+
+
+def _attach_spawn_player_fields(players):
+    if not isinstance(players, list):
+        return
+    _fence_spawn_scope()
+    for player in players:
+        if not isinstance(player, dict):
+            continue
+        cached = _spawn_entities.get(str(player.get('player_id')))
+        if not isinstance(cached, dict) or cached.get('observed_name') != player.get('name'):
+            continue
+        for key, value in cached.items():
+            if key != 'observed_name':
+                player[key] = value
+
+
 def handle_joymax(opcode, data):
     """Observe server packets passively and always forward them to phBot."""
     if opcode == POSITION_MOVEMENT_OPCODE:
@@ -5669,6 +6055,11 @@ def handle_joymax(opcode, data):
         _observe_unique_notice(opcode, data)
     except Exception:
         # A monitoring failure must never interfere with the game packet.
+        pass
+    try:
+        _observe_spawn_opcode(opcode, data)
+    except Exception:
+        # Spawn monitoring must never interfere with packet forwarding.
         pass
     return True
 
@@ -6143,7 +6534,7 @@ def _sample_character(timing=None):
         _last_character_sample_at = now
     timing.run('monsters', _sample_monsters, identity, state, position, now)
     timing.run('npcs', _sample_npcs, identity, state, position, now)
-    timing.run('players', _sample_players, identity, state, position, now)
+    timing.run('players', _sample_players, identity, state, position, now, data)
     if hasattr(_worker, 'report_control_state'):
         try: timing.run('controls', _worker.report_control_state)
         except Exception as error: _log('control-state sample failed (' + error.__class__.__name__ + ')')
@@ -6257,7 +6648,7 @@ def _sample_npcs(identity, state, position, now=None):
     return True
 
 
-def _sample_players(identity, state, position, now=None):
+def _sample_players(identity, state, position, now=None, own_data=None):
     global _last_player_poll_at, _last_player_region, _last_player_observer_z
     global _last_player_signature, _last_player_publish_at, _player_sample_forced
     if _worker is None:
@@ -6268,6 +6659,8 @@ def _sample_players(identity, state, position, now=None):
         return False
     observer_z = position.get('z') if isinstance(position, dict) else None
     normalized_z = float(observer_z) if _number(observer_z) and abs(observer_z) <= 1000000 else None
+    if _last_player_region is not None and _last_player_region != region:
+        _reset_spawn_state()
     forced = (_player_sample_forced or _last_player_region != region or
               _last_player_observer_z != normalized_z)
     if not forced and now - _last_player_poll_at < PLAYER_POLL_INTERVAL_SECONDS:
@@ -6280,6 +6673,12 @@ def _sample_players(identity, state, position, now=None):
     if len(matching) != len(players):
         truncated = True
     if truncated:
+        status = 'truncated'
+    _attach_spawn_player_fields(matching)
+    own = _observed_own_job_player(own_data, identity, state)
+    matching, dropped = _merge_own_job_player(matching, own)
+    if dropped or (own is not None and status == 'unavailable'):
+        # An own observation does not prove the nearby getter was available.
         status = 'truncated'
     if any(not player.get('zone') and not _valid_position_region(player.get('region'))
            for player in matching):
