@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.26**, using agent protocol **17**. It
+The current local plugin release is **1.9.32**, using agent protocol **18**. It
 accepts a display-only route from another plugin in the same phBot process through
 `submit_external_route` and publishes `navigation.observed`. PhMon does not start
 or stop that route. Walks stay visible when a trade script also contains blank
@@ -337,6 +337,210 @@ skip with independent audited results. `remote-controls` fixtures also support
 `PHMON_SIMULATOR_FALSE_ACTION=reverse_return`, and omission through
 `PHMON_SIMULATOR_UNSUPPORTED_PRIMITIVES=reverse_return` or `get_party`.
 No simulator result validates Windows/phBot scroll behavior.
+
+### Job information investigation (1.9.30 / protocol 18)
+
+Live job detection is **not yet verified on Greatest/phBot 20.1.3**. The earlier
+`decode_unverified_spawn_fixture` used an invented record format, not a Silkroad
+spawn packet. It has been replaced by an independently authored, offline candidate
+decoder for the classic layout, with explicit `vsro-1.188` variant selection.
+This variant label is a hypothesis, not proof of Greatest compatibility.
+Production `SPAWN_CHARACTER_DECODER_ENABLED` remains false. Candidate results are
+marked `candidate_only` and rejected by the verified runtime cache.
+
+The structural reference is
+[xBot's EntitySpawn parser](https://github.com/JellyBitz/xBot-WinForms/blob/5fc222aceb6e2d2eb21b7790002b7b864273c312/xBot/Game/PacketParser.cs).
+The candidate skips visible item structures without retaining equipment. It reads
+the length-prefixed ASCII name and independent job bytes after movement/state
+structures; normal appearance does not force job `none`. It rejects unknown item
+shapes, masks, buffs, unsupported entities/versions, truncated or trailing bytes,
+duplicate runtime IDs and mixed groups it cannot fully consume. It supports the
+candidate movement, riding, stall and job-suit branches. None is runtime verified.
+Raw packet coordinates remain distinct from world coordinates. Real group framing
+has an action byte followed by a uint16 count; spawn and despawn groups differ.
+Buffers, chunk counts and group duration are bounded. Completion of assembly
+alone never proves the entity count or enables decoding. Cache attachment requires
+the exact observed name as well as runtime ID; it never links normal/job names.
+
+The temporary job evidence capture was removed in **1.9.32** at the operator's
+request. Its GUI controls, raw packet buffer, API snapshots, export files and
+callback hooks are no longer part of the plugin. Existing operator-provided
+captures remain local historical evidence. Verified own-character job collection
+continues through the normal character sampler and `map.players` transport.
+Cleanup validation: all 247 remaining plugin/protocol tests pass, and
+`git diff --check` passes. Reload the updated plugin to remove the controls
+from an already-running phBot instance.
+
+The two existing local captures inspected on 2026-10-10 contained no `0x3015`,
+`0x3017`, `0x3019` or `0x3018`, so they cannot validate spawn/job decoding.
+The [official Character API](https://plugins.phbot.org/phbot-api/character)
+documents own-character job experience/name, but not job type or job level.
+The [Players API](https://plugins.phbot.org/phbot-api/players) example does not
+provide these fields either. Own-character `0x3013` has a different layout from
+nearby-player spawns; it is not parsed as `0x3015`.
+The managed-character state transport also has no job fields; this plugin-only
+change does not invent new backend fields or claim that screen is implemented.
+
+Next required gate: inspect fresh packet bytes and API values against nuker1's
+reported Trader level 7 and a separately verified nearby player, identify the
+actual source/opcode/version and every relevant branch, then enable only the
+proven decoder through the existing authenticated transport. Do not enable the
+candidate merely because synthetic tests pass.
+
+Validation: 248 tests pass via `python -m unittest discover -s plugin -p 'test_*.py'`, covering both
+the decoder foundations and the then-present capture behavior; fixtures are synthetic, not proof
+of live job detection. The outbound protocol fingerprint is unchanged and the live
+transport audit passes. Only `plugin/` is changed by this increment.
+
+### Verified own-character job fields (1.9.31 / protocol 18)
+
+Operator capture `12456dfc-80a2-4da8-bf21-b24a503e2950`, SHA-256
+`6cd498bac559ee035f6d380624fc220cfea3c973579558747a24dc3f80c05c6a`, recorded
+Greatest/phBot 20.1.3 on nuker1 starting 2026-10-09 23:49:26 UTC. All fourteen
+own-character API samples independently contain `job_type: "trader"` and
+`job_level: 7`, matching the operator's stated reference. `get_character_data()`
+also supplies the model and character level. This supersedes the earlier lack of
+runtime API evidence for **connected characters**; public documentation omitted
+these fields, but the actual getter exposes them. The raw capture stays local
+and is not an application asset or test dependency.
+
+Version 1.9.31 uses that same existing character sample to add an own-character
+observation to the existing authenticated `map.players` envelope, which already
+accepts the optional `job`, `job_level` and `model_id` fields. This reaches the
+existing player registry/level-snapshot ingestion without adding ignored fields
+to managed-character state or changing the server, database, frontend, protocol
+version, socket implementation or polling cadence. It is a data-source change,
+not a new map control or layer. An own observation with unavailable nearby data
+remains explicitly partial (`truncated`). Count/byte bounds still apply.
+
+Only explicit canonical textual roles and integer job levels in range are used;
+missing fields remain omitted. Job experience is not converted to a level.
+An assigned `job_name` does not establish active job mode, so `is_jobbing` stays
+unknown. No job alias is emitted or linked to the character. If a nearby snapshot
+already uses the same runtime ID under a different name, that independent
+observation is retained without attaching the own-character facts. Matching
+normal-name rows are enriched without duplicating runtime IDs. Identity, region
+and position checks prevent cross-character/world attribution.
+
+The own-character capture contained no `0x3013` or spawn/group packets. It does
+not verify **nearby-player** job fields, active-job classification or the offline
+candidate decoder; production spawn parsing remains disabled. Nearby source
+availability remains unresolved; the temporary capture controls were removed in
+1.9.32. After loading 1.9.32, verify the connected character's job fields in the existing
+Player registry/profile; backend persistence and installed-plugin behavior for
+this increment remain runtime acceptance checks, not claims based on unit tests.
+
+Validation: 255 plugin/protocol tests pass, including the real transport envelope,
+job-level changes, missing fields, alias conflicts, identity/region fencing and
+count/byte limits. The runtime API evidence above verifies the input; these tests
+verify the independently authored normalization and transport behavior.
+
+### Nearby capture result and remaining gate
+
+Operator capture `39df70b8-3c4f-439d-ab4f-10c951593632`, SHA-256
+`8cd1a6b19d39c9590b4387d314bee131c74055e558d34be78c8536c59b0bd756`, recorded
+Greatest/phBot 20.1.3 with plugin 1.9.30, observer nuker1 and target nuker2,
+starting 2026-10-09 23:54:07 UTC. The complete 15-second window has no omitted
+packets. The target was absent at arm time and first appears in the getter at
+8,796 ms, runtime ID 21402605, character level 91. Its getter exposes only
+`dead`, `grant`, `guild`, `level`, `name`, `region`, `x` and `y`; character level
+is not job level. Thirteen own-character samples again report Trader job level 7.
+
+The packet callback received seven packets totaling 80 bytes: four `0x38F5`, two
+`0xB021` and one `0xAA76`. None contains the target name or the candidate
+spawn/group opcodes. This establishes a getter transition, not delivery of a
+decodable spawn. There is insufficient evidence to reinterpret `0x38F5` as job
+data, infer a role/level, or enable the candidate decoder. The cause of the
+missing spawn remains unverified; absent-from-getter is not proof that the
+server had despawned the entity. Local installed packet handlers examined during
+the investigation return True; no blocking handler was identified there.
+
+The operator subsequently confirmed entry from far away with no job suit equipped.
+The target's job type/level remains independently unconfirmed. This strengthens
+the missing-spawn discrepancy; it does not verify a numeric job field. Official
+[event documentation](https://plugins.phbot.org/phbot-api/events) describes
+`handle_joymax` as receiving all server packets, but this observed window did not
+deliver a spawn. The operator also confirmed that the observer was not clientless.
+Clientless mode therefore does not explain this particular capture. No general
+callback filtering behavior is established by the evidence.
+
+The next gate is to explain that callback discrepancy. A confirmed fresh spawn
+must reach the passive callback
+or another documented, runtime-verified public API must expose the job facts
+before nearby detection can be enabled. Keep the production decoder disabled and
+unknown nearby job fields omitted. Only plugin files are changed; raw evidence
+remains local and is not a test dependency.
+
+### Feasibility research - 2026-10-10
+
+**Conclusion:** connected-character job type/level is runtime verified above.
+Nearby job type/level is plausible from Silkroad spawn data, including classic
+normal-appearance records, but not verified through phBot 20.1.3 on Greatest.
+The missing callback payload is an unresolved source-access problem. It does not
+prove that Silkroad never sends the fields or that phBot deliberately blocks them.
+Research does not enable the candidate decoder or change the plugin protocol.
+
+Primary implementation evidence:
+
+- [xBot parser, pinned commit](https://github.com/JellyBitz/xBot-WinForms/blob/5fc222aceb6e2d2eb21b7790002b7b864273c312/xBot/Game/PacketParser.cs#L736)
+  reads name, job type and job level before its suit-dependent guild tail. Its
+  [player definition](https://github.com/JellyBitz/xBot-WinForms/blob/5fc222aceb6e2d2eb21b7790002b7b864273c312/xBot/Game/Objects/Entity/SRPlayer.cs)
+  distinguishes job role from equipped suit. This supports the offline classic
+  candidate, not Greatest's layout or the meaning of its populated values.
+- [RSBot player parser, pinned commit](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Spawn/SpawnedPlayer.cs#L285)
+  independently reads job type after the name. Older variants read job level
+  independently of suit state; newer branches condition extra job bytes on job
+  appearance. Its [client-type enum](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/GameClientType.cs)
+  is needed to interpret those comparisons. A universal parser is unsafe.
+- RSBot's [single-spawn handler](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Entity/EntitySingleSpawnResponse.cs)
+  and [group-begin handler](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Entity/EntityGroupSpawnBeginResponse.cs)
+  corroborate candidate opcodes/framing, not delivery on this installed runtime.
+
+The [official phBot event API](https://plugins.phbot.org/phbot-api/events)
+describes all incoming packets reaching handle_joymax, but our complete nearby
+window contains no spawn despite confirmed entry from far away with the client
+running. The [Players API](https://plugins.phbot.org/phbot-api/players) is labeled
+disabled and provides an older example without job fields; the actual getter
+works for identity/location but exposes neither target job field. Documentation
+alone cannot settle installed-runtime availability. Hunter events include traders
+and supply no level; thief events supply a name only. Those events cannot provide
+exact role plus level for every nearby character.
+
+[get_locale](https://plugins.phbot.org/phbot-api/locale) uses the same vSRO locale
+for several versions. The [startup guide](https://guide.phbot.org/initial-startup)
+requires the correct private-server variant because the wrong one causes parsing
+errors. Locale or three-job gameplay alone cannot select a decoder. Even a valid
+spawn must be compared with known normal and active-job references before its
+values can be treated as assigned role/level. An unknown field stays unknown.
+
+Historical rev6 evidence is weaker than the primary code evidence above. A
+[contemporary revbot tutorial](https://www.elitepvpers.com/forum/sro-hacks-bots-cheats-exploits/106896-only-working-bots-today-2.html)
+describes nearby observations uploaded to rev6's ladder database. This supports
+observation aggregation as the historical design, but is not original rev6 source
+and does not verify its exact job decoding. Original rev6/archive pages were not
+retrievable during this research. Rev6 therefore provides historical precedent,
+not proof that all normal players' exact job levels are accessible through modern
+phBot. PhMon already has aggregation/persistence; another collector or external
+rev6 service does not solve missing source data.
+
+The next discriminating check is a minimal independent passive logger following
+phBot's [official packet example](https://plugins.phbot.org/example-plugins), with
+no injection or bot actions. Compare all incoming opcodes with PhMon's bounded
+capture during a known entry; do not filter only candidate opcodes. If the
+independent callback receives a spawn, investigate PhMon's capture/module
+lifecycle and decode that actual payload. If both lack it, obtain phBot maintainer
+clarification or a public API exposing parsed fields before claiming plugin-only
+feasibility here. An external packet interceptor changes the collection mechanism
+and is outside the current plan; none was installed. No third-party message was
+sent. Same-name connected characters can already contribute their own verified
+job fields through existing ingestion; that does not verify observer-side parsing
+for unrelated players or link job aliases.
+
+Only plugin documentation changed during this research. The subsequent 1.9.32
+cleanup removed the temporary job capture probes at the operator's request.
+Polling, transport and decoder-disabled state are unchanged. Remaining acceptance gates
+are actual packet receipt, correct server variant, independently verified normal
+and active job fields, full record boundaries and entity lifecycle fencing.
 
 ### Navigation diagnostics and direct movement (1.9.20)
 
