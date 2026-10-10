@@ -426,9 +426,10 @@ The own-character capture contained no `0x3013` or spawn/group packets. It does
 not verify **nearby-player** job fields, active-job classification or the offline
 candidate decoder; production spawn parsing remains disabled. Nearby source
 availability remains unresolved; the temporary capture controls were removed in
-1.9.32. After loading 1.9.32, verify the connected character's job fields in the existing
-Player registry/profile; backend persistence and installed-plugin behavior for
-this increment remain runtime acceptance checks, not claims based on unit tests.
+1.9.32. On 2026-10-10, the operator confirmed that nuker1's Trader / job level 7
+reaches the player registry. This closes the live own-character job collection,
+transport and registry-display check. Reconnect behavior and retention across
+restarts remain separate acceptance checks.
 
 Validation: 255 plugin/protocol tests pass, including the real transport envelope,
 job-level changes, missing fields, alias conflicts, identity/region fencing and
