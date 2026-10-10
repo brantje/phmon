@@ -81,30 +81,42 @@ type Block struct {
 	Points  []Point `json:"points"`
 }
 
+// Crossing marks an explicit teleport between known walk endpoints. It is
+// display geometry only; it never participates in walking progress or arrival.
+type Crossing struct {
+	FromAreaID  string `json:"from_area_id"`
+	FromFloorID string `json:"from_floor_id"`
+	From        Point  `json:"from"`
+	ToAreaID    string `json:"to_area_id"`
+	ToFloorID   string `json:"to_floor_id"`
+	To          Point  `json:"to"`
+}
+
 type View struct {
-	CommandID             string    `json:"command_id"`
-	CharacterID           string    `json:"character_id"`
-	SessionID             string    `json:"session_id"`
-	Sequence              uint64    `json:"route_sequence"`
-	Server                string    `json:"server"`
-	DatasetID             string    `json:"dataset_id"`
-	DatasetVersion        string    `json:"dataset_version"`
-	AreaID                string    `json:"area_id,omitempty"`
-	FloorID               string    `json:"floor_id,omitempty"`
-	Destination           Point     `json:"destination"`
-	DestinationAreaID     string    `json:"destination_area_id,omitempty"`
-	DestinationFloorID    string    `json:"destination_floor_id,omitempty"`
-	CurrentAnchor         *Point    `json:"current_anchor,omitempty"`
-	Status                string    `json:"status"`
-	Reason                string    `json:"reason,omitempty"`
-	UpdatedAt             time.Time `json:"updated_at"`
-	Blocks                []Block   `json:"blocks"`
-	Arrived               bool      `json:"arrived,omitempty"`
-	GeometryOmitted       bool      `json:"geometry_omitted,omitempty"`
-	InstructionCount      int       `json:"instruction_count,omitempty"`
-	CompletedInstructions int       `json:"completed_instructions,omitempty"`
-	Progress              *float64  `json:"progress,omitempty"`
-	ETASeconds            *int      `json:"eta_seconds,omitempty"`
+	CommandID             string     `json:"command_id"`
+	CharacterID           string     `json:"character_id"`
+	SessionID             string     `json:"session_id"`
+	Sequence              uint64     `json:"route_sequence"`
+	Server                string     `json:"server"`
+	DatasetID             string     `json:"dataset_id"`
+	DatasetVersion        string     `json:"dataset_version"`
+	AreaID                string     `json:"area_id,omitempty"`
+	FloorID               string     `json:"floor_id,omitempty"`
+	Destination           Point      `json:"destination"`
+	DestinationAreaID     string     `json:"destination_area_id,omitempty"`
+	DestinationFloorID    string     `json:"destination_floor_id,omitempty"`
+	CurrentAnchor         *Point     `json:"current_anchor,omitempty"`
+	Status                string     `json:"status"`
+	Reason                string     `json:"reason,omitempty"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	Blocks                []Block    `json:"blocks"`
+	TeleportCrossings     []Crossing `json:"teleport_crossings,omitempty"`
+	Arrived               bool       `json:"arrived,omitempty"`
+	GeometryOmitted       bool       `json:"geometry_omitted,omitempty"`
+	InstructionCount      int        `json:"instruction_count,omitempty"`
+	CompletedInstructions int        `json:"completed_instructions,omitempty"`
+	Progress              *float64   `json:"progress,omitempty"`
+	ETASeconds            *int       `json:"eta_seconds,omitempty"`
 }
 
 type route struct {
@@ -396,6 +408,17 @@ func (s *Store) ReplaceObserved(input ObservedInput, agentID string, generation 
 			s.observed[input.SessionID] = stored
 			return true
 		}
+		// External planners can replace the unwalked tail of a running route.
+		// Keep its confirmed prefix instead of returning to a crossed ferry.
+		if !current.arrived && current.cursor > 0 && current.cursor <= len(input.Instructions) &&
+			instructionsEqual(current.Instructions[:current.cursor], input.Instructions[:current.cursor]) {
+			stored := current
+			stored.Input = storedInput
+			stored.destination = destination
+			stored.updatedAt = now.UTC()
+			s.observed[input.SessionID] = stored
+			return true
+		}
 		if current.lastPosition != nil {
 			copyPosition := *current.lastPosition
 			preservedLast = &copyPosition
@@ -507,6 +530,9 @@ func advanceStoredRoute(current route, present bool, characterID string, positio
 		return current, true, true
 	}
 	progressed, uncertain := advanceWalk(&current, position)
+	if uncertain && current.CommandID == "" && reacquireObservedWalkBlock(&current, position) {
+		progressed, uncertain = true, false
+	}
 	if uncertain {
 		current.status = "progress_uncertain"
 		current.reason = "position_not_near_remaining_route"
@@ -696,6 +722,7 @@ func snapshotRoutes(routes map[string]route, server string, profile mapprofile.P
 			}
 		}
 		if !route.arrived {
+			view.TeleportCrossings = remainingTeleportCrossings(route)
 			blocks := make([]Block, 0, 4)
 			active := Block{}
 			for index, step := range route.Instructions {
@@ -792,6 +819,7 @@ func (s *Store) SnapshotBudget(server string, profile mapprofile.Profile, now ti
 			continue
 		}
 		view.Blocks = []Block{}
+		view.TeleportCrossings = nil
 		view.CurrentAnchor = nil
 		view.GeometryOmitted = true
 		view.Reason = "navigation_geometry_payload_budget"
@@ -804,6 +832,33 @@ func (s *Store) SnapshotBudget(server string, profile mapprofile.Profile, now ti
 		result = append(result, view)
 	}
 	return result, omitted
+}
+
+func remainingTeleportCrossings(route route) []Crossing {
+	var crossings []Crossing
+	for index, step := range route.Instructions {
+		if index < route.cursor || step.Kind != "teleport" {
+			continue
+		}
+		before, after := index-1, index+1
+		for before >= 0 && route.Instructions[before].Kind == "wait" {
+			before--
+		}
+		for after < len(route.Instructions) && route.Instructions[after].Kind == "wait" {
+			after++
+		}
+		if before < 0 || after >= len(route.Instructions) ||
+			route.Instructions[before].Kind != "walk" || route.Instructions[after].Kind != "walk" {
+			continue
+		}
+		from, fromArea, fromFloor, fromOK := scopeStep(route, route.Instructions[before])
+		to, toArea, toFloor, toOK := scopeStep(route, route.Instructions[after])
+		if fromOK && toOK {
+			crossings = append(crossings, Crossing{FromAreaID: fromArea, FromFloorID: fromFloor, From: from,
+				ToAreaID: toArea, ToFloorID: toFloor, To: to})
+		}
+	}
+	return crossings
 }
 
 // advanceWalk projects a fresh observation against only the next contiguous,
@@ -926,6 +981,51 @@ func advanceWalk(current *route, position Position) (bool, bool) {
 		return true, false
 	}
 	return best.t > 0.05, false
+}
+
+// A replayed display-only route may arrive after the character crossed a ferry.
+// Recover only from a fresh, scope-valid observation on one unique later walk
+// block beyond an explicit teleport. Never project a connector from the old
+// anchor, skip a wait alone, or pick between overlapping future blocks.
+func reacquireObservedWalkBlock(current *route, position Position) bool {
+	if nearWalkBlock(current, position, current.cursor) {
+		return false
+	}
+	var matched *route
+	passedTeleport := false
+	for index := current.cursor; index < len(current.Instructions); {
+		if current.Instructions[index].Kind != "walk" {
+			passedTeleport = passedTeleport || current.Instructions[index].Kind == "teleport"
+			index++
+			continue
+		}
+		start := index
+		for index < len(current.Instructions) && current.Instructions[index].Kind == "walk" {
+			index++
+		}
+		if !passedTeleport {
+			continue
+		}
+		candidate := *current
+		candidate.cursor = start
+		candidate.anchor = nil
+		if !nearWalkBlock(&candidate, position, start) {
+			continue
+		}
+		if matched != nil {
+			return false
+		}
+		progressed, uncertain := advanceWalk(&candidate, position)
+		if uncertain || !progressed {
+			return false
+		}
+		matched = &candidate
+	}
+	if matched == nil {
+		return false
+	}
+	current.cursor, current.anchor = matched.cursor, matched.anchor
+	return true
 }
 
 func crossBarrier(current *route, position Position, previous *Position) bool {

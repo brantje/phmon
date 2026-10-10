@@ -382,6 +382,14 @@ export interface NavigationRoute {
   reason?: string
   updated_at: string
   blocks: NavigationRouteBlock[]
+  teleport_crossings?: {
+    from_area_id: string
+    from_floor_id: string
+    from: NavigationRoutePoint
+    to_area_id: string
+    to_floor_id: string
+    to: NavigationRoutePoint
+  }[]
   arrived?: boolean
   geometry_omitted?: boolean
   instruction_count?: number

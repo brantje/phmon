@@ -1110,6 +1110,151 @@ All of the following must hold before reporting the end goal complete:
 - Documentation and the completion ledger match the code. Setup, local development,
   upgrades, backup/restore and operational limitations are reproducible.
 
+### Resume — 2026-10-10 Map position rendering latency
+
+Completed the user-requested Slice 7–8 performance repair after observing
+`nuker4` on Greatest. Browser CPU profiling identified eager rebuilds of every
+hidden marker popup, nested Vue watcher traversal, and unchanged-target animation
+restarts. `MapCanvas.vue` now builds popup content on demand with current inputs,
+refreshes open popups, preserves animations when their target is unchanged, and
+watches marker-array replacement. `useLiveData.ts` holds immutable map and
+position snapshots in shallow refs. Removed markers/unmount clear both caches.
+No plugin/protocol/backend/schema changes or real-character commands.
+
+Validation: full `scripts/check.sh` passed with nonsecret operator placeholders
+for `.env.example`'s blank required values: Go vet/race/build, 247 plugin tests,
+transport audit, 238 frontend tests, formatting, lint (existing warnings only),
+typecheck, production build and Docker config. Docker web build also passed.
+`scripts/map_position_browser_check.mjs` fails on the old
+build and passes on the repaired production preview: browser-only replay checks
+unchanged-refresh animation completion, zero hidden popup builds, popup freshness,
+selection/follow and 1280/390 widths. No replay reaches agent commands or durable
+data. Actual live position intervals are still approximately 300 ms; browser idle
+CPU samples improved from 3% to 34%. Evidence and reproduction:
+[map performance investigation](docs/reference/map-position-performance-2026-10-10.md).
+
+Files: `web/app/components/MapCanvas.vue`,
+`web/app/composables/useLiveData.ts`, browser check and evidence above,
+`docs/reference-parity.md`, this entry. The local LAN web container was replaced
+and is healthy; its browser replay passed and a subsequent live sample had a
+313 ms browser median against a 312 ms direct median with no page errors. Backend
+and connected plugin sessions were not replaced. This is a bounded performance
+follow-up, not a claim that unresolved roadmap features are complete.
+Next action for this fix: reload any existing map tab to load the new bundle;
+no backend restart or plugin update is needed.
+
+Subsequent operator-requested Docker rebuild: rebuilt the server/web images from
+this checkout and ran `docker compose up -d --force-recreate --wait`. PostgreSQL,
+server and web are healthy; backend readiness and web `/api/health` both return
+`status=ok, database=ok`. The existing PostgreSQL volume was retained. This later
+request explicitly includes the backend restart, unlike the preceding web-only fix.
+
+### Resume — teleport / ferry crossing lines (2026-10-10)
+
+Bounded operator follow-up to the map performance work: the user withdrew the
+walked-path/cancel report and identified missing teleport crossing lines instead.
+The earlier `446ab1c` continuation fix remains present: future walking blocks are
+already visible. Missing geometry was the connector between explicit teleport
+endpoints. Go `navigation.View.teleport_crossings` now carries known adjacent walk
+endpoints for remaining teleport barriers, including a pending near-shore barrier.
+The browser projects them only within matching dataset/view/filter scope and draws
+separate gold dotted connectors. Passing the barrier removes them; geometry budget
+omission clears them. Walking progress/arrival and cancellation mechanisms remain
+unchanged; no plugin update, durable schema change or real-character command.
+
+Files: `server/internal/navigation/store.go`, its focused tests,
+`web/shared/types/live.ts`, `web/app/utils/mapNavigationRoutes.ts`, its tests,
+`web/app/components/MapCanvas.vue`, `scripts/map_position_browser_check.mjs`,
+`docs/protocol.md`, `docs/reference-parity.md`, this entry. Existing performance
+changes in this checkout are retained. Focused Go race and frontend tests pass;
+the browser replay fails on the preceding LAN build at its missing-crossing check.
+Full `scripts/check.sh` passed: Go vet/race/build, 247 plugin tests, transport audit,
+239 frontend tests, formatting, lint (87 existing warnings, zero errors), typecheck,
+production build and Docker config. The updated budget regression also passed a
+focused Go race run. Server/web Docker builds passed and both containers were
+recreated with `--no-deps`; PostgreSQL remained running with its existing volume.
+Readiness and web health both report `status=ok, database=ok`. The LAN browser replay
+now passes crossing draw/removal, animation, popup freshness, selection/follow and
+responsive checks with no backend mutations. A read-only live map snapshot contains
+one crossing each for nuker1, nuker4 and Kalypso, with their walking blocks preserved.
+No remaining blocker for this follow-up. Next action: reload the operator's existing
+map tab to load the new bundle. This targeted fix does not start remaining roadmap
+implementation.
+
+### Resume — route hover tooltip persistence (2026-10-10)
+
+Operator follow-up: route hover tooltips disappeared at each live update because
+`syncNavigationRoutes` cleared every path. `MapCanvas.vue` now retains keyed route
+polylines and waypoint circles; only changed geometry/style/content is updated,
+and missing paths/unmount clear their caches. Block keys use the final waypoint
+instead of changing prefix indexes, preserving future blocks through crossings.
+Existing movement cadence and preceding map fixes are retained.
+
+Full `scripts/check.sh` passed (Go vet/race/build, 247 plugin and 239 frontend tests,
+transport audit, formatting/lint/typecheck/build and Docker config). The enhanced
+`scripts/map_position_browser_check.mjs` passes on the production preview: actual
+canvas-pixel pointer targeting holds walking/crossing tooltips through 15 updates,
+verifies pointer-leave hides them, and retains movement, crossing removal, popup,
+follow and responsive coverage. Fixtures are browser-only and derive valid outdoor
+region/coordinate pairs; they no longer require a real route to be running.
+Files: `web/app/components/MapCanvas.vue`, browser script, `docs/reference-parity.md`
+and this entry. The web image was rebuilt and its container replaced with
+`docker compose up -d --no-deps --wait web`; it is healthy and `/api/health` returns
+`status=ok, database=ok`. The same browser replay passes against the deployed LAN
+instance, including both stationary-pointer hover checks. The temporary port-3006
+preview was stopped. Next action: reload the operator's existing map tab. No backend,
+database or plugin changes were needed for this tooltip fix.
+
+### Resume — walked observed route remains after ferry (2026-10-10)
+
+The operator's screenshot showed nuker1's walked route. A read-only 20-second live
+capture confirmed sequence 16→17 added far-side waypoints while both snapshots
+retained the original 13-point Hotan-to-ferry leg and zero completed instructions.
+The character was around 2167→2305 X on the far shore; the reducer stayed
+`progress_uncertain`. Changed observed geometry reset the cursor, and the reducer
+only searched its first contiguous walk block, preventing recovery after a replay
+or missed teleport. This is backend progress, not the retained hover layers.
+
+`navigation/store.go` now preserves an unchanged confirmed prefix across tail
+revisions. For display-only observed routes, a fresh scope-valid position can
+recover one unique later walking block beyond an explicit teleport, only when the
+current block does not also match. The trial projection drops the old source anchor.
+Ambiguity, waits alone, wrong regions, older positions and command-owned routes
+cannot use this recovery. Existing session/ownership/sequence fences are retained.
+Tests use captured Hotan/ferry coordinates and verify old-leg/crossing removal,
+tail revision continuity, older-position fencing and the negative cases.
+
+Files: `server/internal/navigation/store.go`, `store_test.go`, `docs/protocol.md`,
+`docs/reference-parity.md`, this entry. Focused navigation tests and full
+`scripts/check.sh` passed (Go vet/race/build, 247 plugin and 239 frontend tests,
+transport audit, formatting/lint/typecheck/build and Docker config). Evidence:
+`/tmp/phmon-walked-route-check.log`. Only the server image was rebuilt/recreated;
+server and proxied web health report database OK. The deployed browser replay
+passes movement, persistent route hover, crossing draw/removal, popup freshness,
+selection/follow and responsive checks without character commands.
+
+The post-deploy 20-second live nuker1 capture has 36 map frames and 59 position
+frames: sequence 35→36 remains `moving`, completed instructions advance 16→17,
+and the remaining first waypoint advances from (3405,1609) to (3448,1561).
+A subsequent real browser snapshot reaches cursor 18 and starts at (3466,1496).
+This is a newer return route, so the captured-coordinate regression separately
+verifies the original ferry failure. Evidence: `/tmp/phmon-route-progress-after.log`,
+`/tmp/phmon-walked-route-browser.log`, `/tmp/phmon-walked-route-after.png`.
+No remaining action for this bounded bug fix. Retain earlier map fixes and the
+existing PostgreSQL volume; no plugin changes or real character commands were used.
+
+### Resume — 2026-10-10 publish pending fixes and monitor PR #86
+
+The operator requested pushing all pending changes, a PR and monitoring. The
+existing checkout/branch already has open PR #86, so extend that PR with all
+pending map performance, crossing, hover and observed-progress fixes and their
+regression/evidence files, retaining its agent-observation disconnect fix.
+The full local gate and deployed map browser replay passed as recorded above;
+the operator secret is absent from every pending file. Update the PR title/body
+for the combined scope, then monitor CI and automated review on the pushed head,
+address actionable findings and rerun affected checks. Leave the PR open; merge
+is not authorized by this request. No worktree or bot operations are needed.
+
 ## Product and architecture
 
 Build a completely self-hosted alternative to phMonitor, using phMonitor only as a

@@ -1144,6 +1144,23 @@ a separate position-observation status within the documented 12-game-unit presen
 tolerance and compatible region/floor. Neither `start_script` acceptance nor durable
 command completion claims arrival.
 
+Display-only observed routes preserve their confirmed cursor when a newer route
+changes only the unwalked tail. After a replay or incompatible revision, fresh
+accepted position evidence can recover one uniquely matching later walk block
+beyond an explicit teleport, provided the current block does not also match.
+Recovery never projects from the old source anchor, skips a wait alone, or chooses
+between overlapping future blocks. Command-owned routes retain their existing
+barrier rules. These are presentation progress inferences, not execution results.
+
+Map snapshots also include optional `teleport_crossings`: explicit teleport barriers
+with known preceding/following walk endpoints (`from_area_id`, `from_floor_id`,
+`from`, `to_area_id`, `to_floor_id`, `to`). These draw as separate gold dotted
+connectors when both endpoints can be mapped on the same visible area/floor.
+They do not affect walking progress or establish arrival. A pending crossing stays
+visible at the near shore; the cursor passing its teleport removes it. Waits,
+unknown endpoints and consecutive teleports never invent crossing geometry.
+Geometry budget omission clears both walk blocks and teleport crossings.
+
 The browser live protocol v1 `map` snapshot adds optional navigation records. This
 does not add another socket. Navigation is limited to 384 KiB aggregate per live map
 frame and is reduced further to preserve the 512 KiB live-frame ceiling; when needed,

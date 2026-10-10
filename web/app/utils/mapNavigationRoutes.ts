@@ -14,6 +14,7 @@ export interface MapRouteOverlay {
   stale: boolean
   selected: boolean
   blocks: RasterPosition[][]
+  teleportCrossings?: [RasterPosition, RasterPosition][]
   currentAnchor?: RasterPosition
 }
 
@@ -194,6 +195,45 @@ export function mapNavigationRouteOverlays(input: {
           ) || undefined
         : undefined
     const anchor = characterConnector || serverAnchor
+    const teleportCrossings: [RasterPosition, RasterPosition][] = []
+    if (
+      route.dataset_version === input.profile.dataset_version &&
+      !route.geometry_omitted
+    ) {
+      for (const crossing of route.teleport_crossings || []) {
+        if (
+          crossing.from_area_id !== input.areaID ||
+          crossing.to_area_id !== input.areaID ||
+          crossing.from_floor_id !== input.floorID ||
+          crossing.to_floor_id !== input.floorID ||
+          (input.region !== 0 &&
+            (crossing.from.region !== input.region ||
+              crossing.to.region !== input.region)) ||
+          (input.areaID !== 'world' &&
+            crossing.from.region !== crossing.to.region)
+        )
+          continue
+        const from = worldPositionToRaster(
+          input.profile,
+          input.areaID,
+          input.floorID,
+          crossing.from.region,
+          crossing.from.x,
+          crossing.from.y,
+          crossing.from.z,
+        )
+        const to = worldPositionToRaster(
+          input.profile,
+          input.areaID,
+          input.floorID,
+          crossing.to.region,
+          crossing.to.x,
+          crossing.to.y,
+          crossing.to.z,
+        )
+        if (from && to) teleportCrossings.push([from, to])
+      }
+    }
     overlays.push({
       id: `${route.character_id}:${route.session_id}:${route.route_sequence}`,
       characterID: route.character_id,
@@ -210,6 +250,7 @@ export function mapNavigationRouteOverlays(input: {
       selected:
         !input.selectedRouteID || input.selectedRouteID === route.character_id,
       blocks,
+      teleportCrossings,
       currentAnchor: anchor,
     })
   }
