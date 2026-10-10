@@ -46,15 +46,16 @@ function replaceQuery(
   patch: Record<string, string | undefined>,
   keepOffset = false,
 ) {
-  const next: Record<string, string> = {}
+  const current: Record<string, string> = {}
   for (const [key, value] of Object.entries(route.query)) {
-    if (typeof value === 'string') next[key] = value
+    if (typeof value === 'string') current[key] = value
   }
-  for (const [key, value] of Object.entries(patch)) {
-    if (!value) delete next[key]
-    else next[key] = value
+  const merged: Record<string, string | undefined> = { ...current, ...patch }
+  const next: Record<string, string> = {}
+  for (const [key, value] of Object.entries(merged)) {
+    if (key === 'offset' && !keepOffset) continue
+    if (value) next[key] = value
   }
-  if (!keepOffset) delete next.offset
   void router.replace({ query: next })
 }
 
