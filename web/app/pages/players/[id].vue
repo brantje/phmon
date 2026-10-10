@@ -14,6 +14,7 @@ import {
 } from '~/utils/playerRegistry'
 
 type Observation = {
+  id: string
   observed_at: string
   observed_name: string
   level?: number | null
@@ -393,7 +394,7 @@ watch(
             <tbody>
               <tr
                 v-for="row in history?.observations || []"
-                :key="row.observed_at + row.source + row.observed_name"
+                :key="row.id"
               >
                 <td>{{ formatPlayerTime(row.observed_at) }}</td>
                 <td>{{ row.observed_name }}</td>

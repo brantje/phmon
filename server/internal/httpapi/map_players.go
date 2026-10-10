@@ -76,6 +76,9 @@ func projectPlayers(profile mapprofile.Profile, snapshots []players.LiveSnapshot
 		}
 		anyObserved = true
 		for _, player := range snapshot.Players {
+			if strings.EqualFold(strings.TrimSpace(player.Name), strings.TrimSpace(snapshot.Character)) {
+				continue
+			}
 			placementRegion, ok := playerPlacementRegion(snapshot, player)
 			if !ok || !playerRowInScope(profile, snapshot, placementRegion, areaKind, areaID, floorID, regionFilter) {
 				continue

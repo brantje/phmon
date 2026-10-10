@@ -258,7 +258,7 @@ existing `map.players` path still feeds the in-memory live store, and accepted
 rows are also written to the registry. A new verified character level creates
 one snapshot; missing intermediate levels are not invented, and a delayed older
 level does not replace newer current state. `/players` and `/players/:id` list
-that registry, including a sampled level chart. Plugin **1.9.29** keeps protocol
+that registry, including a sampled level chart. Plugin **1.9.32** keeps protocol
 **18**. Production `0x3015` / `0x3019` character decoding stays disabled. A
 four-byte `0x3016` only clears the temporary runtime-id cache. TradeNexus thief
 names are stored as their own players with job `thief` and unknown jobbing

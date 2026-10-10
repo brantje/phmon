@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -173,6 +174,13 @@ func (s *Registry) Apply(ctx context.Context, observations []Observation) error 
 			return err
 		}
 	}
+	sort.SliceStable(observations, func(i, j int) bool {
+		leftServer, rightServer := serverKey(observations[i].Server), serverKey(observations[j].Server)
+		if leftServer != rightServer {
+			return leftServer < rightServer
+		}
+		return nameKey(observations[i].ObservedName) < nameKey(observations[j].ObservedName)
+	})
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err

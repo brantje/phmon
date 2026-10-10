@@ -1759,9 +1759,11 @@ list or one script string.
 
 ## Observed player registry
 
-Plugin **1.9.29** keeps protocol **18**. `get_players()` still supplies the live
+Plugin **1.9.32** keeps protocol **18**. `get_players()` still supplies the live
 name, guild, level, and position. It does not supply job type, job level, active
-job mode, or character model. Those optional `map.players` fields are accepted
+job mode, or character model. The observer's own `get_character_data()` can add
+`job_type` and `job_level` to that character's `map.players` row. The map
+projection omits the observer's own name. Those optional fields are accepted
 when a verified source sets them. The production `0x3015` / `0x3017` / `0x3019` /
 `0x3018` character decoder is disabled. Group framing can be exercised in tests,
 and it does not decode fields. A four-byte `0x3016` despawn removes a temporary
