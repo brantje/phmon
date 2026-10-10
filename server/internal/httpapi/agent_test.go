@@ -746,7 +746,7 @@ func (failingAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error)
 func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 	store := newFakeAgentStore()
 	registry := agentdomain.NewRegistry()
-	server := httptest.NewServer(New(Dependencies{Agents: store, Registry: registry}))
+	server := httptest.NewServer(New(Dependencies{Agents: store, Registry: registry, Characters: characters.NewStore(nil)}))
 	defer server.Close()
 	conn := dialAgent(t, server.URL, store.token)
 	defer conn.CloseNow()
@@ -759,16 +759,26 @@ func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 	if err := wsjson.Read(ctx, conn, &ack); err != nil {
 		t.Fatal(err)
 	}
-	for i, kind := range []string{"map.players", "map.monsters", "map.npcs"} {
-		if err := wsjson.Write(ctx, conn, agentMessage{Type: kind, ProtocolVersion: agentProtocolVersion}); err != nil {
-			t.Fatal(err)
-		}
-		if err := wsjson.Write(ctx, conn, agentMessage{Type: "heartbeat", ProtocolVersion: agentProtocolVersion, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
-			t.Fatal(err)
-		}
-		waitFor(t, time.Second, func() bool { store.mu.Lock(); defer store.mu.Unlock(); return store.seenCount == i+1 })
-		if registry.ConnectionCount(testAgentID) != 1 {
-			t.Fatalf("%s disconnected the agent", kind)
+	z := 0.0
+	frames := []*agentMonsterSnapshot{nil, {
+		Status: "observed", CharacterID: testAgentID, SessionID: testAgentID,
+		Region: 25000, ObserverZ: &z, ObservedAt: time.Now().UTC().Add(-time.Minute),
+	}}
+	count := 0
+	for _, kind := range []string{"map.players", "map.monsters", "map.npcs"} {
+		for _, frame := range frames {
+			// Exercise both missing payloads and expired observations with collection enabled.
+			if err := wsjson.Write(ctx, conn, agentMessage{Type: kind, ProtocolVersion: agentProtocolVersion, MapSnapshot: frame}); err != nil {
+				t.Fatal(err)
+			}
+			if err := wsjson.Write(ctx, conn, agentMessage{Type: "heartbeat", ProtocolVersion: agentProtocolVersion, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+				t.Fatal(err)
+			}
+			count++
+			waitFor(t, time.Second, func() bool { store.mu.Lock(); defer store.mu.Unlock(); return store.seenCount == count })
+			if registry.ConnectionCount(testAgentID) != 1 {
+				t.Fatalf("%s disconnected the agent", kind)
+			}
 		}
 	}
 	store.mu.Lock()

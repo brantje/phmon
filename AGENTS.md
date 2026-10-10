@@ -6003,14 +6003,13 @@ Files: `web/app/utils/mapFollow.ts`, `web/tests/mapFollow.test.ts`,
 
 ### Resume — 2026-10-10 Nonfatal map observation rejection
 
-Changed validation failures for `map.players`, `map.monsters` and `map.npcs` to
-log and drop the frame while retaining the authenticated agent connection.
-Rejected observations still never reach live stores or durable player records.
-This addresses the repeated `invalid map player snapshot` policy closes observed
-in the running server logs. Authentication and transport checks retain their
-existing behavior. Files: `server/internal/httpapi/agent.go`, `agent_test.go`.
-Validation: `go test -race ./internal/httpapi`, focused same-socket heartbeat
-regression and `go vet ./internal/httpapi` passed. Not deployed. Running logs also
-show player-registry row-lock deadlocks and two-second persistence timeouts;
-these remain unresolved. Next action: deploy this patch when authorized and
-address consistent player-registry lock ordering separately.
+Ported the disconnect fix onto `codex/nonfatal-agent-observations` from main.
+Validation failures for `map.players`, `map.monsters` and `map.npcs` log and drop
+only the frame, preserving the authenticated agent session. Rejected data never
+reaches live stores or durable player records. Regression coverage sends missing
+and expired snapshots for all three types, then verifies a heartbeat on the same
+socket. Authentication and transport checks keep existing behavior. Main already
+includes stable server/name player-registry lock ordering. Files:
+`server/internal/httpapi/agent.go`, `agent_test.go`. Validation: HTTP API race
+tests and vet passed before port; rerun and monitor PR CI/review for this branch.
+The running Docker deployment remains main until separately updated.
