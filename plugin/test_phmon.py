@@ -4710,7 +4710,7 @@ class OwnCharacterJobObservationTests(unittest.TestCase):
             worker._flush_map_players(client)
             frame = client.send_json.call_args.args[0]
             self.assertEqual(frame['type'], 'map.players')
-            self.assertEqual(frame['protocol_version'], 18)
+            self.assertEqual(frame['protocol_version'], plugin.PROTOCOL_VERSION)
             row = frame['map_snapshot']['players'][0]
             self.assertEqual(row['job'], 'trader')
             self.assertEqual(row['job_level'], 7)
