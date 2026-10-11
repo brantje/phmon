@@ -38,7 +38,7 @@ AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_i
     ORDER BY max(sampled_at) DESC,character_id LIMIT 20
 ), latest AS (
     SELECT DISTINCT ON(e.character_id,e.bucket) e.bucket,e.character_name,e.character_id,
-           CASE WHEN e.storage_gold IS NOT NULL THEN e.gold + e.storage_gold ELSE e.gold END AS gold
+           CASE WHEN e.storage_gold IS NOT NULL THEN (e.gold::numeric + e.storage_gold::numeric)::text ELSE e.gold::text END AS gold
     FROM eligible e JOIN selected selected_character ON selected_character.character_id=e.character_id
     ORDER BY e.character_id,e.bucket,e.sampled_at DESC,e.sample_id DESC
 )
@@ -67,7 +67,7 @@ FROM latest ORDER BY bucket,character_name,character_id`, args...)
 
 	leaders, err := tx.Query(ctx, `SELECT character_name,character_id::text,balance::text FROM (
 SELECT DISTINCT ON(s.character_id) c.character_name,s.character_id,s.gold,s.sampled_at,
-       CASE WHEN storage.gold IS NOT NULL THEN s.gold + storage.gold ELSE s.gold END AS balance
+       CASE WHEN storage.gold IS NOT NULL THEN (s.gold::numeric + storage.gold::numeric) ELSE s.gold::numeric END AS balance
 FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
 LEFT JOIN LATERAL (
     SELECT sg.gold FROM character_storage_gold_samples sg

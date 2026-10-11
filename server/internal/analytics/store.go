@@ -87,9 +87,9 @@ RETURNING reset_at`, characterID, idempotencyKey, actor).Scan(&resetAt)
 
 // PruneOldSamples performs bounded cleanup. Callers repeat it to make progress
 // without holding a long lock or monopolizing the shared database pool.
-func (s *Store) PruneOldSamples(ctx context.Context, before time.Time, batchSize int) (characterRows, guildRows int64, err error) {
+func (s *Store) PruneOldSamples(ctx context.Context, before time.Time, batchSize int) (characterRows, guildRows, storageRows int64, err error) {
 	if s == nil || s.pool == nil || before.IsZero() {
-		return 0, 0, errors.New("invalid analytics retention request")
+		return 0, 0, 0, errors.New("invalid analytics retention request")
 	}
 	if batchSize < 1 || batchSize > MaxRetentionDeleteBatch {
 		batchSize = 1000
@@ -107,7 +107,7 @@ WITH expired AS (
     RETURNING 1
 )
 SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&characterRows); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	if err := s.pool.QueryRow(ctx, `
 WITH expired AS (
@@ -122,9 +122,8 @@ WITH expired AS (
     RETURNING 1
 )
 SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&guildRows); err != nil {
-		return characterRows, 0, err
+		return characterRows, 0, 0, err
 	}
-	var storageRows int64
 	if err := s.pool.QueryRow(ctx, `
 WITH expired AS (
     SELECT sample_id FROM character_storage_gold_samples
@@ -138,10 +137,9 @@ WITH expired AS (
     RETURNING 1
 )
 SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&storageRows); err != nil {
-		return characterRows, guildRows, err
+		return characterRows, guildRows, 0, err
 	}
-	_ = storageRows
-	return characterRows, guildRows, nil
+	return characterRows, guildRows, storageRows, nil
 }
 
 func (s *Store) OldestSample(ctx context.Context, server string) (*time.Time, error) {
@@ -211,18 +209,18 @@ func pruneOldSamplesUntil(
 	cutoff time.Time,
 	batchSize int,
 	deadline time.Time,
-	prune func(context.Context, time.Time, int) (int64, int64, error),
+	prune func(context.Context, time.Time, int) (int64, int64, int64, error),
 ) (int64, error) {
 	var total int64
 	for ctx.Err() == nil && time.Now().Before(deadline) {
 		batchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		characterRows, guildRows, err := prune(batchCtx, cutoff, batchSize)
+		characterRows, guildRows, storageRows, err := prune(batchCtx, cutoff, batchSize)
 		cancel()
 		if err != nil {
 			return total, err
 		}
-		total += characterRows + guildRows
-		if characterRows < int64(batchSize) && guildRows < int64(batchSize) {
+		total += characterRows + guildRows + storageRows
+		if characterRows < int64(batchSize) && guildRows < int64(batchSize) && storageRows < int64(batchSize) {
 			break
 		}
 	}

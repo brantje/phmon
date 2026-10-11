@@ -1098,12 +1098,28 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			if err != nil {
 				return nil, err
 			}
+			enrichedByID := map[string]characters.Character{}
+			if len(charactersByID) > 0 {
+				charList := make([]characters.Character, 0, len(subscription.Filter.CharacterIDs))
+				for _, id := range subscription.Filter.CharacterIDs {
+					if character, ok := charactersByID[id]; ok {
+						charList = append(charList, character)
+					}
+				}
+				for _, character := range enrichCharacters(ctx, charList, h.resources) {
+					enrichedByID[character.ID] = character
+				}
+			}
 			targets := make([]liveControlTarget, 0, len(subscription.Filter.CharacterIDs))
 			for index, id := range subscription.Filter.CharacterIDs {
 				item := liveControlTarget{CharacterID: id}
 				if character, ok := charactersByID[id]; ok {
-					character = enrichCharacter(ctx, character, h.resources)
-					item.Character = &character
+					if enriched, ok := enrichedByID[id]; ok {
+						item.Character = &enriched
+					} else {
+						fallback := enrichCharacter(ctx, character, h.resources)
+						item.Character = &fallback
+					}
 				} else {
 					item.UnavailableReason = "not_found"
 				}

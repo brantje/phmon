@@ -44,8 +44,28 @@ func enrichCharacters(ctx context.Context, items []characters.Character, metadat
 }
 
 func enrichGroups(ctx context.Context, groups []characters.Group, metadata *resources.Store) []characters.Group {
+	if len(groups) == 0 {
+		return groups
+	}
+	ids := make([]string, 0)
 	for i := range groups {
-		groups[i].Members = enrichCharacters(ctx, groups[i].Members, metadata)
+		for j := range groups[i].Members {
+			if id := groups[i].Members[j].ID; id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	var goldByCharacter map[string]int64
+	if metadata != nil && len(ids) > 0 {
+		goldByCharacter, _ = metadata.PersonalStorageGoldByCharacters(ctx, ids)
+	}
+	for i := range groups {
+		for j := range groups[i].Members {
+			groups[i].Members[j] = characterWithPortrait(groups[i].Members[j], metadata)
+			if gold, ok := goldByCharacter[groups[i].Members[j].ID]; ok {
+				groups[i].Members[j].PersonalStorageGold = &gold
+			}
+		}
 	}
 	return groups
 }
