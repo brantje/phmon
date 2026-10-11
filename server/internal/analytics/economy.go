@@ -25,14 +25,20 @@ AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_i
 	}
 	rows, err := tx.Query(ctx, `WITH eligible AS (
     SELECT s.character_id,c.character_name,s.gold,s.sampled_at,s.sample_id,
-           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
+           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket,
+           (
+             SELECT sg.gold FROM character_storage_gold_samples sg
+             WHERE sg.character_id=s.character_id AND sg.sampled_at <= s.sampled_at
+             ORDER BY sg.sampled_at DESC,sg.sample_id DESC LIMIT 1
+           ) AS storage_gold
     FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
     WHERE `+where+` AND s.gold IS NOT NULL
 ), selected AS (
     SELECT character_id FROM eligible GROUP BY character_id
     ORDER BY max(sampled_at) DESC,character_id LIMIT 20
 ), latest AS (
-    SELECT DISTINCT ON(e.character_id,e.bucket) e.bucket,e.character_name,e.character_id,e.gold
+    SELECT DISTINCT ON(e.character_id,e.bucket) e.bucket,e.character_name,e.character_id,
+           CASE WHEN e.storage_gold IS NOT NULL THEN e.gold + e.storage_gold ELSE e.gold END AS gold
     FROM eligible e JOIN selected selected_character ON selected_character.character_id=e.character_id
     ORDER BY e.character_id,e.bucket,e.sampled_at DESC,e.sample_id DESC
 )
@@ -59,11 +65,17 @@ FROM latest ORDER BY bucket,character_name,character_id`, args...)
 		snapshot.Summary = append(snapshot.Summary, Metric{Key: "balance_series_omitted", Label: "Omitted character balance series", Value: strconv.FormatInt(entityCount-20, 10), Unit: "characters", Status: "limited", Reason: "chart is bounded to the 20 most recently observed characters"})
 	}
 
-	leaders, err := tx.Query(ctx, `SELECT character_name,character_id::text,gold::text FROM (
-SELECT DISTINCT ON(s.character_id) c.character_name,s.character_id,s.gold,s.sampled_at
+	leaders, err := tx.Query(ctx, `SELECT character_name,character_id::text,balance::text FROM (
+SELECT DISTINCT ON(s.character_id) c.character_name,s.character_id,s.gold,s.sampled_at,
+       CASE WHEN storage.gold IS NOT NULL THEN s.gold + storage.gold ELSE s.gold END AS balance
 FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
+LEFT JOIN LATERAL (
+    SELECT sg.gold FROM character_storage_gold_samples sg
+    WHERE sg.character_id=s.character_id AND sg.sampled_at <= s.sampled_at
+    ORDER BY sg.sampled_at DESC,sg.sample_id DESC LIMIT 1
+) storage ON true
 WHERE `+where+` AND s.gold IS NOT NULL ORDER BY s.character_id,s.sampled_at DESC,s.sample_id DESC
-) latest ORDER BY gold::numeric DESC,character_name,character_id LIMIT 20`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID)
+) latest ORDER BY balance::numeric DESC,character_name,character_id LIMIT 20`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID)
 	if err != nil {
 		return err
 	}
@@ -109,6 +121,7 @@ SELECT COALESCE(sum(delta),0)::float8,count(DISTINCT(character_id,local_day)) FR
 	} else {
 		snapshot.Summary = append(snapshot.Summary, Metric{Key: "highest_character_balance", Label: "Character with highest observed balance", Status: "empty", Reason: "no_observed_character_gold_in_selected_window"})
 	}
+	snapshot.Summary = append(snapshot.Summary, Metric{Key: "character_balance_components", Label: "Character balance components", Value: "Inventory gold plus personal storage gold observed at or before each sample time", Status: "available"})
 	snapshot.Summary = append(snapshot.Summary, Metric{Key: "stall_sales", Label: "Recorded stall sales", Status: "unsupported", Reason: "no verified sale transaction source is available"})
 	snapshot.Total = strconv.FormatInt(entityCount, 10)
 	if len(snapshot.TimeSeries) == 0 {

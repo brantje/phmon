@@ -284,12 +284,14 @@ Slice 3 agent path only.
   `plugin/phMonitorAdapter.py` independently suggests the first 13 entries are
   equipment, but this is a lead only; the collector labels that mapping
   `adapter_lead_runtime_unverified` and exposes the limitation in the UI.
-- Guild-storage gold is read from `get_guild_storage()` when the loaded phBot
-  runtime returns a valid non-negative integer `gold` field. The public storage API
-  documentation lists only `size` and `items`, but the operator-confirmed runtime
-  exposes `gold` on this getter; PhMon preserves that observed API value instead of
-  discarding it. Boolean, negative, non-integer, or missing values remain omitted.
-  Guild-storage gold does not use a Joymax packet fallback; the passive packet decoder
+- Personal-storage and guild-storage gold are read from `get_storage()` and
+  `get_guild_storage()` when the loaded phBot runtime returns a valid non-negative
+  integer `gold` field. The public storage API documentation lists only `size` and
+  `items`, but the operator-confirmed runtime exposes `gold` on these getters; PhMon
+  preserves those observed API values instead of discarding them. Boolean, negative,
+  non-integer, or missing values remain omitted. Closing storage marks the source
+  `not_observed` while retaining the last confirmed payload, including gold.
+  Storage gold does not use a Joymax packet fallback; the passive packet decoder
   remains limited to item-instance evidence that is unavailable from verified API
   fields.
 - [Pets](https://plugins.phbot.org/phbot-api/pets): `get_pets()` is `None` or a

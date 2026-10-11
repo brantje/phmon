@@ -23,6 +23,7 @@ export interface CharacterView {
   max_exp?: number
   sp?: number
   gold?: number
+  personal_storage_gold?: number
   region?: number
   x?: number
   y?: number

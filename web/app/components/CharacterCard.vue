@@ -2,6 +2,7 @@
 import { useId } from 'vue'
 import type { CharacterView, PetInventoryRecord } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
+import { combinedCharacterGold } from '../utils/fleetGold'
 
 const props = defineProps<{
   character: CharacterView
@@ -74,6 +75,12 @@ const containerObservation = (key: string) => ({
 const bag = computed(() => payload('inventory'))
 const bagContainer = computed(() => containerObservation('inventory'))
 const bagAvailability = computed(() => observation('inventory')?.availability)
+function containerGold(key: string): number | null {
+  const gold = payload(key).gold
+  return typeof gold === 'number' && Number.isFinite(gold) && gold >= 0
+    ? gold
+    : null
+}
 const equipment = computed(() => payload('equipment'))
 const equipmentObservation = computed(() => observation('equipment'))
 const equipmentAvailability = computed(
@@ -400,7 +407,13 @@ onBeforeUnmount(() => {
           </div>
           <div>
             <dt>Gold</dt>
-            <dd>{{ character.gold?.toLocaleString() ?? '—' }}</dd>
+            <dd>
+              {{
+                combinedCharacterGold(character)?.toLocaleString() ??
+                  character.gold?.toLocaleString() ??
+                  '—'
+              }}
+            </dd>
           </div>
           <div>
             <dt>Location</dt>
@@ -877,6 +890,7 @@ onBeforeUnmount(() => {
         "
         :observation="containerObservation(selectedContainer)"
         :availability="available(selectedContainer)"
+        :gold="containerGold(selectedContainer)"
       />
     </div>
 

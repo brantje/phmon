@@ -124,6 +124,23 @@ WITH expired AS (
 SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&guildRows); err != nil {
 		return characterRows, 0, err
 	}
+	var storageRows int64
+	if err := s.pool.QueryRow(ctx, `
+WITH expired AS (
+    SELECT sample_id FROM character_storage_gold_samples
+    WHERE sampled_at<$1
+    ORDER BY sampled_at
+    LIMIT $2
+), removed AS (
+    DELETE FROM character_storage_gold_samples sample
+    USING expired
+    WHERE sample.sample_id=expired.sample_id
+    RETURNING 1
+)
+SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&storageRows); err != nil {
+		return characterRows, guildRows, err
+	}
+	_ = storageRows
 	return characterRows, guildRows, nil
 }
 
@@ -140,6 +157,10 @@ FROM (
     UNION ALL
     SELECT sample.sampled_at FROM guild_gold_samples sample
     WHERE ($1='' OR sample.server_key=lower($1))
+    UNION ALL
+    SELECT storage.sampled_at FROM character_storage_gold_samples storage
+    JOIN characters c ON c.character_id=storage.character_id
+    WHERE ($1='' OR c.server_key=lower($1))
 ) samples`, server).Scan(&oldest)
 	if err != nil {
 		return nil, err
