@@ -360,8 +360,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				frame.ObserverZ != nil && !mobs.ValidCoordinate(*frame.ObserverZ) ||
 				mobs.ValidateLiveSnapshot(frame.Status, frame.Region, frame.Monsters, time.Now().UTC(), frame.ObservedAt) != nil ||
 				(frame.Status == "truncated") != frame.Truncated {
-				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid map monster snapshot", hello.AgentID, hello.ProtocolVersion)
-				return
+				// Observation validation rejects this frame, not the authenticated session.
+				slog.Warn("agent observation dropped", "agent_id", hello.AgentID, "protocol", hello.ProtocolVersion, "reason", "invalid map monster snapshot")
+				continue
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
@@ -398,8 +399,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				frame.ObserverZ != nil && !mobs.ValidCoordinate(*frame.ObserverZ) ||
 				npcs.ValidateLiveSnapshot(frame.Status, frame.Region, frame.NPCs, time.Now().UTC(), frame.ObservedAt) != nil ||
 				(frame.Status == "truncated") != frame.Truncated {
-				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid map npc snapshot", hello.AgentID, hello.ProtocolVersion)
-				return
+				// Observation validation rejects this frame, not the authenticated session.
+				slog.Warn("agent observation dropped", "agent_id", hello.AgentID, "protocol", hello.ProtocolVersion, "reason", "invalid map npc snapshot")
+				continue
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
@@ -425,8 +427,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				frame.ObserverZ == nil || !mobs.ValidCoordinate(*frame.ObserverZ) ||
 				players.ValidateLiveSnapshot(frame.Status, frame.Region, frame.Players, time.Now().UTC(), frame.ObservedAt) != nil ||
 				(frame.Status == "truncated") != frame.Truncated {
-				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid map player snapshot", hello.AgentID, hello.ProtocolVersion)
-				return
+				// Observation validation rejects this frame, not the authenticated session.
+				slog.Warn("agent observation dropped", "agent_id", hello.AgentID, "protocol", hello.ProtocolVersion, "reason", "invalid map player snapshot")
+				continue
 			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")

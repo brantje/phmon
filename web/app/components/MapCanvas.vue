@@ -187,6 +187,17 @@ let makeMarker:
     ) => LeafletMarker)
   | undefined
 const renderedMarkers = new Map<string, LeafletMarker>()
+const renderedRouteLines = new Map<
+  string,
+  { layer: L.Polyline; geometry: string; opacity: number }
+>()
+const renderedRoutePoints = new Map<
+  string,
+  { layer: L.CircleMarker; opacity: number }
+>()
+// Keep popup inputs current without constructing hidden DOM on every position tick.
+const markerPopupInputs = new Map<string, MapCanvasMarker>()
+const markerTargets = new Map<string, LatLng>()
 const markerIconSignatures = new Map<string, string>()
 const markerAnimationFrames = new Map<string, number>()
 const MARKER_ANIMATION_DURATION_MS = 120
@@ -313,6 +324,9 @@ function moveMarker(
   target: LatLng,
   durationMs = MARKER_ANIMATION_DURATION_MS,
 ) {
+  const previousTarget = markerTargets.get(markerKey)
+  if (previousTarget?.equals(target)) return
+  markerTargets.set(markerKey, target)
   const previousFrame = markerAnimationFrames.get(markerKey)
   if (previousFrame != null) cancelAnimationFrame(previousFrame)
 
@@ -411,6 +425,8 @@ function syncMarkers() {
     if (current.has(key)) continue
     markerLayer.removeLayer(rendered)
     renderedMarkers.delete(key)
+    markerPopupInputs.delete(key)
+    markerTargets.delete(key)
     markerIconSignatures.delete(key)
     const animationFrame = markerAnimationFrames.get(key)
     if (animationFrame != null) cancelAnimationFrame(animationFrame)
@@ -548,9 +564,67 @@ function syncNavigationRoutes() {
   )
     return
   const toLatLng = createLatLng
-  navigationLayerGroup.clearLayers()
+  const seenLines = new Set<string>()
+  const seenPoints = new Set<string>()
+  const pointKey = (point: RasterPosition) =>
+    `${point.tileX}:${point.tileY}:${point.pixelX}:${point.pixelY}`
+  const syncLine = (
+    id: string,
+    latLngs: LatLng[],
+    opacity: number,
+    label: string,
+    crossing: boolean,
+  ) => {
+    seenLines.add(id)
+    const geometry = latLngs
+      .map((point) => `${point.lat}:${point.lng}`)
+      .join(';')
+    let rendered = renderedRouteLines.get(id)
+    if (!rendered) {
+      const layer = makePolyline!(latLngs, {
+        color: crossing ? '#f4d27a' : '#37d6d1',
+        weight: crossing ? 2 : 3,
+        dashArray: crossing ? '2 6' : '6 4',
+        opacity,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: true,
+      })
+      layer.bindTooltip(label, { sticky: true, opacity: 0.95 })
+      layer.addTo(navigationLayerGroup!)
+      rendered = { layer, geometry, opacity }
+      renderedRouteLines.set(id, rendered)
+    } else {
+      if (rendered.geometry !== geometry) {
+        rendered.layer.setLatLngs(latLngs)
+        rendered.geometry = geometry
+      }
+      if (rendered.opacity !== opacity) {
+        rendered.layer.setStyle({ opacity })
+        rendered.opacity = opacity
+      }
+      if (rendered.layer.getTooltip()?.getContent() !== label)
+        rendered.layer.setTooltipContent(label)
+    }
+  }
   for (const route of props.navigationRoutes || []) {
     const opacity = route.selected ? (route.stale ? 0.48 : 0.92) : 0.2
+    for (const crossing of route.teleportCrossings || []) {
+      const latLngs = crossing.map(({ tileX, tileY, pixelX, pixelY }) =>
+        toLatLng(
+          -((props.profile.tiles.max_y - tileY) * 256 + pixelY),
+          (tileX - props.profile.tiles.min_x) * 256 + pixelX,
+        ),
+      )
+      syncLine(
+        `${route.id}:crossing:${crossing.map(pointKey).join(';')}`,
+        latLngs,
+        opacity,
+        `${route.characterName} · teleport / ferry crossing`,
+        true,
+      )
+    }
+    const blockOccurrences = new Map<string, number>()
     for (const [blockIndex, block] of route.blocks.entries()) {
       const points = [...block]
       if (blockIndex === 0 && route.currentAnchor)
@@ -561,22 +635,33 @@ function syncNavigationRoutes() {
         return toLatLng(-(row * 256 + pixelY), column * 256 + pixelX)
       })
       if (latLngs.length > 1) {
-        const line = makePolyline(latLngs, {
-          color: '#37d6d1',
-          weight: 3,
-          dashArray: '6 4',
+        // The end of a remaining block stays stable as its walked prefix is
+        // consumed, and when an earlier block disappears after a teleport.
+        const end = pointKey(block[block.length - 1]!)
+        const occurrence = blockOccurrences.get(end) || 0
+        blockOccurrences.set(end, occurrence + 1)
+        syncLine(
+          `${route.id}:walk:${end}:${occurrence}`,
+          latLngs,
           opacity,
-          lineCap: 'round',
-          lineJoin: 'round',
-          interactive: true,
-        })
-        line.bindTooltip(`${route.characterName} · remaining route`, {
-          sticky: true,
-          opacity: 0.95,
-        })
-        line.addTo(navigationLayerGroup)
+          `${route.characterName} · remaining route`,
+          false,
+        )
       }
       for (const point of block) {
+        const id = `${route.id}:point:${pointKey(point)}`
+        seenPoints.add(id)
+        const existing = renderedRoutePoints.get(id)
+        const label = `${route.characterName} · route waypoint`
+        if (existing) {
+          if (existing.opacity !== opacity) {
+            existing.layer.setStyle({ opacity, fillOpacity: opacity })
+            existing.opacity = opacity
+          }
+          if (existing.layer.getTooltip()?.getContent() !== label)
+            existing.layer.setTooltipContent(label)
+          continue
+        }
         const column = point.tileX - props.profile.tiles.min_x
         const row = props.profile.tiles.max_y - point.tileY
         const dot = makeRouteCircle(
@@ -591,13 +676,24 @@ function syncNavigationRoutes() {
             interactive: true,
           },
         )
-        dot.bindTooltip(`${route.characterName} · route waypoint`, {
+        dot.bindTooltip(label, {
           direction: 'top',
           opacity: 0.95,
         })
         dot.addTo(navigationLayerGroup)
+        renderedRoutePoints.set(id, { layer: dot, opacity })
       }
     }
+  }
+  for (const [id, rendered] of renderedRouteLines) {
+    if (seenLines.has(id)) continue
+    navigationLayerGroup.removeLayer(rendered.layer)
+    renderedRouteLines.delete(id)
+  }
+  for (const [id, rendered] of renderedRoutePoints) {
+    if (seenPoints.has(id)) continue
+    navigationLayerGroup.removeLayer(rendered.layer)
+    renderedRoutePoints.delete(id)
   }
 }
 
@@ -1764,6 +1860,8 @@ onMounted(async () => {
   markerLayer = L.layerGroup().addTo(map)
   makeMarker = (marker, point, existing) => {
     const markerKey = `${marker.kind}:${marker.id}`
+    const popupContent = () =>
+      markerPopup(markerPopupInputs.get(markerKey) || marker)
     const type = marker.monster ? monsterTypePresentation(marker.monster) : null
     const hp = marker.monster ? monsterHPFraction(marker.monster) : null
     const size =
@@ -1810,6 +1908,7 @@ onMounted(async () => {
       marker.monster?.attacking,
       marker.itemIconUrl,
     ])
+    markerPopupInputs.set(markerKey, marker)
     let popupMarker = existing
     const icon =
       !existing || markerIconSignatures.get(markerKey) !== signature
@@ -1854,8 +1953,12 @@ onMounted(async () => {
           ?.querySelector<HTMLElement>('.phmon-map-monster-bubble')
         bubble?.style.setProperty('--phmon-monster-hp', (hp ?? 0).toFixed(4))
       }
-      if (!props.compact && marker.kind !== 'character')
-        existing.setPopupContent(markerPopup(marker))
+      if (
+        !props.compact &&
+        marker.kind !== 'character' &&
+        existing.isPopupOpen()
+      )
+        existing.getPopup()?.setContent(popupContent)
       return existing
     }
     const rendered = L.marker(point, {
@@ -1896,13 +1999,14 @@ onMounted(async () => {
       })
     }
     if (!props.compact && marker.kind !== 'character')
-      rendered.bindPopup(markerPopup(marker), {
+      rendered.bindPopup(popupContent, {
         className: 'phmon-map-popup',
         closeButton: false,
         maxWidth: 280,
         offset: [0, -10],
         autoPan: false,
       })
+    markerTargets.set(markerKey, point)
     rendered.addTo(markerLayer!)
     popupMarker = rendered
     panFollowedCharacter(`${marker.kind}:${marker.id}`, point, false)
@@ -2011,7 +2115,9 @@ watch(
   },
   { deep: true },
 )
-watch(() => props.markers, syncMarkers, { deep: true })
+// Marker arrays are replaced by their computed producers. A deep watch walks
+// every nested observation/event on every coordinate delta.
+watch(() => props.markers, syncMarkers)
 watch(() => props.heatLayers, syncHeatLayers, { deep: true })
 watch(
   [
@@ -2099,6 +2205,10 @@ onBeforeUnmount(() => {
   makeRouteCircle = undefined
   makeMarker = undefined
   renderedMarkers.clear()
+  renderedRouteLines.clear()
+  renderedRoutePoints.clear()
+  markerPopupInputs.clear()
+  markerTargets.clear()
   markerIconSignatures.clear()
 })
 </script>

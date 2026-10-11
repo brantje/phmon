@@ -285,19 +285,24 @@ func TestRouteSnapshotBudgetOmitsWholeGeometryButKeepsStatus(t *testing.T) {
 	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
 	input := routeInput(1,
 		Instruction{Index: 0, Kind: "walk", X: 6420, Y: 1080},
-		Instruction{Index: 1, Kind: "walk", X: 6430, Y: 1090},
+		Instruction{Index: 1, Kind: "teleport"},
+		Instruction{Index: 2, Kind: "walk", X: 6430, Y: 1090},
 	)
 	if !store.Replace(input, "agent-one", 1, "Greatest", profile.DatasetID,
 		Point{Region: 25000, X: 6440, Y: 1100}, input.InvokedAt) {
 		t.Fatal("route not stored")
 	}
 	full := store.Snapshot("Greatest", profile, input.InvokedAt)[0]
+	if len(full.TeleportCrossings) != 1 {
+		t.Fatal("budget fixture must include a teleport crossing")
+	}
 	fullBytes, err := json.Marshal(full)
 	if err != nil {
 		t.Fatal(err)
 	}
 	statusOnly := full
 	statusOnly.Blocks = []Block{}
+	statusOnly.TeleportCrossings = nil
 	statusOnly.CurrentAnchor = nil
 	statusOnly.GeometryOmitted = true
 	statusOnly.Reason = "navigation_geometry_payload_budget"
@@ -309,7 +314,7 @@ func TestRouteSnapshotBudgetOmitsWholeGeometryButKeepsStatus(t *testing.T) {
 		t.Fatal("fixture did not create a meaningful geometry budget difference")
 	}
 	views, omitted := store.SnapshotBudget("Greatest", profile, input.InvokedAt, len(statusBytes))
-	if omitted != 0 || len(views) != 1 || !views[0].GeometryOmitted || len(views[0].Blocks) != 0 ||
+	if omitted != 0 || len(views) != 1 || !views[0].GeometryOmitted || len(views[0].Blocks) != 0 || len(views[0].TeleportCrossings) != 0 ||
 		views[0].Reason != "navigation_geometry_payload_budget" {
 		t.Fatalf("payload reduction split geometry or lost status: omitted=%d views=%#v", omitted, views)
 	}
@@ -663,6 +668,104 @@ func TestObservedIdenticalResubmitPreservesTrimmedProgress(t *testing.T) {
 	}
 }
 
+func TestObservedFerryReplayRecoversPastWalkedLegAndTailRevisionKeepsProgress(t *testing.T) {
+	store := NewStore()
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	invoked := time.Date(2026, 10, 10, 20, 36, 0, 0, time.UTC)
+	z := 0.0
+	// Coordinates from the operator's nuker1 capture. A replay retained the
+	// Hotan-to-ferry prefix while the character was already on the far shore.
+	steps := []Instruction{
+		{Kind: "walk", Region: intPointer(23688), X: 212.6, Y: 47.1, Z: 238.8},
+		{Kind: "walk", Region: intPointer(23690), X: 674, Y: 48},
+		{Kind: "walk", Region: intPointer(23436), X: 1044, Y: -48},
+		{Kind: "teleport"},
+		{Kind: "walk", Region: intPointer(23439), X: 1586, Y: -16, Z: -20},
+		{Kind: "walk", Region: intPointer(24209), X: 2026, Y: 533},
+		{Kind: "walk", Region: intPointer(24210), X: 2200, Y: 574},
+		{Kind: "walk", Region: intPointer(24723), X: 2431, Y: 770},
+		{Kind: "walk", Region: intPointer(26265), X: 3467.5, Y: 2107.2},
+	}
+	for index := range steps {
+		steps[index].Index = index
+	}
+	input := ObservedInput{SchemaVersion: SchemaVersion, CharacterID: "character-one", SessionID: "session-replay", Sequence: 1,
+		Active: true, InvokedAt: invoked, Instructions: steps,
+		Source: &Position{Region: 23688, X: 212.6, Y: 47.1, Z: &z, At: invoked}}
+	if !store.ReplaceObserved(input, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
+		t.Fatal("replayed route not stored")
+	}
+	position := Position{Region: 24210, X: 2166.684814453125, Y: 566.4656982421875, Z: &z, At: invoked.Add(time.Second)}
+	store.Observe(input.CharacterID, input.SessionID, position)
+	view := store.Snapshot("Greatest", profile, position.At)[0]
+	if view.Status != "moving" || view.CompletedInstructions != 6 || len(view.Blocks) != 1 ||
+		view.Blocks[0].Points[0].X != 2200 || len(view.TeleportCrossings) != 0 || view.CurrentAnchor == nil {
+		t.Fatalf("replay kept the walked near-shore leg: %#v", view)
+	}
+	updated := input
+	updated.Sequence = 2
+	updated.Instructions = append([]Instruction(nil), steps[:7]...)
+	updated.Instructions = append(updated.Instructions, Instruction{Kind: "walk", Region: intPointer(24466), X: 2227, Y: 588})
+	updated.Instructions = append(updated.Instructions, steps[7:]...)
+	for index := range updated.Instructions {
+		updated.Instructions[index].Index = index
+	}
+	if !store.ReplaceObserved(updated, "agent-one", 4, "Greatest", profile.DatasetID, position.At, func() bool { return true }) {
+		t.Fatal("changed tail rejected")
+	}
+	view = store.Snapshot("Greatest", profile, position.At)[0]
+	if view.CompletedInstructions != 6 || len(view.Blocks) != 1 || view.Blocks[0].Points[0].X != 2200 || len(view.TeleportCrossings) != 0 {
+		t.Fatalf("tail revision reset confirmed progress: %#v", view)
+	}
+	older := position
+	older.At = invoked
+	older.Region, older.X, older.Y = 23690, 674, 48
+	store.Observe(input.CharacterID, input.SessionID, older)
+	if view = store.Snapshot("Greatest", profile, position.At)[0]; view.CompletedInstructions != 6 {
+		t.Fatalf("older observation rewound recovered progress: %#v", view)
+	}
+}
+
+func intPointer(value int) *int { return &value }
+
+func TestObservedReplayRecoveryRejectsAmbiguityWaitsAndWrongScopes(t *testing.T) {
+	profile, _ := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
+	for _, variant := range []string{"ambiguous", "wait-only", "wrong-region", "command-route"} {
+		t.Run(variant, func(t *testing.T) {
+			input := routeInput(1,
+				Instruction{Index: 0, Kind: "walk", X: 6420, Y: 1080},
+				Instruction{Index: 1, Kind: "teleport"},
+				Instruction{Index: 2, Kind: "walk", X: 6580, Y: 1080},
+				Instruction{Index: 3, Kind: "walk", X: 6600, Y: 1080},
+				Instruction{Index: 4, Kind: "teleport"},
+				Instruction{Index: 5, Kind: "walk", X: 6580, Y: 1080},
+				Instruction{Index: 6, Kind: "walk", X: 6620, Y: 1080},
+			)
+			input.CommandID = ""
+			position := Position{Region: 25001, X: 6590, Y: 1080, At: input.InvokedAt.Add(time.Second)}
+			if variant != "ambiguous" {
+				input.Instructions = input.Instructions[:4]
+			}
+			if variant == "wait-only" {
+				input.Instructions[1].Kind = "wait"
+				input.Instructions[1].DurationMS = 500
+			}
+			if variant == "wrong-region" {
+				position.Region = 25000
+			}
+			if variant == "command-route" {
+				input.CommandID = "command-owned"
+			}
+			current := route{Input: input, server: "Greatest", datasetID: profile.DatasetID,
+				destination: Point{Region: 25001, X: 6630, Y: 1080}, anchor: input.Source}
+			next, _, _ := advanceStoredRoute(current, true, input.CharacterID, position)
+			if next.cursor != 0 || next.status != "progress_uncertain" {
+				t.Fatalf("unsafe recovery advanced cursor: %#v", next)
+			}
+		})
+	}
+}
+
 func TestTeleportBarrierSuppressesAnchorUntilCrossed(t *testing.T) {
 	store := NewStore()
 	profile, err := mapprofile.ForServer("Greatest", mapprofile.GreatestDatasetID)
@@ -712,17 +815,52 @@ func TestTeleportKeepsTheFollowingFerryWalksVisible(t *testing.T) {
 		Instructions: []Instruction{
 			{Index: 0, Kind: "walk", Region: &north, X: 6420, Y: 1080, Z: 0},
 			{Index: 1, Kind: "teleport"},
-			{Index: 2, Kind: "walk", Region: &south, X: 6700, Y: 900, Z: 0},
-			{Index: 3, Kind: "walk", Region: &south, X: 6800, Y: 880, Z: 0},
+			{Index: 2, Kind: "walk", Region: &south, X: 6580, Y: 1080, Z: 0},
+			{Index: 3, Kind: "walk", Region: &south, X: 6600, Y: 1080, Z: 0},
 		},
 	}
 	if !store.ReplaceObserved(observed, "agent-one", 4, "Greatest", profile.DatasetID, invoked, func() bool { return true }) {
 		t.Fatal("ferry route not stored")
 	}
 	view := store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if len(view.TeleportCrossings) != 1 || view.TeleportCrossings[0].From.X != 6420 || view.TeleportCrossings[0].To.X != 6580 {
+		t.Fatalf("missing explicit ferry crossing: %#v", view.TeleportCrossings)
+	}
 	if len(view.Blocks) != 2 || len(view.Blocks[0].Points) != 1 || view.Blocks[0].Points[0].X != 6420 ||
-		len(view.Blocks[1].Points) != 2 || view.Blocks[1].Points[0].X != 6700 || view.Blocks[1].AreaID != "world" {
+		len(view.Blocks[1].Points) != 2 || view.Blocks[1].Points[0].X != 6580 || view.Blocks[1].AreaID != "world" {
 		t.Fatalf("route stopped at the teleport: %#v", view.Blocks)
+	}
+	store.Observe(observed.CharacterID, observed.SessionID, Position{Region: north, X: 6420, Y: 1080, Z: &z, At: invoked.Add(time.Second)})
+	view = store.Snapshot("Greatest", profile, invoked.Add(time.Second))[0]
+	if len(view.TeleportCrossings) != 1 || view.Status != "transition_awaiting_evidence" {
+		t.Fatalf("pending crossing disappeared at near shore: %#v", view)
+	}
+	store.Observe(observed.CharacterID, observed.SessionID, Position{Region: south, X: 6580, Y: 1080, Z: &z, At: invoked.Add(2 * time.Second)})
+	view = store.Snapshot("Greatest", profile, invoked.Add(2*time.Second))[0]
+	if len(view.TeleportCrossings) != 0 {
+		t.Fatalf("completed crossing still visible: %#v", view.TeleportCrossings)
+	}
+}
+
+func TestTeleportCrossingsRequireExplicitBarrierAndKnownEndpoints(t *testing.T) {
+	north := 25000
+	south := 25001
+	input := routeInput(1,
+		Instruction{Index: 0, Kind: "walk", Region: &north, X: 6420, Y: 1080},
+		Instruction{Index: 1, Kind: "wait", DurationMS: 500},
+		Instruction{Index: 2, Kind: "walk", Region: &south, X: 6580, Y: 1080},
+	)
+	current := route{Input: input, server: "Greatest", datasetID: mapprofile.GreatestDatasetID}
+	if len(remainingTeleportCrossings(current)) != 0 {
+		t.Fatal("wait created a teleport crossing")
+	}
+	current.Instructions[1].Kind = "teleport"
+	if len(remainingTeleportCrossings(current)) != 1 {
+		t.Fatal("explicit teleport crossing missing")
+	}
+	current.Instructions[0].Kind = "teleport"
+	if len(remainingTeleportCrossings(current)) != 0 {
+		t.Fatal("consecutive teleports invented an endpoint")
 	}
 }
 

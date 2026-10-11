@@ -4,6 +4,102 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Teleport / ferry crossing connectors — 2026-10-10
+
+Walked-route follow-up: an authenticated read-only capture of nuker1 showed an
+observed route with its full Hotan-to-ferry leg still present while the character
+was already beyond the far shore. A newer route sequence inserted points into
+the far-side tail; the reducer reset the cursor to zero, then could only project
+against the first walking block and remained `progress_uncertain` indefinitely.
+This was backend progress data rather than retained renderer layers.
+
+Observed-route revisions now preserve an identical confirmed prefix. Replayed or
+incompatible observed routes can recover from a fresh, scope-valid position on
+one unique later walking block beyond an explicit teleport, while rejecting a
+matching current block, waits alone, ambiguous future blocks and wrong regions.
+The projection starts without the old source anchor, avoiding a backward connector.
+Command-owned barrier semantics are unchanged. A regression uses the captured
+Hotan/ferry coordinates and verifies removal of the old leg/crossing, tail-update
+continuity and older-position fencing; negative cases cover the recovery guards.
+
+Walked-route validation: focused navigation tests and full `scripts/check.sh`
+passed (247 plugin and 239 frontend tests plus Go vet/race/build and the remaining
+formatting, transport, lint, typecheck, production-build and Docker gates). The
+server image was rebuilt/recreated and health reports database OK. On the deployed
+instance, 36 live nuker1 map frames and 59 position frames show sequence 35→36
+remaining `moving` with completed instructions 16→17 and an advancing first
+remaining waypoint; a subsequent real browser capture reaches cursor 18.
+The character is now on a newer return route; the captured-coordinate regression
+verifies the original ferry case. The deployed browser replay also passes route
+hover persistence, crossing draw/removal, position animation, popup freshness and
+responsive/follow checks. Evidence is in `/tmp/phmon-walked-route-check.log`,
+`/tmp/phmon-route-progress-after.log`, `/tmp/phmon-walked-route-browser.log` and
+`/tmp/phmon-walked-route-after.png`. No character commands were issued.
+
+Follow-up route hover repair: `MapCanvas.vue` cleared and recreated the navigation
+layer group on every coordinate refresh, removing a hovered path and closing its
+tooltip. It now retains keyed walking/crossing polylines and waypoint circles,
+updates geometry/style/content in place, and removes only absent layers. Walking
+blocks use their final waypoint identity so a consumed prefix or preceding block
+does not recreate the remaining line. Unmount clears both caches.
+
+Full `scripts/check.sh` passed after the renderer change. The production-preview
+browser replay holds the actual pointer over rendered walking and crossing lines
+through 15 map/position updates apiece, verifies the same tooltip DOM stays visible,
+and verifies pointer-leave hides it. It also retains the prior crossing, movement,
+popup and responsive checks. Fixtures derive consistent outdoor regions and stay
+entirely in the browser; a real running route is not required for this check.
+The web image was rebuilt/replaced and is healthy; the same browser replay also
+passes against the deployed LAN instance. The temporary production preview was
+stopped. The backend and PostgreSQL were not restarted for this hover follow-up.
+
+The operator corrected the route report to missing teleport crossing lines. The
+earlier `446ab1c` fix (walking sections after a teleport) is present in both the
+checkout and live map snapshots. It deliberately emits separate walking blocks;
+the current renderer had no connector between the teleport endpoints.
+
+The Go snapshot now emits separate `teleport_crossings` for explicit remaining
+teleport instructions bracketed by known walk endpoints. The UI maps both endpoints
+within the current dataset, area, floor and region filter and draws a gold dotted
+connector with a teleport / ferry tooltip. These connectors never participate in
+walking progress. They persist at a pending barrier, disappear when fresh position
+evidence advances past it, and are removed with geometry under payload pressure.
+Waits, unknown endpoints and separate cave regions do not invent connectors.
+
+Focused backend/frontend coverage checks pending/completed crossings, explicit
+barriers, invalid geometry and dataset/floor mismatches. The browser-only live
+contract replay reproduces the missing connector on the old LAN build; it checks
+the distinct canvas stroke and removal separately from marker movement and popup
+freshness. No real character commands are sent by the verification.
+
+Validation completed: full `scripts/check.sh` passed (247 plugin and 239 frontend
+tests, Go vet/race/build, formatting/lint/typecheck/build and Docker config); the
+updated geometry-budget regression passed focused Go race testing. Server/web
+containers were rebuilt/recreated and are healthy. The LAN browser replay passes
+crossing draw/removal, movement, popup freshness, selection/follow and responsive
+widths. Actual live snapshots now include one crossing each for nuker1, nuker4 and
+Kalypso, alongside their separate walking blocks. PostgreSQL was not recreated.
+
+## Map position rendering performance — 2026-10-10
+
+The operator's live Greatest/nuker4 report exposed costly hidden-popup rebuilding,
+deep marker-data traversal and animation restarts on unchanged targets. The
+independent map renderer now builds popup DOM on demand, keeps its input current,
+observes immutable marker/snapshot replacements and preserves running animations
+unless their destination changes. The visual layout and 190 ms character
+interpolation duration remain the same. A production-preview live sample reduced
+median browser update intervals from 361 ms to 319 ms while the direct stream
+remained near 304–309 ms; browser profiler idle samples rose from 3% to 34%.
+No guaranteed 5 Hz phBot cadence or independent database latency cause is claimed.
+
+The browser-only protocol replay fails on the old renderer and passes on the
+repair, including popup freshness, selection/follow and responsive widths. The
+local web container was rebuilt/replaced; connected agents and the Go backend
+were not restarted. See the
+[investigation and regression command](reference/map-position-performance-2026-10-10.md)
+for measurement limits and validation details. This is rendering evidence for the
+existing map, not completion of outstanding reference-map or roadmap capabilities.
+
 ## Slice 12 baseline and implementation — 2026-10-07
 
 The five operator-supplied Analytics captures
@@ -1931,7 +2027,9 @@ snapshots without script source or teleporter IDs. The Go service validates the
 route against the exact authenticated, completed durable command and stores route
 state only in memory. Fresh accepted positions advance its monotonic reducer. Waits,
 teleports, ambiguous scopes, unsupported transforms and unsafe crossings cannot
-create a connector or cross-block polyline. Arrival remains a position observation,
+create a walking connector or cross-block walking polyline. Explicit teleport
+barriers with known endpoints now have separate dotted presentation connectors
+(2026-10-10); these never advance walking progress. Arrival remains a position observation,
 not a command result. The browser renders each remaining route independently and
 keeps route-list selection separate from character focus/action targets.
 

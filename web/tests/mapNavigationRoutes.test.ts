@@ -126,6 +126,46 @@ test('keeps wait/teleport blocks independent and safely maps each segment', () =
   assert.ok(overlays[0]?.currentAnchor)
 })
 
+test('renders explicit teleport crossings separately from walking blocks', () => {
+  const crossing = {
+    from_area_id: 'world',
+    from_floor_id: 'world',
+    from: { region: 25000, x: 6450, y: 1080, z: 0 },
+    to_area_id: 'world',
+    to_floor_id: 'world',
+    to: { region: 25001, x: 6580, y: 1080, z: 0 },
+  }
+  const input = route({ teleport_crossings: [crossing] })
+  assert.equal(project([input])[0]?.teleportCrossings?.length, 1)
+  assert.equal(project([input])[0]?.blocks.length, 2)
+  assert.equal(
+    project([input], { stale: true })[0]?.teleportCrossings?.length,
+    1,
+  )
+  assert.equal(project([route()])[0]?.teleportCrossings?.length, 0)
+  assert.equal(
+    project([route({ ...input, geometry_omitted: true })])[0]?.teleportCrossings
+      ?.length,
+    0,
+  )
+  assert.equal(
+    project([route({ ...input, dataset_version: 'other-version' })])[0]
+      ?.teleportCrossings?.length,
+    0,
+  )
+  for (const invalid of [
+    { ...crossing, to_floor_id: 'another-floor' },
+    { ...crossing, to_area_id: 'another-area' },
+    { ...crossing, to: { ...crossing.to, x: Number.NaN } },
+  ]) {
+    assert.equal(
+      project([route({ teleport_crossings: [invalid] })])[0]?.teleportCrossings
+        ?.length,
+      0,
+    )
+  }
+})
+
 test('does not attach a near-shore anchor to a far-shore remaining block', () => {
   const overlays = project([
     route({

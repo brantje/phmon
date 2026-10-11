@@ -75,11 +75,13 @@ const analyticsFeedStatus = ref<
 >({})
 const chatFeeds = ref<Record<string, ChatSnapshot>>({})
 const chatFeedCurrent = ref<Record<string, boolean>>({})
-const mapFeeds = ref<Record<string, MapSnapshot>>({})
+// Wire snapshots and position batches are immutable and replaced as a whole.
+// Avoid making the large observation trees into deeply reactive proxies.
+const mapFeeds = shallowRef<Record<string, MapSnapshot>>({})
 const mapFeedCurrent = ref<Record<string, boolean>>({})
-const mapPositionFeeds = ref<Record<string, Record<string, RealtimePosition>>>(
-  {},
-)
+const mapPositionFeeds = shallowRef<
+  Record<string, Record<string, RealtimePosition>>
+>({})
 const commandFanOutFeeds = ref<Record<string, CommandFanOutLiveFeed>>({})
 const connectionState = ref<LiveConnectionState>('idle')
 const freshnessNow = ref(Date.now())
