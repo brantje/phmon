@@ -39,9 +39,7 @@ func (h *characterHandler) list(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
-	for i := range items {
-		items[i] = characterWithPortrait(items[i], h.resources)
-	}
+	items = enrichCharacters(ctx, items, h.resources)
 	respondJSON(w, 200, map[string]any{"characters": items})
 }
 func (h *characterHandler) get(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +63,7 @@ func (h *characterHandler) get(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
-	item = characterWithPortrait(item, h.resources)
+	item = enrichCharacter(ctx, item, h.resources)
 	respondJSON(w, 200, item)
 }
 func (h *characterHandler) groups(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +79,7 @@ func (h *characterHandler) groups(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, 503, map[string]string{"error": "service unavailable"})
 		return
 	}
-	items = groupsWithPortraits(items, h.resources)
+	items = enrichGroups(ctx, items, h.resources)
 	respondJSON(w, 200, map[string]any{"groups": items})
 }
 func decodeGroupName(r *http.Request) (string, error) {

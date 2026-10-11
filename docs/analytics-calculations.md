@@ -99,13 +99,16 @@ groups are used only for explicitly labeled current-group breakdowns; members ma
 appear in multiple groups. Do not sum group totals into the fleet headline. Historical
 group attribution is unavailable until group membership history exists.
 
-Gold balances use the latest fresh observation within each bucket. Character and
-guild balances have separate selectors. For a guild bucket, one latest sample is
+Gold balances use the latest fresh observation within each bucket. Character economy
+balances combine inventory gold from `character_metric_samples` with personal storage
+gold from `character_storage_gold_samples` observed at or before each inventory
+sample time. Before the first bank observation, charts and rankings use inventory gold
+only. Guild balances have a separate selector. For a guild bucket, one latest sample is
 selected across observers with observer ID as a deterministic tie-break; observers
 are never summed, and conflicting values are not described as reconciled. Guild net
 change remains unsupported until a continuous observer policy is verified.
-Character signed balance deltas are shown as net change. No interpolation bridges
-stale or missing samples.
+Character signed balance deltas remain inventory-only net change. No interpolation
+bridges stale or missing samples.
 
 Alchemy counts use unique canonical `alchemy.attempt` event IDs. `success=true` and
 `success=false` count as successes/failures; absent/null outcomes count as unknown.

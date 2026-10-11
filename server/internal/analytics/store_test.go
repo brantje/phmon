@@ -10,23 +10,28 @@ import (
 func TestPruneOldSamplesUntilContinuesWhileEitherTableHasFullBatch(t *testing.T) {
 	tests := []struct {
 		name     string
-		batches  [][2]int64
+		batches  [][3]int64
 		wantRows int64
 	}{
 		{
 			name:     "character table full while guild table is sparse",
-			batches:  [][2]int64{{5000, 0}, {120, 0}},
+			batches:  [][3]int64{{5000, 0, 0}, {120, 0, 0}},
 			wantRows: 5120,
 		},
 		{
 			name:     "guild table full while character table is sparse",
-			batches:  [][2]int64{{0, 5000}, {0, 120}},
+			batches:  [][3]int64{{0, 5000, 0}, {0, 120, 0}},
 			wantRows: 5120,
 		},
 		{
-			name:     "both tables full then drained",
-			batches:  [][2]int64{{5000, 5000}, {0, 0}},
-			wantRows: 10000,
+			name:     "storage table full while other tables are sparse",
+			batches:  [][3]int64{{0, 0, 5000}, {0, 0, 120}},
+			wantRows: 5120,
+		},
+		{
+			name:     "all tables full then drained",
+			batches:  [][3]int64{{5000, 5000, 5000}, {0, 0, 0}},
+			wantRows: 15000,
 		},
 	}
 
@@ -35,7 +40,7 @@ func TestPruneOldSamplesUntilContinuesWhileEitherTableHasFullBatch(t *testing.T)
 			calls := 0
 			gotRows, err := pruneOldSamplesUntil(
 				context.Background(), time.Unix(1, 0), 5000, time.Now().Add(time.Minute),
-				func(_ context.Context, cutoff time.Time, batchSize int) (int64, int64, error) {
+				func(_ context.Context, cutoff time.Time, batchSize int) (int64, int64, int64, error) {
 					if !cutoff.Equal(time.Unix(1, 0)) {
 						t.Fatalf("unexpected cutoff: %s", cutoff)
 					}
@@ -47,7 +52,7 @@ func TestPruneOldSamplesUntilContinuesWhileEitherTableHasFullBatch(t *testing.T)
 					}
 					batch := test.batches[calls]
 					calls++
-					return batch[0], batch[1], nil
+					return batch[0], batch[1], batch[2], nil
 				},
 			)
 			if err != nil {
@@ -69,10 +74,10 @@ func TestPruneOldSamplesUntilStopsOnCancellation(t *testing.T) {
 	calls := 0
 	gotRows, err := pruneOldSamplesUntil(
 		ctx, time.Unix(1, 0), 5000, time.Now().Add(time.Minute),
-		func(_ context.Context, _ time.Time, _ int) (int64, int64, error) {
+		func(_ context.Context, _ time.Time, _ int) (int64, int64, int64, error) {
 			calls++
 			cancel()
-			return 5000, 0, nil
+			return 5000, 0, 0, nil
 		},
 	)
 	if !errors.Is(err, context.Canceled) {
@@ -87,9 +92,9 @@ func TestPruneOldSamplesUntilSkipsExpiredBudget(t *testing.T) {
 	calls := 0
 	gotRows, err := pruneOldSamplesUntil(
 		context.Background(), time.Unix(1, 0), 5000, time.Now().Add(-time.Second),
-		func(context.Context, time.Time, int) (int64, int64, error) {
+		func(context.Context, time.Time, int) (int64, int64, int64, error) {
 			calls++
-			return 0, 0, nil
+			return 0, 0, 0, nil
 		},
 	)
 	if err != nil || gotRows != 0 || calls != 0 {

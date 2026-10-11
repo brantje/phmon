@@ -105,7 +105,7 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 
 	// A delta only updates its named container; untouched observations remain durable.
 	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 2, ownerSession, Snapshot{Revision: 2, BaseRevision: 1, Resources: map[string]json.RawMessage{
-		"storage":         json.RawMessage(`{"availability":"observed","capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":9,"quantity":4}}]}`),
+		"storage":         json.RawMessage(`{"availability":"observed","gold":850000000,"capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":9,"quantity":4}}]}`),
 		"item_enrichment": json.RawMessage(`{"availability":"not_observed","protocol":"vsro-1.188","source":"vsro_1188_packet","decoder_build":"vsro_1188_passive_r1","observed_items":0,"reason":"session_start"}`),
 	}}); err != nil {
 		t.Fatal(err)
@@ -116,6 +116,14 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	}
 	if updated.Resources["inventory"].Availability != "observed" || updated.Resources["storage"].Availability != "observed" {
 		t.Fatalf("delta replaced untouched container state: %+v", updated.Resources)
+	}
+	var storageGoldSamples int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM character_storage_gold_samples WHERE character_id=$1`, characterID).Scan(&storageGoldSamples); err != nil || storageGoldSamples != 1 {
+		t.Fatalf("personal storage gold sample was not recorded: count=%d err=%v", storageGoldSamples, err)
+	}
+	goldMap, err := store.PersonalStorageGoldByCharacters(ctx, []string{characterID})
+	if err != nil || goldMap[characterID] != 850000000 {
+		t.Fatalf("personal storage gold lookup = %#v err=%v", goldMap, err)
 	}
 	var enrichment map[string]any
 	if err := json.Unmarshal(updated.Resources["item_enrichment"].Payload, &enrichment); err != nil {

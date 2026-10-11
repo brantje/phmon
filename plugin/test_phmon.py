@@ -925,6 +925,32 @@ class ResourceCollectorTests(unittest.TestCase):
                 self.assertEqual(result['guild_storage']['availability'], 'observed')
                 self.assertEqual(result['guild_storage']['gold'], gold)
 
+    def test_storage_preserves_valid_api_gold(self):
+        for gold in (0, 850000000):
+            with self.subTest(gold=gold):
+                result = plugin.collect_resources(api={
+                    'get_storage': lambda gold=gold: {
+                        'size': 1,
+                        'gold': gold,
+                        'items': [None],
+                    },
+                })
+                self.assertEqual(result['storage']['availability'], 'observed')
+                self.assertEqual(result['storage']['gold'], gold)
+
+    def test_storage_rejects_invalid_api_gold(self):
+        for gold in (True, -1, 1.5, '123'):
+            with self.subTest(gold=gold):
+                result = plugin.collect_resources(api={
+                    'get_storage': lambda gold=gold: {
+                        'size': 0,
+                        'gold': gold,
+                        'items': [],
+                    },
+                })
+                self.assertEqual(result['storage']['availability'], 'observed')
+                self.assertNotIn('gold', result['storage'])
+
     def test_guild_storage_rejects_invalid_api_gold(self):
         for gold in (True, -1, 1.5, '123'):
             with self.subTest(gold=gold):
@@ -4684,7 +4710,7 @@ class OwnCharacterJobObservationTests(unittest.TestCase):
             worker._flush_map_players(client)
             frame = client.send_json.call_args.args[0]
             self.assertEqual(frame['type'], 'map.players')
-            self.assertEqual(frame['protocol_version'], 18)
+            self.assertEqual(frame['protocol_version'], plugin.PROTOCOL_VERSION)
             row = frame['map_snapshot']['players'][0]
             self.assertEqual(row['job'], 'trader')
             self.assertEqual(row['job_level'], 7)

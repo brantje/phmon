@@ -111,15 +111,19 @@ ON CONFLICT (observer_character_id,resource_key) DO UPDATE SET
 		if err != nil {
 			return fmt.Errorf("save %s observation: %w", key, err)
 		}
-		if key == "guild_storage" && observation.Availability == "observed" {
-			var value struct {
-				Gold *int64 `json:"gold"`
-			}
-			// Gold is optional in the resource contract. A malformed optional field
-			// must not reject otherwise valid inventory/resource evidence.
-			if err := json.Unmarshal(observation.Payload, &value); err == nil && value.Gold != nil && *value.Gold >= 0 && normalizeGuild(observerGuild) != "" {
-				if _, err := analytics.RecordGuildGold(ctx, tx, observerServer, observerGuild, characterID, sessionID, agentID, generation, revision, *value.Gold); err != nil {
-					return fmt.Errorf("record guild storage gold history: %w", err)
+		if observation.Availability == "observed" {
+			if gold := optionalResourceGold(observation.Payload); gold != nil {
+				switch key {
+				case "guild_storage":
+					if normalizeGuild(observerGuild) != "" {
+						if _, err := analytics.RecordGuildGold(ctx, tx, observerServer, observerGuild, characterID, sessionID, agentID, generation, revision, *gold); err != nil {
+							return fmt.Errorf("record guild storage gold history: %w", err)
+						}
+					}
+				case "storage":
+					if _, err := analytics.RecordCharacterStorageGold(ctx, tx, characterID, sessionID, agentID, generation, revision, *gold); err != nil {
+						return fmt.Errorf("record personal storage gold history: %w", err)
+					}
 				}
 			}
 		}
@@ -303,6 +307,46 @@ func (s *Store) DeleteGuildStorage(ctx context.Context, server, guild string) (o
 		return 0, 0, 0, err
 	}
 	return observations, items, goldSamples, nil
+}
+
+func optionalResourceGold(payload json.RawMessage) *int64 {
+	var value struct {
+		Gold *int64 `json:"gold"`
+	}
+	if err := json.Unmarshal(payload, &value); err != nil || value.Gold == nil || *value.Gold < 0 {
+		return nil
+	}
+	return value.Gold
+}
+
+// PersonalStorageGoldByCharacters returns the latest confirmed personal-storage
+// gold from each character's stored storage observation payload.
+func (s *Store) PersonalStorageGoldByCharacters(ctx context.Context, characterIDs []string) (map[string]int64, error) {
+	if s == nil || s.pool == nil {
+		return nil, ErrInvalid
+	}
+	if len(characterIDs) == 0 {
+		return map[string]int64{}, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT observer_character_id::text,payload
+FROM character_resource_observations
+WHERE resource_key='storage' AND observer_character_id = ANY($1::uuid[])`, characterIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]int64, len(characterIDs))
+	for rows.Next() {
+		var characterID string
+		var payload json.RawMessage
+		if err := rows.Scan(&characterID, &payload); err != nil {
+			return nil, err
+		}
+		if gold := optionalResourceGold(payload); gold != nil {
+			result[characterID] = *gold
+		}
+	}
+	return result, rows.Err()
 }
 
 func normalizeGuild(value string) string { return strings.ToLower(strings.TrimSpace(value)) }

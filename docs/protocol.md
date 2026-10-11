@@ -1552,3 +1552,10 @@ older agents and observations without an ID remain valid and contextless. When t
 observed academy ID changes, the plugin emits departures with the old ID and joins
 with the new ID so analytics can attribute each transition to the correct academy.
 This does not establish graduation, bans, or a lifetime-unique member identity.
+
+## Agent protocol 19: personal storage gold in resource snapshots — 2026-10-11
+
+Plugin 1.9.33 preserves a valid non-negative integer `gold` field on normalized
+`storage` resource observations when `get_storage()` supplies it. The field uses the
+same optional semantics as guild-storage gold. Older protocol 18 agents omit the
+field; backends and UIs treat missing bank gold as unknown rather than zero.

@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.32'
+pVersion = '1.9.33'
 pUrl = ''
 
-PROTOCOL_VERSION = 18
+PROTOCOL_VERSION = 19
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -1623,7 +1623,7 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
     for resource_key, api_name in (('storage', 'get_storage'), ('guild_storage', 'get_guild_storage'), ('job_pouch', 'get_job_pouch')):
         available, raw = call(api_name)
         resource = _normalize_container(raw, resource_key) if available else {'availability': 'unavailable', 'reason': 'api_missing'}
-        if resource_key == 'guild_storage' and resource.get('availability') == 'observed':
+        if resource_key in ('storage', 'guild_storage') and resource.get('availability') == 'observed':
             gold = raw.get('gold') if isinstance(raw, dict) else None
             if isinstance(gold, int) and not isinstance(gold, bool) and gold >= 0:
                 resource['gold'] = gold

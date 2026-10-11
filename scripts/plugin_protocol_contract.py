@@ -118,7 +118,7 @@ def resource_fixture(plugin):
         },
         "get_storage": {
             "available": True,
-            "value": {"size": 1, "items": [copy.deepcopy(item)]},
+            "value": {"size": 1, "gold": 250000, "items": [copy.deepcopy(item)]},
         },
         "get_guild_storage": {
             "available": True,

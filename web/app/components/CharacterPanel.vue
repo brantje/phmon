@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { CharacterView as Character } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
+import { combinedCharacterGold } from '../utils/fleetGold'
 const props = withDefaults(
   defineProps<{ presentation?: 'table' | 'cards' }>(),
   { presentation: 'table' },
@@ -153,7 +154,12 @@ const summaryGroups = computed(() =>
         { label: 'MP', value: average('mp', 'mp_max') },
         {
           label: 'Gold',
-          value: `${members.reduce((sum, character) => sum + (character.gold || 0), 0).toLocaleString()} total`,
+          value: `${members
+            .reduce(
+              (sum, character) => sum + (combinedCharacterGold(character) ?? 0),
+              0,
+            )
+            .toLocaleString()} total`,
         },
       ]
       return { ...group, members, server, summary }
@@ -549,7 +555,9 @@ onUnmounted(() => {
             <td>{{ formatProgress(character) }}</td>
             <td>
               {{
-                character.gold == null ? '—' : character.gold.toLocaleString()
+                combinedCharacterGold(character) == null
+                  ? '—'
+                  : combinedCharacterGold(character)!.toLocaleString()
               }}
             </td>
             <td>

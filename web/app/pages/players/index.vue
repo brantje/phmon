@@ -43,9 +43,8 @@ const filterDrafts = reactive(
     string
   >,
 )
-const filterTimers: Partial<
-  Record<FilterKey, ReturnType<typeof setTimeout>>
-> = {}
+const filterTimers: Partial<Record<FilterKey, ReturnType<typeof setTimeout>>> =
+  {}
 
 function onFilterInput(key: FilterKey, value: string) {
   filterDrafts[key] = value
@@ -58,6 +57,7 @@ function onFilterInput(key: FilterKey, value: string) {
 
 function syncFilterDrafts() {
   for (const key of filterKeys) {
+    clearTimeout(filterTimers[key])
     filterDrafts[key] = queryText(key)
   }
 }
@@ -123,6 +123,7 @@ function toggleSort(sort: string) {
 watch(
   () => route.query,
   () => {
+    clearTimeout(nameTimer)
     nameDraft.value = queryText('q')
     syncFilterDrafts()
     void load()

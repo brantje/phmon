@@ -1030,9 +1030,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		for i := range items {
-			items[i] = characterWithPortrait(items[i], h.resources)
-		}
+		items = enrichCharacters(ctx, items, h.resources)
 		payload := map[string]any{"characters": items}
 		if h.resources != nil {
 			guildGold, err := h.resources.GuildStorageGold(ctx)
@@ -1054,7 +1052,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"character": characterWithPortrait(item, h.resources)}, nil
+		return map[string]any{"character": enrichCharacter(ctx, item, h.resources)}, nil
 	case "groups":
 		if h.characters == nil {
 			return nil, errors.New("character store unavailable")
@@ -1063,7 +1061,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"groups": groupsWithPortraits(groups, h.resources)}, nil
+		return map[string]any{"groups": enrichGroups(ctx, groups, h.resources)}, nil
 	case "commands":
 		if h.commands == nil {
 			return nil, errors.New("command history unavailable")
@@ -1100,12 +1098,28 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			if err != nil {
 				return nil, err
 			}
+			enrichedByID := map[string]characters.Character{}
+			if len(charactersByID) > 0 {
+				charList := make([]characters.Character, 0, len(subscription.Filter.CharacterIDs))
+				for _, id := range subscription.Filter.CharacterIDs {
+					if character, ok := charactersByID[id]; ok {
+						charList = append(charList, character)
+					}
+				}
+				for _, character := range enrichCharacters(ctx, charList, h.resources) {
+					enrichedByID[character.ID] = character
+				}
+			}
 			targets := make([]liveControlTarget, 0, len(subscription.Filter.CharacterIDs))
 			for index, id := range subscription.Filter.CharacterIDs {
 				item := liveControlTarget{CharacterID: id}
 				if character, ok := charactersByID[id]; ok {
-					character = characterWithPortrait(character, h.resources)
-					item.Character = &character
+					if enriched, ok := enrichedByID[id]; ok {
+						item.Character = &enriched
+					} else {
+						fallback := enrichCharacter(ctx, character, h.resources)
+						item.Character = &fallback
+					}
 				} else {
 					item.UnavailableReason = "not_found"
 				}
@@ -1213,7 +1227,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		if err != nil {
 			return nil, err
 		}
-		charRows = mapCharactersWithPortraits(charRows, h.resources)
+		charRows = enrichCharacters(ctx, charRows, h.resources)
 		partyObservations, partySourceTruncated, err := h.resources.CurrentPartyObservations(ctx, subscription.Filter.Server)
 		if err != nil {
 			return nil, err
