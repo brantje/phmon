@@ -1,8 +1,6 @@
 import type { CharacterView, GuildStorageGoldEntry } from '~~/shared/types/live'
 
-export function personalStorageGold(
-  character: CharacterView,
-): number | null {
+export function personalStorageGold(character: CharacterView): number | null {
   const value = character.personal_storage_gold
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
     return value

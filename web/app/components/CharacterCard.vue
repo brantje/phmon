@@ -410,8 +410,8 @@ onBeforeUnmount(() => {
             <dd>
               {{
                 combinedCharacterGold(character)?.toLocaleString() ??
-                  character.gold?.toLocaleString() ??
-                  '—'
+                character.gold?.toLocaleString() ??
+                '—'
               }}
             </dd>
           </div>

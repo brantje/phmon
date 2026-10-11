@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.32'
+pVersion = '1.9.33'
 pUrl = ''
 
-PROTOCOL_VERSION = 18
+PROTOCOL_VERSION = 19
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1

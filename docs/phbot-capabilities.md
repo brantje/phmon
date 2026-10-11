@@ -1761,7 +1761,9 @@ list or one script string.
 
 ## Observed player registry
 
-Plugin **1.9.32** keeps protocol **18**. `get_players()` still supplies the live
+Plugin **1.9.33** / protocol **19** preserves optional personal-storage `gold` on
+normalized `storage` resource observations. Plugin **1.9.32** keeps protocol **18**.
+`get_players()` still supplies the live
 name, guild, level, and position. It does not supply job type, job level, active
 job mode, or character model. The observer's own `get_character_data()` can add
 `job_type` and `job_level` to that character's `map.players` row. The map
