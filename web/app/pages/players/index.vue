@@ -24,8 +24,43 @@ const failed = ref(false)
 const nameDraft = ref(typeof route.query.q === 'string' ? route.query.q : '')
 let nameTimer: ReturnType<typeof setTimeout> | undefined
 
+const filterKeys = [
+  'min_level',
+  'max_level',
+  'guild',
+  'min_job_level',
+  'max_job_level',
+  'model',
+] as const
+type FilterKey = (typeof filterKeys)[number]
+
 const queryText = (key: string) =>
   typeof route.query[key] === 'string' ? String(route.query[key]) : ''
+
+const filterDrafts = reactive(
+  Object.fromEntries(filterKeys.map((key) => [key, queryText(key)])) as Record<
+    FilterKey,
+    string
+  >,
+)
+const filterTimers: Partial<
+  Record<FilterKey, ReturnType<typeof setTimeout>>
+> = {}
+
+function onFilterInput(key: FilterKey, value: string) {
+  filterDrafts[key] = value
+  clearTimeout(filterTimers[key])
+  filterTimers[key] = setTimeout(() => {
+    const trimmed = value.trim()
+    replaceQuery({ [key]: trimmed || undefined })
+  }, 250)
+}
+
+function syncFilterDrafts() {
+  for (const key of filterKeys) {
+    filterDrafts[key] = queryText(key)
+  }
+}
 
 async function load() {
   loading.value = true
@@ -89,11 +124,15 @@ watch(
   () => route.query,
   () => {
     nameDraft.value = queryText('q')
+    syncFilterDrafts()
     void load()
   },
   { immediate: true },
 )
-onBeforeUnmount(() => clearTimeout(nameTimer))
+onBeforeUnmount(() => {
+  clearTimeout(nameTimer)
+  for (const key of filterKeys) clearTimeout(filterTimers[key])
+})
 
 const total = computed(() => page.value?.total ?? 0)
 const offset = computed(() => page.value?.offset ?? 0)
@@ -143,36 +182,35 @@ function formatPlayerTime(value?: string | null) {
       <label>
         Min level
         <input
-          :value="queryText('min_level')"
+          :value="filterDrafts.min_level"
           inputmode="numeric"
-          @change="
-            replaceQuery({
-              min_level: ($event.target as HTMLInputElement).value || undefined,
-            })
+          @input="
+            onFilterInput(
+              'min_level',
+              ($event.target as HTMLInputElement).value,
+            )
           "
         />
       </label>
       <label>
         Max level
         <input
-          :value="queryText('max_level')"
+          :value="filterDrafts.max_level"
           inputmode="numeric"
-          @change="
-            replaceQuery({
-              max_level: ($event.target as HTMLInputElement).value || undefined,
-            })
+          @input="
+            onFilterInput(
+              'max_level',
+              ($event.target as HTMLInputElement).value,
+            )
           "
         />
       </label>
       <label>
         Guild
         <input
-          :value="queryText('guild')"
-          @change="
-            replaceQuery({
-              guild:
-                ($event.target as HTMLInputElement).value.trim() || undefined,
-            })
+          :value="filterDrafts.guild"
+          @input="
+            onFilterInput('guild', ($event.target as HTMLInputElement).value)
           "
         />
       </label>
@@ -197,26 +235,26 @@ function formatPlayerTime(value?: string | null) {
       <label>
         Min job level
         <input
-          :value="queryText('min_job_level')"
+          :value="filterDrafts.min_job_level"
           inputmode="numeric"
-          @change="
-            replaceQuery({
-              min_job_level:
-                ($event.target as HTMLInputElement).value || undefined,
-            })
+          @input="
+            onFilterInput(
+              'min_job_level',
+              ($event.target as HTMLInputElement).value,
+            )
           "
         />
       </label>
       <label>
         Max job level
         <input
-          :value="queryText('max_job_level')"
+          :value="filterDrafts.max_job_level"
           inputmode="numeric"
-          @change="
-            replaceQuery({
-              max_job_level:
-                ($event.target as HTMLInputElement).value || undefined,
-            })
+          @input="
+            onFilterInput(
+              'max_job_level',
+              ($event.target as HTMLInputElement).value,
+            )
           "
         />
       </label>
@@ -239,13 +277,10 @@ function formatPlayerTime(value?: string | null) {
       <label>
         Model
         <input
-          :value="queryText('model')"
+          :value="filterDrafts.model"
           placeholder="Name or ID"
-          @change="
-            replaceQuery({
-              model:
-                ($event.target as HTMLInputElement).value.trim() || undefined,
-            })
+          @input="
+            onFilterInput('model', ($event.target as HTMLInputElement).value)
           "
         />
       </label>
