@@ -2,6 +2,7 @@
 import { useId } from 'vue'
 import type { CharacterView, PetInventoryRecord } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
+import { formatCharacterGoldTotal, validObservedGold } from '../utils/fleetGold'
 
 const props = defineProps<{
   character: CharacterView
@@ -399,8 +400,8 @@ onBeforeUnmount(() => {
             <dd>{{ character.sp?.toLocaleString() ?? '—' }}</dd>
           </div>
           <div>
-            <dt>Gold</dt>
-            <dd>{{ character.gold?.toLocaleString() ?? '—' }}</dd>
+            <dt>Gold (character + bank)</dt>
+            <dd>{{ formatCharacterGoldTotal([character]) }}</dd>
           </div>
           <div>
             <dt>Location</dt>
@@ -589,7 +590,7 @@ onBeforeUnmount(() => {
             <dd>{{ displayRate(performanceRate('sp'), 'SP') }}</dd>
           </div>
           <div>
-            <dt>Gold net / hour</dt>
+            <dt>Gold net / hour (character + bank)</dt>
             <dd>{{ displayRate(performanceRate('gold'), 'gold') }}</dd>
           </div>
           <div>
@@ -610,7 +611,9 @@ onBeforeUnmount(() => {
           </div>
         </dl>
         <p class="mapping-note">
-          Rates are net observed balance changes. Eligible XP history:
+          Rates are net observed balance changes. Gold uses character + bank;
+          both must be observed at each endpoint. Missing bank history is
+          unavailable. Eligible XP history:
           {{ durationLabel(performance.rates.xp?.eligible_seconds) }}; SP:
           {{ durationLabel(performance.rates.sp?.eligible_seconds) }}; gold:
           {{ durationLabel(performance.rates.gold?.eligible_seconds) }}. Stale
@@ -686,6 +689,7 @@ onBeforeUnmount(() => {
                   <th scope="col">Last sample</th>
                   <th scope="col">Ended</th>
                   <th scope="col">Covered</th>
+                  <th scope="col">Gold net · character + bank (window)</th>
                 </tr>
               </thead>
               <tbody>
@@ -711,6 +715,11 @@ onBeforeUnmount(() => {
                     }}
                   </td>
                   <td>{{ durationLabel(session.covered_seconds) }}</td>
+                  <td>
+                    {{
+                      periodDelta(session.gold_net, session.gold_seconds || 0)
+                    }}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -876,7 +885,15 @@ onBeforeUnmount(() => {
               : 'Personal storage'
         "
         :observation="containerObservation(selectedContainer)"
-        :availability="available(selectedContainer)"
+        :availability="
+          character.online && !stale ? available(selectedContainer) : 'stale'
+        "
+        :gold="
+          validObservedGold(payload(selectedContainer).gold)
+            ? Number(payload(selectedContainer).gold)
+            : null
+        "
+        :show-gold="selectedContainer !== 'job_pouch'"
       />
     </div>
 

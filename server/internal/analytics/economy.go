@@ -20,14 +20,14 @@ AND ($4='' OR s.character_id=$4::uuid)
 AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$5::uuid))`
 	args := []any{filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Bucket, filter.Timezone}
 	var entityCount int64
-	if err := tx.QueryRow(ctx, `SELECT count(DISTINCT s.character_id) FROM character_metric_samples s WHERE `+where+` AND s.gold IS NOT NULL`, args[:5]...).Scan(&entityCount); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(DISTINCT s.character_id) FROM character_metric_samples s WHERE `+where+` AND s.gold IS NOT NULL AND s.storage_gold IS NOT NULL`, args[:5]...).Scan(&entityCount); err != nil {
 		return err
 	}
 	rows, err := tx.Query(ctx, `WITH eligible AS (
-    SELECT s.character_id,c.character_name,s.gold,s.sampled_at,s.sample_id,
+    SELECT s.character_id,c.character_name,(s.gold::numeric+s.storage_gold::numeric) AS gold,s.sampled_at,s.sample_id,
            date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
     FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
-    WHERE `+where+` AND s.gold IS NOT NULL
+    WHERE `+where+` AND s.gold IS NOT NULL AND s.storage_gold IS NOT NULL
 ), selected AS (
     SELECT character_id FROM eligible GROUP BY character_id
     ORDER BY max(sampled_at) DESC,character_id LIMIT 20
@@ -60,9 +60,9 @@ FROM latest ORDER BY bucket,character_name,character_id`, args...)
 	}
 
 	leaders, err := tx.Query(ctx, `SELECT character_name,character_id::text,gold::text FROM (
-SELECT DISTINCT ON(s.character_id) c.character_name,s.character_id,s.gold,s.sampled_at
+SELECT DISTINCT ON(s.character_id) c.character_name,s.character_id,(s.gold::numeric+s.storage_gold::numeric) AS gold,s.sampled_at
 FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
-WHERE `+where+` AND s.gold IS NOT NULL ORDER BY s.character_id,s.sampled_at DESC,s.sample_id DESC
+WHERE `+where+` AND s.gold IS NOT NULL AND s.storage_gold IS NOT NULL ORDER BY s.character_id,s.sampled_at DESC,s.sample_id DESC
 ) latest ORDER BY gold::numeric DESC,character_name,character_id LIMIT 20`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID)
 	if err != nil {
 		return err
@@ -84,9 +84,9 @@ WHERE `+where+` AND s.gold IS NOT NULL ORDER BY s.character_id,s.sampled_at DESC
 	var delta float64
 	var observedDays int64
 	err = tx.QueryRow(ctx, `WITH sequenced AS (
-SELECT s.character_id,s.session_id,s.sampled_at,date_trunc('day',s.sampled_at AT TIME ZONE $6) AS local_day,s.gold,
+SELECT s.character_id,s.session_id,s.sampled_at,date_trunc('day',s.sampled_at AT TIME ZONE $6) AS local_day,(s.gold::numeric+s.storage_gold::numeric) AS gold,
 lag(s.sampled_at) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_at,
-lag(s.gold) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_gold
+lag(s.gold::numeric+s.storage_gold::numeric) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_gold
 FROM character_metric_samples s WHERE s.sampled_at >= ($1::timestamptz-interval '30 seconds') AND s.sampled_at < $2
 AND ($3='' OR s.server_key=$3) AND ($4='' OR s.character_id=$4::uuid)
 AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$5::uuid))
@@ -101,7 +101,7 @@ SELECT COALESCE(sum(delta),0)::float8,count(DISTINCT(character_id,local_day)) FR
 	if observedDays > 0 {
 		snapshot.Summary = append(snapshot.Summary, Metric{Key: "gold_net_per_observed_character_day", Label: "Average net gold change / observed character-day", Number: float64Ptr(delta / float64(observedDays)), Unit: "gold per observed character-day", Status: "available"})
 	} else {
-		snapshot.Summary = append(snapshot.Summary, Metric{Key: "gold_net_per_observed_character_day", Label: "Average net gold change / observed character-day", Status: "insufficient_history", Reason: "no_comparable_balance_intervals_in_selected_window"})
+		snapshot.Summary = append(snapshot.Summary, Metric{Key: "gold_net_per_observed_character_day", Label: "Average net gold change / observed character-day", Status: "insufficient_history", Reason: "no_comparable_character_and_bank_intervals_in_selected_window"})
 	}
 	if len(snapshot.Breakdown) > 0 {
 		leader := snapshot.Breakdown[0]
@@ -113,7 +113,7 @@ SELECT COALESCE(sum(delta),0)::float8,count(DISTINCT(character_id,local_day)) FR
 	snapshot.Total = strconv.FormatInt(entityCount, 10)
 	if len(snapshot.TimeSeries) == 0 {
 		snapshot.Status = "empty"
-		snapshot.Reason = "no_character_balance_samples_in_selected_window"
+		snapshot.Reason = "no_paired_character_and_bank_samples_in_selected_window"
 	}
 	return nil
 }

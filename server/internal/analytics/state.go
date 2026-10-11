@@ -12,15 +12,16 @@ const CharacterSampleIntervalSeconds = 10
 // CharacterState is the accepted primitive state needed for historical rates.
 // Pointer fields preserve unavailable values rather than converting them to 0.
 type CharacterState struct {
-	Level     *int
-	CurrentXP *int64
-	MaxXP     *int64
-	SP        *int64
-	Gold      *int64
-	Region    *int
-	Zone      *string
-	Botting   *bool
-	Dead      *bool
+	Level       *int
+	CurrentXP   *int64
+	MaxXP       *int64
+	SP          *int64
+	StorageGold *int64
+	Gold        *int64
+	Region      *int
+	Zone        *string
+	Botting     *bool
+	Dead        *bool
 }
 
 // RecordCharacterState writes an observation in the caller's accepted state
@@ -34,10 +35,10 @@ func RecordCharacterState(ctx context.Context, tx pgx.Tx, characterID, sessionID
 	tag, err := tx.Exec(ctx, `
 INSERT INTO character_metric_samples (
     character_id,session_id,agent_id,server_key,sampled_at,level,current_exp,max_exp,sp,gold,
-    region,zone_name,botting,dead
+    region,zone_name,botting,dead,storage_gold,sample_schema_version
 )
 SELECT c.character_id,cs.session_id,cs.agent_id,c.server_key,clock_timestamp(),
-       $5,$6,$7,$8,$9,$10,$11,$12,$13
+       $5,$6,$7,$8,$9,$10,$11,$12,$13,$15,2
 FROM characters c
 JOIN character_sessions cs ON cs.character_id=c.character_id
 WHERE c.character_id=$1
@@ -48,19 +49,19 @@ WHERE c.character_id=$1
   AND NOT EXISTS (
       SELECT 1 FROM (
           SELECT previous.sampled_at,previous.level,previous.max_exp,previous.region,
-                 previous.zone_name,previous.botting,previous.dead
+                 previous.zone_name,previous.botting,previous.dead,previous.storage_gold
           FROM character_metric_samples previous
           WHERE previous.session_id=cs.session_id
           ORDER BY previous.sampled_at DESC,previous.sample_id DESC
           LIMIT 1
       ) previous
       WHERE previous.sampled_at > clock_timestamp() - make_interval(secs => $14::double precision)
-        AND ROW(previous.level,previous.max_exp,previous.region,previous.zone_name,previous.botting,previous.dead)
-            IS NOT DISTINCT FROM ROW($5::integer,$7::bigint,$10::integer,$11::text,$12::boolean,$13::boolean)
+        AND ROW(previous.level,previous.max_exp,previous.region,previous.zone_name,previous.botting,previous.dead,previous.storage_gold IS NULL)
+            IS NOT DISTINCT FROM ROW($5::integer,$7::bigint,$10::integer,$11::text,$12::boolean,$13::boolean,$15::bigint IS NULL)
   )
 RETURNING sample_id`, characterID, sessionID, agentID, generation,
 		state.Level, state.CurrentXP, state.MaxXP, state.SP, state.Gold,
-		state.Region, state.Zone, state.Botting, state.Dead, CharacterSampleIntervalSeconds)
+		state.Region, state.Zone, state.Botting, state.Dead, CharacterSampleIntervalSeconds, state.StorageGold)
 	if err != nil {
 		return false, err
 	}

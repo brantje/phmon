@@ -8,20 +8,21 @@ import (
 )
 
 const (
-	CalculationVersion = "analytics-v1"
+	CalculationVersion = "analytics-v2"
 	MaxSampleGap       = 30 * time.Second
 	MinimumRateHistory = 60 * time.Second
 )
 
 type MetricSample struct {
-	SessionID string
-	At        time.Time
-	Level     *int
-	CurrentXP *int64
-	MaxXP     *int64
-	SP        *int64
-	Gold      *int64
-	Botting   *bool
+	SessionID   string
+	At          time.Time
+	Level       *int
+	CurrentXP   *int64
+	MaxXP       *int64
+	SP          *int64
+	StorageGold *int64
+	Gold        *int64
+	Botting     *bool
 }
 
 type RateResult struct {
@@ -46,6 +47,27 @@ func CalculateBalanceRate(samples []MetricSample, metric func(MetricSample) *int
 }
 
 func calculateBalanceRate(samples []MetricSample, metric func(MetricSample) *int64, from, to time.Time, requireComparableLevel bool) RateResult {
+	var exactMetric func(MetricSample) *big.Int
+	if metric != nil {
+		exactMetric = func(sample MetricSample) *big.Int {
+			value := metric(sample)
+			if value == nil {
+				return nil
+			}
+			return big.NewInt(*value)
+		}
+	}
+	return calculateExactBalanceRate(samples, exactMetric, from, to, requireComparableLevel)
+}
+
+func combinedGold(sample MetricSample) *big.Int {
+	if sample.Gold == nil || sample.StorageGold == nil {
+		return nil
+	}
+	return new(big.Int).Add(big.NewInt(*sample.Gold), big.NewInt(*sample.StorageGold))
+}
+
+func calculateExactBalanceRate(samples []MetricSample, metric func(MetricSample) *big.Int, from, to time.Time, requireComparableLevel bool) RateResult {
 	ordered := append([]MetricSample(nil), samples...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].At.Before(ordered[j].At) })
 	result := RateResult{Status: "insufficient_history", Reason: "insufficient_history"}
@@ -96,7 +118,7 @@ func calculateBalanceRate(samples []MetricSample, metric func(MetricSample) *int
 		if requireComparableLevel && (before.Level == nil || after.Level == nil || *before.Level != *after.Level || before.MaxXP == nil || after.MaxXP == nil || *before.MaxXP != *after.MaxXP) {
 			continue
 		}
-		intervalDelta := new(big.Int).Sub(big.NewInt(*newValue), big.NewInt(*oldValue))
+		intervalDelta := new(big.Int).Sub(newValue, oldValue)
 		exactDelta.Add(exactDelta, intervalDelta)
 		result.EligibleSeconds += span.Seconds()
 	}
@@ -121,9 +143,13 @@ func skillPoints(sample MetricSample) *int64 { return sample.SP }
 func goldBalance(sample MetricSample) *int64 { return sample.Gold }
 
 func CalculateProgressRates(samples []MetricSample, from, to time.Time) map[string]RateResult {
+	gold := calculateExactBalanceRate(samples, combinedGold, from, to, false)
+	if !gold.HasRate && gold.Status == "insufficient_history" {
+		gold.Reason = "insufficient_paired_character_and_bank_history"
+	}
 	return map[string]RateResult{
 		"xp":   calculateBalanceRate(samples, currentXP, from, to, true),
 		"sp":   CalculateBalanceRate(samples, skillPoints, from, to),
-		"gold": CalculateBalanceRate(samples, goldBalance, from, to),
+		"gold": gold,
 	}
 }

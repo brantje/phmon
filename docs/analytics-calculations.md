@@ -10,7 +10,7 @@ and `unsupported` are distinct. A null value with a reason is not a zero.
 
 | Fact | Source of truth | Coverage limitation |
 | --- | --- | --- |
-| Character EXP, SP, gold, level, region, dead, botting | Session-fenced `character_metric_samples`, written in the same accepted character-state transaction | History starts with the first accepted sample after deployment; no old balance is recoverable from the current row. |
+| Character EXP, SP, carried/bank gold, level, region, dead, botting | Session-fenced `character_metric_samples`, written in the same accepted character-state transaction | History starts with the first accepted sample after deployment; no old balance is recoverable from the current row. |
 | Death, rare/normal world-drop, level-up, teleport, alchemy, item and academy membership occurrences | Canonical `activity_events` rows and their source metadata | Only observed occurrences are counted. A teleport is not proof of a return scroll. Drop classification can be unknown or profile-versioned. |
 | Guild-storage balance | Accepted guild-resource observations with server, normalized guild, observer and resource revision | Current contents do not represent older values. Several observers can see the same balance. |
 | Item type/degree/seal/plus/blues | Persisted event instance details and active versioned item metadata | Unknown fields remain unknown; static catalog data cannot recreate historical instance facts. |
@@ -99,8 +99,9 @@ groups are used only for explicitly labeled current-group breakdowns; members ma
 appear in multiple groups. Do not sum group totals into the fleet headline. Historical
 group attribution is unavailable until group membership history exists.
 
-Gold balances use the latest fresh observation within each bucket. Character and
-guild balances have separate selectors. For a guild bucket, one latest sample is
+Gold balances use the latest paired observation within each bucket. The
+**Character + bank** scope sums carried and personal-storage gold; guild balances
+remain a separate selector. For a guild bucket, one latest sample is
 selected across observers with observer ID as a deterministic tie-break; observers
 are never summed, and conflicting values are not described as reconciled. Guild net
 change remains unsupported until a continuous observer policy is verified.
@@ -200,3 +201,31 @@ ticks. The keyboard/touch range input and expandable numerical table expose exac
 returned strings; gold plot coordinates are offset from the exact lowest balance
 before conversion to chart coordinates so small changes around large balances are
 not erased by JavaScript's integer precision limit.
+
+## Combined bank gold — analytics-v2, 2026-10-11
+
+Migration 29 stores optional personal bank gold separately in metric samples. The
+plugin collects carried and bank balances in one callback; missing bank values are
+NULL, never zero, and old rows are not backfilled. Gold charts, rankings, gold/hour,
+character-day net changes, and daily/weekly/session/location net values all use carried +
+bank. SQL uses numeric addition, and Go uses big integers before floating-point rate
+conversion, so adding large balances does not overflow signed 64-bit arithmetic.
+
+Both interval endpoints must have both balances. Missing bank observations break
+coverage; bank availability transitions are sampled immediately even within the
+10-second cadence. Initial bank discovery therefore establishes a baseline rather
+than income. Session, maximum-gap, minimum-history, timezone and rate-reset fences
+remain in effect. XP/SP calculations are unchanged. Example: 1,000 carried + 4,000
+bank becoming 500 + 4,500 has a total of 5,000 and net change zero. Getters do not
+provide an atomic game transaction; a transfer between reads can briefly produce an
+intermediate observation. Do not describe observed net changes as proven earnings.
+
+Current fleet/Stats totals add every character's separate bank once; fleet totals
+also preserve guild storage once per server/guild. Unknown components make the
+observed total incomplete; retained bank observations are labeled last-known.
+Combined historical rates require paired evidence and never use stale retained
+resource values as replacement samples.
+
+Session history adds `gold_net` and `gold_seconds` for the selected window; zero
+covered bank intervals produce an unavailable value, not a zero gain. Historical
+session net values are independent of resets of the current rate window.

@@ -48,7 +48,7 @@ func queryPerformanceBatch(ctx context.Context, tx pgx.Tx, filter Filter, snapsh
 // 30-second lookback supplies a possible predecessor without bridging gaps.
 func queryPerformance(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
 	rows, err := tx.Query(ctx, `SELECT c.character_id::text,c.character_name,c.server_key,cs.started_at,cs.ended_at,
-       s.session_id::text,s.sampled_at,s.level,s.current_exp,s.max_exp,s.sp,s.gold,
+       s.session_id::text,s.sampled_at,s.level,s.current_exp,s.max_exp,s.sp,s.gold,s.storage_gold,
        s.botting,s.region,s.zone_name
 FROM (
     SELECT * FROM character_metric_samples WHERE character_id=$1::uuid AND ($2='' OR server_key=$2)
@@ -73,7 +73,7 @@ ORDER BY s.sampled_at,s.sample_id`, filter.CharacterID, filter.Server, filter.Fr
 		var sample observedMetricSample
 		if err := rows.Scan(&characterID, &name, &server, &sessionStart, &sessionEnd,
 			&sessionID, &sampledAt, &sample.Level, &sample.CurrentXP, &sample.MaxXP,
-			&sample.SP, &sample.Gold, &sample.Botting, &sample.Region, &sample.Zone); err != nil {
+			&sample.SP, &sample.Gold, &sample.StorageGold, &sample.Botting, &sample.Region, &sample.Zone); err != nil {
 			return err
 		}
 		if performance.CharacterID == "" {
@@ -338,6 +338,10 @@ func trainingCoverage(samples []observedMetricSample, from, to time.Time) []Trai
 }
 
 func sessionRows(values map[string]*SessionPerformance, samples []observedMetricSample, from, to time.Time) []SessionPerformance {
+	metrics := make(map[string][]MetricSample, len(values))
+	for _, sample := range samples {
+		metrics[sample.SessionID] = append(metrics[sample.SessionID], sample.MetricSample)
+	}
 	for index := 1; index < len(samples); index++ {
 		before, after := samples[index-1], samples[index]
 		if before.SessionID != after.SessionID || !after.At.After(before.At) || after.At.Sub(before.At) > MaxSampleGap {
@@ -358,6 +362,11 @@ func sessionRows(values map[string]*SessionPerformance, samples []observedMetric
 	}
 	result := make([]SessionPerformance, 0, len(values))
 	for _, value := range values {
+		gold := calculateExactBalanceRate(metrics[value.SessionID], combinedGold, from, to, false)
+		value.GoldSeconds = gold.EligibleSeconds
+		if gold.EligibleSeconds > 0 {
+			value.GoldNet = &gold.DeltaExact
+		}
 		result = append(result, *value)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].FirstSeen.After(result[j].FirstSeen) })

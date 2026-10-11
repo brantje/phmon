@@ -284,6 +284,19 @@ Slice 3 agent path only.
   `plugin/phMonitorAdapter.py` independently suggests the first 13 entries are
   equipment, but this is a lead only; the collector labels that mapping
   `adapter_lead_runtime_unverified` and exposes the limitation in the UI.
+- Personal-storage gold (plugin 1.9.33 / protocol 19) is preserved from
+  `get_storage()` when its runtime result exposes a valid non-negative integer
+  `gold`, including zero. Source: official
+  [Inventory API](https://plugins.phbot.org/phbot-api/inventory), checked 2026-10-11;
+  its storage section specifies `size`/`items`, not a promised gold field.
+  Therefore getter existence is documented, but personal-storage gold availability
+  remains runtime-unverified in this environment. No packet fallback or signature
+  is invented. Callback-only `get_inventory()` and `get_storage()` observations
+  provide carried/bank pairs for history; unavailable, invalid, and older-agent
+  bank values stay unknown. Deterministic fixtures prove transport/calculations,
+  not Windows/phBot support. Acceptance condition: record a naturally returned
+  `get_storage().gold` with target phBot version and compare its displayed value,
+  without commanding a bank transfer or another game mutation.
 - Guild-storage gold is read from `get_guild_storage()` when the loaded phBot
   runtime returns a valid non-negative integer `gold` field. The public storage API
   documentation lists only `size` and `items`, but the operator-confirmed runtime

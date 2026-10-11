@@ -19,6 +19,40 @@ spec.loader.exec_module(plugin)
 AGENT_ID = '11111111-2222-4333-8444-555555555555'
 
 
+class StorageGoldTests(unittest.TestCase):
+    def test_storage_gold_preserves_zero_and_positive_values(self):
+        for gold in (0, 4500, 9876543210123):
+            with self.subTest(gold=gold):
+                resources = plugin.collect_resources(api={'get_storage': lambda: {'size': 0, 'items': [], 'gold': gold}})
+                self.assertEqual(resources['storage']['gold'], gold)
+
+    def test_storage_gold_omits_invalid_or_missing_values(self):
+        for gold in (None, True, False, -1, 1.5, '500'):
+            with self.subTest(gold=gold):
+                resources = plugin.collect_resources(api={'get_storage': lambda: {'size': 0, 'items': [], 'gold': gold}})
+                self.assertNotIn('gold', resources['storage'])
+        resources = plugin.collect_resources(api={'get_storage': lambda: None})
+        self.assertNotIn('gold', resources['storage'])
+
+    def test_callback_collects_pair_and_breaks_missing_bank(self):
+        for carried, bank in ((1000,4000), (500,4500), (0,0), (None,4500), (1000,None), (1000,True), (1000,-1)):
+            state={'gold': 1000}
+            getters={'get_inventory': lambda: {'gold': carried}, 'get_storage': lambda: {'gold': bank}}
+            with patch.object(plugin, '_optional_phbot_api', side_effect=lambda name: getters.get(name)):
+                plugin._sample_gold_balances(state, plugin._CallbackTiming())
+            valid=lambda value: isinstance(value,int) and not isinstance(value,bool) and value>=0
+            if valid(carried) and valid(bank):
+                self.assertEqual(state, {'gold':carried, 'storage_gold':bank})
+            else:
+                self.assertNotIn('storage_gold', state)
+
+    def test_callback_getter_failure_does_not_fabricate_bank(self):
+        state={'gold':1000}
+        with patch.object(plugin, '_optional_phbot_api', return_value=Mock(side_effect=RuntimeError('unavailable'))):
+            plugin._sample_gold_balances(state, plugin._CallbackTiming())
+        self.assertEqual(state, {'gold':1000})
+
+
 class PlayerObservationTests(unittest.TestCase):
     def test_collect_player_observation_classifies_missing_none_empty_and_unavailable(self):
         self.assertEqual(plugin.collect_player_observation({}), ('unavailable', [], False))
@@ -4684,7 +4718,7 @@ class OwnCharacterJobObservationTests(unittest.TestCase):
             worker._flush_map_players(client)
             frame = client.send_json.call_args.args[0]
             self.assertEqual(frame['type'], 'map.players')
-            self.assertEqual(frame['protocol_version'], 18)
+            self.assertEqual(frame['protocol_version'], plugin.PROTOCOL_VERSION)
             row = frame['map_snapshot']['players'][0]
             self.assertEqual(row['job'], 'trader')
             self.assertEqual(row['job_level'], 7)

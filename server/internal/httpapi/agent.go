@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	agentProtocolVersion    = 18
+	agentProtocolVersion    = 19
 	agentMinProtocolVersion = 2
 )
 
@@ -876,6 +876,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		case "character.snapshot", "character.state":
+			if hello.ProtocolVersion < 19 {
+				message.State.StorageGold = nil
+			}
 			if !agentdomain.ValidAgentID(message.CharacterID) || !validWireState(message.State) || h.characters == nil ||
 				(hello.ProtocolVersion >= 3 && !agentdomain.ValidAgentID(message.SessionID)) {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character state", hello.AgentID, hello.ProtocolVersion)

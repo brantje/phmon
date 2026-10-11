@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.32**, using agent protocol **18**. It
+The current local plugin release is **1.9.33**, using agent protocol **19**. It
 accepts a display-only route from another plugin in the same phBot process through
 `submit_external_route` and publishes `navigation.observed`. PhMon does not start
 or stop that route. Walks stay visible when a trade script also contains blank
@@ -569,3 +569,16 @@ native exception text is printed. Kalypso's fresh 1.9.21 session passed after th
 operator restart, and both repeated eight-character short/long routes had eight
 observed arrivals. The earlier native False reason remains unknown; these logs
 are available if it recurs. See the [live report](../docs/reference/navigation-2026-10-04.md).
+
+## Personal-storage gold — 1.9.33 / protocol 19
+
+The callback reads `get_inventory()` and `get_storage()` together and sends optional
+`storage_gold` alongside carried `gold` in character state. Only valid non-negative
+integer balances are accepted, including zero; missing/invalid values break combined
+gold-rate coverage. Both getters stay on the phBot callback thread. This is a pair
+of observations, not an atomic game transaction. A transfer caught between getter
+reads can appear briefly until the next observation; no transfer cause is inferred.
+Personal-storage resource snapshots also preserve the getter's optional `gold`.
+Deploy the protocol-19-compatible backend/migration before installing this release.
+Official docs do not guarantee personal-storage gold; naturally observed runtime
+confirmation remains required. No game action is needed to collect already exposed data.

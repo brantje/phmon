@@ -1,5 +1,44 @@
 import type { CharacterView, GuildStorageGoldEntry } from '~~/shared/types/live'
 
+export function validObservedGold(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+export function characterGoldTotal(character: CharacterView): number | null {
+  const values = [character.gold, character.storage_gold].filter(
+    validObservedGold,
+  )
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null
+}
+
+export function characterGoldStatus(
+  characters: readonly CharacterView[],
+): string {
+  const incomplete = characters.some(
+    (character) =>
+      !validObservedGold(character.gold) ||
+      !validObservedGold(character.storage_gold),
+  )
+  const stale = characters.some(
+    (character) =>
+      validObservedGold(character.storage_gold) &&
+      (!character.online || character.storage_gold_availability !== 'observed'),
+  )
+  return [incomplete ? 'incomplete' : '', stale ? 'last known bank' : '']
+    .filter(Boolean)
+    .join(' · ')
+}
+
+export function formatCharacterGoldTotal(
+  characters: readonly CharacterView[],
+): string {
+  const values = characters.map(characterGoldTotal).filter(validObservedGold)
+  if (!values.length) return '—'
+  const total = values.reduce((sum, value) => sum + value, 0).toLocaleString()
+  const status = characterGoldStatus(characters)
+  return status ? `${total} · ${status}` : total
+}
+
 export function sumObservedFleetGold(
   characters: CharacterView[],
   guildStorageGold: readonly GuildStorageGoldEntry[],
@@ -8,9 +47,8 @@ export function sumObservedFleetGold(
   const values: number[] = []
   for (const character of characters) {
     if (!matchesServer(character.server)) continue
-    if (typeof character.gold === 'number' && Number.isFinite(character.gold)) {
-      values.push(character.gold)
-    }
+    const total = characterGoldTotal(character)
+    if (total !== null) values.push(total)
   }
   for (const entry of guildStorageGold) {
     if (!matchesServer(entry.server)) continue

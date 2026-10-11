@@ -66,7 +66,7 @@ func newReviewFixture(t *testing.T, n int) reviewFixture {
 }
 func (f reviewFixture) sample(t *testing.T, index int, at time.Time, xp, maxxp, gold int64) {
 	t.Helper()
-	_, err := f.pool.Exec(context.Background(), `INSERT INTO character_metric_samples(character_id,session_id,agent_id,server_key,sampled_at,level,current_exp,max_exp,sp,gold) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,10,$6,$7,10,$8)`, f.chars[index], f.sessions[index], f.agent, f.server, at, xp, maxxp, gold)
+	_, err := f.pool.Exec(context.Background(), `INSERT INTO character_metric_samples(character_id,session_id,agent_id,server_key,sampled_at,level,current_exp,max_exp,sp,gold,storage_gold) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,10,$6,$7,10,$8,0)`, f.chars[index], f.sessions[index], f.agent, f.server, at, xp, maxxp, gold)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ import type { CharacterView as Character } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
 import {
   formatCompactObservedGold,
+  characterGoldStatus,
   sumObservedFleetGold,
 } from '../utils/fleetGold'
 
@@ -87,15 +88,16 @@ export function useFleetSummary() {
       mp: ratio(withMP, 'mp', 'mp_max'),
     }
   })
-  const observedGold = computed(() =>
-    formatCompactObservedGold(
-      sumObservedFleetGold(
-        scopedCharacters.value,
-        guildStorageGold.value,
-        matchesServer,
-      ),
-    ),
-  )
+  const observedGold = computed(() => {
+    const total = sumObservedFleetGold(
+      scopedCharacters.value,
+      guildStorageGold.value,
+      matchesServer,
+    )
+    const formatted = formatCompactObservedGold(total)
+    const status = characterGoldStatus(scopedCharacters.value)
+    return total !== null && status ? `${formatted} · ${status}` : formatted
+  })
 
   const connectedAgents = computed<number | null>(() =>
     liveStale.value || liveConnectionState.value === 'stale'

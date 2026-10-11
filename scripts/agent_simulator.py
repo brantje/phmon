@@ -594,6 +594,7 @@ def run_analytics_history(worker, stopping):
         "max_exp": 10000,
         "sp": 400,
         "gold": 50000,
+        "storage_gold": 5000,
         "region": 25000,
         "zone": "Fixture Jangan",
         "botting": True,

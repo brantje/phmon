@@ -1,4 +1,4 @@
-# Agent protocol versions 2–18
+# Agent protocol versions 2–19
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -1535,3 +1535,24 @@ older agents and observations without an ID remain valid and contextless. When t
 observed academy ID changes, the plugin emits departures with the old ID and joins
 with the new ID so analytics can attribute each transition to the correct academy.
 This does not establish graduation, bans, or a lifetime-unique member identity.
+
+## Agent protocol 19: personal-storage gold — 2026-10-11
+
+Plugin 1.9.33 adds optional `state.storage_gold` to `character.snapshot` and
+`character.state`. `gold` remains the carried balance; `storage_gold` is the separate
+personal bank balance observed during the same phBot callback. Both are non-negative
+signed-64-bit integers; `storage_gold` requires a valid `gold` in the same frame.
+An absent bank is unknown, never zero. Server admission still accepts protocols 2–18;
+those agents cannot contribute bank evidence to paired historical samples.
+
+The existing `storage` resource payload can now include optional `gold`, just like
+`guild_storage`. The resource frame/revision/session rules are unchanged. Character
+HTTP/live/group views add `storage_gold`, `storage_gold_observed_at`, and
+`storage_gold_availability` (`observed` or `stale`) from saved resource evidence.
+Disconnected/session-mismatched banks remain last-known. Browser live protocol stays 1.
+Migration 29 adds nullable `character_metric_samples.storage_gold`; newly written
+samples use schema version 2. Previous history is not backfilled. Deploy backend
+and migration first, then the plugin. Combined gold calculations are analytics-v2.
+
+Analytics session rows also expose optional exact-string `gold_net` and numeric
+`gold_seconds`, using only paired balances inside the selected window.

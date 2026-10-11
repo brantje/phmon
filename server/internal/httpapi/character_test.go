@@ -43,3 +43,16 @@ func TestDiagnosticTimestampValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestWireBankGoldRequiresValidCarriedBalance(t *testing.T) {
+	zero, negative := int64(0), int64(-1)
+	if !validWireState(characters.State{Gold: &zero, StorageGold: &zero}) {
+		t.Fatal("zero bank rejected")
+	}
+	if validWireState(characters.State{Gold: &zero, StorageGold: &negative}) {
+		t.Fatal("negative bank accepted")
+	}
+	if validWireState(characters.State{StorageGold: &zero}) {
+		t.Fatal("unpaired bank accepted")
+	}
+}

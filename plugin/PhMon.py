@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.32'
+pVersion = '1.9.33'
 pUrl = ''
 
-PROTOCOL_VERSION = 18
+PROTOCOL_VERSION = 19
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -1623,7 +1623,7 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
     for resource_key, api_name in (('storage', 'get_storage'), ('guild_storage', 'get_guild_storage'), ('job_pouch', 'get_job_pouch')):
         available, raw = call(api_name)
         resource = _normalize_container(raw, resource_key) if available else {'availability': 'unavailable', 'reason': 'api_missing'}
-        if resource_key == 'guild_storage' and resource.get('availability') == 'observed':
+        if resource_key in ('storage', 'guild_storage') and resource.get('availability') == 'observed':
             gold = raw.get('gold') if isinstance(raw, dict) else None
             if isinstance(gold, int) and not isinstance(gold, bool) and gold >= 0:
                 resource['gold'] = gold
@@ -6434,6 +6434,24 @@ def _drain_pending_callback_events():
         _pending_callback_overflow = False
 
 
+def _sample_gold_balances(state, timing):
+    """Read both balances in this callback; missing bank evidence breaks rates."""
+    values = []
+    for name in ('get_inventory', 'get_storage'):
+        getter = _optional_phbot_api(name)
+        try:
+            raw = timing.run(name + '_gold', getter) if callable(getter) else None
+        except Exception:
+            raw = None
+        gold = raw.get('gold') if isinstance(raw, dict) else None
+        values.append(gold if isinstance(gold, int) and not isinstance(gold, bool) and 0 <= gold <= 9223372036854775807 else None)
+    carried, bank = values
+    if carried is not None:
+        state['gold'] = carried
+    if carried is not None and bank is not None:
+        state['storage_gold'] = bank
+
+
 def _sample_character(timing=None):
     global _last_character_signature, _last_character_sample_at, _last_resources_sample_at, _character_joined, _death_callback_active, _recent_player_attack
     if not _PHBOT_AVAILABLE or _worker is None or _character_joined is False:
@@ -6483,6 +6501,7 @@ def _sample_character(timing=None):
         if zone:
             state['zone'] = zone
     state['botting'] = _read_botting_state(data, timing=timing)
+    _sample_gold_balances(state, timing)
     try:
         active_profile = timing.run('profile', _get_profile) if callable(_get_profile) else None
     except Exception:

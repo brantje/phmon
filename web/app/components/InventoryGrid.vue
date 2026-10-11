@@ -11,6 +11,7 @@ const props = defineProps<{
   availability?: string
   reason?: string
   gold?: number | null
+  showGold?: boolean
 }>()
 const page = ref(0)
 const pageSize = 32
@@ -82,8 +83,8 @@ const reasonText = computed(() => {
       >
     </div>
     <div v-if="staleContents" class="inventory-stale" role="status">
-      Showing the last confirmed contents from {{ lastObserved }}. phBot
-      currently reports this container as {{ availability || 'unavailable' }}.
+      Showing the last confirmed contents from {{ lastObserved }}. Current
+      observation status: {{ availability || 'unavailable' }}.
     </div>
     <div
       v-if="displayable"
@@ -129,10 +130,10 @@ const reasonText = computed(() => {
       <span>Page {{ page + 1 }} of {{ pageCount }}</span>
     </div>
     <div
-      v-if="displayable && gold !== null && gold !== undefined"
+      v-if="showGold || (displayable && gold !== null && gold !== undefined)"
       class="inventory-gold"
     >
-      <span aria-hidden="true">◈</span> Gold {{ gold.toLocaleString() }}
+      <span aria-hidden="true">◈</span> Gold {{ gold?.toLocaleString() ?? '—' }}
     </div>
   </section>
 </template>

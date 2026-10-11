@@ -2498,3 +2498,35 @@ choosing another destination/floor/area, focusing a different character, or
 changing server turns Follow off. Manual pan/zoom stays preserved when Follow is
 off. Follow floor/world remounts pass the last stored zoom into the replacement
 MapCanvas so `setInitialView()` does not reset to 125%.
+
+## Storage gold correction — 2026-10-11
+
+Focused operator request: personal Storage gold and carried + bank totals/rates.
+The existing independently implemented Storage/InventoryGrid layout is reused;
+personal and guild selectors display their own observed currency, including zero
+and unknown states. Stats rows, character Overview and group summaries show carried
++ bank; navigation/Dashboard preserve existing separately deduplicated guild gold.
+Incomplete observations and retained/offline banks have explicit labels. Analytics
+balances and gold net rates now use paired carried + bank observations.
+
+Plugin 1.9.33 / protocol 19, optional storage payload gold, API/live/group bank fields,
+migration 29 and analytics-v2 provide the end-to-end evidence. Public API gold support
+is conditional and real phBot verification remains separate. No new major screen,
+phMonitor client asset, or game mutation was introduced. Local simulator/browser
+validation and screenshots are recorded in the focused engineering resume entry.
+
+Validation: 251 plugin tests, 240 frontend tests, PostgreSQL/race coverage, Go vet,
+frontend lint/typecheck/format/build and the paired-balance simulator passed. Local
+browser checks covered 1440×1000, 1280×800 and 390×844; personal/guild Storage, scope,
+5,000 character/group totals, 7K fleet totals (including 2,000 guild gold), current
+versus last-known labels, analytics and page overflow passed. Local untracked
+screenshots are in `/tmp/phmon-storage-gold-evidence/` and
+`/tmp/phmon-storage-gold-online-evidence/`. Their data is labeled fixture data and
+is not real monitoring evidence. Session net/coverage is also tested against
+transfers and unknown legacy banks.
+
+The Progress browser check exposed a pre-existing subscription guard that rejected
+all analytics `character_ids` batches. Admission now permits analytics to use its
+existing performance-only validation, UUID/duplicate checks and 50-character limit.
+This is necessary for the combined rates/session rows to reach the rendered card;
+other stream and command admission behavior is unchanged.

@@ -138,6 +138,8 @@ type SessionPerformance struct {
 	LastSeen       time.Time  `json:"last_seen"`
 	EndedAt        *time.Time `json:"ended_at,omitempty"`
 	CoveredSeconds float64    `json:"covered_seconds"`
+	GoldNet        *string    `json:"gold_net,omitempty"`
+	GoldSeconds    float64    `json:"gold_seconds"`
 }
 
 type PerformancePeriod struct {

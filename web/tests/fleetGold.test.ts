@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   formatCompactObservedGold,
+  characterGoldTotal,
+  formatCharacterGoldTotal,
+  characterGoldStatus,
   sumObservedFleetGold,
 } from '../app/utils/fleetGold.ts'
 import type {
@@ -65,4 +68,93 @@ test('sumObservedFleetGold returns null when no gold is available in scope', () 
 test('formatCompactObservedGold formats totals with compact notation', () => {
   assert.equal(formatCompactObservedGold(8000), '8K')
   assert.equal(formatCompactObservedGold(null), '—')
+})
+
+test('bank gold contributes once per character while guild gold stays separate', () => {
+  const bankCharacters = characters.map((character) => ({
+    ...character,
+    storage_gold: 4000,
+    storage_gold_availability: 'observed',
+  }))
+  assert.equal(
+    sumObservedFleetGold(
+      bankCharacters,
+      guildGold,
+      (server) => server === 'Greatest',
+    ),
+    16000,
+  )
+  assert.equal(
+    sumObservedFleetGold(bankCharacters, guildGold, () => true),
+    30776,
+  )
+  assert.equal(
+    sumObservedFleetGold(
+      bankCharacters,
+      guildGold,
+      (server) => server === 'Other',
+    ),
+    14776,
+  )
+  assert.equal(characterGoldTotal(bankCharacters[0]!), 5000)
+  assert.equal(
+    characterGoldTotal({ ...characters[0]!, gold: 500, storage_gold: 4500 }),
+    5000,
+  )
+  assert.equal(characterGoldStatus(bankCharacters), '')
+})
+
+test('unknown and stale bank balances are explicit without hiding carried gold', () => {
+  assert.equal(formatCharacterGoldTotal([characters[0]!]), '1,000 · incomplete')
+  assert.equal(
+    characterGoldStatus([
+      {
+        ...characters[0]!,
+        storage_gold: 0,
+        storage_gold_availability: 'observed',
+      },
+    ]),
+    '',
+  )
+  assert.equal(
+    characterGoldStatus([
+      {
+        ...characters[0]!,
+        storage_gold: 4000,
+        storage_gold_availability: 'stale',
+      },
+    ]),
+    'last known bank',
+  )
+  assert.equal(
+    characterGoldStatus([
+      {
+        ...characters[0]!,
+        online: false,
+        storage_gold: 4000,
+        storage_gold_availability: 'observed',
+      },
+    ]),
+    'last known bank',
+  )
+  assert.equal(
+    characterGoldTotal({
+      ...characters[0]!,
+      gold: undefined,
+      storage_gold: undefined,
+    }),
+    null,
+  )
+  assert.equal(
+    characterGoldTotal({ ...characters[0]!, gold: undefined, storage_gold: 0 }),
+    0,
+  )
+  assert.equal(
+    characterGoldTotal({ ...characters[0]!, storage_gold: -5 }),
+    1000,
+  )
+  assert.equal(
+    characterGoldTotal({ ...characters[0]!, storage_gold: NaN }),
+    1000,
+  )
 })

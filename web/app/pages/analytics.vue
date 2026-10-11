@@ -129,7 +129,7 @@ const pageDescription = computed(() => {
     case 'normal_drops':
       return 'Normal world-drop observations from verified phBot callbacks and item profiles.'
     case 'economy':
-      return 'Observed character and guild balances, with stall sales shown only when a verified transaction source exists.'
+      return 'Observed character + bank and guild balances, with stall sales shown only when a verified transaction source exists.'
     default:
       return 'Observed academy membership changes. Graduation and exact member duration need verified source facts.'
   }
@@ -143,7 +143,7 @@ const leftChartTitle = computed(() => {
   if (view.value === 'economy')
     return balanceScope.value === 'guild_storage'
       ? 'Observed guild-storage balances'
-      : 'Observed character balances'
+      : 'Observed character + bank balances'
   return 'Observed membership changes'
 })
 const rightChartTitle = computed(() =>
@@ -588,7 +588,7 @@ function dateInput(value: Date) {
       <label v-if="view === 'economy'">
         Balance scope
         <select v-model="balanceScope">
-          <option value="characters">Characters</option>
+          <option value="characters">Character + bank</option>
           <option value="guild_storage">Guild storage</option>
         </select>
       </label>
@@ -690,9 +690,13 @@ function dateInput(value: Date) {
         <AnalyticsChart
           :title="leftChartTitle"
           :description="
-            view === 'deaths' && groupBy === 'group'
-              ? 'Current group membership can overlap; these bars are not additive.'
-              : 'Recorded occurrences in the selected scope.'
+            view === 'economy'
+              ? balanceScope === 'guild_storage'
+                ? 'Latest observed guild balances; observers are counted once.'
+                : 'Character + bank requires both observed balances; missing bank history is unavailable.'
+              : view === 'deaths' && groupBy === 'group'
+                ? 'Current group membership can overlap; these bars are not additive.'
+                : 'Recorded occurrences in the selected scope.'
           "
           :points="leftPoints"
           variant="category"

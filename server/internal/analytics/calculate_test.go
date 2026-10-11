@@ -24,12 +24,12 @@ func TestCalculateBalanceRateUsesOnlyComparableCoveredIntervals(t *testing.T) {
 	maxXP := int64(1000)
 	botting := true
 	samples := []MetricSample{
-		{SessionID: "one", At: from.Add(-10 * time.Second), Level: &level, CurrentXP: int64Ptr(90), MaxXP: &maxXP, SP: int64Ptr(210), Gold: int64Ptr(900), Botting: &botting},
-		{SessionID: "one", At: from, Level: &level, CurrentXP: int64Ptr(100), MaxXP: &maxXP, SP: int64Ptr(200), Gold: int64Ptr(1000), Botting: &botting},
-		{SessionID: "one", At: from.Add(30 * time.Second), Level: &level, CurrentXP: int64Ptr(130), MaxXP: &maxXP, SP: int64Ptr(190), Gold: int64Ptr(1300), Botting: &botting},
-		{SessionID: "one", At: from.Add(60 * time.Second), Level: &level, CurrentXP: int64Ptr(160), MaxXP: &maxXP, SP: int64Ptr(180), Gold: int64Ptr(1200), Botting: &botting},
+		{SessionID: "one", At: from.Add(-10 * time.Second), Level: &level, CurrentXP: int64Ptr(90), MaxXP: &maxXP, SP: int64Ptr(210), StorageGold: int64Ptr(0), Gold: int64Ptr(900), Botting: &botting},
+		{SessionID: "one", At: from, Level: &level, CurrentXP: int64Ptr(100), MaxXP: &maxXP, SP: int64Ptr(200), StorageGold: int64Ptr(0), Gold: int64Ptr(1000), Botting: &botting},
+		{SessionID: "one", At: from.Add(30 * time.Second), Level: &level, CurrentXP: int64Ptr(130), MaxXP: &maxXP, SP: int64Ptr(190), StorageGold: int64Ptr(0), Gold: int64Ptr(1300), Botting: &botting},
+		{SessionID: "one", At: from.Add(60 * time.Second), Level: &level, CurrentXP: int64Ptr(160), MaxXP: &maxXP, SP: int64Ptr(180), StorageGold: int64Ptr(0), Gold: int64Ptr(1200), Botting: &botting},
 		// A long outage must not be bridged into the rate denominator.
-		{SessionID: "one", At: from.Add(4 * time.Minute), Level: &level, CurrentXP: int64Ptr(900), MaxXP: &maxXP, SP: int64Ptr(300), Gold: int64Ptr(9000), Botting: &botting},
+		{SessionID: "one", At: from.Add(4 * time.Minute), Level: &level, CurrentXP: int64Ptr(900), MaxXP: &maxXP, SP: int64Ptr(300), StorageGold: int64Ptr(0), Gold: int64Ptr(9000), Botting: &botting},
 	}
 	xp := CalculateProgressRates(samples, from, to)["xp"]
 	if xp.Status != "available" || xp.Delta != 60 || xp.EligibleSeconds != 60 || xp.PerHour != 3600 {
@@ -51,11 +51,11 @@ func TestCalculateRatesBreakOnSessionGapLevelOrUnknownValues(t *testing.T) {
 	max := int64(1000)
 	falseValue := false
 	samples := []MetricSample{
-		{SessionID: "old", At: from, Level: &level10, CurrentXP: int64Ptr(900), MaxXP: &max, Gold: int64Ptr(20), Botting: &falseValue},
-		{SessionID: "old", At: from.Add(30 * time.Second), Level: &level11, CurrentXP: int64Ptr(40), MaxXP: &max, Gold: int64Ptr(15), Botting: &falseValue},
-		{SessionID: "old", At: from.Add(time.Minute), Level: &level11, CurrentXP: int64Ptr(80), MaxXP: &max, Gold: int64Ptr(10), Botting: &falseValue},
-		{SessionID: "new", At: from.Add(70 * time.Second), Level: &level11, CurrentXP: nil, MaxXP: &max, Gold: int64Ptr(20), Botting: nil},
-		{SessionID: "new", At: from.Add(2 * time.Minute), Level: &level11, CurrentXP: int64Ptr(50), MaxXP: &max, Gold: int64Ptr(30), Botting: nil},
+		{SessionID: "old", At: from, Level: &level10, CurrentXP: int64Ptr(900), MaxXP: &max, StorageGold: int64Ptr(0), Gold: int64Ptr(20), Botting: &falseValue},
+		{SessionID: "old", At: from.Add(30 * time.Second), Level: &level11, CurrentXP: int64Ptr(40), MaxXP: &max, StorageGold: int64Ptr(0), Gold: int64Ptr(15), Botting: &falseValue},
+		{SessionID: "old", At: from.Add(time.Minute), Level: &level11, CurrentXP: int64Ptr(80), MaxXP: &max, StorageGold: int64Ptr(0), Gold: int64Ptr(10), Botting: &falseValue},
+		{SessionID: "new", At: from.Add(70 * time.Second), Level: &level11, CurrentXP: nil, MaxXP: &max, StorageGold: int64Ptr(0), Gold: int64Ptr(20), Botting: nil},
+		{SessionID: "new", At: from.Add(2 * time.Minute), Level: &level11, CurrentXP: int64Ptr(50), MaxXP: &max, StorageGold: int64Ptr(0), Gold: int64Ptr(30), Botting: nil},
 	}
 	rates := CalculateProgressRates(samples, from, to)
 	if rates["xp"].HasRate || rates["xp"].Status != "insufficient_history" {
@@ -69,8 +69,8 @@ func TestCalculateRatesBreakOnSessionGapLevelOrUnknownValues(t *testing.T) {
 func TestCalculateBalanceRateReportsInsufficientHistoryNotZero(t *testing.T) {
 	from := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	samples := []MetricSample{
-		{SessionID: "same", At: from, Gold: int64Ptr(500)},
-		{SessionID: "same", At: from.Add(30 * time.Second), Gold: int64Ptr(500)},
+		{SessionID: "same", At: from, StorageGold: int64Ptr(0), Gold: int64Ptr(500)},
+		{SessionID: "same", At: from.Add(30 * time.Second), StorageGold: int64Ptr(0), Gold: int64Ptr(500)},
 	}
 	got := CalculateBalanceRate(samples, goldBalance, from, from.Add(time.Minute))
 	if got.HasRate || got.Status != "insufficient_history" || got.Reason != "insufficient_history" || got.PerHour != 0 {
@@ -102,5 +102,45 @@ func TestLocalCalendarDayCountUsesIANADateBoundariesAcrossDST(t *testing.T) {
 				t.Fatalf("local date count = %d, error=%v; want one day", days, err)
 			}
 		})
+	}
+}
+
+func TestCombinedGoldTransfersAndMissingBanks(t *testing.T) {
+	from := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	samples := []MetricSample{
+		{SessionID: "one", At: from, Gold: int64Ptr(1000), StorageGold: int64Ptr(4000)},
+		{SessionID: "one", At: from.Add(30 * time.Second), Gold: int64Ptr(500), StorageGold: int64Ptr(4500)},
+		{SessionID: "one", At: from.Add(60 * time.Second), Gold: int64Ptr(600), StorageGold: int64Ptr(4500)},
+	}
+	rate := CalculateProgressRates(samples, from, from.Add(time.Minute))["gold"]
+	if !rate.HasRate || rate.DeltaExact != "100" || rate.PerHour != 6000 {
+		t.Fatalf("combined rate: %+v", rate)
+	}
+	samples[2].Gold = int64Ptr(500)
+	rate = CalculateProgressRates(samples, from, from.Add(time.Minute))["gold"]
+	if !rate.HasRate || rate.DeltaExact != "0" {
+		t.Fatalf("transfer counted as income: %+v", rate)
+	}
+	samples[1].StorageGold = nil
+	rate = CalculateProgressRates(samples, from, from.Add(time.Minute))["gold"]
+	if rate.HasRate || rate.EligibleSeconds != 0 {
+		t.Fatalf("missing bank bridged: %+v", rate)
+	}
+	samples[0].StorageGold = nil
+	rate = CalculateProgressRates(samples, from, from.Add(time.Minute))["gold"]
+	if rate.HasRate || rate.Delta != 0 {
+		t.Fatalf("initial bank counted: %+v", rate)
+	}
+}
+
+func TestCombinedGoldUsesExactArithmeticBeyondInt64(t *testing.T) {
+	from := time.Date(2026, 10, 11, 0, 0, 0, 0, time.UTC)
+	samples := []MetricSample{}
+	for i := 0; i < 3; i++ {
+		samples = append(samples, MetricSample{SessionID: "one", At: from.Add(time.Duration(i) * 30 * time.Second), Gold: int64Ptr(9223372036854775807), StorageGold: int64Ptr(int64(i) + 9223372036854775800)})
+	}
+	result := CalculateProgressRates(samples, from, from.Add(time.Minute))["gold"]
+	if !result.HasRate || result.DeltaExact != "2" {
+		t.Fatalf("overflow: %+v", result)
 	}
 }

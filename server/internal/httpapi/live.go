@@ -1381,7 +1381,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 	if !validSubscriptionID(subscription.ID) || subscription.Revision == 0 {
 		return liveSubscription{}, false
 	}
-	if subscription.Stream != "controls" && subscription.Filter.CharacterIDs != nil {
+	if subscription.Stream != "controls" && subscription.Stream != "analytics" && subscription.Filter.CharacterIDs != nil {
 		return liveSubscription{}, false
 	}
 	if subscription.Stream != "commands" && subscription.Filter.IdempotencyKeys != nil {

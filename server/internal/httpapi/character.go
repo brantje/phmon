@@ -189,6 +189,9 @@ func (h *characterHandler) removeMember(w http.ResponseWriter, r *http.Request) 
 	h.member(w, r, false)
 }
 func validWireState(s characters.State) bool {
+	if s.StorageGold != nil && s.Gold == nil {
+		return false
+	}
 	if s.Model == nil && s.Level == nil && s.HP == nil && s.HPMax == nil && s.MP == nil && s.MPMax == nil && s.CurrentEXP == nil && s.MaxEXP == nil && s.SP == nil && s.Gold == nil && s.Region == nil && s.Zone == nil && s.X == nil && s.Y == nil && s.Z == nil && s.Botting == nil && s.Dead == nil {
 		return false
 	}
@@ -198,7 +201,7 @@ func validWireState(s characters.State) bool {
 	if s.Level != nil && (*s.Level < 0 || *s.Level > 255) {
 		return false
 	}
-	for _, v := range []*int64{s.HP, s.HPMax, s.MP, s.MPMax, s.CurrentEXP, s.MaxEXP, s.SP, s.Gold} {
+	for _, v := range []*int64{s.HP, s.HPMax, s.MP, s.MPMax, s.CurrentEXP, s.MaxEXP, s.SP, s.Gold, s.StorageGold} {
 		if v != nil && *v < 0 {
 			return false
 		}

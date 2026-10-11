@@ -21,53 +21,57 @@ type Identity struct {
 	Guild *string
 }
 type State struct {
-	Model      *int64   `json:"model"`
-	Level      *int     `json:"level"`
-	HP         *int64   `json:"hp"`
-	HPMax      *int64   `json:"hp_max"`
-	MP         *int64   `json:"mp"`
-	MPMax      *int64   `json:"mp_max"`
-	CurrentEXP *int64   `json:"current_exp"`
-	MaxEXP     *int64   `json:"max_exp"`
-	SP         *int64   `json:"sp"`
-	Gold       *int64   `json:"gold"`
-	Region     *int     `json:"region"`
-	Zone       *string  `json:"zone"`
-	X          *float64 `json:"x"`
-	Y          *float64 `json:"y"`
-	Z          *float64 `json:"z"`
-	Botting    *bool    `json:"botting"`
-	Dead       *bool    `json:"dead"`
+	Model       *int64   `json:"model"`
+	Level       *int     `json:"level"`
+	HP          *int64   `json:"hp"`
+	HPMax       *int64   `json:"hp_max"`
+	MP          *int64   `json:"mp"`
+	MPMax       *int64   `json:"mp_max"`
+	CurrentEXP  *int64   `json:"current_exp"`
+	MaxEXP      *int64   `json:"max_exp"`
+	SP          *int64   `json:"sp"`
+	Gold        *int64   `json:"gold"`
+	StorageGold *int64   `json:"storage_gold"`
+	Region      *int     `json:"region"`
+	Zone        *string  `json:"zone"`
+	X           *float64 `json:"x"`
+	Y           *float64 `json:"y"`
+	Z           *float64 `json:"z"`
+	Botting     *bool    `json:"botting"`
+	Dead        *bool    `json:"dead"`
 }
 type Character struct {
-	ID               string     `json:"character_id"`
-	Server           string     `json:"server"`
-	Name             string     `json:"name"`
-	Guild            *string    `json:"guild,omitempty"`
-	Zone             *string    `json:"zone,omitempty"`
-	Online           bool       `json:"online"`
-	SessionID        *string    `json:"session_id,omitempty"`
-	AgentID          *string    `json:"agent_id,omitempty"`
-	SessionStartedAt *time.Time `json:"session_started_at,omitempty"`
-	LastActivityAt   *time.Time `json:"last_activity_at,omitempty"`
-	StateUpdatedAt   *time.Time `json:"state_updated_at,omitempty"`
-	Level            *int       `json:"level,omitempty"`
-	HP               *int64     `json:"hp,omitempty"`
-	HPMax            *int64     `json:"hp_max,omitempty"`
-	MP               *int64     `json:"mp,omitempty"`
-	MPMax            *int64     `json:"mp_max,omitempty"`
-	CurrentEXP       *int64     `json:"current_exp,omitempty"`
-	MaxEXP           *int64     `json:"max_exp,omitempty"`
-	SP               *int64     `json:"sp,omitempty"`
-	Gold             *int64     `json:"gold,omitempty"`
-	Region           *int       `json:"region,omitempty"`
-	X                *float64   `json:"x,omitempty"`
-	Y                *float64   `json:"y,omitempty"`
-	Z                *float64   `json:"z,omitempty"`
-	Botting          *bool      `json:"botting,omitempty"`
-	Dead             *bool      `json:"dead"`
-	ModelID          *int64     `json:"model_id,omitempty"`
-	PortraitURL      string     `json:"portrait_url,omitempty"`
+	ID                      string     `json:"character_id"`
+	Server                  string     `json:"server"`
+	Name                    string     `json:"name"`
+	Guild                   *string    `json:"guild,omitempty"`
+	Zone                    *string    `json:"zone,omitempty"`
+	Online                  bool       `json:"online"`
+	SessionID               *string    `json:"session_id,omitempty"`
+	AgentID                 *string    `json:"agent_id,omitempty"`
+	SessionStartedAt        *time.Time `json:"session_started_at,omitempty"`
+	LastActivityAt          *time.Time `json:"last_activity_at,omitempty"`
+	StateUpdatedAt          *time.Time `json:"state_updated_at,omitempty"`
+	Level                   *int       `json:"level,omitempty"`
+	HP                      *int64     `json:"hp,omitempty"`
+	HPMax                   *int64     `json:"hp_max,omitempty"`
+	MP                      *int64     `json:"mp,omitempty"`
+	MPMax                   *int64     `json:"mp_max,omitempty"`
+	CurrentEXP              *int64     `json:"current_exp,omitempty"`
+	MaxEXP                  *int64     `json:"max_exp,omitempty"`
+	SP                      *int64     `json:"sp,omitempty"`
+	Gold                    *int64     `json:"gold,omitempty"`
+	StorageGold             *int64     `json:"storage_gold,omitempty"`
+	StorageGoldObservedAt   *time.Time `json:"storage_gold_observed_at,omitempty"`
+	StorageGoldAvailability *string    `json:"storage_gold_availability,omitempty"`
+	Region                  *int       `json:"region,omitempty"`
+	X                       *float64   `json:"x,omitempty"`
+	Y                       *float64   `json:"y,omitempty"`
+	Z                       *float64   `json:"z,omitempty"`
+	Botting                 *bool      `json:"botting,omitempty"`
+	Dead                    *bool      `json:"dead"`
+	ModelID                 *int64     `json:"model_id,omitempty"`
+	PortraitURL             string     `json:"portrait_url,omitempty"`
 }
 type Group struct {
 	ID      string      `json:"group_id"`
@@ -267,7 +271,7 @@ func (s *Store) UpdateSessionWithAnalyticsSample(ctx context.Context, agentID, c
 func analyticsState(state State) analytics.CharacterState {
 	return analytics.CharacterState{
 		Level: state.Level, CurrentXP: state.CurrentEXP, MaxXP: state.MaxEXP,
-		SP: state.SP, Gold: state.Gold, Region: state.Region, Zone: state.Zone,
+		SP: state.SP, Gold: state.Gold, StorageGold: state.StorageGold, Region: state.Region, Zone: state.Zone,
 		Botting: state.Botting, Dead: state.Dead,
 	}
 }
@@ -387,12 +391,19 @@ func (s *Store) ReconcileInactiveSessionsChanged(ctx context.Context, generation
 }
 
 const selectCharacters = `SELECT c.character_id::text,c.server_name,c.character_name,c.guild_name,c.zone_name,
-(cs.session_id IS NOT NULL),cs.session_id::text,cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting,c.dead,c.model_id
-FROM characters c LEFT JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL`
+(cs.session_id IS NOT NULL),cs.session_id::text,cs.agent_id::text,cs.started_at,cs.last_activity_at,c.state_updated_at,c.level,c.hp,c.hp_max,c.mp,c.mp_max,c.current_exp,c.max_exp,c.sp,c.gold,c.region,c.x,c.y,c.z,c.botting,c.dead,c.model_id,
+CASE WHEN jsonb_typeof(bank.payload->'gold')='number' THEN
+  CASE WHEN (bank.payload->>'gold')::numeric BETWEEN 0 AND 9223372036854775807
+    AND trunc((bank.payload->>'gold')::numeric)=(bank.payload->>'gold')::numeric
+    THEN (bank.payload->>'gold')::bigint END END,
+bank.observed_at,
+CASE WHEN bank.observed_at IS NULL THEN NULL WHEN cs.session_id=bank.session_id AND bank.availability='observed' THEN 'observed' ELSE 'stale' END
+FROM characters c LEFT JOIN character_sessions cs ON cs.character_id=c.character_id AND cs.ended_at IS NULL
+LEFT JOIN character_resource_observations bank ON bank.observer_character_id=c.character_id AND bank.resource_key='storage'`
 
 func scanCharacter(row pgx.Row) (Character, error) {
 	var c Character
-	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.SessionID, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting, &c.Dead, &c.ModelID)
+	err := row.Scan(&c.ID, &c.Server, &c.Name, &c.Guild, &c.Zone, &c.Online, &c.SessionID, &c.AgentID, &c.SessionStartedAt, &c.LastActivityAt, &c.StateUpdatedAt, &c.Level, &c.HP, &c.HPMax, &c.MP, &c.MPMax, &c.CurrentEXP, &c.MaxEXP, &c.SP, &c.Gold, &c.Region, &c.X, &c.Y, &c.Z, &c.Botting, &c.Dead, &c.ModelID, &c.StorageGold, &c.StorageGoldObservedAt, &c.StorageGoldAvailability)
 	return c, err
 }
 func (s *Store) List(ctx context.Context, query string, groupID string) ([]Character, error) {

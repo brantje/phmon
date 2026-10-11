@@ -118,7 +118,7 @@ def resource_fixture(plugin):
         },
         "get_storage": {
             "available": True,
-            "value": {"size": 1, "items": [copy.deepcopy(item)]},
+            "value": {"size": 1, "gold": 456789, "items": [copy.deepcopy(item)]},
         },
         "get_guild_storage": {
             "available": True,
@@ -293,6 +293,7 @@ def character_sample_fixture(plugin):
         "_get_character_data": getattr(plugin, "_get_character_data", None),
         "_get_position": getattr(plugin, "_get_position", None),
         "_get_zone_name": getattr(plugin, "_get_zone_name", None),
+        "_optional_phbot_api": getattr(plugin, "_optional_phbot_api", None),
         "_last_character_signature": getattr(plugin, "_last_character_signature", None),
         "_last_character_sample_at": getattr(plugin, "_last_character_sample_at", 0.0),
         "_last_resources_sample_at": getattr(plugin, "_last_resources_sample_at", 0.0),
@@ -319,6 +320,9 @@ def character_sample_fixture(plugin):
             "model": 1907,
             "dead": False,
         }
+        gold_getters = {"get_inventory": lambda: {"gold": 123456}, "get_storage": lambda: {"gold": 456789}}
+        original_optional_api = plugin._optional_phbot_api
+        plugin._optional_phbot_api = lambda name: gold_getters.get(name) or original_optional_api(name)
         plugin._get_position = lambda: {"region": 25000, "x": 12, "y": 34.5, "z": -6}
         plugin._get_zone_name = lambda region: "Contract Zone"
         now = plugin._monotonic()

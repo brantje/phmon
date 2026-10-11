@@ -51,13 +51,13 @@ func queryPerformancePeriods(ctx context.Context, tx pgx.Tx, filter Filter, snap
 	periods := make(map[performancePeriodKey]*PerformancePeriod)
 	locations := make(map[performanceLocationKey]*PerformanceLocation)
 	rows, err := tx.Query(ctx, `WITH ordered AS (
-    SELECT s.character_id::text,s.session_id,s.sampled_at,s.sample_id,s.level,s.current_exp,s.max_exp,s.sp,s.gold,s.region,s.zone_name,
+    SELECT s.character_id::text,s.session_id,s.sampled_at,s.sample_id,s.level,s.current_exp,s.max_exp,s.sp,(s.gold::numeric+s.storage_gold::numeric) AS gold,s.region,s.zone_name,
            lag(s.sampled_at) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_at,
            lag(s.level) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_level,
            lag(s.current_exp) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_exp,
            lag(s.max_exp) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_max_exp,
            lag(s.sp) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_sp,
-           lag(s.gold) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_gold,
+           lag(s.gold::numeric+s.storage_gold::numeric) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_gold,
            lag(s.region) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_region,
            lag(s.zone_name) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_zone
     FROM character_metric_samples s

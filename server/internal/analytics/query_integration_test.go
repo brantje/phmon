@@ -59,10 +59,10 @@ func TestAnalyticsQueriesUseCanonicalEventsAndStableScope(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	level := int(100)
 	xp, maxXP, sp, gold := int64(500), int64(1000), int64(12), int64(5000)
-	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, aria, 1, ariaSession, characters.State{Level: &level, CurrentEXP: &xp, MaxEXP: &maxXP, SP: &sp, Gold: &gold}); err != nil {
+	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, aria, 1, ariaSession, characters.State{Level: &level, CurrentEXP: &xp, MaxEXP: &maxXP, SP: &sp, Gold: &gold, StorageGold: new(int64)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, bard, 1, bardSession, characters.State{Level: &level, CurrentEXP: &xp, MaxEXP: &maxXP, SP: &sp, Gold: &gold}); err != nil {
+	if err := charactersStore.SnapshotSession(ctx, credential.AgentID, bard, 1, bardSession, characters.State{Level: &level, CurrentEXP: &xp, MaxEXP: &maxXP, SP: &sp, Gold: &gold, StorageGold: new(int64)}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -122,8 +122,8 @@ VALUES($1,'shared-guild',$2::uuid,$3::uuid,1,$4,$5)`, strings.ToLower(server), o
 		expValue := int64(100 + index*100)
 		spValue := int64(10 + index*5)
 		goldValue := int64(1000 + []int{0, 10, -10, -20}[index])
-		_, err := pool.Exec(ctx, `INSERT INTO character_metric_samples(character_id,session_id,agent_id,sample_schema_version,server_key,sampled_at,level,current_exp,max_exp,sp,gold,region,zone_name,botting,dead)
-VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,false)`, aria, ariaSession, credential.AgentID, strings.ToLower(server), at, expValue, spValue, goldValue)
+		_, err := pool.Exec(ctx, `INSERT INTO character_metric_samples(character_id,session_id,agent_id,sample_schema_version,server_key,sampled_at,level,current_exp,max_exp,sp,gold,region,zone_name,botting,dead,storage_gold)
+VALUES($1::uuid,$2::uuid,$3::uuid,2,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,false,0)`, aria, ariaSession, credential.AgentID, strings.ToLower(server), at, expValue, spValue, goldValue)
 		if err != nil {
 			t.Fatal(err)
 		}

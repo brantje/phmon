@@ -227,8 +227,8 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 | Area / navigation           | Required behavior and layout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Owning slices                      |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | Shell and instance access   | Reference sidebar/header, server scope, connection/version state, responsive navigation, easy/advanced mode, instance URL copy and mobile QR panel. Persist preferences; scope data consistently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 1, 2, 15                           |
-| Dashboard                   | Fleet online/offline/alive/dead counts, gold total, recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 2, 5, 6, 13, 15                    |
-| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress, current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 2–4, 12                            |
+| Dashboard                   | Fleet online/offline/alive/dead counts, gold total (carried + personal banks + deduplicated guild storage), recent deaths/events/rare drops/chat/trade offers, server-information card and working drill-down links.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 2, 5, 6, 13, 15                    |
+| Stats and character details | Search characters/guild/server/zone, create/edit groups, live stats and progress (gold totals/rates include personal storage), current status, and a dedicated character detail surface. Detail views include inventory/equipment, supported pet classes (Attack/Fellow/Pick/Transport) with applicable state/inventory, party membership/setup and verified actions. Preserve character identity and group membership across restarts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 2–4, 12                            |
 | Events                      | Unified timeline plus level-up/custom/death/rare-drop/normal-drop/unique and item-acquisition/transfer filters; character/item/date filtering, counts, pagination and map links. Keep world drops distinct from owned-item gains; preserve acquisition destination/container and only attach party/pet/pickup provenance when verified. Rare-drop presentation preserves observed rarity/seal/color/detail metadata; normal-drop detail preserves observed blues/attributes where the source exposes them. Persist occurrences with reliable ordering without inventing missing item properties or acquisition causes.                                                                                                                                                                                                                                                 | 4 (death increment only), 5, 7, 13 |
 | Chat                        | General/private/party/guild/union/global tabs; sender character selector, private contacts/new conversation, recipient field, history and jump-to-latest, message composer and results. Add emoji/item references where supported; confirm costly/global sends.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 6, 13, 15                          |
 | Economy                     | Global buy/sell/trade offers and stall views; text/character/item-type/subcategory/degree filters, reset controls, stall transactions/chat and source attribution. Derive history only from observable data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 6, 13                              |
@@ -249,6 +249,57 @@ For each row, record backend/plugin/UI evidence and any capability blocker in
 Advanced phBot/analytics/automation screens and hidden subtabs still require focused
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
+
+### Resume — 2026-10-11 personal-storage gold
+
+Focused operator-requested Slice 4/12 correction in the existing checkout: personal
+Storage gold is displayed, and character + bank now feeds Stats rows/cards/group
+summaries, navigation/Dashboard totals and historical balances/net rates. The
+operator confirmed separate banks and requested rates as well as balances. Fleet
+summaries retain guild storage once per server/guild. Unknown components are
+incomplete; retained/disconnected banks are last-known. Session history also shows
+exact net gold and paired coverage inside the selected window.
+
+Plugin 1.9.33 / protocol 19 collects carried/bank balances in one phBot callback;
+resource normalization now preserves optional personal-storage gold. Go accepts older
+agents, fences paired samples by session/generation, and migration 29 adds nullable
+bank history without backfill. Character HTTP/live/group views expose saved bank
+values with observation freshness. Analytics-v2 uses exact combined amounts and
+requires both components at both endpoints; opening storage, missing observations
+and transfers do not manufacture a gain. Getters are not an atomic game transaction:
+a transfer between reads can temporarily produce an intermediate balance.
+
+Files: `plugin/{PhMon.py,test_phmon.py,README.md}`; character/HTTP/analytics code,
+regression tests and migration 29; bounded analytics batch admission; shared web types, fleet gold helpers and
+Stats/Storage/analytics components; protocol/capability/calculation/parity docs;
+protocol fixture, analytics simulator and `scripts/storage_gold_smoke.py`.
+Validation: 251 plugin tests (including five protocol-contract tests), 240 web unit
+tests, PostgreSQL integration/race tests and Go vet/build, frontend typecheck,
+format/lint/build, protocol-version guard and whitespace checks passed. ESLint has
+87 existing style warnings and zero errors. The isolated real-plugin-callback
+simulator passed carried/bank persistence, a 5,000 combined balance and zero net
+rate after 1,000+4,000 became 500+4,500. Browser checks passed at 1440×1000,
+1280×800 and 390×844 for personal/guild Storage, fleet/Dashboard/Stats/group totals,
+analytics labels and page overflow, with both current and retained bank observations.
+Browser validation also found an existing controls-only shared guard rejecting the
+analytics character batches used by every Progress card. The guard now allows
+analytics batches under its existing performance-only, UUID, duplicate and 50-target
+validation. A focused regression covers accepted and rejected cases. Final browser
+checks also passed the Progress session net/coverage display at all three viewports.
+The full `scripts/check.sh` passed with Node 24, isolated PostgreSQL and a fixture
+operator secret; Compose configuration also passed. Disposable test services were
+removed after validation.
+
+Local untracked screenshots: `/tmp/phmon-storage-gold-evidence/` (including Storage,
+Dashboard, Analytics and Progress at each viewport) and
+`/tmp/phmon-storage-gold-online-evidence/`. Production containers were not updated;
+all fixture observations remained in a separate PostgreSQL/container/API/web stack.
+Blocker: official phBot documentation does not guarantee `get_storage().gold`, and
+no target Windows/phBot runtime was available to confirm it. Exact next action:
+roll out the compatible backend/migration before plugin 1.9.33, then record a
+naturally observed personal-storage gold value and phBot version and compare the
+UI, without issuing a bank transfer or other game command. Do not claim real-runtime
+validation or whole-roadmap parity from these simulator results.
 
 ### Resume — 2026-10-10 player registry and level snapshots
 

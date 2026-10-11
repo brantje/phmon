@@ -23,6 +23,9 @@ export interface CharacterView {
   max_exp?: number
   sp?: number
   gold?: number
+  storage_gold?: number
+  storage_gold_observed_at?: string
+  storage_gold_availability?: string
   region?: number
   x?: number
   y?: number
@@ -617,6 +620,8 @@ export interface CharacterPerformance {
     last_seen: string
     ended_at?: string
     covered_seconds: number
+    gold_net?: string
+    gold_seconds?: number
   }>
 }
 
