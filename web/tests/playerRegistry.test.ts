@@ -6,6 +6,8 @@ import {
   jobLabel,
   jobbingLabel,
   registryPlayerName,
+  registryJobAlias,
+  identityStatusLabel,
   safePlayersReturn,
   type LevelSnapshot,
 } from '../app/utils/playerRegistry.ts'
@@ -33,7 +35,7 @@ test('player and job names stay independent', () => {
       player_name: null,
       job_name: null,
     }),
-    'UnknownWarrior',
+    '',
   )
 })
 
@@ -87,3 +89,39 @@ function snapshot(level: number, at: string): LevelSnapshot {
     source: 'map.players',
   }
 }
+
+test('known jobbing state classifies names without guessing unknown identities', () => {
+  assert.equal(
+    registryPlayerName({ observed_name: 'Normal', is_jobbing: false }),
+    'Normal',
+  )
+  assert.equal(
+    registryJobAlias({ observed_name: 'Alias', is_jobbing: true }),
+    'Alias',
+  )
+  assert.equal(
+    registryPlayerName({ observed_name: 'Alias', is_jobbing: true }),
+    '',
+  )
+  assert.equal(registryJobAlias({ observed_name: 'Unclassified' }), '')
+})
+
+test('linked names resolve consistently while inferred attribution stays visible', () => {
+  const player = {
+    observed_name: 'xDont',
+    display_identity: {
+      canonical_id: 'magik-id',
+      player_name: 'Magik',
+      job_alias: 'xDont',
+      aliases: ['xDont'],
+      related_record_ids: ['magik-id', 'alias-id'],
+      source: 'ph-proxy',
+      status: 'inferred' as const,
+      first_seen_at: '2026-10-12T00:00:00Z',
+      last_seen_at: '2026-10-12T01:00:00Z',
+    },
+  }
+  assert.equal(registryPlayerName(player), 'Magik')
+  assert.equal(registryJobAlias(player), 'xDont')
+  assert.equal(identityStatusLabel(player), 'Inferred · ph-proxy')
+})

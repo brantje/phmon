@@ -66,65 +66,47 @@ func validateEvidenceV2(field string, ev FieldEvidence, playerName string) error
 	if ev.Profile != ProfileName || ev.ObservedAt.IsZero() {
 		return ErrInvalid
 	}
+	directOnly := field == "name" || field == "level" || field == "identity_links"
+	if ev.SourceIdentityKind == IdentityKindCharacterName {
+		if !validPlayerNameV2(ev.SourceName) || !namesEqual(ev.SourceName, playerName) || ev.Association != nil {
+			return ErrInvalid
+		}
+	} else if ev.SourceIdentityKind == IdentityKindJobAlias && !directOnly {
+		a := ev.Association
+		if a == nil || !validPlayerNameV2(ev.SourceName) || !validPlayerNameV2(a.Alias) ||
+			!namesEqual(a.Alias, ev.SourceName) || a.Status != IdentityLinkStatusInferred ||
+			a.Reason != IdentityLinkReasonJobTransition || a.ObservedAt.IsZero() {
+			return ErrInvalid
+		}
+	} else {
+		return ErrInvalid
+	}
 	switch field {
 	case "name":
-		if ev.Reason != EvidenceReasonVerified {
-			return ErrInvalid
-		}
-		if !isSpawnOpcode(ev.SourceOpcode) && !isMetadataOpcode(ev.SourceOpcode) {
-			return ErrInvalid
-		}
-		if ev.SourceIdentityKind != IdentityKindCharacterName || !namesEqual(ev.SourceName, playerName) {
+		if ev.Reason != EvidenceReasonVerified || (!isSpawnOpcode(ev.SourceOpcode) && !isMetadataOpcode(ev.SourceOpcode)) {
 			return ErrInvalid
 		}
 	case "model_ref_id":
-		if ev.Reason != EvidenceReasonVerified && ev.Reason != EvidenceReasonUnverifiedReference {
-			return ErrInvalid
-		}
-		if !isSpawnOpcode(ev.SourceOpcode) && !isMetadataOpcode(ev.SourceOpcode) {
-			return ErrInvalid
-		}
-		if ev.SourceIdentityKind != IdentityKindCharacterName || !namesEqual(ev.SourceName, playerName) {
+		if (ev.Reason != EvidenceReasonVerified && ev.Reason != EvidenceReasonUnverifiedReference) || (!isSpawnOpcode(ev.SourceOpcode) && !isMetadataOpcode(ev.SourceOpcode)) {
 			return ErrInvalid
 		}
 	case "gear":
 		if ev.Reason != EvidenceReasonVerified || !isSpawnOpcode(ev.SourceOpcode) {
 			return ErrInvalid
 		}
-		if ev.SourceIdentityKind != IdentityKindCharacterName || !namesEqual(ev.SourceName, playerName) {
-			return ErrInvalid
-		}
 	case "level":
-		if ev.Reason != EvidenceReasonVerified && ev.Reason != EvidenceReasonUnverifiedReference {
-			return ErrInvalid
-		}
-		if !isMetadataOpcode(ev.SourceOpcode) {
-			return ErrInvalid
-		}
-		if ev.SourceIdentityKind != IdentityKindCharacterName || !namesEqual(ev.SourceName, playerName) {
+		if (ev.Reason != EvidenceReasonVerified && ev.Reason != EvidenceReasonUnverifiedReference) || !isMetadataOpcode(ev.SourceOpcode) {
 			return ErrInvalid
 		}
 	case "avatar_gear", "job", "job_level", "race", "guild", "position", "job_item_ids":
-		if ev.Reason != EvidenceReasonVerified && ev.Reason != EvidenceReasonUnverifiedReference {
-			return ErrInvalid
-		}
-		if !isSpawnOpcode(ev.SourceOpcode) {
-			return ErrInvalid
-		}
-		if ev.SourceIdentityKind != IdentityKindCharacterName || !namesEqual(ev.SourceName, playerName) {
+		if (ev.Reason != EvidenceReasonVerified && ev.Reason != EvidenceReasonUnverifiedReference) || !isSpawnOpcode(ev.SourceOpcode) {
 			return ErrInvalid
 		}
 	case "identity_links":
 		if ev.Reason != EvidenceReasonInferredJobTransition || !isSpawnOpcode(ev.SourceOpcode) {
 			return ErrInvalid
 		}
-		if ev.SourceIdentityKind != IdentityKindCharacterName || !namesEqual(ev.SourceName, playerName) {
-			return ErrInvalid
-		}
 	default:
-		return ErrInvalid
-	}
-	if ev.Association != nil {
 		return ErrInvalid
 	}
 	return nil
@@ -146,14 +128,16 @@ func parseFieldEvidenceV2(raw map[string]json.RawMessage, playerName string) (ma
 	out := make(map[string]FieldEvidence, len(raw))
 	for key, value := range raw {
 		if !allowed[key] {
-			return nil, ErrInvalid
+			return nil, validationError("unsupported_field", "field_evidence", -1)
 		}
 		var ev FieldEvidence
-		if err := json.Unmarshal(value, &ev); err != nil {
-			return nil, ErrInvalid
+		decoder := json.NewDecoder(strings.NewReader(string(value)))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&ev); err != nil {
+			return nil, validationError("invalid_field_evidence", key, -1)
 		}
 		if err := validateEvidenceV2(key, ev, playerName); err != nil {
-			return nil, err
+			return nil, validationError("invalid_field_evidence", key, -1)
 		}
 		out[key] = ev
 	}
@@ -198,7 +182,7 @@ func validateGearEntries(entries []GearEntry) error {
 		return ErrInvalid
 	}
 	for _, g := range entries {
-		if !validRefID(g.RefItemID) || !validOptOrSlot(g.OptLevel) || !validOptOrSlot(g.Slot) {
+		if !validRefIDV2(g.RefItemID) || !validOptOrSlot(g.OptLevel) || !validOptOrSlot(g.Slot) {
 			return ErrInvalid
 		}
 	}
@@ -210,7 +194,7 @@ func validateJobItemIDs(ids []int) error {
 		return ErrInvalid
 	}
 	for _, id := range ids {
-		if !validRefID(id) {
+		if !validRefIDV2(id) {
 			return ErrInvalid
 		}
 	}
@@ -277,7 +261,7 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 	}
 	seen := make(map[string]struct{}, len(wire.Players))
 	players := make([]validatedPlayer, 0, len(wire.Players))
-	for _, p := range wire.Players {
+	for index, p := range wire.Players {
 		if p.IdentityKind != IdentityKindCharacterName {
 			return validatedRequest{}, ErrInvalid
 		}
@@ -293,7 +277,7 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		seen[key] = struct{}{}
 		evidence, err := parseFieldEvidenceV2(p.FieldEvidence, p.Name)
 		if err != nil {
-			return validatedRequest{}, err
+			return validatedRequest{}, withPlayerIndex(err, index)
 		}
 		if _, ok := evidence["name"]; !ok {
 			return validatedRequest{}, ErrInvalid
@@ -305,21 +289,21 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 			Evidence:  evidence,
 		}
 		if p.ModelRefID != nil {
-			if !validRefID(*p.ModelRefID) {
-				return validatedRequest{}, ErrInvalid
+			if !validRefIDV2(*p.ModelRefID) {
+				return validatedRequest{}, validationError("invalid_field", "model_ref_id", index)
 			}
 			if _, ok := evidence["model_ref_id"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "model_ref_id", index)
 			}
 			vp.ModelRefID = p.ModelRefID
 			vp.HasModel = true
 		}
 		if p.Gear != nil {
 			if _, ok := evidence["gear"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "gear", index)
 			}
 			if err := validateGearEntries(*p.Gear); err != nil {
-				return validatedRequest{}, err
+				return validatedRequest{}, validationError("invalid_field", "gear", index)
 			}
 			vp.Gear = *p.Gear
 			vp.HasGear = true
@@ -327,10 +311,10 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		}
 		if p.AvatarGear != nil {
 			if _, ok := evidence["avatar_gear"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "avatar_gear", index)
 			}
 			if err := validateGearEntries(*p.AvatarGear); err != nil {
-				return validatedRequest{}, err
+				return validatedRequest{}, validationError("invalid_field", "avatar_gear", index)
 			}
 			vp.AvatarGear = *p.AvatarGear
 			vp.HasAvatarGear = true
@@ -338,40 +322,40 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		}
 		if p.Level != nil {
 			if !validLevel(*p.Level) {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "level", index)
 			}
 			if _, ok := evidence["level"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "level", index)
 			}
 			vp.Level = p.Level
 			vp.HasLevel = true
 		}
 		if p.Job != nil {
 			if !validJobCode(*p.Job) {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "job", index)
 			}
 			if _, ok := evidence["job"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "job", index)
 			}
 			vp.Job = p.Job
 			vp.HasJob = true
 		}
 		if p.JobLevel != nil {
 			if !validJobCode(*p.JobLevel) {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "job_level", index)
 			}
 			if _, ok := evidence["job_level"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "job_level", index)
 			}
 			vp.JobLevel = p.JobLevel
 			vp.HasJobLevel = true
 		}
 		if p.Race != nil {
 			if !validRace(*p.Race) {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "race", index)
 			}
 			if _, ok := evidence["race"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "race", index)
 			}
 			race := strings.TrimSpace(*p.Race)
 			vp.Race = &race
@@ -379,10 +363,10 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		}
 		if p.Guild != nil {
 			if !validGuild(*p.Guild) {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "guild", index)
 			}
 			if _, ok := evidence["guild"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "guild", index)
 			}
 			guild := *p.Guild
 			vp.Guild = &guild
@@ -390,20 +374,20 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		}
 		if p.Position != nil {
 			if !validPosition(p.Position) {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "position", index)
 			}
 			if _, ok := evidence["position"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "position", index)
 			}
 			vp.Position = p.Position
 			vp.HasPosition = true
 		}
 		if p.JobItemIDs != nil {
 			if _, ok := evidence["job_item_ids"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "job_item_ids", index)
 			}
 			if err := validateJobItemIDs(*p.JobItemIDs); err != nil {
-				return validatedRequest{}, err
+				return validatedRequest{}, validationError("invalid_field", "job_item_ids", index)
 			}
 			vp.JobItemIDs = *p.JobItemIDs
 			vp.HasJobItemIDs = true
@@ -411,14 +395,44 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		}
 		if p.IdentityLinks != nil {
 			if _, ok := evidence["identity_links"]; !ok {
-				return validatedRequest{}, ErrInvalid
+				return validatedRequest{}, validationError("invalid_field", "identity_links", index)
 			}
 			if err := validateIdentityLinks(*p.IdentityLinks); err != nil {
-				return validatedRequest{}, err
+				return validatedRequest{}, validationError("invalid_field", "identity_links", index)
 			}
 			vp.IdentityLinks = *p.IdentityLinks
 			vp.HasIdentityLinks = true
 			vp.IdentityLinksEmpty = len(*p.IdentityLinks) == 0
+		}
+		for field := range evidence {
+			present := field == "name"
+			switch field {
+			case "model_ref_id":
+				present = p.ModelRefID != nil
+			case "gear":
+				present = p.Gear != nil
+			case "avatar_gear":
+				present = p.AvatarGear != nil
+			case "level":
+				present = p.Level != nil
+			case "job":
+				present = p.Job != nil
+			case "job_level":
+				present = p.JobLevel != nil
+			case "race":
+				present = p.Race != nil
+			case "guild":
+				present = p.Guild != nil
+			case "position":
+				present = p.Position != nil
+			case "job_item_ids":
+				present = p.JobItemIDs != nil
+			case "identity_links":
+				present = p.IdentityLinks != nil
+			}
+			if !present {
+				return validatedRequest{}, validationError("evidence_without_value", field, index)
+			}
 		}
 		players = append(players, vp)
 	}
@@ -457,3 +471,5 @@ func validateSubmitV2(body []byte, authenticatedAgentID string) (validatedReques
 		CanonicalJSON:  canonical,
 	}, nil
 }
+
+func validRefIDV2(id int) bool { return id >= 1 && uint64(id) <= 4294967295 }

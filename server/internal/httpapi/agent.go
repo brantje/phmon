@@ -1022,27 +1022,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, message.CharacterID, message.SessionID) {
 						return
 					}
-				}
-				continue
-			}
-			if h.mobLive != nil && message.SessionID != "" {
-				h.mobLive.RemoveSession(message.SessionID)
-			}
-			if h.npcLive != nil && message.SessionID != "" {
-				h.npcLive.RemoveSession(message.SessionID)
-			}
-			if h.playerLive != nil && message.SessionID != "" {
-				h.playerLive.RemoveSession(message.SessionID)
-			}
-			if h.navigation != nil && message.SessionID != "" {
-				h.navigation.RemoveSession(message.SessionID)
-			}
-			if h.positions != nil && message.SessionID != "" {
-				for _, removal := range h.positions.RemoveSession(message.SessionID) {
-					h.live.PublishPositionRemoval(removal)
+					continue
 				}
 			}
-			h.live.Invalidate()
+			// A timed-out leave still means this socket stopped observing the
+			// session. Drop its in-memory markers even when the durable write
+			// did not commit; an unowned session stays untouched.
+			h.releaseLiveCharacterSession(message.SessionID)
 		case "resource.snapshot", "resource.delta":
 			if hello.ProtocolVersion < 4 || h.resources == nil || h.characters == nil ||
 				!agentdomain.ValidAgentID(message.CharacterID) || !agentdomain.ValidAgentID(message.SessionID) ||
@@ -1189,6 +1175,32 @@ func validCommandFrame(message agentMessage) bool {
 func rejectAgentFrame(conn *websocket.Conn, status websocket.StatusCode, reason, agentID string, protocol int) {
 	slog.Warn("agent frame rejected", "agent_id", agentID, "protocol", protocol, "close_status", status, "reason", reason)
 	_ = conn.Close(status, reason)
+}
+
+func (h *agentHandler) releaseLiveCharacterSession(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	if h.mobLive != nil {
+		h.mobLive.RemoveSession(sessionID)
+	}
+	if h.npcLive != nil {
+		h.npcLive.RemoveSession(sessionID)
+	}
+	if h.playerLive != nil {
+		h.playerLive.RemoveSession(sessionID)
+	}
+	if h.navigation != nil {
+		h.navigation.RemoveSession(sessionID)
+	}
+	if h.positions != nil && h.live != nil {
+		for _, removal := range h.positions.RemoveSession(sessionID) {
+			h.live.PublishPositionRemoval(removal)
+		}
+	}
+	if h.live != nil {
+		h.live.Invalidate()
+	}
 }
 
 func dropUnavailableCharacterLookup(err error, agentID string, protocol int, reason string) bool {

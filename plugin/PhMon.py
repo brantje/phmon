@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.35'
+pVersion = '1.9.36'
 pUrl = ''
 
 PROTOCOL_VERSION = 19
@@ -4263,7 +4263,9 @@ class AgentWorker(object):
             self._thread.join(timeout)
 
     def stop(self):
-        self._flush_pending_pet_events()
+        # A held pet lifecycle event is still a real occurrence. Releasing it
+        # here keeps worker shutdown from dropping it inside the hold window.
+        self._reset_pet_transition(release_pending=True)
         self.stop_event.set()
         self._cancel_navigation_generation('plugin_stopped')
         with self._socket_lock:

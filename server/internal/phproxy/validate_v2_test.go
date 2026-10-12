@@ -19,6 +19,18 @@ func TestValidateSubmitV2AcceptsExtendedFixture(t *testing.T) {
 	}
 }
 
+func TestValidateSubmitV2PlayerNameMatchesPendingByteLimit(t *testing.T) {
+	agentID := "22222222-2222-4222-8222-222222222222"
+	accepted := strings.ReplaceAll(validV2FixtureBody(), "FixturePlayer", strings.Repeat("A", MaxPlayerNameBytesV2))
+	if _, err := ValidateSubmitBody([]byte(accepted), agentID); err != nil {
+		t.Fatal(err)
+	}
+	rejected := strings.ReplaceAll(validV2FixtureBody(), "FixturePlayer", strings.Repeat("A", MaxPlayerNameBytesV2+1))
+	if _, err := ValidateSubmitBody([]byte(rejected), agentID); err == nil {
+		t.Fatal("expected a player name above 128 bytes to be rejected")
+	}
+}
+
 func TestValidateSubmitV2RejectsAliasEvidenceOnDirectLevel(t *testing.T) {
 	body := strings.Replace(
 		validV2FixtureBody(),

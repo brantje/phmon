@@ -15,8 +15,25 @@ func (s *Store) PromoteEnrichment(ctx context.Context, server, observedName stri
 	}
 	sk := serverKey(server)
 	nk := nameKey(observedName)
-	var playerID string
+	if sk == "" || nk == "" {
+		return
+	}
+	var pending bool
 	err := s.pool.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM player_enrichment_pending
+			WHERE server_key=$1 AND name_key=$2 AND expires_at >= $3)`,
+		sk, nk, s.now(),
+	).Scan(&pending)
+	if err != nil {
+		slog.Warn("ph-proxy enrichment pending check failed", "reason", err.Error())
+		return
+	}
+	if !pending {
+		return
+	}
+	var playerID string
+	err = s.pool.QueryRow(ctx,
 		`SELECT id::text FROM players WHERE server_key=$1 AND observed_name_key=$2`,
 		sk, nk,
 	).Scan(&playerID)

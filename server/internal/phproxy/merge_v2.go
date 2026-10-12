@@ -1,7 +1,6 @@
 package phproxy
 
 import (
-	"fmt"
 	"reflect"
 	"time"
 )
@@ -53,7 +52,7 @@ func mergeAvatarGear(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if gearEqual(current.Extended.AvatarGear, vp.AvatarGear) {
+		if gearEqual(current.Extended.AvatarGear, vp.AvatarGear) && evidenceEqual(current.FieldEvidence["avatar_gear"], vp.Evidence["avatar_gear"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -85,7 +84,7 @@ func mergeLevel(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if intPtrEqual(current.Extended.Level, vp.Level) {
+		if intPtrEqual(current.Extended.Level, vp.Level) && evidenceEqual(current.FieldEvidence["level"], vp.Evidence["level"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -117,7 +116,7 @@ func mergeJob(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if intPtrEqual(current.Extended.Job, vp.Job) {
+		if intPtrEqual(current.Extended.Job, vp.Job) && evidenceEqual(current.FieldEvidence["job"], vp.Evidence["job"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -149,7 +148,7 @@ func mergeJobLevel(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if intPtrEqual(current.Extended.JobLevel, vp.JobLevel) {
+		if intPtrEqual(current.Extended.JobLevel, vp.JobLevel) && evidenceEqual(current.FieldEvidence["job_level"], vp.Evidence["job_level"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -196,7 +195,7 @@ func mergeStringField(
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if *current != nil && **current == *incoming {
+		if *current != nil && **current == *incoming && evidenceEqual(st.FieldEvidence[key], ev) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -228,7 +227,7 @@ func mergePosition(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if reflect.DeepEqual(current.Extended.Position, vp.Position) {
+		if reflect.DeepEqual(current.Extended.Position, vp.Position) && evidenceEqual(current.FieldEvidence["position"], vp.Evidence["position"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -260,7 +259,7 @@ func mergeJobItemIDs(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if reflect.DeepEqual(current.Extended.JobItemIDs, vp.JobItemIDs) {
+		if (len(current.Extended.JobItemIDs) == 0 && len(vp.JobItemIDs) == 0 || reflect.DeepEqual(current.Extended.JobItemIDs, vp.JobItemIDs)) && evidenceEqual(current.FieldEvidence["job_item_ids"], vp.Evidence["job_item_ids"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -292,7 +291,7 @@ func mergeIdentityLinks(current *storedFields, vp validatedPlayer) mergeOutcome 
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if reflect.DeepEqual(current.Extended.IdentityLinks, vp.IdentityLinks) {
+		if (len(current.Extended.IdentityLinks) == 0 && len(vp.IdentityLinks) == 0 || reflect.DeepEqual(current.Extended.IdentityLinks, vp.IdentityLinks)) && evidenceEqual(current.FieldEvidence["identity_links"], vp.Evidence["identity_links"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -308,9 +307,8 @@ func syncProxyFallbacks(st *storedFields) {
 	if st.Extended.Level != nil && isCharacterNameEvidence(st.FieldEvidence["level"]) {
 		st.ProxyLevel = st.Extended.Level
 	}
-	if st.Extended.Job != nil && isCharacterNameEvidence(st.FieldEvidence["job"]) {
-		st.ProxyJob = intPtrString(st.Extended.Job)
-	}
+	// Extended.Job is a numeric affiliation code. List filters compare proxy_job
+	// with native names such as trader or hunter, so the code stays off that column.
 	if st.Extended.JobLevel != nil && isCharacterNameEvidence(st.FieldEvidence["job_level"]) {
 		st.ProxyJobLevel = st.Extended.JobLevel
 	}
@@ -324,12 +322,4 @@ func syncProxyFallbacks(st *storedFields) {
 
 func isCharacterNameEvidence(ev FieldEvidence) bool {
 	return ev.SourceIdentityKind == IdentityKindCharacterName || ev.SourceIdentityKind == ""
-}
-
-func intPtrString(v *int) *string {
-	if v == nil {
-		return nil
-	}
-	s := fmt.Sprintf("%d", *v)
-	return &s
 }

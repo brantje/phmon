@@ -9,6 +9,9 @@ import {
   formatPlayerLocation,
   jobLabel,
   jobbingLabel,
+  registryPlayerName,
+  registryJobAlias,
+  identityStatusLabel,
   safePlayersReturn,
   textOrUnknown,
 } from '~/utils/playerRegistry'
@@ -123,9 +126,13 @@ watch(
 <template>
   <section class="player-page">
     <PageHeader
-      :title="player?.observed_name || 'Player'"
+      :title="
+        (player && registryPlayerName(player)) ||
+        player?.observed_name ||
+        'Player'
+      "
       icon="i-lucide-users"
-      description="Observed name, job information, and sampled level history. Different names stay separate."
+      description="Player identity, job aliases, and sampled level history. Original sightings are retained."
     />
     <NuxtLink class="player-back" :to="backTo">Back to Players</NuxtLink>
     <p v-if="loading" class="player-note">Loading player…</p>
@@ -135,6 +142,32 @@ watch(
     <template v-else>
       <section class="player-card">
         <h2>Character Information</h2>
+        <p v-if="identityStatusLabel(player)" class="player-enrichment-note">
+          {{ identityStatusLabel(player) }}
+        </p>
+        <p
+          v-if="player.display_identity?.aliases.length"
+          class="player-enrichment-note"
+        >
+          Job aliases: {{ player.display_identity.aliases.join(', ') }}
+        </p>
+        <p
+          v-if="(player.display_identity?.related_record_ids.length ?? 0) > 1"
+          class="player-enrichment-note"
+        >
+          Original sighting records:
+          <NuxtLink
+            v-for="recordID in player.display_identity?.related_record_ids"
+            :key="recordID"
+            :to="{ path: `/players/${recordID}`, query: { back: backTo } }"
+            class="player-related-record"
+            >{{
+              recordID === player.display_identity?.canonical_id
+                ? 'Player name'
+                : 'Job alias'
+            }}{{ recordID === player.id ? ' (current)' : '' }}</NuxtLink
+          >
+        </p>
         <dl class="player-facts">
           <div>
             <dt>Observed Name</dt>
@@ -142,11 +175,11 @@ watch(
           </div>
           <div>
             <dt>Player Name</dt>
-            <dd>{{ textOrUnknown(player.player_name) }}</dd>
+            <dd>{{ textOrUnknown(registryPlayerName(player)) }}</dd>
           </div>
           <div>
-            <dt>Job Name</dt>
-            <dd>{{ textOrUnknown(player.job_name) }}</dd>
+            <dt>Job alias</dt>
+            <dd>{{ textOrUnknown(registryJobAlias(player)) }}</dd>
           </div>
           <div>
             <dt>Server</dt>
@@ -182,11 +215,24 @@ watch(
           </div>
           <div>
             <dt>First Seen</dt>
-            <dd>{{ formatPlayerTime(player.first_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.first_seen_at ??
+                    player.first_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Last Seen</dt>
-            <dd>{{ formatPlayerTime(player.last_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.last_seen_at ?? player.last_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Last Known Location</dt>
@@ -274,6 +320,32 @@ watch(
         <p v-else class="player-note">No visible items were observed.</p>
       </section>
 
+      <section v-if="enrichment?.field_evidence" class="player-card">
+        <h2>Enrichment sources</h2>
+        <dl class="player-facts">
+          <div
+            v-for="(evidence, field) in enrichment.field_evidence"
+            :key="field"
+          >
+            <dt>{{ field }}</dt>
+            <dd>
+              {{ evidence.reason }} ·
+              {{ evidence.source_identity_kind || 'character_name' }}
+              <span v-if="evidence.source_name">{{
+                evidence.source_name
+              }}</span>
+              · {{ formatPlayerTime(evidence.observed_at) }} · opcode
+              {{ evidence.source_opcode }}
+              <span v-if="evidence.association">
+                · inferred association with {{ evidence.association.alias }} ({{
+                  evidence.association.reason
+                }}, {{ formatPlayerTime(evidence.association.observed_at) }})
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </section>
+
       <section class="player-card">
         <h2>Level Progression</h2>
         <dl v-if="levels?.progress" class="player-facts">
@@ -295,11 +367,24 @@ watch(
           </div>
           <div>
             <dt>First Seen</dt>
-            <dd>{{ formatPlayerTime(player.first_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.first_seen_at ??
+                    player.first_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Last Seen</dt>
-            <dd>{{ formatPlayerTime(player.last_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.last_seen_at ?? player.last_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Latest Observed Level Change</dt>

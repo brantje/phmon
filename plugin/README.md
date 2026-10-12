@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.35**, using agent protocol **19**. It
+The current local plugin release is **1.9.36**, using agent protocol **19**. It
 accepts a display-only route from another plugin in the same phBot process through
 `submit_external_route` and publishes `navigation.observed`. PhMon does not start
 or stop that route. Walks stay visible when a trade script also contains blank
@@ -26,8 +26,8 @@ inventory snapshots continue updating normally. These classifications add no fie
 protocol. The historical capability summary below starts at plugin 1.9.12 and
 protocol 13.
 
-Version 1.9.35 holds pet summon, dismissal, and transport-death events for five
-seconds. A pending vSRO `0x34B5` teleport-ready signal extends that hold through its
+Version 1.9.36 holds pet summon, dismissal, and transport-death events for five
+seconds and releases any events still in that hold when the worker stops. A pending vSRO `0x34B5` teleport-ready signal extends that hold through its
 ten-second confirmation window so callbacks immediately preceding phBot's confirmed
 `teleported()` callback can be discarded as teleport teardown. The signal fences
 resource samples; after teleport, the pet roster must match the

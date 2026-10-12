@@ -56,12 +56,22 @@ func (h *playerHandler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	detail := playerDetailResponse{PlayerRecord: player}
+	// Alias detail URLs retain their native history, while equipment comes from
+	// the displayed normal-name anchor and keeps its original field evidence.
+	enrichmentID, enrichmentName := player.ID, player.ObservedName
+	if identity := player.DisplayIdentity; identity != nil && identity.CanonicalID != player.ID && identity.PlayerName != nil {
+		enrichmentID, enrichmentName = identity.CanonicalID, *identity.PlayerName
+	}
 	if h.enrichment != nil {
 		sk := strings.ToLower(strings.TrimSpace(player.Server))
-		nk := strings.ToLower(strings.TrimSpace(player.ObservedName))
-		enrichment, enrichErr := h.enrichment.LoadEnrichmentWithPromotion(ctx, player.ID, player.Server, sk, nk)
+		nk := strings.ToLower(strings.TrimSpace(enrichmentName))
+		enrichment, enrichErr := h.enrichment.LoadEnrichmentWithPromotion(ctx, enrichmentID, player.Server, sk, nk)
 		if enrichErr == nil && enrichment != nil {
 			detail.Enrichment = enrichment
+			// Promotion can attach a newly staged mapping during this read.
+			if refreshed, refreshErr := h.store.Get(ctx, player.ID); refreshErr == nil {
+				detail.DisplayIdentity = refreshed.DisplayIdentity
+			}
 		}
 	}
 	respondJSON(w, http.StatusOK, detail)

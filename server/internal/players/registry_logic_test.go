@@ -97,7 +97,7 @@ func TestHideOwnCharactersClause(t *testing.T) {
 	for _, piece := range []string{
 		"own_characters.server_key = players.server_key",
 		"own_characters.identity_key = players.observed_name_key",
-		"lower(btrim(players.player_name))",
+		"lower(btrim(players.display_player_name))",
 	} {
 		if !strings.Contains(hidden, piece) {
 			t.Fatalf("missing %q in %s", piece, hidden)

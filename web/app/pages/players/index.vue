@@ -5,6 +5,8 @@ import {
   jobLabel,
   jobbingLabel,
   registryPlayerName,
+  registryJobAlias,
+  identityStatusLabel,
   textOrUnknown,
 } from '~/utils/playerRegistry'
 
@@ -136,7 +138,7 @@ onBeforeUnmount(() => {
 })
 
 const hideOwnCharacters = computed(() => {
-  const value = queryText('hide_own').toLowerCase()
+  const value = queryText('hide_own').trim().toLowerCase()
   return value !== '0' && value !== 'false' && value !== 'no'
 })
 
@@ -157,7 +159,7 @@ function formatPlayerTime(value?: string | null) {
     <PageHeader
       title="Player"
       icon="i-lucide-users"
-      description="Observed Silkroad players, kept as separate names on each server."
+      description="Observed Silkroad players and job aliases, scoped to each server."
     />
     <form class="player-filters" @submit.prevent>
       <label>
@@ -181,7 +183,7 @@ function formatPlayerTime(value?: string | null) {
         <input
           :value="nameDraft"
           type="search"
-          placeholder="Observed, player, or job name"
+          placeholder="Observed name, player name, or job alias"
           @input="onNameInput(($event.target as HTMLInputElement).value)"
         />
       </label>
@@ -348,7 +350,7 @@ function formatPlayerTime(value?: string | null) {
             </th>
             <th>
               <button type="button" @click="toggleSort('job_name')">
-                Job Name
+                Job alias
               </button>
             </th>
             <th>
@@ -398,15 +400,52 @@ function formatPlayerTime(value?: string | null) {
             @keydown.enter="openPlayer(player.id)"
           >
             <td>{{ registryPlayerName(player) || 'Unknown' }}</td>
-            <td>{{ textOrUnknown(player.job_name) }}</td>
+            <td>
+              {{ textOrUnknown(registryJobAlias(player)) }}
+              <small
+                v-if="identityStatusLabel(player)"
+                class="player-identity-source"
+              >
+                {{ identityStatusLabel(player) }}
+              </small>
+            </td>
             <td>{{ player.server }}</td>
-            <td>{{ textOrUnknown(player.level) }}</td>
-            <td>{{ textOrUnknown(player.guild_name) }}</td>
-            <td>{{ jobLabel(player.job) }}</td>
-            <td>{{ textOrUnknown(player.job_level) }}</td>
+            <td>
+              {{
+                textOrUnknown(player.level ?? player.display_fallback?.level)
+              }}
+            </td>
+            <td>
+              {{
+                textOrUnknown(
+                  player.guild_name ?? player.display_fallback?.guild,
+                )
+              }}
+            </td>
+            <td>{{ jobLabel(player.job ?? player.display_fallback?.job) }}</td>
+            <td>
+              {{
+                textOrUnknown(
+                  player.job_level ?? player.display_fallback?.job_level,
+                )
+              }}
+            </td>
             <td>{{ jobbingLabel(player.is_jobbing) }}</td>
-            <td>{{ formatModel(player.model_name, player.model_id) }}</td>
-            <td>{{ formatPlayerTime(player.last_seen_at) }}</td>
+            <td>
+              {{
+                formatModel(
+                  player.model_name || player.display_fallback?.model_name,
+                  player.model_id ?? player.display_fallback?.model_id,
+                )
+              }}
+            </td>
+            <td>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.last_seen_at ?? player.last_seen_at,
+                )
+              }}
+            </td>
           </tr>
         </tbody>
       </table>

@@ -65,7 +65,7 @@ func mergeModelRef(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if intPtrEqual(current.ModelRefID, vp.ModelRefID) {
+		if intPtrEqual(current.ModelRefID, vp.ModelRefID) && evidenceEqual(current.FieldEvidence["model_ref_id"], vp.Evidence["model_ref_id"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -97,7 +97,7 @@ func mergeGear(current *storedFields, vp validatedPlayer) mergeOutcome {
 	case at.Before(curAt):
 		return mergeOutcome{Stale: true}
 	default:
-		if gearEqual(current.Gear, vp.Gear) {
+		if gearEqual(current.Gear, vp.Gear) && evidenceEqual(current.FieldEvidence["gear"], vp.Evidence["gear"]) {
 			return mergeOutcome{}
 		}
 		return mergeOutcome{Stale: true, EqualConflict: true}
@@ -108,13 +108,14 @@ func mergeValidatedPlayer(current *storedFields, vp validatedPlayer) (mergeOutco
 	if current.FieldEvidence == nil {
 		current.FieldEvidence = map[string]FieldEvidence{}
 	}
+	name := mergeNameEvidence(current, vp)
 	model := mergeModelRef(current, vp)
 	gear := mergeGear(current, vp)
 	v2 := mergeV2Fields(current, vp)
 	out := mergeOutcome{
-		Changed:       model.Changed || gear.Changed || v2.Changed,
-		Stale:         model.Stale || gear.Stale || v2.Stale,
-		EqualConflict: model.EqualConflict || gear.EqualConflict || v2.EqualConflict,
+		Changed:       name.Changed || model.Changed || gear.Changed || v2.Changed,
+		Stale:         name.Stale || model.Stale || gear.Stale || v2.Stale,
+		EqualConflict: name.EqualConflict || model.EqualConflict || gear.EqualConflict || v2.EqualConflict,
 	}
 	if out.Changed {
 		syncProxyFallbacks(current)
@@ -146,7 +147,15 @@ func intPtrEqual(a, b *int) bool {
 }
 
 func gearEqual(a, b []GearEntry) bool {
-	return reflect.DeepEqual(a, b)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !reflect.DeepEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func gearToJSON(gear []GearEntry) ([]byte, error) {
@@ -157,36 +166,58 @@ func evidenceToJSON(ev map[string]FieldEvidence) ([]byte, error) {
 	return json.Marshal(ev)
 }
 
+// Promotion uses the same field/evidence freshness rules as direct ingestion.
 func mergeStoredInto(dst, src *storedFields) bool {
-	if dst.FieldEvidence == nil {
-		dst.FieldEvidence = map[string]FieldEvidence{}
+	vp := validatedPlayer{
+		ModelRefID: src.ModelRefID, HasModel: src.ModelRefObservedAt != nil,
+		Gear: src.Gear, HasGear: src.GearObservedAt != nil,
+		AvatarGear: src.Extended.AvatarGear, HasAvatarGear: src.Extended.AvatarGearObservedAt != nil,
+		Level: src.Extended.Level, HasLevel: src.Extended.LevelObservedAt != nil,
+		Job: src.Extended.Job, HasJob: src.Extended.JobObservedAt != nil,
+		JobLevel: src.Extended.JobLevel, HasJobLevel: src.Extended.JobLevelObservedAt != nil,
+		Race: src.Extended.Race, HasRace: src.Extended.RaceObservedAt != nil,
+		Guild: src.Extended.Guild, HasGuild: src.Extended.GuildObservedAt != nil,
+		Position: src.Extended.Position, HasPosition: src.Extended.PositionObservedAt != nil,
+		JobItemIDs: src.Extended.JobItemIDs, HasJobItemIDs: src.Extended.JobItemIDsObservedAt != nil,
+		IdentityLinks: src.Extended.IdentityLinks, HasIdentityLinks: src.Extended.IdentityLinksObservedAt != nil,
+		Evidence: src.FieldEvidence,
 	}
-	changed := false
-	if src.ModelRefID != nil && src.ModelRefObservedAt != nil {
-		vp := validatedPlayer{
-			HasModel:   true,
-			ModelRefID: src.ModelRefID,
-			Evidence: map[string]FieldEvidence{
-				"model_ref_id": evidenceForField(src, "model_ref_id", *src.ModelRefObservedAt),
-			},
-		}
-		if mergeModelRef(dst, vp).Changed {
-			changed = true
-		}
+	out, _ := mergeValidatedPlayer(dst, vp)
+	return out.Changed
+}
+
+func evidenceEqual(a, b FieldEvidence) bool {
+	a.ObservedAt, b.ObservedAt = a.ObservedAt.UTC(), b.ObservedAt.UTC()
+	if a.Association != nil {
+		copy := *a.Association
+		copy.ObservedAt = copy.ObservedAt.UTC()
+		a.Association = &copy
 	}
-	if src.GearObservedAt != nil {
-		vp := validatedPlayer{
-			HasGear: true,
-			Gear:    append([]GearEntry(nil), src.Gear...),
-			Evidence: map[string]FieldEvidence{
-				"gear": evidenceForField(src, "gear", *src.GearObservedAt),
-			},
-		}
-		if mergeGear(dst, vp).Changed {
-			changed = true
-		}
+	if b.Association != nil {
+		copy := *b.Association
+		copy.ObservedAt = copy.ObservedAt.UTC()
+		b.Association = &copy
 	}
-	return changed
+	return reflect.DeepEqual(a, b)
+}
+
+func mergeNameEvidence(current *storedFields, vp validatedPlayer) mergeOutcome {
+	ev, ok := vp.Evidence["name"]
+	if !ok {
+		return mergeOutcome{}
+	}
+	old, exists := current.FieldEvidence["name"]
+	if !exists || ev.ObservedAt.After(old.ObservedAt) {
+		current.FieldEvidence = mergeFieldEvidence(current.FieldEvidence, map[string]FieldEvidence{"name": ev})
+		return mergeOutcome{Changed: true}
+	}
+	if ev.ObservedAt.Before(old.ObservedAt) {
+		return mergeOutcome{Stale: true}
+	}
+	if !evidenceEqual(old, ev) {
+		return mergeOutcome{Stale: true, EqualConflict: true}
+	}
+	return mergeOutcome{}
 }
 
 func evidenceForField(st *storedFields, key string, at time.Time) FieldEvidence {

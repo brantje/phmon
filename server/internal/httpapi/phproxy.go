@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	agentdomain "phmon/server/internal/agents"
@@ -48,6 +50,15 @@ func (h *phProxyHandler) submitEnrichment(w http.ResponseWriter, r *http.Request
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
 		return
 	}
+	var envelope struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if json.Unmarshal(body, &envelope) != nil ||
+		(strings.Contains(r.URL.Path, "/v1/") && envelope.SchemaVersion != phproxy.SchemaVersionV1) ||
+		(strings.Contains(r.URL.Path, "/v2/") && envelope.SchemaVersion != phproxy.SchemaVersionV2) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request", "code": "invalid_schema"})
+		return
+	}
 	submitCtx, submitCancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer submitCancel()
 	response, err := h.store.Submit(submitCtx, authenticatedID, body)
@@ -57,7 +68,18 @@ func (h *phProxyHandler) submitEnrichment(w http.ResponseWriter, r *http.Request
 			respondJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		case errors.Is(err, phproxy.ErrInvalid):
 			log.Printf("WARN ph-proxy enrichment rejected status=400")
-			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+			payload := map[string]any{"error": "invalid request", "code": "invalid_request"}
+			var detail *phproxy.ValidationError
+			if errors.As(err, &detail) {
+				payload["code"] = detail.Code
+				if detail.Field != "" {
+					payload["field"] = detail.Field
+				}
+				if detail.PlayerIndex != nil {
+					payload["player_index"] = *detail.PlayerIndex
+				}
+			}
+			respondJSON(w, http.StatusBadRequest, payload)
 		case errors.Is(err, phproxy.ErrIdempotencyConflict):
 			respondJSON(w, http.StatusConflict, map[string]string{"error": "idempotency conflict"})
 		default:

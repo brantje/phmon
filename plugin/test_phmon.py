@@ -2539,6 +2539,18 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(released['occurred_at'], held['occurred_at'])
         self.assertEqual(released['sequence'], held['sequence'])
 
+    def test_worker_stop_releases_held_pet_lifecycle_events(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+        self.assertEqual(len(self.worker._pet_transition_pending_events), 1)
+        self.worker.stop()
+        self.assertEqual(self.worker._pet_transition_pending_events, [])
+        released = self.worker._event_samples.get_nowait()
+        self.assertEqual(released['kind'], 'pet.transport_died')
+        self.assertEqual(released['payload'], {'value': 'horse-7'})
+
     def test_teleport_ready_and_callback_cancel_preceding_transport_churn(self):
         plugin._joined_game_teleport_pending = False
         with patch.object(plugin, '_monotonic', return_value=100.0), \

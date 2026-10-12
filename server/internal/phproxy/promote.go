@@ -3,6 +3,7 @@ package phproxy
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -21,6 +22,10 @@ func (s *Store) PromoteForIdentity(ctx context.Context, playerID, serverKey, nam
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	if err := lockEnrichmentIdentity(ctx, tx, serverKey, nameKey); err != nil {
+		return err
+	}
 
 	st, err := s.loadMatchedFields(ctx, tx, playerID)
 	if err != nil {
@@ -66,8 +71,9 @@ func (s *Store) PromoteForIdentity(ctx context.Context, playerID, serverKey, nam
 
 func (s *Store) LoadEnrichmentWithPromotion(ctx context.Context, playerID, server, serverKey, nameKey string) (*EnrichmentProjection, error) {
 	if serverKey != "" && nameKey != "" {
+		// A lock wait or timeout must not hide enrichment that is already stored.
 		if err := s.PromoteForIdentity(ctx, playerID, serverKey, nameKey); err != nil {
-			return nil, err
+			slog.Warn("ph-proxy enrichment read promotion failed", "player_id", playerID, "reason", err.Error())
 		}
 	}
 	row := s.pool.QueryRow(ctx,

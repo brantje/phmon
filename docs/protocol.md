@@ -172,7 +172,9 @@ character is observed or the socket reconnects. Malformed protocol/state data re
 connection-fatal. Transient PostgreSQL timeouts on hello metadata, identify,
 snapshot/state/leave, resource apply, command ack/result, control state, or map
 character lookup drop only that frame and keep the authenticated socket. A lookup
-timeout must not be turned into `character.rejected`. PostgreSQL cleanup is attempted
+timeout must not be turned into `character.rejected`. A leave write that fails for
+any reason other than an unowned session still drops that session's in-memory map
+observations. PostgreSQL cleanup is attempted
 when a socket closes; while the Go process is running it also periodically compares
 open durable sessions with the exact live `(agent_id, connection_generation)`
 registry entries. After a database outage, sessions for dead generations are ended as
@@ -1581,7 +1583,9 @@ ingestion.
   with `schema_version: 2`. Adds avatar gear, metadata level, job affiliation, race,
   guild, spawn position, classified job-item IDs and inferred identity links. Each field
   carries its own evidence (`source_identity_kind`, `source_name`, bounded reasons and
-  opcodes). v1 validation remains strict and unchanged.
+  opcodes). Staged v2 names may be 128 bytes. Tracked player names stay at 64
+  bytes. Numeric job affiliation stays on the enrichment record and is not copied
+  into the list job-name fallback. v1 validation remains strict and unchanged.
 - `GET /api/integrations/ph-proxy/v1/status?server=` — operator-authenticated latest
   gateway metadata, coverage and last receipt for a canonical server name.
 - `GET /api/integrations/ph-proxy/v2/status?server=` — same projection as v1 status.
@@ -1591,4 +1595,5 @@ ingestion.
 
 Player tracking (`players.Registry.Apply` / `ApplyLive`) remains the only path that
 mutates first/last seen, observations, and level snapshots. After tracking commits,
-PhMon best-effort promotes staged enrichment for the same normalized server/name keys.
+PhMon best-effort promotes staged enrichment for the same normalized server/name keys,
+and skips that write when no non-expired staged row exists.

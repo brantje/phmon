@@ -3938,11 +3938,15 @@ button.item-detail-name {
   cursor: pointer;
 }
 .player-card,
+.player-note,
 .player-enrichment-note {
   color: var(--phmon-muted);
   font-size: 13px;
   line-height: 1.45;
   margin: 0 0 12px;
+}
+
+.player-enrichment-note {
   max-width: 72ch;
 }
 
@@ -3996,4 +4000,15 @@ button.item-detail-name {
   border: 0;
   padding: 0;
   cursor: pointer;
+}
+
+.player-identity-source {
+  display: block;
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.player-related-record {
+  display: inline-block;
+  margin-inline: 0.35rem;
+  text-decoration: underline;
 }

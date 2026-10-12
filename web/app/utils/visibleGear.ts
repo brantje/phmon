@@ -27,7 +27,23 @@ export type PlayerEnrichment = {
   avatar_gear_observed_at?: string | null
   level_observed_at?: string | null
   position_observed_at?: string | null
-  field_evidence?: Record<string, unknown>
+  field_evidence?: Record<
+    string,
+    {
+      observed_at: string
+      profile: string
+      source_opcode: number
+      reason: string
+      source_identity_kind?: string
+      source_name?: string
+      association?: {
+        alias: string
+        status: string
+        reason: string
+        observed_at: string
+      } | null
+    }
+  >
 }
 
 export type PlayerDetailRecord = {

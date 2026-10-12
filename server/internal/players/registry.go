@@ -2,6 +2,7 @@ package players
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -107,6 +108,7 @@ type PlayerRecord struct {
 	LastSeenAt      time.Time        `json:"last_seen_at"`
 	Progression     *Progress        `json:"progression,omitempty"`
 	DisplayFallback *DisplayFallback `json:"display_fallback,omitempty"`
+	DisplayIdentity *DisplayIdentity `json:"display_identity,omitempty"`
 }
 
 type DisplayFallback struct {
@@ -447,15 +449,15 @@ func (s *Registry) List(ctx context.Context, filter ListFilter) (PlayerPage, err
 		return PlayerPage{}, err
 	}
 	where, args := filter.where()
-	fromClause := `FROM players LEFT JOIN player_enrichments pe ON pe.player_id = players.id `
+	fromClause := `FROM identity_players AS players LEFT JOIN player_enrichments pe ON pe.player_id = players.id `
 	var total int
-	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) `+fromClause+where, args...).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, identityCTE+`SELECT COUNT(*) `+fromClause+where, args...).Scan(&total); err != nil {
 		return PlayerPage{}, err
 	}
 	args = append(args, filter.Limit, filter.Offset)
-	rows, err := s.pool.Query(ctx, `SELECT players.id::text, players.server_name, players.observed_name, players.player_name, players.job_name, players.level, players.guild_name, players.job, players.job_level, players.is_jobbing,
+	rows, err := s.pool.Query(ctx, identityCTE+`SELECT players.id::text, players.server_name, players.observed_name, players.player_name, players.job_name, players.level, players.guild_name, players.job, players.job_level, players.is_jobbing,
 		players.model_id, COALESCE(players.model_name, ''), players.last_region, COALESCE(players.last_zone, ''), players.last_x, players.last_y, players.last_z, players.first_seen_at, players.last_seen_at,
-		pe.proxy_level, pe.proxy_job, pe.proxy_job_level, pe.proxy_guild, pe.model_ref_id
+		pe.proxy_level, pe.proxy_job, pe.proxy_job_level, pe.proxy_guild, players.proxy_model_ref_id, players.display_identity
 		`+fromClause+where+filter.order()+fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
 	if err != nil {
 		return PlayerPage{}, err
@@ -504,6 +506,10 @@ func (s *Registry) Get(ctx context.Context, id string) (PlayerRecord, error) {
 		return PlayerRecord{}, err
 	}
 	player.Progression = &progress
+	player.DisplayIdentity, err = s.loadDisplayIdentity(ctx, player.ID)
+	if err != nil {
+		return PlayerRecord{}, err
+	}
 	return player, nil
 }
 
@@ -661,12 +667,20 @@ func scanPlayerWithEnrichment(rows pgx.Rows) (PlayerRecord, error) {
 	var proxyLevel, proxyJobLevel *int
 	var proxyJob, proxyGuild *string
 	var enrichModel *int
+	var identityJSON []byte
 	err := rows.Scan(&player.ID, &player.Server, &player.ObservedName, &player.PlayerName, &player.JobName, &player.Level,
 		&player.GuildName, &player.Job, &player.JobLevel, &player.IsJobbing, &player.ModelID, &player.ModelName,
 		&player.LastRegion, &player.LastZone, &player.LastX, &player.LastY, &player.LastZ, &player.FirstSeenAt, &player.LastSeenAt,
-		&proxyLevel, &proxyJob, &proxyJobLevel, &proxyGuild, &enrichModel)
+		&proxyLevel, &proxyJob, &proxyJobLevel, &proxyGuild, &enrichModel, &identityJSON)
 	if err != nil {
 		return player, err
+	}
+	if len(identityJSON) > 0 {
+		var identity DisplayIdentity
+		if err := json.Unmarshal(identityJSON, &identity); err != nil {
+			return player, err
+		}
+		player.DisplayIdentity = &identity
 	}
 	player.DisplayFallback = buildDisplayFallback(&player, proxyLevel, proxyJobLevel, proxyJob, proxyGuild, enrichModel)
 	return player, nil
@@ -782,7 +796,7 @@ func (filter ListFilter) where() (string, []any) {
 	if filter.Name != "" {
 		args = append(args, likeContains(filter.Name))
 		n := len(args)
-		clauses = append(clauses, fmt.Sprintf("(players.observed_name ILIKE $%d ESCAPE '\\' OR COALESCE(players.player_name, '') ILIKE $%d ESCAPE '\\' OR COALESCE(players.job_name, '') ILIKE $%d ESCAPE '\\')", n, n, n))
+		clauses = append(clauses, fmt.Sprintf("(players.observed_name ILIKE $%d ESCAPE '\\' OR COALESCE(players.player_name, '') ILIKE $%d ESCAPE '\\' OR COALESCE(players.display_player_name, '') ILIKE $%d ESCAPE '\\' OR COALESCE(players.display_job_alias, '') ILIKE $%d ESCAPE '\\' OR EXISTS (SELECT 1 FROM unnest(players.search_names) name WHERE name ILIKE $%d ESCAPE '\\'))", n, n, n, n, n))
 	}
 	if filter.Guild != "" {
 		args = append(args, likeContains(filter.Guild))
@@ -815,7 +829,7 @@ func (filter ListFilter) where() (string, []any) {
 		add("COALESCE(players.job_level, pe.proxy_job_level) <= $%d", *filter.MaxJobLevel)
 	}
 	if filter.SeenSince != nil {
-		add("players.last_seen_at >= $%d", filter.SeenSince.UTC())
+		add("players.display_last_seen_at >= $%d", filter.SeenSince.UTC())
 	}
 	if filter.HideOwn {
 		clauses = append(clauses, `NOT EXISTS (
@@ -824,8 +838,8 @@ func (filter ListFilter) where() (string, []any) {
 			  AND (
 			    own_characters.identity_key = players.observed_name_key
 			    OR (
-			      players.player_name IS NOT NULL
-			      AND own_characters.identity_key = lower(btrim(players.player_name))
+			      players.display_player_name IS NOT NULL
+			      AND own_characters.identity_key = lower(btrim(players.display_player_name))
 			    )
 			  )
 		)`)
@@ -835,7 +849,7 @@ func (filter ListFilter) where() (string, []any) {
 			args = append(args, modelID, modelID, likeContains(filter.Model))
 			idPos := len(args) - 2
 			namePos := len(args)
-			clauses = append(clauses, fmt.Sprintf("(players.model_id=$%d OR pe.model_ref_id=$%d OR COALESCE(players.model_name, '') ILIKE $%d ESCAPE '\\')", idPos, idPos+1, namePos))
+			clauses = append(clauses, fmt.Sprintf("(players.model_id=$%d OR players.proxy_model_ref_id=$%d OR COALESCE(players.model_name, '') ILIKE $%d ESCAPE '\\')", idPos, idPos+1, namePos))
 		} else {
 			add("COALESCE(players.model_name, '') ILIKE $%d ESCAPE '\\'", likeContains(filter.Model))
 		}
@@ -844,16 +858,16 @@ func (filter ListFilter) where() (string, []any) {
 }
 
 func (filter ListFilter) order() string {
-	column := "players.last_seen_at"
+	column := "players.display_last_seen_at"
 	switch filter.Sort {
 	case "first_seen_at":
-		column = "players.first_seen_at"
+		column = "players.display_first_seen_at"
 	case "observed_name":
 		column = "players.observed_name"
 	case "player_name":
-		column = "players.player_name"
+		column = "players.display_player_name"
 	case "job_name":
-		column = "players.job_name"
+		column = "players.display_job_alias"
 	case "level":
 		column = "COALESCE(players.level, pe.proxy_level)"
 	case "guild_name":

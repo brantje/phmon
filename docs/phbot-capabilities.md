@@ -1814,7 +1814,7 @@ advancement. The mapping derives from the documented API shape and checked-in
 versioned catalog; natural Windows/phBot validation remains necessary to confirm
 that the installed runtime's `get_item` values match it.
 
-## Pet lifecycle events across teleport (1.9.35)
+## Pet lifecycle events across teleport (1.9.36)
 
 The official [Events API](https://plugins.phbot.org/phbot-api/events) documents
 `teleported()` after a teleport and immediately after `joined_game()`, as well as
@@ -1822,8 +1822,9 @@ The official [Events API](https://plugins.phbot.org/phbot-api/events) documents
 relative to pet teardown. The [Pets API](https://plugins.phbot.org/phbot-api/pets)
 provides the currently summoned roster keyed by runtime pet IDs.
 
-Plugin **1.9.35** holds `pet.summoned`, `pet.dismissed`, and
-`pet.transport_died` events for five seconds. A pending `0x34B5` signal extends
+Plugin **1.9.36** holds `pet.summoned`, `pet.dismissed`, and
+`pet.transport_died` events for five seconds. Stopping the worker releases
+events still inside that hold instead of dropping them. A pending `0x34B5` signal extends
 the hold through its ten-second confirmation window. The network worker assigns each
 event's ID, occurrence time, session and sequence before holding it, preserving
 original attribution on release. Server packet `0x34B5` fences queued resource

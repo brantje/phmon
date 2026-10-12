@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -84,6 +85,22 @@ func (s *Store) Submit(ctx context.Context, authenticatedAgentID string, body []
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return SubmitResponse{}, err
+	}
+
+	// Serialize pending admission per agent, then fields per identity in stable
+	// order. Different request IDs/agents must not overwrite concurrent updates.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "ph-proxy-agent:"+req.AgentID); err != nil {
+		return SubmitResponse{}, err
+	}
+	keys := make([]string, 0, len(req.Players))
+	for _, vp := range req.Players {
+		keys = append(keys, vp.NameKey)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if err := lockEnrichmentIdentity(ctx, tx, req.ServerKey, key); err != nil {
+			return SubmitResponse{}, err
+		}
 	}
 
 	newPendingNeeded, err := s.countNewPendingSlots(ctx, tx, req)
@@ -405,4 +422,9 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+func lockEnrichmentIdentity(ctx context.Context, tx pgx.Tx, server, name string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "ph-proxy-identity:"+server+":"+name)
+	return err
 }

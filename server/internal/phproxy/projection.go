@@ -1,6 +1,9 @@
 package phproxy
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 func (s *Store) projectEnrichment(server string, st *storedFields) *EnrichmentProjection {
 	if st == nil {
@@ -45,7 +48,7 @@ func (s *Store) projectEnrichment(server string, st *storedFields) *EnrichmentPr
 func (e ExtendedPayload) isEmpty() bool {
 	return len(e.AvatarGear) == 0 && e.Level == nil && e.Job == nil && e.JobLevel == nil &&
 		e.Race == nil && e.Guild == nil && e.Position == nil && len(e.JobItemIDs) == 0 &&
-		len(e.IdentityLinks) == 0
+		len(e.IdentityLinks) == 0 && e.AvatarGearObservedAt == nil && e.JobItemIDsObservedAt == nil && e.IdentityLinksObservedAt == nil
 }
 
 func copyObservedAt(src *time.Time, dst **time.Time) {
@@ -99,7 +102,7 @@ func (s *Store) BuildListDisplayFallback(nativeLevel *int, nativeJob *string, na
 		out.Guild = *st.ProxyGuild
 		out.GuildSource = "ph-proxy"
 	}
-	if nativeModel == nil && st.ModelRefID != nil {
+	if nativeModel == nil && st.ModelRefID != nil && isCharacterNameEvidence(st.FieldEvidence["model_ref_id"]) {
 		v := int64(*st.ModelRefID)
 		out.ModelID = &v
 		out.ModelSource = "ph-proxy"
@@ -108,4 +111,28 @@ func (s *Store) BuildListDisplayFallback(nativeLevel *int, nativeJob *string, na
 		return nil
 	}
 	return out
+}
+
+// Known complete empty lists must be distinguishable from unavailable fields.
+func (e EnrichmentProjection) MarshalJSON() ([]byte, error) {
+	type plain EnrichmentProjection
+	value, err := json.Marshal(plain(e))
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(value, &fields); err != nil {
+		return nil, err
+	}
+	for key, known := range map[string]bool{
+		"gear":           e.GearObservedAt != nil && len(e.Gear) == 0,
+		"avatar_gear":    e.AvatarGearObservedAt != nil && len(e.AvatarGear) == 0,
+		"job_item_ids":   e.JobItemIDsObservedAt != nil && len(e.JobItemIDs) == 0,
+		"identity_links": e.IdentityLinksObservedAt != nil && len(e.IdentityLinks) == 0,
+	} {
+		if known {
+			fields[key] = json.RawMessage("[]")
+		}
+	}
+	return json.Marshal(fields)
 }
