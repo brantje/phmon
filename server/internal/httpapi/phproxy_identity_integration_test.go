@@ -76,12 +76,30 @@ func TestPhProxyIdentityHTTPFlow(t *testing.T) {
 	if w := send(first, "/api/integrations/ph-proxy/v2/enrichments", credential.Token); w.Code != 200 {
 		t.Fatalf("direct request status %d: %s", w.Code, w.Body)
 	}
+	handler := &playerHandler{store: registry, enrichment: store}
+	// FixturePlayer is a direct normal-name observation with job=0 and no
+	// native affiliation. Unknown reference confidence is accepted and exposed.
+	zeroRequest := httptest.NewRequest("GET", "/api/players?server="+scope+"&q=FixturePlayer&job=none", nil)
+	zeroResponse := httptest.NewRecorder()
+	handler.list(zeroResponse, zeroRequest)
+	var zeroPage players.PlayerPage
+	if err = json.Unmarshal(zeroResponse.Body.Bytes(), &zeroPage); err != nil || zeroResponse.Code != 200 || zeroPage.Total != 1 || zeroPage.Players[0].DisplayFallback == nil || zeroPage.Players[0].DisplayFallback.Job != "none" {
+		t.Fatalf("normal-name zero fallback: %d %s %v", zeroResponse.Code, zeroResponse.Body, err)
+	}
+	zeroID := zeroPage.Players[0].ID
+	zeroDetailRequest := httptest.NewRequest("GET", "/api/players/"+zeroID, nil)
+	zeroDetailRequest.SetPathValue("id", zeroID)
+	zeroDetailResponse := httptest.NewRecorder()
+	handler.get(zeroDetailResponse, zeroDetailRequest)
+	var zeroDetail playerDetailResponse
+	if err = json.Unmarshal(zeroDetailResponse.Body.Bytes(), &zeroDetail); err != nil || zeroDetailResponse.Code != 200 || zeroDetail.DisplayFallback == nil || zeroDetail.DisplayFallback.Job != "none" || zeroDetail.Enrichment == nil || zeroDetail.Enrichment.FieldEvidence["job"].Reason != phproxy.EvidenceReasonUnverifiedReference {
+		t.Fatalf("detail zero/confidence: %d %s %v", zeroDetailResponse.Code, zeroDetailResponse.Body, err)
+	}
 	third := examples.Requests[2]
 	third["agent_id"], third["server"] = credential.AgentID, scope
 	if w := send(third, "/api/integrations/ph-proxy/v2/enrichments", credential.Token); w.Code != 200 {
 		t.Fatalf("alias request status %d: %s", w.Code, w.Body)
 	}
-	handler := &playerHandler{store: registry, enrichment: store}
 	listRequest := httptest.NewRequest("GET", "/api/players?server="+scope+"&q=FixtureTrader", nil)
 	list := httptest.NewRecorder()
 	handler.list(list, listRequest)
@@ -100,6 +118,9 @@ func TestPhProxyIdentityHTTPFlow(t *testing.T) {
 		}
 		if detail.Enrichment.FieldEvidence["gear"].Association == nil {
 			t.Fatal("alias gear attribution missing")
+		}
+		if detail.DisplayFallback != nil && (detail.DisplayFallback.Job != "" || detail.DisplayFallback.JobLevel != nil) {
+			t.Fatal("HTTP projection used alias-attributed job as a normal fallback")
 		}
 	}
 	if w := send(third, "/api/integrations/ph-proxy/v1/enrichments", credential.Token); w.Code != 400 {

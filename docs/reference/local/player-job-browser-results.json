@@ -1,0 +1,38 @@
+[
+  {
+    "width": 1440,
+    "height": 1000,
+    "normalWithoutSuit": true,
+    "zero": true,
+    "nativePrecedence": true,
+    "aliasAttribution": true,
+    "unknownCodeFilter": true,
+    "confidence": true,
+    "pageOverflow": false,
+    "browserErrors": []
+  },
+  {
+    "width": 1280,
+    "height": 800,
+    "normalWithoutSuit": true,
+    "zero": true,
+    "nativePrecedence": true,
+    "aliasAttribution": true,
+    "unknownCodeFilter": true,
+    "confidence": true,
+    "pageOverflow": false,
+    "browserErrors": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "normalWithoutSuit": true,
+    "zero": true,
+    "nativePrecedence": true,
+    "aliasAttribution": true,
+    "unknownCodeFilter": true,
+    "confidence": true,
+    "pageOverflow": false,
+    "browserErrors": []
+  }
+]

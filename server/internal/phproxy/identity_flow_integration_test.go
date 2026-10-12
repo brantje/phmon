@@ -166,6 +166,7 @@ func TestIdentityConflictsNamesAndPagination(t *testing.T) {
 	for _, o := range []players.Observation{
 		{Server: scope, ObservedName: "NamedOnly", IsJobbing: &knownFalse, Source: players.SourceMapPlayers, ObservedAt: at},
 		{Server: scope, ObservedName: "AliasOnly", IsJobbing: &knownTrue, Source: players.SourceMapPlayers, ObservedAt: at},
+		{Server: scope, ObservedName: "UnclassifiedAlias", Source: players.SourceMapPlayers, ObservedAt: at},
 		{Server: scope, ObservedName: "Unclassified", Source: players.SourceMapPlayers, ObservedAt: at},
 		{Server: scope, ObservedName: "Anchor", PlayerName: stringPtr("Anchor"), Source: players.SourceMapPlayers, ObservedAt: at},
 		{Server: scope, ObservedName: "SecondAnchor", PlayerName: stringPtr("SecondAnchor"), Source: players.SourceMapPlayers, ObservedAt: at},
@@ -174,7 +175,7 @@ func TestIdentityConflictsNamesAndPagination(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	submitIdentity(t, ctx, store, scope, agent, "Anchor", []string{"AliasOnly", "HistoricalAlias"}, at, 1)
+	submitIdentity(t, ctx, store, scope, agent, "Anchor", []string{"AliasOnly", "HistoricalAlias", "UnclassifiedAlias"}, at, 1)
 	matched, err := registry.List(ctx, players.ListFilter{Server: scope, Name: "HistoricalAlias"})
 	if err != nil || matched.Total != 1 {
 		t.Fatalf("all alias search: %+v %v", matched, err)
@@ -182,13 +183,13 @@ func TestIdentityConflictsNamesAndPagination(t *testing.T) {
 	if *matched.Players[0].DisplayIdentity.JobAlias != "AliasOnly" {
 		t.Fatal("equal-time alias tiebreak changed")
 	}
-	submitIdentity(t, ctx, store, scope, agent, "SecondAnchor", []string{"AliasOnly", "NamedOnly"}, at, 1)
+	submitIdentity(t, ctx, store, scope, agent, "SecondAnchor", []string{"AliasOnly", "NamedOnly", "UnclassifiedAlias"}, at, 1)
 	page, err := registry.List(ctx, players.ListFilter{Server: scope, Sort: "player_name", Limit: 2})
-	if err != nil || page.Total != 5 || len(page.Players) != 2 {
+	if err != nil || page.Total != 6 || len(page.Players) != 2 {
 		t.Fatalf("conflicts/pagination: %+v %v", page, err)
 	}
 	second, err := registry.List(ctx, players.ListFilter{Server: scope, Sort: "player_name", Limit: 2, Offset: 2})
-	if err != nil || second.Total != 5 || second.Players[0].ID == page.Players[0].ID {
+	if err != nil || second.Total != 6 || second.Players[0].ID == page.Players[0].ID {
 		t.Fatalf("second page: %+v %v", second, err)
 	}
 	all, err := registry.List(ctx, players.ListFilter{Server: scope})
@@ -205,12 +206,17 @@ func TestIdentityConflictsNamesAndPagination(t *testing.T) {
 			if p.DisplayIdentity.PlayerName != nil || p.DisplayIdentity.JobAlias == nil || p.DisplayIdentity.Status != "conflict" {
 				t.Fatalf("alias conflict: %+v", p.DisplayIdentity)
 			}
+		case "UnclassifiedAlias":
+			if p.DisplayIdentity.PlayerName != nil || p.DisplayIdentity.JobAlias == nil || *p.DisplayIdentity.JobAlias != "UnclassifiedAlias" || p.DisplayIdentity.Status != "conflict" {
+				t.Fatalf("known alias lost under conflicting mapping: %+v", p.DisplayIdentity)
+			}
 		case "Unclassified":
 			if p.DisplayIdentity.PlayerName != nil || p.DisplayIdentity.JobAlias != nil {
 				t.Fatal("unclassified name guessed")
 			}
 		}
 	}
+
 }
 
 func TestV2PendingPromotionAndConcurrentFreshness(t *testing.T) {

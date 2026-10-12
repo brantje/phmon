@@ -67,10 +67,13 @@ func (h *playerHandler) get(w http.ResponseWriter, r *http.Request) {
 		nk := strings.ToLower(strings.TrimSpace(enrichmentName))
 		enrichment, enrichErr := h.enrichment.LoadEnrichmentWithPromotion(ctx, enrichmentID, player.Server, sk, nk)
 		if enrichErr == nil && enrichment != nil {
-			detail.Enrichment = enrichment
 			// Promotion can attach a newly staged mapping during this read.
 			if refreshed, refreshErr := h.store.Get(ctx, player.ID); refreshErr == nil {
-				detail.DisplayIdentity = refreshed.DisplayIdentity
+				detail.PlayerRecord = refreshed
+			}
+			// A concurrent mapping change must not attach the previous owner's gear.
+			if detail.DisplayIdentity == nil || detail.DisplayIdentity.CanonicalID == enrichmentID {
+				detail.Enrichment = enrichment
 			}
 		}
 	}

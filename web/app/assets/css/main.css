@@ -3892,6 +3892,8 @@ button.item-detail-name {
 }
 
 .player-page {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
   gap: 14px;
 }
@@ -3902,6 +3904,7 @@ button.item-detail-name {
   align-items: end;
 }
 .player-filters label {
+  min-width: 0;
   display: grid;
   gap: 4px;
   color: var(--text-muted, #8e9caf);
@@ -4011,4 +4014,14 @@ button.item-detail-name {
   display: inline-block;
   margin-inline: 0.35rem;
   text-decoration: underline;
+}
+
+.player-filters input:not([type='checkbox']),
+.player-filters select {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.player-facts dd {
+  overflow-wrap: anywhere;
 }

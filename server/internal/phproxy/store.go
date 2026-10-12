@@ -57,11 +57,6 @@ func (s *Store) Submit(ctx context.Context, authenticatedAgentID string, body []
 		now.Add(-IdempotencyTTL)); err != nil {
 		return SubmitResponse{}, err
 	}
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM player_enrichment_pending WHERE expires_at < $1`,
-		now); err != nil {
-		return SubmitResponse{}, err
-	}
 
 	var storedHash []byte
 	var storedResponse []byte
@@ -159,6 +154,11 @@ func (s *Store) Submit(ctx context.Context, authenticatedAgentID string, body []
 		`INSERT INTO ph_proxy_enrichment_requests (agent_id, request_id, body_hash, response_json)
 		 VALUES ($1::uuid, $2::uuid, $3, $4)`,
 		req.AgentID, req.RequestID, hash[:], responseJSON); err != nil {
+		return SubmitResponse{}, err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM player_enrichment_pending WHERE ctid IN (
+		SELECT ctid FROM player_enrichment_pending WHERE expires_at < $1 FOR UPDATE SKIP LOCKED
+	)`, now); err != nil {
 		return SubmitResponse{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

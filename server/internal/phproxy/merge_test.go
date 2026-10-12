@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestCharacterNameJobCodeStaysOffListFallback(t *testing.T) {
+func TestCharacterNameJobCodeSuppliesNamedListFallback(t *testing.T) {
 	at := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	job := 3
 	current := &storedFields{FieldEvidence: map[string]FieldEvidence{}}
@@ -24,8 +24,8 @@ func TestCharacterNameJobCodeStaysOffListFallback(t *testing.T) {
 	if err != nil || !out.Changed {
 		t.Fatalf("merge=%+v err=%v", out, err)
 	}
-	if current.ProxyJob != nil {
-		t.Fatalf("numeric job code stored as list job %q", *current.ProxyJob)
+	if current.ProxyJob == nil || *current.ProxyJob != "hunter" {
+		t.Fatalf("job code was not mapped to hunter: %v", current.ProxyJob)
 	}
 	if current.Extended.Job == nil || *current.Extended.Job != 3 {
 		t.Fatal("extended job code should remain")

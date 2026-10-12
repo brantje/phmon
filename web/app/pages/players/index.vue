@@ -3,6 +3,7 @@ import type { PlayerRecord } from '~/utils/playerRegistry'
 import {
   formatModel,
   jobLabel,
+  jobSourceLabel,
   jobbingLabel,
   registryPlayerName,
   registryJobAlias,
@@ -38,6 +39,34 @@ type FilterKey = (typeof filterKeys)[number]
 
 const queryText = (key: string) =>
   typeof route.query[key] === 'string' ? String(route.query[key]) : ''
+
+const playerServerOptions = computed(() =>
+  [
+    ...new Set(
+      [
+        ...serverOptions.value,
+        ...(page.value?.players ?? []).map((player) => player.server),
+        queryText('server'),
+      ].filter((server) => server && server !== 'all'),
+    ),
+  ].sort((left, right) => left.localeCompare(right)),
+)
+
+const unknownJobCodes = computed(() =>
+  [
+    ...new Set([
+      queryText('job'),
+      ...(page.value?.players ?? []).map(
+        (player) => player.job ?? player.display_fallback?.job ?? '',
+      ),
+    ]),
+  ]
+    .filter(
+      (value) =>
+        /^\d+$/.test(value) && Number(value) >= 4 && Number(value) <= 255,
+    )
+    .sort((left, right) => Number(left) - Number(right)),
+)
 
 const filterDrafts = reactive(
   Object.fromEntries(filterKeys.map((key) => [key, queryText(key)])) as Record<
@@ -173,7 +202,11 @@ function formatPlayerTime(value?: string | null) {
           "
         >
           <option value="">All servers</option>
-          <option v-for="server in serverOptions" :key="server" :value="server">
+          <option
+            v-for="server in playerServerOptions"
+            :key="server"
+            :value="server"
+          >
             {{ server }}
           </option>
         </select>
@@ -225,6 +258,7 @@ function formatPlayerTime(value?: string | null) {
       <label>
         Job
         <select
+          aria-label="Job"
           :value="queryText('job')"
           @change="
             replaceQuery({
@@ -238,6 +272,9 @@ function formatPlayerTime(value?: string | null) {
           <option value="thief">Thief</option>
           <option value="hunter">Hunter</option>
           <option value="unknown">Unknown</option>
+          <option v-for="code in unknownJobCodes" :key="code" :value="code">
+            {{ jobLabel(code) }}
+          </option>
         </select>
       </label>
       <label>
@@ -422,13 +459,32 @@ function formatPlayerTime(value?: string | null) {
                 )
               }}
             </td>
-            <td>{{ jobLabel(player.job ?? player.display_fallback?.job) }}</td>
+            <td>
+              {{ jobLabel(player.job ?? player.display_fallback?.job) }}
+              <small
+                v-if="
+                  player.job == null && player.display_fallback?.job != null
+                "
+                class="player-identity-source"
+              >
+                {{ jobSourceLabel(player.display_fallback.job_evidence) }}
+              </small>
+            </td>
             <td>
               {{
                 textOrUnknown(
                   player.job_level ?? player.display_fallback?.job_level,
                 )
               }}
+              <small
+                v-if="
+                  player.job_level == null &&
+                  player.display_fallback?.job_level != null
+                "
+                class="player-identity-source"
+              >
+                {{ jobSourceLabel(player.display_fallback.job_level_evidence) }}
+              </small>
             </td>
             <td>{{ jobbingLabel(player.is_jobbing) }}</td>
             <td>

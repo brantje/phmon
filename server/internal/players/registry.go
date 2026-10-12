@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,16 +113,18 @@ type PlayerRecord struct {
 }
 
 type DisplayFallback struct {
-	Level          *int   `json:"level,omitempty"`
-	LevelSource    string `json:"level_source,omitempty"`
-	Job            string `json:"job,omitempty"`
-	JobSource      string `json:"job_source,omitempty"`
-	JobLevel       *int   `json:"job_level,omitempty"`
-	JobLevelSource string `json:"job_level_source,omitempty"`
-	Guild          string `json:"guild,omitempty"`
-	GuildSource    string `json:"guild_source,omitempty"`
-	ModelID        *int64 `json:"model_id,omitempty"`
-	ModelSource    string `json:"model_source,omitempty"`
+	Level            *int            `json:"level,omitempty"`
+	LevelSource      string          `json:"level_source,omitempty"`
+	Job              string          `json:"job,omitempty"`
+	JobSource        string          `json:"job_source,omitempty"`
+	JobEvidence      json.RawMessage `json:"job_evidence,omitempty"`
+	JobLevel         *int            `json:"job_level,omitempty"`
+	JobLevelSource   string          `json:"job_level_source,omitempty"`
+	JobLevelEvidence json.RawMessage `json:"job_level_evidence,omitempty"`
+	Guild            string          `json:"guild,omitempty"`
+	GuildSource      string          `json:"guild_source,omitempty"`
+	ModelID          *int64          `json:"model_id,omitempty"`
+	ModelSource      string          `json:"model_source,omitempty"`
 }
 
 type Progress struct {
@@ -243,6 +246,9 @@ func (s *Registry) Apply(ctx context.Context, observations []Observation) error 
 }
 
 func (s *Registry) ApplyLive(ctx context.Context, server, agentID, characterID, sessionID string, observedAt time.Time, rows []Player) error {
+	if s == nil || s.pool == nil {
+		return errors.New("player registry is unavailable")
+	}
 	observations := make([]Observation, 0, len(rows))
 	for _, row := range rows {
 		if row.Name == "" {
@@ -267,7 +273,11 @@ func (s *Registry) ApplyLive(ctx context.Context, server, agentID, characterID, 
 		}
 		observations = append(observations, obs)
 	}
-	return s.Apply(ctx, observations)
+	admitted, err := s.admitLiveObservations(ctx, observations)
+	if err != nil {
+		return err
+	}
+	return s.Apply(ctx, admitted)
 }
 
 func (s *Registry) resolveModel(obs *Observation) {
@@ -449,15 +459,25 @@ func (s *Registry) List(ctx context.Context, filter ListFilter) (PlayerPage, err
 		return PlayerPage{}, err
 	}
 	where, args := filter.where()
+	cte := identityQuery("")
+	if filter.Server != "" {
+		cte = identityQuery("WHERE p.server_key=$1")
+	}
+	// Count and page share one snapshot even if an upload changes grouping.
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return PlayerPage{}, err
+	}
+	defer tx.Rollback(ctx)
 	fromClause := `FROM identity_players AS players LEFT JOIN player_enrichments pe ON pe.player_id = players.id `
 	var total int
-	if err := s.pool.QueryRow(ctx, identityCTE+`SELECT COUNT(*) `+fromClause+where, args...).Scan(&total); err != nil {
+	if err := tx.QueryRow(ctx, cte+`SELECT COUNT(*) `+fromClause+where, args...).Scan(&total); err != nil {
 		return PlayerPage{}, err
 	}
 	args = append(args, filter.Limit, filter.Offset)
-	rows, err := s.pool.Query(ctx, identityCTE+`SELECT players.id::text, players.server_name, players.observed_name, players.player_name, players.job_name, players.level, players.guild_name, players.job, players.job_level, players.is_jobbing,
+	rows, err := tx.Query(ctx, cte+`SELECT players.id::text, players.server_name, players.observed_name, players.player_name, players.job_name, players.level, players.guild_name, players.job, players.job_level, players.is_jobbing,
 		players.model_id, COALESCE(players.model_name, ''), players.last_region, COALESCE(players.last_zone, ''), players.last_x, players.last_y, players.last_z, players.first_seen_at, players.last_seen_at,
-		pe.proxy_level, pe.proxy_job, pe.proxy_job_level, pe.proxy_guild, players.proxy_model_ref_id, players.display_identity
+		pe.proxy_level, pe.proxy_job, pe.proxy_job_level, pe.proxy_guild, players.proxy_model_ref_id, players.display_identity, pe.field_evidence
 		`+fromClause+where+filter.order()+fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
 	if err != nil {
 		return PlayerPage{}, err
@@ -475,6 +495,10 @@ func (s *Registry) List(ctx context.Context, filter ListFilter) (PlayerPage, err
 	if err := rows.Err(); err != nil {
 		return PlayerPage{}, err
 	}
+	rows.Close()
+	if err := tx.Commit(ctx); err != nil {
+		return PlayerPage{}, err
+	}
 	return PlayerPage{Players: players, Total: total, Limit: filter.Limit, Offset: filter.Offset}, nil
 }
 
@@ -483,9 +507,12 @@ func (s *Registry) Get(ctx context.Context, id string) (PlayerRecord, error) {
 	if !validPlayerUUID(id) {
 		return PlayerRecord{}, ErrNotFound
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id::text, server_name, observed_name, player_name, job_name, level, guild_name, job, job_level, is_jobbing,
-		model_id, COALESCE(model_name, ''), last_region, COALESCE(last_zone, ''), last_x, last_y, last_z, first_seen_at, last_seen_at
-		FROM players WHERE id=$1::uuid`, id)
+	rows, err := s.pool.Query(ctx, `SELECT p.id::text, p.server_name, p.observed_name, p.player_name, p.job_name, p.level, p.guild_name, p.job, p.job_level, p.is_jobbing,
+		p.model_id, COALESCE(p.model_name, ''), p.last_region, COALESCE(p.last_zone, ''), p.last_x, p.last_y, p.last_z, p.first_seen_at, p.last_seen_at,
+		pe.proxy_level, pe.proxy_job, pe.proxy_job_level, pe.proxy_guild,
+		CASE WHEN pe.field_evidence->'model_ref_id'->>'source_identity_kind' IS DISTINCT FROM 'job_alias' THEN pe.model_ref_id END,
+		NULL::jsonb, pe.field_evidence
+		FROM players p LEFT JOIN player_enrichments pe ON pe.player_id=p.id WHERE p.id=$1::uuid`, id)
 	if err != nil {
 		return PlayerRecord{}, err
 	}
@@ -496,7 +523,8 @@ func (s *Registry) Get(ctx context.Context, id string) (PlayerRecord, error) {
 		}
 		return PlayerRecord{}, ErrNotFound
 	}
-	player, err := scanPlayer(rows)
+	player, err := scanPlayerWithEnrichment(rows)
+	rows.Close()
 	if err != nil {
 		return PlayerRecord{}, err
 	}
@@ -506,7 +534,7 @@ func (s *Registry) Get(ctx context.Context, id string) (PlayerRecord, error) {
 		return PlayerRecord{}, err
 	}
 	player.Progression = &progress
-	player.DisplayIdentity, err = s.loadDisplayIdentity(ctx, player.ID)
+	player.DisplayIdentity, err = s.ResolveDisplayIdentity(ctx, player.ID)
 	if err != nil {
 		return PlayerRecord{}, err
 	}
@@ -668,10 +696,11 @@ func scanPlayerWithEnrichment(rows pgx.Rows) (PlayerRecord, error) {
 	var proxyJob, proxyGuild *string
 	var enrichModel *int
 	var identityJSON []byte
+	var evidenceJSON []byte
 	err := rows.Scan(&player.ID, &player.Server, &player.ObservedName, &player.PlayerName, &player.JobName, &player.Level,
 		&player.GuildName, &player.Job, &player.JobLevel, &player.IsJobbing, &player.ModelID, &player.ModelName,
 		&player.LastRegion, &player.LastZone, &player.LastX, &player.LastY, &player.LastZ, &player.FirstSeenAt, &player.LastSeenAt,
-		&proxyLevel, &proxyJob, &proxyJobLevel, &proxyGuild, &enrichModel, &identityJSON)
+		&proxyLevel, &proxyJob, &proxyJobLevel, &proxyGuild, &enrichModel, &identityJSON, &evidenceJSON)
 	if err != nil {
 		return player, err
 	}
@@ -683,6 +712,18 @@ func scanPlayerWithEnrichment(rows pgx.Rows) (PlayerRecord, error) {
 		player.DisplayIdentity = &identity
 	}
 	player.DisplayFallback = buildDisplayFallback(&player, proxyLevel, proxyJobLevel, proxyJob, proxyGuild, enrichModel)
+	if fallback := player.DisplayFallback; fallback != nil && len(evidenceJSON) > 0 {
+		var evidence map[string]json.RawMessage
+		if err := json.Unmarshal(evidenceJSON, &evidence); err != nil {
+			return player, err
+		}
+		if fallback.Job != "" {
+			fallback.JobEvidence = evidence["job"]
+		}
+		if fallback.JobLevel != nil {
+			fallback.JobLevelEvidence = evidence["job_level"]
+		}
+	}
 	return player, nil
 }
 
@@ -752,7 +793,10 @@ func (filter *ListFilter) normalize() error {
 	switch filter.Job {
 	case "", "none", "trader", "thief", "hunter", "unknown":
 	default:
-		return ErrInvalidFilter
+		code, err := strconv.Atoi(filter.Job)
+		if err != nil || code < 4 || code > 255 || strconv.Itoa(code) != filter.Job {
+			return ErrInvalidFilter
+		}
 	}
 	switch filter.Jobbing {
 	case "", "yes", "no", "unknown":

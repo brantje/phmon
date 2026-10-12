@@ -250,6 +250,142 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-12 Stop unidentified nearby-player registry admission
+
+The operator asked for the cause of recurring Unknown/Unknown rows and a source
+fix. Read-only production evidence found four recreated players/seven observations,
+all `map.players`, without player-name, alias or active-job evidence. The collector
+has a generic nearby name; unconditional `ApplyLive` persistence recreated deleted
+records. Implemented receiver admission before registry/history writes: native
+job-mode classification, existing resolved identities/accepted alias mappings,
+own-character identities or unexpired accepted direct-name staged enrichment.
+Affiliation alone and individual field associations do not qualify. All live-map
+sightings remain available. Later classification admits normally; omission does
+not stop known-player updates. Existing unresolved history/imports remain intact.
+No sender/config changes, deployment, bot operation or additional live deletion.
+
+Files: `server/internal/players/{registry,live_admission}.go`,
+`server/internal/phproxy/live_admission_integration_test.go`, protocol/enrichment/
+capability/parity docs and [source evidence](docs/reference/player-admission-2026-10-12.md).
+Validation: isolated PostgreSQL 18 full `go test ./...` passed; focused PostgreSQL
+`go test -race ./internal/players ./internal/phproxy ./internal/httpapi` passed.
+Regression fixtures cover skipped histories, unchanged map sightings, later
+native admission, omission, own/server scoping, atomic validation, v1/v2 staged
+promotion, expired evidence, field-association isolation and Magik/xDont's seven
+gear entries. These are automated receiver results, not live rollout evidence.
+The operator later authorized the local Compose rebuild; that instance now runs
+the admission rule. Other instances are unchanged. Exact next action: observe
+natural map sightings on the Windows/phBot runtime.
+
+### Resume — 2026-10-12 normal-player v2 job enrichment
+
+Active increment: the operator's focused job receipt/storage/projection/display
+verification; this request does not start the remaining roadmap. Receiver
+validation already accepts numeric `job`/`job_level` and
+`unverified_reference_mapping`. Corrected the deliberately empty job fallback
+projection, added migration 35 for attached/staged existing enrichments, exposed
+job evidence on list/detail fallbacks, and made both views native-first. Zero
+remains known; unknown codes retain numbers; alias jobs appear separately as
+inferred and never become unqualified normal-player fallbacks. Affiliation is
+independent of job-item classification/native jobbing state. Filters, sorts,
+counts and pagination retain the same native-first rules. Tracking/history/live
+presence paths are unchanged.
+
+Files: `server/internal/phproxy/{merge_v2,merge_test,job_flow_integration_test}.go`,
+`server/internal/database/migrations/000035_ph_proxy_job_fallback.sql`,
+`server/internal/players/registry.go`, `server/internal/httpapi/{players,
+phproxy_identity_integration_test}.go`, Players list/detail, playerRegistry
+utility/tests, `scripts/player_job_browser_check.mjs`, protocol/enrichment docs,
+and [verification evidence](docs/reference/player-job-enrichment-2026-10-12.md).
+Pre-existing unrelated working-tree edits were retained.
+
+Validation: focused PostgreSQL/race/vet/build checks passed; 249 frontend tests,
+lint/typecheck and Chrome list/detail checks at all three contract viewports
+passed. All `scripts/check.sh` gates passed against a fresh ready PostgreSQL 18.6
+with Node 24.20.0 and `GOFLAGS=-p=1`: Go vet/race/build, 266 plugin tests,
+transport audit, frontend format/lint/typecheck/build and 249 unit tests. The final
+Compose gate initially stopped on the intentionally blank example operator
+secret; it passed separately with an explicit isolated dummy secret. Detailed
+results and environmental false starts are in the verification report.
+Read-only live evidence confirmed v2 numeric affiliation and original unverified
+confidence, including players with known empty job-item observations. The requested
+local Compose server/web rebuild applied migration 35 and restarted both services;
+PostgreSQL stayed up. All 233 direct normal-name job rows now have mapped fallback
+values without rewriting tracking/history. Authenticated list/detail GETs through
+the restarted local app confirmed a native-null live Trader displays `trader`
+while raw code 1 and confidence remain intact. The browser fixture also verifies
+native zero, native precedence and alias-only attribution.
+
+Remaining gate: Windows phBot sender settings/packet behavior were not independently
+inspected; the operator supplied that uploads are enabled and v2 selected. Exact
+next action: observe natural post-restart v2/map traffic and confirm runtime
+classification while retaining player history and presence.
+
+### Resume — 2026-10-12 Delete unknown player records and history
+
+The operator requested removal of records displaying Unknown for both player name
+and job alias, then explicitly selected deletion including history ("Yes + history").
+Completed a one-time live PostgreSQL cleanup using the current display projection
+under transaction locks. Before deletion, saved a private recovery JSON outside
+Git in `~/.local/share/phmon/backups/unknown-players-20261012-114516+0200.json`
+(directory 0700, file 0600). Deleted **103 player records**, **3,261 observations**
+and **133 level snapshots** through existing cascades; no enrichment belonged to
+these IDs. Retained **241 other player records** at the transaction snapshot.
+Verified all selected IDs and their original observation/snapshot rows are gone.
+
+Ordinary live tracking had already created **two new unclassified records** during
+verification. This is a one-time cleanup; future observations remain eligible to
+create records. The initially prepared reversible list-exclusion interpretation
+was reverted after the operator selected actual deletion. No future ingestion/list
+policy, application deployment, bot operation or sender configuration change.
+Existing workspace changes from the preceding increment are preserved.
+
+Validation: original-ID and child-history absence queries after commit; count
+checks against the durable private backup before commit. Earlier isolated tests
+covered the alternate list-filter implementation, which was not deployed and is
+not the selected result. Docs: protocol, receiving contract and parity ledger.
+Exact next action: none for this cleanup; change future-record visibility or
+retention only if the operator requests that additional policy.
+
+### Resume — 2026-10-12 Players identities and v2 gear delivery
+
+Active increment: the explicitly requested Players identity/v2 compatibility plan;
+this does not start the remaining general roadmap. Implemented shared SQL
+`display_identity` for list/detail, independent player-name/job-alias classification,
+unique server-scoped inferred grouping before filters/counts/sort/pagination,
+read-only snapshot consistency, source/conflict labels, original-record links,
+and canonical enrichment on original alias detail URLs. Native tracking records,
+timestamps, observations and level history remain intact. Own characters stay
+hidden by default; proxy-only names retain staging. Mobile filters shrink within
+cells and tables scroll internally.
+
+V2 now accepts supported alias associations, retains evidence in equal-time
+comparisons, promotes every v2 field, serializes identity field merges and returns
+safe field/index validation codes. Migration **33** widens uint32 model references
+and 128-byte staged names; protocol tracking names remain 64 bytes. Concurrent
+work's pending-identity index migration **34**, native job fallback correction,
+promotion guard and plugin fixes are preserved. No worktree, deployment, external
+publication, sender/config changes or real-character operations were performed
+by this increment.
+
+Files: `server/internal/{players,phproxy,httpapi}/`, migration 33,
+`web/app/{pages/players,utils,assets/css}/`, frontend tests,
+`scripts/player_identity_browser_check.mjs`, and receiving/protocol/parity docs.
+Validation: isolated PostgreSQL `TEST_DATABASE_URL` with `go test ./...`;
+focused `go test -race ./internal/phproxy ./internal/players ./internal/httpapi`;
+Node **24.20.0** frontend unit tests (**248 passed**), typecheck, changed-file
+ESLint (zero errors; existing void-input warnings), formatting and production
+build. Isolated Go → PostgreSQL → Nuxt browser checks pass at 1440×1000,
+1280×800 and 390×844, including synthetic Magik/xDont's seven gear entries,
+both detail URLs, filtering, keyboard navigation and error recovery. Evidence:
+`docs/reference-parity.md` and `docs/phmon-enrichment-v2.md`.
+
+Earlier read-only live DB evidence showed Magik's seven items and xDont link;
+the historical 400 cannot be attributed to that character. Actual Windows/phBot
+sender validation and deployment remain separate, intentionally outside this
+request. Exact next action: review the implementation/evidence; deploy only under
+separate operator authorization and then observe naturally occurring v2 uploads.
+
 ### Resume — 2026-10-12 agent reconnect storm from PostgreSQL timeouts
 
 Live agents were reconnecting because PostgreSQL commits waited on `WALWrite`

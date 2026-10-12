@@ -30,6 +30,7 @@ try {
     const listURL = `${origin}/players?server=${encodeURIComponent(scope)}`
     await page.goto(listURL)
     await page.locator('.player-table tbody tr').first().waitFor()
+    assert.equal(await page.locator('.player-filters select').first().inputValue(), scope, 'Selected scope missing from filter')
     const initial = await page.request.get(`${origin}/api/players?server=${encodeURIComponent(scope)}`)
     assert.equal(initial.status(), 200)
     const data = await initial.json()
@@ -59,6 +60,7 @@ try {
     await page.waitForURL(`**/players/${mapped.id}?**`)
     await page.locator('.player-visible-gear .equipment-slot').first().waitFor()
     assert.equal(await page.locator('.player-visible-gear .equipment-slot').count(), 7)
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Detail page overflow')
     assert((await page.locator('.player-page').innerText()).includes('Enrichment sources'))
     await page.screenshot({ path: join(directory, `player-detail-${width}x${height}.png`), fullPage: true })
     const aliasID = mapped.display_identity.related_record_ids.find(id => id !== mapped.id)

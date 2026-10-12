@@ -1847,3 +1847,15 @@ relative to the target server's pet callbacks remains unverified. Plugin tests
 cover pre-signal transport callbacks, confirmed and failed transitions, changed
 runtime pet IDs, unavailable rosters, pet inventory rebasing, and genuine
 lifecycle events.
+
+## Unclassified nearby names — 2026-10-12
+
+The official [Players API](https://plugins.phbot.org/phbot-api/players), checked
+again on 2026-10-12, documents a generic nearby `name` without active job state.
+Existing runtime evidence above establishes an eight-field shape without a
+normal-name/alias discriminator. Four records recreated after operator cleanup
+had seven `map.players` observations, all lacking identity and active-job evidence.
+No new phBot capability was inferred. Receiver admission now skips durable writes
+for such unidentified sightings while preserving the independent live map.
+Later native/accepted proxy identity evidence permits ordinary tracking.
+[Source investigation](reference/player-admission-2026-10-12.md).

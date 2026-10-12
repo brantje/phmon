@@ -2,6 +2,7 @@ package phproxy
 
 import (
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -307,8 +308,10 @@ func syncProxyFallbacks(st *storedFields) {
 	if st.Extended.Level != nil && isCharacterNameEvidence(st.FieldEvidence["level"]) {
 		st.ProxyLevel = st.Extended.Level
 	}
-	// Extended.Job is a numeric affiliation code. List filters compare proxy_job
-	// with native names such as trader or hunter, so the code stays off that column.
+	if st.Extended.Job != nil && isCharacterNameEvidence(st.FieldEvidence["job"]) {
+		job := jobName(*st.Extended.Job)
+		st.ProxyJob = &job
+	}
 	if st.Extended.JobLevel != nil && isCharacterNameEvidence(st.FieldEvidence["job_level"]) {
 		st.ProxyJobLevel = st.Extended.JobLevel
 	}
@@ -317,6 +320,22 @@ func syncProxyFallbacks(st *storedFields) {
 	}
 	if st.Extended.Race != nil && isCharacterNameEvidence(st.FieldEvidence["race"]) {
 		st.ProxyRace = st.Extended.Race
+	}
+}
+
+// Match PhMon's native job vocabulary without discarding unfamiliar wire codes.
+func jobName(code int) string {
+	switch code {
+	case 0:
+		return "none"
+	case 1:
+		return "trader"
+	case 2:
+		return "thief"
+	case 3:
+		return "hunter"
+	default:
+		return strconv.Itoa(code)
 	}
 }
 

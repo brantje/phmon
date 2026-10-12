@@ -3,6 +3,7 @@ package players
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -43,6 +44,7 @@ const identityCTE = `WITH identity_base AS MATERIALIZED (
      SELECT 1 FROM player_observations o WHERE o.player_id=p.id AND o.source='thief_sighting'
    ) THEN p.observed_name END) AS alias_name
  FROM players p LEFT JOIN player_enrichments pe ON pe.player_id=p.id
+ %s
 ), identity_links AS MATERIALIZED (
  SELECT b.id AS owner_id, b.server_key, b.normal_name, link->>'alias' AS alias,
    lower(btrim(link->>'alias')) AS alias_key, (link->>'last_matched')::timestamptz AS matched_at
@@ -78,14 +80,14 @@ const identityCTE = `WITH identity_base AS MATERIALIZED (
 ), identity_players AS (
  SELECT b.*,
    b.normal_name AS display_player_name,
-   COALESCE(b.alias_name, a.latest_alias) AS display_job_alias,
+   labels.alias AS display_job_alias,
    g.first_seen_at AS display_first_seen_at, g.last_seen_at AS display_last_seen_at,
    g.observed_names || COALESCE(a.aliases, ARRAY[]::text[]) AS search_names,
    jsonb_build_object(
      'canonical_id', b.id::text, 'player_name', b.normal_name,
-     'job_alias', COALESCE(b.alias_name,a.latest_alias),
-     'aliases', CASE WHEN b.alias_name IS NOT NULL AND NOT (b.alias_name=ANY(COALESCE(a.aliases,ARRAY[]::text[])))
-       THEN ARRAY[b.alias_name] || COALESCE(a.aliases,ARRAY[]::text[])
+     'job_alias', labels.alias,
+     'aliases', CASE WHEN labels.alias IS NOT NULL AND NOT (labels.alias=ANY(COALESCE(a.aliases,ARRAY[]::text[])))
+       THEN ARRAY[labels.alias] || COALESCE(a.aliases,ARRAY[]::text[])
        ELSE COALESCE(a.aliases,ARRAY[]::text[]) END,
      'related_record_ids', g.related_ids,
      'source', CASE WHEN a.latest_alias IS NOT NULL OR EXISTS (
@@ -105,12 +107,18 @@ const identityCTE = `WITH identity_base AS MATERIALIZED (
      array_agg(alias ORDER BY matched_at DESC,alias_key ASC) AS aliases
    FROM identity_safe_links l WHERE l.owner_id=b.id
  ) a ON TRUE
+ CROSS JOIN LATERAL (
+   SELECT COALESCE(b.alias_name, CASE WHEN b.normal_name IS NULL AND EXISTS (
+     SELECT 1 FROM identity_links l WHERE l.server_key=b.server_key AND l.alias_key=b.observed_name_key
+   ) THEN b.observed_name END, a.latest_alias) AS alias
+ ) labels
 )
 `
 
-func (s *Registry) loadDisplayIdentity(ctx context.Context, id string) (*DisplayIdentity, error) {
+// ResolveDisplayIdentity returns the same projection used by paginated lists.
+func (s *Registry) ResolveDisplayIdentity(ctx context.Context, id string) (*DisplayIdentity, error) {
 	var raw []byte
-	err := s.pool.QueryRow(ctx, identityCTE+`SELECT display_identity FROM identity_players
+	err := s.pool.QueryRow(ctx, identityQuery(`WHERE p.server_key=(SELECT server_key FROM players WHERE id=$1::uuid)`)+`SELECT display_identity FROM identity_players
    WHERE id=(SELECT canonical_id FROM identity_members WHERE id=$1::uuid)`, id).Scan(&raw)
 	if err != nil {
 		return nil, err
@@ -121,3 +129,7 @@ func (s *Registry) loadDisplayIdentity(ctx context.Context, id string) (*Display
 	}
 	return &identity, nil
 }
+
+// Restrict the base relation before materializing mappings for scoped reads.
+// Predicates are fixed internal SQL; all request values remain parameters.
+func identityQuery(predicate string) string { return fmt.Sprintf(identityCTE, predicate) }

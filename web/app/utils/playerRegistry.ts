@@ -25,7 +25,11 @@ export type PlayerRecord = {
   display_fallback?: {
     level?: number | null
     job?: string | null
+    job_source?: string
+    job_evidence?: JobEvidence | null
     job_level?: number | null
+    job_level_source?: string
+    job_level_evidence?: JobEvidence | null
     guild?: string | null
     model_id?: number | null
     model_name?: string | null
@@ -76,7 +80,26 @@ export type LevelSnapshot = {
   source: string
 }
 
-export function jobLabel(job?: string | null) {
+export type JobEvidence = {
+  reason: string
+  source_identity_kind?: string
+  source_name?: string
+}
+
+export function jobSourceLabel(evidence?: JobEvidence | null) {
+  if (!evidence) return 'ph-proxy'
+  const source =
+    evidence.source_identity_kind === 'job_alias'
+      ? `Inferred from alias ${evidence.source_name || 'Unknown'} · ph-proxy`
+      : 'ph-proxy'
+  return `${source} · ${evidence.reason}`
+}
+
+export function jobLabel(job?: string | number | null) {
+  if (job != null && /^\d+$/.test(String(job))) {
+    const code = Number(job)
+    return ['None', 'Trader', 'Thief', 'Hunter'][code] ?? `Unknown (${job})`
+  }
   switch (job) {
     case 'none':
       return 'None'

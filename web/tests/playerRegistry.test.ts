@@ -4,6 +4,7 @@ import {
   chartPoints,
   formatModel,
   jobLabel,
+  jobSourceLabel,
   jobbingLabel,
   registryPlayerName,
   registryJobAlias,
@@ -46,6 +47,37 @@ test('job role and jobbing state use separate labels', () => {
   assert.equal(jobbingLabel(false), 'No')
   assert.equal(jobbingLabel(true), 'Yes')
   assert.equal(jobbingLabel(null), 'Unknown')
+})
+
+test('numeric affiliation preserves known zero and unknown codes without a suit', () => {
+  for (const [code, label] of [
+    [0, 'None'],
+    [1, 'Trader'],
+    [2, 'Thief'],
+    [3, 'Hunter'],
+    [9, 'Unknown (9)'],
+    [255, 'Unknown (255)'],
+  ] as const) {
+    assert.equal(jobLabel(code), label)
+    assert.equal(jobLabel(String(code)), label)
+  }
+  assert.equal(jobbingLabel(false), 'No')
+  assert.equal(
+    jobSourceLabel({
+      reason: 'unverified_reference_mapping',
+      source_identity_kind: 'character_name',
+      source_name: 'NormalPlayer',
+    }),
+    'ph-proxy · unverified_reference_mapping',
+  )
+  assert.equal(
+    jobSourceLabel({
+      reason: 'unverified_reference_mapping',
+      source_identity_kind: 'job_alias',
+      source_name: 'AliasPlayer',
+    }),
+    'Inferred from alias AliasPlayer · ph-proxy · unverified_reference_mapping',
+  )
 })
 
 test('model fallback keeps the numeric id', () => {
