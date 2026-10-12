@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineProps<{
   item: Record<string, unknown> | null
-  slotNumber: number
+  slotNumber?: number
   label?: string
 }>()
 </script>
@@ -19,7 +19,11 @@ defineProps<{
       class="item-slot"
       type="button"
       disabled
-      :aria-label="`Empty slot ${slotNumber + 1}`"
+      :aria-label="
+        slotNumber === undefined
+          ? 'Empty item slot'
+          : `Empty slot ${slotNumber + 1}`
+      "
     />
   </div>
 </template>

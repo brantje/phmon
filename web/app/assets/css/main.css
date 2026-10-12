@@ -3907,7 +3907,7 @@ button.item-detail-name {
   color: var(--text-muted, #8e9caf);
   font-size: 12px;
 }
-.player-filters input,
+.player-filters input:not([type='checkbox']),
 .player-filters select,
 .player-clear,
 .player-pager button {
@@ -3918,10 +3918,38 @@ button.item-detail-name {
   color: #eaf1ff;
   padding: 4px 8px;
 }
+.player-filters label.player-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  min-height: 32px;
+  color: #eaf1ff;
+  font-size: 13px;
+}
+.player-filters label.player-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #8eb4ff;
+}
 .player-table tbody tr {
   cursor: pointer;
 }
 .player-card,
+.player-enrichment-note {
+  color: var(--phmon-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+  max-width: 72ch;
+}
+
+.player-visible-gear {
+  margin-top: 4px;
+}
+
 .player-note {
   color: #c5d0df;
 }

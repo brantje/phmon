@@ -12,6 +12,11 @@ import {
   safePlayersReturn,
   textOrUnknown,
 } from '~/utils/playerRegistry'
+import {
+  type PlayerEnrichment,
+  visibleGearItemRecord,
+  visibleGearLabel,
+} from '~/utils/visibleGear'
 
 type Observation = {
   id: string
@@ -47,7 +52,10 @@ type LevelPage = {
 }
 
 const route = useRoute()
-const player = ref<PlayerRecord | null>(null)
+const player = ref<(PlayerRecord & { enrichment?: PlayerEnrichment | null }) | null>(
+  null,
+)
+const enrichment = computed(() => player.value?.enrichment ?? null)
 const levels = ref<LevelPage | null>(null)
 const history = ref<ObservationPage | null>(null)
 const loading = ref(true)
@@ -68,7 +76,9 @@ async function load() {
   const id = String(route.params.id || '')
   try {
     const [detail, progression, sightings] = await Promise.all([
-      $fetch<PlayerRecord>(`/api/players/${id}`),
+      $fetch<PlayerRecord & { enrichment?: PlayerEnrichment | null }>(
+        `/api/players/${id}`,
+      ),
       $fetch<LevelPage>(`/api/players/${id}/levels`, { query: route.query }),
       $fetch<ObservationPage>(`/api/players/${id}/observations`, {
         query: { limit: 25, offset: route.query.history_offset || 0 },
@@ -192,6 +202,64 @@ watch(
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section
+        v-if="enrichment && (enrichment.level_observed_at || enrichment.position_observed_at || enrichment.identity_links?.length)"
+        class="player-card"
+      >
+        <h2>ph-proxy enrichment</h2>
+        <dl v-if="enrichment.level_observed_at || enrichment.position_observed_at" class="player-facts">
+          <div v-if="enrichment.level_observed_at">
+            <dt>Level (ph-proxy)</dt>
+            <dd>{{ textOrUnknown(enrichment.level) }}</dd>
+          </div>
+          <div v-if="enrichment.guild">
+            <dt>Guild (ph-proxy)</dt>
+            <dd>{{ enrichment.guild }}</dd>
+          </div>
+          <div v-if="enrichment.position_observed_at && enrichment.position">
+            <dt>Spawn position</dt>
+            <dd>
+              region {{ enrichment.position.region }}, x {{ enrichment.position.x }},
+              y {{ enrichment.position.y }}, z {{ enrichment.position.z }}
+            </dd>
+          </div>
+        </dl>
+        <ul v-if="enrichment.identity_links?.length" class="player-enrichment-links">
+          <li v-for="(link, index) in enrichment.identity_links" :key="index">
+            Inferred alias {{ link.alias }} ({{ link.matches }} matches)
+          </li>
+        </ul>
+      </section>
+
+      <section
+        v-if="enrichment && enrichment.gear_observed_at"
+        class="player-card"
+      >
+        <h2>Visible Gear (ph-proxy)</h2>
+        <p class="player-enrichment-note">
+          Observed {{ formatPlayerTime(enrichment.gear_observed_at) }}. This
+          observation contains visible item references and verified enhancement
+          only. Rolled stats, blues, durability and untransmitted equipment are
+          unavailable.
+        </p>
+        <div
+          v-if="enrichment.gear?.length"
+          class="equipment-slots player-visible-gear"
+        >
+          <div
+            v-for="(entry, index) in enrichment.gear"
+            :key="`${entry.ref_item_id}-${index}`"
+            class="equipment-slot"
+          >
+            <ItemSlot
+              :item="visibleGearItemRecord(entry)"
+              :label="visibleGearLabel(entry)"
+            />
+          </div>
+        </div>
+        <p v-else class="player-note">No visible items were observed.</p>
       </section>
 
       <section class="player-card">

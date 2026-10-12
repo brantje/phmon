@@ -743,6 +743,70 @@ func (failingAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error)
 	return nil, errors.New("unused")
 }
 
+func TestAgentHelloPersistTimeoutKeepsSession(t *testing.T) {
+	baseStore := newFakeAgentStore()
+	store := &blockingMarkConnectedStore{
+		fakeAgentStore: baseStore,
+		started:        make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	registry := agentdomain.NewRegistry()
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		AgentOptions: AgentOptions{
+			HelloTimeout:      time.Second,
+			HeartbeatInterval: 50 * time.Millisecond,
+			HeartbeatTimeout:  time.Second,
+		},
+	}))
+	defer server.Close()
+	defer close(store.release)
+
+	conn := dialAgent(t, server.URL, baseStore.token)
+	defer conn.CloseNow()
+	writeHello(t, conn, testAgentID)
+
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("MarkConnected was not reached")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var ack helloAck
+	if err := wsjson.Read(ctx, conn, &ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack.Type != "hello.ack" {
+		t.Fatalf("timed-out hello persist closed the socket: %+v", ack)
+	}
+	if registry.ConnectionCount(testAgentID) != 1 {
+		t.Fatal("timed-out hello persist unregistered the agent")
+	}
+	if err := wsjson.Write(ctx, conn, agentMessage{Type: "heartbeat", ProtocolVersion: 2, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { store.mu.Lock(); defer store.mu.Unlock(); return store.seenCount == 1 })
+	if registry.ConnectionCount(testAgentID) != 1 {
+		t.Fatal("heartbeat after hello persist timeout disconnected the agent")
+	}
+}
+
+func TestDropUnavailableCharacterLookup(t *testing.T) {
+	if dropUnavailableCharacterLookup(nil, testAgentID, 19, "unused") {
+		t.Fatal("nil lookup error was dropped")
+	}
+	if dropUnavailableCharacterLookup(characters.ErrNotFound, testAgentID, 19, "unused") {
+		t.Fatal("missing character was treated as unavailable")
+	}
+	if !dropUnavailableCharacterLookup(context.DeadlineExceeded, testAgentID, 19, "lookup unavailable") {
+		t.Fatal("deadline exceeded lookup was treated as a session rejection")
+	}
+}
+
 func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 	store := newFakeAgentStore()
 	registry := agentdomain.NewRegistry()

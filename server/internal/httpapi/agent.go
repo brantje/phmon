@@ -247,9 +247,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		unregisterPendingSession()
-		rejectAgentFrame(conn, websocket.StatusInternalError, "state unavailable", hello.AgentID, hello.ProtocolVersion)
-		return
+		// Durable hello metadata is best-effort. Closing here turns a slow
+		// PostgreSQL commit into an immediate reconnect storm.
+		slog.Warn("failed to persist agent connect", "agent_id", hello.AgentID, "reason", err.Error())
 	}
 
 	writer := newAgentWriter(sessionCtx, conn, sessionCancel)
@@ -367,6 +367,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
 			cancel()
+			if dropUnavailableCharacterLookup(characterErr, hello.AgentID, hello.ProtocolVersion, "map monster lookup unavailable") {
+				continue
+			}
 			if characterErr != nil || !character.Online || character.SessionID == nil || *character.SessionID != frame.SessionID ||
 				character.AgentID == nil || *character.AgentID != hello.AgentID {
 				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, frame.CharacterID, frame.SessionID) {
@@ -406,6 +409,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
 			cancel()
+			if dropUnavailableCharacterLookup(characterErr, hello.AgentID, hello.ProtocolVersion, "map npc lookup unavailable") {
+				continue
+			}
 			if characterErr != nil || !character.Online || character.SessionID == nil || *character.SessionID != frame.SessionID ||
 				character.AgentID == nil || *character.AgentID != hello.AgentID {
 				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, frame.CharacterID, frame.SessionID) {
@@ -435,6 +441,10 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			character, characterErr := h.characters.GetScoped(ctx, frame.CharacterID, "")
 			active, hasSession, sessionErr := h.characters.ActiveSession(ctx, frame.CharacterID)
 			cancel()
+			if dropUnavailableCharacterLookup(characterErr, hello.AgentID, hello.ProtocolVersion, "map player lookup unavailable") ||
+				dropUnavailableCharacterLookup(sessionErr, hello.AgentID, hello.ProtocolVersion, "map player session lookup unavailable") {
+				continue
+			}
 			if characterErr != nil || sessionErr != nil || !hasSession || !character.Online ||
 				character.SessionID == nil || *character.SessionID != frame.SessionID ||
 				character.AgentID == nil || *character.AgentID != hello.AgentID ||
@@ -710,8 +720,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			changed, e := h.commands.Acknowledge(ctx, message.CommandID, hello.AgentID, message.SessionID, generation, time.Now().UTC())
 			cancel()
 			if e != nil && !errors.Is(e, commands.ErrNotFound) {
-				rejectAgentFrame(conn, websocket.StatusInternalError, "command acknowledgement unavailable", hello.AgentID, hello.ProtocolVersion)
-				return
+				slog.Warn("command acknowledgement unavailable", "agent_id", hello.AgentID, "reason", e.Error())
+				continue
 			}
 			if changed {
 				h.live.Invalidate()
@@ -725,8 +735,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			changed, e := h.commands.Result(ctx, message.CommandID, hello.AgentID, message.SessionID, generation, time.Now().UTC(), commands.ResultInput{Status: commands.State(message.Status), Code: message.Reason, Message: message.Reason, Verification: message.Verification, APIReturn: message.APIReturn, EffectiveArgs: message.EffectiveArgs, ObservedAfter: message.ObservedAfter})
 			cancel()
 			if e != nil && !errors.Is(e, commands.ErrNotFound) {
-				rejectAgentFrame(conn, websocket.StatusInternalError, "command result unavailable", hello.AgentID, hello.ProtocolVersion)
-				return
+				slog.Warn("command result unavailable", "agent_id", hello.AgentID, "reason", e.Error())
+				continue
 			}
 			if changed && h.navigation != nil && h.commands != nil {
 				resultCtx, resultCancel := context.WithTimeout(sessionCtx, 2*time.Second)
@@ -770,8 +780,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if err != nil {
-				rejectAgentFrame(conn, websocket.StatusInternalError, "control state unavailable", hello.AgentID, hello.ProtocolVersion)
-				return
+				slog.Warn("control state unavailable", "agent_id", hello.AgentID, "reason", err.Error())
+				continue
 			}
 			h.live.Invalidate()
 		case "character.identify":
@@ -795,8 +805,12 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			cancel()
 			if e != nil {
-				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character identity", hello.AgentID, hello.ProtocolVersion)
-				return
+				if errors.Is(e, characters.ErrInvalidIdentity) {
+					rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid character identity", hello.AgentID, hello.ProtocolVersion)
+					return
+				}
+				slog.Warn("character identify unavailable", "agent_id", hello.AgentID, "reason", e.Error())
+				continue
 			}
 			if h.navigation != nil && previous.SessionID != "" {
 				// A worker can re-identify within the same claimed session after a
@@ -911,10 +925,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, message.CharacterID, message.SessionID) {
 						return
 					}
-					continue
 				}
-				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
-				return
+				continue
 			}
 			if h.navigation != nil && message.State.Region != nil && message.State.X != nil && message.State.Y != nil {
 				if observedAt, parseErr := time.Parse(time.RFC3339, message.SentAt); parseErr == nil {
@@ -1005,14 +1017,13 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 			}
 			cancel()
 			if e != nil {
+				slog.Warn("character leave rejected", "agent_id", hello.AgentID, "reason", e.Error())
 				if errors.Is(e, characters.ErrNotFound) {
 					if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, message.CharacterID, message.SessionID) {
 						return
 					}
-					continue
 				}
-				rejectAgentFrame(conn, websocket.StatusInternalError, "character state unavailable", hello.AgentID, hello.ProtocolVersion)
-				return
+				continue
 			}
 			if h.mobLive != nil && message.SessionID != "" {
 				h.mobLive.RemoveSession(message.SessionID)
@@ -1089,8 +1100,8 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if err != nil {
-				rejectAgentFrame(conn, websocket.StatusInternalError, "resource snapshot unavailable", hello.AgentID, hello.ProtocolVersion)
-				return
+				slog.Warn("resource snapshot unavailable", "agent_id", hello.AgentID, "reason", err.Error())
+				continue
 			}
 			guildGoldChanged := false
 			if rawObservation, ok := assembled.Resources["guild_storage"]; ok {
@@ -1178,6 +1189,14 @@ func validCommandFrame(message agentMessage) bool {
 func rejectAgentFrame(conn *websocket.Conn, status websocket.StatusCode, reason, agentID string, protocol int) {
 	slog.Warn("agent frame rejected", "agent_id", agentID, "protocol", protocol, "close_status", status, "reason", reason)
 	_ = conn.Close(status, reason)
+}
+
+func dropUnavailableCharacterLookup(err error, agentID string, protocol int, reason string) bool {
+	if err == nil || errors.Is(err, characters.ErrNotFound) {
+		return false
+	}
+	slog.Warn("agent observation dropped", "agent_id", agentID, "protocol", protocol, "reason", reason)
+	return true
 }
 
 func writeCharacterRejected(ctx context.Context, writer *agentWriter, protocol int, characterID, sessionID string) bool {

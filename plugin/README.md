@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.33**, using agent protocol **19**. It
+The current local plugin release is **1.9.35**, using agent protocol **19**. It
 accepts a display-only route from another plugin in the same phBot process through
 `submit_external_route` and publishes `navigation.observed`. PhMon does not start
 or stop that route. Walks stay visible when a trade script also contains blank
@@ -25,6 +25,18 @@ Item types resolve through phBot's `get_item(model)` data on the callback thread
 inventory snapshots continue updating normally. These classifications add no fields to the wire
 protocol. The historical capability summary below starts at plugin 1.9.12 and
 protocol 13.
+
+Version 1.9.35 holds pet summon, dismissal, and transport-death events for five
+seconds. A pending vSRO `0x34B5` teleport-ready signal extends that hold through its
+ten-second confirmation window so callbacks immediately preceding phBot's confirmed
+`teleported()` callback can be discarded as teleport teardown. The signal fences
+resource samples; after teleport, the pet roster must match the
+previous type/model/name multiplicities for two observed samples before pet events
+resume. Runtime pet IDs may change. Pet inventory comparisons are rebased through
+the transition; party and academy comparisons continue. A fresh two-sample roster
+baseline is required after a 30-second recovery timeout. Packet forwarding and event
+schemas are unchanged. The `0x34B5` ordering still requires validation on the target
+phBot/server runtime.
 
 At the 1.9.12 development baseline, plugin **1.9.12** (`vsro_1188_passive_r2`, API
 evidence schema 2), used agent protocol v13 over the existing authenticated
@@ -569,3 +581,12 @@ native exception text is printed. Kalypso's fresh 1.9.21 session passed after th
 operator restart, and both repeated eight-character short/long routes had eight
 observed arrivals. The earlier native False reason remains unknown; these logs
 are available if it recurs. See the [live report](../docs/reference/navigation-2026-10-04.md).
+
+## Weapon swap event noise (1.9.34)
+
+Known Weapon and Shield transfers between equipment and inventory are omitted from
+the durable activity stream. phBot `get_item(model)` classifies the item on the
+callback thread; the event worker uses only the bounded profile-scoped cache.
+Unavailable or unknown item definitions remain eligible for transfer events.
+Acquisitions, quantity changes and transfers involving other containers remain
+recorded. Existing activity history is retained.

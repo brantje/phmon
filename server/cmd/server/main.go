@@ -25,6 +25,7 @@ import (
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/npcs"
+	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
@@ -90,6 +91,8 @@ func run() error {
 	if metadataErr != nil {
 		return fmt.Errorf("load item metadata: %w", metadataErr)
 	}
+	phProxyStore := phproxy.NewStore(pool, metadata)
+	playerRegistry.SetEnrichmentPromoter(phProxyStore)
 	resourceStore.SetItemMetadata(metadata)
 	playerRegistry.SetModelNamer(metadata)
 	analyticsStore.SetItemTaxonomy(
@@ -197,6 +200,7 @@ func run() error {
 		Analytics:      analyticsStore,
 		TradeNexus:     tradeHub,
 		ThiefSightings: thiefSightings,
+		PhProxy:        phProxyStore,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.

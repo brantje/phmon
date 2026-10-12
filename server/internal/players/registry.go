@@ -26,9 +26,15 @@ type ModelNamer interface {
 	CharacterModelName(server string, modelID *int64) string
 }
 
+// EnrichmentPromoter runs after tracking ingestion; failures must not affect Apply.
+type EnrichmentPromoter interface {
+	PromoteEnrichment(ctx context.Context, server, observedName string)
+}
+
 type Registry struct {
-	pool  *pgxpool.Pool
-	namer ModelNamer
+	pool     *pgxpool.Pool
+	namer    ModelNamer
+	promoter EnrichmentPromoter
 }
 
 func NewRegistry(pool *pgxpool.Pool) *Registry { return &Registry{pool: pool} }
@@ -36,6 +42,27 @@ func NewRegistry(pool *pgxpool.Pool) *Registry { return &Registry{pool: pool} }
 func (s *Registry) SetModelNamer(namer ModelNamer) {
 	if s != nil {
 		s.namer = namer
+	}
+}
+
+func (s *Registry) SetEnrichmentPromoter(promoter EnrichmentPromoter) {
+	if s != nil {
+		s.promoter = promoter
+	}
+}
+
+func (s *Registry) notifyEnrichmentPromotion(ctx context.Context, observations []Observation) {
+	if s == nil || s.promoter == nil || len(observations) == 0 {
+		return
+	}
+	seen := make(map[string]struct{}, len(observations))
+	for _, obs := range observations {
+		key := serverKey(obs.Server) + "\x00" + nameKey(obs.ObservedName)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		s.promoter.PromoteEnrichment(ctx, obs.Server, obs.ObservedName)
 	}
 }
 
@@ -53,31 +80,46 @@ type ListFilter struct {
 	SeenSince   *time.Time
 	Sort        string
 	Descending  bool
+	HideOwn     bool
 	Limit       int
 	Offset      int
 }
 
 type PlayerRecord struct {
-	ID           string    `json:"id"`
-	Server       string    `json:"server"`
-	ObservedName string    `json:"observed_name"`
-	PlayerName   *string   `json:"player_name,omitempty"`
-	JobName      *string   `json:"job_name,omitempty"`
-	Level        *int      `json:"level,omitempty"`
-	GuildName    *string   `json:"guild_name,omitempty"`
-	Job          *string   `json:"job,omitempty"`
-	JobLevel     *int      `json:"job_level,omitempty"`
-	IsJobbing    *bool     `json:"is_jobbing,omitempty"`
-	ModelID      *int64    `json:"model_id,omitempty"`
-	ModelName    string    `json:"model_name,omitempty"`
-	LastRegion   *int      `json:"last_region,omitempty"`
-	LastZone     string    `json:"last_zone,omitempty"`
-	LastX        *float64  `json:"last_x,omitempty"`
-	LastY        *float64  `json:"last_y,omitempty"`
-	LastZ        *float64  `json:"last_z,omitempty"`
-	FirstSeenAt  time.Time `json:"first_seen_at"`
-	LastSeenAt   time.Time `json:"last_seen_at"`
-	Progression  *Progress `json:"progression,omitempty"`
+	ID              string           `json:"id"`
+	Server          string           `json:"server"`
+	ObservedName    string           `json:"observed_name"`
+	PlayerName      *string          `json:"player_name,omitempty"`
+	JobName         *string          `json:"job_name,omitempty"`
+	Level           *int             `json:"level,omitempty"`
+	GuildName       *string          `json:"guild_name,omitempty"`
+	Job             *string          `json:"job,omitempty"`
+	JobLevel        *int             `json:"job_level,omitempty"`
+	IsJobbing       *bool            `json:"is_jobbing,omitempty"`
+	ModelID         *int64           `json:"model_id,omitempty"`
+	ModelName       string           `json:"model_name,omitempty"`
+	LastRegion      *int             `json:"last_region,omitempty"`
+	LastZone        string           `json:"last_zone,omitempty"`
+	LastX           *float64         `json:"last_x,omitempty"`
+	LastY           *float64         `json:"last_y,omitempty"`
+	LastZ           *float64         `json:"last_z,omitempty"`
+	FirstSeenAt     time.Time        `json:"first_seen_at"`
+	LastSeenAt      time.Time        `json:"last_seen_at"`
+	Progression     *Progress        `json:"progression,omitempty"`
+	DisplayFallback *DisplayFallback `json:"display_fallback,omitempty"`
+}
+
+type DisplayFallback struct {
+	Level          *int   `json:"level,omitempty"`
+	LevelSource    string `json:"level_source,omitempty"`
+	Job            string `json:"job,omitempty"`
+	JobSource      string `json:"job_source,omitempty"`
+	JobLevel       *int   `json:"job_level,omitempty"`
+	JobLevelSource string `json:"job_level_source,omitempty"`
+	Guild          string `json:"guild,omitempty"`
+	GuildSource    string `json:"guild_source,omitempty"`
+	ModelID        *int64 `json:"model_id,omitempty"`
+	ModelSource    string `json:"model_source,omitempty"`
 }
 
 type Progress struct {
@@ -191,7 +233,11 @@ func (s *Registry) Apply(ctx context.Context, observations []Observation) error 
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.notifyEnrichmentPromotion(ctx, observations)
+	return nil
 }
 
 func (s *Registry) ApplyLive(ctx context.Context, server, agentID, characterID, sessionID string, observedAt time.Time, rows []Player) error {
@@ -401,21 +447,23 @@ func (s *Registry) List(ctx context.Context, filter ListFilter) (PlayerPage, err
 		return PlayerPage{}, err
 	}
 	where, args := filter.where()
+	fromClause := `FROM players LEFT JOIN player_enrichments pe ON pe.player_id = players.id `
 	var total int
-	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM players `+where, args...).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) `+fromClause+where, args...).Scan(&total); err != nil {
 		return PlayerPage{}, err
 	}
 	args = append(args, filter.Limit, filter.Offset)
-	rows, err := s.pool.Query(ctx, `SELECT id::text, server_name, observed_name, player_name, job_name, level, guild_name, job, job_level, is_jobbing,
-		model_id, COALESCE(model_name, ''), last_region, COALESCE(last_zone, ''), last_x, last_y, last_z, first_seen_at, last_seen_at
-		FROM players `+where+filter.order()+fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
+	rows, err := s.pool.Query(ctx, `SELECT players.id::text, players.server_name, players.observed_name, players.player_name, players.job_name, players.level, players.guild_name, players.job, players.job_level, players.is_jobbing,
+		players.model_id, COALESCE(players.model_name, ''), players.last_region, COALESCE(players.last_zone, ''), players.last_x, players.last_y, players.last_z, players.first_seen_at, players.last_seen_at,
+		pe.proxy_level, pe.proxy_job, pe.proxy_job_level, pe.proxy_guild, pe.model_ref_id
+		`+fromClause+where+filter.order()+fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)-1, len(args)), args...)
 	if err != nil {
 		return PlayerPage{}, err
 	}
 	defer rows.Close()
 	players := []PlayerRecord{}
 	for rows.Next() {
-		player, err := scanPlayer(rows)
+		player, err := scanPlayerWithEnrichment(rows)
 		if err != nil {
 			return PlayerPage{}, err
 		}
@@ -608,6 +656,59 @@ func scanPlayer(rows pgx.Rows) (PlayerRecord, error) {
 	return player, err
 }
 
+func scanPlayerWithEnrichment(rows pgx.Rows) (PlayerRecord, error) {
+	var player PlayerRecord
+	var proxyLevel, proxyJobLevel *int
+	var proxyJob, proxyGuild *string
+	var enrichModel *int
+	err := rows.Scan(&player.ID, &player.Server, &player.ObservedName, &player.PlayerName, &player.JobName, &player.Level,
+		&player.GuildName, &player.Job, &player.JobLevel, &player.IsJobbing, &player.ModelID, &player.ModelName,
+		&player.LastRegion, &player.LastZone, &player.LastX, &player.LastY, &player.LastZ, &player.FirstSeenAt, &player.LastSeenAt,
+		&proxyLevel, &proxyJob, &proxyJobLevel, &proxyGuild, &enrichModel)
+	if err != nil {
+		return player, err
+	}
+	player.DisplayFallback = buildDisplayFallback(&player, proxyLevel, proxyJobLevel, proxyJob, proxyGuild, enrichModel)
+	return player, nil
+}
+
+func buildDisplayFallback(
+	player *PlayerRecord,
+	proxyLevel, proxyJobLevel *int,
+	proxyJob, proxyGuild *string,
+	enrichModel *int,
+) *DisplayFallback {
+	if player == nil {
+		return nil
+	}
+	out := &DisplayFallback{}
+	if player.Level == nil && proxyLevel != nil {
+		out.Level = proxyLevel
+		out.LevelSource = "ph-proxy"
+	}
+	if player.Job == nil && proxyJob != nil && *proxyJob != "" {
+		out.Job = *proxyJob
+		out.JobSource = "ph-proxy"
+	}
+	if player.JobLevel == nil && proxyJobLevel != nil {
+		out.JobLevel = proxyJobLevel
+		out.JobLevelSource = "ph-proxy"
+	}
+	if player.GuildName == nil && proxyGuild != nil {
+		out.Guild = *proxyGuild
+		out.GuildSource = "ph-proxy"
+	}
+	if player.ModelID == nil && enrichModel != nil {
+		v := int64(*enrichModel)
+		out.ModelID = &v
+		out.ModelSource = "ph-proxy"
+	}
+	if out.Level == nil && out.Job == "" && out.JobLevel == nil && out.Guild == "" && out.ModelID == nil {
+		return nil
+	}
+	return out
+}
+
 func (s *Registry) modelName(server string, modelID *int64, stored string) string {
 	if stored != "" {
 		return stored
@@ -676,70 +777,103 @@ func (filter ListFilter) where() (string, []any) {
 		clauses = append(clauses, fmt.Sprintf(clause, len(args)))
 	}
 	if filter.Server != "" {
-		add("server_key=$%d", serverKey(filter.Server))
+		add("players.server_key=$%d", serverKey(filter.Server))
 	}
 	if filter.Name != "" {
 		args = append(args, likeContains(filter.Name))
 		n := len(args)
-		clauses = append(clauses, fmt.Sprintf("(observed_name ILIKE $%d ESCAPE '\\' OR COALESCE(player_name, '') ILIKE $%d ESCAPE '\\' OR COALESCE(job_name, '') ILIKE $%d ESCAPE '\\')", n, n, n))
+		clauses = append(clauses, fmt.Sprintf("(players.observed_name ILIKE $%d ESCAPE '\\' OR COALESCE(players.player_name, '') ILIKE $%d ESCAPE '\\' OR COALESCE(players.job_name, '') ILIKE $%d ESCAPE '\\')", n, n, n))
 	}
 	if filter.Guild != "" {
-		add("COALESCE(guild_name, '') ILIKE $%d ESCAPE '\\'", likeContains(filter.Guild))
+		args = append(args, likeContains(filter.Guild))
+		n := len(args)
+		clauses = append(clauses, fmt.Sprintf("COALESCE(players.guild_name, pe.proxy_guild, '') ILIKE $%d ESCAPE '\\'", n))
 	}
 	if filter.Job == "unknown" {
-		clauses = append(clauses, "(job IS NULL OR job='unknown')")
+		clauses = append(clauses, "(COALESCE(players.job, pe.proxy_job) IS NULL OR COALESCE(players.job, pe.proxy_job)='unknown')")
 	} else if filter.Job != "" {
-		add("job=$%d", filter.Job)
+		add("COALESCE(players.job, pe.proxy_job)=$%d", filter.Job)
 	}
 	switch filter.Jobbing {
 	case "yes":
-		clauses = append(clauses, "is_jobbing IS TRUE")
+		clauses = append(clauses, "players.is_jobbing IS TRUE")
 	case "no":
-		clauses = append(clauses, "is_jobbing IS FALSE")
+		clauses = append(clauses, "players.is_jobbing IS FALSE")
 	case "unknown":
-		clauses = append(clauses, "is_jobbing IS NULL")
+		clauses = append(clauses, "players.is_jobbing IS NULL")
 	}
 	if filter.MinLevel != nil {
-		add("level >= $%d", *filter.MinLevel)
+		add("COALESCE(players.level, pe.proxy_level) >= $%d", *filter.MinLevel)
 	}
 	if filter.MaxLevel != nil {
-		add("level <= $%d", *filter.MaxLevel)
+		add("COALESCE(players.level, pe.proxy_level) <= $%d", *filter.MaxLevel)
 	}
 	if filter.MinJobLevel != nil {
-		add("job_level >= $%d", *filter.MinJobLevel)
+		add("COALESCE(players.job_level, pe.proxy_job_level) >= $%d", *filter.MinJobLevel)
 	}
 	if filter.MaxJobLevel != nil {
-		add("job_level <= $%d", *filter.MaxJobLevel)
+		add("COALESCE(players.job_level, pe.proxy_job_level) <= $%d", *filter.MaxJobLevel)
 	}
 	if filter.SeenSince != nil {
-		add("last_seen_at >= $%d", filter.SeenSince.UTC())
+		add("players.last_seen_at >= $%d", filter.SeenSince.UTC())
+	}
+	if filter.HideOwn {
+		clauses = append(clauses, `NOT EXISTS (
+			SELECT 1 FROM characters AS own_characters
+			WHERE own_characters.server_key = players.server_key
+			  AND (
+			    own_characters.identity_key = players.observed_name_key
+			    OR (
+			      players.player_name IS NOT NULL
+			      AND own_characters.identity_key = lower(btrim(players.player_name))
+			    )
+			  )
+		)`)
 	}
 	if filter.Model != "" {
 		if modelID, ok := parseModelFilter(filter.Model); ok {
-			args = append(args, modelID, likeContains(filter.Model))
-			idPos := len(args) - 1
+			args = append(args, modelID, modelID, likeContains(filter.Model))
+			idPos := len(args) - 2
 			namePos := len(args)
-			clauses = append(clauses, fmt.Sprintf("(model_id=$%d OR COALESCE(model_name, '') ILIKE $%d ESCAPE '\\')", idPos, namePos))
+			clauses = append(clauses, fmt.Sprintf("(players.model_id=$%d OR pe.model_ref_id=$%d OR COALESCE(players.model_name, '') ILIKE $%d ESCAPE '\\')", idPos, idPos+1, namePos))
 		} else {
-			add("COALESCE(model_name, '') ILIKE $%d ESCAPE '\\'", likeContains(filter.Model))
+			add("COALESCE(players.model_name, '') ILIKE $%d ESCAPE '\\'", likeContains(filter.Model))
 		}
 	}
 	return "WHERE " + strings.Join(clauses, " AND "), args
 }
 
 func (filter ListFilter) order() string {
-	column := "last_seen_at"
+	column := "players.last_seen_at"
 	switch filter.Sort {
-	case "first_seen_at", "observed_name", "player_name", "job_name", "level", "guild_name", "job", "job_level", "is_jobbing", "model_name":
-		column = filter.Sort
+	case "first_seen_at":
+		column = "players.first_seen_at"
+	case "observed_name":
+		column = "players.observed_name"
+	case "player_name":
+		column = "players.player_name"
+	case "job_name":
+		column = "players.job_name"
+	case "level":
+		column = "COALESCE(players.level, pe.proxy_level)"
+	case "guild_name":
+		column = "COALESCE(players.guild_name, pe.proxy_guild)"
+	case "job":
+		column = "COALESCE(players.job, pe.proxy_job)"
+	case "job_level":
+		column = "COALESCE(players.job_level, pe.proxy_job_level)"
+	case "is_jobbing":
+		column = "players.is_jobbing"
+	case "model_name":
+		column = "players.model_name"
 	case "server":
-		column = "server_name"
+		column = "players.server_name"
 	}
 	direction := "ASC"
 	if filter.Descending {
 		direction = "DESC"
 	}
-	return " ORDER BY " + column + " " + direction + " NULLS LAST, id DESC"
+	return " ORDER BY " + column + " " + direction + " NULLS LAST, players.id DESC"
 }
 
 func pageBounds(limit, offset int) (int, int, error) {

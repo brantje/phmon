@@ -135,6 +135,11 @@ onBeforeUnmount(() => {
   for (const key of filterKeys) clearTimeout(filterTimers[key])
 })
 
+const hideOwnCharacters = computed(() => {
+  const value = queryText('hide_own').toLowerCase()
+  return value !== '0' && value !== 'false' && value !== 'no'
+})
+
 const total = computed(() => page.value?.total ?? 0)
 const offset = computed(() => page.value?.offset ?? 0)
 const limit = computed(() => page.value?.limit ?? 25)
@@ -301,6 +306,20 @@ function formatPlayerTime(value?: string | null) {
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
         </select>
+      </label>
+      <label class="player-check">
+        <input
+          type="checkbox"
+          :checked="hideOwnCharacters"
+          @change="
+            replaceQuery({
+              hide_own: ($event.target as HTMLInputElement).checked
+                ? undefined
+                : '0',
+            })
+          "
+        />
+        Hide own characters
       </label>
       <button
         type="button"
