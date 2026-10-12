@@ -52,9 +52,9 @@ type LevelPage = {
 }
 
 const route = useRoute()
-const player = ref<(PlayerRecord & { enrichment?: PlayerEnrichment | null }) | null>(
-  null,
-)
+const player = ref<
+  (PlayerRecord & { enrichment?: PlayerEnrichment | null }) | null
+>(null)
 const enrichment = computed(() => player.value?.enrichment ?? null)
 const levels = ref<LevelPage | null>(null)
 const history = ref<ObservationPage | null>(null)
@@ -205,11 +205,19 @@ watch(
       </section>
 
       <section
-        v-if="enrichment && (enrichment.level_observed_at || enrichment.position_observed_at || enrichment.identity_links?.length)"
+        v-if="
+          enrichment &&
+          (enrichment.level_observed_at ||
+            enrichment.position_observed_at ||
+            enrichment.identity_links?.length)
+        "
         class="player-card"
       >
         <h2>ph-proxy enrichment</h2>
-        <dl v-if="enrichment.level_observed_at || enrichment.position_observed_at" class="player-facts">
+        <dl
+          v-if="enrichment.level_observed_at || enrichment.position_observed_at"
+          class="player-facts"
+        >
           <div v-if="enrichment.level_observed_at">
             <dt>Level (ph-proxy)</dt>
             <dd>{{ textOrUnknown(enrichment.level) }}</dd>
@@ -221,12 +229,16 @@ watch(
           <div v-if="enrichment.position_observed_at && enrichment.position">
             <dt>Spawn position</dt>
             <dd>
-              region {{ enrichment.position.region }}, x {{ enrichment.position.x }},
-              y {{ enrichment.position.y }}, z {{ enrichment.position.z }}
+              region {{ enrichment.position.region }}, x
+              {{ enrichment.position.x }}, y {{ enrichment.position.y }}, z
+              {{ enrichment.position.z }}
             </dd>
           </div>
         </dl>
-        <ul v-if="enrichment.identity_links?.length" class="player-enrichment-links">
+        <ul
+          v-if="enrichment.identity_links?.length"
+          class="player-enrichment-links"
+        >
           <li v-for="(link, index) in enrichment.identity_links" :key="index">
             Inferred alias {{ link.alias }} ({{ link.matches }} matches)
           </li>

@@ -34,7 +34,9 @@ export type PlayerDetailRecord = {
   enrichment?: PlayerEnrichment | null
 } & Record<string, unknown>
 
-export function visibleGearItemRecord(entry: VisibleGearEntry): Record<string, unknown> {
+export function visibleGearItemRecord(
+  entry: VisibleGearEntry,
+): Record<string, unknown> {
   const base =
     entry.item && typeof entry.item === 'object'
       ? { ...entry.item }
