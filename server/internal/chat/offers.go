@@ -10,32 +10,32 @@ import (
 type OfferFilter struct {
 	Server string
 	Sender string
-	Query string
-	Kind string
+	Query  string
+	Kind   string
 	Cursor string
-	From *time.Time
-	To *time.Time
-	Limit int
+	From   *time.Time
+	To     *time.Time
+	Limit  int
 }
 
 type Offer struct {
-	MessageID string `json:"message_id"`
-	SourceEventID string `json:"source_event_id"`
-	Server string `json:"server"`
-	ObserverID string `json:"observer_character_id"`
-	Observer string `json:"observer"`
-	Sender string `json:"sender"`
-	Channel string `json:"channel"`
-	RawType string `json:"raw_type"`
-	Text string `json:"message"`
-	Kind string `json:"offer_type"`
-	OccurredAt time.Time `json:"occurred_at"`
+	MessageID     string    `json:"message_id"`
+	SourceEventID string    `json:"source_event_id"`
+	Server        string    `json:"server"`
+	ObserverID    string    `json:"observer_character_id"`
+	Observer      string    `json:"observer"`
+	Sender        string    `json:"sender"`
+	Channel       string    `json:"channel"`
+	RawType       string    `json:"raw_type"`
+	Text          string    `json:"message"`
+	Kind          string    `json:"offer_type"`
+	OccurredAt    time.Time `json:"occurred_at"`
 }
 
 type OfferPage struct {
-	Offers []Offer `json:"offers"`
-	Total int64 `json:"total"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Offers     []Offer `json:"offers"`
+	Total      int64   `json:"total"`
+	NextCursor string  `json:"next_cursor,omitempty"`
 }
 
 // GlobalOfferType classifies explicit global advertisements only. A prefix is
@@ -141,28 +141,28 @@ func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, erro
 		AND ($7::timestamptz IS NULL OR
 			(m.occurred_at,m.message_id)<($7::timestamptz,$8::uuid))
 		ORDER BY m.occurred_at DESC,m.message_id DESC LIMIT $9`,
-		append(args,beforeAt,beforeID,filter.Limit+1)...)
+		append(args, beforeAt, beforeID, filter.Limit+1)...)
 	if err != nil {
 		return OfferPage{}, fmt.Errorf("query global offers: %w", err)
 	}
 	defer rows.Close()
-	page := OfferPage{Offers: make([]Offer,0,filter.Limit),Total:total}
+	page := OfferPage{Offers: make([]Offer, 0, filter.Limit), Total: total}
 	for rows.Next() {
 		var offer Offer
-		if err := rows.Scan(&offer.MessageID,&offer.SourceEventID,&offer.Server,
-			&offer.ObserverID,&offer.Observer,&offer.Sender,&offer.Channel,
-			&offer.RawType,&offer.Text,&offer.Kind,&offer.OccurredAt); err != nil {
+		if err := rows.Scan(&offer.MessageID, &offer.SourceEventID, &offer.Server,
+			&offer.ObserverID, &offer.Observer, &offer.Sender, &offer.Channel,
+			&offer.RawType, &offer.Text, &offer.Kind, &offer.OccurredAt); err != nil {
 			return OfferPage{}, err
 		}
-		page.Offers=append(page.Offers,offer)
+		page.Offers = append(page.Offers, offer)
 	}
 	if err := rows.Err(); err != nil {
 		return OfferPage{}, err
 	}
-	if len(page.Offers)>filter.Limit {
-		page.Offers=page.Offers[:filter.Limit]
-		last:=page.Offers[len(page.Offers)-1]
-		page.NextCursor=EncodeCursor(last.OccurredAt,last.MessageID)
+	if len(page.Offers) > filter.Limit {
+		page.Offers = page.Offers[:filter.Limit]
+		last := page.Offers[len(page.Offers)-1]
+		page.NextCursor = EncodeCursor(last.OccurredAt, last.MessageID)
 	}
-	return page,nil
+	return page, nil
 }
