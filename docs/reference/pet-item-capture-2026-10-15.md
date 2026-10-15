@@ -17,6 +17,7 @@ The raw file contains game-session identifiers and is not committed.
   slots: 0–8 and 16. The same items were present before resummoning; this is
   a pet-data refresh, not evidence of a new pickup.
 - Reading the entries using the [RSBot pet handler](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Cos/CosDataResponse.cs),
+  [Ability-pet body](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Cos/Ability.cs),
   [inventory collection](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Inventory/InventoryItemCollection.cs)
   and [item parser](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Inventory/InventoryItem.cs)
   as a *candidate* format consumes all 267 bytes. It uses a four-byte zero
@@ -26,6 +27,13 @@ The raw file contains game-session identifiers and is not committed.
   staff and two stackable elixirs. This validates the observed boundaries for
   this packet and these item families; it does not validate other rental,
   binding, pet-family or game-server branches.
+- The complete Pick-pet header is object ID, model ID, current/max HP,
+  settings, a length-prefixed name, capacity and occupied count. After the
+  item entries are a four-byte owner object ID and a one-byte inventory slot.
+  A strict re-read of this packet identified the final `0x2e` byte as that
+  slot; without it the earlier analysis left one byte unconsumed. The cited
+  Ability-pet parser corroborates this trailer, and the revised reader consumes
+  all 267 bytes exactly.
 - The candidate equipment fields contain enhancement value 7 for the eight
   weapons, durability 93 for model 10912 and 39 for model 11125, and an
   eight-byte attribute value of 7,707,214,913 for the staff. The API confirms
@@ -126,3 +134,55 @@ as character equipment. This implementation does not infer plus/blues for
 items already in the pet before observation, other pet classes, rentals,
 nonempty bindings, or unverified packet variants. This capture verifies
 packet fields and state transitions, not a live run of plugin 1.9.41.
+
+## Fourth capture: rich items already held at summon
+
+`pet-item-capture-20261015T214035Z.json` (SHA-256
+`42f3f5255e5c623d18c26d5131cdfd59219532a1e5e70b23458389185dddac35`)
+contains one complete 417-byte incoming `0x30C8` Pick-pet snapshot and an API
+sample 29 ms later. The raw file is not committed. The operator had two rich
+items already in the pet before summon. A strict reader consumes the full
+header, all twelve item records, the owner ID and the final inventory-slot
+byte. All twelve slot, model, quantity and durability values agree with
+`get_pets()`; ten are equipment and two are simple stackable elixirs. The
+shared equipment reader used by the verified `0xB034` subtype `0x11` branch
+also consumes both rich item bodies without a special case:
+
+| Pet slot | Item | Packet plus | Variance | Durability | Blue ID/value pairs |
+| --- | --- | ---: | ---: | ---: | --- |
+| 25 | Gold Earring, model 14811 | 5 | 1023 | 0 | `(6,3),(12,3),(30,10),(24,10),(18,10),(36,10),(42,10)` |
+| 26 | Magic Weave, model 14631 | 5 | 1073741823 | 75 | `(81,60),(129,20),(6,3),(12,3),(54,6)` |
+
+The packet has no `0x1A` move and the initial bag sample has neither model,
+so this file alone cannot independently compare these values with the *same*
+physical item's richer `get_inventory()` row. The fifth capture below supplies
+that cross-check for Magic Weave. Gold Earring's blue pairs remain structurally
+decoded but lack an independent same-item bag comparison.
+
+## Fifth capture: same Magic Weave copy reaches the bag
+
+`pet-item-capture-20261015T214407Z.json` (SHA-256
+`d0f2a3d4f74fff0d5fbc332499f6dbe9cec1078c4bacb2b97dcb426fbe5c657a`)
+contains one complete `0x7034` request and its successful `0xB034` subtype
+`0x1A` result. Both identify pet ID 4584763, source slot 26 and bag slot 72.
+The pet API row at slot 26 before the move is Magic Weave model 14631 with
+durability 75; after the move that pet slot is empty and bag slot 72 holds
+model 14631, durability 75, plus 5. This is a packet-linked physical transfer,
+not a same-model/time inference. The raw file is not committed.
+
+The bag's five `(blue ID, value)` pairs are exactly the `0x30C8` snapshot's
+five pairs as a multiset: `(81,60),(129,20),(6,3),(12,3),(54,6)`.
+Packet ordering and phBot dictionary ordering differ. The snapshot's variance
+is `1073741823` (`0x3fffffff`), whose six five-bit fields are all 31; the
+bag API reports six white percentages of 100. This independently verifies
+the snapshot's plus, variance/white-roll and blue-option bytes for that item.
+
+Plugin 1.9.42 now decodes the strict, observed Pick-pet `0x30C8` branch as
+well as `0xB034` subtype `0x11`. It requires a complete API roster match for
+pet ID, model, capacity, occupied count, item slots, models, quantities and
+durabilities, then uses the existing pet-slot `instance` detail path. Any
+unsupported item family, nonzero rental, nonempty binding, malformed field
+or trailing byte rejects the full snapshot. Simple stackable alchemy elixirs
+are parsed only to advance to later equipment; no synthetic instance is
+created for them. Actual Windows/phBot execution of plugin 1.9.42 remains
+unverified; offline capture decoding and fixture tests are not a live rollout.

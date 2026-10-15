@@ -2,7 +2,7 @@
 
 A temporary **read-only** phBot plugin that collects the evidence needed to build a verified decoder for items held by pets. It never injects packets, contacts PhMon, reads chat or logs credentials.
 
-Why it exists: phBot's public `get_pets()` example shows pet item slots with model, name, quantity, plus and durability, but does not document white rolls, blue options or full combat stats. The observed phBot 20.1.2 Pick-pet rows for this project had no rich item fields. `get_item(model)` supplies static game data, not a particular item's rolls. PhMon 1.9.41 decodes the verified Pick-pet equipment pickup branch of `0xB034`. Other pet classes, already-held items and variant item bodies still need evidence. This tool can collect bounded fixtures for those cases.
+Why it exists: phBot's public `get_pets()` example shows pet item slots with model, name, quantity, plus and durability, but does not document white rolls, blue options or full combat stats. The observed phBot 20.1.2 Pick-pet rows for this project had no rich item fields. `get_item(model)` supplies static game data, not a particular item's rolls. PhMon 1.9.42 decodes the verified Pick-pet equipment branches of `0x30C8` and `0xB034`. Other pet classes and variant item bodies still need evidence. This tool can collect bounded fixtures for those cases.
 
 ## Procedure
 

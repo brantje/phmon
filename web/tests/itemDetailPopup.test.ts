@@ -239,6 +239,44 @@ test('observed instance stats take precedence over catalog ranges', () => {
   assert.equal(detail.requirements[0]?.level, true)
 })
 
+test('pet packet enhancement and resolved blues render without pet API detail fields', () => {
+  const detail = buildItemDetail({
+    model: 14631,
+    servername: 'ITEM_EU_W_CLOTHES_03_FA_C_RARE',
+    durability: 75,
+    metadata: {
+      name: 'Magic Weave',
+      type_ids: [3, 1, 9, 6],
+    },
+    instance: {
+      availability: 'observed',
+      source: 'vsro_1188_packet',
+      plus: 5,
+    },
+    instance_details: {
+      durability: { current: 75, maximum: null },
+      percentages: [{ key: 'durability', label: 'Durability', value: 100 }],
+      blues: [
+        { label: 'Durability increase', raw_value: '60', scale: 1, unit: '%' },
+        { label: 'Parry rate increase', raw_value: '20', scale: 1, unit: '%' },
+        { label: 'Int increase', raw_value: '3', scale: 1 },
+        { label: 'Str increase', raw_value: '3', scale: 1 },
+        { label: 'Steady', raw_value: '6', scale: 1 },
+      ],
+    },
+  })
+  assert.equal(detail.plus, 5)
+  assert.equal(detail.durability, 'Durability 75 (+100%)')
+  assert.deepEqual(detail.blues, [
+    'Durability 60% Increase',
+    'Parry rate 20% Increase',
+    'Int 3 Increase',
+    'Str 3 Increase',
+    'Steady(6Time/times)',
+  ])
+  assert.equal(detail.catalogNote, '')
+})
+
 test('Events drop item renders the reference observed suit details in order', () => {
   const record = itemRecordFromActivityEvent({
     kind: 'item.quantity_increased',

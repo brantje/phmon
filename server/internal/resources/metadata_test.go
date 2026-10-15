@@ -318,8 +318,8 @@ func TestMetadataLoaderValidatesOptionRangesAndUnscaledLabelsStayHidden(t *testi
 		"magic_options_availability": "observed",
 		"magic_options":              []any{map[string]any{"id": "9", "value": "3"}},
 	}, map[string]any{"type_ids": []any{json.Number("3"), json.Number("1"), json.Number("6"), json.Number("2")}}, map[string]MagicOptionDefinition{"9": definition})
-	if len(details["blues"].([]any)) != 0 || details["unresolved_blue_count"] != 1 {
-		t.Fatalf("unscaled option must stay hidden: %#v", details)
+	if len(details["blues"].([]any)) != 1 || details["unresolved_blue_count"] != 0 {
+		t.Fatalf("verified option code should supply its label: %#v", details)
 	}
 	invalid := strings.Replace(valid, `"maximum":"5"`, `"maximum":"0"`, 1)
 	if err := os.WriteFile(catalogPath, []byte(invalid), 0600); err != nil {
@@ -356,7 +356,48 @@ func TestInstanceDetailsUseFamilySpecificRollSlotsAndExactIntegerMath(t *testing
 	}
 }
 
-func TestInstanceDetailsPreserveBlueOrderAndOmitUnknownLabels(t *testing.T) {
+func TestPetSnapshotInstanceUsesSharedItemDetailResolver(t *testing.T) {
+	options := map[string]MagicOptionDefinition{}
+	for id, code := range map[string]string{"81": "MATTR_DUR", "129": "MATTR_ER", "6": "MATTR_INT", "12": "MATTR_STR", "54": "MATTR_SOLID"} {
+		options[id] = MagicOptionDefinition{Code: code}
+	}
+	metadata := &ItemMetadata{
+		Servers: map[string]string{"greatest": "gamedata-test"},
+		Catalogs: map[string]ItemCatalog{"gamedata-test": {
+			Items: map[string]ItemDefinition{"14631": {
+				Code: "ITEM_EU_W_CLOTHES_03_FA_C_RARE",
+				Presentation: map[string]any{"type_ids": []any{
+					json.Number("3"), json.Number("1"), json.Number("9"), json.Number("6"),
+				}},
+			}},
+			MagicOptions: options,
+		}},
+	}
+	raw := json.RawMessage(`{"pets":[{"pet_id":"4584763","slots":[{"source_slot":26,"item":{"model":14631,"servername":"ITEM_EU_W_CLOTHES_03_FA_C_RARE","instance":{"availability":"observed","source":"vsro_1188_packet","model":"14631","plus":5,"variance":"1073741823","durability":75,"magic_options_availability":"observed","magic_options":[{"id":"81","value":"60"},{"id":"129","value":"20"},{"id":"6","value":"3"},{"id":"12","value":"3"},{"id":"54","value":"6"}]}}}]}]}`)
+	var root map[string]any
+	if err := json.Unmarshal(metadata.enrich("Greatest", raw), &root); err != nil {
+		t.Fatal(err)
+	}
+	pet := root["pets"].([]any)[0].(map[string]any)
+	slot := pet["slots"].([]any)[0].(map[string]any)
+	item := slot["item"].(map[string]any)
+	details := item["instance_details"].(map[string]any)
+	percentages := details["percentages"].([]any)
+	if len(percentages) != 6 || len(details["blues"].([]any)) != 5 {
+		t.Fatalf("pet instance details omitted: %#v", details)
+	}
+	blues := details["blues"].([]any)
+	if blues[0].(map[string]any)["label"] != "Durability increase" || blues[0].(map[string]any)["raw_value"] != "60" || blues[4].(map[string]any)["label"] != "Steady" {
+		t.Fatalf("verified pet option names/values omitted: %#v", blues)
+	}
+	for _, value := range percentages {
+		if value.(map[string]any)["value"] != float64(100) {
+			t.Fatalf("expected six full white rolls: %#v", percentages)
+		}
+	}
+}
+
+func TestInstanceDetailsPreserveBlueOrderAndRawUnknownValues(t *testing.T) {
 	catalog := ItemCatalog{MagicOptions: map[string]MagicOptionDefinition{
 		"9": {Label: "Verified option", Unit: "%", Scale: 1},
 	}}
@@ -372,11 +413,14 @@ func TestInstanceDetailsPreserveBlueOrderAndOmitUnknownLabels(t *testing.T) {
 	}
 	details := resolveInstanceDetails(instance, metadata, catalog.MagicOptions)
 	blues := details["blues"].([]any)
-	if len(blues) != 2 || details["unresolved_blue_count"] != 1 {
+	if len(blues) != 3 || details["unresolved_blue_count"] != 1 {
 		t.Fatalf("blue resolution = %#v", details)
 	}
 	if blues[0].(map[string]any)["raw_value"] != "3" || blues[1].(map[string]any)["raw_value"] != "4" {
 		t.Fatalf("blue order/duplicates changed: %#v", blues)
+	}
+	if blues[2].(map[string]any)["label"] != "Option 999" || blues[2].(map[string]any)["label_verified"] != false {
+		t.Fatalf("unknown option should retain a raw diagnostic: %#v", blues)
 	}
 	missing := resolveInstanceDetails(map[string]any{
 		"availability": "observed", "source": "vsro_1188_packet",
@@ -449,6 +493,11 @@ func TestPackagedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := m.Catalogs[m.Servers["greatest"]]
+	for id, code := range map[string]string{"81": "MATTR_DUR", "129": "MATTR_ER", "6": "MATTR_INT", "12": "MATTR_STR", "54": "MATTR_SOLID"} {
+		if c.MagicOptions[id].Code != code {
+			t.Fatalf("Greatest magic option %s = %q, want %q", id, c.MagicOptions[id].Code, code)
+		}
+	}
 	// Suit/Trousers/Talisman/Wristlet: part suffix, not equipment-slot order.
 	mounted := map[string]string{
 		"ITEM_CH_M_CLOTHES_10_SA_A": "Shoulders", "ITEM_CH_M_CLOTHES_10_BA_A": "Chest",

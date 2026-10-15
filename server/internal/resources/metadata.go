@@ -812,8 +812,10 @@ func resolveInstanceDetails(instance, metadata map[string]any, options map[strin
 	resolved, unresolved := resolveBlueOptions(instance, options)
 	details["blues"] = resolved
 	details["unresolved_blue_count"] = unresolved
-	if len(resolved) > 0 {
+	if unresolved > 0 && len(resolved) > 0 {
 		details["blues_status"] = "partial"
+	} else if len(resolved) > 0 {
+		details["blues_status"] = "observed"
 	} else if instance["magic_options_availability"] == "observed" {
 		details["blues_status"] = "unavailable_definitions"
 	} else {
@@ -871,7 +873,7 @@ func resolveBlueOptions(instance map[string]any, definitions map[string]MagicOpt
 		id, ok := entry["id"].(string)
 		definition, known := definitions[id]
 		value, valid := entry["value"].(string)
-		if !ok || !known || !valid || definition.Label == "" || definition.Scale == 0 {
+		if !ok || !valid {
 			unresolved++
 			continue
 		}
@@ -883,10 +885,23 @@ func resolveBlueOptions(instance map[string]any, definitions map[string]MagicOpt
 			unresolved++
 			continue
 		}
+		presentation := definition
+		verified := known && definition.Label != "" && definition.Scale != 0
+		if !verified {
+			presentation, verified = verifiedAPIBlueDefinition(definition.Code)
+		}
+		if !verified {
+			unresolved++
+			presentation = MagicOptionDefinition{Label: "Option " + id, Scale: 1}
+			if known && definition.Code != "" {
+				presentation.Label = definition.Code
+			}
+		}
 		resolved = append(resolved, map[string]any{
-			"id": id, "label": definition.Label, "raw_value": value,
-			"unit": definition.Unit, "scale": definition.Scale,
-			"precision": definition.Precision,
+			"id": id, "label": presentation.Label, "raw_value": value,
+			"unit": presentation.Unit, "scale": presentation.Scale,
+			"precision": presentation.Precision, "code": definition.Code,
+			"label_verified": verified,
 		})
 	}
 	return resolved, unresolved

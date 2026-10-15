@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.41'
+pVersion = '1.9.42'
 pUrl = ''
 
 PROTOCOL_VERSION = 20
@@ -132,7 +132,7 @@ MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # parsed item fields or packet sizes only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
-PET_INVENTORY_DECODER_BUILD = 'vsro_pet_pickup_r1'
+PET_INVENTORY_DECODER_BUILD = 'vsro_pet_item_r2'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -2206,6 +2206,27 @@ def parse_item_durability_update(data):
     return {'source_slot': slot, 'fields': {'durability': durability}}
 
 
+def _read_vsro_equipment_item(reader):
+    """Read the equipment body shared by the observed pet packet branches."""
+    rental_type = reader.u32()
+    if rental_type != 0:
+        raise ItemPacketError('unsupported_pet_item_rental')
+    model, plus, variance, durability = reader.u32(), reader.u8(), reader.u64(), reader.u32()
+    if not model:
+        raise ItemPacketError('invalid_model')
+    count = reader.u8()
+    if count > MAX_ITEM_MAGIC_OPTIONS:
+        raise ItemPacketError('magic_option_count_exceeds_limit')
+    options = [{'id': str(reader.u32()), 'value': str(reader.u32())}
+               for _ in range(count)]
+    if (reader.u8(), reader.u8(), reader.u8(), reader.u8()) != (1, 0, 2, 0):
+        raise ItemPacketError('unsupported_pet_item_binding')
+    return {'model': model, 'fields': {
+        'plus': plus, 'variance': str(variance), 'durability': durability,
+        'magic_options': options, 'magic_options_available': True,
+    }}
+
+
 def parse_pet_inventory_operation(data):
     """Decode only Pick-pet operations confirmed by the October 2026 captures."""
     reader = LittleEndianReader(data)
@@ -2233,27 +2254,74 @@ def parse_pet_inventory_operation(data):
         reader.u8()  # Character-bag destination.
         reader.finish()
         return {'subtype': subtype, 'pet_id': str(pet_id), 'source_slot': source_slot}
-    rental_type = reader.u32()
-    if rental_type != 0:
-        raise ItemPacketError('unsupported_pet_item_rental')
-    model, plus, variance, durability = reader.u32(), reader.u8(), reader.u64(), reader.u32()
-    if not model:
-        raise ItemPacketError('invalid_model')
-    count = reader.u8()
-    if count > MAX_ITEM_MAGIC_OPTIONS:
-        raise ItemPacketError('magic_option_count_exceeds_limit')
-    options = [{'id': str(reader.u32()), 'value': str(reader.u32())}
-               for _ in range(count)]
-    # The captured equipment has two binding groups, both empty. Other
-    # branches need separate runtime evidence before their bytes are trusted.
-    if (reader.u8(), reader.u8(), reader.u8(), reader.u8()) != (1, 0, 2, 0):
-        raise ItemPacketError('unsupported_pet_item_binding')
+    item = _read_vsro_equipment_item(reader)
     reader.finish()
-    return {'subtype': subtype, 'pet_id': str(pet_id),
-            'source_slot': source_slot, 'model': model,
-            'fields': {'plus': plus, 'variance': str(variance),
-                       'durability': durability, 'magic_options': options,
-                       'magic_options_available': True}}
+    item.update({'subtype': subtype, 'pet_id': str(pet_id),
+                 'source_slot': source_slot})
+    return item
+
+
+def parse_pet_inventory_snapshot(data, pet):
+    """Reconcile the observed Pick-pet 0x30C8 branch with a fresh API roster."""
+    if (not isinstance(pet, dict) or
+            str(pet.get('type', '')).lower() != 'pick' or
+            pet.get('inventory_available') is not True or
+            not isinstance(pet.get('slots'), list)):
+        raise ItemPacketError('pick_pet_api_unavailable')
+    reader = LittleEndianReader(data)
+    pet_id, pet_model = reader.u32(), reader.u32()
+    if str(pet_id) != pet.get('pet_id') or pet_model != pet.get('model'):
+        raise ItemPacketError('pet_snapshot_identity_mismatch')
+    reader.u32()  # Current HP.
+    reader.u32()  # Maximum HP.
+    reader.u32()  # Ability-pet settings; 7 in both captured snapshots.
+    name_length = reader.u16()
+    if name_length > 100:
+        raise ItemPacketError('pet_name_exceeds_limit')
+    for _ in range(name_length):
+        reader.u8()
+    capacity, count = reader.u8(), reader.u8()
+    if capacity != len(pet['slots']) or count > capacity:
+        raise ItemPacketError('pet_snapshot_capacity_mismatch')
+    api_slots = {entry.get('source_slot'): entry.get('item')
+                 for entry in pet['slots'] if isinstance(entry, dict)}
+    if count != sum(isinstance(item, dict) for item in api_slots.values()):
+        raise ItemPacketError('pet_snapshot_count_mismatch')
+    items = []
+    seen = set()
+    for _ in range(count):
+        slot = reader.u8()
+        if slot >= capacity or slot in seen:
+            raise ItemPacketError('invalid_pet_snapshot_slot')
+        seen.add(slot)
+        api_item = api_slots.get(slot)
+        if not isinstance(api_item, dict):
+            raise ItemPacketError('pet_snapshot_api_slot_mismatch')
+        code = api_item.get('servername')
+        if isinstance(code, str) and code.startswith('ITEM_ETC_ARCHEMY_REINFORCE_RECIPE_'):
+            rental_type, model, quantity = reader.u32(), reader.u32(), reader.u16()
+            if (rental_type != 0 or model != api_item.get('model') or
+                    quantity != api_item.get('quantity')):
+                raise ItemPacketError('pet_snapshot_stack_mismatch')
+            continue
+        if not (isinstance(code, str) and
+                (code.startswith('ITEM_CH_') or code.startswith('ITEM_EU_'))):
+            raise ItemPacketError('unsupported_pet_snapshot_item_family')
+        item = _read_vsro_equipment_item(reader)
+        fields = item['fields']
+        if (item['model'] != api_item.get('model') or
+                fields['durability'] != api_item.get('durability') or
+                api_item.get('quantity') not in (None, 1) or
+                (api_item.get('plus') is not None and
+                 fields['plus'] != api_item['plus'])):
+            raise ItemPacketError('pet_snapshot_equipment_mismatch')
+        item['source_slot'] = slot
+        items.append(item)
+    owner_id, inventory_slot = reader.u32(), reader.u8()
+    reader.finish()
+    return {'pet_id': str(pet_id), 'pet_model': pet_model,
+            'capacity': capacity, 'owner_id': str(owner_id),
+            'inventory_slot': inventory_slot, 'items': items}
 
 
 
@@ -2269,6 +2337,7 @@ class PassiveItemTracker(object):
         self._overflow = False
         self._states = {}
         self._pet_states = {}
+        self._pet_snapshots = {}
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
         self._epoch = 0
@@ -2323,6 +2392,7 @@ class PassiveItemTracker(object):
     def reset(self, reason='session_changed', protocol=None):
         self._states.clear()
         self._pet_states.clear()
+        self._pet_snapshots.clear()
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
@@ -2394,8 +2464,20 @@ class PassiveItemTracker(object):
             if opcode == 0x30C8:
                 self._pet_snapshot_packet_count = min(
                     self._pet_snapshot_packet_count + 1, 2147483647)
-                # A newly summoned pet receives a fresh object ID and slots.
-                self._pet_states.clear()
+                if len(payload) >= 4:
+                    pet_id = str(struct.unpack_from('<I', payload)[0])
+                    for key in list(self._pet_states):
+                        if key[0] == pet_id:
+                            self._pet_states.pop(key, None)
+                else:
+                    self._pet_states.clear()
+                if self._protocol == 'vsro-1.188' and 4 <= len(payload) <= 32768:
+                    if len(self._pet_snapshots) >= 32:
+                        self._pet_snapshots.clear()
+                    self._pet_snapshots[pet_id] = {
+                        'packet': payload, 'sequence': self._sequence,
+                        'received_at': _monotonic(),
+                    }
             else:
                 self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
                 # This operation stream can change character inventory state;
@@ -2406,7 +2488,11 @@ class PassiveItemTracker(object):
                     operation = parse_pet_inventory_operation(payload)
                 except ItemPacketError:
                     self._pet_states.clear()
+                    self._pet_snapshots.clear()
                 else:
+                    # The API roster might already reflect this operation,
+                    # making a pending earlier snapshot impossible to verify.
+                    self._pet_snapshots.clear()
                     subtype = operation['subtype']
                     if self._protocol != 'vsro-1.188':
                         self._pet_states.clear()
@@ -2469,6 +2555,7 @@ class PassiveItemTracker(object):
         if overflow:
             self._invalidate('packet_queue_overflow')
             self._pet_states.clear()
+            self._pet_snapshots.clear()
         for opcode, payload in events:
             self._process(opcode, payload)
 
@@ -2536,6 +2623,33 @@ class PassiveItemTracker(object):
                 pet_id = pet.get('pet_id')
                 # This packet path is verified only for Pick pet equipment.
                 is_pick = str(pet.get('type', '')).lower() == 'pick'
+                snapshot = self._pet_snapshots.get(pet_id) if is_pick else None
+                if snapshot is not None:
+                    try:
+                        decoded = parse_pet_inventory_snapshot(snapshot['packet'], pet)
+                    except ItemPacketError as error:
+                        if str(error) not in (
+                                'pet_snapshot_identity_mismatch',
+                                'pet_snapshot_capacity_mismatch',
+                                'pet_snapshot_count_mismatch',
+                                'pet_snapshot_api_slot_mismatch',
+                                'pet_snapshot_stack_mismatch',
+                                'pet_snapshot_equipment_mismatch'):
+                            self._pet_snapshots.pop(pet_id, None)
+                    else:
+                        for observed in decoded['items']:
+                            key = (pet_id, observed['source_slot'])
+                            previous = self._pet_states.get(key)
+                            if previous is not None and previous['sequence'] > snapshot['sequence']:
+                                continue
+                            self._pet_states[key] = {
+                                'model': observed['model'],
+                                'fields': observed['fields'],
+                                'sequence': snapshot['sequence'],
+                                'received_at': snapshot['received_at'],
+                                'confirmed': True,
+                            }
+                        self._pet_snapshots.pop(pet_id, None)
                 for slot_entry in pet.get('slots', []):
                     if not isinstance(slot_entry, dict):
                         continue
@@ -2585,6 +2699,9 @@ class PassiveItemTracker(object):
             if ((state['confirmed'] and key not in observed_pet_slots) or
                     (not state['confirmed'] and _monotonic() - state['received_at'] > 30)):
                 self._pet_states.pop(key, None)
+        for key, snapshot in list(self._pet_snapshots.items()):
+            if _monotonic() - snapshot['received_at'] > 30:
+                self._pet_snapshots.pop(key, None)
 
         resources['item_enrichment'] = {
             'availability': 'observed' if attached else 'not_observed',
@@ -2601,7 +2718,7 @@ class PassiveItemTracker(object):
             'pet_snapshot_packet_count': self._pet_snapshot_packet_count,
             'pet_inventory_status': (
                 'observed' if pet_attached else
-                'candidate_layout_unverified' if self._pet_snapshot_packet_count else
+                'pending_or_unsupported_snapshot' if self._pet_snapshot_packet_count else
                 'not_observed'),
             'pet_packet_probe': {
                 'mode': 'presence_and_size_only',

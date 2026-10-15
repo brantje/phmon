@@ -338,3 +338,22 @@ That gate was met by the third capture. Plugin 1.9.41 attaches decoded subtype
 `0x11` details to a Pick-pet slot only after the API agrees on pet ID, slot,
 model and durability. See the third-capture audit for values and remaining
 branches. Actual plugin 1.9.41 runtime validation remains open.
+
+
+## 2026-10-15 — 0x30C8 rich Pick-pet snapshot verified
+
+A second 0x30C8 capture contains twelve pet items, including Magic Weave with
+five blue options and Gold Earring with seven. The strict snapshot reader
+consumes all 417 bytes and matches every pet API slot/model/quantity/durability.
+The first 267-byte capture also consumes exactly once the final inventory-slot
+byte is included. A later packet-linked 0x1A move transfers that exact Magic
+Weave from pet slot 26 to bag slot 72. Bag plus 5, six 100% whites and all five
+blue ID/value pairs agree with the preceding packet's plus, variance and
+option pairs. Plugin 1.9.42 enables the verified Pick-pet snapshot parser and
+reuses the existing item-instance detail path. Packet blue IDs use the same
+verified code-to-label rules as bag API blues; unknown codes retain their raw
+ID/value without a guessed meaning. The tooltip also uses the packet's
+observed enhancement when the pet API omits plus. Absolute stat formulas
+remain unavailable. See the
+[packet-level audit](reference/pet-item-capture-2026-10-15.md) for hashes,
+field bounds and unsupported branches. A live plugin/UI check is pending.

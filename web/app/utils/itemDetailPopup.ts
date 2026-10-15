@@ -305,6 +305,7 @@ export function buildItemDetail(
   const metadata = asRecord(item.metadata)
   const detail = { ...metadata, ...item }
   const instance = asRecord(item.instance_details)
+  const packetInstance = asRecord(item.instance)
   const instanceStats = instanceStatLines(
     Object.keys(instance).length ? instance : null,
   )
@@ -379,7 +380,12 @@ export function buildItemDetail(
   ]
   return {
     name,
-    plus: numberField(item, 'plus'),
+    plus:
+      numberField(item, 'plus') ??
+      (packetInstance.availability === 'observed' &&
+      packetInstance.source === 'vsro_1188_packet'
+        ? numberField(packetInstance, 'plus')
+        : null),
     quantity: numberField(item, 'quantity'),
     rare: metadata.rare === true || !!stringField(item, 'seal'),
     icon: safeIcon(stringField(metadata, 'icon_url')),

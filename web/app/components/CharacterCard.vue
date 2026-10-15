@@ -961,11 +961,19 @@ onBeforeUnmount(() => {
         <small
           v-if="
             payload('item_enrichment').pet_inventory_decoder_build ===
+            'vsro_pet_item_r2'
+          "
+          >Pick-pet snapshots and pickups can add plus, rolls and blue options
+          when the packet matches the pet inventory. Unsupported item types
+          still show basic facts.</small
+        >
+        <small
+          v-else-if="
+            payload('item_enrichment').pet_inventory_decoder_build ===
             'vsro_pet_pickup_r1'
           "
-          >Verified Pick-pet pickups can add plus, rolls and blue options after
-          the pet inventory matches. Existing items may still show basic
-          facts.</small
+          >This plugin decodes new Pick-pet pickups. Items already held by the
+          pet may still show basic facts.</small
         >
         <small v-else
           >This plugin build reports packet counts and sizes only. Pet item

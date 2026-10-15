@@ -6865,3 +6865,39 @@ full validation/commit/push results are recorded in the current chat. Exact
 next action: validate plugin 1.9.41 in an authorized phBot test session using
 a new natural pickup and inspect pet tooltip details; continue researching
 `0x30C8` snapshots for already-held items separately.
+
+### Resume — 2026-10-15 rich 0x30C8 Pick-pet snapshot
+
+The operator supplied `pet-item-capture-20261015T214035Z.json` and the
+packet-linked transfer `pet-item-capture-20261015T214407Z.json`. The first
+holds a complete 417-byte `0x30C8` snapshot with Magic Weave in pet slot 26;
+the second moves the same pet ID/slot through successful subtype `0x1A` to
+bag slot 72. Packet plus 5, variance `0x3fffffff` (six 100% whites) and all
+five blue ID/value pairs match the bag row. The earlier 267-byte snapshot's
+final byte is the pet inventory slot, corroborated by RSBot's Ability parser.
+Full hashes, fields and limits: `docs/reference/pet-item-capture-2026-10-15.md`.
+
+Plugin 1.9.42 (protocol 20) uses a shared strict equipment-body reader for
+`0x30C8` and `0xB034` subtype `0x11`. The snapshot parser waits briefly for
+a matching Pick-pet API roster and checks ID, model, capacity, count, slots,
+models, quantities and durability before attaching packet details. Only
+observed simple alchemy elixirs are skipped as stackables. Unknown item
+families and rental/binding variants reject the entire snapshot. Pending
+snapshots are bounded, session-scoped, cleared by operations and expired;
+other-pet snapshots do not erase a different Pick pet's confirmed state.
+The Go resolver applies established bag-option code labels to packet blues
+and preserves raw ID/value for unresolved codes. The tooltip uses observed
+packet enhancement when the pet API omits plus.
+
+Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`web/app/{components/CharacterCard.vue,utils/itemDetailPopup.ts}`,
+`web/tests/itemDetailPopup.test.ts`,
+`server/internal/resources/{metadata.go,metadata_test.go}`,
+`tools/pet-item-capture/README.md`,
+`docs/{reference/pet-item-capture-2026-10-15.md,phbot-capabilities.md,
+item-instance-evidence.md,reference-parity.md}`, `AGENTS.md`. Offline capture
+comparisons match both captures. Plugin/protocol tests (310), web unit tests
+(285), Go resource tests, web typecheck and focused lint passed. No real
+character was operated by this agent. Actual plugin/UI runtime validation
+remains open: install plugin 1.9.42 in an authorized phBot session, resummon
+the Pick pet and compare an already-held item's tooltip with its bag details.

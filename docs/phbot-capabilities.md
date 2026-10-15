@@ -2026,3 +2026,32 @@ for pet slots. Runtime validation of this production build is still pending.
 Already-held pet items, other pet families and packet branches remain basic
 until separate verified evidence supports decoding them. No pet pickup event
 causality or transfer of details into an independent bag copy is inferred.
+
+### Pick-pet summon snapshot details from 0x30C8 (plugin 1.9.42)
+
+Two complete operator captures now verify the Pick-pet `0x30C8` branch. The
+first has 10 basic items; the second has 12 items including a Magic Weave
+with five blues and a Gold Earring with seven. The packet layout is pet ID,
+model, current/max HP, settings, length-prefixed name, capacity, occupied
+count, item blocks, owner ID and inventory-slot byte. The pinned
+[RSBot Ability-pet parser](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Cos/Ability.cs)
+corroborates the trailer byte; strict offline readers consumed all 267 and
+417 bytes and matched every phBot pet API slot/model/quantity/durability.
+The shared equipment item body is the same layout independently checked in
+the `0xB034` subtype `0x11` pickup captures.
+
+A fifth capture linked Magic Weave's pet slot 26 to bag slot 72 through a
+successful subtype `0x1A` move. Its bag plus 5, six 100% white rolls and five
+blue ID/value pairs agree with the earlier `0x30C8` bytes. This closes the
+same-item evidence gate for rich Pick-pet summon items. Full packet-level
+values and SHA-256 hashes are in
+[the capture audit](reference/pet-item-capture-2026-10-15.md).
+
+Plugin 1.9.42 adds a bounded, worker-side snapshot parser that waits briefly
+for a matching `get_pets()` roster. It rejects unsupported rental/binding
+forms and item families. The currently verified non-equipment branch is
+simple alchemy reinforcement elixirs, parsed only to reach subsequent
+items. New pickups still use subtype `0x11`. This supplies details for
+already-held Pick-pet equipment when the observed branch parses fully;
+actual plugin 1.9.42 installation and live UI confirmation remain open.
+This does not recover historical items whose packet bytes were never captured.

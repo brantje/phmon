@@ -2886,3 +2886,17 @@ Donated GP, Union guilds and Last seen. These come from the new protocol-20
 `get_guild_union()`); unobserved values show `-`. Live browser checks at 1440 and
 390 px confirmed order, item parts, no page overflow and no page errors; job and
 guild values remain `-` until plugin 1.9.39 is installed in phBot.
+
+### 2026-10-15 — Pick-pet item detail packet verification
+
+Three successive operator captures verify the missing Pick-pet detail paths:
+`0xB034` subtype `0x11` carries a newly picked up equipment body, and
+`0x30C8` carries equipment already held when the pet is summoned. The rich
+417-byte snapshot fully parses and matches all 12 pet API slots; a later
+packet-linked `0x1A` move of Magic Weave to bag slot 72 confirms its plus 5,
+six 100% white rolls and five blue ID/value pairs. See the
+[packet audit](reference/pet-item-capture-2026-10-15.md). Plugin 1.9.42
+attaches verified `instance` fields to matching Pick-pet slots; the existing
+Go resolver and Stats/Item Search tooltip consume that shape. Real Windows
+phBot installation and a live tooltip comparison remain open. Unsupported
+pet classes, rental/binding variants and item families remain basic.

@@ -1153,6 +1153,9 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['observed_items'], 1)
         tracker.decorate(resources, 'session-one')
         self.assertEqual(resources['pets']['pets'][0]['slots'][0]['item']['instance'], instance)
+        tracker.enqueue(0x30C8, struct.pack('<I', 999))
+        tracker.decorate(resources, 'session-one')
+        self.assertIn('instance', resources['pets']['pets'][0]['slots'][0]['item'])
         # The next character drop in the real capture did not invalidate an
         # earlier pet item. A pet slot move carries the state to its new slot.
         tracker.enqueue(0xB034, bytes([1, 7, 64]))
@@ -1173,6 +1176,62 @@ class PassiveItemPacketTests(unittest.TestCase):
         parsed = plugin.parse_pet_inventory_operation(packet)
         self.assertEqual(parsed['fields']['magic_options'], [
             {'id': '54', 'value': '5'}, {'id': '11', 'value': '1'}])
+
+    def test_rich_pick_pet_snapshot_reconciles_entire_packet(self):
+        pet_id = 4584763
+        slots = [{'source_slot': slot, 'item': None} for slot in range(28)]
+        slots[2]['item'] = {'model': 3682, 'quantity': 1,
+                            'servername': 'ITEM_ETC_ARCHEMY_REINFORCE_RECIPE_ACCESSARY_B'}
+        slots[25]['item'] = {'model': 14811, 'quantity': 1, 'durability': 0,
+                             'servername': 'ITEM_EU_EARRING_03_C_RARE'}
+        slots[26]['item'] = {'model': 14631, 'quantity': 1, 'durability': 75,
+                             'servername': 'ITEM_EU_W_CLOTHES_03_FA_C_RARE'}
+        pet = {'pet_id': str(pet_id), 'model': 7493, 'type': 'pick',
+               'inventory_available': True, 'slots': slots}
+        packet = bytearray(struct.pack('<IIIIIHBB', pet_id, 7493, 109, 0, 7, 0, 28, 3))
+        packet.extend(struct.pack('<BIIH', 2, 0, 3682, 1))
+        for slot, model, plus, variance, durability, options in (
+                (25, 14811, 5, 1023, 0, [(6, 3), (12, 3), (30, 10),
+                                           (24, 10), (18, 10), (36, 10), (42, 10)]),
+                (26, 14631, 5, 1073741823, 75, [(81, 60), (129, 20),
+                                                  (6, 3), (12, 3), (54, 6)])):
+            packet.extend(struct.pack('<BIIBQI', slot, 0, model, plus, variance, durability))
+            packet.append(len(options))
+            for option_id, value in options:
+                packet.extend(struct.pack('<II', option_id, value))
+            packet.extend(bytes([1, 0, 2, 0]))
+        packet.extend(struct.pack('<IB', 4583427, 46))
+        decoded = plugin.parse_pet_inventory_snapshot(bytes(packet), pet)
+        self.assertEqual([item['source_slot'] for item in decoded['items']], [25, 26])
+        self.assertEqual(decoded['items'][0]['fields']['variance'], '1023')
+        self.assertEqual(decoded['items'][1]['fields']['magic_options'][0],
+                         {'id': '81', 'value': '60'})
+        self.assertEqual(decoded['inventory_slot'], 46)
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0x30C8, bytes(packet))
+        resources = {'pets': {'availability': 'observed', 'pets': [pet]}}
+        tracker.decorate(resources, 'session-one')
+        self.assertEqual(slots[25]['item']['instance']['plus'], 5)
+        self.assertEqual(len(slots[26]['item']['instance']['magic_options']), 5)
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'observed')
+        self.assertEqual(tracker._pet_snapshots, {})
+        delayed = plugin.PassiveItemTracker()
+        delayed.set_protocol('vsro-1.188')
+        delayed.enqueue(0x30C8, bytes(packet))
+        delayed.decorate({'pets': {'availability': 'observed', 'pets': []}}, 'session-one')
+        self.assertEqual(len(delayed._pet_snapshots), 1)
+        delayed.decorate(resources, 'session-one')
+        self.assertEqual(resources['item_enrichment']['observed_items'], 2)
+        delayed.reset('backend_reconnect')
+        self.assertEqual(delayed._pet_states, {})
+        self.assertEqual(delayed._pet_snapshots, {})
+        for malformed in (bytes(packet[:-1]), bytes(packet) + b'\x00'):
+            with self.assertRaises(plugin.ItemPacketError):
+                plugin.parse_pet_inventory_snapshot(malformed, pet)
+        pet['slots'][26]['item']['durability'] = 74
+        with self.assertRaises(plugin.ItemPacketError):
+            plugin.parse_pet_inventory_snapshot(bytes(packet), pet)
 
     def test_pick_pet_packet_waits_for_matching_api_and_rejects_unsupported_forms(self):
         tracker = plugin.PassiveItemTracker()
@@ -1315,7 +1374,7 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['observed_items'], 0)
         self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'not_observed')
         self.assertEqual(resources['item_enrichment']['pet_inventory_decoder_build'],
-                         'vsro_pet_pickup_r1')
+                         'vsro_pet_item_r2')
         self.assertFalse(resources['item_enrichment']['pet_packet_probe']['packet_bytes_retained'])
 
     def test_pet_packet_probe_reports_counts_and_lengths_without_packet_bytes(self):
@@ -1327,7 +1386,7 @@ class PassiveItemPacketTests(unittest.TestCase):
         tracker.decorate(resources, 'session-one')
         self.assertEqual(resources['item_enrichment']['pet_inventory_packet_count'], 1)
         self.assertEqual(resources['item_enrichment']['pet_snapshot_packet_count'], 1)
-        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'candidate_layout_unverified')
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'pending_or_unsupported_snapshot')
         probe = resources['item_enrichment']['pet_packet_probe']
         self.assertEqual(probe['mode'], 'presence_and_size_only')
         self.assertFalse(probe['packet_bytes_retained'])
