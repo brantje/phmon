@@ -1887,7 +1887,12 @@ unknown/baseline, not an empty container.
 The ordinary phBot API/state snapshots do **not** by themselves prove that an
 inventory gain was a world drop, that a nearby matching item was picked up,
 that the observing character owns the shared guild storage, or that a
-disappearing item was sold.
+disappearing item was sold. PR #91 now retains new inventory delta item details
+independently but does not emit a new `drop_event_id` link from a unique
+callback-model/time match. Historical explicit associations remain stored and
+must not be interpreted as verified pickup causality. Cross-observer Global chat
+records have individual event IDs but no shared server broadcast ID; this
+cannot reliably prove two records describe the same advertisement.
 
 **Stall sale and realized-price history remain unsupported.** The reviewed
 plugin pathways and available documented event handlers do not provide a
