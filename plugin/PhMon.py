@@ -3741,6 +3741,7 @@ class AgentWorker(object):
                     model = item.get('model')
                     candidates = new_model_slots.get(model, [])
                     if (container_key == 'inventory' and amount == 1 and len(changes) == 1 and
+                            not any(delta[0] == 'loss' for delta in deltas) and
                             isinstance(model, int) and len(candidates) == 1 and
                             candidates[0][0] in record.get('slots', []) and
                             candidates[0][1].get('quantity', 1) == 1):
