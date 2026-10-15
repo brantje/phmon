@@ -67,12 +67,15 @@ const fromDate = ref(
   ),
 )
 const toDate = ref(initialDate(route.query.to, dateInput(new Date())))
+const defaultItemGrouping = ['rare_drops', 'normal_drops', 'item_history'].includes(
+  String(route.query.view),
+)
 const groupBy = ref<
   'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy'
 >(
   validGroupBy(route.query.group_by)
     ? route.query.group_by
-    : route.query.view === 'rare_drops' || route.query.view === 'normal_drops' || route.query.view === 'item_history'
+    : defaultItemGrouping
       ? 'item'
       : 'character',
 )
@@ -97,9 +100,21 @@ const guildName = ref(
   typeof route.query.guild === 'string' ? route.query.guild : '',
 )
 const itemQuery = ref(typeof route.query.item === 'string' ? route.query.item : '')
-const sourceContainer = ref(typeof route.query.source_container === 'string' ? route.query.source_container : '')
-const destinationContainer = ref(typeof route.query.destination_container === 'string' ? route.query.destination_container : '')
-const movementMethod = ref(typeof route.query.movement_method === 'string' ? route.query.movement_method : '')
+const sourceContainer = ref(
+  typeof route.query.source_container === 'string'
+    ? route.query.source_container
+    : '',
+)
+const destinationContainer = ref(
+  typeof route.query.destination_container === 'string'
+    ? route.query.destination_container
+    : '',
+)
+const movementMethod = ref(
+  typeof route.query.movement_method === 'string'
+    ? route.query.movement_method
+    : '',
+)
 const dropSource = ref<'world' | 'owned_gains'>(
   route.query.drop_source === 'owned_gains' ? 'owned_gains' : 'world',
 )
@@ -303,9 +318,14 @@ watch(
           ? itemDegree.value || undefined
           : undefined,
       item: nextView === 'item_history' ? itemQuery.value || undefined : undefined,
-      source_container: nextView === 'item_history' ? sourceContainer.value || undefined : undefined,
-      destination_container: nextView === 'item_history' ? destinationContainer.value || undefined : undefined,
-      movement_method: nextView === 'item_history' ? movementMethod.value || undefined : undefined,
+      source_container:
+        nextView === 'item_history' ? sourceContainer.value || undefined : undefined,
+      destination_container:
+        nextView === 'item_history'
+          ? destinationContainer.value || undefined
+          : undefined,
+      movement_method:
+        nextView === 'item_history' ? movementMethod.value || undefined : undefined,
       page_size: 25,
       cursor: pageCursor || undefined,
     })
