@@ -20,6 +20,11 @@ implementation run. Explicit limits in the current user request always take prio
 
 **Git workspace rule:** Never create, use, or switch to a Git worktree unless the user explicitly asks for a worktree. Work in the existing checkout/branch by default.
 
+### Additional feature — Trader / Hunter event history (2026-10-16)
+
+Draft PR [#92](https://github.com/brantje/phmon/pull/92) adds **Events → Traders / Hunters** with the existing `job.hunter_trader_seen` event storage and live subscription. The spotted name is searchable alongside the reporter; **Hide own characters** defaults on and excludes the spotted character (not the reporting bot), server-scoped, with direct observed own job aliases. URL `hide_own=0` shows all recorded events. The callback does not disambiguate trader/hunter or report an authoritative spotted-player location; map links are labeled reporter location. No plugin or migration changes. Tests: PostgreSQL event-history integration, REST validation, live-subscription validation. Browser and actual phBot runtime validation remain manual; PR CI results must be checked before approval. See [feature documentation](docs/trader-hunter-sightings.md).
+
+
 Working loop:
 
 1. Inspect Git status, this file, the current implementation and the relevant tests.
