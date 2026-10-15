@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ItemSearchFilter struct {
@@ -121,14 +120,14 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	}
 	// resource observation and slot revision are joined atomically; a closed
 	// storage does not retain queryable 'current' slots.
-	const base = `WITH guild_snapshot AS (
+	const guildCTE = `WITH guild_snapshot AS (
 		SELECT DISTINCT ON (server_key,guild_key)
 			server_key,guild_key,observer_character_id,revision,session_id
 		FROM character_resource_observations
 		WHERE resource_key='guild_storage' AND guild_key<>'' AND availability='observed'
 		ORDER BY server_key,guild_key,observed_at DESC NULLS LAST,updated_at DESC,observer_character_id
-	)
-	FROM character_resource_items i
+	)`
+	const scope = `FROM character_resource_items i
 	JOIN characters c ON c.character_id=i.observer_character_id
 	JOIN character_resource_observations o
 		ON o.observer_character_id=i.observer_character_id
@@ -150,33 +149,22 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	args := []any{filter.Server,filter.Query,filter.Container,filter.Owner,
 		filter.IncludeEquipment,useTaxonomy,models}
 	var total int64
-	if err := s.pool.QueryRow(ctx,`WITH base_count AS (SELECT i.observer_character_id `+base+`) SELECT count(*) FROM base_count`,args...).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx,guildCTE+` SELECT count(*) `+scope,args...).Scan(&total); err != nil {
 		return ItemSearchPage{}, fmt.Errorf("count item search: %w",err)
 	}
 	page := ItemSearchPage{Items: make([]ItemSearchEntry,0,filter.Limit),Total:total}
-	rows,err := s.pool.Query(ctx,`WITH search_result AS (
-		SELECT i.observer_character_id::text AS observer_id,
-			i.server_key,i.container_key,i.pet_id,i.source_slot,
-			i.guild_key,i.revision,i.observed_at,o.updated_at,
-			i.raw_item,coalesce(i.model,0),coalesce(i.server_name,''),
-			c.server_name,c.character_name
-		`+base+`
-	)
-	SELECT observer_id,server_key,container_key,pet_id,source_slot,guild_key,
-		revision,observed_at,updated_at,raw_item,model,server_name,
-		character_name,observer_server
-	FROM (
-		SELECT sr.observer_id,sr.server_key,sr.container_key,sr.pet_id,
-			sr.source_slot,sr.guild_key,sr.revision,sr.observed_at,sr.updated_at,
-			sr.raw_item,sr.model,sr.server_name,sr.character_name,
-			sr.server_name AS observer_server
-		FROM search_result sr
-	) entries
-	WHERE ($8='' OR (server_key,container_key,observer_id,pet_id,source_slot) >
+	rows,err := s.pool.Query(ctx,guildCTE+`
+	SELECT i.observer_character_id::text,i.server_key,i.container_key,i.pet_id,
+		i.source_slot,i.guild_key,i.revision,i.observed_at,o.updated_at,
+		i.raw_item,coalesce(i.model,0),coalesce(i.server_name,''),
+		c.character_name,c.server_name
+	`+scope+`
+	AND ($8='' OR (i.server_key,i.container_key,i.observer_character_id::text,i.pet_id,i.source_slot) >
 		($8::text,$9::text,$10::text,$11::text,$12::integer))
-	ORDER BY server_key,container_key,observer_id,pet_id,source_slot
+	ORDER BY i.server_key,i.container_key,i.observer_character_id::text,i.pet_id,i.source_slot
 	LIMIT $13`,
 		append(args,cursor.Server,cursor.Container,cursor.Observer,cursor.Pet,cursor.Slot,filter.Limit+1)...)
+
 	if err != nil { return ItemSearchPage{}, fmt.Errorf("query item search: %w",err) }
 	defer rows.Close()
 	for rows.Next() {
@@ -215,5 +203,3 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	return page,nil
 }
 
-// Compile-time assertion: item search uses the same PostgreSQL pool as canonical resources.
-var _ *pgxpool.Pool
