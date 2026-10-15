@@ -59,6 +59,26 @@ export function itemOwnerHref(item: {
     : `/characters/${item.observer_character_id}`
 }
 
+// Reuse the canonical event history; Item Search must not grow a second
+// historical writer or borrow an instance's current rolls for older events.
+export function itemHistoryTarget(item: {
+  server: string
+  item: Record<string, unknown>
+}) {
+  const code = typeof item.item.servername === 'string' ? item.item.servername : ''
+  const model = item.item.model
+  const name = typeof item.item.name === 'string' ? item.item.name : ''
+  const identity = code || (typeof model === 'number' && Number.isInteger(model)
+    ? String(model) : name)
+  return {
+    path: '/events',
+    query: {
+      server: item.server,
+      item: identity || undefined,
+    },
+  }
+}
+
 // An old HTTP response is never authorized to replace a newer filter's page.
 export function createLatestRequestGate() {
   let generation = 0
