@@ -100,7 +100,7 @@ func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, erro
 		AND ($1='' OR lower(m.server_name)=lower($1))
 		AND ($2='' OR m.sender ILIKE '%'||$2||'%')
 		AND ($3='' OR m.message ILIKE '%'||$3||'%')
-		AND ($4='' OR (` + offerKindSQL + `)=$4)
+		AND (($4='' AND (` + offerKindSQL + `)<>'unclassified') OR ($4<>'' AND (` + offerKindSQL + `)=$4))
 		AND ($5::timestamptz IS NULL OR m.occurred_at >= $5)
 		AND ($6::timestamptz IS NULL OR m.occurred_at < $6)
 		AND NOT EXISTS (
