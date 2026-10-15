@@ -175,10 +175,14 @@ boundary, but never add event counts to the requested window.
 The Rare/Normal source selector is either **world-drop observations** or
 **owned-item gains**. World mode counts canonical `drop.rare` / `drop.item` rows.
 Owned mode counts classified `item.acquired` and `item.quantity_increased` rows
-only from accepted state-diff inventory/pet destinations or the validated pet
-inventory receipt source. It never includes `item.transferred`. The headline is
-an acquisition-event count; a separate exact integer quantity is the sum of the
-accepted `quantity_delta` payloads. These are not unique physical drops. Evidence
+only from accepted state-diff **inventory** destinations or the validated pet
+inventory receipt source. Pet state-diff positives are retained as canonical
+Events but excluded from this analytics population: there is no common
+acquisition ID to prove whether a pet inventory delta and a receipt describe
+the same pickup. It never includes `item.transferred`. The headline is a
+limited **gain-evidence event count**, and quantity is the sum of eligible
+`quantity_delta` payloads. Neither number establishes distinct physical
+acquisitions, and unreceipted pet gains are deliberately not included. Evidence
 rows retain their canonical event kind and destination details.
 
 Progress includes daily and ISO-week summaries over the seven days ending at the
@@ -213,3 +217,91 @@ ticks. The keyboard/touch range input and expandable numerical table expose exac
 returned strings; gold plot coordinates are offset from the exact lowest balance
 before conversion to chart coordinates so small changes around large balances are
 not erased by JavaScript's integer precision limit.
+
+## Slice 13 event and economy semantics — issue #90
+
+**World drops:** An observed `drop.item` or `drop.rare` **callback event** is
+one world-drop observation. Counts are event counts, not item quantities or
+successfully collected items. A callback and its linked state-diff inventory
+observation count as **one world drop**, because the latter has another kind.
+Uncollected drops still count as observed world drops.
+
+**Owned gains:** `item.acquired` and `item.quantity_increased` describe
+observed positive container deltas, with `acquisition_method: unknown` unless
+separately verified. `item.transferred` is not a gain or world drop.
+The existing `owned_gains` analytics view reports **recorded gain events**
+from inventory state-diff observations and validated pet receipt sources, not
+verified distinct physical item instances. Unlinked pet state-diff gains remain
+visible in Events but not in this count; otherwise a single pet receipt and its
+state delta would inflate it. If the pet receipt is absent the analytics metric
+may undercount, and if the same physical acquisition is independently recorded
+later in a bag with no proven transfer, it may overcount. Consequently exact
+net physical-acquisition counts are **not established**. The metric status is
+limited, not a verified acquisition count. `quantity_delta` is a separate item-count
+field and must not silently replace the occurrence count.
+
+**All Events logical projection:** A linked state-diff inventory
+observation remains a distinct visible occurrence alongside its world-drop
+callback. Even an explicit `drop_event_id` is retained for audit rather than
+used to collapse rows or infer pickup causality. All Events totals and cursors
+count the distinct canonical events matching the active filters. Exact event-ID
+and event-kind searches also retain the original records. Temporal
+co-occurrence or same-model similarity cannot justify fusion or copying
+item-instance rolls.
+
+**Transfers:** `item.transferred` requires observed source decrease and
+matching destination increase (including guild-scoped shared storage), with
+`quantity_delta` recording moved units, not sale units or net acquisitions.
+Uncertain or unavailable container evidence must not create transfers or
+world-drop events. A guild storage observer is not an owner of guild items.
+
+**Global economy:** WTB/WTS/WTT messages are advertisements, not executed
+trades. One classified retained Global chat message is one observed offer
+occurrence. Independent character observations remain separate: sender, server,
+raw chat type, text and a 500 ms window do not prove one server broadcast and
+would conflate two legitimate repeated advertisements. A shared broadcast ID
+is unavailable, so distinct physical advertisements cannot be reliably
+deduplicated. The denominator is retained observer-message occurrences, not
+globally unique advertisements or sales.
+There is no verified realized-price or completed-sale denominator.
+
+**Delayed reconciliation:** The six-second bounded pending window is for a
+single compatible, opposite container delta. When a complete same-scope
+observation expires without its counterpart, the independently measured net
+increase/decrease is finalized with its original observation timestamp and
+unknown cause; overflow also releases the oldest observation. No same-model
+callback is now auto-claimed as a pickup. Sampling gaps, new/unavailable
+containers and identity/session transitions cannot establish missing source
+facts; resource snapshots remain the audit evidence when provenance is
+incomplete.
+
+**Historical policy:** Do not delete, merge or retroactively reclassify
+ambiguous stored events. Query fixes apply read-only. An older event that lacks
+explicit correlation remains independent, even if it resembles a drop.
+
+## Legacy world-drop links and All Events totals
+
+A pre-existing `drop_event_id` field in an inventory state-difference event is not verified pickup causality: the older producer used a heuristic. All Events lists the callback and inventory evidence as distinct occurrences rather than suppressing a potentially unrelated gain. Historical callback rows expose the stored unverified link for source auditing but never borrow the gain's historical item-instance attributes. World-drop analytics still count only callback occurrences; owned-gain analytics still count limited supported gain observations; transfers remain zero new acquisitions. An exact physical-acquisition count across sources is unsupported without an independently verified shared receipt identity.
+
+## Canonical Item History (issue #90 section E)
+
+The `item_history` view uses the same canonical `activity_events` rows as
+Events and the existing read-only PostgreSQL analytics transaction. Search by
+server, character, item name/code, local-date range, source/destination container
+and recorded movement method, with count-by-character/item/location breakdowns,
+occurrence timeline, cursor pagination and source-event links. Only source
+payload properties are filterable: a missing container or method never becomes
+an inferred value.
+
+The summary keeps **world-drop callback occurrences**, **limited owned-gain
+observations**, **unknown-origin gains**, **net quantity increases/decreases**,
+**transfer event occurrences**, **transferred quantities**, **validated pet
+receipt occurrences**, and **rare/normal classified occurrences** separate.
+Transfer quantity means movement of already held items, **zero acquisitions**.
+A validated receipt count cannot safely be added to state-diff gains as a
+unique pickup count: no independently verified common physical acquisition ID
+exists. The `distinct_acquisitions` metric is therefore explicitly unsupported.
+The historical event population, daily buckets, metrics and paged occurrences
+are evaluated under one repeatable-read transaction, subject to actual
+monitoring coverage/retention. All Events keeps legacy heuristic callback/gain
+rows separate rather than silently collapsing them.

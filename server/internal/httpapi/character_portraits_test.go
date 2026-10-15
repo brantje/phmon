@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"phmon/server/internal/characters"
@@ -43,6 +46,63 @@ func TestCharacterPortraitIsAddedToCharacterGroupAndEventViews(t *testing.T) {
 	unknown := int64(99999)
 	if got := characterWithPortrait(characters.Character{Server: "Greatest", ModelID: &unknown}, metadata).PortraitURL; got != "" {
 		t.Fatalf("unknown model unexpectedly resolved to %q", got)
+	}
+}
+
+func TestDropRelatedObservationRetainsRealAPIStatsSeparately(t *testing.T) {
+	raw, err := os.ReadFile("../resources/testdata/phbot-20.1.1-api-items.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Items []map[string]any `json:"items"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&fixture); err != nil {
+		t.Fatal(err)
+	}
+	metadata := resources.NewStore(nil)
+	catalog, err := resources.LoadItemMetadata("../../game-data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata.SetItemMetadata(catalog)
+	var item map[string]any
+	for _, candidate := range fixture.Items {
+		if candidate["name"] == "Python Casque" {
+			item = candidate
+			break
+		}
+	}
+	if item == nil {
+		t.Fatal("missing captured Python Casque")
+	}
+	model := int64(0)
+	if n, ok := item["model"].(json.Number); ok {
+		model, _ = n.Int64()
+	}
+	for _, kind := range []string{"drop.item", "drop.rare"} {
+		t.Run(kind, func(t *testing.T) {
+			page := eventsWithPortraits(events.Page{Events: []events.Event{{
+				Kind: kind, Server: "Greatest", ItemModel: &model,
+				Payload: json.RawMessage(`{"model":` + item["model"].(json.Number).String() + `}`),
+				RelatedItemObservation: &events.ItemObservation{
+					EventID: "8d16ab39-10b8-4b26-80aa-a4be01e10f18", Association: "nearby_same_model_observation",
+					Source: "phbot.state_diff", Item: item,
+				},
+			}}}, metadata)
+			event := page.Events[0]
+			if event.ItemDetails != nil || bytes.Contains(event.Payload, []byte(`"item"`)) {
+				t.Fatal("related inventory evidence was promoted to the drop's own item")
+			}
+			details, _ := event.RelatedItemObservation.Item["instance_details"].(map[string]any)
+			percentages, _ := details["percentages"].([]any)
+			blues, _ := details["blues"].([]any)
+			if len(percentages) == 0 || len(blues) == 0 {
+				t.Fatalf("captured API stats/blues disappeared from related observation: %+v", details)
+			}
+		})
 	}
 }
 

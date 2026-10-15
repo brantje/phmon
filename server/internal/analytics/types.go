@@ -14,6 +14,7 @@ const (
 	ViewDeaths      View = "deaths"
 	ViewRareDrops   View = "rare_drops"
 	ViewNormalDrops View = "normal_drops"
+	ViewItemHistory View = "item_history"
 	ViewEconomy     View = "economy"
 	ViewAcademy     View = "academy"
 	ViewAlchemy     View = "alchemy"
@@ -43,6 +44,10 @@ type Filter struct {
 	ItemQuery      string    `json:"item_query,omitempty"`
 	PageSize       int       `json:"page_size"`
 	Cursor         string    `json:"cursor,omitempty"`
+
+	SourceContainer      string `json:"source_container,omitempty"`
+	DestinationContainer string `json:"destination_container,omitempty"`
+	MovementMethod       string `json:"movement_method,omitempty"`
 }
 
 type Point struct {
@@ -224,10 +229,13 @@ func NormalizeFilter(input Filter) (Filter, error) {
 	input.ItemType = strings.TrimSpace(input.ItemType)
 	input.ItemDegree = strings.TrimSpace(input.ItemDegree)
 	input.ItemQuery = strings.TrimSpace(input.ItemQuery)
+	input.SourceContainer = strings.TrimSpace(input.SourceContainer)
+	input.DestinationContainer = strings.TrimSpace(input.DestinationContainer)
+	input.MovementMethod = strings.TrimSpace(input.MovementMethod)
 	input.Timezone = strings.TrimSpace(input.Timezone)
 	input.Bucket = strings.TrimSpace(input.Bucket)
 	input.GroupBy = strings.TrimSpace(input.GroupBy)
-	if input.View != ViewDeaths && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewEconomy && input.View != ViewAcademy && input.View != ViewAlchemy && input.View != ViewPerformance {
+	if input.View != ViewDeaths && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewItemHistory && input.View != ViewEconomy && input.View != ViewAcademy && input.View != ViewAlchemy && input.View != ViewPerformance {
 		return Filter{}, fmt.Errorf("%w: unknown view", ErrInvalidFilter)
 	}
 	if len(input.Server) > 100 || len(input.CharacterID) > 36 || len(input.GroupID) > 36 || len(input.Guild) > 100 || len(input.CharacterQuery) > 64 || len(input.ItemQuery) > 128 {
@@ -281,7 +289,7 @@ func NormalizeFilter(input Filter) (Filter, error) {
 	if input.View != ViewPerformance && len(input.CharacterIDs) > 0 {
 		return Filter{}, fmt.Errorf("%w: character batches apply only to performance", ErrInvalidFilter)
 	}
-	if input.GroupBy == "item" && input.View != ViewRareDrops && input.View != ViewNormalDrops {
+	if input.GroupBy == "item" && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewItemHistory {
 		return Filter{}, fmt.Errorf("%w: item breakdown applies only to drop views", ErrInvalidFilter)
 	}
 	if (input.GroupBy == "type" || input.GroupBy == "degree") && input.View != ViewRareDrops && input.View != ViewNormalDrops {
@@ -290,8 +298,30 @@ func NormalizeFilter(input Filter) (Filter, error) {
 	if input.GroupBy == "academy" && input.View != ViewAcademy {
 		return Filter{}, fmt.Errorf("%w: academy grouping applies only to academy view", ErrInvalidFilter)
 	}
-	if (input.CharacterQuery != "" || input.ItemQuery != "") && input.View != ViewDeaths && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewAcademy && input.View != ViewAlchemy {
+	if (input.CharacterQuery != "" || input.ItemQuery != "") && input.View != ViewDeaths && input.View != ViewRareDrops && input.View != ViewNormalDrops && input.View != ViewItemHistory && input.View != ViewAcademy && input.View != ViewAlchemy {
 		return Filter{}, fmt.Errorf("%w: text search applies only to recorded event views", ErrInvalidFilter)
+	}
+	if input.SourceContainer != "" || input.DestinationContainer != "" || input.MovementMethod != "" {
+		if input.View != ViewItemHistory {
+			return Filter{}, fmt.Errorf("%w: movement filters apply only to item history", ErrInvalidFilter)
+		}
+	}
+	validContainer := func(value string) bool {
+		switch value {
+		case "", "equipment", "inventory", "storage", "guild_storage", "job_pouch", "pets":
+			return true
+		default:
+			return false
+		}
+	}
+	if !validContainer(input.SourceContainer) || !validContainer(input.DestinationContainer) ||
+		len(input.MovementMethod) > 64 {
+		return Filter{}, fmt.Errorf("%w: invalid movement filter", ErrInvalidFilter)
+	}
+	if input.MovementMethod != "" && input.MovementMethod != "unknown" &&
+		input.MovementMethod != "observed_container_delta" &&
+		input.MovementMethod != "pet_pickup" {
+		return Filter{}, fmt.Errorf("%w: unknown item movement method", ErrInvalidFilter)
 	}
 	if input.PageSize == 0 {
 		input.PageSize = 25

@@ -25,6 +25,7 @@ const views = [
   { key: 'deaths', label: 'Deaths', icon: 'i-lucide-heart-pulse' },
   { key: 'rare_drops', label: 'Rare Drops', icon: 'i-lucide-gem' },
   { key: 'normal_drops', label: 'Normal Drops', icon: 'i-lucide-package' },
+  { key: 'item_history', label: 'Item History', icon: 'i-lucide-history' },
   { key: 'economy', label: 'Economy', icon: 'i-lucide-coins' },
   { key: 'academy', label: 'Academy', icon: 'i-lucide-graduation-cap' },
 ] as const
@@ -66,12 +67,16 @@ const fromDate = ref(
   ),
 )
 const toDate = ref(initialDate(route.query.to, dateInput(new Date())))
+const defaultItemGrouping =
+  route.query.view === 'rare_drops' ||
+  route.query.view === 'normal_drops' ||
+  route.query.view === 'item_history'
 const groupBy = ref<
   'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy'
 >(
   validGroupBy(route.query.group_by)
     ? route.query.group_by
-    : route.query.view === 'rare_drops' || route.query.view === 'normal_drops'
+    : defaultItemGrouping
       ? 'item'
       : 'character',
 )
@@ -94,6 +99,24 @@ const groupID = ref(
 )
 const guildName = ref(
   typeof route.query.guild === 'string' ? route.query.guild : '',
+)
+const itemQuery = ref(
+  typeof route.query.item === 'string' ? route.query.item : '',
+)
+const sourceContainer = ref(
+  typeof route.query.source_container === 'string'
+    ? route.query.source_container
+    : '',
+)
+const destinationContainer = ref(
+  typeof route.query.destination_container === 'string'
+    ? route.query.destination_container
+    : '',
+)
+const movementMethod = ref(
+  typeof route.query.movement_method === 'string'
+    ? route.query.movement_method
+    : '',
 )
 const dropSource = ref<'world' | 'owned_gains'>(
   route.query.drop_source === 'owned_gains' ? 'owned_gains' : 'world',
@@ -128,6 +151,8 @@ const pageDescription = computed(() => {
       return 'Rare world-drop observations from verified phBot callbacks and item profiles.'
     case 'normal_drops':
       return 'Normal world-drop observations from verified phBot callbacks and item profiles.'
+    case 'item_history':
+      return 'Canonical world drops, owned gains, unknown quantity changes and transfers. Counts are events, not unique acquisitions.'
     case 'economy':
       return 'Character balances include inventory and personal storage. Guild storage is shown separately; the navbar total combines both.'
     default:
@@ -140,6 +165,7 @@ const leftChartTitle = computed(() => {
     return `${dropSource.value === 'owned_gains' ? 'Rare owned gains' : 'Rare drops'} by ${groupLabel.value}`
   if (view.value === 'normal_drops')
     return `${dropSource.value === 'owned_gains' ? 'Normal owned gains' : 'Normal drops'} by ${groupLabel.value}`
+  if (view.value === 'item_history') return `Item events by ${groupLabel.value}`
   if (view.value === 'economy')
     return balanceScope.value === 'guild_storage'
       ? 'Observed guild-storage balances'
@@ -226,7 +252,11 @@ watch(
   view,
   (next) => {
     groupBy.value =
-      next === 'rare_drops' || next === 'normal_drops' ? 'item' : 'character'
+      next === 'rare_drops' ||
+      next === 'normal_drops' ||
+      next === 'item_history'
+        ? 'item'
+        : 'character'
     cursor.value = ''
     pageNumber.value = 1
     previousCursors.value = []
@@ -254,6 +284,10 @@ watch(
     groupID,
     guildName,
     dropSource,
+    itemQuery,
+    sourceContainer,
+    destinationContainer,
+    movementMethod,
   ],
   ([nextView, server, from, to, grouping, pageCursor, timezone]) => {
     const dates = normalizeAnalyticsDateRange(from, to)
@@ -287,6 +321,20 @@ watch(
       item_degree:
         nextView === 'rare_drops' || nextView === 'normal_drops'
           ? itemDegree.value || undefined
+          : undefined,
+      item:
+        nextView === 'item_history' ? itemQuery.value || undefined : undefined,
+      source_container:
+        nextView === 'item_history'
+          ? sourceContainer.value || undefined
+          : undefined,
+      destination_container:
+        nextView === 'item_history'
+          ? destinationContainer.value || undefined
+          : undefined,
+      movement_method:
+        nextView === 'item_history'
+          ? movementMethod.value || undefined
           : undefined,
       page_size: 25,
       cursor: pageCursor || undefined,
@@ -420,11 +468,46 @@ watch(
     itemType,
     itemDegree,
     dropSource,
+    itemQuery,
+    sourceContainer,
+    destinationContainer,
+    movementMethod,
   ],
   () => {
     cursor.value = ''
     pageNumber.value = 1
     previousCursors.value = []
+  },
+)
+watch(
+  [itemQuery, sourceContainer, destinationContainer, movementMethod],
+  () => {
+    void router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        item: itemQuery.value || undefined,
+        source_container: sourceContainer.value || undefined,
+        destination_container: destinationContainer.value || undefined,
+        movement_method: movementMethod.value || undefined,
+      },
+      hash: route.hash,
+    })
+  },
+)
+watch(
+  () => [
+    route.query.item,
+    route.query.source_container,
+    route.query.destination_container,
+    route.query.movement_method,
+  ],
+  ([item, source, destination, method]) => {
+    itemQuery.value = typeof item === 'string' ? item : ''
+    sourceContainer.value = typeof source === 'string' ? source : ''
+    destinationContainer.value =
+      typeof destination === 'string' ? destination : ''
+    movementMethod.value = typeof method === 'string' ? method : ''
   },
 )
 watch([balanceScope, itemType, itemDegree], () => {
@@ -608,6 +691,7 @@ function dateInput(value: Date) {
           view === 'deaths' ||
           view === 'rare_drops' ||
           view === 'normal_drops' ||
+          view === 'item_history' ||
           view === 'academy'
         "
       >
@@ -620,7 +704,11 @@ function dateInput(value: Date) {
             Observed academy ID
           </option>
           <option
-            v-if="view === 'rare_drops' || view === 'normal_drops'"
+            v-if="
+              view === 'rare_drops' ||
+              view === 'normal_drops' ||
+              view === 'item_history'
+            "
             value="item"
           >
             Item
@@ -659,6 +747,47 @@ function dateInput(value: Date) {
           >
             {{ degree }}
           </option>
+        </select>
+      </label>
+      <label v-if="view === 'item_history'">
+        Item name or code
+        <input
+          v-model="itemQuery"
+          maxlength="128"
+          placeholder="Find item events"
+        />
+      </label>
+      <label v-if="view === 'item_history'">
+        From container
+        <select v-model="sourceContainer">
+          <option value="">Any</option>
+          <option value="inventory">Inventory</option>
+          <option value="equipment">Equipment</option>
+          <option value="storage">Personal storage</option>
+          <option value="guild_storage">Guild storage</option>
+          <option value="pets">Pet</option>
+          <option value="job_pouch">Job pouch</option>
+        </select>
+      </label>
+      <label v-if="view === 'item_history'">
+        To container
+        <select v-model="destinationContainer">
+          <option value="">Any</option>
+          <option value="inventory">Inventory</option>
+          <option value="equipment">Equipment</option>
+          <option value="storage">Personal storage</option>
+          <option value="guild_storage">Guild storage</option>
+          <option value="pets">Pet</option>
+          <option value="job_pouch">Job pouch</option>
+        </select>
+      </label>
+      <label v-if="view === 'item_history'">
+        Observed method
+        <select v-model="movementMethod">
+          <option value="">Any</option>
+          <option value="unknown">Unknown</option>
+          <option value="observed_container_delta">Container delta</option>
+          <option value="pet_pickup">Pet pickup</option>
         </select>
       </label>
       <span class="analytics-range"

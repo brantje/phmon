@@ -89,7 +89,7 @@ func (s *Store) query(ctx context.Context, filter Filter) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	switch filter.View {
-	case ViewDeaths, ViewRareDrops, ViewNormalDrops, ViewAcademy, ViewAlchemy:
+	case ViewDeaths, ViewRareDrops, ViewNormalDrops, ViewItemHistory, ViewAcademy, ViewAlchemy:
 		if err := s.queryEventView(ctx, tx, filter, &snapshot); err != nil {
 			return Snapshot{}, err
 		}
@@ -189,12 +189,14 @@ func eventKinds(view View, source string) string {
 		return "e.kind='character.died'"
 	case ViewRareDrops:
 		if source == "owned_gains" {
-			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type' IN ('inventory','pets')) OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='rare'`
+			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type'='inventory') OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='rare'`
 		}
 		return "e.kind='drop.rare'"
+	case ViewItemHistory:
+		return "e.kind IN ('drop.item','drop.rare','item.acquired','item.quantity_increased','item.quantity_decreased','item.transferred')"
 	case ViewNormalDrops:
 		if source == "owned_gains" {
-			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type' IN ('inventory','pets')) OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='normal'`
+			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type'='inventory') OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='normal'`
 		}
 		return "e.kind='drop.item'"
 	case ViewAcademy:
@@ -212,7 +214,7 @@ func eventScope() string {
  AND ($2='' OR e.character_id=$2::uuid)
  AND ($3='' OR EXISTS (SELECT 1 FROM character_group_members scope_member WHERE scope_member.character_id=e.character_id AND scope_member.group_id=$3::uuid))
  AND ($6='' OR EXISTS (SELECT 1 FROM characters scope_character WHERE scope_character.character_id=e.character_id AND scope_character.character_name ILIKE '%'||$6||'%'))
- AND ($7='' OR coalesce(e.item_code,'') ILIKE '%'||$7||'%' OR coalesce(e.payload->>'item_name',e.payload->>'name','') ILIKE '%'||$7||'%')`
+ AND ($7='' OR coalesce(e.item_code,'') ILIKE '%'||$7||'%' OR coalesce(e.payload->>'item_name',e.payload->>'name','') ILIKE '%'||$7||'%' OR coalesce(e.payload->'item'->>'name','') ILIKE '%'||$7||'%')`
 }
 
 func (s *Store) queryEventView(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
@@ -220,6 +222,20 @@ func (s *Store) queryEventView(ctx context.Context, tx pgx.Tx, filter Filter, sn
 	args := []any{filter.Server, filter.CharacterID, filter.GroupID, filter.From, filter.To, filter.CharacterQuery, filter.ItemQuery}
 	if filter.Server != "" && s.taxonomyOptions != nil {
 		snapshot.TaxonomyOptions = s.taxonomyOptions(filter.Server)
+	}
+	if filter.View == ViewItemHistory {
+		if filter.SourceContainer != "" {
+			where += fmt.Sprintf(" AND e.payload->'source_container'->>'type'=$%d", len(args)+1)
+			args = append(args, filter.SourceContainer)
+		}
+		if filter.DestinationContainer != "" {
+			where += fmt.Sprintf(" AND e.payload->'destination_container'->>'type'=$%d", len(args)+1)
+			args = append(args, filter.DestinationContainer)
+		}
+		if filter.MovementMethod != "" {
+			where += fmt.Sprintf(" AND coalesce(e.payload->>'method',e.payload->>'acquisition_method','')=$%d", len(args)+1)
+			args = append(args, filter.MovementMethod)
+		}
 	}
 	if filter.ItemType != "" || filter.ItemDegree != "" {
 		if filter.Server == "" || s.itemModels == nil {
@@ -252,6 +268,8 @@ func (s *Store) queryEventView(ctx context.Context, tx pgx.Tx, filter Filter, sn
 		return queryDeaths(ctx, tx, filter, where, args, total, snapshot)
 	case ViewRareDrops, ViewNormalDrops:
 		return s.queryDrops(ctx, tx, filter, where, args, total, snapshot)
+	case ViewItemHistory:
+		return queryItemHistory(ctx, tx, filter, where, args, snapshot)
 	case ViewAcademy:
 		return queryAcademy(ctx, tx, filter, where, args, total, snapshot)
 	case ViewAlchemy:
@@ -377,11 +395,17 @@ func (s *Store) queryDrops(ctx context.Context, tx pgx.Tx, filter Filter, where 
 		knownTypeIndex++
 	}
 	if filter.DropSource == "owned_gains" {
+		// Pet state differences and packet receipts can both describe one
+		// pickup but have no shared stable acquisition identity. Count the
+		// receipt source for pet acquisitions and keep the unlinked state
+		// difference visible in Events, not a second analytics gain.
+		snapshot.Status = "limited"
+		snapshot.Reason = "owned gains are evidence occurrences, not verified unique acquisitions; unlinked pet state-diff gains are excluded"
 		var quantity int64
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN e.payload->>'quantity_delta' ~ '^[0-9]{1,9}$' THEN (e.payload->>'quantity_delta')::bigint ELSE 1 END),0) FROM activity_events e WHERE `+where, args...).Scan(&quantity); err != nil {
 			return err
 		}
-		snapshot.Summary = append(snapshot.Summary, Metric{Key: "owned_gain_quantity", Label: "Observed item quantity gained", Value: strconv.FormatInt(quantity, 10), Unit: "items", Status: "available", Reason: "sum of accepted quantity deltas; destination transfers are excluded"})
+		snapshot.Summary = append(snapshot.Summary, Metric{Key: "owned_gain_quantity", Label: "Recorded gain-evidence quantity", Value: strconv.FormatInt(quantity, 10), Unit: "items", Status: "limited", Reason: "inventory net gains and verified pet pickup receipts only; unlinked pet state differences are excluded to avoid counting the same receipt twice; not verified distinct physical acquisitions"})
 	}
 	if !complete {
 		snapshot.TaxonomyComplete = false
@@ -871,3 +895,78 @@ func eventEvidencePrefix(filter Filter, kind string, worldDrops bool) string {
 var _ interface {
 	Query(context.Context, Filter) (Snapshot, error)
 } = (*Store)(nil)
+
+// queryItemHistory reports canonical observations, not inferred item instances.
+// Event totals and physical item quantities are separate, and transfers never
+// contribute new acquisitions. Every query reads the same repeatable-read
+// snapshot used for the paginated underlying event occurrences.
+func queryItemHistory(ctx context.Context, tx pgx.Tx, filter Filter, where string, args []any, snapshot *Snapshot) error {
+	if _, err := queryTimeline(ctx, tx, filter, where, args, "Recorded item events", &snapshot.TimeSeries); err != nil {
+		return err
+	}
+	var err error
+	switch filter.GroupBy {
+	case "item":
+		snapshot.Breakdown, err = queryBreakdown(ctx, tx, filter, where, args, "item")
+	case "location":
+		snapshot.Breakdown, err = queryBreakdown(ctx, tx, filter, where, args, "location")
+	default:
+		snapshot.Breakdown, err = queryBreakdown(ctx, tx, filter, where, args, "character")
+	}
+	if err != nil {
+		return err
+	}
+	var world, owned, unknown, increases, decreases, transfers, petReceipts, rare, normal int64
+	var transferredQuantity, increasedQuantity, decreasedQuantity string
+	// Quantity is a non-negative bounded integer in the canonical event
+	// contract. The regex guard keeps legacy/malformed payloads from casting.
+	const aggregates = `SELECT
+		count(*) FILTER (WHERE e.kind IN ('drop.item','drop.rare')),
+		count(*) FILTER (WHERE e.kind IN ('item.acquired','item.quantity_increased') AND
+			((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type'='inventory')
+			  OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory'))),
+		count(*) FILTER (WHERE e.kind IN ('item.acquired','item.quantity_increased') AND e.payload->>'acquisition_method'='unknown'),
+		count(*) FILTER (WHERE e.kind IN ('item.acquired','item.quantity_increased')),
+		count(*) FILTER (WHERE e.kind='item.quantity_decreased'),
+		count(*) FILTER (WHERE e.kind='item.transferred'),
+		count(*) FILTER (WHERE e.kind='item.acquired' AND e.source='joymax.pet_inventory'),
+		count(*) FILTER (WHERE e.kind='drop.rare' OR e.item_drop_class='rare'),
+		count(*) FILTER (WHERE e.kind='drop.item' OR e.item_drop_class='normal'),
+		COALESCE(sum(CASE WHEN e.kind='item.transferred' AND e.payload->>'quantity_delta' ~ '^[0-9]{1,10}$'
+			THEN (e.payload->>'quantity_delta')::numeric ELSE 0 END),0)::text,
+		COALESCE(sum(CASE WHEN e.kind IN ('item.acquired','item.quantity_increased') AND e.payload->>'quantity_delta' ~ '^[0-9]{1,10}$'
+			THEN (e.payload->>'quantity_delta')::numeric ELSE 0 END),0)::text,
+		COALESCE(sum(CASE WHEN e.kind='item.quantity_decreased' AND e.payload->>'quantity_delta' ~ '^[0-9]{1,10}$'
+			THEN (e.payload->>'quantity_delta')::numeric ELSE 0 END),0)::text
+		FROM activity_events e WHERE `
+	err = tx.QueryRow(ctx, aggregates+where, args...).Scan(
+		&world, &owned, &unknown, &increases, &decreases, &transfers, &petReceipts,
+		&rare, &normal, &transferredQuantity, &increasedQuantity, &decreasedQuantity)
+	if err != nil {
+		return err
+	}
+	add := func(key, label string, amount int64, unit string) {
+		snapshot.Summary = append(snapshot.Summary, Metric{
+			Key: key, Label: label, Value: strconv.FormatInt(amount, 10),
+			Unit: unit, Status: "available",
+		})
+	}
+	add("world_drops", "World-drop callback observations", world, "events")
+	add("owned_gain_observations", "Recorded owned gains (limited sources)", owned, "observations")
+	add("unknown_origin_gains", "Unknown-origin gain observations", unknown, "observations")
+	add("quantity_increases", "Quantity-increase observations", increases, "events")
+	snapshot.Summary = append(snapshot.Summary, Metric{Key: "quantity_increased", Label: "Observed increased quantity (not unique acquired items)", Value: increasedQuantity, Unit: "items", Status: "limited", Reason: "includes different ownership scopes and potentially overlapping source observations"})
+	add("quantity_decreases", "Quantity-decrease observations", decreases, "events")
+	snapshot.Summary = append(snapshot.Summary, Metric{Key: "quantity_decreased", Label: "Observed decreased quantity", Value: decreasedQuantity, Unit: "items", Status: "available"})
+	add("transfer_events", "Recorded transfer occurrences (zero acquisitions)", transfers, "events")
+	snapshot.Summary = append(snapshot.Summary, Metric{Key: "transferred_quantity", Label: "Transferred quantity (not acquisitions)", Value: transferredQuantity, Unit: "items", Status: "available"})
+	add("verified_pet_receipts", "Validated pet receipt occurrences", petReceipts, "receipts")
+	add("rare_item_events", "Rare classified item events", rare, "events")
+	add("normal_item_events", "Normal classified item events", normal, "events")
+	snapshot.Summary = append(snapshot.Summary, Metric{
+		Key: "distinct_acquisitions", Label: "Verified distinct physical acquisitions",
+		Status: "unsupported", Unit: "items",
+		Reason: "No common verified physical acquisition identity exists across world drops, receipts and state-diff gains.",
+	})
+	return queryOccurrences(ctx, tx, filter, where, args, &snapshot.Occurrences, &snapshot.NextCursor)
+}

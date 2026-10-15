@@ -54,6 +54,17 @@ export interface ActivityEvent {
   item_code?: string
   item_metadata?: Record<string, unknown>
   item_details?: Record<string, unknown>
+  related_item_observation?: {
+    event_id: string
+    association:
+      | 'stored_unverified_drop_event_id'
+      | 'nearby_same_model_observation'
+      | 'gap_reconciled_same_model'
+    source: string
+    occurred_at: string
+    container: Record<string, unknown>
+    item: Record<string, unknown>
+  }
   item_drop_class?: 'normal' | 'rare'
   item_drop_class_version?: string
   item_icon_url?: string
@@ -517,6 +528,9 @@ export interface AnalyticsSnapshot {
     guild?: string
     balance_scope?: 'characters' | 'guild_storage'
     drop_source?: 'world' | 'owned_gains'
+    source_container?: string
+    destination_container?: string
+    movement_method?: string
     item_type?: string
     item_degree?: string
     page_size: number
@@ -644,10 +658,29 @@ export type LiveStream =
   | 'controls'
   | 'resources'
   | 'events'
+  | 'offers'
   | 'analytics'
   | 'chat'
   | 'map'
   | 'positions'
+
+export interface GlobalOffer {
+  message_id: string
+  source_event_id: string
+  server: string
+  observer_character_id: string
+  observer: string
+  sender: string
+  message: string
+  offer_type: 'WTB' | 'WTS' | 'WTT'
+  occurred_at: string
+}
+
+export interface GlobalOffersPage {
+  offers: GlobalOffer[]
+  total: number
+  next_cursor?: string
+}
 
 export interface LiveFilter {
   q?: string
@@ -682,6 +715,9 @@ export interface LiveFilter {
   guild?: string
   balance_scope?: 'characters' | 'guild_storage'
   drop_source?: 'world' | 'owned_gains'
+  source_container?: string
+  destination_container?: string
+  movement_method?: string
   item_type?: string
   item_degree?: string
   page_size?: number

@@ -593,6 +593,30 @@ and skips inventory-quantity, chat and session rows that were hiding unique noti
   type and server when distinct characters observe them within two seconds. One row
   lists all observers; the canonical event history retains each observation.
 
+### Drop history screenshot parity — 2026-10-15
+
+The operator-provided `phmonitor_screenshots/05-normal-drops.png` and
+`05-rare-drops.png` depict a compact, single-panel drop history: a page title,
+an "All normal drops" / "All rare drops" count heading, the seven primary event
+tabs, Character / Item name / From date / To date filters, and a table ordered
+Item, Time, Character, Location. Rare Drops alone includes a Map column.
+The footer has entries-per-page and previous/next page controls. Normal Drops
+shows an observed item icon and name; Rare Drops shows a centered empty state.
+
+`/events?kind=drop.item` and `/events?kind=drop.rare` now use that
+drop-specific table and control hierarchy; all other event views retain their
+existing presentation and advanced navigation. Icons and names come from the
+canonical item record, map actions require a validated region transform,
+links target existing item/character history, and world-drop callbacks never
+claim ownership or pickup. Drop views start without a date restriction, as
+shown by the blank reference date inputs; non-drop views retain their bounded
+default window. Table overflow stays within the panel on narrow screens.
+
+The supplied reference captures were inspected directly. Automated frontend
+checks and CI cover parsing and regression behavior; a browser-side pixel
+comparison at 1440×1000, 1280×800 and 390×844 remains a separate acceptance
+step, not a claimed completed check.
+
 ### Event row presentation correction — 2026-10-04
 
 The operator supplied five event-row examples for unique spawns, level-ups,
@@ -2717,3 +2741,176 @@ A 121-second production check with three Economy pages, repeated refreshes and
 Map returned 227 analytics snapshots / 22 distinct AsOf timestamps per page and
 183 map snapshots, with zero unavailable frames or browser errors. See the
 [follow-up evidence](reference/economy-analytics-repair-2026-10-13.md).
+
+
+### Slice 13 / PR #91: Items and Global Economy (2026-10-15)
+
+The `/items` route adds a unified read-only Item Search alongside canonical
+per-character and guild inventory views. It uses `ItemDetailPopup`, includes
+source container and observer, marks observed/checked freshness and offers
+server, name/code, owner, category/degree and include-equipped filters. Guild
+rows select one attributable observer revision per server/guild; count and
+page use one PostgreSQL repeatable-read snapshot to avoid mixing revisions.
+`/economy` adds filtered, source-linked Global WTB/WTS/WTT advertisements
+without representing ads as completed sales. Stable per-broadcast IDs and
+verified item identity within free text are not available, so it intentionally
+does not fuse identical cross-observer messages or advertise structured item
+taxonomy/seal/degree filters. Original text remains searchable. `/events` now has separate Owned Gains
+and Transfers tabs, with linked event IDs available for inspection.
+
+**Visual acceptance pending:** 1440×1000, 1280×800 and 390×844 browser
+checks, keyboard focus, live/disconnected/error states and item popup placement
+must be verified against a disposable stack with fixture observations. This
+section documents implemented screen intentions; it does not claim screenshot
+parity or real phBot validation. Stalls and realized-price charts are omitted
+because source capabilities remain unverified.
+
+### PR #91 third re-review: verification ledger (2026-10-15)
+
+- Events: a historical `drop_event_id` originating in an earlier model/time
+  heuristic cannot erase the independent state-diff observation from All Events.
+  Callback rows show a marked **stored unverified association** but never borrow
+  the gain's plus, blues or other instance rolls. Counts/cursors and exact-ID
+  audit paths have PostgreSQL regression assertions. No live drop/pickup proof
+  has been asserted.
+- Item reconciliation: bounded pending candidate events are finalized with
+  unknown provenance if a storage/guild resource disappears or the network
+  worker tears down the old character/session. Python fixtures assert the
+  original session and timestamps are retained. Real Windows/phBot availability
+  and reconnect sequences remain to be captured.
+- Item Search: cursor now uses the persisted `server_key`, not the server
+  display name; a PostgreSQL fixture intentionally makes them differ.
+- Global Economy: equal From/To calendar dates are rejected locally because
+  the upper date is exclusive; records are still **observer-message** evidence,
+  not unique advertisements or realized sales.
+- Review: all five CodeRabbit inline threads have replies naming fix commits.
+  Workflow/job outcomes and acceptance limitations are maintained in
+  [issue #90 acceptance](issue-90-acceptance.md).
+- **Browser gate still open:** no local browser run or screenshots were produced
+  for this re-review at 1440×1000, 1280×800 or 390×844. Thus no UI visual
+  parity, keyboard or responsive acceptance is claimed.
+
+### 2026-10-15 — Normal/Rare Drops observed item detail repair
+
+Default callback-only Drop tabs had lost access to observed item stats during
+PR #91's evidence-separation changes. The shared item popup now displays eligible
+historical inventory/pet evidence in a separate source-labeled section, with its
+own enhancement, white stats/rolls, durability and blues. The relation to the drop
+remains explicitly unverified; no inventory gain is counted as a world drop and
+no other copy's stats become callback facts. Missing/competing observations retain
+the unavailable state. [Evidence and test contract](reference/item-tooltip-regression-2026-10-15.md).
+
+Item Search follow-up: the missing Nuxt `/api/items` and `/api/economy/offers`
+routes caused 404 responses even though their Go handlers existed. Authenticated
+proxies now connect both pages. Running-instance checks at all three required
+viewports passed for retained results (769 items / 5,410 Global messages),
+search/reset/container filter/cursor, tooltip and error recovery. Normal/Rare
+source-labeled stats/blues also passed desktop and real touch checks. Evidence:
+`/tmp/phmon-item-details-20261015`, including `results.json` and
+`search-results.json`. A read-only proxy check now runs in Stack CI.
+
+### 2026-10-15 — Operator screenshot correction: drops and Global Offers
+
+The duplicate tooltip block is removed. One compact item card now follows the
+supplied Gem Necklace/Leopard Casque captures; a short source qualifier replaces
+the diagnostic section. Drop tables now use 67 px rows, 45 px icons, 13 px text,
+reference-sized filters/tabs, readable local dates and gold map actions. The
+model-only callback name filter now resolves through the server's catalog.
+Dashboard Global Offers consumes the existing canonical offer query over the
+shared live socket; the Economy sidebar link is active. All three required browser
+sizes passed with screenshots and measured dimensions.
+
+The screenshot's pet staff lacks captured rolls/blues in both its saved observation
+and current getter output. It remains an explicit source capability gap; another
+bag copy's stats are not borrowed. This is not full pet-detail or Slice 13 parity.
+[Measurements, actual item evidence, validation and next runtime gate](reference/drop-screenshot-parity-2026-10-15.md).
+
+### 2026-10-15 — Item Search operator screenshot correction
+
+The prior observation-row design did not match the supplied populated reference.
+`/items` now uses one compact filter/results panel, dependent dropdowns,
+character/container groups, complete match counts and 64 px tiles with 45 px
+icons. Observer/freshness attribution appears once per container as Viewed by /
+Last synced; source buttons open the corresponding character resource tab.
+Client grouping reads all bounded canonical pages and retries inconsistent
+container revisions. Server/model metadata and exact stack quantities remain
+source-backed. The canonical persistence/query contracts are unchanged.
+[Design, data boundaries and browser evidence](reference/item-search-screenshot-parity-2026-10-15.md).
+This corrects Item Search presentation; the wider Slice 13 evidence gates remain
+open, including placement of an exact-item history action after removal of the
+old per-row diagnostic link.
+
+### 2026-10-15 — Item Search container dialogs
+
+On `/items`, **Open Char Inventory**, **Open Char Storage** and **Open Guild
+Storage** now open an in-place modal instead of navigating; filters, results and
+scroll position are preserved. The modal (≈1060 px, 20 px padding, muted gold
+border, blurred backdrop) shows the complete container rather than the filtered
+matches: owner, occupied/total slots, last synced time (guild adds Viewed by),
+page tabs above a full-width frame, 44 px left-aligned slots, the occupied total
+and a separate gold bar with the local gold icon (`0` when known zero, `—` when
+unknown). Inventory pages are 4 × 8; personal and guild storage pages are 6 × 5,
+and Item Search page labels use the same shared rule (`utils/containerLayout.ts`).
+Character containers use a dialog-scoped resources subscription on the existing
+live socket; guild storage uses the scoped API on each opening with late-response
+fencing. Escape closes a focused tooltip before the modal; focus is trapped and
+restored. Inline inventory views keep 4 × 38 px. Browser evidence at 1440 × 1000,
+1280 × 800 and 390 × 844 (real inventory 64 slots, real storage 150 slots,
+browser-only 30/45-slot guild fixtures): `/tmp/phmon-item-dialog-20261015`.
+
+### Armor mounting part correction — 2026-10-15
+
+The operator compared nuker1's Taesang set with phMonitor: PhMon labeled the
+Suit as Shoulders, Trousers as Hands, Talisman as Chest and Wristlet as Legs.
+The exporter mapped armor `TypeID4` in equipment-slot order. It actually follows
+the codename part suffix (HA, SA, BA, LA, AA, FA), confirmed by the client
+textdata names (`*_BA_*` Suit, `*_LA_*` Trousers, `*_SA_*` Talisman, `*_AA_*`
+Wristlet). Exporter mapping is now 1 Head, 2 Shoulders, 3 Chest, 4 Legs,
+5 Hands, 6 Feet. The three packaged server catalogs were corrected from each
+item's own `type_ids` (3,968 entries each; Head/Feet unchanged) rather than
+re-exported, since the source archives are not on this host. Presentation is
+resolved at read time, so no stored records needed rewriting. Exporter (105) and
+resources Go tests pass; the new packaged-catalog regression fails on the old
+data. The authenticated live `/api/items` now reports Suit/Chest,
+Trousers/Legs, Talisman/Shoulders, Wristlet/Hands.
+
+### Stats Info equipment order and character details — 2026-10-15
+
+Per the authorized phMonitor v0.5.0 inspection (`equipmentLayoutHtml`,
+`statsInfoPanelHtml`), the Stats Info tab now places source slots in two columns:
+left weapon 6, head 0, chest 1, legs 4, earring 9, ring 11 (plus an empty spacer);
+right shield 7, shoulders 2, hands 3, feet 5, necklace 10, ring 12, job 8. The
+center card shows Character, Job name, Guild, Guild members (online / total),
+Donated GP, Union guilds and Last seen. These come from the new protocol-20
+`character_info` resource (plugin 1.9.39: `get_character_data()`, `get_guild()`,
+`get_guild_union()`); unobserved values show `-`. Live browser checks at 1440 and
+390 px confirmed order, item parts, no page overflow and no page errors; job and
+guild values remain `-` until plugin 1.9.39 is installed in phBot.
+
+### 2026-10-15 — Pick-pet item detail packet verification
+
+Three successive operator captures verify the missing Pick-pet detail paths:
+`0xB034` subtype `0x11` carries a newly picked up equipment body, and
+`0x30C8` carries equipment already held when the pet is summoned. The rich
+417-byte snapshot fully parses and matches all 12 pet API slots; a later
+packet-linked `0x1A` move of Magic Weave to bag slot 72 confirms its plus 5,
+six 100% white rolls and five blue ID/value pairs. See the
+[packet audit](reference/pet-item-capture-2026-10-15.md). Plugin 1.9.42
+attaches verified `instance` fields to matching Pick-pet slots; the existing
+Go resolver and Stats/Item Search tooltip consume that shape. Real Windows
+phBot installation and a live tooltip comparison remain open. Unsupported
+pet classes, rental/binding variants and item families remain basic.
+
+### 2026-10-16 — Kalypso live Pick-pet capacity check
+
+Kalypso connected with plugin 1.9.42 and sent one 245-byte `0x30C8` packet;
+its 56-position Pick-pet API roster had eight equipment items in slots 0–16,
+but no item instances attached. The two complete packet captures both advertise
+28 positions, so the parser's equality check against all 56 API positions was
+too strict for the observed layout. The packet bytes were not retained, and
+its exact capacity remains inferred. Plugin 1.9.43 compares the packet-covered
+positions and requires the extra API positions to be empty. The screenshot
+showed an older web build's packet-only text. The web and Go containers were
+rebuilt and passed their health checks; the web artifact now contains the
+current Pick-pet decoder explanation and snapshot mismatch display.
+Live pet item detail remains unverified until a new 1.9.43 snapshot attaches.

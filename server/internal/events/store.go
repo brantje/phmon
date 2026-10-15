@@ -1,6 +1,7 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -77,38 +78,50 @@ type AgentDeath struct {
 }
 
 type Event struct {
-	ID                   string          `json:"event_id"`
-	Schema               int             `json:"schema_version"`
-	Kind                 string          `json:"kind"`
-	Category             string          `json:"category"`
-	AgentID              string          `json:"agent_id"`
-	CharacterID          string          `json:"character_id"`
-	SessionID            string          `json:"session_id"`
-	Server               string          `json:"server"`
-	Character            string          `json:"character"`
-	OccurredAt           time.Time       `json:"occurred_at"`
-	ReceivedAt           time.Time       `json:"received_at"`
-	Source               string          `json:"source"`
-	SourceRef            string          `json:"source_ref"`
-	Region               *int            `json:"region,omitempty"`
-	Zone                 string          `json:"zone,omitempty"`
-	X                    *float64        `json:"x,omitempty"`
-	Y                    *float64        `json:"y,omitempty"`
-	Z                    *float64        `json:"z,omitempty"`
-	ModelID              *int64          `json:"model_id,omitempty"`
-	PortraitURL          string          `json:"portrait_url,omitempty"`
-	Payload              json.RawMessage `json:"payload"`
-	Sequence             *int64          `json:"sequence,omitempty"`
-	DedupeKey            string          `json:"dedupe_key,omitempty"`
-	ItemModel            *int64          `json:"item_model,omitempty"`
-	ItemCode             string          `json:"item_code,omitempty"`
-	ItemMetadata         map[string]any  `json:"item_metadata,omitempty"`
-	ItemDetails          map[string]any  `json:"item_details,omitempty"`
-	ItemDropClass        string          `json:"item_drop_class,omitempty"`
-	ItemDropClassVersion string          `json:"item_drop_class_version,omitempty"`
-	ItemName             string          `json:"item_name,omitempty"`
-	ItemIconURL          string          `json:"item_icon_url,omitempty"`
-	Unique               *UniqueInfo     `json:"unique,omitempty"`
+	ID                     string           `json:"event_id"`
+	Schema                 int              `json:"schema_version"`
+	Kind                   string           `json:"kind"`
+	Category               string           `json:"category"`
+	AgentID                string           `json:"agent_id"`
+	CharacterID            string           `json:"character_id"`
+	SessionID              string           `json:"session_id"`
+	Server                 string           `json:"server"`
+	Character              string           `json:"character"`
+	OccurredAt             time.Time        `json:"occurred_at"`
+	ReceivedAt             time.Time        `json:"received_at"`
+	Source                 string           `json:"source"`
+	SourceRef              string           `json:"source_ref"`
+	Region                 *int             `json:"region,omitempty"`
+	Zone                   string           `json:"zone,omitempty"`
+	X                      *float64         `json:"x,omitempty"`
+	Y                      *float64         `json:"y,omitempty"`
+	Z                      *float64         `json:"z,omitempty"`
+	ModelID                *int64           `json:"model_id,omitempty"`
+	PortraitURL            string           `json:"portrait_url,omitempty"`
+	Payload                json.RawMessage  `json:"payload"`
+	Sequence               *int64           `json:"sequence,omitempty"`
+	DedupeKey              string           `json:"dedupe_key,omitempty"`
+	ItemModel              *int64           `json:"item_model,omitempty"`
+	ItemCode               string           `json:"item_code,omitempty"`
+	ItemMetadata           map[string]any   `json:"item_metadata,omitempty"`
+	ItemDetails            map[string]any   `json:"item_details,omitempty"`
+	RelatedItemObservation *ItemObservation `json:"related_item_observation,omitempty"`
+	ItemDropClass          string           `json:"item_drop_class,omitempty"`
+	ItemDropClassVersion   string           `json:"item_drop_class_version,omitempty"`
+	ItemName               string           `json:"item_name,omitempty"`
+	ItemIconURL            string           `json:"item_icon_url,omitempty"`
+	Unique                 *UniqueInfo      `json:"unique,omitempty"`
+}
+
+// ItemObservation preserves a separate event's item evidence for inspection.
+// Neither association establishes that this is the world drop's item instance.
+type ItemObservation struct {
+	EventID     string         `json:"event_id"`
+	Association string         `json:"association"`
+	Source      string         `json:"source"`
+	OccurredAt  time.Time      `json:"occurred_at"`
+	Container   map[string]any `json:"container"`
+	Item        map[string]any `json:"item"`
 }
 
 // UniqueInfo is the catalog portrait attached when an event is read.
@@ -161,6 +174,7 @@ type Filter struct {
 	Kind               string
 	Category           string
 	ItemQuery          string
+	Source             string
 	EventID            string
 	Region             *int
 	RequireMapPosition bool
@@ -193,12 +207,21 @@ type Cursor struct {
 }
 
 type Store struct {
-	pool         *pgxpool.Pool
-	classifyDrop func(server string, model *int64, code string) (string, string)
-	acceptedHook func(Event)
+	pool           *pgxpool.Pool
+	classifyDrop   func(server string, model *int64, code string) (string, string)
+	matchItemNames func(query string) []string
+	acceptedHook   func(Event)
 }
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+// SetItemNameMatcher resolves static catalog names to server-scoped model keys.
+// It does not attach instance values or infer an acquisition relationship.
+func (s *Store) SetItemNameMatcher(match func(string) []string) {
+	if s != nil {
+		s.matchItemNames = match
+	}
+}
 
 // SetDropClassifier installs the active server/profile classifier. A nil or
 // unknown result deliberately leaves the persisted classification NULL.
@@ -222,8 +245,17 @@ func validDropFeed(filter Filter) bool {
 		(filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
 }
 
-func ValidKind(value string) bool {
+// ValidSourceFilter limits source-scoped history searches to canonical provenance.
+func ValidSourceFilter(value string) bool {
 	if value == "" {
+		return true
+	}
+	_, ok := validEventSources[value]
+	return ok
+}
+
+func ValidKind(value string) bool {
+	if value == "" || value == "item.gains" {
 		return true
 	}
 	if strings.HasPrefix(value, "custom.") && len(value) <= 80 {
@@ -461,6 +493,9 @@ func validateAgentEvent(event AgentEvent) error {
 			return fmt.Errorf("%w: invalid alchemy payload", ErrInvalidEvent)
 		}
 	}
+	if _, hasGap := object["observation_gap"]; hasGap && !strings.HasPrefix(event.Kind, "item.") {
+		return fmt.Errorf("%w: observation gap on a non-item event", ErrInvalidEvent)
+	}
 	if strings.HasPrefix(event.Kind, "session.") && len(object) != 0 {
 		return fmt.Errorf("%w: lifecycle payload must be empty", ErrInvalidEvent)
 	}
@@ -548,6 +583,11 @@ func validateAgentEvent(event AgentEvent) error {
 		if event.ItemModel != nil && fields.Item.Model != nil && *event.ItemModel != *fields.Item.Model {
 			return fmt.Errorf("%w: item model identity mismatch", ErrInvalidEvent)
 		}
+		if rawGap, hasGap := object["observation_gap"]; hasGap {
+			if err := validateObservationGap(event, rawGap, object); err != nil {
+				return err
+			}
+		}
 		if rawLink, linked := object["drop_event_id"]; linked {
 			var dropID string
 			if (event.Kind != "item.acquired" && event.Kind != "item.quantity_increased") ||
@@ -607,12 +647,21 @@ func validContainerReference(value map[string]any) bool {
 		return false
 	}
 	typeName, ok := value["type"].(string)
-	if !ok || (typeName != "equipment" && typeName != "inventory" && typeName != "storage" && typeName != "job_pouch" && typeName != "pets") {
+	if !ok || (typeName != "equipment" && typeName != "inventory" && typeName != "storage" && typeName != "guild_storage" && typeName != "job_pouch" && typeName != "pets") {
+		return false
+	}
+	// Guild storage cannot be identified by container type alone. A bounded
+	// server-scoped guild key is required to distinguish shared owners.
+	if _, exists := value["id"]; typeName == "guild_storage" && !exists {
 		return false
 	}
 	if id, exists := value["id"]; exists {
 		text, ok := id.(string)
-		if !ok || text == "" || len(text) > 64 {
+		maxLen := 64
+		if typeName == "guild_storage" {
+			maxLen = 100
+		}
+		if !ok || text == "" || len(text) > maxLen {
 			return false
 		}
 	}
@@ -1101,6 +1150,9 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	if filter.Source != "" && !ValidSourceFilter(filter.Source) {
+		return Page{}, errors.New("invalid event source")
+	}
 	if filter.EventID != "" && !agentdomain.ValidAgentID(filter.EventID) {
 		return Page{}, errors.New("invalid event ID")
 	}
@@ -1116,52 +1168,114 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if filter.EventID != "" {
 		eventID = filter.EventID
 	}
+	itemNameMatches := []string{}
+	if filter.ItemQuery != "" && s.matchItemNames != nil {
+		itemNameMatches = s.matchItemNames(filter.ItemQuery)
+	}
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
 	AND ($3='' OR c.character_name ILIKE '%'||$3||'%')
-		AND (($4='' OR e.kind=$4) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))) OR
+		AND (($4='' OR e.kind=$4 OR ($4='item.gains' AND e.kind IN ('item.acquired','item.quantity_increased'))) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))) OR
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
 		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
-	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
+	-- Historical drop_event_id links were sometimes heuristic, not proof of pickup.
+	-- Retain both independent occurrences; do not hide an owned-gain observation.
+	AND ($14='' OR e.source=$14)
+	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%' OR (lower(e.server_name)||':'||e.item_model::text)=ANY($15::text[]))
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
 		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
-		COALESCE(
-		(SELECT jsonb_build_object('item',a.payload->'item','association','unique_model_inventory_gain') FROM activity_events a WHERE e.kind IN ('drop.item','drop.rare')
-		AND a.kind IN ('item.acquired','item.quantity_increased') AND a.source='phbot.state_diff' AND a.source_ref='item_container'
-		AND a.agent_id=e.agent_id AND a.character_id=e.character_id AND a.session_id=e.session_id
-		AND a.item_model=e.item_model AND a.payload->>'drop_event_id'=e.event_id::text
-		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
-		ORDER BY a.occurred_at,a.event_id LIMIT 1),
-		(SELECT CASE WHEN count(*)=1 THEN jsonb_build_object(
-			'item',(array_agg(a.payload->'item'))[1],
-			'association','unique_temporal_inventory_gain') END
-		FROM activity_events a WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
-		AND a.kind='item.acquired' AND a.source='phbot.state_diff' AND a.source_ref='item_container'
-		AND a.agent_id=e.agent_id AND a.character_id=e.character_id AND a.session_id=e.session_id
-		AND a.item_model=e.item_model AND a.payload->>'drop_event_id' IS NULL
+		COALESCE((SELECT jsonb_build_object(
+			'item',a.payload->'item',
+			'association','stored_unverified_drop_event_id',
+			'event_id',a.event_id::text,
+			'source',a.source, 'occurred_at',a.occurred_at,
+			'container',a.payload->'destination_container')
+		FROM activity_events a
+		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
+		AND a.kind IN ('item.acquired','item.quantity_increased')
+		AND a.source='phbot.state_diff' AND a.source_ref='item_container'
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
+		AND a.session_id=e.session_id AND a.item_model=e.item_model
+		AND lower(a.server_name)=lower(e.server_name)
+		AND a.payload->>'drop_event_id'=e.event_id::text
 		AND a.payload->>'quantity_delta'='1'
 		AND a.payload->'destination_container'->>'type'='inventory'
-		AND a.payload->'destination_container' ? 'slot'
+		AND a.payload->'item' IS NOT NULL
+		AND a.payload->>'item_instance_unobserved' IS DISTINCT FROM 'true'
+		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
+		GROUP BY a.event_id,a.payload,a.source
+		HAVING (SELECT count(*) FROM activity_events linked
+			WHERE linked.payload->>'drop_event_id'=e.event_id::text
+			AND linked.agent_id=e.agent_id AND linked.character_id=e.character_id
+			AND linked.session_id=e.session_id AND linked.item_model=e.item_model
+			AND linked.source='phbot.state_diff' AND linked.source_ref='item_container'
+			AND linked.kind IN ('item.acquired','item.quantity_increased'))=1),
+		-- A unique nearby observation is inspectable evidence, not drop enrichment.
+		-- Keep it separate from payload.item, counts, pickup claims and analytics.
+		(SELECT CASE WHEN count(*)=1 THEN (jsonb_agg(jsonb_build_object(
+			'item',a.payload->'item', 'association','nearby_same_model_observation',
+			'event_id',a.event_id::text, 'source',a.source, 'occurred_at',a.occurred_at,
+			'container',a.payload->'destination_container'))->0) END
+		FROM activity_events a
+		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
+		AND a.kind IN ('item.acquired','item.quantity_increased')
+		AND ((a.source='phbot.state_diff' AND a.source_ref='item_container') OR a.source='joymax.pet_inventory')
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
+		AND a.session_id=e.session_id AND lower(a.server_name)=lower(e.server_name)
+		AND a.item_model=e.item_model AND a.payload->>'drop_event_id' IS NULL
+		AND a.payload->>'quantity_delta'='1'
+		AND a.payload->'destination_container'->>'type' IN ('inventory','pets')
+		AND a.payload->'item' IS NOT NULL
+		AND a.payload->>'item_instance_unobserved' IS DISTINCT FROM 'true'
 		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '3 seconds'
 		AND e.region=a.region AND e.x IS NOT NULL AND e.y IS NOT NULL AND e.z IS NOT NULL
 		AND a.x IS NOT NULL AND a.y IS NOT NULL AND a.z IS NOT NULL
 		AND abs(a.x-e.x)<=24 AND abs(a.y-e.y)<=24 AND abs(a.z-e.z)<=32
 		AND NOT EXISTS (SELECT 1 FROM activity_events d
 			WHERE d.event_id<>e.event_id AND d.kind IN ('drop.item','drop.rare')
-			AND d.agent_id=e.agent_id AND d.character_id=e.character_id AND d.session_id=e.session_id
+			AND d.source='phbot.callback' AND d.agent_id=e.agent_id
+			AND d.character_id=e.character_id AND d.session_id=e.session_id
 			AND d.item_model=e.item_model
-			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at))
+			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at)),
+		-- A gain found by comparing snapshots across a backend outage or lost
+		-- sample has no known time. A unique same-model drop callback inside the
+		-- stated interval is shown as related evidence, never as a pickup link.
+		(SELECT CASE WHEN count(*)=1 THEN (jsonb_agg(jsonb_build_object(
+			'item',a.payload->'item', 'association','gap_reconciled_same_model',
+			'event_id',a.event_id::text, 'source',a.source, 'occurred_at',a.occurred_at,
+			'container',a.payload->'destination_container'))->0) END
+		FROM activity_events a
+		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
+		AND a.kind IN ('item.acquired','item.quantity_increased')
+		AND a.source='phbot.state_diff' AND a.source_ref='item_container'
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
+		AND lower(a.server_name)=lower(e.server_name) AND a.item_model=e.item_model
+		AND a.payload ? 'observation_gap' AND a.payload->>'drop_event_id' IS NULL
+		AND a.payload->>'quantity_delta'='1'
+		AND a.payload->'destination_container'->>'type' IN ('inventory','pets')
+		AND a.payload->'item' IS NOT NULL
+		AND a.payload->>'item_instance_unobserved' IS DISTINCT FROM 'true'
+		AND e.occurred_at >= (a.payload->'observation_gap'->>'from')::timestamptz
+		AND e.occurred_at <= (a.payload->'observation_gap'->>'to')::timestamptz
+		AND (e.session_id=a.session_id OR e.session_id::text=a.payload->'observation_gap'->>'previous_session_id')
+		AND NOT EXISTS (SELECT 1 FROM activity_events d
+			WHERE d.event_id<>e.event_id AND d.kind IN ('drop.item','drop.rare')
+			AND d.source='phbot.callback' AND d.agent_id=e.agent_id
+			AND d.character_id=e.character_id AND d.item_model=e.item_model
+			AND d.occurred_at BETWEEN (a.payload->'observation_gap'->>'from')::timestamptz
+				AND (a.payload->'observation_gap'->>'to')::timestamptz))
 		)
-		`+base+` AND ($14::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($14::timestamptz,$15::uuid))
-ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.CharacterID, filter.CharacterQuery,
-		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, cursorAt, cursorID, filter.Limit+1)
+
+		`+base+` AND ($16::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($16::timestamptz,$17::uuid))
+ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $18`, filter.Server, filter.CharacterID, filter.CharacterQuery,
+		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches, cursorAt, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list events: %w", err)
 	}
@@ -1171,7 +1285,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.Ch
 		var summary AlchemySummary
 		var highest *int
 		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),count(*) FILTER (WHERE e.payload->>'success' IS NULL OR e.payload->>'success' NOT IN ('true','false')),max(CASE WHEN e.payload->>'plus' ~ '^[0-9]{1,3}$' THEN (e.payload->>'plus')::integer END) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest
@@ -1184,17 +1298,28 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.Ch
 			return Page{}, err
 		}
 		if len(linkedObservation) > 0 {
+			var related ItemObservation
+			decoder := json.NewDecoder(bytes.NewReader(linkedObservation))
+			decoder.UseNumber()
+			if decoder.Decode(&related) == nil &&
+				agentdomain.ValidAgentID(related.EventID) && len(related.Item) > 0 &&
+				(related.Association == "stored_unverified_drop_event_id" || related.Association == "nearby_same_model_observation" || related.Association == "gap_reconciled_same_model") {
+				item.RelatedItemObservation = &related
+			}
 			var payload map[string]json.RawMessage
 			var observed struct {
 				Item        json.RawMessage `json:"item"`
 				Association string          `json:"association"`
+				EventID     string          `json:"event_id"`
+				Source      string          `json:"source"`
 			}
 			if json.Unmarshal(item.Payload, &payload) == nil && payload != nil &&
 				json.Unmarshal(linkedObservation, &observed) == nil && len(observed.Item) > 0 &&
 				json.Valid(observed.Item) &&
-				(observed.Association == "unique_model_inventory_gain" || observed.Association == "unique_temporal_inventory_gain") {
-				payload["item"] = observed.Item
-				payload["item_observation"] = json.RawMessage(`{"association":"` + observed.Association + `"}`)
+				observed.Association == "stored_unverified_drop_event_id" && agentdomain.ValidAgentID(observed.EventID) && observed.Source == "phbot.state_diff" {
+				payload["item_observation"], _ = json.Marshal(map[string]string{
+					"association": observed.Association, "event_id": observed.EventID, "source": observed.Source,
+				})
 				if enriched, marshalErr := json.Marshal(payload); marshalErr == nil {
 					item.Payload = enriched
 				}
@@ -1211,4 +1336,49 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.Ch
 		page.NextCursor = EncodeCursor(Cursor{OccurredAt: last.OccurredAt, EventID: last.ID})
 	}
 	return page, nil
+}
+
+// maxObservationGap bounds the interval a state-diff item change may span.
+const maxObservationGap = time.Hour
+
+// validateObservationGap accepts the marker the plugin adds when an item
+// change was found by comparing snapshots across a backend outage or a lost
+// sample. The change is an owned-item observation whose time is unknown, so it
+// can never also claim a verified pickup link.
+func validateObservationGap(event AgentEvent, raw json.RawMessage, object map[string]json.RawMessage) error {
+	invalid := fmt.Errorf("%w: invalid observation gap", ErrInvalidEvent)
+	var gap struct {
+		Reason  string `json:"reason"`
+		From    string `json:"from"`
+		To      string `json:"to"`
+		Session string `json:"previous_session_id"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&gap) != nil {
+		return invalid
+	}
+	if event.Source != "phbot.state_diff" || event.SourceRef != "item_container" ||
+		(event.Kind != "item.acquired" && event.Kind != "item.quantity_increased" &&
+			event.Kind != "item.transferred" && event.Kind != "item.quantity_decreased") {
+		return invalid
+	}
+	if _, linked := object["drop_event_id"]; linked {
+		return invalid
+	}
+	if gap.Reason != "backend_reconnect" && gap.Reason != "sample_gap" {
+		return invalid
+	}
+	from, fromErr := time.Parse(time.RFC3339Nano, gap.From)
+	to, toErr := time.Parse(time.RFC3339Nano, gap.To)
+	if fromErr != nil || toErr != nil || to.Before(from) || to.Sub(from) > maxObservationGap {
+		return invalid
+	}
+	if gap.Session != "" && !agentdomain.ValidAgentID(gap.Session) {
+		return invalid
+	}
+	if gap.Reason == "sample_gap" && gap.Session != "" {
+		return invalid
+	}
+	return nil
 }

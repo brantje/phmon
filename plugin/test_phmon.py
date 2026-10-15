@@ -836,6 +836,36 @@ class ResourceCollectorTests(unittest.TestCase):
         self.assertNotIn('expiration', result['api_fields'])
         self.assertNotIn('phys_def', result)
 
+    def test_character_info_summarizes_job_guild_and_union(self):
+        api = {
+            'get_character_data': lambda: {'name': 'Nuker1', 'job_name': 'MrTrade'},
+            'get_guild': lambda: {
+                1: {'name': 'nuker1', 'online': 1, 'donated_gp': 486241},
+                2: {'name': 'Other', 'online': 0, 'donated_gp': 5},
+                3: {'name': 'Third', 'online': 1},
+            },
+            'get_guild_union': lambda: {9: {'name': 'Zeta'}, 4: {'name': 'alpha'}},
+        }
+        info = plugin.collect_resources(api=api)['character_info']
+        self.assertEqual(info, {
+            'availability': 'observed',
+            'job_name': 'MrTrade',
+            'guild': {'member_count': 3, 'online_count': 2, 'donated_gp': 486241},
+            'union': {'count': 2, 'names': ['alpha', 'Zeta']},
+        })
+
+    def test_character_info_omits_unobserved_fields(self):
+        api = {
+            'get_character_data': lambda: {'name': 'Solo'},
+            'get_guild': lambda: {},
+            'get_guild_union': lambda: None,
+        }
+        info = plugin.collect_resources(api=api)['character_info']
+        self.assertEqual(info, {
+            'availability': 'observed',
+            'guild': {'member_count': 0, 'online_count': 0},
+        })
+
     def test_collect_resources_preserves_slots_and_separates_equipment(self):
         api = {
             'get_inventory': lambda: {
@@ -1082,6 +1112,169 @@ class ResourceCollectorTests(unittest.TestCase):
 
 class PassiveItemPacketTests(unittest.TestCase):
     @staticmethod
+    def pet_pickup_packet(pet_id=4560936, slot=10, model=14650, plus=5,
+                          variance=0x3fffffff, durability=243,
+                          options=None):
+        options = options if options is not None else [
+            (88, 160), (136, 40), (76, 6), (208, 6), (70, 6), (202, 6)]
+        payload = bytearray(struct.pack('<BBIBIIBQI', 1, 0x11, pet_id, slot,
+                                        0, model, plus, variance, durability))
+        payload.append(len(options))
+        for option_id, value in options:
+            payload.extend(struct.pack('<II', option_id, value))
+        payload.extend(bytes([1, 0, 2, 0]))
+        return bytes(payload)
+
+    @staticmethod
+    def pet_resources(pet_id='4560936', slot=10, model=14650, durability=243):
+        return {'equipment': {'availability': 'observed', 'slots': []},
+                'inventory': {'availability': 'observed', 'slots': []},
+                'pets': {'availability': 'observed', 'pets': [{
+                    'pet_id': pet_id, 'type': 'pick', 'inventory_available': True,
+                    'slots': [{'source_slot': slot, 'item': {
+                        'model': model, 'durability': durability, 'quantity': 1}}]}]}}
+
+    def test_pick_pet_pickup_enriches_confirmed_instance_and_move_removes_it(self):
+        packet = self.pet_pickup_packet()
+        self.assertEqual(len(packet), 81)
+        parsed = plugin.parse_pet_inventory_operation(packet)
+        self.assertEqual(parsed['fields']['variance'], str(0x3fffffff))
+        self.assertEqual(len(parsed['fields']['magic_options']), 6)
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0xB034, packet)
+        resources = self.pet_resources()
+        tracker.decorate(resources, 'session-one')
+        instance = resources['pets']['pets'][0]['slots'][0]['item']['instance']
+        self.assertEqual(instance['plus'], 5)
+        self.assertEqual(instance['durability'], 243)
+        self.assertEqual(instance['magic_options'][0], {'id': '88', 'value': '160'})
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'observed')
+        self.assertEqual(resources['item_enrichment']['observed_items'], 1)
+        tracker.decorate(resources, 'session-one')
+        self.assertEqual(resources['pets']['pets'][0]['slots'][0]['item']['instance'], instance)
+        tracker.enqueue(0x30C8, struct.pack('<I', 999))
+        tracker.decorate(resources, 'session-one')
+        self.assertIn('instance', resources['pets']['pets'][0]['slots'][0]['item'])
+        # The next character drop in the real capture did not invalidate an
+        # earlier pet item. A pet slot move carries the state to its new slot.
+        tracker.enqueue(0xB034, bytes([1, 7, 64]))
+        tracker.enqueue(0xB034, struct.pack('<BBIBBH', 1, 0x10, 4560936, 10, 19, 1))
+        moved = self.pet_resources(slot=19)
+        tracker.decorate(moved, 'session-one')
+        self.assertEqual(moved['pets']['pets'][0]['slots'][0]['item']['instance']['variance'],
+                         str(0x3fffffff))
+        tracker.enqueue(0xB034, struct.pack('<BBIBB', 1, 0x1A, 4560936, 19, 63))
+        tracker.decorate(moved, 'session-one')
+        self.assertNotIn('instance', moved['pets']['pets'][0]['slots'][0]['item'])
+
+    def test_third_capture_item_body_with_two_blues(self):
+        packet = self.pet_pickup_packet(slot=9, model=5573, plus=0,
+                                        variance=9743371, durability=58,
+                                        options=[(54, 5), (11, 1)])
+        self.assertEqual(len(packet), 49)
+        parsed = plugin.parse_pet_inventory_operation(packet)
+        self.assertEqual(parsed['fields']['magic_options'], [
+            {'id': '54', 'value': '5'}, {'id': '11', 'value': '1'}])
+
+    def test_rich_pick_pet_snapshot_reconciles_entire_packet(self):
+        pet_id = 4584763
+        slots = [{'source_slot': slot, 'item': None} for slot in range(28)]
+        slots[2]['item'] = {'model': 3682, 'quantity': 1,
+                            'servername': 'ITEM_ETC_ARCHEMY_REINFORCE_RECIPE_ACCESSARY_B'}
+        slots[25]['item'] = {'model': 14811, 'quantity': 1, 'durability': 0,
+                             'servername': 'ITEM_EU_EARRING_03_C_RARE'}
+        slots[26]['item'] = {'model': 14631, 'quantity': 1, 'durability': 75,
+                             'servername': 'ITEM_EU_W_CLOTHES_03_FA_C_RARE'}
+        pet = {'pet_id': str(pet_id), 'model': 7493, 'type': 'pick',
+               'inventory_available': True, 'slots': slots}
+        packet = bytearray(struct.pack('<IIIIIHBB', pet_id, 7493, 109, 0, 7, 0, 28, 3))
+        packet.extend(struct.pack('<BIIH', 2, 0, 3682, 1))
+        for slot, model, plus, variance, durability, options in (
+                (25, 14811, 5, 1023, 0, [(6, 3), (12, 3), (30, 10),
+                                           (24, 10), (18, 10), (36, 10), (42, 10)]),
+                (26, 14631, 5, 1073741823, 75, [(81, 60), (129, 20),
+                                                  (6, 3), (12, 3), (54, 6)])):
+            packet.extend(struct.pack('<BIIBQI', slot, 0, model, plus, variance, durability))
+            packet.append(len(options))
+            for option_id, value in options:
+                packet.extend(struct.pack('<II', option_id, value))
+            packet.extend(bytes([1, 0, 2, 0]))
+        packet.extend(struct.pack('<IB', 4583427, 46))
+        decoded = plugin.parse_pet_inventory_snapshot(bytes(packet), pet)
+        self.assertEqual([item['source_slot'] for item in decoded['items']], [25, 26])
+        self.assertEqual(decoded['items'][0]['fields']['variance'], '1023')
+        self.assertEqual(decoded['items'][1]['fields']['magic_options'][0],
+                         {'id': '81', 'value': '60'})
+        self.assertEqual(decoded['inventory_slot'], 46)
+        # Live phBot 20.1.3 exposed 56 getter positions for the same Pick
+        # pet whose 0x30C8 packet advertises 28. Reconcile the covered page.
+        slots.extend({'source_slot': slot, 'item': None} for slot in range(28, 56))
+        self.assertEqual(len(plugin.parse_pet_inventory_snapshot(bytes(packet), pet)['items']), 2)
+        slots[40]['item'] = {'model': 10912, 'quantity': 1, 'durability': 93,
+                             'servername': 'ITEM_EU_DAGGER_06_A'}
+        with self.assertRaisesRegex(plugin.ItemPacketError, 'uncovered_api_item'):
+            plugin.parse_pet_inventory_snapshot(bytes(packet), pet)
+        slots[40]['item'] = None
+        mismatched = dict(pet, slots=slots[:27])
+        with self.assertRaisesRegex(plugin.ItemPacketError, 'capacity_mismatch'):
+            plugin.parse_pet_inventory_snapshot(bytes(packet), mismatched)
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0x30C8, bytes(packet))
+        resources = {'pets': {'availability': 'observed', 'pets': [pet]}}
+        tracker.decorate(resources, 'session-one')
+        self.assertEqual(slots[25]['item']['instance']['plus'], 5)
+        self.assertEqual(len(slots[26]['item']['instance']['magic_options']), 5)
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'observed')
+        self.assertEqual(tracker._pet_snapshots, {})
+        delayed = plugin.PassiveItemTracker()
+        delayed.set_protocol('vsro-1.188')
+        delayed.enqueue(0x30C8, bytes(packet))
+        delayed.decorate({'pets': {'availability': 'observed', 'pets': []}}, 'session-one')
+        self.assertEqual(len(delayed._pet_snapshots), 1)
+        delayed.decorate(resources, 'session-one')
+        self.assertEqual(resources['item_enrichment']['observed_items'], 2)
+        delayed.reset('backend_reconnect')
+        self.assertEqual(delayed._pet_states, {})
+        self.assertEqual(delayed._pet_snapshots, {})
+        for malformed in (bytes(packet[:-1]), bytes(packet) + b'\x00'):
+            with self.assertRaises(plugin.ItemPacketError):
+                plugin.parse_pet_inventory_snapshot(malformed, pet)
+        pet['slots'][26]['item']['durability'] = 74
+        with self.assertRaises(plugin.ItemPacketError):
+            plugin.parse_pet_inventory_snapshot(bytes(packet), pet)
+
+    def test_pick_pet_packet_waits_for_matching_api_and_rejects_unsupported_forms(self):
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0xB034, self.pet_pickup_packet())
+        stale = self.pet_resources(model=11125)
+        tracker.decorate(stale, 'session-one')
+        self.assertNotIn('instance', stale['pets']['pets'][0]['slots'][0]['item'])
+        wrong_pet = self.pet_resources(pet_id='1')
+        tracker.decorate(wrong_pet, 'session-one')
+        self.assertNotIn('instance', wrong_pet['pets']['pets'][0]['slots'][0]['item'])
+        current = self.pet_resources()
+        tracker.decorate(current, 'session-one')
+        self.assertIn('instance', current['pets']['pets'][0]['slots'][0]['item'])
+        mismatch = self.pet_resources(durability=242)
+        tracker.decorate(mismatch, 'session-one')
+        self.assertNotIn('instance', mismatch['pets']['pets'][0]['slots'][0]['item'])
+        tracker.decorate(self.pet_resources(), 'session-one')
+        self.assertEqual(tracker._pet_states, {})
+        tracker.enqueue(0xB034, self.pet_pickup_packet())
+        tracker.decorate(self.pet_resources(), 'session-one')
+        tracker.decorate({'pets': {'availability': 'observed', 'pets': []}}, 'session-one')
+        self.assertEqual(tracker._pet_states, {})
+        for broken in (self.pet_pickup_packet()[:-1],
+                       self.pet_pickup_packet() + b'\x00',
+                       self.pet_pickup_packet().replace(bytes([1, 0, 2, 0]),
+                                                        bytes([1, 1, 2, 0]))):
+            with self.assertRaises(plugin.ItemPacketError):
+                plugin.parse_pet_inventory_operation(broken)
+
+    @staticmethod
     def stats_packet(slot=13, flags=0x35, model=71, plus=5,
                      variance=2**64 - 1, durability=57, options=None):
         options = options if options is not None else [(9, 3), (9, 3)]
@@ -1193,7 +1386,7 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['observed_items'], 0)
         self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'not_observed')
         self.assertEqual(resources['item_enrichment']['pet_inventory_decoder_build'],
-                         'vsro_pet_packet_probe_r1')
+                         'vsro_pet_item_r3')
         self.assertFalse(resources['item_enrichment']['pet_packet_probe']['packet_bytes_retained'])
 
     def test_pet_packet_probe_reports_counts_and_lengths_without_packet_bytes(self):
@@ -1205,7 +1398,7 @@ class PassiveItemPacketTests(unittest.TestCase):
         tracker.decorate(resources, 'session-one')
         self.assertEqual(resources['item_enrichment']['pet_inventory_packet_count'], 1)
         self.assertEqual(resources['item_enrichment']['pet_snapshot_packet_count'], 1)
-        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'candidate_layout_unverified')
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'pending_or_unsupported_snapshot')
         probe = resources['item_enrichment']['pet_packet_probe']
         self.assertEqual(probe['mode'], 'presence_and_size_only')
         self.assertFalse(probe['packet_bytes_retained'])
@@ -1706,7 +1899,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
             'agent_id': AGENT_ID,
             'agent_token': 'phm_test_token',
         }, 'fixture')
-        self.identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha', 'guild': 'Guild'}
         self.worker._current_identity = self.identity
         self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
         self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
@@ -1781,6 +1974,386 @@ class ResourceEventDerivationTests(unittest.TestCase):
             for entry in self.worker._pet_transition_pending_events:
                 entry['ready_at'] = 0
         self.worker._flush_pending_pet_events()
+
+    def test_delayed_personal_storage_withdrawal_reconciles_without_gain(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.transferred'])
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'storage')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+
+    def test_delayed_personal_storage_deposit_reconciles_without_gain(self):
+        self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[], storage=[]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.transferred'])
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'inventory')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'storage')
+
+    def test_delayed_guild_storage_withdrawal_preserves_owner_scope(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {'availability': 'observed',
+                                      'slots': [{'source_slot': 0, 'item': self.item(2)}]}
+        self.observe(baseline)
+        halfway = self.resources(bag=[(13, self.item(2))])
+        halfway['guild_storage'] = baseline['guild_storage']
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(halfway)
+        self.assertEqual(self.drain(), [])
+        after = self.resources(bag=[(13, self.item(2))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.transferred')
+        self.assertEqual(events[0]['payload']['source_container']['id'], 'guild')
+
+    def test_pending_change_flushes_under_old_session_before_teardown(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        old_session = self.worker.session_id
+        old_character = self.worker.character_id
+        self.worker._flush_pending_items_before_session_change()
+        self.worker.session_id = 'aaaaaaaa-1111-4222-8333-444444444444'
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['session_id'], old_session)
+        self.assertEqual(events[0]['character_id'], old_character)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+        self.worker._flush_pending_items_before_session_change()
+        self.assertEqual(self.drain(), [])
+
+    def test_rejected_session_flushes_item_evidence_before_revocation(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(1))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        old_session = self.worker.session_id
+        self.worker._handle_character_rejected({
+            'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': self.worker.character_id,
+            'session_id': old_session,
+        })
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['session_id'], old_session)
+        self.assertIsNone(self.worker.session_id)
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+
+    def test_pending_gain_survives_storage_becoming_unavailable(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        observed_at = '2026-10-15T10:00:00Z'
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(3))]), now=observed_at)
+        self.assertEqual(self.drain(), [])
+        unavailable = self.resources(bag=[(13, self.item(2))])
+        unavailable['storage'] = {'availability': 'unavailable'}
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(unavailable)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['occurred_at'], observed_at)
+        self.assertEqual(events[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+
+    def test_pending_guild_observation_survives_guild_storage_disappearing(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {'availability': 'observed',
+                                     'slots': [{'source_slot': 0, 'item': self.item(3)}]}
+        self.observe(baseline)
+        changed = self.resources(bag=[(13, self.item(1))])
+        changed['guild_storage'] = baseline['guild_storage']
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(changed)
+        self.assertEqual(self.drain(), [])
+        unavailable = self.resources(bag=[(13, self.item(1))])
+        unavailable['guild_storage'] = {'availability': 'unavailable'}
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(unavailable)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in events))
+
+    def test_pending_gain_survives_missing_resource_sample(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(None)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+
+    def test_unmatched_loss_with_identical_model_in_storage_is_preserved(self):
+        self.observe(self.resources(bag=[(13, self.item(4))], storage=[(0, self.item(2))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(1))], storage=[(0, self.item(2))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=108.0):
+            self.observe(self.resources(bag=[(13, self.item(1))], storage=[(0, self.item(2))]))
+        events = self.drain()
+        self.assertEqual([event['kind'] for event in events], ['item.quantity_decreased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'inventory')
+        self.assertNotIn('acquisition_method', events[0]['payload'])
+
+    def test_expired_unmatched_guild_storage_gain_does_not_disappear(self):
+        before = self.resources(bag=[])
+        before['guild_storage'] = {'availability': 'observed',
+                                    'slots': [{'source_slot': 0, 'item': self.item(2)}]}
+        after = self.resources(bag=[(13, self.item(1))])
+        after['guild_storage'] = before['guild_storage']
+        self.observe(before)
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(after)
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=107.0):
+            self.observe(after)
+        events = self.drain()
+        self.assertEqual([event['kind'] for event in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+
+    def test_buffer_saturation_preserves_evicted_quantity_observation(self):
+        storage = [(i, self.classified_item(3000+i, 'ITEM_TEST_%d' % i, 'Test %d' % i))
+                   for i in range(plugin.MAX_ITEM_RECONCILIATION_PENDING + 1)]
+        bag = [(i+13, dict(item)) for i, item in storage]
+        self.observe(self.resources(bag=[], storage=storage))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=bag, storage=storage))
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.quantity_increased')
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(len(self.worker._pending_item_reconciliation),
+                         plugin.MAX_ITEM_RECONCILIATION_PENDING)
+        with patch.object(plugin, '_monotonic', return_value=108.0):
+            self.observe(self.resources(bag=bag, storage=storage))
+        rest = self.drain()
+        self.assertEqual(len(rest), plugin.MAX_ITEM_RECONCILIATION_PENDING)
+        self.assertEqual(sum(e['payload']['quantity_delta'] for e in events+rest),
+                         plugin.MAX_ITEM_RECONCILIATION_PENDING + 1)
+
+    def test_expired_delayed_candidate_preserves_observed_net_gain(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=108.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.quantity_increased')
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+        self.assertEqual(len(self.worker._pending_item_reconciliation), 0)
+
+    def test_ambiguous_delayed_matching_preserves_unknown_cause(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(2))],
+                                    job=[(0, self.item(2))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(2))], job=[(0, self.item(2))]))
+        self.assertEqual(self.drain(), [])
+        # Both storage sources change at once. Neither individual source may
+        # be asserted to be the unique cause of the previous bag increase.
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[(13, self.item(2))], storage=[],
+                                        job=[(0, self.item(1))]))
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in self.drain()))
+
+    def test_delayed_transfer_is_fenced_by_sampling_gap(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        self.worker._resource_sample_gap = True
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        events = self.drain()
+        # The gap destroys proof of a transfer; the prior observed net gain
+        # is still an attributable quantity change, with unknown cause.
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+
+    def test_guild_switch_finalizes_prior_net_change_without_cross_guild_transfer(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(2)}],
+        }
+        halfway = self.resources(bag=[(13, self.item(1))])
+        halfway['guild_storage'] = baseline['guild_storage']
+        self.observe(baseline)
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(halfway)
+        self.assertEqual(self.drain(), [])
+        self.identity = dict(self.identity, guild='Different guild')
+        self.worker._current_identity = self.identity
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(self.resources(bag=[(13, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in events))
+
+    def test_guild_owned_net_increase_is_not_character_acquisition(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {'availability': 'observed', 'slots': []}
+        more = self.resources(bag=[])
+        more['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(2)}],
+        }
+        self.observe(baseline)
+        self.observe(more)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(events[0]['payload']['destination_container']['id'], 'guild')
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+
+    def test_partial_storage_move_preserves_transfer_and_net_gain(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(2))]))
+        self.observe(self.resources(bag=[(13, self.item(5))], storage=[]))
+        events = self.drain()
+        transfers = [event for event in events if event['kind'] == 'item.transferred']
+        gains = [event for event in events if event['kind'] == 'item.quantity_increased']
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(len(gains), 1)
+        self.assertEqual(transfers[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(gains[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(transfers[0]['payload']['source_container']['type'], 'storage')
+        self.assertNotIn('drop_event_id', gains[0]['payload'])
+
+    def test_guild_storage_deposit_and_partial_decrease(self):
+        before = self.resources(bag=[(13, self.item(5))])
+        before['guild_storage'] = {'availability': 'observed', 'slots': []}
+        after = self.resources(bag=[(13, self.item(1))])
+        after['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(2)}],
+        }
+        self.observe(before)
+        self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 2)
+        transfers = [event for event in events if event['kind'] == 'item.transferred']
+        decreases = [event for event in events if event['kind'] == 'item.quantity_decreased']
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(len(decreases), 1)
+        self.assertEqual(transfers[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(decreases[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(transfers[0]['payload']['destination_container']['id'], 'guild')
+
+    def test_ambiguous_balanced_multi_container_move_is_not_acquisition(self):
+        before = self.resources(bag=[], storage=[(0, self.item(2))], job=[(0, self.item(2))])
+        after = self.resources(bag=[(13, self.item(3))], storage=[], job=[(0, self.item(1))])
+        self.observe(before)
+        self.observe(after)
+        self.assertEqual(self.drain(), [])
+
+    def test_guild_storage_withdrawal_is_a_transfer_not_a_drop(self):
+        before = self.resources(bag=[])
+        before['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        after = self.resources(bag=[(13, self.item(3))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        self.observe(before)
+        self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.transferred')
+        self.assertEqual(events[0]['payload']['source_container'], {'type': 'guild_storage', 'id': 'guild', 'slot': 0})
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+
+    def test_guild_switch_rebaselines_without_inventing_movements(self):
+        before = self.resources(bag=[])
+        before['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        self.observe(before)
+        self.identity = dict(self.identity, guild='Other Guild')
+        self.worker._current_identity = self.identity
+        after = self.resources(bag=[(13, self.item(3))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        self.observe(after)
+        self.assertEqual(self.drain(), [])
+
+    def test_unknown_guild_never_attributed_to_guild_storage(self):
+        self.identity = dict(self.identity, guild=None)
+        self.worker._current_identity = self.identity
+        before = self.resources(bag=[])
+        before['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        after = self.resources(bag=[(13, self.item(3))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        self.observe(before)
+        self.observe(after)
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in self.drain()))
+
+    def test_newly_observed_guild_storage_does_not_create_acquisition(self):
+        self.observe(self.resources(bag=[]))
+        newly_opened = self.resources(bag=[])
+        newly_opened['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        self.observe(newly_opened)
+        self.assertEqual(self.drain(), [])
+
+    def test_storage_movement_cannot_claim_pending_world_drop(self):
+        before = self.resources(bag=[], storage=[(0, self.item(2))])
+        after = self.resources(bag=[(13, self.item(3))], storage=[])
+        self.observe(before)
+        drop_id = '8d16ab39-10b8-4b26-80aa-a4be01e10f18'
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77, drop_id, 0))
+        self.observe(after)
+        events = self.drain()
+        self.assertFalse(any('drop_event_id' in event['payload'] for event in events))
 
     def test_baseline_and_bag_split_merge_do_not_create_item_occurrences(self):
         self.observe(self.resources(bag=[(13, self.item(4))]))
@@ -1957,7 +2530,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(by_container['job_pouch']['payload']['quantity_delta'], 2)
         self.assertEqual(by_container['inventory']['region'], 25273)
 
-    def test_unique_drop_links_the_observed_inventory_item_and_its_api_evidence(self):
+    def test_unique_drop_callback_does_not_claim_unproven_inventory_pickup(self):
         self.observe(self.resources(bag=[]))
         drop_id = '8d16ab39-10b8-4b26-80aa-a4be01e10f18'
         self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77, drop_id, 0))
@@ -1967,12 +2540,12 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, item)]))
         event = self.drain()[0]
         self.assertEqual(event['kind'], 'item.acquired')
-        self.assertEqual(event['payload']['drop_event_id'], drop_id)
+        self.assertNotIn('drop_event_id', event['payload'])
         self.assertEqual(event['payload']['item']['api_fields'], item['api_fields'])
         self.assertEqual(event['payload']['acquisition_method'], 'unknown')
-        self.assertFalse(self.worker.has_pending_drop_enrichment(self.identity))
+        self.assertTrue(self.worker.has_pending_drop_enrichment(self.identity))
 
-    def test_drop_links_new_slot_when_same_model_is_already_owned(self):
+    def test_same_model_callback_does_not_claim_new_inventory_slot(self):
         existing = self.item()
         existing['api_fields'] = {'blues': {'9': 1}}
         self.observe(self.resources(bag=[(13, existing)]))
@@ -1983,7 +2556,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, existing), (14, dropped)]))
         event = self.drain()[0]
         self.assertEqual(event['kind'], 'item.quantity_increased')
-        self.assertEqual(event['payload']['drop_event_id'], drop_id)
+        self.assertNotIn('drop_event_id', event['payload'])
         self.assertEqual(event['payload']['destination_container'], {'type': 'inventory', 'slot': 14})
         self.assertEqual(event['payload']['item']['api_fields'], dropped['api_fields'])
 
@@ -2178,11 +2751,89 @@ class ResourceEventDerivationTests(unittest.TestCase):
         queued_after = self.worker._resource_samples.get_nowait()
         self.assertTrue(self.worker._resource_sample_is_current(queued_after))
 
-    def test_sampling_gap_resets_baseline_after_quantity_change(self):
+    def test_sampling_gap_reports_net_change_with_gap_marker(self):
         self.observe(self.resources(bag=[(13, self.item(1))]))
         self.worker._resource_sample_gap = True
         self.observe(self.resources(bag=[(13, self.item(20))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 19)
+        gap = events[0]['payload']['observation_gap']
+        self.assertEqual(gap['reason'], 'sample_gap')
+        self.assertNotIn('previous_session_id', gap)
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+        # The next ordinary comparison carries no gap marker.
+        self.observe(self.resources(bag=[(13, self.item(21))]))
+        later = self.drain()
+        self.assertEqual(len(later), 1)
+        self.assertNotIn('observation_gap', later[0]['payload'])
+
+    def reconnect(self, session='00000000-1111-4222-8333-444444444444'):
+        old = self.worker.session_id
+        self.worker.session_id = session
+        return old
+
+    def test_reconnect_compares_against_last_snapshot_before_outage(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        old = self.reconnect()
+        self.worker._resource_sample_gap = True
+        self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.acquired'])
+        payload = events[0]['payload']
+        self.assertEqual(payload['destination_container']['type'], 'pets')
+        self.assertEqual(payload['acquisition_method'], 'unknown')
+        self.assertEqual(payload['observation_gap']['reason'], 'backend_reconnect')
+        self.assertEqual(payload['observation_gap']['previous_session_id'], old)
+        self.assertNotIn('drop_event_id', payload)
+        self.assertEqual(events[0]['session_id'], self.worker.session_id)
+
+    def test_reconnect_after_leave_starts_a_fresh_baseline(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        self.worker._event_diff_carry_ok = False
+        self.reconnect()
+        self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
         self.assertEqual(self.drain(), [])
+
+    def test_reconnect_gap_longer_than_limit_starts_a_fresh_baseline(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        self.reconnect()
+        with patch.object(plugin, '_monotonic',
+                          return_value=100.0 + plugin.RESOURCE_GAP_CARRY_SECONDS + 1):
+            self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_reconnect_with_changed_pet_roster_starts_a_fresh_baseline(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        self.reconnect()
+        self.observe(self.resources(bag=[(13, self.item(1))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_reconnect_does_not_report_membership_or_pet_transitions(self):
+        self.observe(self.resources())
+        self.drain()
+        self.reconnect()
+        resources = self.resources(bag=[(13, self.item(1))])
+        resources['party'] = {'availability': 'observed',
+                              'members': [{'party_id': '9', 'name': 'Buddy'}]}
+        self.observe(resources)
+        kinds = [e['kind'] for e in self.drain()]
+        self.assertEqual(kinds, ['item.acquired'])
+
+    def test_reconnect_balanced_move_inside_gap_is_a_transfer(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
+        self.drain()
+        self.reconnect()
+        self.worker._resource_sample_gap = True
+        self.observe(self.resources(pet_present=True, pet_inventory=[], bag=[(13, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.transferred'])
+        self.assertEqual(events[0]['payload']['observation_gap']['reason'], 'backend_reconnect')
 
     def test_ignored_potion_loss_advances_baseline_and_other_items_still_emit(self):
         with plugin._ITEM_TYPE_CACHE_LOCK:

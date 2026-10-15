@@ -45,6 +45,8 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		Kind:           strings.TrimSpace(query.Get("kind")),
 		Category:       strings.TrimSpace(query.Get("category")),
 		ItemQuery:      strings.TrimSpace(query.Get("item")),
+		Source:         strings.TrimSpace(query.Get("source")),
+		EventID:        strings.TrimSpace(query.Get("event_id")),
 		Cursor:         strings.TrimSpace(query.Get("cursor")),
 		Limit:          10,
 	}
@@ -63,7 +65,7 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		filter.IncludeOwnedGains = raw[0] == "true"
 	}
 	if !validServerFilter(filter.Server) || len(filter.CharacterQuery) > 64 || len(filter.CharacterID) > 0 && !agentdomain.ValidAgentID(filter.CharacterID) ||
-		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 || !validEventDropFeedFilter(filter) {
+		!events.ValidKind(filter.Kind) || !events.ValidCategory(filter.Category) || !events.ValidSourceFilter(filter.Source) || len(filter.ItemQuery) > 128 || len(filter.Cursor) > 256 || !validEventDropFeedFilter(filter) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid event filter"})
 		return
 	}

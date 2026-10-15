@@ -250,6 +250,93 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-15 two pet item packet captures
+
+The operator supplied two read-only probe 0.2.0 captures. The first has one
+complete 267-byte `0x30C8` Pick-pet snapshot; a strict offline candidate read
+matches all 10 API slot/model/quantity/durability tuples and consumes every
+byte. It has no blues and no independent rich API fields. The second has paired
+`0x7034`/`0xB034` subtype `0x10` pet-slot and `0x1A` pet-to-bag moves. The
+same model-14650 Divine Weave moves from pet slot 12 to 19 to bag 64, where
+phBot exposes plus 5, whites and six blues; its pet row had only basic fields.
+An equipped same-model copy has different durability, so no model-only
+enrichment is allowed. Move responses contain no item body. Neither capture
+has a floor-to-pet `0xB034` subtype `0x11`; rich pet-held byte decoding and
+pickup receipts remain blocked on that observed operation. Raw captures are
+not committed. See `docs/reference/pet-item-capture-2026-10-15.md` and
+`docs/item-instance-evidence.md` for hashes, sources and limits.
+
+The probe is updated to 0.2.2 with successful `0xB034` subtype counts and a
+warning if no candidate `0x11` pickup arrived. Its README and tests, capability
+doc and evidence ledger are updated. No production plugin/server/UI parser was
+enabled and no bot action was initiated here. Exact next action: operator arms
+the updated probe **before** a Pick pet picks up a new equipment item with
+blues, then moves that exact item to the bag if convenient and sends the
+capture. Validate the `0x11` item body against the observed pet slot and the
+same bag copy before implementing the gated decoder.
+
+### Resume — 2026-10-15 pet item opcode research and capture probe
+
+Targeted operator request: research how to obtain per-instance pet item details,
+including packet opcodes, and update the read-only pet probe. The official phBot
+Pets API documents pet item slots with model/quantity/plus/durability, but no
+whites, blues or instance-detail lookup; `get_item(model)` is static reference
+data. The installed phBot 20.1.2 Pick-pet observations still lack rich fields.
+Official phBot callbacks expose incoming and outgoing packets. Pinned RSBot
+handlers corroborate incoming `0x30C8` pet data and `0xB034` item operations
+with pet branches; an independent opcode map identifies outgoing `0x7034` item
+movement. Those sources are leads only, not a verified layout for this server.
+Full links, versions and limits are in `docs/phbot-capabilities.md`.
+
+Updated `tools/pet-item-capture/PetItemCapture.py` to 0.2.0: record direction and
+bounded bytes for those three opcodes, raise the per-packet cap to 32 KiB, label
+truncation/size omissions, and write on disconnect/unload. Existing uncommitted
+inventory-delta and volatile-expiration edits in that probe were preserved.
+Updated its README and tests. Validation: five focused Python probe tests and
+`git diff --check` pass. No production parser, protocol or UI changed; no real
+character action was performed. Exact next action: operator runs the probe on
+the actual phBot/server profile and supplies a reviewed capture containing a
+full pet-data packet, an item pickup and one pet-to-bag move; then verify field
+layout against same-instance API rows before enabling pet detail enrichment.
+
+### Resume — 2026-10-15 item gains across outages and pet item evidence
+
+Active increment: the operator's "Poison Horn Spear is missing detailed data"
+investigation (Kalypso, rare drop 19:50:41 UTC, model 4115). Two plugin causes:
+(1) the spear was picked up by the pet while the backend was down, and the first
+snapshot after reconnect became a fresh baseline, so no gain event was ever
+emitted; (2) pet-held items never carry plus/whites/blues because `get_pets()`
+returns only seven basic fields and pet packets are only counted.
+
+Implemented Fix 1: plugin **1.9.40** (protocol stays 20) keeps the last complete
+snapshot across a backend reconnect or lost sample (same character, guild and pet
+roster, at most 900 s) and reports the net item change with
+`payload.observation_gap`. Party/academy/pet transitions are not derived across a
+gap; `occurred_at` is the later snapshot time; no `drop_event_id` is attached.
+Server validates the marker and offers a unique same-model drop in the interval as
+`related_item_observation.association = gap_reconciled_same_model` (never
+enrichment, link or count). Web labels it "Observed after a connection gap".
+Existing events are not backfilled; the spear's gain was never emitted.
+
+Fix 2 (pet item stats) is only half possible without evidence: added the read-only
+`tools/pet-item-capture/` probe. The decoder itself is **blocked** until the
+operator supplies a capture; no packet layout was guessed.
+
+Files: `plugin/{PhMon.py,test_phmon.py,README.md}`,
+`server/internal/events/{store.go,validation_test.go,store_integration_test.go}`,
+`web/{shared/types/live.ts,app/utils/itemDetailPopup.ts,app/pages/events.vue,
+tests/itemDetailPopup.test.ts}`, `tools/pet-item-capture/`,
+`docs/{protocol,phbot-capabilities}.md`. The pre-existing uncommitted edits to
+`web/app/assets/css/main.css` and `web/app/pages/events.vue` were preserved.
+
+Validation: 294 plugin tests; protocol fingerprint unchanged; `go test -race
+./internal/events` against a disposable PostgreSQL database (gap validation and
+the unique/competing association); 284 frontend unit tests; typecheck; Prettier.
+Not run: full `scripts/check.sh`, browser viewports, live replay (no backend
+outage was induced; no real phBot runtime). Exact next action: operator installs
+plugin 1.9.40 and the rebuilt server/web, then runs the pet item capture
+(procedure in its README) so the pet decoder can be verified.
+
 ### Resume — 2026-10-12 Stop unidentified nearby-player registry admission
 
 The operator asked for the cause of recurring Unknown/Unknown rows and a source
@@ -6462,3 +6549,387 @@ recreated; PostgreSQL and web stayed running. Temporary fixture resources remove
 Exact next action: none for this follow-up; retain the new failure logs if another
 range fails. No artificial disk-failure test, bot action, external publication,
 merge or broader roadmap acceptance claimed.
+
+### Resume — 2026-10-15 Slice 13 / Issue #90 implementation ledger (PR #91)
+
+Work is limited to issue #90 on `feat/90-economy-item-analytics`. The draft
+PR remains unmerged, and this ledger is not a declaration of acceptance.
+
+- Blocking corrections: default Rare/Normal Drop tabs are callback-only;
+  All Events retains older `drop_event_id`-associated callback and gain rows
+  because historical links could have been heuristic rather than verified pickup
+  evidence; exact canonical event IDs remain inspectable, with any stored
+  association labeled unverified. The linked gain never lends historical
+  item-instance attributes to a callback;
+  unrelated nearby state differences must not lend their item-instance rolls.
+- Item movement: observed guild storage is compared only with a verified,
+  session/server/character/guild-scoped identity; an unscoped guild container
+  reference is rejected. Single-source/single-destination transfers preserve
+  the existing `item.transferred` schema; ambiguous balanced movements remain
+  unknown instead of being invented as acquisitions. Delayed/partial transfers have regression coverage; unmatched independently
+  observed net changes now finalize with unknown cause when the bounded hold
+  expires or saturates. Production Windows/phBot timing remains unverified.
+  Packet/state-diff pet receipt identity correlation still lacks shared proof
+  and remains limited rather than silently double counted.
+- Item Search: `GET /api/items`, `/items` read canonical resource item and
+  observation tables. Guild storage chooses one observer's attributable revision
+  per server/guild; both source and observer/freshness remain visible. Taxonomy
+  filtering requires a server profile to avoid cross-server model assumptions.
+- Global Economy: `GET /api/economy/offers`, `/economy` derive explicit
+  WTB/WTS/WTT ads from canonical inbound Global chat, preserving source IDs,
+  raw text and sender. No cross-observer merge is claimed without a stable shared broadcast identity;
+  separate same-text/time observations remain auditable. No sale/price is fabricated.
+- Stall transactions and realized price history: unsupported without verified
+  observable listing, completed-sale outcome, item/quantity and paid gold.
+  Advertising text is not a completed transaction. See
+  `docs/phbot-capabilities.md`.
+- Validation gates: targeted Python/Go/PostgreSQL tests have been added. The
+  complete `scripts/check.sh`, CI, responsive browser and CodeRabbit gates
+  must be checked on the latest head; untested runtime phBot behavior is not
+  represented as verified.
+
+### Resume — 2026-10-15 PR #91 re-review repairs
+
+Latest corrections preserve distinct historical heuristic callback/gain observations,
+prevent cross-event item-instance attribute borrowing, finalize pending net-change
+evidence when a resource becomes unavailable and before old-session teardown,
+validate Events source filters against actual canonical producers, retain the
+canonical Item Search server key in the cursor, reject equal exclusive Economy
+dates and reset Events pagination on exact event navigation. Tests were added
+for historical event totals/cursors, unavailable resource evidence, old-session
+IDs and canonical server-key pagination. Review replies carry the fix SHAs.
+
+Do not mistake these repairs for Slice 13 completion. The requirement-level
+A–G checklist, canonical test locations, unsupported evidence and outstanding
+browser/runtime gates are in [issue #90 acceptance](docs/issue-90-acceptance.md).
+The next action is to inspect the latest Validation, Plugin Version Guard and
+Stack CI results and fix any failures, then carry out real PostgreSQL and
+responsive browser verification. Keep PR #91 draft and unmerged. Do not invent
+verified pickup identity, cross-observer broadcast identity or sales receipts.
+
+### Resume — 2026-10-15 PR #91 item details and missing search proxies
+
+Focused operator follow-up, on the existing `feat/90-economy-item-analytics`
+checkout. Normal/Rare Drop stats disappeared when #91 removed historical/temporal
+item promotion and excluded owned gains from default Drop tabs. The captured
+inventory stats still existed; earlier frontend fixtures bypassed the lost
+query/API path. A separate `related_item_observation` now preserves eligible
+source-event snapshots and typed presentation. The shared tooltip shows their
+stats/blues with an explicit unverified-relation label and source event ID,
+without turning them into callback item facts or changing canonical counts.
+Competing/ambiguous suggestions remain suppressed. Exact event-ID live
+subscriptions also now accept valid UUIDs; their previous blanket rejection
+left source-event routes connecting indefinitely. A separate mobile details
+button opens linked-item tooltips without navigating away.
+
+The operator then reported Item Search's load error. Both `/api/items` and
+`/api/economy/offers` existed in Go but had no Nuxt proxy routes and returned 404.
+Both now use existing operator-auth/query/no-store/error forwarding conventions.
+`scripts/search_proxy_smoke.py` checks these real routes in Stack CI, including
+401, limits and upstream 400 preservation. Browser acceptance scripts exercise
+both pages and default Drop tooltips through the actual web transport.
+
+Files: Events store/integration tests; HTTP presentation/live validation/tests;
+shared item popup and extracted tooltip body; item model/types/frontend tests;
+Nuxt item/economy proxy routes; three read-only smoke/browser scripts and Stack
+CI; item-evidence/parity docs. Root cause, boundaries and evidence are recorded in
+[the regression report](docs/reference/item-tooltip-regression-2026-10-15.md).
+
+Validation: PostgreSQL-backed race tests for Events, HTTP API and resources pass
+using a separate `phmon_item_detail_checks` database, removed afterward. Go vet,
+261 frontend unit tests, final Nuxt typecheck, changed-file lint (zero errors;
+two existing void-element style warnings), Prettier, production Docker builds
+and diff checks pass. The authenticated running-instance proxy smoke passes.
+At 1440×1000, 1280×800 and 390×844, browser checks loaded 769 current item slots
+and 5,410 Global messages, verified search/filter/reset/cursor/error recovery,
+matched Normal/Rare tooltip stats/blues to their exact source-event responses,
+and checked touch/focus/Escape, bounds and page overflow with zero page errors.
+Screenshots and JSON results: `/tmp/phmon-item-details-20261015`.
+
+Only local server/web services were rebuilt/recreated; PostgreSQL and existing
+history remained intact. No bot command, plugin/protocol change, merge, remote
+publication or notification. Changes remain in the current checkout. Exact next
+action: none for these targeted regressions; broader issue #90/Slice 13 gates
+remain open. A nearby observation is not proof of pickup identity.
+
+### Resume — 2026-10-15 operator screenshot correction for Slice 13
+
+The operator rejected the first tooltip repair's two-card diagnostics and provided
+precise phMonitor/PhMon Rare Drops comparisons. This increment supersedes that
+presentation, preserving its independent source records and the prior search
+proxy repairs. The popup now renders one compact item source, removes the repeated
+metadata/unknown-stats block, and keeps only a small meaningful source qualifier
+when the relationship is unverified. The reference's 67 px rows, 45 px item frames,
+13 px text, compact filter widths, readable local dates, 39 px tabs and gold map
+buttons are implemented for both Drop tables. The extra 'All rare/normal drops'
+heading is removed. The actual 48%/9% Gem Necklace snapshot and blues are preserved
+in a sanitized item-only frontend fixture, without copying the reference's
+inconsistent leading values or unlabeled raw floats.
+
+The user also identified the dashboard Global Offers 'LATER' placeholder. It now
+reads the existing canonical offer query over a bounded `offers` subscription on
+the shared live socket; no polling/writer was added. It renders source-backed ads,
+observer attribution, source/Economy links and loading/empty/error/stale states.
+Economy's sidebar entry now navigates. Independent observer-message IDs remain
+separate, without claiming a verified common broadcast or completed sale.
+The existing Stack browser audit now requires this card to load without 'LATER'.
+
+A real screen check also found that a model-only callback could not match the
+Item name filter. Catalog-name matches now add only server/model keys to the
+existing Events count/page predicate, with cross-profile regression coverage.
+No historical item-instance attributes are inferred from those name matches.
+
+The screenshot's Lepus Soul Fiend pet item is a real remaining source gap: both
+its immutable observation and current getter row expose durability 82 and basic
+fields only, without whites/blues/attack fields. Another earlier bag copy of the
+same model has richer fields but cannot identify this copy. The pet packet probe
+is still presence-only. Full pet-stat parity requires verified native API/packet
+item evidence; no character command or forced pet transfer was used.
+
+Files: shared popup/model/body/styles; Events page/date helper; sidebar/dashboard;
+shared live client/types and Go offers stream/validation; catalog-name matcher,
+Events query and tests; sanitized Gem Necklace fixture; browser/CI checks; protocol
+and evidence/parity docs. [Full measurements, source IDs and capability gate](docs/reference/drop-screenshot-parity-2026-10-15.md).
+
+Validation: PostgreSQL race suites for Events/resources/HTTP API/chat, Go vet,
+266 frontend tests, Nuxt typecheck, changed-file lint/Prettier, transport audit,
+proxy smoke and production builds pass. The isolated `phmon_drop_parity_checks`
+database was removed after the tests. Browser checks at 1440×1000, 1280×800 and
+390×844 measured exactly 67 px rows / 45 px icons / 13 px text, exercised name
+filtering and live offer server scoping, verified one popup identity and the
+actual Gem Necklace/limited pet item, and passed touch/focus/Escape/bounds with
+zero page errors or page overflow. Artifacts: `/tmp/phmon-drop-parity-20261015`.
+
+A final web rebuild encountered disk exhaustion. Only unused Docker build cache
+older than 15 minutes was pruned (6.449 GB); application containers, volumes and
+historical records were retained. Local server/web rollout was performed with
+health checks; PostgreSQL stayed running. No plugin/agent protocol change, bot
+command, notification, remote publication or merge. Current checkout changes remain
+unpushed. Final web health and post-rollout browser checks passed for all three sizes,
+including Item Search/Economy regression checks (770 item slots / 5,422 messages
+at observation time). Exact next action: none for these screenshot/dashboard
+corrections; pet native evidence and broader issue #90/Slice 13 acceptance remain
+separate open gates.
+
+### Resume — 2026-10-15 Item Search screenshot correction
+
+Active scope remains the operator's targeted Slice 13 corrections on
+`feat/90-economy-item-analytics`, in the existing checkout. The operator rejected
+`/items` showing the internal observation model instead of the supplied populated
+reference. The page now has one compact filter/results panel, real dependent
+category/subcategory/degree dropdowns, character/container groups, full displayed
+match counts, 64 px tiles with 45 px icons and exact stack counts. Source links
+select the matching character resource tab. Observer/freshness details appear
+once per container as Viewed by / Last synced. Internal per-item diagnostic rows
+and the observation-heavy description are removed.
+
+The UI traverses bounded canonical cursor pages before grouping and checks total
+and container snapshot consistency, including guild observer swaps and session
+revision reuse via observation time. It retries once and fails visibly rather
+than mixing snapshots. Scope changes abort/fence older reads. Metadata stays
+server-resolved; unknown taxonomy is not inferred. Existing API/current-container
+semantics, persistence, history, collection and bot capabilities are unchanged.
+The old diagnostic history link is absent from this reference layout; a suitable
+exact-item history entry remains an explicit wider Slice 13 presentation gate.
+
+Files: `web/app/pages/items.vue`, new `useItemSearch` composable and `itemSearch`
+utility/tests, shared popup tile/quantity presentation, CharacterCard and detail
+route resource links, scoped CSS, updated real-data search browser check,
+acceptance/parity docs. [Design and verification boundaries](docs/reference/item-search-screenshot-parity-2026-10-15.md).
+
+Validation: 274 frontend unit tests, Nuxt typecheck, changed-file lint (zero
+errors, four void-element style warnings), formatting and diff checks pass.
+Authenticated browser checks at 1440×1000, 1280×800 and 390×844 passed full
+character/container counts, sets, text/category/subcategory/degree/reset,
+keyboard/touch/Escape tooltips, inventory/storage source tabs, transport failure
+and recovery, with zero browser errors/page overflow. Captured source totals
+were 775 current slots / 5,446 Global messages, which continue changing normally.
+Shared Drop/dashboard regression passed at all three sizes, including the actual
+Gem Necklace, single-item tooltip, live offers and the documented pet-stat gap.
+A wide real-data capture has six approximately 247 px columns matching the
+supplied populated reference structure. Captures/results:
+`/tmp/phmon-items-parity-20261015`.
+
+Public demo Item Search navigation was inspected in Chrome; its content did not
+render within the bounded wait, so the supplied populated screenshot remains the
+baseline. No private endpoint/bundle was inspected. Only unused Docker build
+cache was pruned to make room for local builds; application data/volumes and
+PostgreSQL were retained. No bot command, plugin/protocol change, notification,
+remote publication or merge. All changes remain unpushed.
+
+Final rollout: only web was recreated after the production build completed.
+The running image is `871b1868d9cb`; container health and backend/database health
+are good. Item Search/Economy acceptance passed again against that exact build at
+all three required sizes (777 current slots / 5,446 messages at observation time),
+including the final snapshot guard. The wide six-column capture was refreshed.
+Exact next action: none for this targeted `/items` correction; the separately
+recorded Slice 13 source/history/CI gates remain open.
+
+### Resume — 2026-10-15 Item Search inventory/storage dialogs
+
+Operator-requested increment in the existing checkout (`feat/90-economy-item-analytics`).
+The three Item Search container buttons open `InventoryDialog` instead of
+navigating; other resource links are unchanged. `InventoryGrid` gains an opt-in
+`variant="dialog"` (44 px slots, 4 × 8 inventory / 6 × 5 storage, page tabs above
+a full-width frame, occupied total and compact gold bar); inline callers are
+unchanged. `utils/containerLayout.ts` shares page geometry with Item Search labels
+(storage labels now page by 30). `useLiveData` adds subscription-scoped
+`resourceFeeds`/`resourceFeedStatus` (`resource-dialog-*`, excluded from global
+connection state); `useContainerDialog` reads character containers through it and
+guild storage through `/api/guild-storage` with abort/generation fencing.
+`ItemDetailPopup` Escape now stops propagation only while its tooltip is open.
+No backend, database or plugin changes.
+
+Files: `web/app/{components/{InventoryDialog,InventoryGrid,ItemDetailPopup}.vue,
+composables/{useContainerDialog,useLiveData}.ts,pages/items.vue,
+utils/{containerLayout,itemSearch,characterFormat}.ts,assets/css/main.css}`,
+`web/tests/{containerLayout,itemSearch}.test.ts`,
+`scripts/{item_dialog_browser_check,item_search_browser_check}.mjs`,
+`docs/reference-parity.md`.
+
+Validation (Node 24.20.0): 280 unit tests, Nuxt typecheck, format check, lint (0
+errors; existing void-element warnings), production build, `git diff --check`.
+`item_dialog_browser_check.mjs` passed against a local production preview and the
+deployed web at 1440×1000, 1280×800 and 390×844: no navigation, preserved filters
+and scroll, 4/6 columns × 32/30 slots, 44 px slots, page switching, partial final
+page, known-zero and unknown gold, discarded late guild response, tooltip stacking
+above the modal, Escape ordering, Tab trap, focus restoration, backdrop close,
+every dialog subscription released, inline inventory still 4 × 38 px, zero page
+errors. `item_search_browser_check.mjs` and `drop_parity_browser_check.mjs`
+regressions passed (Gem/pet cases skipped without their event-ID env vars).
+Screenshots/results: `/tmp/phmon-item-dialog-20261015`.
+
+Rollout incident: `docker compose up -d --no-deps --wait web` rebuilt web but also
+recreated the postgres and server containers and left them stopped (cause not
+determined; likely compose config drift since their creation). They were started
+again on the unchanged `phmon_postgres_data` volume about two minutes later; 12
+characters retained, readiness and web health report database OK and both agents
+reconnected. Future web-only rollouts should check `docker compose ps` afterwards.
+Nothing committed or pushed. Exact next action: none for this increment; wider
+Slice 13 gates remain open.
+
+
+### Resume — 2026-10-15 armor mounting part mislabel
+
+Operator-reported breaking bug: armor mounting parts were rotated (Taesang Suit
+shown as Shoulders, Trousers as Hands, Talisman as Chest, Wristlet as Legs).
+The exporter's `TypeID4` map used slot order instead of the codename part order
+(HA, SA, BA, LA, AA, FA). Fixed in `item_metadata.py` with an exporter test, and
+corrected `mounted_part` in the three packaged `server/game-data` catalogs from
+`type_ids`; `sort_type`, stats and search taxonomy were unaffected. Regression
+test in `TestPackagedMetadata`. Only the local server container was rebuilt;
+PostgreSQL and web stayed up. Live `/api/items` verified. Evidence:
+`docs/reference-parity.md`. Exact next action: none; a future full re-export
+will produce the same values. Not committed.
+
+### Resume — 2026-10-15 Stats Info equipment order and character details
+
+Stats Info now follows phMonitor's equipment column order and info card (see
+`docs/reference-parity.md`). Plugin 1.9.39 / protocol 20 sends `character_info`
+(job name, guild member/online counts, own donated GP, union guilds); server
+accepts protocol 20. Files: `plugin/{PhMon.py,test_phmon.py,README.md}`,
+`server/internal/httpapi/agent.go`, `web/app/{utils/equipmentLayout.ts,
+components/CharacterCard.vue,assets/css/main.css}`, `web/tests/equipmentLayout.test.ts`,
+`docs/protocol.md`. Validation: 288 plugin tests, protocol guard (bump required
+and applied), 283 frontend tests, typecheck, lint, Prettier, Go httpapi/resources
+tests, live browser check at 1440/390. The host rebooted mid-session; PostgreSQL
+was started on its existing volume, then server and web were rebuilt and are
+healthy. Not committed. Exact next action: operator installs plugin 1.9.39 and
+confirms job/guild values on the Info tab against phMonitor.
+
+### Resume — 2026-10-15 Pick-pet item packet details
+
+The third operator attachment, `pet-item-capture-20261015T213224Z.json`, supplies
+two complete Pick-pet `0xB034` subtype `0x11` pickup bodies. Model 5573 and
+model 14650 match preceding bag copies and subsequent pet slots, including
+plus, durability, variance-derived whites and 2/6 blue ID/value pairs. The
+first two captures established the `0x30C8` snapshot boundaries and `0x10`/
+`0x1A` move behavior. See `docs/reference/pet-item-capture-2026-10-15.md`.
+
+Plugin 1.9.41 decodes the observed zero-rental, empty-binding vSRO 1.188
+subtype `0x11` equipment body and attaches details only when Pick pet ID,
+slot, model and durability match the live API row. It tracks confirmed slot
+moves/removals, rejects unsupported branches and expires unmatched data.
+Existing pet items without a fresh pickup, other pet classes and variant
+rental/binding packets remain basic. The existing Go resolver and web item
+popup consume the pet slot's `instance`; the Stats pet packet note reflects
+this decoder. The temporary capture probe remains read-only and can gather
+other branches. No live character action or Windows plugin installation was
+performed by this agent.
+
+Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`web/app/components/CharacterCard.vue`, `tools/pet-item-capture/`,
+`docs/{reference/pet-item-capture-2026-10-15.md,item-instance-evidence.md,
+phbot-capabilities.md}`, `AGENTS.md`. Focused capture and packet tests pass;
+full validation/commit/push results are recorded in the current chat. Exact
+next action: validate plugin 1.9.41 in an authorized phBot test session using
+a new natural pickup and inspect pet tooltip details; continue researching
+`0x30C8` snapshots for already-held items separately.
+
+### Resume — 2026-10-15 rich 0x30C8 Pick-pet snapshot
+
+The operator supplied `pet-item-capture-20261015T214035Z.json` and the
+packet-linked transfer `pet-item-capture-20261015T214407Z.json`. The first
+holds a complete 417-byte `0x30C8` snapshot with Magic Weave in pet slot 26;
+the second moves the same pet ID/slot through successful subtype `0x1A` to
+bag slot 72. Packet plus 5, variance `0x3fffffff` (six 100% whites) and all
+five blue ID/value pairs match the bag row. The earlier 267-byte snapshot's
+final byte is the pet inventory slot, corroborated by RSBot's Ability parser.
+Full hashes, fields and limits: `docs/reference/pet-item-capture-2026-10-15.md`.
+
+Plugin 1.9.42 (protocol 20) uses a shared strict equipment-body reader for
+`0x30C8` and `0xB034` subtype `0x11`. The snapshot parser waits briefly for
+a matching Pick-pet API roster and checks ID, model, capacity, count, slots,
+models, quantities and durability before attaching packet details. Only
+observed simple alchemy elixirs are skipped as stackables. Unknown item
+families and rental/binding variants reject the entire snapshot. Pending
+snapshots are bounded, session-scoped, cleared by operations and expired;
+other-pet snapshots do not erase a different Pick pet's confirmed state.
+The Go resolver applies established bag-option code labels to packet blues
+and preserves raw ID/value for unresolved codes. The tooltip uses observed
+packet enhancement when the pet API omits plus.
+
+Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`web/app/{components/CharacterCard.vue,utils/itemDetailPopup.ts}`,
+`web/tests/itemDetailPopup.test.ts`,
+`server/internal/resources/{metadata.go,metadata_test.go}`,
+`tools/pet-item-capture/README.md`,
+`docs/{reference/pet-item-capture-2026-10-15.md,phbot-capabilities.md,
+item-instance-evidence.md,reference-parity.md}`, `AGENTS.md`. Offline capture
+comparisons match both captures. Plugin/protocol tests (310), web unit tests
+(285), Go resource tests, web typecheck and focused lint passed. No real
+character was operated by this agent. Actual plugin/UI runtime validation
+remains open: install plugin 1.9.42 in an authorized phBot session, resummon
+the Pick pet and compare an already-held item's tooltip with its bag details.
+
+### Resume — 2026-10-16 Kalypso live Pick-pet check
+
+Kalypso connected with plugin 1.9.42 at 22:04:18 UTC in a fresh session.
+The server recorded one 245-byte `0x30C8` packet, zero `0xB034` packets, and
+eight basic Pick-pet equipment rows in a 56-position `get_pets()` list. No
+`instance` reached the pet rows. Both full prior `0x30C8` captures advertised
+28 positions; the current parser required packet capacity to equal all 56 API
+positions. The live packet bytes were not retained, so the capacity mismatch
+is strongly supported but not directly read from this packet. A 245-byte
+synthetic packet with the previously captured eight equipment bodies parses
+against the current API roster when the 28/56 comparison is corrected.
+
+Plugin 1.9.43 changes the capacity gate to accept an equal-length API list or
+one twice the packet capacity, with no occupied items beyond the packet-covered
+positions. All covered slots, models, quantities and durabilities still match
+strictly. It reports `pet_snapshot_last_error` for future live diagnosis.
+The web Pet panel recognizes decoder build `vsro_pet_item_r3` and shows the
+last mismatch. Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`web/app/components/CharacterCard.vue`, `docs/{reference/pet-item-capture-2026-10-15.md,
+phbot-capabilities.md,item-instance-evidence.md,reference-parity.md}`,
+`tools/pet-item-capture/README.md`. No real
+character action was performed by this agent. Plugin/protocol/capture tests
+(310), web unit tests (285), typecheck, lint, formatting and diff checks pass.
+The plugin protocol contract comparison against the prior commit is unchanged;
+agent protocol remains 20.
+A reconstructed 245-byte packet with eight earlier captured item bodies
+matches Kalypso's current 56-slot API roster under the corrected parser.
+The Go/web containers were rebuilt locally and are healthy; Kalypso
+automatically reconnected with plugin 1.9.42 after the server restart.
+Exact next action: commit/push, then have the operator install plugin 1.9.43
+and resummon the Pick pet for live confirmation.

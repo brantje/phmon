@@ -6,6 +6,7 @@ import {
   type CharacterSnapshot,
   type CharacterResourcesView,
   type EventPage,
+  type GlobalOffersPage,
   type AnalyticsSnapshot,
   type CharactersSnapshot,
   type GuildStorageGoldEntry,
@@ -69,8 +70,20 @@ const characterResources = ref<Record<string, CharacterResourcesView>>({})
 const commandHistory = ref<RemoteCommand[]>([])
 const characterControls = ref<ControlsSnapshot | null>(null)
 const eventFeeds = ref<Record<string, EventPage>>({})
+const offerFeeds = ref<Record<string, GlobalOffersPage>>({})
+const offerFeedStatus = ref<
+  Record<string, 'loading' | 'current' | 'unavailable'>
+>({})
 const analyticsFeeds = ref<Record<string, AnalyticsSnapshot>>({})
 const analyticsFeedStatus = ref<
+  Record<string, 'loading' | 'current' | 'unavailable'>
+>({})
+// Subscription-scoped resource snapshots let one view (the container dialog)
+// tell loading/unavailable/current apart without borrowing another view's
+// merged characterResources entry.
+const RESOURCE_FEED_PREFIX = 'resource-dialog-'
+const resourceFeeds = shallowRef<Record<string, CharacterResourcesView>>({})
+const resourceFeedStatus = ref<
   Record<string, 'loading' | 'current' | 'unavailable'>
 >({})
 const chatFeeds = ref<Record<string, ChatSnapshot>>({})
@@ -148,6 +161,10 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.guild || '') === (right.guild || '') &&
     (left.balance_scope || '') === (right.balance_scope || '') &&
     (left.drop_source || '') === (right.drop_source || '') &&
+    (left.source_container || '') === (right.source_container || '') &&
+    (left.destination_container || '') ===
+      (right.destination_container || '') &&
+    (left.movement_method || '') === (right.movement_method || '') &&
     (left.item_type || '') === (right.item_type || '') &&
     (left.item_degree || '') === (right.item_degree || '') &&
     (left.page_size || 0) === (right.page_size || 0)
@@ -378,6 +395,52 @@ function clearCharacterResources(characterID: string, subscriptionID: string) {
   removeSubscription(subscriptionID)
 }
 
+function withoutKey<T>(record: Record<string, T>, key: string) {
+  return Object.fromEntries(
+    Object.entries(record).filter(([id]) => id !== key),
+  ) as Record<string, T>
+}
+
+function setResourceFeed(
+  subscriptionID: string,
+  characterID: string,
+  resourceKeys: string[],
+) {
+  if (!characterID || !subscriptionID.startsWith(RESOURCE_FEED_PREFIX)) return
+  ensureSubscription(
+    subscriptionID,
+    'resources',
+    { character_id: characterID, resource_keys: resourceKeys },
+    () => {
+      resourceFeeds.value = withoutKey(resourceFeeds.value, subscriptionID)
+      resourceFeedStatus.value = {
+        ...resourceFeedStatus.value,
+        [subscriptionID]: 'loading',
+      }
+    },
+    false,
+  )
+}
+
+function clearResourceFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    resourceFeeds.value = withoutKey(resourceFeeds.value, subscriptionID)
+    resourceFeedStatus.value = withoutKey(
+      resourceFeedStatus.value,
+      subscriptionID,
+    )
+  })
+}
+
+function markResourceFeedUnavailable(subscription: Subscription) {
+  if (!subscription.id.startsWith(RESOURCE_FEED_PREFIX)) return false
+  resourceFeedStatus.value = {
+    ...resourceFeedStatus.value,
+    [subscription.id]: 'unavailable',
+  }
+  return true
+}
+
 function setCharacterCommands(
   characterID: string,
   commandName = '',
@@ -414,6 +477,31 @@ function setCharacterControls(characterID: string) {
 function setEventFeed(subscriptionID: string, filter: LiveFilter) {
   ensureSubscription(subscriptionID, 'events', filter, () => {
     removeEventFeedSnapshot(subscriptionID)
+  })
+}
+
+function setOfferFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'offers', filter, () => {
+    offerFeeds.value = Object.fromEntries(
+      Object.entries(offerFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    offerFeedStatus.value = {
+      ...offerFeedStatus.value,
+      [subscriptionID]: 'loading',
+    }
+  })
+}
+
+function clearOfferFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    offerFeeds.value = Object.fromEntries(
+      Object.entries(offerFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    offerFeedStatus.value = Object.fromEntries(
+      Object.entries(offerFeedStatus.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
   })
 }
 
@@ -908,6 +996,15 @@ function refreshLiveData(ids?: string[]) {
     subscription.current = false
     subscription.unavailable = false
     requested ||= subscription.countsForConnection
+    if (
+      subscription.id.startsWith(RESOURCE_FEED_PREFIX) &&
+      resourceFeedStatus.value[subscription.id] === 'unavailable'
+    ) {
+      resourceFeedStatus.value = {
+        ...resourceFeedStatus.value,
+        [subscription.id]: 'loading',
+      }
+    }
     if (subscription.id.startsWith('fanout-')) {
       const suffix = subscription.id.endsWith('-controls')
         ? '-controls'
@@ -1039,8 +1136,16 @@ function handleFrame(frame: LiveServerFrame) {
   if (frame.type === 'subscription.unavailable') {
     subscription.current = false
     subscription.unavailable = true
+    if (subscription.stream === 'offers') {
+      offerFeedStatus.value = {
+        ...offerFeedStatus.value,
+        [subscription.id]: 'unavailable',
+      }
+    }
     if (subscription.id.startsWith('fanout-')) {
       markCommandFanOutUnavailable(subscription.id)
+    } else if (markResourceFeedUnavailable(subscription)) {
+      // The container dialog reports its own unavailable state.
     } else if (subscription.stream !== 'analytics') {
       staleCycle.value = true
       connectionState.value = 'stale'
@@ -1065,6 +1170,8 @@ function handleFrame(frame: LiveServerFrame) {
       subscription.unavailable = true
       if (subscription.id.startsWith('fanout-')) {
         markCommandFanOutUnavailable(subscription.id)
+      } else if (markResourceFeedUnavailable(subscription)) {
+        // The container dialog reports its own unavailable state.
       } else if (subscription.stream !== 'analytics') {
         staleCycle.value = true
         connectionState.value = 'stale'
@@ -1177,6 +1284,29 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       return true
     }
     default: {
+      if (subscription.stream === 'offers') {
+        const page = data as GlobalOffersPage
+        if (
+          !Array.isArray(page.offers) ||
+          typeof page.total !== 'number' ||
+          page.offers.some(
+            (offer) =>
+              !offer ||
+              typeof offer.message_id !== 'string' ||
+              typeof offer.message !== 'string' ||
+              typeof offer.sender !== 'string' ||
+              typeof offer.occurred_at !== 'string' ||
+              !['WTB', 'WTS', 'WTT'].includes(offer.offer_type),
+          )
+        )
+          return false
+        offerFeeds.value = { ...offerFeeds.value, [subscription.id]: page }
+        offerFeedStatus.value = {
+          ...offerFeedStatus.value,
+          [subscription.id]: 'current',
+        }
+        return true
+      }
       if (subscription.stream === 'events') {
         const page = data as EventPage
         if (
@@ -1232,6 +1362,17 @@ function applySnapshot(subscription: Subscription, data: unknown) {
           Array.isArray(snapshot.resources)
         )
           return false
+        if (subscription.id.startsWith(RESOURCE_FEED_PREFIX)) {
+          resourceFeeds.value = {
+            ...resourceFeeds.value,
+            [subscription.id]: snapshot,
+          }
+          resourceFeedStatus.value = {
+            ...resourceFeedStatus.value,
+            [subscription.id]: 'current',
+          }
+          return true
+        }
         const current = characterResources.value[snapshot.character_id]
         characterResources.value = {
           ...characterResources.value,
@@ -1430,8 +1571,12 @@ export function useLiveData() {
     commandHistory: readonly(commandHistory),
     characterControls: readonly(characterControls),
     eventFeeds: readonly(eventFeeds),
+    offerFeeds: readonly(offerFeeds),
+    offerFeedStatus: readonly(offerFeedStatus),
     analyticsFeeds: readonly(analyticsFeeds),
     analyticsFeedStatus: readonly(analyticsFeedStatus),
+    resourceFeeds: readonly(resourceFeeds),
+    resourceFeedStatus: readonly(resourceFeedStatus),
     chatFeeds: readonly(chatFeeds),
     chatFeedCurrent: readonly(chatFeedCurrent),
     mapFeeds: readonly(mapFeeds),
@@ -1451,10 +1596,14 @@ export function useLiveData() {
     setCharacterDetail,
     setCharacterResources,
     clearCharacterResources,
+    setResourceFeed,
+    clearResourceFeed,
     setCharacterCommands,
     setCharacterControls,
     setEventFeed,
     clearEventFeed,
+    setOfferFeed,
+    clearOfferFeed,
     setAnalyticsFeed,
     clearAnalyticsFeed,
     registerVisibleProgressCharacter,

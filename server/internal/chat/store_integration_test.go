@@ -208,6 +208,42 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 		contacts[0].PeerName != "bEtA" || contacts[0].LastMessage != "case variant" {
 		t.Fatalf("case-variant peer should remain one contact with latest display name: %+v err=%v", contacts, err)
 	}
+	// Run the additional Economy projection fixtures after all pre-existing
+	// chat-history assertions; these persisted Global messages are intentionally
+	// visible to the chat history query, so inserting them earlier changes the
+	// established source test's expected message count.
+	// The economy projection reuses durable Global chat events. Two independent
+	// observers of possibly repeated broadcasts retain separate source events.
+	// Without a shared broadcast ID, identical messages 100ms apart cannot
+	// safely be collapsed. Cursor totals count source observations.
+	wtsAlpha := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 101,
+		databaseNow.Add(7*time.Second), "global", "6", "Trader", "WTS +7 staff")
+	wtsBeta := makeChannelChatEvent(credential.AgentID, secondCharacterID, secondSessionID, server, "Beta", 102,
+		databaseNow.Add(7*time.Second+100*time.Millisecond), "global", "6", "Trader", "WTS +7 staff")
+	wtsRepeat := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 103,
+		databaseNow.Add(12*time.Second), "global", "6", "Trader", "WTS +7 staff")
+	wttOffer := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 104,
+		databaseNow.Add(14*time.Second), "global", "6", "Trader", "WTT blade for spear")
+	if inserted, changed, err := store.AppendBatch(ctx, credential.AgentID,
+		[]events.AgentEvent{wtsAlpha, wtsBeta, wtsRepeat, wttOffer}); err != nil || !changed || len(inserted) != 4 {
+		t.Fatalf("classified Global chat events = %+v changed=%v err=%v", inserted, changed, err)
+	}
+	offers, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 1})
+	if offerErr != nil || offers.Total != 4 || len(offers.Offers) != 1 || offers.NextCursor == "" {
+		t.Fatalf("offer first cursor and auditable observations = %+v err=%v", offers, offerErr)
+	}
+	offersNext, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 2,
+		Cursor: offers.NextCursor})
+	if offerErr != nil || offersNext.Total != 4 || len(offersNext.Offers) != 2 {
+		t.Fatalf("offer second cursor = %+v err=%v", offersNext, offerErr)
+	}
+	wtsOffers, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 20, Kind: "WTS"})
+	if offerErr != nil || wtsOffers.Total != 3 || len(wtsOffers.Offers) != 3 {
+		t.Fatalf("independent identical observations must survive ambiguous pairing: %+v err=%v", wtsOffers, offerErr)
+	}
+	if wtsOffers.Offers[0].SourceEventID == "" {
+		t.Fatal("economy offer lacks source event identity")
+	}
 }
 
 func makeChatEvent(agentID, characterID, sessionID, server string, sequence int64, at time.Time, message string) events.AgentEvent {

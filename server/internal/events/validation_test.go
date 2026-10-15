@@ -288,3 +288,48 @@ func validTestEvent(kind, category, source, sourceRef, payload string) AgentEven
 }
 
 func int64Pointer(value int64) *int64 { return &value }
+
+func TestValidateAgentEventAcceptsBoundedObservationGap(t *testing.T) {
+	model := int64(7)
+	base := `{"item":{"model":7,"servername":"ITEM_TEST"},"quantity_delta":1,"destination_container":{"type":"pets","id":"9","slot":11},"acquisition_method":"unknown","observation_gap":%s}`
+	valid := func(gap string) AgentEvent {
+		event := validTestEvent("item.acquired", "item", "phbot.state_diff", "item_container",
+			strings.Replace(base, "%s", gap, 1))
+		event.ItemModel = &model
+		return event
+	}
+	accepted := []string{
+		`{"reason":"backend_reconnect","from":"2026-10-15T19:48:31Z","to":"2026-10-15T19:52:40Z","previous_session_id":"` + testSessionID + `"}`,
+		`{"reason":"sample_gap","from":"2026-10-15T19:48:31Z","to":"2026-10-15T19:48:40Z"}`,
+	}
+	for _, gap := range accepted {
+		if err := validateAgentEvent(valid(gap)); err != nil {
+			t.Fatalf("gap %s rejected: %v", gap, err)
+		}
+	}
+	rejected := []string{
+		`{"reason":"other","from":"2026-10-15T19:48:31Z","to":"2026-10-15T19:52:40Z"}`,
+		`{"reason":"backend_reconnect","from":"2026-10-15T19:52:40Z","to":"2026-10-15T19:48:31Z"}`,
+		`{"reason":"backend_reconnect","from":"2026-10-15T10:00:00Z","to":"2026-10-15T19:52:40Z"}`,
+		`{"reason":"backend_reconnect","from":"bad","to":"2026-10-15T19:52:40Z"}`,
+		`{"reason":"sample_gap","from":"2026-10-15T19:48:31Z","to":"2026-10-15T19:48:40Z","previous_session_id":"` + testSessionID + `"}`,
+		`{"reason":"backend_reconnect","from":"2026-10-15T19:48:31Z","to":"2026-10-15T19:52:40Z","previous_session_id":"nope"}`,
+		`{"reason":"backend_reconnect","from":"2026-10-15T19:48:31Z","to":"2026-10-15T19:52:40Z","extra":1}`,
+	}
+	for _, gap := range rejected {
+		if err := validateAgentEvent(valid(gap)); err == nil {
+			t.Fatalf("gap %s was accepted", gap)
+		}
+	}
+	linked := validTestEvent("item.acquired", "item", "phbot.state_diff", "item_container",
+		`{"item":{"model":7},"quantity_delta":1,"destination_container":{"type":"inventory","slot":3},"acquisition_method":"unknown","drop_event_id":"8d16ab39-10b8-4b26-80aa-a4be01e10f18","observation_gap":`+accepted[1]+`}`)
+	linked.ItemModel = &model
+	if err := validateAgentEvent(linked); err == nil {
+		t.Fatal("gap marker combined with a drop pickup link was accepted")
+	}
+	callback := validTestEvent("drop.rare", "drop", "phbot.callback", "EVENT_RARE_DROP", `{"model":7,"observation_gap":`+accepted[1]+`}`)
+	callback.ItemModel = &model
+	if err := validateAgentEvent(callback); err == nil {
+		t.Fatal("callback drop carrying a gap marker was accepted")
+	}
+}

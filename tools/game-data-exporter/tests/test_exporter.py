@@ -108,6 +108,17 @@ def test_item_reference_ranges_export_without_calculating_instance_stats() -> No
     assert "phy_def_pwr" not in presentation
 
 
+def test_armor_mounted_part_follows_codename_part_suffix() -> None:
+    # TypeID4 1..6 = HA, SA, BA, LA, AA, FA (Hat, Talisman, Suit, Trousers,
+    # Wristlet, Shoes for ITEM_CH_CLOTHES_10_*), not equipment-slot order.
+    expected = {1: "Head", 2: "Shoulders", 3: "Chest", 4: "Legs", 5: "Hands", 6: "Feet"}
+    for part, mounted in expected.items():
+        fields = ["0"] * 126
+        fields[9:13] = ["3", "1", "1", str(part)]
+        fields[58:62] = ["0", "0", "0", "1"]
+        assert item_metadata(fields)["mounted_part"] == mounted
+
+
 class _FakeArchive:
     payloads: dict[str, bytes] = {}
     media_entries: tuple[Entry, ...] = ()

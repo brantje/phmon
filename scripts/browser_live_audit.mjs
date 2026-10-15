@@ -234,6 +234,15 @@ async function main() {
       20000,
     )
 
+    await waitFor(
+      () => evaluate(cdp, `(() => {
+        const panel = document.querySelector('[aria-label="Recent Global offers"]')
+        return panel && panel.getAttribute('aria-busy') === 'false' && !panel.innerText.includes('LATER') && !panel.innerText.includes('temporarily unavailable') && panel.querySelector('a[href="/economy"]') !== null
+      })()`),
+      'live Global offers dashboard card',
+      20000,
+    )
+
     await cdp.send('Page.navigate', { url: WEB_URL + '/stats' })
     await waitFor(
       () =>

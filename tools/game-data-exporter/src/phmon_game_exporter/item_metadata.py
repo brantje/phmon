@@ -40,7 +40,9 @@ def item_metadata(fields: list[str]) -> dict:
         armor = {1: 'Garment', 2: 'Protector', 3: 'Armor', 9: 'Robe', 10: 'Light armor', 11: 'Heavy armor'}
         if family in armor:
             result['sort_type'] = armor[family]
-            mounting = {1: 'Head', 2: 'Chest', 3: 'Shoulders', 4: 'Hands', 5: 'Legs', 6: 'Feet'}
+            # TypeID4 follows the codename part suffix (HA, SA, BA, LA, AA, FA),
+            # not equipment-slot order: e.g. *_BA_* is a Suit and *_SA_* a Talisman.
+            mounting = {1: 'Head', 2: 'Shoulders', 3: 'Chest', 4: 'Legs', 5: 'Hands', 6: 'Feet'}
             if part in mounting:
                 result['mounted_part'] = mounting[part]
             if gender in (0, 1):

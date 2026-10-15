@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,21 @@ import (
 	"phmon/server/internal/characters"
 	"phmon/server/internal/database"
 )
+
+func TestGuildStorageContainerReferences(t *testing.T) {
+	if !validContainerReference(map[string]any{"type": "guild_storage", "id": "guild", "slot": float64(12)}) {
+		t.Fatal("observed guild storage slot should be a valid container reference")
+	}
+	if validContainerReference(map[string]any{"type": "guild_storage", "id": "guild", "slot": float64(-1)}) {
+		t.Fatal("negative guild storage slot must remain invalid")
+	}
+	if validContainerReference(map[string]any{"type": "guild_storage"}) {
+		t.Fatal("missing guild scope must remain invalid")
+	}
+	if validContainerReference(map[string]any{"type": "guild_storage", "id": ""}) {
+		t.Fatal("empty guild storage id must remain invalid")
+	}
+}
 
 func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
@@ -211,6 +227,16 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || exact.Total != 1 || len(exact.Events) != 1 || exact.Events[0].ID != rareDrop.ID {
 		t.Fatalf("exact event lookup = %+v, err=%v", exact, err)
 	}
+	store.SetItemNameMatcher(func(query string) []string {
+		if query == "Catalog Necklace" {
+			return []string{strings.ToLower(server) + ":777"}
+		}
+		return nil
+	})
+	byName, nameErr := store.List(ctx, Filter{Server: server, Kind: "drop.rare", ItemQuery: "Catalog Necklace", Limit: 10})
+	if nameErr != nil || byName.Total != 1 || len(byName.Events) != 1 || byName.Events[0].ID != rareDrop.ID {
+		t.Fatalf("model-only callback must be searchable by its catalog name: %+v, %v", byName, nameErr)
+	}
 	observedItem := AgentEvent{
 		ID: newTestEventID(t), Schema: 1, Kind: "item.quantity_increased", Category: "item",
 		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
@@ -227,16 +253,22 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("linked drop lookup = %+v, err=%v", exact, err)
 	}
 	var linkedPayload struct {
-		Item struct {
-			Plus      int            `json:"plus"`
-			APIFields map[string]any `json:"api_fields"`
-		} `json:"item"`
+		Item        json.RawMessage `json:"item"`
 		Observation struct {
 			Association string `json:"association"`
+			EventID     string `json:"event_id"`
 		} `json:"item_observation"`
 	}
-	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "unique_model_inventory_gain" {
-		t.Fatalf("drop did not carry its linked observed item: %s, err=%v", exact.Events[0].Payload, err)
+	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil ||
+		len(linkedPayload.Item) != 0 ||
+		linkedPayload.Observation.Association != "stored_unverified_drop_event_id" ||
+		linkedPayload.Observation.EventID != observedItem.ID {
+		t.Fatalf("historical association must be auditable but cannot lend instance attributes: %s, err=%v", exact.Events[0].Payload, err)
+	}
+	if related := exact.Events[0].RelatedItemObservation; related == nil ||
+		related.EventID != observedItem.ID || related.Association != "stored_unverified_drop_event_id" ||
+		related.Item["plus"] != json.Number("3") {
+		t.Fatalf("stored observation details must remain separately inspectable: %+v", related)
 	}
 	lateDrop := rareDrop
 	lateDrop.ID = newTestEventID(t)
@@ -268,8 +300,13 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		} `json:"item_observation"`
 	}
 	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &temporalPayload) != nil ||
-		temporalPayload.Item.Plus != 4 || temporalPayload.Observation.Association != "unique_temporal_inventory_gain" {
-		t.Fatalf("unique nearby inventory gain was not shown: %+v, err=%v", exact, err)
+		temporalPayload.Item.Plus != 0 || temporalPayload.Observation.Association != "" {
+		t.Fatalf("unlinked nearby gain must not lend an item instance: %+v, err=%v", exact, err)
+	}
+	if related := exact.Events[0].RelatedItemObservation; related == nil ||
+		related.EventID != unlinkedGain.ID || related.Association != "nearby_same_model_observation" ||
+		related.Item["plus"] != json.Number("4") {
+		t.Fatalf("nearby observation must retain its own source and details: %+v", related)
 	}
 	competingDrop := lateDrop
 	competingDrop.ID = newTestEventID(t)
@@ -287,6 +324,105 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &ambiguousPayload) != nil ||
 		ambiguousPayload.Observation.Association != "" {
 		t.Fatalf("ambiguous nearby drop was still linked: %+v, err=%v", exact, err)
+	}
+	if exact.Events[0].RelatedItemObservation != nil {
+		t.Fatal("competing same-model callbacks must suppress the nearby observation suggestion")
+	}
+	// One explicitly linked acquisition remains visible when its callback is
+	// outside the requested window. Count and pagination operate on the same
+	// filtered logical rows, not client-side hidden items.
+	from = databaseNow.UTC().Add(time.Second)
+	to = databaseNow.UTC().Add(3 * time.Second)
+	visibleGain, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777",
+		From: &from, To: &to, Limit: 10})
+	if listErr != nil || visibleGain.Total != 1 || len(visibleGain.Events) != 1 ||
+		visibleGain.Events[0].ID != observedItem.ID {
+		t.Fatalf("linked callback outside filter hides its gain: %+v, err=%v", visibleGain, listErr)
+	}
+	itemEvents, listErr := store.List(ctx, Filter{Server: server, Kind: "item.gains", Limit: 10})
+	if listErr != nil || itemEvents.Total != 2 {
+		t.Fatalf("owned gains must remain distinct from world drops: %+v, err=%v", itemEvents, listErr)
+	}
+	allItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2})
+	if listErr != nil || allItems.Total != 5 || len(allItems.Events) != 2 ||
+		allItems.NextCursor == "" {
+		t.Fatalf("historical item page one count/cursor = %+v, err=%v", allItems, listErr)
+	}
+	secondItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2,
+		Cursor: allItems.NextCursor})
+	if listErr != nil || secondItems.Total != 5 || len(secondItems.Events) != 2 ||
+		secondItems.NextCursor == "" {
+		t.Fatalf("historical item page two = %+v, err=%v", secondItems, listErr)
+	}
+	thirdItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2,
+		Cursor: secondItems.NextCursor})
+	if listErr != nil || thirdItems.Total != 5 || len(thirdItems.Events) != 1 ||
+		thirdItems.NextCursor != "" {
+		t.Fatalf("historical item page three = %+v, err=%v", thirdItems, listErr)
+	}
+	seen := make(map[string]bool)
+	for _, row := range append(append(allItems.Events, secondItems.Events...), thirdItems.Events...) {
+		if seen[row.ID] {
+			t.Fatalf("repeated canonical event across pages: %s", row.ID)
+		}
+		seen[row.ID] = true
+	}
+	for _, id := range []string{rareDrop.ID, observedItem.ID, lateDrop.ID, unlinkedGain.ID, competingDrop.ID} {
+		if !seen[id] {
+			t.Fatalf("unverified historical link hid an independent event: %s", id)
+		}
+	}
+	stateDiffs, listErr := store.List(ctx, Filter{Server: server, Source: "phbot.state_diff", Limit: 10})
+	if listErr != nil || stateDiffs.Total < 2 {
+		t.Fatalf("source-filtered canonical observations must remain visible: %+v, err=%v", stateDiffs, listErr)
+	}
+	for _, row := range stateDiffs.Events {
+		if row.Source != "phbot.state_diff" {
+			t.Fatalf("source-filtered result contains %q", row.Source)
+		}
+	}
+	// A code-based search must not collapse an acquisition when its callback
+	// only identifies a model; hiding it would lose the entire occurrence.
+	byCode, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "ITEM_TEST", Limit: 10})
+	if listErr != nil || byCode.Total != 2 || len(byCode.Events) != 2 {
+		t.Fatalf("item code search must retain source observations excluded by the callback filter: %+v, err=%v", byCode, listErr)
+	}
+	for _, row := range byCode.Events {
+		if row.Kind != "item.acquired" && row.Kind != "item.quantity_increased" {
+			t.Fatalf("callback matched a code that was not observed on it: %+v", row)
+		}
+	}
+	onlyCallbacks, listErr := store.List(ctx, Filter{Server: server,
+		Source: "phbot.callback", ItemQuery: "777", Limit: 10})
+	if listErr != nil || onlyCallbacks.Total != 3 || len(onlyCallbacks.Events) != 3 {
+		t.Fatalf("callback source filter must show all three independent world drops: %+v, err=%v", onlyCallbacks, listErr)
+	}
+	onlyItemCategory, listErr := store.List(ctx, Filter{Server: server,
+		Category: "item", ItemQuery: "777", Limit: 10})
+	if listErr != nil || onlyItemCategory.Total != 2 || len(onlyItemCategory.Events) != 2 {
+		t.Fatalf("item category filter must retain both raw gains: %+v, err=%v", onlyItemCategory, listErr)
+	}
+	onlyIncrease, listErr := store.List(ctx, Filter{Server: server,
+		Kind: "item.quantity_increased", ItemQuery: "777", Limit: 10})
+	if listErr != nil || onlyIncrease.Total != 1 || onlyIncrease.Events[0].ID != observedItem.ID {
+		t.Fatalf("explicit gain kind must bypass logical collapse: %+v, err=%v", onlyIncrease, listErr)
+	}
+	for _, source := range []string{"phbot.lifecycle_callback", "phbot.alchemy_callback", "joymax.unique_notice"} {
+		if !ValidSourceFilter(source) {
+			t.Fatalf("canonical source %s was rejected", source)
+		}
+	}
+	for _, source := range []string{"phbot.packet", "phbot.plugin", "phbot.alchemy", "phbot.death"} {
+		if ValidSourceFilter(source) {
+			t.Fatalf("noncanonical source %s was accepted", source)
+		}
+	}
+	if ValidSourceFilter("phbot.callback; DROP TABLE activity_events") {
+		t.Fatal("invalid provenance filter was accepted")
+	}
+	exactGain, listErr := store.List(ctx, Filter{Server: server, EventID: observedItem.ID, Limit: 1})
+	if listErr != nil || exactGain.Total != 1 || len(exactGain.Events) != 1 {
+		t.Fatalf("canonical gain must remain directly inspectable: %+v, err=%v", exactGain, listErr)
 	}
 	conflict := rareDrop
 	conflict.Zone = "Donwhang"
@@ -367,6 +503,53 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	var unverified map[string]any
 	if err := json.Unmarshal(levelPayload, &unverified); err != nil || unverified["level"] != float64(71) || unverified["callback_level"] != nil {
 		t.Fatalf("unverified-version stored level = %s", levelPayload)
+	}
+	// A gain found across a backend outage has no known time. A unique
+	// same-model drop inside its interval is related evidence only.
+	gapFrom := databaseNow.UTC().Add(40 * time.Second)
+	gapTo := databaseNow.UTC().Add(70 * time.Second)
+	gapDrop := rareDrop
+	gapDrop.ID = newTestEventID(t)
+	gapDrop.OccurredAt = databaseNow.UTC().Add(60 * time.Second)
+	gapDrop.Sequence = int64Pointer64(60)
+	gapDrop.Region, gapDrop.X, gapDrop.Y, gapDrop.Z = nil, nil, nil, nil
+	gapGain := observedItem
+	gapGain.ID = newTestEventID(t)
+	gapGain.Kind = "item.acquired"
+	gapGain.OccurredAt = gapTo
+	gapGain.Sequence = int64Pointer64(61)
+	gapGain.Region, gapGain.X, gapGain.Y, gapGain.Z = nil, nil, nil, nil
+	gapGain.Payload = json.RawMessage(`{"item":{"model":777,"servername":"ITEM_TEST","plus":5},"quantity_delta":1,"destination_container":{"type":"pets","id":"9","slot":11},"acquisition_method":"unknown","observation_gap":{"reason":"backend_reconnect","from":"` +
+		gapFrom.Format(time.RFC3339Nano) + `","to":"` + gapTo.Format(time.RFC3339Nano) + `","previous_session_id":"` + gapDrop.SessionID + `"}}`)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{gapDrop, gapGain})
+	if err != nil || !changed || results[0].Status != "persisted" || results[1].Status != "persisted" {
+		t.Fatalf("gap drop and gain = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: gapDrop.ID, Limit: 1})
+	var gapPayload struct {
+		Item        json.RawMessage `json:"item"`
+		Observation json.RawMessage `json:"item_observation"`
+	}
+	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &gapPayload) != nil ||
+		len(gapPayload.Item) != 0 || len(gapPayload.Observation) != 0 {
+		t.Fatalf("a gap observation must not become drop enrichment: %+v, err=%v", exact, err)
+	}
+	if related := exact.Events[0].RelatedItemObservation; related == nil ||
+		related.EventID != gapGain.ID || related.Association != "gap_reconciled_same_model" ||
+		related.Item["plus"] != json.Number("5") {
+		t.Fatalf("gap observation must be offered as related evidence: %+v", related)
+	}
+	secondGapDrop := gapDrop
+	secondGapDrop.ID = newTestEventID(t)
+	secondGapDrop.OccurredAt = databaseNow.UTC().Add(65 * time.Second)
+	secondGapDrop.Sequence = int64Pointer64(62)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{secondGapDrop})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("second gap drop = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: gapDrop.ID, Limit: 1})
+	if err != nil || len(exact.Events) != 1 || exact.Events[0].RelatedItemObservation != nil {
+		t.Fatalf("competing same-model drops in one gap must suppress the suggestion: %+v, err=%v", exact, err)
 	}
 }
 

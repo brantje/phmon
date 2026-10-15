@@ -273,3 +273,94 @@ Full detailed inventory and pickup acceptance remains open until matching Window
 phBot packet evidence and naturally observed pickup/retry behavior are verified. The
 1.9.14 upload is limited to a passive count/size probe so the live packet families
 can be confirmed before enabling a parser.
+
+
+## Slice 13 linked callback observation policy (2026-10-15)
+
+A shared item model and nearby timestamp do not identify the same physical
+item instance. As of PR #91, new inventory state-diff gains no longer claim
+`drop_event_id` solely because one same-model callback was pending: storage,
+pet/party and other sources can produce that same item. Historical explicitly
+linked rows are not rewritten. The Events query may still project a unique
+historical `drop_event_id` association under the same agent/character/session,
+model and bounded interval. Its linked event ID is exposed for audit, but an
+old heuristic link is **not proof of actual pickup** and should not be
+described as a verified physical acquisition. Neither canonical source event
+is deleted.
+Any historic unlinked or ambiguous inventory observation retains its own
+stored detail and is not used to borrow plus/blues from a different copy.
+PhBot snapshots of storage, guild storage and pet containers are observations
+of contents, not proof of pickup or a completed transaction.
+
+## Historical drop link provenance (PR #91 follow-up)
+
+Some older `phbot.state_diff` item gains retained a `drop_event_id` chosen by a same-model/time/inventory heuristic. That field identifies a **stored correlation**, not independently verified pickup evidence. The All Events query therefore keeps both canonical callback and gain rows, including totals and cursor pagination, even when the legacy link is one-to-one. The callback exposes an auditable `item_observation` link tagged `stored_unverified_drop_event_id`, but does **not** inherit the gain's plus, blues or other instance attributes. Exact event ID, kind and source filters remain available. A future physical pickup correlation may collapse a logical row only after a separately verified, durable shared acquisition identity exists; no such general proof is currently available. Do not backfill or rewrite old source events to manufacture it.
+
+## 2026-10-15 — Drop tooltip access to separate observed item details
+
+PR #91 removed the old callback/item-gain promotion without retaining access to
+the captured values from default Normal/Rare Drop tooltips. The Events API now
+returns `related_item_observation` as a separate, explicitly unverified source.
+The shared tooltip renders that observation's own stats/blues in a labeled
+section. It does not assign those values to the callback's item. Missing or
+ambiguous evidence stays unavailable; history and acquisition/drop counts retain
+their separate semantics. See the [reproduction, bounds and regression gates](reference/item-tooltip-regression-2026-10-15.md).
+
+## 2026-10-15 — Compact popup correction and explicit pet source gap
+
+The duplicate callback/observation cards from the first regression repair are
+superseded by one compact display source, retaining a small unverified-pickup
+qualifier where applicable. The canonical callback and gain remain independent.
+The user's exact Gem Necklace observation was found with 48%/9% rolls and the two
+blue options; its own typed API values are preserved. The Lepus Soul Fiend pet
+observation contains durability 82 but no whites/blues or attack fields, unlike a
+different earlier bag copy of the same model. No renderer or catalog lookup can
+recover that copy's missing values. The probe remains presence-only and a verified
+native fixture/API source is required for full pet stats. See the
+[compact tooltip evidence and gate](reference/drop-screenshot-parity-2026-10-15.md).
+
+## 2026-10-15 — Two operator pet packet captures
+
+The first capture has one complete `0x30C8` Pick-pet response. An independently
+derived candidate reader consumes all 267 bytes and matches the phBot API's
+slot/model/quantity/durability for all 10 occupied slots. It exposes candidate
+enhancement and attribute bytes, but every magic-option count is zero and the
+pet API has no rich fields for independent comparison. The second capture
+contains paired `0x7034`/`0xB034` moves: pet slot 12 to pet slot 19, then pet
+slot 19 to character bag slot 64. The same Divine Weave copy appears in the bag
+with plus 5, white rolls and six blue options. Its pet API row had only basic
+fields. These move packets contain no item-detail body, and there was no
+floor-to-pet operation in either capture. Another already equipped copy of the
+same model had different durability, confirming that model-only association
+would be unsafe. [Packet-level audit and hashes](reference/pet-item-capture-2026-10-15.md).
+
+That gate was met by the third capture. Plugin 1.9.41 attaches decoded subtype
+`0x11` details to a Pick-pet slot only after the API agrees on pet ID, slot,
+model and durability. See the third-capture audit for values and remaining
+branches. Actual plugin 1.9.41 runtime validation remains open.
+
+
+## 2026-10-15 — 0x30C8 rich Pick-pet snapshot verified
+
+A second 0x30C8 capture contains twelve pet items, including Magic Weave with
+five blue options and Gold Earring with seven. The strict snapshot reader
+consumes all 417 bytes and matches every pet API slot/model/quantity/durability.
+The first 267-byte capture also consumes exactly once the final inventory-slot
+byte is included. A later packet-linked 0x1A move transfers that exact Magic
+Weave from pet slot 26 to bag slot 72. Bag plus 5, six 100% whites and all five
+blue ID/value pairs agree with the preceding packet's plus, variance and
+option pairs. Plugin 1.9.42 enables the verified Pick-pet snapshot parser and
+reuses the existing item-instance detail path. Packet blue IDs use the same
+verified code-to-label rules as bag API blues; unknown codes retain their raw
+ID/value without a guessed meaning. The tooltip also uses the packet's
+observed enhancement when the pet API omits plus. Absolute stat formulas
+remain unavailable. See the
+[packet-level audit](reference/pet-item-capture-2026-10-15.md) for hashes,
+field bounds and unsupported branches. A live plugin/UI check is pending.
+
+Kalypso's first live 1.9.42 restart exposed a capacity mismatch: the two
+captured `0x30C8` packets each declare 28 slots, while the active phBot API
+list reports 56 with all observed items in the first 28. Version 1.9.43
+reconciles the packet-covered positions and keeps the extra API page empty as
+a safety condition. The 245-byte live packet itself was not retained, so a
+fresh 1.9.43 session is needed to prove the correction on Kalypso.

@@ -1496,6 +1496,67 @@ supported pet family and runtime protocol, followed by natural, exactly observed
 pet-to-bag comparisons. Until then, detailed packet stats and live pickup receipts
 are explicit runtime blockers.
 
+### Pet item packet research and capture update — 2026-10-15
+
+The current official [Pets API](https://plugins.phbot.org/phbot-api/pets)
+example includes pet item `model`, `servername`, `name`, `quantity`, `plus` and
+`durability`. It does not specify white rolls, blue options, or an item-instance
+lookup API for pet slots. The [Game Data API](https://plugins.phbot.org/phbot-api/game-data)
+`get_item(id)` returns a static definition; it cannot identify one physical copy
+or its rolled stats. This is documentation evidence, distinct from the reported
+phBot 20.1.2 runtime rows, which lacked rich pet item fields.
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) describes
+`handle_joymax(opcode, data)` for server packets and
+`handle_silkroad(opcode, data)` for client packets. Its `event_loop()` runs every
+500 ms. The official [packet processing example](https://plugins.phbot.org/example-plugins)
+returns `True` from both callbacks to forward traffic. At pinned RSBot commit
+`1723fed`, [CosDataResponse](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Cos/CosDataResponse.cs)
+handles incoming `0x30C8` with different pet-family branches and inventory
+deserialization for an ability pet and job transport. Its
+[InventoryOperationResponse](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryOperationResponse.cs)
+handles incoming `0xB034`, including floor-to-pet, pet-to-inventory and
+inventory-to-pet operations. In that implementation, floor-to-pet calls the
+same inventory item parser used for floor-to-character, after reading the pet
+ID. This suggests the item-instance body may be reusable after the pet-specific
+envelope; it does not establish the installed server's byte offsets or variants.
+An independent [open source opcode map](https://github.com/tarekwiz/SilkroadBot/blob/master/Silkroad%20Fusion/Opcodes.cs)
+labels outgoing `0x7034` as client item movement. These are protocol leads from
+other implementations, not proof of the installed phBot/game-server layout.
+
+`tools/pet-item-capture/PetItemCapture.py` 0.2.0 now records the three opcodes
+with direction and a 32 KiB per-packet cap. Its snapshots keep pet rows and
+changed character-inventory rows, allowing a pet-to-bag item comparison without
+equating same-model copies. It records truncation and size omissions. No parser,
+pet item enrichment or pickup attribution is enabled. The runtime gate remains:
+capture a full pet snapshot and an observed move on the actual server/profile;
+verify pet ID, slot, item model, full instance fields and version-specific
+branches against the API before implementing a decoder. A clientless session may
+not deliver outgoing `0x7034` through `handle_silkroad`.
+
+### Observed pet packets and remaining item-detail gate — 2026-10-15
+
+Two operator captures from the current Pick-pet session now establish more than
+the presence probe. The first `0x30C8` packet is a complete 267-byte pet
+snapshot with 10 occupied entries; a strict candidate read based on the pinned
+RSBot pet/item handlers consumes the full packet and matches every observed
+phBot `get_pets()` slot, model, quantity and durability. It contains no blue
+options and no independent API enhancement/attribute values for confirmation.
+The second capture has `0x7034` requests and matching `0xB034` responses for
+subtype `0x10` pet-slot movement and subtype `0x1A` pet-to-bag movement. Both
+subtypes are corroborated by the independent
+[operation enum](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Inventory/InventoryOperation.cs).
+Those operation responses contain no item-detail body. The moved item gains
+plus/white/blue fields in the character bag; the pet API row had none. The
+same-model equipped copy has different durability, so it cannot supply the
+pet copy's missing fields. [Exact packet audit](reference/pet-item-capture-2026-10-15.md).
+
+Neither capture contains subtype `0x11`, the pinned handler's floor-to-pet
+branch. That is now the precise runtime blocker for decoding rich details as
+an item enters a pet. The capture probe is at 0.2.2 and counts successful
+`0xB034` subtypes, warning when only movements were observed. It remains
+read-only; production packet enrichment and pickup attribution remain off.
+
 ## Drop tooltip observation link — 2026-10-03
 
 The official [Events API](https://plugins.phbot.org/phbot-api/events) still gives
@@ -1872,3 +1933,133 @@ state an integer-only constraint. Rounding is an installed-runtime compatibility
 workaround, not a newly inferred API signature. Outdoor map preparation rounds
 X/Y within its original region; cave coordinates/training positions are unchanged.
 No automatic fallback/retry, longer deadline or unsupported primitive was added.
+
+
+## Issue #90 Slice 13: observation and price capability gate (2026-10-15)
+
+Plugin **1.9.38** with monitor protocol **19** uses the existing
+`get_inventory`, `get_storage`, `get_guild_storage`, `get_job_pouch` and
+`get_pets` snapshots, the documented item-drop callbacks and preserved
+Global chat messages. Guild storage must be paired with the actively observed
+server and guild identity; absent membership information means no guild
+movement attribution. Initial opening, reconnect and unavailable getters are
+unknown/baseline, not an empty container.
+
+The ordinary phBot API/state snapshots do **not** by themselves prove that an
+inventory gain was a world drop, that a nearby matching item was picked up,
+that the observing character owns the shared guild storage, or that a
+disappearing item was sold. PR #91 now retains new inventory delta item details
+independently but does not emit a new `drop_event_id` link from a unique
+callback-model/time match. Historical explicit associations remain stored and
+must not be interpreted as verified pickup causality. Cross-observer Global chat
+records have individual event IDs but no shared server broadcast ID; this
+cannot reliably prove two records describe the same advertisement.
+
+**Stall sale and realized-price history remain unsupported.** The reviewed
+plugin pathways and available documented event handlers do not provide a
+confirmed completed-sale receipt tying outcome, stable item identity, paid
+gold and quantity together. A stall advertisement or a change in inventory
+or gold is insufficient. No packet opcode is assumed to be a universal stall
+transaction decoder. To enable this: capture an authorized, bounded real
+phBot callback/API trace of a successful stall listing and completed sale,
+including item, quantity, final gold, success/failure response and stable
+transaction identity; verify vSRO server/profile semantics and repeated
+observation/reconnect behavior in fixtures before adding storage or charts.
+Without those observations the capability stays explicitly unsupported.
+
+**Live validation still required:** same-sample and delayed deposits and
+withdrawals for personal and guild storage; guild membership changes; pet
+pickup source receipts and state-diff ordering; real Windows phBot runtime.
+A synthetic integration test is not proof of real game-server packet semantics.
+
+### Item reconciliation when a source container disappears
+
+A delayed item movement candidate comes from an already comparable pair of observed resource samples. If a storage container becomes unavailable, a guild snapshot disappears, or the next resource sample cannot be normalized, it invalidates *transfer* proof but does not erase the preceding net-change evidence. The plugin now emits the retained, originally timestamped quantity gain/loss with unknown provenance and clears its pending match. This does not prove a world drop or pickup. New/opened storage remains an unknown baseline and is not interpreted as zero. Cross-session identity loss is not used to fabricate new character ownership; validating this behavior on real Windows/phBot resource availability transitions remains outstanding.
+
+### Session teardown and bounded item deltas
+
+The network worker finalizes any supported pending net quantity changes while the old character and session are still authoritative. This occurs before the leave message, character replacement/registration, backend rejection, reconnect setup, and socket teardown clears the old IDs. A candidate is emitted once as an unknown-cause, originally timestamped item quantity observation, never as proof of a pickup or a world drop. No unmatched candidate is carried into the new session as an inferred transfer. If the old session binding was already lost, the plugin logs the limitation instead of attributing the delta to an unrelated character. Regression tests cover old-session IDs and rejection teardown; live phBot reconnect evidence is still needed.
+
+### Item changes across a backend outage or lost sample (plugin 1.9.40)
+
+Item and pet-container changes are derived by comparing complete resource
+snapshots. Earlier plugins discarded the comparison point whenever the backend
+connection dropped (a new character session) or the resource sampler fell behind,
+so an item gained during that interval became part of the next baseline and was
+never reported. Plugin 1.9.40 keeps the last complete snapshot for the same
+character, guild and pet roster for up to 900 seconds and compares it with the
+first complete snapshot after reconnect or the lost sample.
+
+Resulting `item.*` events carry `payload.observation_gap` with `reason`
+(`backend_reconnect` or `sample_gap`), the `from`/`to` times of the unobserved
+interval and, for reconnects, `previous_session_id`. `occurred_at` is the time of
+the later snapshot; the true time inside the interval is unknown and is never
+back-dated. The cause stays `unknown` and no `drop_event_id` is attached. Party,
+academy and pet-lifecycle transitions are not derived across a gap. A character
+leave, character/guild/profile switch, a changed pet roster or a gap above 900
+seconds still starts a fresh baseline.
+
+Limit: the comparison only proves that an item is present now and was not before.
+Pet-held items still expose only the basic `get_pets()` fields (no plus, whites or
+blues), so a gap-reconciled pet gain shows the item without rolls until a verified
+pet item packet decoder exists.
+
+### Pick-pet equipment details from subtype 0x11 (plugin 1.9.41)
+
+The official [phBot Pets API](https://plugins.phbot.org/phbot-api/pets) gives
+pet IDs and inventory slots but its observed rows omit the rich equipment
+fields. The official [packet callback API](https://plugins.phbot.org/phbot-api/events)
+permits passive `handle_joymax` observation. The independently published
+[RSBot operation handler](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryOperationResponse.cs)
+and [item parser](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Inventory/InventoryItem.cs)
+provided a candidate layout. Three operator captures, audited in
+[the packet evidence](reference/pet-item-capture-2026-10-15.md), confirm Pick-pet
+snapshot boundaries, slot moves and, finally, two rich subtype `0x11` item
+bodies. Both pickup bodies exactly match their preceding bag copies' model,
+plus, durability and blue ID/value pairs, and their subsequent pet slots.
+
+Plugin 1.9.41 decodes only successful vSRO 1.188 subtype `0x11` equipment
+with zero rental type and empty binding groups. It requires matching `get_pets()`
+pet ID/slot/model/durability/quantity before exposing the packet instance. The
+backend's existing item-detail resolver converts the variance and option IDs
+for pet slots. Runtime validation of this production build is still pending.
+Already-held pet items, other pet families and packet branches remain basic
+until separate verified evidence supports decoding them. No pet pickup event
+causality or transfer of details into an independent bag copy is inferred.
+
+### Pick-pet summon snapshot details from 0x30C8 (plugin 1.9.42)
+
+Two complete operator captures now verify the Pick-pet `0x30C8` branch. The
+first has 10 basic items; the second has 12 items including a Magic Weave
+with five blues and a Gold Earring with seven. The packet layout is pet ID,
+model, current/max HP, settings, length-prefixed name, capacity, occupied
+count, item blocks, owner ID and inventory-slot byte. The pinned
+[RSBot Ability-pet parser](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Cos/Ability.cs)
+corroborates the trailer byte; strict offline readers consumed all 267 and
+417 bytes and matched every phBot pet API slot/model/quantity/durability.
+The shared equipment item body is the same layout independently checked in
+the `0xB034` subtype `0x11` pickup captures.
+
+A fifth capture linked Magic Weave's pet slot 26 to bag slot 72 through a
+successful subtype `0x1A` move. Its bag plus 5, six 100% white rolls and five
+blue ID/value pairs agree with the earlier `0x30C8` bytes. This closes the
+same-item evidence gate for rich Pick-pet summon items. Full packet-level
+values and SHA-256 hashes are in
+[the capture audit](reference/pet-item-capture-2026-10-15.md).
+
+Plugin 1.9.42 adds a bounded, worker-side snapshot parser that waits briefly
+for a matching `get_pets()` roster. It rejects unsupported rental/binding
+forms and item families. The currently verified non-equipment branch is
+simple alchemy reinforcement elixirs, parsed only to reach subsequent
+items. New pickups still use subtype `0x11`. This supplies details for
+already-held Pick-pet equipment when the observed branch parses fully;
+actual plugin 1.9.42 installation and live UI confirmation remain open.
+
+On Kalypso's 2026-10-16 restart, phBot 20.1.3 returned a 56-position Pick-pet
+item list while the earlier complete `0x30C8` captures advertised capacity
+28. Plugin 1.9.42 reported one 245-byte snapshot and no attached instances;
+its strict capacity-equality gate would reject a matching 28-slot packet.
+Plugin 1.9.43 allows an empty second API page while checking every packet-covered slot and
+rejecting occupied uncovered positions. The live packet's own capacity was
+not retained, so 1.9.43 needs a new runtime observation.
+This does not recover historical items whose packet bytes were never captured.

@@ -9,9 +9,10 @@ export function analyticsGrouping(
   groupBy: string,
 ): AnalyticsGroupBy {
   const drops = view === 'rare_drops' || view === 'normal_drops'
+  const itemGroup = drops || view === 'item_history'
   if (
-    (groupBy === 'item' || groupBy === 'type' || groupBy === 'degree') &&
-    drops
+    (groupBy === 'item' && itemGroup) ||
+    ((groupBy === 'type' || groupBy === 'degree') && drops)
   ) {
     return groupBy
   }

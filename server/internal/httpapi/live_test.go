@@ -599,6 +599,22 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Server: "Example", Kind: events.DeathKind, From: "2026-09-01", To: "2026-09-28", Limit: 25}},
 			valid:   true,
 		},
+		"dashboard offers": {
+			message: liveClientMessage{SubscriptionID: "dashboard-offers", Revision: 1, Stream: "offers", Filter: liveFilter{Server: "Greatest", Limit: 5}}, valid: true,
+		},
+		"oversized dashboard offers": {
+			message: liveClientMessage{SubscriptionID: "dashboard-offers", Revision: 1, Stream: "offers", Filter: liveFilter{Limit: 11}},
+		},
+		"offers reject unrelated event filter": {
+			message: liveClientMessage{SubscriptionID: "dashboard-offers", Revision: 1, Stream: "offers", Filter: liveFilter{Kind: "drop.rare"}},
+		},
+		"exact item source event": {
+			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", EventID: "8d16ab39-10b8-4b26-80aa-a4be01e10f18"}},
+			valid:   true,
+		},
+		"invalid item source event": {
+			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{EventID: "not-an-event-id"}},
+		},
 		"analytics deaths": {
 			message: liveClientMessage{SubscriptionID: "analytics", Revision: 1, Stream: "analytics", Filter: liveFilter{Server: "Example", AnalyticsView: "deaths", From: "2026-09-01T00:00:00Z", To: "2026-09-02T00:00:00Z", Timezone: "Europe/Amsterdam", Bucket: "day", GroupBy: "location", PageSize: 25}},
 			valid:   true,

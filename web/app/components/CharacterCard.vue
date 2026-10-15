@@ -3,11 +3,17 @@ import { useId } from 'vue'
 import type { CharacterView, PetInventoryRecord } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
 import { combinedCharacterGold } from '../utils/fleetGold'
+import {
+  characterInfoRows,
+  equipmentColumns,
+  equipmentItemAt,
+} from '../utils/equipmentLayout'
 
 const props = defineProps<{
   character: CharacterView
   stale?: boolean
   groupName?: string
+  resource?: string
 }>()
 const {
   characterResources,
@@ -25,6 +31,28 @@ const deathState = computed(() =>
 )
 const selectedTab = ref('Overview')
 const selectedContainer = ref('storage')
+watch(
+  () => props.resource,
+  (resource) => {
+    const tabs: Record<string, string> = {
+      inventory: 'Inventory',
+      equipment: 'Info',
+      storage: 'Storage',
+      guild_storage: 'Storage',
+      job_pouch: 'Storage',
+      pets: 'Pet',
+    }
+    const tab = tabs[resource || '']
+    if (!tab) return
+    selectedTab.value = tab
+    if (
+      resource &&
+      ['storage', 'guild_storage', 'job_pouch'].includes(resource)
+    )
+      selectedContainer.value = resource
+  },
+  { immediate: true },
+)
 const cardElement = ref<HTMLElement | null>(null)
 const cardVisible = ref(false)
 const resourceSubscriptionID = `resources-${useId()
@@ -86,6 +114,15 @@ const equipmentObservation = computed(() => observation('equipment'))
 const equipmentAvailability = computed(
   () => observation('equipment')?.availability,
 )
+const infoRows = computed(() => {
+  const seen =
+    props.character.last_activity_at || props.character.state_updated_at
+  return characterInfoRows(
+    props.character,
+    payload('character_info'),
+    seen ? formatSyncedTime(seen) : '',
+  )
+})
 const freshness = computed(() => {
   const values = Object.values(resourceMap.value)
     .map((entry) => entry.observed_at)
@@ -120,7 +157,7 @@ const academyMembers = computed(() => {
 const academyHasMembers = computed(() => academyMembers.value.length > 0)
 const activeResourceKeys = computed(() => {
   if (selectedTab.value === 'Overview') return ['pets', 'party']
-  if (selectedTab.value === 'Info') return ['equipment']
+  if (selectedTab.value === 'Info') return ['equipment', 'character_info']
   if (selectedTab.value === 'Inventory') return ['inventory']
   if (selectedTab.value === 'Storage') return [selectedContainer.value]
   if (selectedTab.value === 'Pet') return ['pets', 'item_enrichment']
@@ -205,9 +242,6 @@ async function resetPerformanceRates() {
 
 function available(key: string) {
   return observation(key)?.availability || 'unavailable'
-}
-function itemSlots(value: unknown) {
-  return Array.isArray(value) ? value : []
 }
 function petLabel(pet: PetInventoryRecord) {
   const type = typeof pet.type === 'string' ? pet.type : 'unknown'
@@ -486,35 +520,37 @@ onBeforeUnmount(() => {
                 : 'an unknown time'
             }}.
           </div>
-          <div class="equipment-center">
-            <CharacterPortrait
-              :name="character.name"
-              :portrait-url="character.portrait_url"
-              size="large"
-            />
-            <strong>{{ character.name }}</strong
-            ><span>{{
-              character.level == null
-                ? 'Level unavailable'
-                : `Level ${character.level}`
-            }}</span>
-          </div>
           <div class="equipment-slots">
             <div
-              v-for="(slot, index) in itemSlots(equipment.slots)"
-              :key="index"
-              class="equipment-slot"
+              v-for="(column, side) in equipmentColumns"
+              :key="side"
+              :class="['equipment-column', `equipment-column-${side}`]"
             >
-              <ItemSlot
-                :item="
-                  slot && typeof slot === 'object' && 'item' in slot
-                    ? (slot.item as Record<string, unknown>)
-                    : null
-                "
-                :slot-number="index"
-                :label="`Equipment source slot ${index + 1}`"
+              <div
+                v-for="(cell, index) in column"
+                :key="`${side}-${index}`"
+                class="equipment-slot"
+              >
+                <ItemSlot
+                  v-if="cell.sourceSlot != null"
+                  :item="equipmentItemAt(equipment.slots, cell.sourceSlot)"
+                  :slot-number="cell.sourceSlot"
+                  :label="cell.label"
+                />
+              </div>
+            </div>
+            <div class="equipment-center">
+              <CharacterPortrait
+                :name="character.name"
+                :portrait-url="character.portrait_url"
+                size="card"
               />
-              <small>Slot {{ index + 1 }}</small>
+              <dl class="equipment-info">
+                <div v-for="row in infoRows" :key="row.label">
+                  <dt>{{ row.label }}</dt>
+                  <dd>{{ row.value }}</dd>
+                </div>
+              </dl>
             </div>
           </div>
         </div>
@@ -919,12 +955,34 @@ onBeforeUnmount(() => {
         }}</span>
       </div>
       <div v-if="petPacketProbe" class="pet-packet-probe" role="status">
-        <strong>Passive packet probe · V14</strong>
+        <strong>Passive pet item packets</strong>
         <span>{{ petPacketProbeSummary('0x30C8') }}</span>
         <span>{{ petPacketProbeSummary('0xB034') }}</span>
+        <span v-if="payload('item_enrichment').pet_snapshot_last_error"
+          >Last snapshot check:
+          {{ payload('item_enrichment').pet_snapshot_last_error }}</span
+        >
         <small
-          >This build reports packet counts and sizes only. It does not decode
-          packet contents or change pet items.</small
+          v-if="
+            ['vsro_pet_item_r2', 'vsro_pet_item_r3'].includes(
+              String(payload('item_enrichment').pet_inventory_decoder_build),
+            )
+          "
+          >Pick-pet snapshots and pickups can add plus, rolls and blue options
+          when the packet matches the pet inventory. Unsupported item types
+          still show basic facts.</small
+        >
+        <small
+          v-else-if="
+            payload('item_enrichment').pet_inventory_decoder_build ===
+            'vsro_pet_pickup_r1'
+          "
+          >This plugin decodes new Pick-pet pickups. Items already held by the
+          pet may still show basic facts.</small
+        >
+        <small v-else
+          >This plugin build reports packet counts and sizes only. Pet item
+          details require a newer plugin.</small
         >
       </div>
       <article v-for="pet in pets" :key="String(pet.pet_id)" class="pet-card">

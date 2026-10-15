@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.37'
+pVersion = '1.9.43'
 pUrl = ''
 
-PROTOCOL_VERSION = 19
+PROTOCOL_VERSION = 20
 TELEPORT_READY_OPCODE = 0x34B5
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
@@ -115,8 +115,13 @@ MAX_EXTERNAL_ROUTE_BYTES = 512 * 1024
 MAX_RESOURCE_SLOTS = 2048
 MAX_ITEM_TYPE_CACHE_ENTRIES = 4096
 RESOURCE_SAMPLE_INTERVAL_SECONDS = 2.0
+ITEM_RECONCILIATION_WINDOW_SECONDS = 6.0
+MAX_ITEM_RECONCILIATION_PENDING = 128
 DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
 DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
+# Item snapshots from before a backend outage or sampling gap stay comparable
+# for this long; a longer gap makes a net change too coarse to attribute.
+RESOURCE_GAP_CARRY_SECONDS = 900.0
 MAX_ITEM_PACKET_COUNT = 128
 MAX_ITEM_PACKET_BYTES = 2 * 1024 * 1024
 MAX_ITEM_PACKET_SIZE = 256 * 1024
@@ -127,7 +132,7 @@ MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # parsed item fields or packet sizes only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
-PET_INVENTORY_DECODER_BUILD = 'vsro_pet_packet_probe_r1'
+PET_INVENTORY_DECODER_BUILD = 'vsro_pet_item_r3'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -1471,7 +1476,8 @@ def _normalize_container(raw, resource_key):
 def collect_resource_inputs(api=None):
     """Call phBot getters on its callback thread; return raw values for worker normalization."""
     inputs = {}
-    for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy'):
+    for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy',
+                 'get_character_data', 'get_guild', 'get_guild_union'):
         function = (api or {}).get(name) if isinstance(api, dict) else None
         if not callable(function):
             function = _optional_phbot_api(name)
@@ -1534,6 +1540,10 @@ def _item_sort_type(server, model):
         sort_type = 'Weapon'
     elif tid1 == 1 and tid2 == 4:
         sort_type = 'Shield'
+    elif tid1 == 3 and tid2 == 3 and definition.get('tid3') == 4:
+        # Silkroad arrows and bolts share the ammunition family. Keep them out
+        # of activity tracking while retaining their live inventory snapshots.
+        sort_type = 'Ammo'
     elif tid1 == 3 and tid2 == 1:
         sort_type = 'Potion'
     elif tid1 == 3 and tid2 == 2:
@@ -1581,10 +1591,38 @@ def _cache_resource_item_types(inputs, server):
 
 
 def _ignore_item_event(config, sort_type):
+    if sort_type == 'Ammo':
+        return True
     setting = _ITEM_TYPE_FILTERS.get(sort_type)
     if setting is None:
         return False
     return config.get(setting, True) is True
+
+
+def _event_item_sort_type(identity, event):
+    """Resolve an item's cached family or its stable server-name code."""
+    if not isinstance(event, dict):
+        return None
+    sort_type = event.get('_phmon_item_sort_type')
+    if sort_type == 'Ammo':
+        return sort_type
+    payload = event.get('payload')
+    item = payload.get('item') if isinstance(payload, dict) else None
+    code = event.get('item_code')
+    if not isinstance(code, str) and isinstance(item, dict):
+        code = item.get('servername')
+    if isinstance(code, str):
+        normalized = code.upper()
+        if 'AMMO_ARROW' in normalized or 'AMMO_BOLT' in normalized:
+            return 'Ammo'
+    model = event.get('item_model')
+    if not isinstance(model, int) and isinstance(item, dict):
+        model = item.get('model')
+    if not isinstance(model, int) and isinstance(payload, dict):
+        model = payload.get('model')
+    if isinstance(identity, dict):
+        return _cached_item_sort_type(identity.get('server'), model)
+    return None
 
 
 def _is_weapon_or_shield_equipment_transfer(identity, item, source, destination):
@@ -1715,6 +1753,8 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
 
     available, academy = call('get_academy')
     resources['academy'] = _normalize_academy(academy, available)
+    resources['character_info'] = _normalize_character_info(
+        call('get_character_data'), call('get_guild'), call('get_guild_union'))
     resources['party_setup'] = {
         'availability': 'unavailable',
         'mode': 'read_only_unverified',
@@ -1770,9 +1810,61 @@ def _normalize_academy(value, api_available):
     return {'availability': 'observed', 'value': payload}
 
 
-def _event_resource_snapshot(resources):
+def _normalize_character_info(character, guild, union):
+    """Summarize the documented guild/union getters for this character's info card."""
+    character_available, character_data = character
+    guild_available, guild_data = guild
+    union_available, union_data = union
+    if not character_available and not guild_available and not union_available:
+        return {'availability': 'unavailable', 'reason': 'api_missing'}
+    payload = {'availability': 'observed'}
+    own_name = None
+    if isinstance(character_data, dict):
+        own_name = _bounded_text(character_data.get('name'), 64)
+        job_name = _bounded_text(character_data.get('job_name'), 64)
+        if job_name is not None:
+            payload['job_name'] = job_name
+    if isinstance(guild_data, dict):
+        members = online = 0
+        own = None
+        for member in guild_data.values():
+            if not isinstance(member, dict):
+                continue
+            members += 1
+            if member.get('online') is True or (isinstance(member.get('online'), int) and member.get('online') > 0):
+                online += 1
+            name = _bounded_text(member.get('name'), 64)
+            if own_name and name and name.lower() == own_name.lower():
+                own = member
+        summary = {'member_count': members, 'online_count': online}
+        donated = own.get('donated_gp') if own else None
+        if isinstance(donated, int) and not isinstance(donated, bool) and donated >= 0:
+            summary['donated_gp'] = donated
+        payload['guild'] = summary
+    if isinstance(union_data, dict):
+        names = []
+        count = 0
+        for entry in union_data.values():
+            if not isinstance(entry, dict):
+                continue
+            count += 1
+            name = _bounded_text(entry.get('name'), 64)
+            if name is not None and len(names) < 32:
+                names.append(name)
+        payload['union'] = {'count': count, 'names': sorted(names, key=str.lower)}
+    return payload
+
+
+def _event_resource_snapshot(resources, identity=None):
     if not isinstance(resources, dict):
         return None
+    # Guild inventories are shared by a server/guild, not owned by the
+    # observing character. Without a verified guild name, exclude this
+    # container from movement attribution rather than invent an owner.
+    guild = identity.get('guild') if isinstance(identity, dict) else None
+    guild_key = guild.strip().casefold() if isinstance(guild, str) else ''
+    if not guild_key or len(guild_key) > 100:
+        guild_key = None
     pets_resource = resources.get('pets')
 
     def membership(resource, collection_path):
@@ -1808,11 +1900,16 @@ def _event_resource_snapshot(resources):
             pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
 
     containers = {}
-    for key in ('equipment', 'inventory', 'storage', 'job_pouch'):
+    for key in ('equipment', 'inventory', 'storage', 'guild_storage', 'job_pouch'):
         container = resources.get(key)
         if not isinstance(container, dict) or container.get('availability') != 'observed':
             continue
-        containers[key] = _event_item_quantities(container.get('slots', []))
+        if key == 'guild_storage':
+            if guild_key is None:
+                continue
+            containers['guild_storage:' + guild_key] = _event_item_quantities(container.get('slots', []))
+        else:
+            containers[key] = _event_item_quantities(container.get('slots', []))
     for pet in (pets_resource.get('pets', [])[:32] if pets is not None else []):
         if not isinstance(pet, dict) or not pet.get('pet_id') or not pet.get('inventory_available'):
             continue
@@ -2109,6 +2206,133 @@ def parse_item_durability_update(data):
     return {'source_slot': slot, 'fields': {'durability': durability}}
 
 
+def _read_vsro_equipment_item(reader):
+    """Read the equipment body shared by the observed pet packet branches."""
+    rental_type = reader.u32()
+    if rental_type != 0:
+        raise ItemPacketError('unsupported_pet_item_rental')
+    model, plus, variance, durability = reader.u32(), reader.u8(), reader.u64(), reader.u32()
+    if not model:
+        raise ItemPacketError('invalid_model')
+    count = reader.u8()
+    if count > MAX_ITEM_MAGIC_OPTIONS:
+        raise ItemPacketError('magic_option_count_exceeds_limit')
+    options = [{'id': str(reader.u32()), 'value': str(reader.u32())}
+               for _ in range(count)]
+    if (reader.u8(), reader.u8(), reader.u8(), reader.u8()) != (1, 0, 2, 0):
+        raise ItemPacketError('unsupported_pet_item_binding')
+    return {'model': model, 'fields': {
+        'plus': plus, 'variance': str(variance), 'durability': durability,
+        'magic_options': options, 'magic_options_available': True,
+    }}
+
+
+def parse_pet_inventory_operation(data):
+    """Decode only Pick-pet operations confirmed by the October 2026 captures."""
+    reader = LittleEndianReader(data)
+    if reader.u8() != 1:
+        raise ItemPacketError('operation_not_successful')
+    subtype = reader.u8()
+    if subtype == 0x07:
+        reader.u8()  # Character-bag slot dropped on the floor.
+        reader.finish()
+        return {'subtype': subtype}
+    if subtype not in (0x10, 0x11, 0x1A):
+        raise ItemPacketError('unsupported_pet_operation')
+    pet_id = reader.u32()
+    if not pet_id:
+        raise ItemPacketError('invalid_pet_id')
+    source_slot = reader.u8()
+    if subtype == 0x10:
+        destination_slot, quantity = reader.u8(), reader.u16()
+        reader.finish()
+        if quantity != 1:
+            raise ItemPacketError('unsupported_pet_move_quantity')
+        return {'subtype': subtype, 'pet_id': str(pet_id),
+                'source_slot': source_slot, 'destination_slot': destination_slot}
+    if subtype == 0x1A:
+        reader.u8()  # Character-bag destination.
+        reader.finish()
+        return {'subtype': subtype, 'pet_id': str(pet_id), 'source_slot': source_slot}
+    item = _read_vsro_equipment_item(reader)
+    reader.finish()
+    item.update({'subtype': subtype, 'pet_id': str(pet_id),
+                 'source_slot': source_slot})
+    return item
+
+
+def parse_pet_inventory_snapshot(data, pet):
+    """Reconcile the observed Pick-pet 0x30C8 branch with a fresh API roster."""
+    if (not isinstance(pet, dict) or
+            str(pet.get('type', '')).lower() != 'pick' or
+            pet.get('inventory_available') is not True or
+            not isinstance(pet.get('slots'), list)):
+        raise ItemPacketError('pick_pet_api_unavailable')
+    reader = LittleEndianReader(data)
+    pet_id, pet_model = reader.u32(), reader.u32()
+    if str(pet_id) != pet.get('pet_id') or pet_model != pet.get('model'):
+        raise ItemPacketError('pet_snapshot_identity_mismatch')
+    reader.u32()  # Current HP.
+    reader.u32()  # Maximum HP.
+    reader.u32()  # Ability-pet settings; 7 in both captured snapshots.
+    name_length = reader.u16()
+    if name_length > 100:
+        raise ItemPacketError('pet_name_exceeds_limit')
+    for _ in range(name_length):
+        reader.u8()
+    capacity, count = reader.u8(), reader.u8()
+    # The captured packet advertises 28 positions while this phBot getter
+    # currently exposes 56 positions for the same Pick pet. Only the packet's
+    # covered positions can be reconciled; never infer items on the extra page.
+    api_capacity = len(pet['slots'])
+    if (capacity == 0 or api_capacity not in (capacity, capacity * 2) or
+            count > capacity):
+        raise ItemPacketError('pet_snapshot_capacity_mismatch')
+    api_slots = {entry.get('source_slot'): entry.get('item')
+                 for entry in pet['slots'] if isinstance(entry, dict)}
+    if any(isinstance(item, dict) for slot, item in api_slots.items()
+           if not isinstance(slot, int) or slot >= capacity or slot < 0):
+        raise ItemPacketError('pet_snapshot_uncovered_api_item')
+    if count != sum(isinstance(item, dict) for slot, item in api_slots.items()
+                    if isinstance(slot, int) and 0 <= slot < capacity):
+        raise ItemPacketError('pet_snapshot_count_mismatch')
+    items = []
+    seen = set()
+    for _ in range(count):
+        slot = reader.u8()
+        if slot >= capacity or slot in seen:
+            raise ItemPacketError('invalid_pet_snapshot_slot')
+        seen.add(slot)
+        api_item = api_slots.get(slot)
+        if not isinstance(api_item, dict):
+            raise ItemPacketError('pet_snapshot_api_slot_mismatch')
+        code = api_item.get('servername')
+        if isinstance(code, str) and code.startswith('ITEM_ETC_ARCHEMY_REINFORCE_RECIPE_'):
+            rental_type, model, quantity = reader.u32(), reader.u32(), reader.u16()
+            if (rental_type != 0 or model != api_item.get('model') or
+                    quantity != api_item.get('quantity')):
+                raise ItemPacketError('pet_snapshot_stack_mismatch')
+            continue
+        if not (isinstance(code, str) and
+                (code.startswith('ITEM_CH_') or code.startswith('ITEM_EU_'))):
+            raise ItemPacketError('unsupported_pet_snapshot_item_family')
+        item = _read_vsro_equipment_item(reader)
+        fields = item['fields']
+        if (item['model'] != api_item.get('model') or
+                fields['durability'] != api_item.get('durability') or
+                api_item.get('quantity') not in (None, 1) or
+                (api_item.get('plus') is not None and
+                 fields['plus'] != api_item['plus'])):
+            raise ItemPacketError('pet_snapshot_equipment_mismatch')
+        item['source_slot'] = slot
+        items.append(item)
+    owner_id, inventory_slot = reader.u32(), reader.u8()
+    reader.finish()
+    return {'pet_id': str(pet_id), 'pet_model': pet_model,
+            'capacity': capacity, 'owner_id': str(owner_id),
+            'inventory_slot': inventory_slot, 'items': items}
+
+
 
 class PassiveItemTracker(object):
     """Bounded packet queue plus session-local, fail-closed item observations."""
@@ -2121,6 +2345,9 @@ class PassiveItemTracker(object):
         self._queued_bytes = 0
         self._overflow = False
         self._states = {}
+        self._pet_states = {}
+        self._pet_snapshots = {}
+        self._pet_snapshot_last_error = None
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
         self._epoch = 0
@@ -2174,6 +2401,9 @@ class PassiveItemTracker(object):
 
     def reset(self, reason='session_changed', protocol=None):
         self._states.clear()
+        self._pet_states.clear()
+        self._pet_snapshots.clear()
+        self._pet_snapshot_last_error = None
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
@@ -2245,12 +2475,57 @@ class PassiveItemTracker(object):
             if opcode == 0x30C8:
                 self._pet_snapshot_packet_count = min(
                     self._pet_snapshot_packet_count + 1, 2147483647)
+                self._pet_snapshot_last_error = None
+                if len(payload) >= 4:
+                    pet_id = str(struct.unpack_from('<I', payload)[0])
+                    for key in list(self._pet_states):
+                        if key[0] == pet_id:
+                            self._pet_states.pop(key, None)
+                else:
+                    self._pet_states.clear()
+                if self._protocol == 'vsro-1.188' and 4 <= len(payload) <= 32768:
+                    if len(self._pet_snapshots) >= 32:
+                        self._pet_snapshots.clear()
+                    self._pet_snapshots[pet_id] = {
+                        'packet': payload, 'sequence': self._sequence,
+                        'received_at': _monotonic(),
+                    }
             else:
                 self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
                 # This operation stream can change character inventory state;
                 # discard character-slot enrichment until a verified handler
                 # can reconcile the specific operation.
                 self._invalidate('inventory_operation_unclassified')
+                try:
+                    operation = parse_pet_inventory_operation(payload)
+                except ItemPacketError:
+                    self._pet_states.clear()
+                    self._pet_snapshots.clear()
+                else:
+                    # The API roster might already reflect this operation,
+                    # making a pending earlier snapshot impossible to verify.
+                    self._pet_snapshots.clear()
+                    subtype = operation['subtype']
+                    if self._protocol != 'vsro-1.188':
+                        self._pet_states.clear()
+                    elif subtype == 0x11:
+                        key = (operation['pet_id'], operation['source_slot'])
+                        if len(self._pet_states) >= MAX_RESOURCE_SLOTS:
+                            self._pet_states.clear()
+                        self._pet_states[key] = {
+                            'model': operation['model'], 'fields': operation['fields'],
+                            'sequence': self._sequence, 'received_at': _monotonic(),
+                            'confirmed': False,
+                        }
+                    elif subtype == 0x10:
+                        source = (operation['pet_id'], operation['source_slot'])
+                        destination = (operation['pet_id'], operation['destination_slot'])
+                        state = self._pet_states.pop(source, None)
+                        self._pet_states.pop(destination, None)
+                        if state is not None and source != destination:
+                            self._pet_states[destination] = state
+                    elif subtype == 0x1A:
+                        self._pet_states.pop((operation['pet_id'], operation['source_slot']), None)
             self._capture({'opcode': opcode_name, 'sequence': str(self._sequence),
                            'result': 'presence_and_size_only',
                            'packet_bytes': packet_size,
@@ -2291,6 +2566,8 @@ class PassiveItemTracker(object):
         overflow, events = self._take_queue()
         if overflow:
             self._invalidate('packet_queue_overflow')
+            self._pet_states.clear()
+            self._pet_snapshots.clear()
         for opcode, payload in events:
             self._process(opcode, payload)
 
@@ -2348,6 +2625,99 @@ class PassiveItemTracker(object):
                 item['instance'] = instance
                 attached += 1
 
+        pet_attached = 0
+        observed_pet_slots = set()
+        pets_resource = resources.get('pets')
+        if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
+            for pet in pets_resource.get('pets', []):
+                if not isinstance(pet, dict) or not pet.get('inventory_available'):
+                    continue
+                pet_id = pet.get('pet_id')
+                # This packet path is verified only for Pick pet equipment.
+                is_pick = str(pet.get('type', '')).lower() == 'pick'
+                snapshot = self._pet_snapshots.get(pet_id) if is_pick else None
+                if snapshot is not None:
+                    try:
+                        decoded = parse_pet_inventory_snapshot(snapshot['packet'], pet)
+                    except ItemPacketError as error:
+                        self._pet_snapshot_last_error = str(error)
+                        if str(error) not in (
+                                'pet_snapshot_identity_mismatch',
+                                'pet_snapshot_capacity_mismatch',
+                                'pet_snapshot_count_mismatch',
+                                'pet_snapshot_uncovered_api_item',
+                                'pet_snapshot_api_slot_mismatch',
+                                'pet_snapshot_stack_mismatch',
+                                'pet_snapshot_equipment_mismatch'):
+                            self._pet_snapshots.pop(pet_id, None)
+                    else:
+                        self._pet_snapshot_last_error = None
+                        for observed in decoded['items']:
+                            key = (pet_id, observed['source_slot'])
+                            previous = self._pet_states.get(key)
+                            if previous is not None and previous['sequence'] > snapshot['sequence']:
+                                continue
+                            self._pet_states[key] = {
+                                'model': observed['model'],
+                                'fields': observed['fields'],
+                                'sequence': snapshot['sequence'],
+                                'received_at': snapshot['received_at'],
+                                'confirmed': True,
+                            }
+                        self._pet_snapshots.pop(pet_id, None)
+                for slot_entry in pet.get('slots', []):
+                    if not isinstance(slot_entry, dict):
+                        continue
+                    slot, item = slot_entry.get('source_slot'), slot_entry.get('item')
+                    if isinstance(item, dict):
+                        item.pop('instance', None)
+                    if not is_pick or not isinstance(slot, int):
+                        continue
+                    key = (pet_id, slot)
+                    observed_pet_slots.add(key)
+                    state = self._pet_states.get(key)
+                    if state is None:
+                        continue
+                    if (not isinstance(item, dict) or
+                            item.get('model') != state['model'] or
+                            item.get('durability') != state['fields']['durability'] or
+                            item.get('quantity') not in (None, 1) or
+                            (item.get('plus') is not None and
+                             item['plus'] != state['fields']['plus'])):
+                        # The getter can briefly lag a packet. Pending data has
+                        # a short window to match; confirmed data must match on
+                        # every sample or its item lifetime ends.
+                        if state['confirmed'] or _monotonic() - state['received_at'] > 30:
+                            self._pet_states.pop(key, None)
+                        continue
+                    state['confirmed'] = True
+                    fields = state['fields']
+                    item['instance'] = {
+                        'availability': 'observed', 'source': 'vsro_1188_packet',
+                        'observation_id': '%s:%d:%d:pet:%s:%d' % (
+                            session_id or 'unregistered', self._epoch,
+                            state['sequence'], pet_id, slot),
+                        'capture_epoch': str(self._epoch),
+                        'observation_sequence': str(state['sequence']),
+                        'model': str(state['model']),
+                        'plus': fields['plus'], 'variance': fields['variance'],
+                        'durability': fields['durability'],
+                        'magic_options_availability': 'observed',
+                        'magic_options': list(fields['magic_options']),
+                    }
+                    pet_attached += 1
+            attached += pet_attached
+
+        # A confirmed observation ends when its pet/slot leaves the roster.
+        # Pending packets can wait briefly for a lagging getter to catch up.
+        for key, state in list(self._pet_states.items()):
+            if ((state['confirmed'] and key not in observed_pet_slots) or
+                    (not state['confirmed'] and _monotonic() - state['received_at'] > 30)):
+                self._pet_states.pop(key, None)
+        for key, snapshot in list(self._pet_snapshots.items()):
+            if _monotonic() - snapshot['received_at'] > 30:
+                self._pet_snapshots.pop(key, None)
+
         resources['item_enrichment'] = {
             'availability': 'observed' if attached else 'not_observed',
             'protocol': self._protocol,
@@ -2361,9 +2731,11 @@ class PassiveItemTracker(object):
             'pet_inventory_decoder_build': PET_INVENTORY_DECODER_BUILD,
             'pet_inventory_packet_count': self._pet_packet_count,
             'pet_snapshot_packet_count': self._pet_snapshot_packet_count,
+            'pet_snapshot_last_error': self._pet_snapshot_last_error,
             'pet_inventory_status': (
-                'candidate_layout_unverified'
-                if self._pet_snapshot_packet_count else 'not_observed'),
+                'observed' if pet_attached else
+                'pending_or_unsupported_snapshot' if self._pet_snapshot_packet_count else
+                'not_observed'),
             'pet_packet_probe': {
                 'mode': 'presence_and_size_only',
                 'packet_bytes_retained': False,
@@ -3241,6 +3613,12 @@ class AgentWorker(object):
         self._event_diff_session = None
         self._event_diff_identity = None
         self._event_diff = None
+        self._event_diff_at = None
+        self._event_diff_monotonic = None
+        # True only while the last comparison snapshot may be resumed after a
+        # reconnect (never after a leave, character switch or profile change).
+        self._event_diff_carry_ok = False
+        self._item_event_gap = None
         self._pet_transition_lock = threading.Lock()
         self._pet_transition_generation = 0
         self._pet_transition_phase = 'normal'
@@ -3254,6 +3632,7 @@ class AgentWorker(object):
         self._pet_transition_ready_at = None
         self._pet_transition_pending_events = []
         self._last_pet_roster = None
+        self._pending_item_reconciliation = []
         self._pending_drop_lock = threading.Lock()
         self._pending_drop_events = []
         self._event_samples = _queue.Queue(maxsize=256)
@@ -3615,33 +3994,85 @@ class AgentWorker(object):
 
     def _derive_resource_events(self, identity, resources, sample):
         identity_key = self._identity_key(identity)
-        if identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
-            self._event_baseline_required = True
+        guild = identity.get('guild') if isinstance(identity, dict) else None
+        guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
+        scoped_identity_key = (identity_key, guild_scope)
+        sample_observed_at = sample.get('observed_at') if isinstance(sample, dict) else None
+        gap = None
+        if scoped_identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
+            # A new registration for the same character, in the same guild,
+            # after a short backend outage keeps the last complete snapshot as
+            # its comparison point: changes made while disconnected are real
+            # owned-item changes, only their exact time is unknown.
+            if (scoped_identity_key == self._event_diff_identity and
+                    self.session_id != self._event_diff_session):
+                gap = self._resource_gap_context('backend_reconnect', sample_observed_at)
+            if gap is None:
+                # A guild switch preserves the character/session attribution of
+                # an earlier observation, but breaks any delayed guild transfer
+                # proof. Publish only the old unknown net change, not a movement.
+                if (self._event_diff_identity is not None and
+                        identity_key == self._event_diff_identity[0] and
+                        self.session_id == self._event_diff_session):
+                    self._finalize_pending_item_reconciliation(identity, float('inf'))
+                self._pending_item_reconciliation = []
+                self._event_baseline_required = True
+            else:
+                gap['previous_session_id'] = self._event_diff_session
+                self._pending_item_reconciliation = []
             if self._event_diff_identity is not None or self._event_diff_session is not None:
                 self._reset_pet_transition(release_pending=True)
-            self._event_diff_identity = identity_key
+            self._event_diff_identity = scoped_identity_key
             self._event_diff_session = self.session_id
             with self._pending_drop_lock:
                 self._pending_drop_events = [entry for entry in self._pending_drop_events
                                              if entry['session_id'] == self.session_id and
                                              entry['identity_key'] == identity_key]
         if self._resource_sample_gap:
+            # Lost intermediate samples destroy delayed transfer proof, not
+            # the already observed net increase/decrease between the last
+            # complete frame and this one. Finalize pending evidence in its
+            # original session, then compare the two complete snapshots.
+            if (scoped_identity_key == self._event_diff_identity and
+                    self.session_id == self._event_diff_session):
+                self._finalize_pending_item_reconciliation(identity, float('inf'))
+                if gap is None and not self._event_baseline_required:
+                    gap = self._resource_gap_context('sample_gap', sample_observed_at)
+            self._pending_item_reconciliation = []
             self._resource_sample_gap = False
-            self._event_baseline_required = True
+            if gap is None:
+                self._event_baseline_required = True
             with self._pending_drop_lock:
                 self._pending_drop_events = []
-        current = _event_resource_snapshot(resources)
+        current = _event_resource_snapshot(resources, identity)
         if current is None:
+            # The prior complete samples are still valid net-change evidence.
+            # A missing new sample invalidates transfer matching, not history.
+            if (self._event_diff_identity is not None and
+                    identity_key == self._event_diff_identity[0] and
+                    self.session_id == self._event_diff_session):
+                self._finalize_pending_item_reconciliation(identity, float('inf'))
+            self._pending_item_reconciliation = []
             self._event_baseline_required = True
             self._event_diff = None
             with self._pending_drop_lock:
                 self._pending_drop_events = []
             return
         pet_roster = _pet_roster_signature(current.get('pets'))
+        if gap is not None and (
+                self._event_diff is None or
+                _pet_roster_signature(self._event_diff.get('pets')) != pet_roster):
+            # A pet summoned, dismissed or replaced while unobserved changes
+            # container identity; there is no sound comparison point.
+            gap = None
+            self._event_baseline_required = True
+            self._pending_item_reconciliation = []
         suppress_pet_events, rebaseline_pet_items = self._observe_pet_transition(identity, pet_roster)
         previous = self._event_diff
         if self._event_baseline_required or previous is None:
+            self._pending_item_reconciliation = []
             self._event_diff = current
+            self._note_event_diff(sample_observed_at)
             self._event_baseline_required = False
             self._remember_pet_roster_if_normal(pet_roster)
             with self._pending_drop_lock:
@@ -3654,6 +4085,10 @@ class AgentWorker(object):
                 ('party', 'party.member_joined', 'party.member_left', 'party'),
                 ('academy', 'academy.member_joined', 'academy.member_left', 'academy'),
                 ('pets', 'pet.summoned', 'pet.dismissed', 'pet')):
+            if gap is not None:
+                # Membership transitions across a gap would be reported with a
+                # fabricated time; only owned-item changes are carried over.
+                continue
             if group == 'pets' and suppress_pet_events:
                 continue
             before = previous.get(group)
@@ -3691,13 +4126,41 @@ class AgentWorker(object):
         uncertain = set()
         for key in changed:
             uncertain.update((old_containers.get(key) or new_containers.get(key) or {}).keys())
-        if not rebaseline_pet_items:
-            self._emit_item_deltas(identity,
-                                   {key: old_containers[key] for key in common},
-                                   {key: new_containers[key] for key in common},
-                                   observed_at, position, uncertain)
+        if rebaseline_pet_items:
+            # The pet transition breaks transfer proof, but cannot erase an
+            # already observed unmatched change from a previous complete pair.
+            self._finalize_pending_item_reconciliation(identity, float('inf'))
+            self._pending_item_reconciliation = []
+        else:
+            self._item_event_gap = gap
+            try:
+                self._emit_item_deltas(identity,
+                                       {key: old_containers[key] for key in common},
+                                       {key: new_containers[key] for key in common},
+                                       observed_at, position, uncertain)
+            finally:
+                self._item_event_gap = None
         self._event_diff = current
+        self._note_event_diff(sample_observed_at)
         self._remember_pet_roster_if_normal(pet_roster)
+
+    def _note_event_diff(self, observed_at):
+        self._event_diff_at = observed_at if isinstance(observed_at, str) and observed_at else None
+        self._event_diff_monotonic = _monotonic()
+        self._event_diff_carry_ok = True
+
+    def _resource_gap_context(self, reason, observed_at):
+        """Describe an unobserved interval, or None when it cannot be compared."""
+        if (not self._event_diff_carry_ok or self._event_diff is None or
+                self._event_diff_monotonic is None or not self._event_diff_at):
+            return None
+        elapsed = _monotonic() - self._event_diff_monotonic
+        if elapsed < 0 or elapsed > RESOURCE_GAP_CARRY_SECONDS:
+            return None
+        to = observed_at if isinstance(observed_at, str) and observed_at else _worker_utc_now(self)
+        if to < self._event_diff_at:
+            return None
+        return {'reason': reason, 'from': self._event_diff_at, 'to': to}
 
     def _remember_pet_roster_if_normal(self, roster):
         with self._pet_transition_lock:
@@ -3859,31 +4322,176 @@ class AgentWorker(object):
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
+    def _flush_pending_items_before_session_change(self):
+        """Finalize old evidence while queue_event can still bind the old session.
+
+        Pending deltas have provenance only in the previous complete resource
+        pair. A new registration must not own an old character's observations.
+        """
+        if not self._pending_item_reconciliation:
+            return
+        if (self._current_identity is not None and
+                self._event_diff_identity is not None and
+                self._identity_key(self._current_identity) == self._event_diff_identity[0] and
+                self.session_id == self._event_diff_session and
+                _validate_agent_id(self.character_id) and
+                _validate_agent_id(self.session_id)):
+            self._finalize_pending_item_reconciliation(self._current_identity, float('inf'))
+        else:
+            _log('pending item evidence could not be bound to its original active session')
+        self._pending_item_reconciliation = []
+
+    def _finalize_pending_item_reconciliation(self, identity, now=None, flush_oldest=False,
+                                              invalidated_signatures=()):
+        """Publish a bounded, unmatched net change with its original observation time.
+
+        A delayed opposite delta proves a transfer only while the candidate is
+        pending. Expiry or buffer pressure must not erase an independently
+        observed quantity change. Never upgrade its unknown cause to a pickup.
+        """
+        if now is None:
+            now = _monotonic()
+        remaining = []
+        for index, entry in enumerate(self._pending_item_reconciliation):
+            if (entry['expires_at'] > now and not (flush_oldest and index == 0)
+                    and entry['signature'] not in invalidated_signatures):
+                remaining.append(entry)
+                continue
+            item = entry['item']
+            if not _item_has_identity(item):
+                continue
+            direction, quantity = entry['direction'], entry['quantity']
+            container = _container_reference(entry['container'], entry['record'])
+            payload = {'item': item, 'quantity_delta': quantity}
+            if direction == 'gain':
+                kind = ('item.acquired' if entry['old_total'] == 0 and entry['container'].split(':', 1)[0] != 'guild_storage'
+                        else 'item.quantity_increased')
+                payload['destination_container'] = container
+                payload['acquisition_method'] = 'unknown'
+                if entry['selected']:
+                    container['slot'] = entry['selected'][0]
+                if entry['ambiguous']:
+                    payload['item_instance_unobserved'] = True
+            else:
+                kind = 'item.quantity_decreased'
+                payload['source_container'] = container
+            outer_gap = self._item_event_gap
+            self._item_event_gap = entry.get('gap')
+            try:
+                self._queue_derived_event(identity, kind, 'item_container', payload,
+                                          entry['occurred_at'], entry['position'], item)
+            finally:
+                self._item_event_gap = outer_gap
+        self._pending_item_reconciliation = remaining
+
     def _emit_item_deltas(self, identity, before, after, occurred_at, position, uncertain=()):
+        # A unique opposite delta within the bounded window can prove a delayed
+        # transfer. Expired unmatched observations remain canonical unknown
+        # gains/losses rather than being silently discarded.
+        now = _monotonic()
+        # A container disappearing or becoming newly available cannot be
+        # used as transfer proof. Finalize the previously observed candidate
+        # as unknown instead of silently dropping it.
+        self._finalize_pending_item_reconciliation(
+            identity, now, invalidated_signatures=uncertain)
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
-        def inventory_slots(containers):
-            slots = {}
-            for record in containers.get('inventory', {}).values():
-                slots.update(record.get('slot_items', {}))
-            return slots
-
-        before_slots = inventory_slots(before)
-        after_slots = inventory_slots(after)
-        new_model_slots = {}
-        for slot, slot_item in after_slots.items():
-            # Only a formerly empty bag slot can identify one particular item.
-            if slot in before_slots:
-                continue
-            model = slot_item.get('model')
-            if isinstance(model, int) and not isinstance(model, bool) and model > 0:
-                new_model_slots.setdefault(model, []).append((slot, slot_item))
         for signature in sorted(signatures):
             if signature in uncertain:
                 continue
+            # Arrows and bolts remain visible in resource snapshots, but do
+            # not create acquisition, quantity, loss or transfer activity.
+            representative = next((container[signature]
+                                   for group in (before, after)
+                                   for container in group.values()
+                                   if signature in container), None)
+            item = representative.get('item') if isinstance(representative, dict) else None
+            if (_cached_item_sort_type(identity.get('server') if isinstance(identity, dict) else None,
+                                       item.get('model') if isinstance(item, dict) else None) == 'Ammo'):
+                continue
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
+            if old_total != new_total:
+                simple_changes = []
+                for container_key in before:
+                    old_quantity = before[container_key].get(signature, {}).get('quantity', 0)
+                    new_quantity = after[container_key].get(signature, {}).get('quantity', 0)
+                    if old_quantity == new_quantity:
+                        continue
+                    direction = 'gain' if new_quantity > old_quantity else 'loss'
+                    row = (after if direction == 'gain' else before)[container_key][signature]
+                    simple_changes.append((direction, container_key, abs(new_quantity - old_quantity), row))
+                if len(simple_changes) == 1:
+                    direction, container_key, amount, record = simple_changes[0]
+                    # Don't guess a multi-container decomposition or borrow
+                    # a same-model copy with unrelated item-instance rolls.
+                    candidates = [
+                        entry for entry in self._pending_item_reconciliation
+                        if entry['signature'] == signature and entry['direction'] != direction
+                        and entry['container'] != container_key and entry['quantity'] == amount]
+                    if len(candidates) == 1:
+                        pending = candidates[0]
+                        conflicts = [entry for entry in self._pending_item_reconciliation
+                                     if entry['signature'] == signature and entry is not pending]
+                        if not conflicts:
+                            if direction == 'gain':
+                                source_key, source_record = pending['container'], pending['record']
+                                dest_key, dest_record = container_key, record
+                                item, selected, ambiguous = _event_gain_item(
+                                    before[dest_key].get(signature), dest_record, amount)
+                            else:
+                                source_key, source_record = container_key, record
+                                dest_key, dest_record = pending['container'], pending['record']
+                                item = pending['item']
+                                selected, ambiguous = pending['selected'], pending['ambiguous']
+                            if _item_has_identity(item):
+                                payload = {'item': item, 'quantity_delta': amount,
+                                           'source_container': _container_reference(source_key, source_record),
+                                           'destination_container': _container_reference(dest_key, dest_record),
+                                           'method': 'observed_container_delta'}
+                                if selected:
+                                    payload['destination_container']['slot'] = selected[0]
+                                if ambiguous:
+                                    payload['item_instance_unobserved'] = True
+                                if not _is_weapon_or_shield_equipment_transfer(
+                                        identity, item, payload['source_container'], payload['destination_container']):
+                                    self._queue_derived_event(identity, 'item.transferred', 'item_container',
+                                                              payload, occurred_at, position, item)
+                                self._pending_item_reconciliation.remove(pending)
+                                continue
+                    # A counterparty with the same item in another observed
+                    # container can move later than the inventory read.
+                    # A loss can move into an empty observed destination.
+                    possible_source = direction == 'gain' and any(
+                        key != container_key and rows.get(signature, {}).get('quantity', 0) > 0
+                        for key, rows in before.items())
+                    # Do not hold singleton disappearances indefinitely as
+                    # speculative transfers: real weapon/item losses must
+                    # remain promptly visible when no destination gain exists.
+                    # Multi-quantity losses can still be paired with a late
+                    # observation from an already observed destination.
+                    possible_destination = direction == 'loss' and amount > 1 and any(
+                        key != container_key for key in before)
+                    if possible_source or possible_destination:
+                        # Preserve both the oldest observation and the bounded
+                        # memory budget when many independent changes arrive.
+                        if len(self._pending_item_reconciliation) >= MAX_ITEM_RECONCILIATION_PENDING:
+                            self._finalize_pending_item_reconciliation(identity, now, flush_oldest=True)
+                        item, selected, ambiguous = (
+                            _event_gain_item(before[container_key].get(signature), record, amount)
+                            if direction == 'gain'
+                            else (record.get('item') or {}, None, False))
+                        self._pending_item_reconciliation.append({
+                            'signature': signature, 'container': container_key,
+                            'direction': direction, 'quantity': amount,
+                            'record': record, 'item': item, 'selected': selected,
+                            'ambiguous': ambiguous, 'old_total': old_total,
+                            'occurred_at': occurred_at, 'position': position,
+                            'gap': self._item_event_gap,
+                            'expires_at': now + ITEM_RECONCILIATION_WINDOW_SECONDS,
+                        })
+                        continue
             if old_total == new_total:
                 gains, losses = [], []
                 for container_key in before:
@@ -3894,37 +4502,24 @@ class AgentWorker(object):
                 if len(gains) == 1 and len(losses) == 1 and gains[0][1] == losses[0][1]:
                     source_key, quantity, source_item = losses[0]
                     dest_key, _, dest_item = gains[0]
-                    item = dest_item.get('item') or source_item.get('item') or {}
+                    item, selected, ambiguous = _event_gain_item(
+                        before[dest_key].get(signature), dest_item, quantity)
                     if _item_has_identity(item):
                         payload = {'item': item, 'quantity_delta': quantity,
                                    'source_container': _container_reference(source_key, source_item),
                                    'destination_container': _container_reference(dest_key, dest_item),
                                    'method': 'observed_container_delta'}
+                        if selected:
+                            payload['destination_container']['slot'] = selected[0]
+                        if ambiguous:
+                            payload['item_instance_unobserved'] = True
                         if not _is_weapon_or_shield_equipment_transfer(
                                 identity, item, payload['source_container'], payload['destination_container']):
                             self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
                                                       occurred_at, position, item)
-                elif gains or losses:
-                    for container_key, quantity, record in gains:
-                        item, selected, ambiguous = _event_gain_item(
-                            before[container_key].get(signature), record, quantity)
-                        if _item_has_identity(item):
-                            payload = {'item': item, 'quantity_delta': quantity,
-                                       'destination_container': _container_reference(container_key, record),
-                                       'acquisition_method': 'unknown'}
-                            if selected:
-                                payload['destination_container']['slot'] = selected[0]
-                            if ambiguous:
-                                payload['item_instance_unobserved'] = True
-                            self._queue_derived_event(identity, 'item.quantity_increased', 'item_container', payload,
-                                                      occurred_at, position, item)
-                    for container_key, quantity, record in losses:
-                        item = record.get('item') or {}
-                        if _item_has_identity(item):
-                            payload = {'item': item, 'quantity_delta': quantity,
-                                       'source_container': _container_reference(container_key, record)}
-                            self._queue_derived_event(identity, 'item.quantity_decreased', 'item_container', payload,
-                                                      occurred_at, position, item)
+                # Balanced multi-container changes without a unique source and
+                # destination are ambiguous transfers, not acquisitions or
+                # disposals. Do not manufacture gain/loss events.
                 continue
 
             positive, negative = (new_total - old_total, 0) if new_total > old_total else (0, old_total - new_total)
@@ -3934,6 +4529,32 @@ class AgentWorker(object):
                 new = after[container_key].get(signature, {}).get('quantity', 0)
                 if new > old: deltas.append(('gain', container_key, new - old, after[container_key][signature]))
                 elif old > new: deltas.append(('loss', container_key, old - new, before[container_key][signature]))
+            # A partially balanced source/destination pair still proves a
+            # transfer of the overlapping quantity. Emit only the residual
+            # as a separate unknown net increase/decrease: neither the moved
+            # units nor their rolls are newly acquired.
+            observed_gains = [entry for entry in deltas if entry[0] == 'gain']
+            observed_losses = [entry for entry in deltas if entry[0] == 'loss']
+            if len(observed_gains) == 1 and len(observed_losses) == 1:
+                _, dest_key, gained, dest_record = observed_gains[0]
+                _, source_key, lost, source_record = observed_losses[0]
+                moved = min(gained, lost)
+                if moved and source_key != dest_key:
+                    moved_item, selected, ambiguous = _event_gain_item(
+                        before[dest_key].get(signature), dest_record, moved)
+                    if _item_has_identity(moved_item):
+                        payload = {'item': moved_item, 'quantity_delta': moved,
+                                   'source_container': _container_reference(source_key, source_record),
+                                   'destination_container': _container_reference(dest_key, dest_record),
+                                   'method': 'observed_container_delta'}
+                        if selected:
+                            payload['destination_container']['slot'] = selected[0]
+                        if ambiguous:
+                            payload['item_instance_unobserved'] = True
+                        if not _is_weapon_or_shield_equipment_transfer(
+                                identity, moved_item, payload['source_container'], payload['destination_container']):
+                            self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
+                                                      occurred_at, position, moved_item)
             changes = [entry for entry in deltas if entry[0] == ('gain' if positive else 'loss')]
             remaining = positive or negative
             for direction, container_key, quantity, record in changes:
@@ -3947,33 +4568,19 @@ class AgentWorker(object):
                 if not amount or not _item_has_identity(item):
                     continue
                 if direction == 'gain':
-                    kind = 'item.acquired' if old_total == 0 else 'item.quantity_increased'
+                    kind = ('item.acquired' if old_total == 0 and container_key.split(':', 1)[0] != 'guild_storage'
+                            else 'item.quantity_increased')
                     payload = {'item': item, 'quantity_delta': amount,
                                'destination_container': _container_reference(container_key, record)}
                     if selected:
                         payload['destination_container']['slot'] = selected[0]
                     if ambiguous:
                         payload['item_instance_unobserved'] = True
+                    # A same-model callback plus a new bag slot does not prove
+                    # that this gain came from that world drop (trade, storage,
+                    # party and pet sources can compete). Preserve both facts;
+                    # only a verified receipt may establish a pickup link.
                     payload['acquisition_method'] = 'unknown'
-                    model = item.get('model')
-                    candidates = new_model_slots.get(model, [])
-                    if (container_key == 'inventory' and amount == 1 and len(changes) == 1 and
-                            isinstance(model, int) and len(candidates) == 1 and
-                            candidates[0][0] in record.get('slots', []) and
-                            candidates[0][1].get('quantity', 1) == 1):
-                        slot, observed_item = candidates[0]
-                        inventory_quantity = sum(
-                            entry.get('quantity', 0)
-                            for entry in after.get('inventory', {}).values()
-                            if (entry.get('item') or {}).get('model') == model)
-                        drop_event_id = self._claim_drop_for_inventory_gain(identity, observed_item,
-                                                                              inventory_quantity)
-                        if drop_event_id:
-                            payload['item'] = observed_item
-                            payload['destination_container'] = {'type': 'inventory', 'slot': slot}
-                            payload['drop_event_id'] = drop_event_id
-                            payload.pop('item_instance_unobserved', None)
-                            item = observed_item
                 else:
                     kind = 'item.quantity_decreased'
                     payload = {'item': item, 'quantity_delta': amount,
@@ -4027,6 +4634,20 @@ class AgentWorker(object):
             return selected['event_id']
 
     def _queue_derived_event(self, identity, kind, source_ref, payload, occurred_at, position, item=None):
+        if (isinstance(item, dict) and
+                _cached_item_sort_type(identity.get('server') if isinstance(identity, dict) else None,
+                                       item.get('model')) == 'Ammo'):
+            return False
+        gap = self._item_event_gap
+        if gap is not None and kind.startswith('item.') and isinstance(payload, dict):
+            marker = {key: gap[key] for key in ('reason', 'from', 'to') if gap.get(key)}
+            if _validate_agent_id(gap.get('previous_session_id')):
+                marker['previous_session_id'] = gap['previous_session_id']
+            payload = dict(payload)
+            payload['observation_gap'] = marker
+            # The change happened somewhere inside the interval; report when
+            # it was observed, never an invented earlier time.
+            occurred_at = gap.get('to') or occurred_at
         event = {
             'event_id': str(uuid.uuid4()), 'schema_version': 1, 'kind': kind,
             'category': kind.split('.', 1)[0], 'occurred_at': occurred_at or _worker_utc_now(self),
@@ -4135,12 +4756,13 @@ class AgentWorker(object):
                 self._identity_key(identity) != self._identity_key(self._current_identity)):
             _log('activity event was rejected because its character identity is no longer active')
             return False
-        if _item_filters_enabled(self.config):
-            sort_type = event.get('_phmon_item_sort_type')
-            if not isinstance(sort_type, str) and isinstance(identity, dict):
-                sort_type = _cached_item_sort_type(identity.get('server'), event.get('item_model'))
-            if _ignore_item_event(self.config, sort_type):
-                return False
+        sort_type = _event_item_sort_type(identity, event)
+        # Ammunition is always excluded, including packet-derived pet pickups
+        # and when the optional potion/pill filters are disabled.
+        if sort_type == 'Ammo':
+            return False
+        if _item_filters_enabled(self.config) and _ignore_item_event(self.config, sort_type):
+            return False
         record = dict(event)
         record.pop('_phmon_item_sort_type', None)
         if isinstance(identity, dict):
@@ -4401,6 +5023,7 @@ class AgentWorker(object):
                 self._clear_navigation_route()
                 self.invalidate_position_authority()
                 self._rewind_external_route()
+                self._flush_pending_items_before_session_change()
                 self.character_id = None
                 self.session_id = None
                 self._current_identity = None
@@ -4424,6 +5047,7 @@ class AgentWorker(object):
                     try:
                         sample = self._samples.get_nowait()
                         if sample.get('leave'):
+                            self._flush_pending_items_before_session_change()
                             if self.character_id is not None:
                                 client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
                             self.character_id = None
@@ -4443,6 +5067,7 @@ class AgentWorker(object):
                             self._resource_baseline_required = True
                             self._confirmed_resources = None
                             self._item_tracker.reset('character_left')
+                            self._event_diff_carry_ok = False
 
                         else:
                             self._latest_sample = sample
@@ -4513,6 +5138,7 @@ class AgentWorker(object):
                 if client is not None:
                     client.close()
                 self._set_socket(None)
+                self._flush_pending_items_before_session_change()
                 self.invalidate_position_authority()
                 self._reset_pet_transition(release_pending=True)
                 self.character_id = None
@@ -4556,6 +5182,7 @@ class AgentWorker(object):
         if self._rejected_identity is not None and self._rejected_identity != identity_key:
             self._rejected_identity = None
         if identity != self._current_identity or self.character_id is None:
+            self._flush_pending_items_before_session_change()
             self.invalidate_position_authority()
             if self._current_identity is not None and identity != self._current_identity:
                 self._discard_pending_commands('character_changed')
@@ -4571,6 +5198,7 @@ class AgentWorker(object):
             self._clear_navigation_route()
             self._trace_requested_name = None
             self._item_tracker.reset('character_or_profile_changed')
+            self._event_diff_carry_ok = False
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_worker_utc_now(self)})
             reply = self._wait_for_registration(client)
             if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):
@@ -4744,6 +5372,7 @@ class AgentWorker(object):
     def _handle_character_rejected(self, message):
         if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             raise WebSocketClosed('invalid character rejection')
+        self._flush_pending_items_before_session_change()
         self._discard_pending_commands('session_superseded')
         self._clear_navigation_route()
         self._rejected_identity = self._identity_key(self._current_identity)
@@ -6562,7 +7191,7 @@ def _queue_canonical_event(kind, category, source, source_ref, payload, identity
     }
     if item_model is not None:
         event['item_model'] = item_model
-        if isinstance(identity, dict) and _item_filters_enabled(_profile_config or {}):
+        if isinstance(identity, dict):
             sort_type = _item_sort_type(identity.get('server'), item_model)
             event['_phmon_item_sort_type'] = sort_type
             if _ignore_item_event(_profile_config or {}, sort_type):

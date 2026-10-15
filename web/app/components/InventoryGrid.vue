@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import {
+  clampContainerPage,
+  containerPageCount,
+  containerPageLayout,
+  containerPageSlotNumbers,
+} from '~/utils/containerLayout'
+import { formatCompactObservedGold } from '~/utils/fleetGold'
+
 type Slot = {
   source_slot: number
   displayed_slot?: number
@@ -11,11 +19,19 @@ const props = defineProps<{
   availability?: string
   reason?: string
   gold?: number | null
+  // The dialog presentation is opt-in; inline callers keep 4 × 8 pages.
+  variant?: 'inline' | 'dialog'
+  container?: string
+  resetKey?: string
 }>()
 const page = ref(0)
-const pageSize = 32
-const columns = 4
-const rows = 8
+const dialog = computed(() => props.variant === 'dialog')
+const layout = computed(() =>
+  containerPageLayout(dialog.value ? props.container : undefined),
+)
+const pageSize = computed(() => layout.value.pageSize)
+const columns = computed(() => layout.value.columns)
+const rows = computed(() => layout.value.rows)
 const capacity = computed(() => {
   const value = props.observation?.capacity
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -28,26 +44,37 @@ const slots = computed<Slot[]>(() =>
     : [],
 )
 const pageCount = computed(() =>
-  Math.max(1, Math.ceil(capacity.value / pageSize)),
+  containerPageCount(capacity.value, pageSize.value),
 )
 const used = computed(() => slots.value.filter(Boolean).length)
-const pageSlots = computed(() => {
-  const start = page.value * pageSize
-  return Array.from({ length: rows * columns }, (_, index) => {
-    const displaySlot = start + index
-    if (displaySlot >= capacity.value) return null
-    return (
-      slots.value.find(
-        (entry) =>
-          entry !== null &&
-          (entry.displayed_slot ?? entry.source_slot) === displaySlot,
-      ) ?? null
-    )
-  })
-})
+const pageSlots = computed(() =>
+  containerPageSlotNumbers(page.value, capacity.value, layout.value).map(
+    (displaySlot) =>
+      displaySlot === null
+        ? null
+        : (slots.value.find(
+            (entry) =>
+              entry !== null &&
+              (entry.displayed_slot ?? entry.source_slot) === displaySlot,
+          ) ?? null),
+  ),
+)
 watch(pageCount, (count) => {
-  if (page.value >= count) page.value = Math.max(0, count - 1)
+  page.value = clampContainerPage(page.value, count)
 })
+watch(
+  () => props.resetKey,
+  () => {
+    page.value = 0
+  },
+)
+const goldLabel = computed(() =>
+  formatCompactObservedGold(
+    typeof props.gold === 'number' && Number.isFinite(props.gold)
+      ? props.gold
+      : null,
+  ),
+)
 const observed = computed(
   () => (props.availability || props.observation?.availability) === 'observed',
 )
@@ -70,10 +97,10 @@ const reasonText = computed(() => {
 <template>
   <section
     class="inventory-view"
-    :class="{ 'is-stale': staleContents }"
+    :class="{ 'is-stale': staleContents, 'is-dialog': dialog }"
     :aria-label="title"
   >
-    <div v-if="displayable" class="inventory-topline">
+    <div v-if="displayable && !dialog" class="inventory-topline">
       <h3>{{ title }}</h3>
       <span
         >{{ used }}/{{ capacity }} occupied<span v-if="staleContents">
@@ -81,7 +108,7 @@ const reasonText = computed(() => {
         ></span
       >
     </div>
-    <div v-if="staleContents" class="inventory-stale" role="status">
+    <div v-if="staleContents && !dialog" class="inventory-stale" role="status">
       Showing the last confirmed contents from {{ lastObserved }}. phBot
       currently reports this container as {{ availability || 'unavailable' }}.
     </div>
@@ -96,6 +123,7 @@ const reasonText = computed(() => {
         :key="number"
         class="compact-button"
         :class="{ selected: page === number - 1 }"
+        :aria-pressed="page === number - 1"
         type="button"
         @click="page = number - 1"
       >
@@ -124,15 +152,28 @@ const reasonText = computed(() => {
       }}</strong>
       <span>{{ reasonText }}</span>
     </div>
-    <div v-if="displayable" class="inventory-footer">
+    <div v-if="displayable && !dialog" class="inventory-footer">
       <span>{{ used }} / {{ capacity }} occupied</span>
       <span>Page {{ page + 1 }} of {{ pageCount }}</span>
     </div>
+    <div v-else-if="displayable" class="inventory-footer">
+      <span>{{ used }} / {{ capacity }} occupied</span>
+    </div>
     <div
-      v-if="displayable && gold !== null && gold !== undefined"
+      v-if="displayable && !dialog && gold !== null && gold !== undefined"
       class="inventory-gold"
     >
       <span aria-hidden="true">◈</span> Gold {{ gold.toLocaleString() }}
+    </div>
+    <div
+      v-else-if="dialog"
+      class="inventory-gold-bar"
+      :title="
+        typeof gold === 'number' ? `${gold.toLocaleString()} gold` : undefined
+      "
+    >
+      <img src="/game-assets/icon/etc/icon/mini_gold_icon.png" alt="Gold" />
+      <span>{{ goldLabel }}</span>
     </div>
   </section>
 </template>

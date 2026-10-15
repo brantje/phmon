@@ -21,6 +21,90 @@ export interface ItemDetailModel {
   blues: string[]
 }
 
+export function relatedItemDetail(item: Record<string, unknown>) {
+  const observation = asRecord(item.related_item_observation)
+  const snapshot = asRecord(observation.item)
+  if (
+    ![
+      'stored_unverified_drop_event_id',
+      'nearby_same_model_observation',
+      'gap_reconciled_same_model',
+    ].includes(String(observation.association)) ||
+    typeof observation.event_id !== 'string' ||
+    !Object.keys(snapshot).length
+  )
+    return null
+  const container = asRecord(observation.container)
+  return {
+    eventID: observation.event_id,
+    afterGap: observation.association === 'gap_reconciled_same_model',
+    source:
+      container.type === 'pets'
+        ? 'Pet inventory observation'
+        : 'Inventory observation',
+    model: buildItemDetail({ ...snapshot, owned_gain: true }),
+  }
+}
+
+// Select one display source; never merge another observation's rolls into the
+// canonical drop record or combine fields from two physical item copies.
+export function itemTooltipPresentation(item: Record<string, unknown>) {
+  const own = buildItemDetail(item)
+  const related = item.drop_unobserved === true ? relatedItemDetail(item) : null
+  const model = related?.model ?? own
+  const hasStats =
+    model.statsBeforeDurability.length ||
+    model.statsAfterDurability.length ||
+    model.blues.length
+  return {
+    model: { ...model, catalogNote: '' },
+    caption: related
+      ? hasStats
+        ? related.afterGap
+          ? 'Observed after a connection gap · pickup unverified'
+          : 'Observed item · pickup unverified'
+        : 'Observed item · stats unavailable'
+      : model.catalogNote.startsWith('Catalog ranges')
+        ? 'Catalog ranges · rolls unavailable'
+        : model.catalogNote
+          ? 'Item stats unavailable'
+          : '',
+    sourceDescription: related
+      ? `${related.source}${related.afterGap ? ', found after a connection gap' : ''}. Relation to the drop is unverified. Source event: ${related.eventID}`
+      : model.catalogNote,
+  }
+}
+
+export function itemTooltipStatLines(model: ItemDetailModel) {
+  const order = [
+    'Phy. def. pwr',
+    'Parry ratio',
+    'Mag. def. pwr',
+    'Phy. atk. pwr',
+    'Mag. atk. pwr',
+    'Phy. absorption',
+    'Mag. absorption',
+    'Attack rating',
+    'Critical',
+    'Phy. reinforce',
+    'Mag. reinforce',
+    'Durability',
+  ]
+  return [
+    ...model.statsBeforeDurability,
+    ...model.statsAfterDurability,
+    model.durability,
+  ]
+    .filter(Boolean)
+    .sort((left, right) => {
+      const rank = (line: string) => {
+        const index = order.findIndex((label) => line.startsWith(label))
+        return index < 0 ? order.length : index
+      }
+      return rank(left) - rank(right)
+    })
+}
+
 const statLabels: Record<string, string> = {
   phy_atk_pwr: 'Phy. atk. pwr',
   mag_atk_pwr: 'Mag. atk. pwr',
@@ -181,6 +265,10 @@ function blueLines(details: Record<string, unknown> | null) {
       'Able to use Advanced elixir.': () => 'Able to use Advanced elixir.',
       'Advanced elixir is in effect': (amount) =>
         `Advanced elixir is in effect [+${amount}]`,
+      'Freezing and frostbite duration reduction': (amount) =>
+        `Freezing, frostbite ${amount}${unit} Reduce`,
+      'Electric shock duration reduction': (amount) =>
+        `Electric shock ${amount}${unit} Reduce`,
     }
     return [blueNames[name]?.(formatted) ?? `${name} ${formatted}${unit}`]
   })
@@ -217,6 +305,7 @@ export function buildItemDetail(
   const metadata = asRecord(item.metadata)
   const detail = { ...metadata, ...item }
   const instance = asRecord(item.instance_details)
+  const packetInstance = asRecord(item.instance)
   const instanceStats = instanceStatLines(
     Object.keys(instance).length ? instance : null,
   )
@@ -291,7 +380,12 @@ export function buildItemDetail(
   ]
   return {
     name,
-    plus: numberField(item, 'plus'),
+    plus:
+      numberField(item, 'plus') ??
+      (packetInstance.availability === 'observed' &&
+      packetInstance.source === 'vsro_1188_packet'
+        ? numberField(packetInstance, 'plus')
+        : null),
     quantity: numberField(item, 'quantity'),
     rare: metadata.rare === true || !!stringField(item, 'seal'),
     icon: safeIcon(stringField(metadata, 'icon_url')),
@@ -339,6 +433,7 @@ export function itemRecordFromActivityEvent(
     | 'item_icon_url'
     | 'item_metadata'
     | 'item_details'
+    | 'related_item_observation'
     | 'payload'
   > & { kind?: ActivityEvent['kind'] },
 ): Record<string, unknown> | null {
@@ -391,6 +486,9 @@ export function itemRecordFromActivityEvent(
     stringField(metadata, 'icon_url') || stringField(event, 'item_icon_url')
   return {
     ...snapshot,
+    ...(event.related_item_observation
+      ? { related_item_observation: event.related_item_observation }
+      : {}),
     ...(event.kind === 'item.acquired' ||
     event.kind === 'item.quantity_increased'
       ? { owned_gain: true }
