@@ -23,7 +23,7 @@ func TestTraderHunterHistorySearchHideOwnAndPagination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	if err := database.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
