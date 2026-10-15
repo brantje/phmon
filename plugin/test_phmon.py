@@ -1731,6 +1731,39 @@ class ResourceEventDerivationTests(unittest.TestCase):
             except plugin._queue.Empty:
                 return output
 
+    def test_partial_storage_move_preserves_transfer_and_net_gain(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(2))]))
+        self.observe(self.resources(bag=[(13, self.item(5))], storage=[]))
+        events = self.drain()
+        transfers = [event for event in events if event['kind'] == 'item.transferred']
+        gains = [event for event in events if event['kind'] == 'item.quantity_increased']
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(len(gains), 1)
+        self.assertEqual(transfers[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(gains[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(transfers[0]['payload']['source_container']['type'], 'storage')
+        self.assertNotIn('drop_event_id', gains[0]['payload'])
+
+    def test_guild_storage_deposit_and_partial_decrease(self):
+        before = self.resources(bag=[(13, self.item(5))])
+        before['guild_storage'] = {'availability': 'observed', 'slots': []}
+        after = self.resources(bag=[(13, self.item(1))])
+        after['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(2)}],
+        }
+        self.observe(before)
+        self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 2)
+        transfers = [event for event in events if event['kind'] == 'item.transferred']
+        decreases = [event for event in events if event['kind'] == 'item.quantity_decreased']
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(len(decreases), 1)
+        self.assertEqual(transfers[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(decreases[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(transfers[0]['payload']['destination_container']['id'], 'guild')
+
     def test_ambiguous_balanced_multi_container_move_is_not_acquisition(self):
         before = self.resources(bag=[], storage=[(0, self.item(2))], job=[(0, self.item(2))])
         after = self.resources(bag=[(13, self.item(3))], storage=[], job=[(0, self.item(1))])
