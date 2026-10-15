@@ -45,6 +45,7 @@ func (h *eventHandler) list(w http.ResponseWriter, r *http.Request) {
 		Kind:           strings.TrimSpace(query.Get("kind")),
 		Category:       strings.TrimSpace(query.Get("category")),
 		ItemQuery:      strings.TrimSpace(query.Get("item")),
+		Source:         strings.TrimSpace(query.Get("source")),
 		EventID:        strings.TrimSpace(query.Get("event_id")),
 		Cursor:         strings.TrimSpace(query.Get("cursor")),
 		Limit:          10,
