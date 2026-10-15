@@ -58,7 +58,9 @@ metadata. An agent may have multiple active WebSocket connections and observe
 multiple characters at the same time. Each socket receives a distinct server-owned
 connection generation; reconnecting or closing one socket must not cancel another
 socket for the same agent. The agent is connected while any authenticated socket is
-active.
+active. If PostgreSQL is too slow to persist hello metadata, the in-memory session
+still receives `hello.ack`; a durable last-seen refresh is retried on later
+heartbeats instead of closing the socket.
 
 Server to agent:
 
@@ -167,13 +169,18 @@ keeps the socket and its other character sessions alive:
 
 The plugin stops publishing updates for that rejected identity until a different
 character is observed or the socket reconnects. Malformed protocol/state data remains
-connection-fatal. PostgreSQL cleanup is attempted when a socket closes; while the Go
-process is running it also periodically compares open durable sessions with the exact
-live `(agent_id, connection_generation)` registry entries. After a database outage,
-sessions for dead generations are ended as `agent_disconnected` without affecting
-still-live sibling sockets. This recovery check runs every three seconds while the
-database is healthy; outage/recovery lifecycle coverage is simulator/Compose evidence,
-not an additional real-phBot claim.
+connection-fatal. Transient PostgreSQL timeouts on hello metadata, identify,
+snapshot/state/leave, resource apply, command ack/result, control state, or map
+character lookup drop only that frame and keep the authenticated socket. A lookup
+timeout must not be turned into `character.rejected`. A leave write that fails for
+any reason other than an unowned session still drops that session's in-memory map
+observations. PostgreSQL cleanup is attempted
+when a socket closes; while the Go process is running it also periodically compares
+open durable sessions with the exact live `(agent_id, connection_generation)`
+registry entries. After a database outage, sessions for dead generations are ended as
+`agent_disconnected` without affecting still-live sibling sockets. This recovery
+check runs every three seconds while the database is healthy; outage/recovery
+lifecycle coverage is simulator/Compose evidence, not an additional real-phBot claim.
 
 ## reconnect
 
@@ -316,6 +323,11 @@ hub permits at most two browser snapshot rebuild passes to query live state at o
 leaving database-pool capacity available for agent ingestion. A notification that
 arrives while a snapshot is being built remains queued, so another throttled snapshot
 pass observes changes committed during the first pass.
+Analytics builds have a separate single-worker budget and reserved read-only
+connection. Economy alone can reuse a matching full-filter snapshot for up to five
+seconds from its original AsOf, with 16 entries and shared concurrent reads. Cached
+snapshots keep their original timestamps; errors are not cached. Other analytics
+streams keep their existing invalidation behavior.
 
 ### Heartbeats, reconnect and bounds
 
@@ -1559,3 +1571,86 @@ Plugin 1.9.33 preserves a valid non-negative integer `gold` field on normalized
 `storage` resource observations when `get_storage()` supplies it. The field uses the
 same optional semantics as guild-storage gold. Older protocol 18 agents omit the
 field; backends and UIs treat missing bank gold as unknown rather than zero.
+
+## ph-proxy enrichment HTTP API — 2026-10-11
+
+PhMon exposes a separate agent-authenticated HTTP integration for ph-proxy visible
+spawn equipment. It reuses existing agent bearer tokens (`Authorization: Bearer`)
+but does not register a WebSocket, update agent presence, or call player tracking
+ingestion.
+
+- `POST /api/integrations/ph-proxy/v1/enrichments` — bounded batch write with 24-hour
+  `(agent_id, request_id)` idempotency. Accepted payloads use profile
+  `silkroad-equipment-v1` with per-field `verified` evidence and opcodes `12309` /
+  `12313`. Enrichment is stored separately from `players`, `player_observations`, and
+  level snapshots. Unknown identities stage up to 24 hours per agent (10,000 cap).
+- `POST /api/integrations/ph-proxy/v2/enrichments` — same transport and staging rules
+  with `schema_version: 2`. Adds avatar gear, metadata level, job affiliation, race,
+  guild, spawn position, classified job-item IDs and inferred identity links. Each field
+  carries its own evidence (`source_identity_kind`, `source_name`, bounded reasons and
+  opcodes). Staged v2 names may be 128 bytes. Tracked player names stay at 64
+  bytes. Numeric job affiliation stays on the enrichment record. Direct normal-name
+  evidence also supplies `display_fallback.job` when native `job` is null: 0→none,
+  1→trader, 2→thief, 3→hunter; other codes stay numeric strings. Native values
+  (including none/zero job level) take precedence; alias-attributed fields never
+  supply an unqualified fallback. List/detail fallback job evidence retains its
+  original confidence and attribution. v1 validation remains strict and unchanged.
+- `GET /api/integrations/ph-proxy/v1/status?server=` — operator-authenticated latest
+  gateway metadata, coverage and last receipt for a canonical server name.
+- `GET /api/integrations/ph-proxy/v2/status?server=` — same projection as v1 status.
+- `GET /api/players/{id}` — optional `enrichment` projection for matched players.
+- `GET /api/players` — native player fields are preserved; `display_fallback` fills
+  gaps from character-name-attributed enrichment before pagination filters/sorts apply.
+
+Player tracking (`players.Registry.Apply` / `ApplyLive`) remains the only path that
+mutates first/last seen, observations, and level snapshots. After tracking commits,
+PhMon best-effort promotes staged enrichment for the same normalized server/name keys,
+and skips that write when no non-expired staged row exists.
+
+
+### Player display identities and v2 associations — 2026-10-12
+
+`GET /api/players` and `/api/players/{id}` add optional `display_identity`:
+`canonical_id`, nullable `player_name`/`job_alias`, `aliases`,
+`related_record_ids`, `source`, `status`, and display `first_seen_at`/`last_seen_at`.
+Native fields retain their original record semantics. Unique server-scoped
+inferred mappings group list rows before search/count/sort/pagination; conflicting
+mappings remain separate. An alias detail URL preserves its native history and
+exposes equipment from the displayed normal-name anchor. Own characters remain
+hidden by default. Unclassified names display as Unknown, with observed names
+available on details. No identity/history/live-presence mutation occurs.
+
+V2 accepts allowed alias-attributed fields with self-contained inferred
+associations; normal identity and explicit level remain directly attributed.
+Evidence and association are part of equal-time conflict checks. Pending promotion
+retains all v2 fields. V1 stays strict and endpoint/schema mismatch is rejected.
+HTTP 400 may include fixed `code`, allowlisted `field` and zero-based
+`player_index`; raw identities, payloads and credentials are excluded.
+Migration 33 widens model references to uint32 and staging names to 128 bytes;
+ordinary tracked names stay at 64 bytes. Proxy-only players remain staged.
+See [the receiving contract](phmon-enrichment-v2.md) for projection and evidence rules.
+
+
+### Operator cleanup — 2026-10-12
+
+The operator explicitly requested deletion of records whose displayed player name
+and job alias were both unknown, including their history. A transaction selected
+matching IDs using the display projection, wrote a private recovery copy before
+deletion, and removed 103 player records with 3,261 observations and 133 level
+snapshots through existing foreign-key cascades. Existing named/alias records
+were retained. This was a one-time data cleanup, not an ingestion or visibility
+policy: later observations can create new records. No application deployment.
+
+### Nearby-player registry admission — 2026-10-12
+
+Live-map snapshots retain every validated nearby sighting. Durable ingestion through
+`ApplyLive` requires native job-mode classification, an existing resolved tracked
+identity/accepted alias link, a same-server own-character identity, or unexpired
+accepted staged direct-name evidence with an installed promoter. Generic nearby
+names and job affiliation alone create no new registry row or history. Later
+classification starts tracking at that later actual observation; omitted fields
+still update known identities. Proxy-only names remain staged until ordinary
+tracking. Existing unresolved records/imports are retained.
+
+See [cause, rule and isolated validation](reference/player-admission-2026-10-12.md).
+This source change has not been deployed; it does not establish a new live receipt.

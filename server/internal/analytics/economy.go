@@ -19,41 +19,57 @@ func queryCharacterGold(ctx context.Context, tx pgx.Tx, filter Filter, snapshot 
 AND ($4='' OR s.character_id=$4::uuid)
 AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$5::uuid))`
 	args := []any{filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Bucket, filter.Timezone}
-	var entityCount int64
-	if err := tx.QueryRow(ctx, `SELECT count(DISTINCT s.character_id) FROM character_metric_samples s WHERE `+where+` AND s.gold IS NOT NULL`, args[:5]...).Scan(&entityCount); err != nil {
-		return err
-	}
-	rows, err := tx.Query(ctx, `WITH eligible AS (
-    SELECT s.character_id,c.character_name,s.gold,s.sampled_at,s.sample_id,
-           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket,
-           (
-             SELECT sg.gold FROM character_storage_gold_samples sg
-             WHERE sg.character_id=s.character_id AND sg.sampled_at <= s.sampled_at
-             ORDER BY sg.sampled_at DESC,sg.sample_id DESC LIMIT 1
-           ) AS storage_gold
-    FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
+	// Select one inventory sample per bucket before looking up bank balances.
+	// Reuse those balances for rankings and scope counts instead of rescanning
+	// the full history for each part of the same snapshot.
+	rows, err := tx.Query(ctx, `WITH latest AS MATERIALIZED (
+    SELECT DISTINCT ON(s.character_id,date_trunc($6,s.sampled_at AT TIME ZONE $7))
+           s.character_id,s.gold,s.sampled_at,
+           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
+    FROM character_metric_samples s
     WHERE `+where+` AND s.gold IS NOT NULL
+    ORDER BY s.character_id,date_trunc($6,s.sampled_at AT TIME ZONE $7),s.sampled_at DESC,s.sample_id DESC
+), entities AS (
+    SELECT character_id,max(sampled_at) AS sampled_at FROM latest GROUP BY character_id
 ), selected AS (
-    SELECT character_id FROM eligible GROUP BY character_id
-    ORDER BY max(sampled_at) DESC,character_id LIMIT 20
-), latest AS (
-    SELECT DISTINCT ON(e.character_id,e.bucket) e.bucket,e.character_name,e.character_id,
-           CASE WHEN e.storage_gold IS NOT NULL THEN (e.gold::numeric + e.storage_gold::numeric)::text ELSE e.gold::text END AS gold
-    FROM eligible e JOIN selected selected_character ON selected_character.character_id=e.character_id
-    ORDER BY e.character_id,e.bucket,e.sampled_at DESC,e.sample_id DESC
+    SELECT character_id FROM entities ORDER BY sampled_at DESC,character_id LIMIT 20
+), balances AS MATERIALIZED (
+    SELECT latest.*,c.character_name,
+           latest.gold::numeric + COALESCE(storage.gold,0)::numeric AS balance
+    FROM latest JOIN characters c ON c.character_id=latest.character_id
+    LEFT JOIN LATERAL (
+        SELECT sg.gold FROM character_storage_gold_samples sg
+        WHERE sg.character_id=latest.character_id AND sg.sampled_at <= latest.sampled_at
+        ORDER BY sg.sampled_at DESC,sg.sample_id DESC LIMIT 1
+    ) storage ON true
+), leaders AS (
+    SELECT DISTINCT ON(character_id) character_name,character_id,balance
+    FROM balances ORDER BY character_id,sampled_at DESC
+), points AS (
+    SELECT 'time' AS kind,b.bucket,b.character_name,b.character_id,b.balance
+    FROM balances b JOIN selected ON selected.character_id=b.character_id
+    UNION ALL
+    (SELECT 'leader',NULL::timestamp,character_name,character_id,balance
+     FROM leaders ORDER BY balance DESC,character_name,character_id LIMIT 20)
 )
-SELECT to_char(bucket,'YYYY-MM-DD HH24:MI:SS'),character_name,character_id,gold::text
-FROM latest ORDER BY bucket,character_name,character_id`, args...)
+SELECT kind,COALESCE(to_char(bucket,'YYYY-MM-DD HH24:MI:SS'),''),character_name,character_id,balance::text,
+       (SELECT count(*) FROM entities)
+FROM points ORDER BY kind,bucket,CASE WHEN kind='leader' THEN balance END DESC,character_name,character_id`, args...)
 	if err != nil {
 		return err
 	}
+	var entityCount int64
 	for rows.Next() {
-		var bucket, name, id, gold string
-		if err := rows.Scan(&bucket, &name, &id, &gold); err != nil {
+		var kind, bucket, name, id, gold string
+		if err := rows.Scan(&kind, &bucket, &name, &id, &gold, &entityCount); err != nil {
 			rows.Close()
 			return err
 		}
-		snapshot.TimeSeries = append(snapshot.TimeSeries, Point{Bucket: bucket, Label: bucket, Value: gold, Series: name, CharacterID: id})
+		if kind == "leader" {
+			snapshot.Breakdown = append(snapshot.Breakdown, Point{Label: name, Value: gold, Series: "gold", CharacterID: id})
+		} else {
+			snapshot.TimeSeries = append(snapshot.TimeSeries, Point{Bucket: bucket, Label: bucket, Value: gold, Series: name, CharacterID: id})
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -64,34 +80,6 @@ FROM latest ORDER BY bucket,character_name,character_id`, args...)
 		snapshot.Truncated = true
 		snapshot.Summary = append(snapshot.Summary, Metric{Key: "balance_series_omitted", Label: "Omitted character balance series", Value: strconv.FormatInt(entityCount-20, 10), Unit: "characters", Status: "limited", Reason: "chart is bounded to the 20 most recently observed characters"})
 	}
-
-	leaders, err := tx.Query(ctx, `SELECT character_name,character_id::text,balance::text FROM (
-SELECT DISTINCT ON(s.character_id) c.character_name,s.character_id,s.gold,s.sampled_at,
-       CASE WHEN storage.gold IS NOT NULL THEN (s.gold::numeric + storage.gold::numeric) ELSE s.gold::numeric END AS balance
-FROM character_metric_samples s JOIN characters c ON c.character_id=s.character_id
-LEFT JOIN LATERAL (
-    SELECT sg.gold FROM character_storage_gold_samples sg
-    WHERE sg.character_id=s.character_id AND sg.sampled_at <= s.sampled_at
-    ORDER BY sg.sampled_at DESC,sg.sample_id DESC LIMIT 1
-) storage ON true
-WHERE `+where+` AND s.gold IS NOT NULL ORDER BY s.character_id,s.sampled_at DESC,s.sample_id DESC
-) latest ORDER BY balance::numeric DESC,character_name,character_id LIMIT 20`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID)
-	if err != nil {
-		return err
-	}
-	for leaders.Next() {
-		var name, id, gold string
-		if err := leaders.Scan(&name, &id, &gold); err != nil {
-			leaders.Close()
-			return err
-		}
-		snapshot.Breakdown = append(snapshot.Breakdown, Point{Label: name, Value: gold, Series: "gold", CharacterID: id})
-	}
-	if err := leaders.Err(); err != nil {
-		leaders.Close()
-		return err
-	}
-	leaders.Close()
 
 	var delta float64
 	var observedDays int64
@@ -105,8 +93,10 @@ AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_i
 ), eligible AS (
 SELECT character_id,local_day,gold-before_gold AS delta FROM sequenced
 WHERE sampled_at >= $1 AND sampled_at < $2 AND before_at >= $1 AND sampled_at-before_at <= interval '30 seconds' AND gold IS NOT NULL AND before_gold IS NOT NULL
+), daily AS (
+SELECT character_id,local_day,sum(delta) AS delta FROM eligible GROUP BY character_id,local_day
 )
-SELECT COALESCE(sum(delta),0)::float8,count(DISTINCT(character_id,local_day)) FROM eligible`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Timezone).Scan(&delta, &observedDays)
+SELECT COALESCE(sum(delta),0)::float8,count(*) FROM daily`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Timezone).Scan(&delta, &observedDays)
 	if err != nil {
 		return err
 	}

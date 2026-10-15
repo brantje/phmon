@@ -3892,6 +3892,8 @@ button.item-detail-name {
 }
 
 .player-page {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
   gap: 14px;
 }
@@ -3902,12 +3904,13 @@ button.item-detail-name {
   align-items: end;
 }
 .player-filters label {
+  min-width: 0;
   display: grid;
   gap: 4px;
   color: var(--text-muted, #8e9caf);
   font-size: 12px;
 }
-.player-filters input,
+.player-filters input:not([type='checkbox']),
 .player-filters select,
 .player-clear,
 .player-pager button {
@@ -3918,10 +3921,42 @@ button.item-detail-name {
   color: #eaf1ff;
   padding: 4px 8px;
 }
+.player-filters label.player-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  min-height: 32px;
+  color: #eaf1ff;
+  font-size: 13px;
+}
+.player-filters label.player-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #8eb4ff;
+}
 .player-table tbody tr {
   cursor: pointer;
 }
 .player-card,
+.player-note,
+.player-enrichment-note {
+  color: var(--phmon-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+
+.player-enrichment-note {
+  max-width: 72ch;
+}
+
+.player-visible-gear {
+  margin-top: 4px;
+}
+
 .player-note {
   color: #c5d0df;
 }
@@ -3968,4 +4003,25 @@ button.item-detail-name {
   border: 0;
   padding: 0;
   cursor: pointer;
+}
+
+.player-identity-source {
+  display: block;
+  color: var(--ph-muted);
+  font-size: 11px;
+}
+.player-related-record {
+  display: inline-block;
+  margin-inline: 0.35rem;
+  text-decoration: underline;
+}
+
+.player-filters input:not([type='checkbox']),
+.player-filters select {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.player-facts dd {
+  overflow-wrap: anywhere;
 }

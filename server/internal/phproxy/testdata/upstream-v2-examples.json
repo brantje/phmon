@@ -1,0 +1,442 @@
+{
+  "requests": [
+    {
+      "schema_version": 2,
+      "request_id": "11111111-1111-4111-8111-111111111111",
+      "agent_id": "22222222-2222-4222-8222-222222222222",
+      "server": "FixtureServer",
+      "players": [
+        {
+          "name": "FixturePlayer",
+          "identity_kind": "character_name",
+          "model_ref_id": 100,
+          "gear": [
+            {
+              "ref_item_id": 200,
+              "opt_level": 7,
+              "slot": null
+            },
+            {
+              "ref_item_id": 201,
+              "opt_level": null,
+              "slot": null
+            }
+          ],
+          "avatar_gear": [],
+          "job": 0,
+          "job_level": 1,
+          "race": "chinese",
+          "guild": "",
+          "position": {
+            "region": 42,
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "job_item_ids": [],
+          "field_evidence": {
+            "name": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "verified",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "model_ref_id": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "verified",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "gear": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "verified",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "avatar_gear": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "job": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "job_level": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "race": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "guild": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "position": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "job_item_ids": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            }
+          }
+        }
+      ],
+      "coverage": {
+        "profile": "silkroad-equipment-v1",
+        "dropped_observations": 0,
+        "capacity_reached": false
+      },
+      "server_metadata": {
+        "gateway_name": "FixtureGateway",
+        "online": 10,
+        "max": 100,
+        "observed_at": "2026-10-11T12:00:00Z"
+      }
+    },
+    {
+      "schema_version": 2,
+      "request_id": "11111111-1111-4111-8111-111111111112",
+      "agent_id": "22222222-2222-4222-8222-222222222222",
+      "server": "FixtureServer",
+      "players": [
+        {
+          "name": "FixturePlayer",
+          "identity_kind": "character_name",
+          "model_ref_id": 100,
+          "level": 85,
+          "field_evidence": {
+            "name": {
+              "observed_at": "2026-10-11T12:01:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12389,
+              "reason": "verified",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "model_ref_id": {
+              "observed_at": "2026-10-11T12:01:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12389,
+              "reason": "verified",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "level": {
+              "observed_at": "2026-10-11T12:01:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12389,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            }
+          }
+        }
+      ],
+      "coverage": {
+        "profile": "silkroad-equipment-v1",
+        "dropped_observations": 0,
+        "capacity_reached": false
+      }
+    },
+    {
+      "schema_version": 2,
+      "request_id": "11111111-1111-4111-8111-111111111113",
+      "agent_id": "22222222-2222-4222-8222-222222222222",
+      "server": "FixtureServer",
+      "players": [
+        {
+          "name": "FixturePlayer",
+          "identity_kind": "character_name",
+          "gear": [
+            {
+              "ref_item_id": 200,
+              "opt_level": 7,
+              "slot": null
+            },
+            {
+              "ref_item_id": 202,
+              "opt_level": null,
+              "slot": null
+            }
+          ],
+          "job": 1,
+          "job_level": 7,
+          "job_item_ids": [
+            202
+          ],
+          "identity_links": [
+            {
+              "alias": "FixtureTrader",
+              "status": "inferred",
+              "reason": "job_item_transition",
+              "first_matched": "2026-10-11T12:02:00Z",
+              "last_matched": "2026-10-11T12:02:00Z",
+              "matches": 1,
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309
+            }
+          ],
+          "field_evidence": {
+            "name": {
+              "observed_at": "2026-10-11T12:00:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "verified",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            },
+            "gear": {
+              "observed_at": "2026-10-11T12:02:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "verified",
+              "source_identity_kind": "job_alias",
+              "source_name": "FixtureTrader",
+              "association": {
+                "alias": "FixtureTrader",
+                "status": "inferred",
+                "reason": "job_item_transition",
+                "observed_at": "2026-10-11T12:02:00Z"
+              }
+            },
+            "job": {
+              "observed_at": "2026-10-11T12:02:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "job_alias",
+              "source_name": "FixtureTrader",
+              "association": {
+                "alias": "FixtureTrader",
+                "status": "inferred",
+                "reason": "job_item_transition",
+                "observed_at": "2026-10-11T12:02:00Z"
+              }
+            },
+            "job_level": {
+              "observed_at": "2026-10-11T12:02:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "job_alias",
+              "source_name": "FixtureTrader",
+              "association": {
+                "alias": "FixtureTrader",
+                "status": "inferred",
+                "reason": "job_item_transition",
+                "observed_at": "2026-10-11T12:02:00Z"
+              }
+            },
+            "job_item_ids": {
+              "observed_at": "2026-10-11T12:02:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "unverified_reference_mapping",
+              "source_identity_kind": "job_alias",
+              "source_name": "FixtureTrader",
+              "association": {
+                "alias": "FixtureTrader",
+                "status": "inferred",
+                "reason": "job_item_transition",
+                "observed_at": "2026-10-11T12:02:00Z"
+              }
+            },
+            "identity_links": {
+              "observed_at": "2026-10-11T12:02:00Z",
+              "profile": "silkroad-equipment-v1",
+              "source_opcode": 12309,
+              "reason": "inferred_job_item_transition",
+              "source_identity_kind": "character_name",
+              "source_name": "FixturePlayer"
+            }
+          }
+        }
+      ],
+      "coverage": {
+        "profile": "silkroad-equipment-v1",
+        "dropped_observations": 0,
+        "capacity_reached": false
+      }
+    }
+  ],
+  "responses": [
+    {
+      "request_id": "11111111-1111-4111-8111-111111111111",
+      "results": [
+        {
+          "name": "FixturePlayer",
+          "status": "applied",
+          "player_id": "33333333-3333-4333-8333-333333333333"
+        }
+      ]
+    },
+    {
+      "request_id": "11111111-1111-4111-8111-111111111112",
+      "results": [
+        {
+          "name": "FixturePlayer",
+          "status": "applied",
+          "player_id": "33333333-3333-4333-8333-333333333333"
+        }
+      ]
+    },
+    {
+      "request_id": "11111111-1111-4111-8111-111111111113",
+      "results": [
+        {
+          "name": "FixturePlayer",
+          "status": "applied",
+          "player_id": "33333333-3333-4333-8333-333333333333"
+        }
+      ]
+    }
+  ],
+  "player_detail_addition": {
+    "enrichment": {
+      "source": "ph-proxy",
+      "name": "FixturePlayer",
+      "identity_kind": "character_name",
+      "gear": [
+        {
+          "ref_item_id": 200,
+          "opt_level": 7,
+          "slot": null
+        },
+        {
+          "ref_item_id": 202,
+          "opt_level": null,
+          "slot": null
+        }
+      ],
+      "job": 1,
+      "job_level": 7,
+      "job_item_ids": [
+        202
+      ],
+      "identity_links": [
+        {
+          "alias": "FixtureTrader",
+          "status": "inferred",
+          "reason": "job_item_transition",
+          "first_matched": "2026-10-11T12:02:00Z",
+          "last_matched": "2026-10-11T12:02:00Z",
+          "matches": 1,
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309
+        }
+      ],
+      "field_evidence": {
+        "name": {
+          "observed_at": "2026-10-11T12:00:00Z",
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309,
+          "reason": "verified",
+          "source_identity_kind": "character_name",
+          "source_name": "FixturePlayer"
+        },
+        "gear": {
+          "observed_at": "2026-10-11T12:02:00Z",
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309,
+          "reason": "verified",
+          "source_identity_kind": "job_alias",
+          "source_name": "FixtureTrader",
+          "association": {
+            "alias": "FixtureTrader",
+            "status": "inferred",
+            "reason": "job_item_transition",
+            "observed_at": "2026-10-11T12:02:00Z"
+          }
+        },
+        "job": {
+          "observed_at": "2026-10-11T12:02:00Z",
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309,
+          "reason": "unverified_reference_mapping",
+          "source_identity_kind": "job_alias",
+          "source_name": "FixtureTrader",
+          "association": {
+            "alias": "FixtureTrader",
+            "status": "inferred",
+            "reason": "job_item_transition",
+            "observed_at": "2026-10-11T12:02:00Z"
+          }
+        },
+        "job_level": {
+          "observed_at": "2026-10-11T12:02:00Z",
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309,
+          "reason": "unverified_reference_mapping",
+          "source_identity_kind": "job_alias",
+          "source_name": "FixtureTrader",
+          "association": {
+            "alias": "FixtureTrader",
+            "status": "inferred",
+            "reason": "job_item_transition",
+            "observed_at": "2026-10-11T12:02:00Z"
+          }
+        },
+        "job_item_ids": {
+          "observed_at": "2026-10-11T12:02:00Z",
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309,
+          "reason": "unverified_reference_mapping",
+          "source_identity_kind": "job_alias",
+          "source_name": "FixtureTrader",
+          "association": {
+            "alias": "FixtureTrader",
+            "status": "inferred",
+            "reason": "job_item_transition",
+            "observed_at": "2026-10-11T12:02:00Z"
+          }
+        },
+        "identity_links": {
+          "observed_at": "2026-10-11T12:02:00Z",
+          "profile": "silkroad-equipment-v1",
+          "source_opcode": 12309,
+          "reason": "inferred_job_item_transition",
+          "source_identity_kind": "character_name",
+          "source_name": "FixturePlayer"
+        }
+      }
+    }
+  }
+}
+

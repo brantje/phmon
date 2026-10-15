@@ -743,6 +743,70 @@ func (failingAgentStore) ListSeen(context.Context) ([]agentdomain.Record, error)
 	return nil, errors.New("unused")
 }
 
+func TestAgentHelloPersistTimeoutKeepsSession(t *testing.T) {
+	baseStore := newFakeAgentStore()
+	store := &blockingMarkConnectedStore{
+		fakeAgentStore: baseStore,
+		started:        make(chan struct{}),
+		release:        make(chan struct{}),
+	}
+	registry := agentdomain.NewRegistry()
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store,
+		Registry: registry,
+		AgentOptions: AgentOptions{
+			HelloTimeout:      time.Second,
+			HeartbeatInterval: 50 * time.Millisecond,
+			HeartbeatTimeout:  time.Second,
+		},
+	}))
+	defer server.Close()
+	defer close(store.release)
+
+	conn := dialAgent(t, server.URL, baseStore.token)
+	defer conn.CloseNow()
+	writeHello(t, conn, testAgentID)
+
+	select {
+	case <-store.started:
+	case <-time.After(time.Second):
+		t.Fatal("MarkConnected was not reached")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var ack helloAck
+	if err := wsjson.Read(ctx, conn, &ack); err != nil {
+		t.Fatal(err)
+	}
+	if ack.Type != "hello.ack" {
+		t.Fatalf("timed-out hello persist closed the socket: %+v", ack)
+	}
+	if registry.ConnectionCount(testAgentID) != 1 {
+		t.Fatal("timed-out hello persist unregistered the agent")
+	}
+	if err := wsjson.Write(ctx, conn, agentMessage{Type: "heartbeat", ProtocolVersion: 2, SentAt: time.Now().UTC().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Second, func() bool { store.mu.Lock(); defer store.mu.Unlock(); return store.seenCount == 1 })
+	if registry.ConnectionCount(testAgentID) != 1 {
+		t.Fatal("heartbeat after hello persist timeout disconnected the agent")
+	}
+}
+
+func TestDropUnavailableCharacterLookup(t *testing.T) {
+	if dropUnavailableCharacterLookup(nil, testAgentID, 19, "unused") {
+		t.Fatal("nil lookup error was dropped")
+	}
+	if dropUnavailableCharacterLookup(characters.ErrNotFound, testAgentID, 19, "unused") {
+		t.Fatal("missing character was treated as unavailable")
+	}
+	if !dropUnavailableCharacterLookup(context.DeadlineExceeded, testAgentID, 19, "lookup unavailable") {
+		t.Fatal("deadline exceeded lookup was treated as a session rejection")
+	}
+}
+
 func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 	store := newFakeAgentStore()
 	registry := agentdomain.NewRegistry()
@@ -785,5 +849,35 @@ func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 	defer store.mu.Unlock()
 	if store.disconnectedCount != 0 {
 		t.Fatal("rejected observation ended the session")
+	}
+}
+
+func TestCharacterLeaveOwnerMatches(t *testing.T) {
+	active := characters.ActiveSession{
+		AgentID:    testAgentID,
+		SessionID:  "22222222-3333-4444-8555-666666666666",
+		Generation: 7,
+	}
+	if !characterLeaveOwnerMatches(active, true, testAgentID, 7, active.SessionID) ||
+		!characterLeaveOwnerMatches(active, true, testAgentID, 7, "") {
+		t.Fatal("own current session (including legacy leave) should match")
+	}
+	for _, test := range []struct {
+		name       string
+		found      bool
+		agentID    string
+		generation uint64
+		sessionID  string
+	}{
+		{"missing session", false, testAgentID, 7, active.SessionID},
+		{"another agent", true, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", 7, active.SessionID},
+		{"another generation", true, testAgentID, 8, active.SessionID},
+		{"another session", true, testAgentID, 7, "44444444-5555-4666-8777-888888888888"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if characterLeaveOwnerMatches(active, test.found, test.agentID, test.generation, test.sessionID) {
+				t.Fatal("unowned session must never be eligible for live-state cleanup")
+			}
+		})
 	}
 }

@@ -28,10 +28,11 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.33'
+pVersion = '1.9.37'
 pUrl = ''
 
 PROTOCOL_VERSION = 19
+TELEPORT_READY_OPCODE = 0x34B5
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
 EVENT_HUNTER_SPAWN = 1
@@ -53,6 +54,11 @@ MAX_EVENT_SPOOL_BYTES = MAX_EVENT_CRITICAL_BYTES + MAX_EVENT_ORDINARY_BYTES
 MAX_EVENT_BYTES = 40 * 1024
 MAX_EVENT_PAYLOAD_BYTES = 32768
 MAX_EVENT_BATCH_SIZE = 16
+PET_LIFECYCLE_HOLD_SECONDS = 5.0
+TELEPORT_READY_TIMEOUT_SECONDS = 10.0
+TELEPORT_RECOVERY_TIMEOUT_SECONDS = 30.0
+TELEPORT_STABLE_PET_SAMPLES = 2
+MAX_PENDING_PET_LIFECYCLE_EVENTS = 256
 MAX_MONSTERS_PER_SNAPSHOT = 128
 MAX_NPCS_PER_SNAPSHOT = 128
 NPC_POLL_INTERVAL_SECONDS = 2.0
@@ -1498,7 +1504,7 @@ def _cached_item_sort_type(server, model):
 
 
 def _item_sort_type(server, model):
-    """Resolve the two filtered item families using phBot's documented game data."""
+    """Resolve item families using phBot's documented game data."""
     cached = _cached_item_sort_type(server, model)
     valid_identity = (
         isinstance(server, str) and bool(server.strip()) and
@@ -1524,7 +1530,11 @@ def _item_sort_type(server, model):
             not isinstance(tid2, int) or isinstance(tid2, bool)):
         return None
     sort_type = None
-    if tid1 == 3 and tid2 == 1:
+    if tid1 == 1 and tid2 == 6:
+        sort_type = 'Weapon'
+    elif tid1 == 1 and tid2 == 4:
+        sort_type = 'Shield'
+    elif tid1 == 3 and tid2 == 1:
         sort_type = 'Potion'
     elif tid1 == 3 and tid2 == 2:
         sort_type = 'Pill'
@@ -1537,9 +1547,7 @@ def _item_sort_type(server, model):
 
 
 def _cache_resource_item_types(inputs, server):
-    """Resolve item families on phBot's callback thread; never send this map."""
-    if not _item_filters_enabled(_profile_config or {}):
-        return
+    """Resolve event item families on phBot's callback thread; never send this map."""
     models = set()
 
     def add_items(value):
@@ -1577,6 +1585,18 @@ def _ignore_item_event(config, sort_type):
     if setting is None:
         return False
     return config.get(setting, True) is True
+
+
+def _is_weapon_or_shield_equipment_transfer(identity, item, source, destination):
+    """Classify a balanced inventory/equipment transfer using cached metadata."""
+    if not isinstance(identity, dict) or not isinstance(item, dict):
+        return False
+    if not isinstance(source, dict) or not isinstance(destination, dict):
+        return False
+    if {source.get('type'), destination.get('type')} != {'equipment', 'inventory'}:
+        return False
+    sort_type = _cached_item_sort_type(identity.get('server'), item.get('model'))
+    return sort_type in ('Weapon', 'Shield')
 
 
 def _item_filters_enabled(config):
@@ -1799,6 +1819,25 @@ def _event_resource_snapshot(resources):
         pet_key = 'pets:' + str(pet['pet_id'])[:64]
         containers[pet_key] = _event_item_quantities(pet.get('slots', []))
     return {'party': party, 'academy': academy, 'academy_id': academy_id, 'pets': pets, 'containers': containers}
+
+
+def _pet_roster_signature(pets):
+    """Represent pet multiplicities without relying on teleport-unstable runtime IDs."""
+    if not isinstance(pets, dict):
+        return None
+    rows = []
+    for pet in pets.values():
+        if not isinstance(pet, dict):
+            continue
+        pet_type = pet.get('type')
+        model = pet.get('model')
+        name = pet.get('name')
+        rows.append((
+            str(pet_type or '').strip().casefold(),
+            str(model) if model is not None else '',
+            str(name or '').strip().casefold(),
+        ))
+    return tuple(sorted(rows))
 
 
 def _event_item_quantities(slots):
@@ -3202,9 +3241,24 @@ class AgentWorker(object):
         self._event_diff_session = None
         self._event_diff_identity = None
         self._event_diff = None
+        self._pet_transition_lock = threading.Lock()
+        self._pet_transition_generation = 0
+        self._pet_transition_phase = 'normal'
+        self._pet_transition_started_at = None
+        self._pet_transition_identity = None
+        self._pet_transition_session = None
+        self._pet_transition_expected_roster = None
+        self._pet_transition_stable_roster = None
+        self._pet_transition_stable_samples = 0
+        self._pet_transition_timeout_logged = False
+        self._pet_transition_ready_at = None
+        self._pet_transition_pending_events = []
+        self._last_pet_roster = None
         self._pending_drop_lock = threading.Lock()
         self._pending_drop_events = []
         self._event_samples = _queue.Queue(maxsize=256)
+        self._event_spool_lock = threading.Lock()
+        self._pending_event_spool_record = None
         self._death_samples = self._event_samples
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
         self._map_samples = _queue.Queue(maxsize=1)
@@ -3563,6 +3617,8 @@ class AgentWorker(object):
         identity_key = self._identity_key(identity)
         if identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
             self._event_baseline_required = True
+            if self._event_diff_identity is not None or self._event_diff_session is not None:
+                self._reset_pet_transition(release_pending=True)
             self._event_diff_identity = identity_key
             self._event_diff_session = self.session_id
             with self._pending_drop_lock:
@@ -3581,10 +3637,13 @@ class AgentWorker(object):
             with self._pending_drop_lock:
                 self._pending_drop_events = []
             return
+        pet_roster = _pet_roster_signature(current.get('pets'))
+        suppress_pet_events, rebaseline_pet_items = self._observe_pet_transition(identity, pet_roster)
         previous = self._event_diff
         if self._event_baseline_required or previous is None:
             self._event_diff = current
             self._event_baseline_required = False
+            self._remember_pet_roster_if_normal(pet_roster)
             with self._pending_drop_lock:
                 self._pending_drop_events = []
             return
@@ -3595,6 +3654,8 @@ class AgentWorker(object):
                 ('party', 'party.member_joined', 'party.member_left', 'party'),
                 ('academy', 'academy.member_joined', 'academy.member_left', 'academy'),
                 ('pets', 'pet.summoned', 'pet.dismissed', 'pet')):
+            if group == 'pets' and suppress_pet_events:
+                continue
             before = previous.get(group)
             after = current.get(group)
             if before is None or after is None:
@@ -3630,11 +3691,165 @@ class AgentWorker(object):
         uncertain = set()
         for key in changed:
             uncertain.update((old_containers.get(key) or new_containers.get(key) or {}).keys())
-        self._emit_item_deltas(identity,
-                               {key: old_containers[key] for key in common},
-                               {key: new_containers[key] for key in common},
-                               observed_at, position, uncertain)
+        if not rebaseline_pet_items:
+            self._emit_item_deltas(identity,
+                                   {key: old_containers[key] for key in common},
+                                   {key: new_containers[key] for key in common},
+                                   observed_at, position, uncertain)
         self._event_diff = current
+        self._remember_pet_roster_if_normal(pet_roster)
+
+    def _remember_pet_roster_if_normal(self, roster):
+        with self._pet_transition_lock:
+            if self._pet_transition_phase == 'normal':
+                self._last_pet_roster = roster
+
+    def observe_teleport_ready(self):
+        """Fence resource snapshots when phBot's server teleport-ready packet arrives."""
+        with self._pet_transition_lock:
+            if (self._pet_transition_phase != 'normal' or self.session_id is None or
+                    self._current_identity is None):
+                return False
+            self._pet_transition_phase = 'teleport_ready'
+            self._pet_transition_ready_at = _monotonic()
+            self._pet_transition_identity = self._identity_key(self._current_identity)
+            self._pet_transition_session = self.session_id
+            self._pet_transition_generation += 1
+            extension = _monotonic() + TELEPORT_READY_TIMEOUT_SECONDS
+            for entry in self._pet_transition_pending_events:
+                entry['ready_at'] = max(entry['ready_at'], extension)
+            return True
+
+    def confirm_teleport(self):
+        """Enter the confirmed teleport transition from phBot's teleported callback."""
+        with self._pet_transition_lock:
+            if self.session_id is None or self._current_identity is None:
+                return False
+            if (self._pet_transition_phase == 'teleport_ready' and
+                    (self._pet_transition_session != self.session_id or
+                     self._pet_transition_identity != self._identity_key(self._current_identity))):
+                self._reset_pet_transition_locked()
+            self._pet_transition_phase = 'settling'
+            self._pet_transition_started_at = _monotonic()
+            self._pet_transition_identity = self._identity_key(self._current_identity)
+            self._pet_transition_session = self.session_id
+            self._pet_transition_expected_roster = self._last_pet_roster
+            self._pet_transition_stable_roster = None
+            self._pet_transition_stable_samples = 0
+            self._pet_transition_timeout_logged = False
+            self._pet_transition_ready_at = None
+            self._pet_transition_generation += 1
+            # Candidate lifecycle events in the hold window may describe the
+            # teardown which phBot is about to report as a completed teleport.
+            self._pet_transition_pending_events = []
+            return True
+
+    def _observe_pet_transition(self, identity, roster):
+        """Suppress teardown churn through two stable post-teleport snapshots."""
+        now = _monotonic()
+        with self._pet_transition_lock:
+            if self._pet_transition_phase == 'teleport_ready':
+                if now - self._pet_transition_ready_at >= TELEPORT_READY_TIMEOUT_SECONDS:
+                    self._pet_transition_phase = 'normal'
+                    self._pet_transition_ready_at = None
+                    self._pet_transition_identity = None
+                    self._pet_transition_session = None
+                    self._pet_transition_generation += 1
+                else:
+                    return False, True
+            if self._pet_transition_phase != 'settling':
+                return False, False
+            if (self._pet_transition_session != self.session_id or
+                    self._pet_transition_identity != self._identity_key(identity)):
+                self._reset_pet_transition_locked()
+                return False, False
+            if roster is None:
+                return True, True
+            if (not self._pet_transition_timeout_logged and
+                    now - self._pet_transition_started_at >= TELEPORT_RECOVERY_TIMEOUT_SECONDS):
+                self._pet_transition_timeout_logged = True
+                self._pet_transition_expected_roster = None
+                _log('teleport pet state did not recover within 30 seconds; waiting for a fresh stable pet baseline')
+            expected = self._pet_transition_expected_roster
+            if expected is not None and roster != expected:
+                self._pet_transition_stable_roster = None
+                self._pet_transition_stable_samples = 0
+                return True, True
+            if roster == self._pet_transition_stable_roster:
+                self._pet_transition_stable_samples += 1
+            else:
+                self._pet_transition_stable_roster = roster
+                self._pet_transition_stable_samples = 1
+            if self._pet_transition_stable_samples >= TELEPORT_STABLE_PET_SAMPLES:
+                self._reset_pet_transition_locked()
+            return True, True
+
+    def resource_transition_generation(self):
+        with self._pet_transition_lock:
+            return self._pet_transition_generation
+
+    def _reset_pet_transition_locked(self):
+        self._pet_transition_phase = 'normal'
+        self._pet_transition_started_at = None
+        self._pet_transition_identity = None
+        self._pet_transition_session = None
+        self._pet_transition_expected_roster = None
+        self._pet_transition_stable_roster = None
+        self._pet_transition_stable_samples = 0
+        self._pet_transition_timeout_logged = False
+        self._pet_transition_ready_at = None
+        self._pet_transition_generation += 1
+
+    def _reset_pet_transition(self, release_pending=False):
+        with self._pet_transition_lock:
+            pending = self._pet_transition_pending_events
+            self._pet_transition_pending_events = []
+            self._reset_pet_transition_locked()
+            self._last_pet_roster = None
+        if release_pending:
+            for entry in pending:
+                self._enqueue_event_record(entry['record'])
+
+    def _flush_pending_pet_events(self):
+        now = _monotonic()
+        ready = []
+        log_recovery_timeout = False
+        with self._pet_transition_lock:
+            if (self._pet_transition_phase == 'teleport_ready' and
+                    now - self._pet_transition_ready_at >= TELEPORT_READY_TIMEOUT_SECONDS):
+                self._pet_transition_phase = 'normal'
+                self._pet_transition_ready_at = None
+                self._pet_transition_identity = None
+                self._pet_transition_session = None
+                self._pet_transition_generation += 1
+            if (self._pet_transition_phase == 'settling' and
+                    not self._pet_transition_timeout_logged and
+                    now - self._pet_transition_started_at >= TELEPORT_RECOVERY_TIMEOUT_SECONDS):
+                self._pet_transition_timeout_logged = True
+                self._pet_transition_expected_roster = None
+                self._pet_transition_stable_roster = None
+                self._pet_transition_stable_samples = 0
+                log_recovery_timeout = True
+            retained = []
+            for entry in self._pet_transition_pending_events:
+                if entry['ready_at'] <= now:
+                    ready.append(entry['record'])
+                else:
+                    retained.append(entry)
+            self._pet_transition_pending_events = retained
+        if log_recovery_timeout:
+            _log('teleport pet state did not recover within 30 seconds; waiting for a fresh stable pet baseline')
+        for record in ready:
+            self._enqueue_event_record(record)
+
+    def _enqueue_event_record(self, record):
+        try:
+            self._event_samples.put_nowait(record)
+            return True
+        except _queue.Full:
+            self.status = 'Activity event queue is full; an occurrence needs operator attention.'
+            _log('activity event was not queued because the event queue is full')
+            return False
 
     def _emit_state_change(self, identity, kind, source_ref, key, value, occurred_at, position, context_id=None):
         payload = {'member_id': key, 'member': value}
@@ -3685,8 +3900,10 @@ class AgentWorker(object):
                                    'source_container': _container_reference(source_key, source_item),
                                    'destination_container': _container_reference(dest_key, dest_item),
                                    'method': 'observed_container_delta'}
-                        self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
-                                                  occurred_at, position, item)
+                        if not _is_weapon_or_shield_equipment_transfer(
+                                identity, item, payload['source_container'], payload['destination_container']):
+                            self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
+                                                      occurred_at, position, item)
                 elif gains or losses:
                     for container_key, quantity, record in gains:
                         item, selected, ambiguous = _event_gain_item(
@@ -3962,13 +4179,28 @@ class AgentWorker(object):
                     payload = dict(payload)
                     payload['session_binding'] = 'deferred'
                     record['payload'] = payload
-        try:
-            self._event_samples.put_nowait(record)
-            return True
-        except _queue.Full:
-            self.status = 'Activity event queue is full; an occurrence needs operator attention.'
-            _log('activity event was not queued because the event queue is full')
-            return False
+        if record.get('kind') in ('pet.dismissed', 'pet.summoned', 'pet.transport_died'):
+            now = _monotonic()
+            if (record.get('session_id') == self.session_id and
+                    self._identity_key(identity) == self._identity_key(self._current_identity)):
+                with self._pet_transition_lock:
+                    if self._pet_transition_phase == 'settling':
+                        return True
+                    if len(self._pet_transition_pending_events) >= MAX_PENDING_PET_LIFECYCLE_EVENTS:
+                        overflow = self._pet_transition_pending_events.pop(0)['record']
+                    else:
+                        overflow = None
+                    self._pet_transition_pending_events.append({
+                        'record': record,
+                        'ready_at': now + (TELEPORT_READY_TIMEOUT_SECONDS
+                                           if self._pet_transition_phase == 'teleport_ready'
+                                           else PET_LIFECYCLE_HOLD_SECONDS),
+                    })
+                if overflow is not None:
+                    _log('pet lifecycle hold queue reached its bound; releasing the oldest event')
+                    self._enqueue_event_record(overflow)
+                return True
+        return self._enqueue_event_record(record)
 
     def _next_event_sequence(self, session_id):
         with self._event_sequence_lock:
@@ -3977,6 +4209,8 @@ class AgentWorker(object):
             return sequence
 
     def _queue_resource_sample(self, sample):
+        sample = dict(sample)
+        sample['transition_generation'] = self.resource_transition_generation()
         try:
             self._resource_samples.put_nowait(sample)
         except _queue.Full:
@@ -3991,7 +4225,15 @@ class AgentWorker(object):
             self._resource_sample_gap = True
             self.status = 'Resource sampling fell behind; event baseline will be reset.'
 
+    def _resource_sample_is_current(self, sample):
+        return (
+            isinstance(sample, dict) and self.character_id is not None and
+            sample.get('identity') == self._current_identity and
+            sample.get('transition_generation') == self.resource_transition_generation()
+        )
+
     def leave_character(self):
+        self._reset_pet_transition(release_pending=True)
         if self._active_walk is not None:
             self._finish_walk('unknown', 'character_left_during_walk', 'unverified')
         self._discard_pending_commands('character_left')
@@ -4023,7 +4265,13 @@ class AgentWorker(object):
             self._thread.join(timeout)
 
     def stop(self):
+        # A held pet lifecycle event is still a real occurrence. Releasing it
+        # here keeps worker shutdown from dropping it inside the hold window.
+        self._reset_pet_transition(release_pending=True)
         self.stop_event.set()
+        # Persist all released lifecycle events before returning from stop().
+        # The spool lock prevents a concurrent network pass from racing us.
+        self._spool_queued_events()
         self._cancel_navigation_generation('plugin_stopped')
         with self._socket_lock:
             client = self._socket
@@ -4125,6 +4373,7 @@ class AgentWorker(object):
     def _run(self):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
+            self._flush_pending_pet_events()
             self._spool_queued_events()
             self._spool_queued_mob_samples()
             client = None
@@ -4155,6 +4404,7 @@ class AgentWorker(object):
                 self.character_id = None
                 self.session_id = None
                 self._current_identity = None
+                self._reset_pet_transition(release_pending=True)
                 self._rejected_identity = None
                 self._resource_revision = 0
                 self._resource_baseline_required = True
@@ -4179,6 +4429,7 @@ class AgentWorker(object):
                             self.character_id = None
                             self.session_id = None
                             self._current_identity = None
+                            self._reset_pet_transition(release_pending=True)
                             self._clear_navigation_route()
                             self._clear_external_route()
                             self._latest_sample = None
@@ -4199,11 +4450,12 @@ class AgentWorker(object):
                     except _queue.Empty:
                         pass
                     self._flush_death_events(client)
+                    self._flush_pending_pet_events()
                     self._flush_realtime_position(client)
                     self._flush_map_observations(client)
                     try:
                         resource_sample = self._resource_samples.get_nowait()
-                        if self.character_id is not None and resource_sample.get('identity') == self._current_identity:
+                        if self._resource_sample_is_current(resource_sample):
                             if 'inputs' in resource_sample:
                                 identity = resource_sample['identity']
                                 protocol, protocol_reason = detect_item_protocol_detail(
@@ -4262,6 +4514,7 @@ class AgentWorker(object):
                     client.close()
                 self._set_socket(None)
                 self.invalidate_position_authority()
+                self._reset_pet_transition(release_pending=True)
                 self.character_id = None
                 self._current_identity = None
                 self.session_id = None
@@ -4281,6 +4534,8 @@ class AgentWorker(object):
                     remaining = deadline - _monotonic()
                     if remaining <= 0 or self.stop_event.wait(min(0.25, remaining)):
                         break
+        # The socket's finally block can release held events after stop() ran.
+        self._spool_queued_events()
 
     def _drain_server_messages(self, client, timeout, max_frames=32):
         # One read per iteration used to fall behind the acknowledgements from
@@ -4322,6 +4577,7 @@ class AgentWorker(object):
                 raise WebSocketClosed('character registration rejected')
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
+            self._reset_pet_transition(release_pending=True)
             self._adopt_position_session(self.session_id, identity)
             self._current_identity = identity
             # The first capability frame is sent before character registration.
@@ -4491,6 +4747,7 @@ class AgentWorker(object):
         self._discard_pending_commands('session_superseded')
         self._clear_navigation_route()
         self._rejected_identity = self._identity_key(self._current_identity)
+        self._reset_pet_transition(release_pending=True)
         self.invalidate_position_authority()
         self.character_id = None
         self.session_id = None
@@ -4727,14 +4984,22 @@ class AgentWorker(object):
             client.send_json(frame)
 
     def _spool_queued_events(self):
-        while True:
-            try:
-                event = self._event_samples.get_nowait()
-            except _queue.Empty:
-                break
-            if not self._death_spool.add(event):
-                self.status = 'Activity event spool is unavailable or full; an occurrence needs operator attention.'
-                _log('activity event was not sent because durable local spooling failed')
+        # Both the phBot stop callback and the network worker may drain here.
+        # Retain the oldest failed record instead of dropping it on disk errors.
+        with self._event_spool_lock:
+            while True:
+                event = self._pending_event_spool_record
+                if event is None:
+                    try:
+                        event = self._event_samples.get_nowait()
+                    except _queue.Empty:
+                        break
+                if not self._death_spool.add(event):
+                    self._pending_event_spool_record = event
+                    self.status = 'Activity event spool is unavailable or full; an occurrence needs operator attention.'
+                    _log('activity event was not sent because durable local spooling failed')
+                    break
+                self._pending_event_spool_record = None
 
     def _flush_events(self, client):
         self._spool_queued_events()
@@ -5444,6 +5709,7 @@ _pending_callback_overflow = False
 # None means the plugin loaded after phBot may already have joined. In that case
 # event_loop can establish presence once get_character_data() returns a character.
 _character_joined = None
+_joined_game_teleport_pending = False
 
 
 def _set_gui_status(message):
@@ -5587,18 +5853,19 @@ def save_config():
 
 def connected():
     # phBot calls this when its client connects to the game server.
-    global _character_joined, _phbot_connected_state
+    global _character_joined, _phbot_connected_state, _joined_game_teleport_pending
     already_connected = _phbot_connected_state is True
     _phbot_connected_state = True
     if not already_connected:
         _character_joined = False
+        _joined_game_teleport_pending = False
         if _worker is not None and hasattr(_worker, 'invalidate_position_authority'):
             _worker.invalidate_position_authority()
         _lifecycle_event('session.connected', 'connected')
 
 
 def disconnected():
-    global _last_character_signature, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state
+    global _last_character_signature, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack, _phbot_connected_state, _joined_game_teleport_pending
     already_disconnected = _phbot_connected_state is False
     _phbot_connected_state = False
     _last_character_signature = None
@@ -5607,6 +5874,7 @@ def disconnected():
     _last_position_observed = None
     _last_position_session_id = None
     _character_joined = False
+    _joined_game_teleport_pending = False
     _death_callback_active = False
     _recent_player_attack = None
     if not already_disconnected:
@@ -5620,7 +5888,7 @@ def disconnected():
 
 def joined_game():
     # This callback runs after the player selects a character.
-    global _last_character_signature, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack
+    global _last_character_signature, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _last_position_session_id, _character_joined, _death_callback_active, _recent_player_attack, _joined_game_teleport_pending
     already_joined = _character_joined is True
     _last_character_signature = None
     _last_position_sample_at = 0.0
@@ -5629,7 +5897,10 @@ def joined_game():
     _last_position_session_id = None
     if _worker is not None and hasattr(_worker, 'invalidate_position_authority'):
         _worker.invalidate_position_authority()
+    if _worker is not None and hasattr(_worker, '_reset_pet_transition'):
+        _worker._reset_pet_transition(release_pending=True)
     _character_joined = True
+    _joined_game_teleport_pending = True
     _death_callback_active = False
     _recent_player_attack = None
     # joined_game runs before phBot has loaded character data; keep this agent-scoped.
@@ -5640,7 +5911,7 @@ def joined_game():
 
 
 def teleported():
-    global _npc_sample_forced, _player_sample_forced, _last_position_sample_at, _last_position_publish_at, _last_position_observed
+    global _npc_sample_forced, _player_sample_forced, _last_position_sample_at, _last_position_publish_at, _last_position_observed, _joined_game_teleport_pending
     _npc_sample_forced = True
     _last_position_sample_at = 0.0
     _last_position_publish_at = 0.0
@@ -5649,6 +5920,9 @@ def teleported():
     _reset_spawn_state()
     if _worker is not None and hasattr(_worker, 'clear_position'):
         _worker.clear_position()
+    if _worker is not None and not _joined_game_teleport_pending and hasattr(_worker, 'confirm_teleport'):
+        _worker.confirm_teleport()
+    _joined_game_teleport_pending = False
     if _worker is not None and hasattr(_worker, '_cancel_navigation_generation'):
         _worker._cancel_navigation_generation('character_teleported')
     _lifecycle_event('session.teleported', 'teleported', include_identity=True)
@@ -6039,6 +6313,12 @@ def _attach_spawn_player_fields(players):
 
 def handle_joymax(opcode, data):
     """Observe server packets passively and always forward them to phBot."""
+    if opcode == TELEPORT_READY_OPCODE and _worker is not None:
+        try:
+            _worker.observe_teleport_ready()
+        except Exception:
+            # Transition tracking must never interfere with packet forwarding.
+            pass
     if opcode == POSITION_MOVEMENT_OPCODE:
         try:
             _sample_realtime_position()

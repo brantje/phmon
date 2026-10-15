@@ -14,6 +14,30 @@ export interface GamePosition {
   z: number
 }
 
+/** Whole-unit pathfinding destination, kept inside its encoded outdoor tile. */
+export function outdoorNavigationPosition(
+  position: GamePosition,
+): GamePosition {
+  const minX =
+    ((position.region % 256) - OUTDOOR_ORIGIN_TILE_X) * OUTDOOR_UNITS_PER_TILE
+  const minY =
+    (Math.floor(position.region / 256) - OUTDOOR_ORIGIN_TILE_Y) *
+    OUTDOOR_UNITS_PER_TILE
+  // X covers [minX, minX + 192); Y covers (minY, minY + 192].
+  // Rounding at an edge must not put the destination in a different region.
+  return {
+    ...position,
+    x: Math.max(
+      minX,
+      Math.min(minX + OUTDOOR_UNITS_PER_TILE - 1, Math.round(position.x)),
+    ),
+    y: Math.max(
+      minY + 1,
+      Math.min(minY + OUTDOOR_UNITS_PER_TILE, Math.round(position.y)),
+    ),
+  }
+}
+
 const TILE_SIZE = 256
 const OUTDOOR_UNITS_PER_TILE = 192
 const OUTDOOR_ORIGIN_TILE_X = 135

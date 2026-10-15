@@ -250,6 +250,184 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-12 Stop unidentified nearby-player registry admission
+
+The operator asked for the cause of recurring Unknown/Unknown rows and a source
+fix. Read-only production evidence found four recreated players/seven observations,
+all `map.players`, without player-name, alias or active-job evidence. The collector
+has a generic nearby name; unconditional `ApplyLive` persistence recreated deleted
+records. Implemented receiver admission before registry/history writes: native
+job-mode classification, existing resolved identities/accepted alias mappings,
+own-character identities or unexpired accepted direct-name staged enrichment.
+Affiliation alone and individual field associations do not qualify. All live-map
+sightings remain available. Later classification admits normally; omission does
+not stop known-player updates. Existing unresolved history/imports remain intact.
+No sender/config changes, deployment, bot operation or additional live deletion.
+
+Files: `server/internal/players/{registry,live_admission}.go`,
+`server/internal/phproxy/live_admission_integration_test.go`, protocol/enrichment/
+capability/parity docs and [source evidence](docs/reference/player-admission-2026-10-12.md).
+Validation: isolated PostgreSQL 18 full `go test ./...` passed; focused PostgreSQL
+`go test -race ./internal/players ./internal/phproxy ./internal/httpapi` passed.
+Regression fixtures cover skipped histories, unchanged map sightings, later
+native admission, omission, own/server scoping, atomic validation, v1/v2 staged
+promotion, expired evidence, field-association isolation and Magik/xDont's seven
+gear entries. These are automated receiver results, not live rollout evidence.
+The operator later authorized the local Compose rebuild; that instance now runs
+the admission rule. Other instances are unchanged. Exact next action: observe
+natural map sightings on the Windows/phBot runtime.
+
+### Resume — 2026-10-12 normal-player v2 job enrichment
+
+Active increment: the operator's focused job receipt/storage/projection/display
+verification; this request does not start the remaining roadmap. Receiver
+validation already accepts numeric `job`/`job_level` and
+`unverified_reference_mapping`. Corrected the deliberately empty job fallback
+projection, added migration 35 for attached/staged existing enrichments, exposed
+job evidence on list/detail fallbacks, and made both views native-first. Zero
+remains known; unknown codes retain numbers; alias jobs appear separately as
+inferred and never become unqualified normal-player fallbacks. Affiliation is
+independent of job-item classification/native jobbing state. Filters, sorts,
+counts and pagination retain the same native-first rules. Tracking/history/live
+presence paths are unchanged.
+
+Files: `server/internal/phproxy/{merge_v2,merge_test,job_flow_integration_test}.go`,
+`server/internal/database/migrations/000035_ph_proxy_job_fallback.sql`,
+`server/internal/players/registry.go`, `server/internal/httpapi/{players,
+phproxy_identity_integration_test}.go`, Players list/detail, playerRegistry
+utility/tests, `scripts/player_job_browser_check.mjs`, protocol/enrichment docs,
+and [verification evidence](docs/reference/player-job-enrichment-2026-10-12.md).
+Pre-existing unrelated working-tree edits were retained.
+
+Validation: focused PostgreSQL/race/vet/build checks passed; 249 frontend tests,
+lint/typecheck and Chrome list/detail checks at all three contract viewports
+passed. All `scripts/check.sh` gates passed against a fresh ready PostgreSQL 18.6
+with Node 24.20.0 and `GOFLAGS=-p=1`: Go vet/race/build, 266 plugin tests,
+transport audit, frontend format/lint/typecheck/build and 249 unit tests. The final
+Compose gate initially stopped on the intentionally blank example operator
+secret; it passed separately with an explicit isolated dummy secret. Detailed
+results and environmental false starts are in the verification report.
+Read-only live evidence confirmed v2 numeric affiliation and original unverified
+confidence, including players with known empty job-item observations. The requested
+local Compose server/web rebuild applied migration 35 and restarted both services;
+PostgreSQL stayed up. All 233 direct normal-name job rows now have mapped fallback
+values without rewriting tracking/history. Authenticated list/detail GETs through
+the restarted local app confirmed a native-null live Trader displays `trader`
+while raw code 1 and confidence remain intact. The browser fixture also verifies
+native zero, native precedence and alias-only attribution.
+
+Remaining gate: Windows phBot sender settings/packet behavior were not independently
+inspected; the operator supplied that uploads are enabled and v2 selected. Exact
+next action: observe natural post-restart v2/map traffic and confirm runtime
+classification while retaining player history and presence.
+
+### Resume — 2026-10-12 Delete unknown player records and history
+
+The operator requested removal of records displaying Unknown for both player name
+and job alias, then explicitly selected deletion including history ("Yes + history").
+Completed a one-time live PostgreSQL cleanup using the current display projection
+under transaction locks. Before deletion, saved a private recovery JSON outside
+Git in `~/.local/share/phmon/backups/unknown-players-20261012-114516+0200.json`
+(directory 0700, file 0600). Deleted **103 player records**, **3,261 observations**
+and **133 level snapshots** through existing cascades; no enrichment belonged to
+these IDs. Retained **241 other player records** at the transaction snapshot.
+Verified all selected IDs and their original observation/snapshot rows are gone.
+
+Ordinary live tracking had already created **two new unclassified records** during
+verification. This is a one-time cleanup; future observations remain eligible to
+create records. The initially prepared reversible list-exclusion interpretation
+was reverted after the operator selected actual deletion. No future ingestion/list
+policy, application deployment, bot operation or sender configuration change.
+Existing workspace changes from the preceding increment are preserved.
+
+Validation: original-ID and child-history absence queries after commit; count
+checks against the durable private backup before commit. Earlier isolated tests
+covered the alternate list-filter implementation, which was not deployed and is
+not the selected result. Docs: protocol, receiving contract and parity ledger.
+Exact next action: none for this cleanup; change future-record visibility or
+retention only if the operator requests that additional policy.
+
+### Resume — 2026-10-12 Players identities and v2 gear delivery
+
+Active increment: the explicitly requested Players identity/v2 compatibility plan;
+this does not start the remaining general roadmap. Implemented shared SQL
+`display_identity` for list/detail, independent player-name/job-alias classification,
+unique server-scoped inferred grouping before filters/counts/sort/pagination,
+read-only snapshot consistency, source/conflict labels, original-record links,
+and canonical enrichment on original alias detail URLs. Native tracking records,
+timestamps, observations and level history remain intact. Own characters stay
+hidden by default; proxy-only names retain staging. Mobile filters shrink within
+cells and tables scroll internally.
+
+V2 now accepts supported alias associations, retains evidence in equal-time
+comparisons, promotes every v2 field, serializes identity field merges and returns
+safe field/index validation codes. Migration **33** widens uint32 model references
+and 128-byte staged names; protocol tracking names remain 64 bytes. Concurrent
+work's pending-identity index migration **34**, native job fallback correction,
+promotion guard and plugin fixes are preserved. No worktree, deployment, external
+publication, sender/config changes or real-character operations were performed
+by this increment.
+
+Files: `server/internal/{players,phproxy,httpapi}/`, migration 33,
+`web/app/{pages/players,utils,assets/css}/`, frontend tests,
+`scripts/player_identity_browser_check.mjs`, and receiving/protocol/parity docs.
+Validation: isolated PostgreSQL `TEST_DATABASE_URL` with `go test ./...`;
+focused `go test -race ./internal/phproxy ./internal/players ./internal/httpapi`;
+Node **24.20.0** frontend unit tests (**248 passed**), typecheck, changed-file
+ESLint (zero errors; existing void-input warnings), formatting and production
+build. Isolated Go → PostgreSQL → Nuxt browser checks pass at 1440×1000,
+1280×800 and 390×844, including synthetic Magik/xDont's seven gear entries,
+both detail URLs, filtering, keyboard navigation and error recovery. Evidence:
+`docs/reference-parity.md` and `docs/phmon-enrichment-v2.md`.
+
+Earlier read-only live DB evidence showed Magik's seven items and xDont link;
+the historical 400 cannot be attributed to that character. Actual Windows/phBot
+sender validation and deployment remain separate, intentionally outside this
+request. Exact next action: review the implementation/evidence; deploy only under
+separate operator authorization and then observe naturally occurring v2 uploads.
+
+### Resume — 2026-10-12 agent reconnect storm from PostgreSQL timeouts
+
+Live agents were reconnecting because PostgreSQL commits waited on `WALWrite`
+for 7–10+ seconds (disk 100% util, checkpoint ~248 s) while the agent handler
+closed the WebSocket on any `character.state` / resource / hello / identify
+write that missed its 2-second deadline. The plugin then immediately
+reconnected, multiplying session-close and hello writes.
+
+The authenticated session now stays open when those durable writes time out:
+hello still acks from the in-memory registry, state/resource/command/control
+frames are dropped and retried later, identify timeouts are not reported as
+invalid identity, and map character-lookup timeouts drop the observation
+instead of sending `character.rejected`. Malformed frames and revoked
+credentials remain fatal. Docker build cache was pruned to free disk;
+PostgreSQL was not restarted.
+
+Validation: focused `go test ./internal/httpapi ./internal/characters` plus
+hello-timeout session retention. Docker builder prune reclaimed 7.5 GB (disk
+91% → 84%). Only the server image was rebuilt/recreated; PostgreSQL stayed up
+on the existing volume. Post-deploy server logs have zero agent frame rejects
+or connection-ended warnings; load fell from ~8.4 to ~2.1. Exact next action:
+watch live agents through the next busy map interval; no plugin update is
+needed.
+
+### Resume — 2026-10-11 ph-proxy enrichment v2 receiver
+
+Extended the ph-proxy receiver with agent-authenticated
+`POST /api/integrations/ph-proxy/v2/enrichments` and operator
+`GET /api/integrations/ph-proxy/v2/status` while keeping v1 strict. Migration
+`000031` adds `extended` JSONB plus `proxy_*` list-fallback columns.
+`server/internal/phproxy` now validates v2 per-field evidence (spawn/metadata
+opcodes, `character_name` attribution, identity links), merges avatar gear, level,
+job affiliation, race, guild, spawn position, job-item IDs and inferred aliases,
+and exposes full `enrichment` on player detail. `/api/players` preserves native
+fields and adds `display_fallback` while filters/sorts use enrichment fallbacks
+before pagination. v1 behavior is unchanged. Contract notes:
+`docs/phmon-enrichment-v2.md` and `docs/protocol.md`.
+
+Validation: `gofmt`, `go test ./internal/phproxy/... ./internal/players/... ./internal/httpapi/...`,
+v2 validator tests, and frontend type updates for enrichment panels. PostgreSQL
+integration and live ph-proxy rollout remain separate gates.
+
 ### Resume — 2026-10-10 player registry and level snapshots
 
 Observed players now persist by server and observed name in `players`,
@@ -6158,3 +6336,129 @@ includes stable server/name player-registry lock ordering. Files:
 `server/internal/httpapi/agent.go`, `agent_test.go`. Validation: HTTP API race
 tests and vet passed before port; rerun and monitor PR CI/review for this branch.
 The running Docker deployment remains main until separately updated.
+
+### Resume — 2026-10-12 weapon-swap event noise
+
+Plugin **1.9.34** / agent protocol **19** filters balanced inventory↔equipment
+transfers for known Weapon and Shield items before the activity event queue/spool.
+The bounded item-family cache is populated on the phBot callback thread even when
+Potion/Pill filters are off; the event worker uses cached classifications. Unknown
+definitions keep transfers visible. Resource diffs still advance, and genuine item
+gains/losses and other container transfers remain reportable. Existing activity
+history is retained. Evidence and limits are in `docs/phbot-capabilities.md`.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
+`docs/phbot-capabilities.md`, this guide. Validation: `python3 -m unittest
+plugin.test_phmon` passed (252 tests); the generated monitor output contract is
+unchanged, the plugin version guard passes for 1.9.33→1.9.34, protocol remains 19.
+No Windows/phBot runtime was available, so native `get_item` mapping and a natural
+weapon/shield switch remain unverified. Exact next action: install plugin 1.9.34
+in the target phBot runtime, observe a natural main/alternate weapon and
+shield/two-handed swap, and confirm equipment snapshots update with no matching
+transfer events while unrelated acquisitions/transfers still appear.
+
+### Resume — 2026-10-12 pet lifecycle events during teleport
+
+Plugin **1.9.35** holds pet summon/dismiss/transport-death events with original
+event/session metadata, observes the vSRO `0x34B5` ready signal, then confirms the
+teleport through phBot's `teleported()` callback. It suppresses teardown and
+respawn churn until two stable type/model/name roster observations arrive, rebases
+pet-owned item comparisons, and fences resource samples across the transition.
+The initial callback after `joined_game()` does not start this state machine. A
+30-second recovery timeout logs and waits for a fresh stable roster.
+
+Files: `plugin/PhMon.py`, `plugin/test_phmon.py`, `plugin/README.md`,
+`docs/phbot-capabilities.md`, this guide. Validation: `python3 -m py_compile
+plugin/PhMon.py` and `python3 -m unittest plugin.test_phmon` passed (260 tests).
+The installed Windows/phBot server was unavailable, so actual `0x34B5` ordering
+relative to pet callbacks remains unverified. Exact next action: install plugin
+1.9.35 on the target runtime, teleport with a pet and transport active, verify no
+false lifecycle/item events, then confirm genuine dismissals and transport deaths
+outside teleport still publish after the hold.
+
+### Resume — 2026-10-12 right-click navigation precision
+
+Active increment: the operator's Map Navigate to bug report, with explicit live
+test authorization for LordLurks only. Correct menu/admission/24 ms acknowledgement
+was followed by native path-generation expiry/no-path failures. Paired outdoor
+decimal destinations failed while nearest whole-unit destinations succeeded on
+phBot 20.1.3 / plugin 1.9.36. Outdoor navigation now rounds X/Y before preparation
+and admission and keeps rounding inside the clicked region; cave/training
+precision, frozen Z, exact retry, session and fan-out contracts remain intact.
+The patched right-click flow issued cmd_7a7521f7-9424-4277-a7ed-73726bdd2ea0;
+phBot returned True in about 833 ms and the live map observed arrival at 6435,1078.
+
+Files: web/app/utils/{mapCoordinates,mapNavigationAction}.ts,
+web/tests/mapNavigationAction.test.ts, capability/parity notes and
+[paired runtime evidence](docs/reference/map-navigation-precision-2026-10-12.md).
+Validation: 44 focused / 251 full frontend tests, typecheck, changed-file lint,
+Prettier and diff checks pass. Pre-existing Players edits are preserved and
+excluded from the isolated production-web build context. No plugin/backend change
+or unrelated real-character command. Local web rollout completed and is healthy;
+the deployed right-click issued cmd_ebe240fa-3247-4500-a41e-8c9b43a02400, native
+True in about 1.15 s, and exact-command arrival at 6435,1094. A nearby whole-unit
+6436,1094 endpoint still returned native path_not_found; normalization fixes the
+tested decimal failure, not arbitrary native path availability. The development
+server was stopped. Exact next action: none for this focused compatibility fix;
+if another destination fails, retain its command ID and native generation logs
+before changing pathfinding behavior. No full-roadmap completion claim.
+
+### Resume — 2026-10-13 Economy analytics fleet repair
+
+Active increment: the operator's Economy bug report, limited to existing Slice 12
+analytics. Direct entry had an empty Stats-only character selector despite a hidden
+Odin UUID filter; all-character gold queries exceeded the three-second deadline;
+gold bars offset their smallest balance to zero. The selector now uses the fleet
+feed, bank balances are joined after latest-per-bucket selection and reused for
+counts/rankings, character-day summaries aggregate before counting, and gold bars
+use a zero baseline while lines preserve exact integer offsets. The page explains
+character/personal-bank versus guild scope. Observed totals were 79.7B character
+plus personal banks and 163.6B guild bank, matching the 243.3B navbar.
+
+Files: server/internal/analytics/{economy.go,economy_integration_test.go},
+web/app/{pages/analytics.vue,components/AnalyticsChart.vue,
+utils/analyticsGoldScale.ts}, web/tests/analyticsGoldScale.test.ts, calculation/
+parity documentation and [evidence](docs/reference/economy-analytics-repair-2026-10-13.md).
+Validation: full analytics PostgreSQL race suite, new time-fencing/20-series/count/
+leader regressions, 480k-sample load query (1.94 s), live read-only fleet query
+(2.05 s), 254 frontend tests, typecheck, changed-file lint/format, Go vet/build,
+Docker builds and healthy readiness. Authenticated live Odin → all 12 characters
+→ guild flow passed at all three required viewports with visible single-entity
+bars, zero browser errors/unavailable frames and no overflow.
+
+Only local server/web were rebuilt and recreated; PostgreSQL was not restarted.
+The staged web build preserved deployed map precision and excluded pending Players
+changes. Existing gold history, including the October 9 discontinuity, remains
+unchanged; its cause was not inferred. No bot command, merge, external publication
+or notification. Temporary test resources were removed. Exact next action: none
+for this focused fix; broader Slice 12/runtime/parity gates remain as documented.
+
+### Resume — 2026-10-13 Economy recurring timeout follow-up
+
+The operator reported the unavailable banner immediately after the first repair.
+A longer production observation reproduced two unavailable frames in 25 seconds.
+The signed-gold-summary query still exceeded its budget; all five ingestion DB
+connections were also observed waiting 5–7.5 seconds on WAL commits. The preceding
+short browser acceptance was insufficient for sustained concurrent monitoring.
+
+Added a single reserved read-only analytics connection, leaving writes/retention
+on the existing pool; bounded full-filter Economy snapshot reuse for five seconds
+from the original AsOf, concurrent-read sharing, failure exclusion and cancellable
+waiters; disabled transaction-local JIT and logged actual analytics failure reasons.
+Unused Docker build cache older than 24 hours reclaimed 4.945 GB (96% → 92% disk).
+No application records, database volumes or unrelated running containers removed.
+
+Files: server/cmd/server/main.go, server/internal/analytics/{store,query,
+economy_cache,economy_cache_test,economy_integration_test}.go,
+server/internal/httpapi/live.go, calculation/protocol/parity documentation and
+[follow-up evidence](docs/reference/economy-analytics-repair-2026-10-13.md).
+Validation: full analytics/HTTP API PostgreSQL race tests, occupied-ingestion-pool,
+cache expiry/scope/bound/failure/concurrency/cancellation regressions, vet/build,
+Docker build and healthy readiness. Live 121-second acceptance ran two fleet
+Economy pages, Odin and Map concurrently with eight manual refresh rounds:
+227 analytics snapshots, 22 distinct AsOf timestamps per Economy page, 183 map
+snapshots, zero unavailable frames or browser errors. Only the Go container was
+recreated; PostgreSQL and web stayed running. Temporary fixture resources removed.
+Exact next action: none for this follow-up; retain the new failure logs if another
+range fails. No artificial disk-failure test, bot action, external publication,
+merge or broader roadmap acceptance claimed.

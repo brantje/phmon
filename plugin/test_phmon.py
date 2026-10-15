@@ -716,6 +716,8 @@ class ConfigTests(unittest.TestCase):
             10: {'tid1': 3, 'tid2': 1, 'tid3': 1},
             11: {'tid1': 3, 'tid2': 2, 'tid3': 6},
             12: {'tid1': 3, 'tid2': 5, 'tid3': 0},
+            13: {'tid1': 1, 'tid2': 6, 'tid3': 2},
+            14: {'tid1': 1, 'tid2': 4, 'tid3': 1},
         }
         getter = Mock(side_effect=lambda model: definitions[model])
         with patch.object(plugin, '_optional_phbot_api', return_value=getter):
@@ -723,7 +725,9 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(plugin._item_sort_type('Silkroad', 11), 'Pill')
             self.assertIsNone(plugin._item_sort_type('Silkroad', 12))
             self.assertIsNone(plugin._item_sort_type('Silkroad', 12))
-        self.assertEqual(getter.call_count, 3)
+            self.assertEqual(plugin._item_sort_type('Silkroad', 13), 'Weapon')
+            self.assertEqual(plugin._item_sort_type('Silkroad', 14), 'Shield')
+        self.assertEqual(getter.call_count, 5)
         plugin._reset_item_type_cache()
 
     def test_resource_item_type_lookup_covers_inventory_and_pet_slots(self):
@@ -744,6 +748,30 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(plugin._cached_item_sort_type('Silkroad', 11), 'Pill')
         self.assertEqual(getter.call_count, 3)
         plugin._reset_item_type_cache()
+
+    def test_resource_item_type_lookup_warms_weapons_when_potion_filters_are_off(self):
+        plugin._reset_item_type_cache()
+        previous_config = plugin._profile_config
+        plugin._profile_config = {'ignore_potion_events': False, 'ignore_pill_events': False}
+        inputs = {
+            'get_inventory': {'available': True, 'value': {'items': [
+                {'model': 13}, {'model': 14},
+            ]}},
+        }
+        definitions = {
+            13: {'tid1': 1, 'tid2': 6, 'tid3': 2},
+            14: {'tid1': 1, 'tid2': 4, 'tid3': 1},
+        }
+        getter = Mock(side_effect=lambda model: definitions[model])
+        try:
+            with patch.object(plugin, '_optional_phbot_api', return_value=getter):
+                plugin._cache_resource_item_types(inputs, 'Silkroad')
+            self.assertEqual(plugin._cached_item_sort_type('Silkroad', 13), 'Weapon')
+            self.assertEqual(plugin._cached_item_sort_type('Silkroad', 14), 'Shield')
+            self.assertEqual(getter.call_count, 2)
+        finally:
+            plugin._profile_config = previous_config
+            plugin._reset_item_type_cache()
 
 
 class ResourceCollectorTests(unittest.TestCase):
@@ -1691,7 +1719,15 @@ class ResourceEventDerivationTests(unittest.TestCase):
     def item(self, quantity=1):
         return {'model': 77, 'servername': 'ITEM_ETC_TEST', 'name': 'Test Item', 'quantity': quantity}
 
-    def resources(self, bag=None, pet=None, job=None, storage=None):
+    def classified_item(self, model, code, name, quantity=1):
+        return {'model': model, 'servername': code, 'name': name, 'quantity': quantity}
+
+    def cache_item_type(self, model, sort_type):
+        with plugin._ITEM_TYPE_CACHE_LOCK:
+            plugin._ITEM_TYPE_CACHE[('silkroad', model)] = sort_type
+
+    def resources(self, bag=None, pet=None, job=None, storage=None, equipment=None,
+                  pet_inventory=None, pet_present=False, pet_id='1234'):
         def container(items):
             return {
                 'availability': 'observed',
@@ -1703,12 +1739,21 @@ class ResourceEventDerivationTests(unittest.TestCase):
         pets = []
         if pet is not None:
             pets.append({
-                'pet_id': '1234', 'name': 'Pick Pet', 'type': 'pick',
+                'pet_id': pet_id, 'name': 'Pick Pet', 'type': 'pick', 'model': 9001,
                 'inventory_available': True,
                 'slots': [{'source_slot': 0, 'item': dict(pet)}],
             })
+        elif pet_present:
+            pets.append({
+                'pet_id': pet_id, 'name': 'Pick Pet', 'type': 'pick', 'model': 9001,
+                'inventory_available': True,
+                'slots': [
+                    {'source_slot': slot, 'item': dict(item)}
+                    for slot, item in (pet_inventory or [])
+                ],
+            })
         return {
-            'equipment': container([]),
+            'equipment': container(equipment),
             'inventory': container(bag),
             'pets': {'availability': 'observed', 'pets': pets},
             'party': {'availability': 'observed', 'members': []},
@@ -1731,9 +1776,134 @@ class ResourceEventDerivationTests(unittest.TestCase):
             except plugin._queue.Empty:
                 return output
 
+    def release_held_pet_events(self):
+        with self.worker._pet_transition_lock:
+            for entry in self.worker._pet_transition_pending_events:
+                entry['ready_at'] = 0
+        self.worker._flush_pending_pet_events()
+
     def test_baseline_and_bag_split_merge_do_not_create_item_occurrences(self):
         self.observe(self.resources(bag=[(13, self.item(4))]))
         self.observe(self.resources(bag=[(14, self.item(1)), (15, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_repeated_main_alternate_weapon_swaps_are_suppressed(self):
+        main = self.classified_item(101, 'ITEM_CH_SWORD_TEST', 'Main Weapon')
+        alternate = self.classified_item(102, 'ITEM_CH_BOW_TEST', 'Alternate Weapon')
+        self.cache_item_type(101, 'Weapon')
+        self.cache_item_type(102, 'Weapon')
+        equipped = self.resources(equipment=[(6, main)], bag=[(13, alternate)], storage=[])
+        swapped = self.resources(equipment=[(6, alternate)], bag=[(13, main)], storage=[])
+
+        self.observe(equipped)
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_optional_phbot_api', side_effect=AssertionError('worker called phBot API')):
+            self.observe(swapped)
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_optional_phbot_api', side_effect=AssertionError('worker called phBot API')):
+            self.observe(equipped)
+        self.assertEqual(self.drain(), [])
+        self.observe(swapped)
+        self.assertEqual(self.drain(), [])
+
+    def test_weapon_and_shield_swap_to_two_handed_weapon_is_suppressed(self):
+        sword = self.classified_item(111, 'ITEM_EU_SWORD_TEST', 'Sword')
+        shield = self.classified_item(112, 'ITEM_EU_SHIELD_TEST', 'Shield')
+        two_handed = self.classified_item(113, 'ITEM_EU_STAFF_TEST', 'Two-handed weapon')
+        self.cache_item_type(111, 'Weapon')
+        self.cache_item_type(112, 'Shield')
+        self.cache_item_type(113, 'Weapon')
+        equipped = self.resources(equipment=[(6, sword), (7, shield)],
+                                  bag=[(13, two_handed)], storage=[])
+        equipped_two_handed = self.resources(equipment=[(6, two_handed)],
+                                             bag=[(13, sword), (14, shield)], storage=[])
+
+        self.observe(equipped)
+        self.assertEqual(self.drain(), [])
+        self.observe(equipped_two_handed)
+        self.assertEqual(self.drain(), [])
+
+    def test_armor_equipment_change_and_weapon_storage_transfer_are_kept(self):
+        armor = self.classified_item(121, 'ITEM_CH_ARMOR_TEST', 'Armor')
+        accessory = self.classified_item(124, 'ITEM_CH_ACCESSORY_TEST', 'Accessory')
+        self.cache_item_type(121, 'Armor')
+        self.cache_item_type(124, 'Accessory')
+        self.observe(self.resources(equipment=[(1, armor)], bag=[(11, accessory)], storage=[]))
+        self.assertEqual(self.drain(), [])
+        self.observe(self.resources(equipment=[(11, accessory)], bag=[(13, armor)], storage=[]))
+        armor_event = self.drain()
+        self.assertEqual(len(armor_event), 2)
+        self.assertTrue(all(event['kind'] == 'item.transferred' for event in armor_event))
+
+        weapon = self.classified_item(122, 'ITEM_CH_DAGGER_TEST', 'Weapon')
+        self.cache_item_type(122, 'Weapon')
+        self.observe(self.resources(equipment=[(6, weapon)], bag=[], storage=[]))
+        self.drain()
+        self.observe(self.resources(equipment=[], bag=[], storage=[(0, weapon)]))
+        storage_event = self.drain()
+        self.assertEqual(len(storage_event), 1)
+        self.assertEqual(storage_event[0]['kind'], 'item.transferred')
+        self.assertEqual(storage_event[0]['payload']['destination_container']['type'], 'storage')
+
+    def test_weapon_transfer_between_inventory_and_pet_is_kept(self):
+        weapon = self.classified_item(123, 'ITEM_CH_SPEAR_TEST', 'Weapon', quantity=2)
+        self.cache_item_type(123, 'Weapon')
+        self.observe(self.resources(bag=[(13, weapon)], pet_present=True, pet_inventory=[]))
+        self.assertEqual(self.drain(), [])
+        self.observe(self.resources(bag=[], pet_present=True, pet_inventory=[(0, weapon)]))
+        events = self.drain()
+        transfers = [event for event in events if event['kind'] == 'item.transferred']
+        self.assertEqual(len(transfers), 1)
+        self.assertEqual(transfers[0]['payload']['source_container']['type'], 'inventory')
+        self.assertEqual(transfers[0]['payload']['destination_container']['type'], 'pets')
+
+    def test_real_weapon_gain_and_loss_during_swap_are_kept(self):
+        main = self.classified_item(131, 'ITEM_CH_SWORD_TEST', 'Main Weapon')
+        alternate = self.classified_item(132, 'ITEM_CH_BOW_TEST', 'Alternate Weapon')
+        loot = self.classified_item(133, 'ITEM_CH_AXE_TEST', 'New Weapon')
+        for model in (131, 132, 133):
+            self.cache_item_type(model, 'Weapon')
+        self.observe(self.resources(equipment=[(6, main)], bag=[(13, alternate)], storage=[]))
+        self.assertEqual(self.drain(), [])
+        self.observe(self.resources(equipment=[(6, alternate)], bag=[(13, main), (14, loot)], storage=[]))
+        gained = self.drain()
+        self.assertEqual(len(gained), 1)
+        self.assertEqual(gained[0]['kind'], 'item.acquired')
+        self.assertEqual(gained[0]['item_model'], 133)
+
+        self.observe(self.resources(equipment=[(6, main)], bag=[(13, alternate)], storage=[]))
+        lost = self.drain()
+        self.assertEqual(len(lost), 1)
+        self.assertEqual(lost[0]['kind'], 'item.quantity_decreased')
+        self.assertEqual(lost[0]['item_model'], 133)
+
+    def test_unknown_weapon_type_keeps_transfer_events(self):
+        main = self.classified_item(141, 'ITEM_CH_SWORD_UNKNOWN', 'Main Weapon')
+        alternate = self.classified_item(142, 'ITEM_CH_BOW_UNKNOWN', 'Alternate Weapon')
+        self.observe(self.resources(equipment=[(6, main)], bag=[(13, alternate)], storage=[]))
+        self.drain()
+        self.observe(self.resources(equipment=[(6, alternate)], bag=[(13, main)], storage=[]))
+        events = self.drain()
+        self.assertEqual(len(events), 2)
+        self.assertTrue(all(event['kind'] == 'item.transferred' for event in events))
+
+    def test_suppressed_swap_advances_baseline_across_reconnect_and_sample_gap(self):
+        main = self.classified_item(151, 'ITEM_CH_SWORD_TEST', 'Main Weapon')
+        alternate = self.classified_item(152, 'ITEM_CH_BOW_TEST', 'Alternate Weapon')
+        self.cache_item_type(151, 'Weapon')
+        self.cache_item_type(152, 'Weapon')
+        equipped = self.resources(equipment=[(6, main)], bag=[(13, alternate)], storage=[])
+        swapped = self.resources(equipment=[(6, alternate)], bag=[(13, main)], storage=[])
+        self.observe(equipped)
+        self.drain()
+
+        self.worker.session_id = '00000000-1111-4222-8333-444444444444'
+        self.observe(swapped)
+        self.assertEqual(self.drain(), [])
+        self.worker._resource_sample_gap = True
+        self.observe(equipped)
+        self.assertEqual(self.drain(), [])
+        self.observe(swapped)
         self.assertEqual(self.drain(), [])
 
     def test_academy_membership_events_keep_academy_context_and_scope_switches(self):
@@ -1928,10 +2098,12 @@ class ResourceEventDerivationTests(unittest.TestCase):
     def test_pet_summon_sets_inventory_baseline_then_pet_to_bag_is_transfer(self):
         self.observe(self.resources(bag=[]))
         self.observe(self.resources(bag=[], pet=self.item(3)))
+        self.release_held_pet_events()
         events = self.drain()
         self.assertEqual([event['kind'] for event in events], ['pet.summoned'])
         self.observe(self.resources(bag=[(13, self.item(3))], pet=None))
         # Dismissal changes the owned-container set; that sample is a new baseline.
+        self.release_held_pet_events()
         dismissed = self.drain()
         self.assertEqual([event['kind'] for event in dismissed], ['pet.dismissed'])
         self.assertNotIn('item.acquired', [event['kind'] for event in dismissed])
@@ -1944,6 +2116,67 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(transfer['payload']['source_container']['type'], 'pets')
         self.assertEqual(transfer['payload']['destination_container']['type'], 'inventory')
         self.assertEqual(transfer['payload']['quantity_delta'], 3)
+
+    def test_teleport_teardown_and_respawn_rebaseline_pet_inventory_without_events(self):
+        pet_item = self.item(4)
+        self.observe(self.resources(bag=[], pet=pet_item))
+        self.worker.observe_teleport_ready()
+        # phBot can report teardown before its confirmed teleport callback.
+        self.observe(self.resources(bag=[], pet=None))
+        self.worker.confirm_teleport()
+
+        # Respawn may assign a new runtime pet ID; the observed roster signature
+        # and pet inventory still match the pre-teleport baseline.
+        self.observe(self.resources(bag=[], pet=pet_item, pet_id='9876'))
+        self.observe(self.resources(bag=[], pet=pet_item, pet_id='9876'))
+        self.assertEqual(self.drain(), [])
+        self.assertEqual(self.worker._pet_transition_phase, 'normal')
+
+        # A later genuine summon is still detected and held for the short
+        # ordering window before it is released.
+        self.observe(self.resources(bag=[], pet=None))
+        self.observe(self.resources(bag=[], pet=pet_item, pet_id='5432'))
+        self.assertEqual(self.drain(), [])
+        self.release_held_pet_events()
+        self.assertEqual([event['kind'] for event in self.drain()], ['pet.dismissed', 'pet.summoned'])
+
+    def test_unavailable_pet_snapshot_does_not_finish_teleport_settling(self):
+        self.observe(self.resources(pet=self.item(1)))
+        self.worker.confirm_teleport()
+        unavailable = self.resources(pet=None)
+        unavailable['pets'] = {'availability': 'unavailable', 'pets': []}
+        self.observe(unavailable)
+        self.observe(self.resources(pet=self.item(1), pet_id='9876'))
+        self.assertEqual(self.worker._pet_transition_phase, 'settling')
+        self.observe(self.resources(pet=self.item(1), pet_id='9876'))
+        self.assertEqual(self.worker._pet_transition_phase, 'normal')
+        self.assertEqual(self.drain(), [])
+
+    def test_teleport_timeout_rebaselines_without_a_transport_death(self):
+        self.observe(self.resources(pet=self.item(1)))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.worker.confirm_teleport()
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(self.resources(pet=None))
+        with patch.object(plugin, '_monotonic', return_value=131.0), \
+                patch.object(plugin, '_log') as log:
+            self.observe(self.resources(pet=None))
+            self.observe(self.resources(pet=None))
+        self.assertEqual(self.worker._pet_transition_phase, 'normal')
+        self.assertTrue(any('fresh stable pet baseline' in call.args[0]
+                            for call in log.call_args_list))
+        self.assertEqual(self.drain(), [])
+
+    def test_resource_samples_captured_before_transition_are_fenced(self):
+        sample = {'identity': self.identity, 'resources': self.resources(pet=self.item(1))}
+        self.worker.update_resources(self.identity, sample['resources'])
+        queued_before = self.worker._resource_samples.get_nowait()
+        self.assertTrue(self.worker._resource_sample_is_current(queued_before))
+        self.assertTrue(self.worker.observe_teleport_ready())
+        self.assertFalse(self.worker._resource_sample_is_current(queued_before))
+        self.worker.update_resources(self.identity, sample['resources'])
+        queued_after = self.worker._resource_samples.get_nowait()
+        self.assertTrue(self.worker._resource_sample_is_current(queued_after))
 
     def test_sampling_gap_resets_baseline_after_quantity_change(self):
         self.observe(self.resources(bag=[(13, self.item(1))]))
@@ -2079,6 +2312,7 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.worker._current_identity = self.identity
         self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
         self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        plugin._joined_game_teleport_pending = False
         self.worker._latest_alchemy_items = {
             13: {'model': 77, 'servername': 'ITEM_TEST', 'name': 'Observed item', 'quantity': 1},
         }
@@ -2284,6 +2518,96 @@ class CanonicalCallbackTests(unittest.TestCase):
         event = self.callback(plugin.handle_event, plugin.EVENT_ALCHEMY_FINISHED, '')
         self.assertEqual(event['kind'], 'alchemy.finished')
         self.assertEqual(event['payload'], {})
+
+    def test_transport_death_is_held_with_original_event_identity_and_time(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+        self.assertTrue(self.worker._event_samples.empty())
+        self.assertEqual(len(self.worker._pet_transition_pending_events), 1)
+        held = self.worker._pet_transition_pending_events[0]['record']
+        self.assertEqual(held['kind'], 'pet.transport_died')
+        self.assertEqual(held['payload'], {'value': 'horse-7'})
+        self.assertEqual(held['session_id'], self.worker.session_id)
+        self.assertEqual(held['sequence'], 1)
+
+        with patch.object(plugin, '_monotonic', return_value=105.1):
+            self.worker._flush_pending_pet_events()
+        released = self.worker._event_samples.get_nowait()
+        self.assertEqual(released['event_id'], held['event_id'])
+        self.assertEqual(released['occurred_at'], held['occurred_at'])
+        self.assertEqual(released['sequence'], held['sequence'])
+
+    def test_worker_stop_releases_held_pet_lifecycle_events(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+        self.assertEqual(len(self.worker._pet_transition_pending_events), 1)
+        self.worker.stop()
+        self.assertEqual(self.worker._pet_transition_pending_events, [])
+        self.assertTrue(self.worker._event_samples.empty())
+        released = plugin.EventSpool(self.spool_path).pending()
+        self.assertEqual(len(released), 1)
+        self.assertEqual(released[0]['kind'], 'pet.transport_died')
+        self.assertEqual(released[0]['payload'], {'value': 'horse-7'})
+
+    def test_worker_stop_retains_unspooled_event_after_disk_failure(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+        held = self.worker._pet_transition_pending_events[0]['record']
+        with patch.object(self.worker._death_spool, 'add', return_value=False):
+            self.worker.stop()
+        self.assertEqual(self.worker._pending_event_spool_record['event_id'], held['event_id'])
+        self.worker._spool_queued_events()
+        self.assertIsNone(self.worker._pending_event_spool_record)
+        persisted = plugin.EventSpool(self.spool_path).pending()
+        self.assertEqual(len(persisted), 1)
+        self.assertEqual(persisted[0]['event_id'], held['event_id'])
+
+    def test_teleport_ready_and_callback_cancel_preceding_transport_churn(self):
+        plugin._joined_game_teleport_pending = False
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+            plugin.handle_joymax(0x34B5, b'')
+            plugin.teleported()
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+            plugin.handle_event(plugin.EVENT_LEVEL_UP, '42')
+        self.assertEqual(self.worker._pet_transition_phase, 'settling')
+        self.assertEqual(self.worker._pet_transition_pending_events, [])
+        queued = []
+        while not self.worker._event_samples.empty():
+            queued.append(self.worker._event_samples.get_nowait())
+        self.assertEqual([event['kind'] for event in queued], [
+            'session.teleported', 'character.level_up',
+        ])
+
+    def test_joined_game_teleported_callback_does_not_start_a_transition(self):
+        plugin._joined_game_teleport_pending = True
+        with patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.teleported()
+        self.assertEqual(self.worker._pet_transition_phase, 'normal')
+        self.assertFalse(plugin._joined_game_teleport_pending)
+
+    def test_failed_teleport_ready_signal_releases_real_transport_death(self):
+        plugin._joined_game_teleport_pending = False
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+            plugin.handle_joymax(0x34B5, b'')
+        with patch.object(plugin, '_monotonic', return_value=105.1):
+            self.worker._flush_pending_pet_events()
+        self.assertTrue(self.worker._event_samples.empty())
+        with patch.object(plugin, '_monotonic', return_value=110.1):
+            self.worker._flush_pending_pet_events()
+        self.assertEqual(self.worker._event_samples.get_nowait()['kind'], 'pet.transport_died')
 
     def test_unique_notice_records_spawn_and_kill_without_observer_position(self):
         spawn = struct.pack('<BBI', 5, 0, 1954)

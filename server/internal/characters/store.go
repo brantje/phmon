@@ -12,7 +12,10 @@ import (
 	"phmon/server/internal/analytics"
 )
 
-var ErrNotFound = errors.New("character not found")
+var (
+	ErrNotFound        = errors.New("character not found")
+	ErrInvalidIdentity = errors.New("invalid character identity")
+)
 
 type Identity struct {
 	Server, Name string
@@ -84,7 +87,7 @@ func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 func (s *Store) Resolve(ctx context.Context, identity Identity) (string, error) {
 	server, name := strings.TrimSpace(identity.Server), strings.TrimSpace(identity.Name)
 	if len(server) < 1 || len(server) > 100 || len(name) < 1 || len(name) > 64 || strings.ContainsRune(server, 0) || strings.ContainsRune(name, 0) {
-		return "", errors.New("invalid character identity")
+		return "", ErrInvalidIdentity
 	}
 	key, serverKey := strings.ToLower(name), strings.ToLower(server)
 	tx, err := s.pool.Begin(ctx)

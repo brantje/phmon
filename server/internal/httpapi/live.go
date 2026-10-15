@@ -951,6 +951,9 @@ func (c *liveClient) snapshot(subscription liveSubscription) bool {
 		if !c.subscriptionCurrent(subscription) {
 			return true
 		}
+		if subscription.Stream == "analytics" {
+			slog.Warn("live analytics snapshot unavailable", "view", subscription.Filter.AnalyticsView, "reason", err.Error())
+		}
 		return c.enqueue(liveServerMessage{
 			Type:            "subscription.unavailable",
 			ProtocolVersion: liveProtocolVersion,
