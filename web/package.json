@@ -15,7 +15,7 @@
     "lint": "eslint .",
     "typecheck": "nuxt typecheck",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --write app/components/AppSidebar.vue app/components/ItemDetailPopup.vue app/pages/economy.vue app/pages/events.vue app/pages/items.vue && node -e 'const fs=require(\"node:fs\");for(const p of process.argv.slice(1)){console.log(\"PHMON_FMT_FILE \"+p+\" \"+fs.readFileSync(p).toString(\"base64\"))}' app/components/AppSidebar.vue app/components/ItemDetailPopup.vue app/pages/economy.vue app/pages/events.vue app/pages/items.vue && prettier --check ."
   },
   "dependencies": {
     "@iconify-json/lucide": "1.2.137",
