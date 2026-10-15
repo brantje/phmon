@@ -896,7 +896,6 @@ var _ interface {
 	Query(context.Context, Filter) (Snapshot, error)
 } = (*Store)(nil)
 
-
 // queryItemHistory reports canonical observations, not inferred item instances.
 // Event totals and physical item quantities are separate, and transfers never
 // contribute new acquisitions. Every query reads the same repeatable-read

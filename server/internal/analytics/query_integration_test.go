@@ -215,15 +215,15 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 		metrics[metric.Key] = metric
 	}
 	for key, expected := range map[string]string{
-		"world_drops": "2",
+		"world_drops":             "2",
 		"owned_gain_observations": "1",
-		"unknown_origin_gains": "1",
-		"quantity_increases": "1",
-		"quantity_increased": "2",
-		"quantity_decreases": "0",
-		"transfer_events": "1",
-		"transferred_quantity": "1",
-		"verified_pet_receipts": "0",
+		"unknown_origin_gains":    "1",
+		"quantity_increases":      "1",
+		"quantity_increased":      "2",
+		"quantity_decreases":      "0",
+		"transfer_events":         "1",
+		"transferred_quantity":    "1",
+		"verified_pet_receipts":   "0",
 	} {
 		if got, exists := metrics[key]; !exists || got.Value != expected {
 			t.Fatalf("item history metric %s: %+v, expected %s", key, got, expected)
