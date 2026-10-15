@@ -1496,6 +1496,44 @@ supported pet family and runtime protocol, followed by natural, exactly observed
 pet-to-bag comparisons. Until then, detailed packet stats and live pickup receipts
 are explicit runtime blockers.
 
+### Pet item packet research and capture update — 2026-10-15
+
+The current official [Pets API](https://plugins.phbot.org/phbot-api/pets)
+example includes pet item `model`, `servername`, `name`, `quantity`, `plus` and
+`durability`. It does not specify white rolls, blue options, or an item-instance
+lookup API for pet slots. The [Game Data API](https://plugins.phbot.org/phbot-api/game-data)
+`get_item(id)` returns a static definition; it cannot identify one physical copy
+or its rolled stats. This is documentation evidence, distinct from the reported
+phBot 20.1.2 runtime rows, which lacked rich pet item fields.
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) describes
+`handle_joymax(opcode, data)` for server packets and
+`handle_silkroad(opcode, data)` for client packets. Its `event_loop()` runs every
+500 ms. The official [packet processing example](https://plugins.phbot.org/example-plugins)
+returns `True` from both callbacks to forward traffic. At pinned RSBot commit
+`1723fed`, [CosDataResponse](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Cos/CosDataResponse.cs)
+handles incoming `0x30C8` with different pet-family branches and inventory
+deserialization for an ability pet and job transport. Its
+[InventoryOperationResponse](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryOperationResponse.cs)
+handles incoming `0xB034`, including floor-to-pet, pet-to-inventory and
+inventory-to-pet operations. In that implementation, floor-to-pet calls the
+same inventory item parser used for floor-to-character, after reading the pet
+ID. This suggests the item-instance body may be reusable after the pet-specific
+envelope; it does not establish the installed server's byte offsets or variants.
+An independent [open source opcode map](https://github.com/tarekwiz/SilkroadBot/blob/master/Silkroad%20Fusion/Opcodes.cs)
+labels outgoing `0x7034` as client item movement. These are protocol leads from
+other implementations, not proof of the installed phBot/game-server layout.
+
+`tools/pet-item-capture/PetItemCapture.py` 0.2.0 now records the three opcodes
+with direction and a 32 KiB per-packet cap. Its snapshots keep pet rows and
+changed character-inventory rows, allowing a pet-to-bag item comparison without
+equating same-model copies. It records truncation and size omissions. No parser,
+pet item enrichment or pickup attribution is enabled. The runtime gate remains:
+capture a full pet snapshot and an observed move on the actual server/profile;
+verify pet ID, slot, item model, full instance fields and version-specific
+branches against the API before implementing a decoder. A clientless session may
+not deliver outgoing `0x7034` through `handle_silkroad`.
+
 ## Drop tooltip observation link — 2026-10-03
 
 The official [Events API](https://plugins.phbot.org/phbot-api/events) still gives

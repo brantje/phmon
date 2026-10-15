@@ -45,7 +45,11 @@ class PetItemCaptureTests(unittest.TestCase):
             self.assertTrue(probe.handle_joymax(0x30C8, b'\x01\x02\x03'))
             self.assertTrue(probe.handle_joymax(0xB034, b'\xAA' * (probe.MAX_PACKET_BYTES + 10)))
             self.assertTrue(probe.handle_joymax(0x3040, b'secret'))
-            self.assertEqual([p['opcode'] for p in probe._packets], ['0x30C8', '0xB034'])
+            self.assertTrue(probe.handle_silkroad(0x7034, b'\x04\x05'))
+            self.assertTrue(probe.handle_silkroad(0x7025, b'secret'))
+            self.assertEqual([p['opcode'] for p in probe._packets], ['0x30C8', '0xB034', '0x7034'])
+            self.assertEqual([p['direction'] for p in probe._packets],
+                             ['server_to_client', 'server_to_client', 'client_to_server'])
             self.assertEqual(probe._packets[0]['hex'], '010203')
             self.assertTrue(probe._packets[1]['truncated'])
             self.assertEqual(len(probe._packets[1]['hex']), probe.MAX_PACKET_BYTES * 2)
@@ -53,8 +57,64 @@ class PetItemCaptureTests(unittest.TestCase):
             written = list(Path(directory).glob('pet-item-capture-*.json'))
             self.assertEqual(len(written), 1)
             document = json.loads(written[0].read_text())
-            self.assertEqual(document['packet_total'], 2)
+            self.assertEqual(document['packet_total'], 3)
             self.assertNotIn('secret', written[0].read_text())
+
+    def test_unchanged_inventory_is_not_resampled_and_expiration_is_ignored(self):
+        lines = []
+        state = {'exp': -100, 'plus': 0}
+
+        def inventory():
+            return {'items': [
+                {'model': 1, 'name': 'Spear', 'plus': state['plus'], 'expiration': state['exp']},
+                {'model': 2, 'name': 'Bolt', 'quantity': 5, 'expiration': state['exp']},
+            ]}
+        probe = self.load(lambda: {}, inventory, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            self.assertEqual(len(probe._snapshots[0]['inventory']), 2)
+            self.assertTrue(any('no pet at arm time' in line for line in lines))
+            for _ in range(3):
+                state['exp'] -= 1
+                probe._next_sample_at = 0.0
+                probe.event_loop()
+            self.assertEqual(len(probe._snapshots), 1)
+            state['plus'] = 5
+            probe._next_sample_at = 0.0
+            probe.event_loop()
+            self.assertEqual(len(probe._snapshots), 2)
+            changed = probe._snapshots[1]['inventory']
+            self.assertEqual([row['slot'] for row in changed], [0])
+            self.assertNotIn('expiration', json.dumps(changed))
+
+    def test_file_limit_reports_omitted_packets(self):
+        probe = self.load(lambda: {}, lambda: {'items': []}, [])
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.MAX_FILE_BYTES = 1200
+            for _ in range(8):
+                probe.handle_joymax(0xB034, b'\xAB' * 100)
+            probe.stop_pet_capture()
+            written = list(Path(directory).glob('pet-item-capture-*.json'))
+            self.assertEqual(len(written), 1)
+            self.assertLessEqual(written[0].stat().st_size, probe.MAX_FILE_BYTES)
+            document = json.loads(written[0].read_text())
+            self.assertEqual(document['packet_total'], 8)
+            self.assertGreater(document['packets_omitted_for_size'], 0)
+
+    def test_disconnect_writes_capture_once(self):
+        probe = self.load(lambda: {}, lambda: {'items': []}, [])
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.handle_joymax(0x30C8, b'\x01')
+            probe.disconnected()
+            probe.finished()
+            written = list(Path(directory).glob('pet-item-capture-*.json'))
+            self.assertEqual(len(written), 1)
+            self.assertEqual(json.loads(written[0].read_text())['reason'], 'disconnected')
 
     def test_packet_count_is_bounded_and_item_rows_are_primitives_only(self):
         lines = []

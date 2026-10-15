@@ -250,6 +250,30 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-15 pet item opcode research and capture probe
+
+Targeted operator request: research how to obtain per-instance pet item details,
+including packet opcodes, and update the read-only pet probe. The official phBot
+Pets API documents pet item slots with model/quantity/plus/durability, but no
+whites, blues or instance-detail lookup; `get_item(model)` is static reference
+data. The installed phBot 20.1.2 Pick-pet observations still lack rich fields.
+Official phBot callbacks expose incoming and outgoing packets. Pinned RSBot
+handlers corroborate incoming `0x30C8` pet data and `0xB034` item operations
+with pet branches; an independent opcode map identifies outgoing `0x7034` item
+movement. Those sources are leads only, not a verified layout for this server.
+Full links, versions and limits are in `docs/phbot-capabilities.md`.
+
+Updated `tools/pet-item-capture/PetItemCapture.py` to 0.2.0: record direction and
+bounded bytes for those three opcodes, raise the per-packet cap to 32 KiB, label
+truncation/size omissions, and write on disconnect/unload. Existing uncommitted
+inventory-delta and volatile-expiration edits in that probe were preserved.
+Updated its README and tests. Validation: five focused Python probe tests and
+`git diff --check` pass. No production parser, protocol or UI changed; no real
+character action was performed. Exact next action: operator runs the probe on
+the actual phBot/server profile and supplies a reviewed capture containing a
+full pet-data packet, an item pickup and one pet-to-bag move; then verify field
+layout against same-instance API rows before enabling pet detail enrichment.
+
 ### Resume — 2026-10-15 item gains across outages and pet item evidence
 
 Active increment: the operator's "Poison Horn Spear is missing detailed data"
