@@ -593,6 +593,30 @@ and skips inventory-quantity, chat and session rows that were hiding unique noti
   type and server when distinct characters observe them within two seconds. One row
   lists all observers; the canonical event history retains each observation.
 
+### Drop history screenshot parity — 2026-10-15
+
+The operator-provided `phmonitor_screenshots/05-normal-drops.png` and
+`05-rare-drops.png` depict a compact, single-panel drop history: a page title,
+an "All normal drops" / "All rare drops" count heading, the seven primary event
+tabs, Character / Item name / From date / To date filters, and a table ordered
+Item, Time, Character, Location. Rare Drops alone includes a Map column.
+The footer has entries-per-page and previous/next page controls. Normal Drops
+shows an observed item icon and name; Rare Drops shows a centered empty state.
+
+`/events?kind=drop.item` and `/events?kind=drop.rare` now use that
+drop-specific table and control hierarchy; all other event views retain their
+existing presentation and advanced navigation. Icons and names come from the
+canonical item record, map actions require a validated region transform,
+links target existing item/character history, and world-drop callbacks never
+claim ownership or pickup. Drop views start without a date restriction, as
+shown by the blank reference date inputs; non-drop views retain their bounded
+default window. Table overflow stays within the panel on narrow screens.
+
+The supplied reference captures were inspected directly. Automated frontend
+checks and CI cover parsing and regression behavior; a browser-side pixel
+comparison at 1440×1000, 1280×800 and 390×844 remains a separate acceptance
+step, not a claimed completed check.
+
 ### Event row presentation correction — 2026-10-04
 
 The operator supplied five event-row examples for unique spawns, level-ups,

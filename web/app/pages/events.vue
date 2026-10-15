@@ -878,7 +878,11 @@ function localDateBoundary(value: string, addDays: number) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in page?.events || []" :key="item.event_id">
+            <tr
+              v-for="item in page?.events || []"
+              :key="item.event_id"
+              :class="{ 'drop-history-rare': item.kind === 'drop.rare' }"
+            >
               <td class="drop-history-item">
                 <ItemDetailPopup
                   v-if="itemRecordFromActivityEvent(item)"
