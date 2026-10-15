@@ -67,7 +67,7 @@ var validEventSources = map[string]map[string]bool{
 type AgentDeath struct {
 	ID         string          `json:"event_id"`
 	OccurredAt time.Time       `json:"occurred_at"`
-	Source     string `json:"source"`
+	Source     string          `json:"source"`
 	SourceRef  string          `json:"source_ref"`
 	Region     *int            `json:"region,omitempty"`
 	X          *float64        `json:"x,omitempty"`
@@ -88,7 +88,7 @@ type Event struct {
 	Character            string          `json:"character"`
 	OccurredAt           time.Time       `json:"occurred_at"`
 	ReceivedAt           time.Time       `json:"received_at"`
-	Source               string `json:"source"`
+	Source               string          `json:"source"`
 	SourceRef            string          `json:"source_ref"`
 	Region               *int            `json:"region,omitempty"`
 	Zone                 string          `json:"zone,omitempty"`
@@ -135,7 +135,7 @@ type AgentEvent struct {
 	Character   string          `json:"character,omitempty"`
 	OccurredAt  time.Time       `json:"occurred_at"`
 	Sequence    *int64          `json:"sequence,omitempty"`
-	Source      string `json:"source"`
+	Source      string          `json:"source"`
 	SourceRef   string          `json:"source_ref"`
 	DedupeKey   string          `json:"dedupe_key,omitempty"`
 	Region      *int            `json:"region,omitempty"`
@@ -1145,9 +1145,8 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
 		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
-	-- Historical drop_event_id links may have come from model/time heuristics.
-	-- No persisted pickup proof exists for these links; never hide the gain.
-	-- Both callback and observation remain independent canonical occurrences.
+	-- Historical drop_event_id links were sometimes heuristic, not proof of pickup.
+	-- Retain both independent occurrences; do not hide an owned-gain observation.
 	AND ($14='' OR e.source=$14)
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
@@ -1159,6 +1158,7 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
 		(SELECT jsonb_build_object(
+			'item',a.payload->'item',
 			'association','stored_unverified_drop_event_id',
 			'event_id',a.event_id::text,
 			'source',a.source)
@@ -1171,6 +1171,7 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		AND a.payload->>'drop_event_id'=e.event_id::text
 		AND a.payload->>'quantity_delta'='1'
 		AND a.payload->'destination_container'->>'type'='inventory'
+		AND a.payload->'item' IS NOT NULL
 		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
 		GROUP BY a.event_id,a.payload,a.source
 		HAVING (SELECT count(*) FROM activity_events linked
@@ -1207,12 +1208,14 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.Ch
 		if len(linkedObservation) > 0 {
 			var payload map[string]json.RawMessage
 			var observed struct {
-				Association string `json:"association"`
-				EventID     string `json:"event_id"`
-				Source      string `json:"source"`
+				Item        json.RawMessage `json:"item"`
+				Association string          `json:"association"`
+				EventID     string          `json:"event_id"`
+				Source      string          `json:"source"`
 			}
 			if json.Unmarshal(item.Payload, &payload) == nil && payload != nil &&
-				json.Unmarshal(linkedObservation, &observed) == nil &&
+				json.Unmarshal(linkedObservation, &observed) == nil && len(observed.Item) > 0 &&
+				json.Valid(observed.Item) &&
 				observed.Association == "stored_unverified_drop_event_id" && agentdomain.ValidAgentID(observed.EventID) && observed.Source == "phbot.state_diff" {
 				payload["item_observation"], _ = json.Marshal(map[string]string{
 					"association": observed.Association, "event_id": observed.EventID, "source": observed.Source,

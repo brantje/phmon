@@ -28,7 +28,6 @@ type ItemSearchFilter struct {
 
 type ItemSearchEntry struct {
 	Server              string         `json:"server"`
-	serverKey           string
 	Container           string         `json:"container"`
 	OwnerKind           string         `json:"owner_kind"`
 	OwnerID             string         `json:"owner_id"`
@@ -44,6 +43,8 @@ type ItemSearchEntry struct {
 	QuantityExact       string         `json:"quantity_exact,omitempty"`
 	Item                map[string]any `json:"item"`
 	Metadata            map[string]any `json:"metadata,omitempty"`
+
+	serverKey string
 }
 
 type ItemSearchPage struct {
