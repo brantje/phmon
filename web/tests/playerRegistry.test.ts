@@ -138,5 +138,5 @@ test('linked names resolve consistently while inferred attribution stays visible
   }
   assert.equal(registryPlayerName(player), 'Magik')
   assert.equal(registryJobAlias(player), 'xDont')
-  assert.equal(identityStatusLabel(player), 'Inferred')
+  assert.equal(identityStatusLabel(player), 'Inferred (ph-proxy)')
 })

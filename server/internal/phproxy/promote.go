@@ -71,9 +71,23 @@ func (s *Store) PromoteForIdentity(ctx context.Context, playerID, serverKey, nam
 
 func (s *Store) LoadEnrichmentWithPromotion(ctx context.Context, playerID, server, serverKey, nameKey string) (*EnrichmentProjection, error) {
 	if serverKey != "" && nameKey != "" {
-		// A lock wait or timeout must not hide enrichment that is already stored.
-		if err := s.PromoteForIdentity(ctx, playerID, serverKey, nameKey); err != nil {
-			slog.Warn("ph-proxy enrichment read promotion failed", "player_id", playerID, "reason", err.Error())
+		// Bound promotion work independently so a busy identity lock does not
+		// exhaust the caller's deadline for reading existing enrichment.
+		probeCtx, probeCancel := context.WithTimeout(ctx, 750*time.Millisecond)
+		var pending bool
+		probeErr := s.pool.QueryRow(probeCtx, `SELECT EXISTS(
+			SELECT 1 FROM player_enrichment_pending
+			WHERE server_key=$1 AND name_key=$2 AND expires_at >= $3)`,
+			serverKey, nameKey, s.now()).Scan(&pending)
+		probeCancel()
+		if probeErr != nil {
+			slog.Warn("ph-proxy enrichment read pending check failed", "player_id", playerID, "reason", probeErr.Error())
+		} else if pending {
+			promoteCtx, promoteCancel := context.WithTimeout(ctx, time.Second)
+			if err := s.PromoteForIdentity(promoteCtx, playerID, serverKey, nameKey); err != nil {
+				slog.Warn("ph-proxy enrichment read promotion failed", "player_id", playerID, "reason", err.Error())
+			}
+			promoteCancel()
 		}
 	}
 	row := s.pool.QueryRow(ctx,

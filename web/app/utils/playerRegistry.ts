@@ -137,7 +137,8 @@ export function registryJobAlias(player: PlayerIdentityInput) {
 }
 
 export function identityStatusLabel(player: PlayerIdentityInput) {
-  if (player.display_identity?.status === 'inferred') return 'Inferred'
+  if (player.display_identity?.status === 'inferred')
+    return `Inferred (${player.display_identity.source})`
   if (player.display_identity?.status === 'conflict')
     return 'Unresolved mapping'
   return ''

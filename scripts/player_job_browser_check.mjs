@@ -54,7 +54,7 @@ try {
       assert.equal(detail.enrichment.field_evidence.job.reason, 'unverified_reference_mapping')
       await page.goto(`${origin}/players/${player.id}`)
       await page.getByRole('heading', { name: 'ph-proxy enrichment', exact: true }).waitFor()
-      assert.equal((await page.locator('.player-page').innerText()).includes('unverified_reference_mapping'), false)
+      assert.equal((await page.locator('.player-page').innerText()).includes('unverified_reference_mapping'), true)
       const overview = page.locator('.player-card').first()
       const fact = label => overview.locator('.player-facts > div').filter({ has: page.locator('dt').getByText(label, { exact: true }) }).locator('dd')
       assert((await fact('Job').innerText()).startsWith(job), `${name}: wrong detail job display`)

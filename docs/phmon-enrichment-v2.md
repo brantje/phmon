@@ -1,6 +1,6 @@
 # PhMon enrichment v2 and player identity presentation
 
-The receiver implements the operator's [ph-proxy v2 contract](https://github.com/brantje/ph-proxy/blob/main/docs/phmon-enrichment-v2.md).
+The receiver implements the operator's ph-proxy v2 contract (upstream contract is access-restricted; the linked upstream GitHub path is not publicly available). This document describes the PhMon receiver behavior and limits.
 Synthetic contract examples are retained in `server/internal/phproxy/testdata/upstream-v2-examples.json`
 from upstream blob `d567b1b7453d20efe6b0e5373de4020187e7704a`. These are synthetic
 examples, not captured player traffic or executable/source extracts.
