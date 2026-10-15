@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"phmon/server/internal/events"
 	"testing"
 	"time"
@@ -64,5 +66,22 @@ func TestParseEventBoundKeepsDateOnlyCompatibility(t *testing.T) {
 	}
 	if got, want := to.Format(time.RFC3339), "2026-09-29T00:00:00Z"; got != want {
 		t.Fatalf("date-only exclusive to = %s, want %s", got, want)
+	}
+}
+
+func TestTraderHunterHideOwnHTTPValidation(t *testing.T) {
+	for _, test := range []struct {
+		query string
+	}{
+		{query: "kind=job.hunter_trader_seen&hide_own=garbage"},
+		{query: "kind=job.hunter_trader_seen&hide_own=true&hide_own=false"},
+		{query: "kind=character.died&hide_own=true"},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/api/events?"+test.query, nil)
+		rec := httptest.NewRecorder()
+		(&eventHandler{}).list(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%q: status=%d want 400", test.query, rec.Code)
+		}
 	}
 }
