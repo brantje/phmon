@@ -85,20 +85,30 @@ func decodeItemSearchCursor(encoded string) (itemSearchCursor, error) {
 // Shared guild storage selects one complete observer revision per server/guild
 // before joining slots, so two observers never multiply guild-owned items.
 func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSearchPage, error) {
-	if s == nil || s.pool == nil { return ItemSearchPage{}, ErrInvalid }
+	if s == nil || s.pool == nil {
+		return ItemSearchPage{}, ErrInvalid
+	}
 	if len(filter.Server) > 100 || len(filter.Query) > 128 || len(filter.Container) > 64 ||
 		len(filter.Owner) > 100 || len(filter.Type) > 64 || len(filter.Subcategory) > 64 ||
 		len(filter.Degree) > 2 || (filter.Degree != "" && (filter.Degree[0] < '1' || filter.Degree[0] > '9')) {
 		return ItemSearchPage{}, ErrInvalid
 	}
-	if filter.Container != "" && !isItemResource(filter.Container) { return ItemSearchPage{}, ErrInvalid }
+	if filter.Container != "" && !isItemResource(filter.Container) {
+		return ItemSearchPage{}, ErrInvalid
+	}
 	if filter.Degree != "" {
 		n, err := strconv.Atoi(filter.Degree)
-		if err != nil || n < 1 || n > 20 { return ItemSearchPage{}, ErrInvalid }
+		if err != nil || n < 1 || n > 20 {
+			return ItemSearchPage{}, ErrInvalid
+		}
 	}
-	if filter.Limit < 1 || filter.Limit > 100 { return ItemSearchPage{}, ErrInvalid }
+	if filter.Limit < 1 || filter.Limit > 100 {
+		return ItemSearchPage{}, ErrInvalid
+	}
 	cursor, err := decodeItemSearchCursor(filter.Cursor)
-	if err != nil { return ItemSearchPage{}, err }
+	if err != nil {
+		return ItemSearchPage{}, err
+	}
 	useTaxonomy := filter.Type != "" || filter.Subcategory != "" || filter.Degree != ""
 	if useTaxonomy && filter.Server == "" {
 		// Model IDs can have different definitions on different servers.
@@ -130,7 +140,9 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 				}
 			}
 		}
-		if len(models) == 0 { return ItemSearchPage{Items: []ItemSearchEntry{}}, nil }
+		if len(models) == 0 {
+			return ItemSearchPage{Items: []ItemSearchEntry{}}, nil
+		}
 	}
 	// resource observation and slot revision are joined atomically; a closed
 	// storage does not retain queryable 'current' slots.
@@ -179,7 +191,9 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	LIMIT $13`,
 		append(args, cursor.Server, cursor.Container, cursor.Observer, cursor.Pet, cursor.Slot, filter.Limit+1)...)
 
-	if err != nil { return ItemSearchPage{}, fmt.Errorf("query item search: %w", err) }
+	if err != nil {
+		return ItemSearchPage{}, fmt.Errorf("query item search: %w", err)
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var entry ItemSearchEntry
@@ -191,13 +205,19 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			&entry.CheckedAt, &raw, &model, &code, &entry.QuantityExact, &entry.ObserverName, &entry.Server); err != nil {
 			return ItemSearchPage{}, err
 		}
-		if err := json.Unmarshal(raw, &entry.Item); err != nil { return ItemSearchPage{}, err }
+		if err := json.Unmarshal(raw, &entry.Item); err != nil {
+			return ItemSearchPage{}, err
+		}
 		if entry.Container =="guild_storage" {
-			entry.OwnerKind = "guild";entry.OwnerID = entry.Guild;entry.OwnerName = entry.Guild
+			entry.OwnerKind = "guild"
+			entry.OwnerID = entry.Guild
+			entry.OwnerName = entry.Guild
 		} else if entry.Container =="pets" {
 			entry.OwnerKind = "pet";entry.OwnerID = entry.PetID
 		} else {
-			entry.OwnerKind = "character";entry.OwnerID = entry.ObserverCharacterID;entry.OwnerName = entry.ObserverName
+			entry.OwnerKind = "character"
+			entry.OwnerID = entry.ObserverCharacterID
+			entry.OwnerName = entry.ObserverName
 		}
 		var modelPtr *int64
 		if model > 0 {
@@ -207,7 +227,9 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 		entry.Item = s.EnrichItemRecord(entry.Server, entry.Item)
 		page.Items = append(page.Items, entry)
 	}
-	if err:=rows.Err();err!=nil{return ItemSearchPage{}, err}
+	if err := rows.Err(); err != nil {
+		return ItemSearchPage{}, err
+	}
 	if len(page.Items) > filter.Limit {
 		page.Items = page.Items[:filter.Limit]
 		last := page.Items[len(page.Items)-1]
