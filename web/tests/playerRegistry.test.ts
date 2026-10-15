@@ -4,7 +4,6 @@ import {
   chartPoints,
   formatModel,
   jobLabel,
-  jobSourceLabel,
   jobbingLabel,
   registryPlayerName,
   registryJobAlias,
@@ -62,22 +61,6 @@ test('numeric affiliation preserves known zero and unknown codes without a suit'
     assert.equal(jobLabel(String(code)), label)
   }
   assert.equal(jobbingLabel(false), 'No')
-  assert.equal(
-    jobSourceLabel({
-      reason: 'unverified_reference_mapping',
-      source_identity_kind: 'character_name',
-      source_name: 'NormalPlayer',
-    }),
-    'ph-proxy · unverified_reference_mapping',
-  )
-  assert.equal(
-    jobSourceLabel({
-      reason: 'unverified_reference_mapping',
-      source_identity_kind: 'job_alias',
-      source_name: 'AliasPlayer',
-    }),
-    'Inferred from alias AliasPlayer · ph-proxy · unverified_reference_mapping',
-  )
 })
 
 test('model fallback keeps the numeric id', () => {
@@ -155,5 +138,5 @@ test('linked names resolve consistently while inferred attribution stays visible
   }
   assert.equal(registryPlayerName(player), 'Magik')
   assert.equal(registryJobAlias(player), 'xDont')
-  assert.equal(identityStatusLabel(player), 'Inferred · ph-proxy')
+  assert.equal(identityStatusLabel(player), 'Inferred')
 })

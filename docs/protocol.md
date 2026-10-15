@@ -323,6 +323,11 @@ hub permits at most two browser snapshot rebuild passes to query live state at o
 leaving database-pool capacity available for agent ingestion. A notification that
 arrives while a snapshot is being built remains queued, so another throttled snapshot
 pass observes changes committed during the first pass.
+Analytics builds have a separate single-worker budget and reserved read-only
+connection. Economy alone can reuse a matching full-filter snapshot for up to five
+seconds from its original AsOf, with 16 entries and shared concurrent reads. Cached
+snapshots keep their original timestamps; errors are not cached. Other analytics
+streams keep their existing invalidation behavior.
 
 ### Heartbeats, reconnect and bounds
 

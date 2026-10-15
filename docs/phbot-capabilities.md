@@ -1859,3 +1859,16 @@ No new phBot capability was inferred. Receiver admission now skips durable write
 for such unidentified sightings while preserving the independent live map.
 Later native/accepted proxy identity evidence permits ordinary tracking.
 [Source investigation](reference/player-admission-2026-10-12.md).
+
+## Outdoor generated-navigation precision — 2026-10-12
+
+Operator-authorized LordLurks checks on plugin 1.9.36 / phBot 20.1.3 found native
+no-path/expiry failures for sub-unit outdoor destinations and successful script
+starts/observed arrivals at nearby whole-unit endpoints. Paired evidence and
+command IDs: [runtime investigation](reference/map-navigation-precision-2026-10-12.md).
+The official [Paths API](https://plugins.phbot.org/phbot-api/paths) and
+[Script API](https://plugins.phbot.org/phbot-api/script) were rechecked; they do not
+state an integer-only constraint. Rounding is an installed-runtime compatibility
+workaround, not a newly inferred API signature. Outdoor map preparation rounds
+X/Y within its original region; cave coordinates/training positions are unchanged.
+No automatic fallback/retry, longer deadline or unsupported primitive was added.

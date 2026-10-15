@@ -23,6 +23,8 @@ var ErrRateResetNotFound = errors.New("character not found")
 
 type Store struct {
 	pool            *pgxpool.Pool
+	readPool        *pgxpool.Pool
+	economyCache    economySnapshotCache
 	itemTaxonomy    func(server string, model int64, code string) (itemType, degree string, known bool)
 	itemModels      func(server, itemType, degree string) ([]int64, bool)
 	taxonomyOptions func(server string) []TaxonomyOption
@@ -34,6 +36,14 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	store := &Store{pool: pool}
 	store.retentionDays.Store(90)
 	return store
+}
+
+// Historical reads must not wait behind stalled ingestion commits. Retention
+// and other writes continue to use the original pool.
+func (s *Store) SetReadPool(pool *pgxpool.Pool) {
+	if s != nil {
+		s.readPool = pool
+	}
 }
 
 func (s *Store) SetRetentionDays(days int) {

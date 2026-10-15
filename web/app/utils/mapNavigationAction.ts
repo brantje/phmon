@@ -3,6 +3,7 @@ import type { MapProfile } from '../../shared/types/map'
 import type { FanOutCommandDefinition, FanOutSkipReason } from './commandFanOut'
 import { characterPositionIsFresh } from './characterPositionFreshness.ts'
 import {
+  outdoorNavigationPosition,
   rasterPositionToGame,
   type GamePosition,
   type RasterPosition,
@@ -117,7 +118,19 @@ export function resolveMapNavigationDestination(
     return { reason: reasons.profile }
   if (intent.areaID === 'job-temple' && intent.floorID !== '1F')
     return { reason: reasons.temple }
-  return resolveMapPointForCharacter(intent, profile, character)
+  const resolved = resolveMapPointForCharacter(intent, profile, character)
+  if (
+    resolved.destination &&
+    intent.areaID === 'world' &&
+    intent.floorID === 'world' &&
+    profile.coordinate_transform_status === 'outdoor-region-grid'
+  ) {
+    // phBot 20.1.3 can reject sub-unit outdoor endpoints that succeed at the
+    // nearest whole coordinate. Normalize before freezing/guarding the request;
+    // training positions and cave transforms retain their observed precision.
+    resolved.destination = outdoorNavigationPosition(resolved.destination)
+  }
+  return resolved
 }
 
 /**

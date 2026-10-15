@@ -86,15 +86,6 @@ export type JobEvidence = {
   source_name?: string
 }
 
-export function jobSourceLabel(evidence?: JobEvidence | null) {
-  if (!evidence) return 'ph-proxy'
-  const source =
-    evidence.source_identity_kind === 'job_alias'
-      ? `Inferred from alias ${evidence.source_name || 'Unknown'} · ph-proxy`
-      : 'ph-proxy'
-  return `${source} · ${evidence.reason}`
-}
-
 export function jobLabel(job?: string | number | null) {
   if (job != null && /^\d+$/.test(String(job))) {
     const code = Number(job)
@@ -146,8 +137,7 @@ export function registryJobAlias(player: PlayerIdentityInput) {
 }
 
 export function identityStatusLabel(player: PlayerIdentityInput) {
-  if (player.display_identity?.status === 'inferred')
-    return 'Inferred · ph-proxy'
+  if (player.display_identity?.status === 'inferred') return 'Inferred'
   if (player.display_identity?.status === 'conflict')
     return 'Unresolved mapping'
   return ''

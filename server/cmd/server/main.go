@@ -70,7 +70,17 @@ func run() error {
 	}
 
 	store := agents.NewStore(pool)
+	analyticsPoolCfg := poolCfg.Copy()
+	analyticsPoolCfg.MaxConns = 1
+	analyticsPoolCfg.MinConns = 1
+	analyticsPoolCfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	analyticsPool, err := pgxpool.NewWithConfig(ctx, analyticsPoolCfg)
+	if err != nil {
+		return errors.New("cannot initialize analytics read pool")
+	}
+	defer analyticsPool.Close()
 	analyticsStore := analytics.NewStore(pool)
+	analyticsStore.SetReadPool(analyticsPool)
 	analyticsStore.SetRetentionDays(cfg.AnalyticsRetentionDays)
 	characterStore := characters.NewStore(pool)
 	resourceStore := resources.NewStore(pool)

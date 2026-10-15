@@ -127,6 +127,70 @@ test('outdoor destination uses the clicked tile and each target current Z', () =
   assert.equal(first.destination?.y, second.destination?.y)
 })
 
+test('outdoor navigation rounds decimal clicks before preparation and admission', () => {
+  const mapProfile = baseProfile()
+  const point = {
+    tileX: 168,
+    tileY: 97,
+    pixelX: ((6435.05 - 6336) / 192) * 256,
+    pixelY: ((1152 - 1078.1) / 192) * 256,
+  }
+  const captured = intent({ point })
+  const current = character('one', 25000, -32)
+  const definition = mapNavigationCommand({
+    getIntent: () => captured,
+    getProfile: () => mapProfile,
+    getCharacter: () => current,
+    getControls: () => ({
+      character_id: current.character_id,
+      session_id: current.session_id!,
+      capabilities: { 'character.navigate': { supported: true } },
+    }),
+    mapFeedCurrent: () => true,
+    now: () => 1_000_000,
+  })
+  const args = definition.buildArgs(current, {} as ControlsSnapshot)
+  assert.deepEqual(args, { region: 25000, x: 6435, y: 1078, z: -32 })
+  const child = {
+    characterID: current.character_id,
+    sessionID: current.session_id,
+  } as FanOutChild
+  const request = {
+    character_id: current.character_id,
+    expected_session_id: current.session_id,
+    args,
+  } as FanOutCommandRequest
+  assert.equal(definition.admissionGuard?.(child, request), null)
+  assert.equal(
+    definition.admissionGuard?.(child, {
+      ...request,
+      args: { ...args, x: 6435.05 },
+    })?.code,
+    'arguments_changed',
+  )
+  // The shared raster transform and training center retain sub-unit precision.
+  const training = resolveMapTrainingPosition(captured, mapProfile, current)
+  assert.ok(Math.abs(training.destination!.x - 6435.05) < 1e-8)
+  assert.ok(Math.abs(training.destination!.y - 1078.1) < 1e-8)
+})
+
+test('outdoor rounding keeps near-edge destinations in the clicked region', () => {
+  for (const point of [
+    { tileX: 168, tileY: 97, pixelX: 255.9, pixelY: 255.9 },
+    { tileX: 26, tileY: 35, pixelX: 255.9, pixelY: 255.9 },
+  ]) {
+    const destination = resolveMapNavigationDestination(
+      intent({ point }),
+      baseProfile(),
+      character('one'),
+      1_000_000,
+    ).destination!
+    assert.equal(Math.floor(destination.x / 192) + 135, point.tileX)
+    assert.equal(Math.ceil(destination.y / 192) + 91, point.tileY)
+    assert.equal(destination.region, point.tileY * 256 + point.tileX)
+  }
+})
+
 test('stale positions and explicit outdoor region mismatch are skipped with reasons', () => {
   const mapProfile = baseProfile()
   const stale = resolveMapNavigationDestination(
@@ -189,7 +253,7 @@ test('cave region selection uses unique, explicit or target-local region evidenc
   const captured = intent({
     areaID: 'donwhang-cave',
     floorID: '1F',
-    point: { tileX: 10, tileY: 10, pixelX: 128, pixelY: 128 },
+    point: { tileX: 10, tileY: 10, pixelX: 128.25, pixelY: 128.25 },
   })
   const selectedCharacter = character('cave', -32766, 5)
   const inferred = resolveMapNavigationDestination(
@@ -199,6 +263,8 @@ test('cave region selection uses unique, explicit or target-local region evidenc
     1_000_000,
   )
   assert.equal(inferred.destination?.region, -32766)
+  assert.equal(inferred.destination?.x, 128.25)
+  assert.equal(inferred.destination?.y, 127.75)
   const explicit = resolveMapNavigationDestination(
     createMapNavigationIntent({ ...captured, explicitRegion: -32767 }),
     mapProfile,

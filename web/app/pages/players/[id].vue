@@ -8,7 +8,6 @@ import {
   formatModel,
   formatPlayerLocation,
   jobLabel,
-  jobSourceLabel,
   jobbingLabel,
   registryPlayerName,
   registryJobAlias,
@@ -196,17 +195,7 @@ watch(
           </div>
           <div>
             <dt>Job</dt>
-            <dd>
-              {{ jobLabel(player.job ?? player.display_fallback?.job) }}
-              <small
-                v-if="
-                  player.job == null && player.display_fallback?.job != null
-                "
-                class="player-identity-source"
-              >
-                {{ jobSourceLabel(player.display_fallback.job_evidence) }}
-              </small>
-            </dd>
+            <dd>{{ jobLabel(player.job ?? player.display_fallback?.job) }}</dd>
           </div>
           <div>
             <dt>Job Level</dt>
@@ -216,15 +205,6 @@ watch(
                   player.job_level ?? player.display_fallback?.job_level,
                 )
               }}
-              <small
-                v-if="
-                  player.job_level == null &&
-                  player.display_fallback?.job_level != null
-                "
-                class="player-identity-source"
-              >
-                {{ jobSourceLabel(player.display_fallback.job_level_evidence) }}
-              </small>
             </dd>
           </div>
           <div>
@@ -300,33 +280,23 @@ watch(
           class="player-facts"
         >
           <div v-if="enrichment.level_observed_at">
-            <dt>Level (ph-proxy)</dt>
+            <dt>Level</dt>
             <dd>{{ textOrUnknown(enrichment.level) }}</dd>
           </div>
           <div v-if="enrichment.guild">
-            <dt>Guild (ph-proxy)</dt>
+            <dt>Guild</dt>
             <dd>{{ enrichment.guild }}</dd>
           </div>
           <div v-if="enrichment.job != null">
-            <dt>Job (ph-proxy)</dt>
-            <dd>
-              {{ jobLabel(enrichment.job) }} (code {{ enrichment.job }})
-              <small class="player-identity-source">{{
-                jobSourceLabel(enrichment.field_evidence?.job)
-              }}</small>
-            </dd>
+            <dt>Job</dt>
+            <dd>{{ jobLabel(enrichment.job) }} (code {{ enrichment.job }})</dd>
           </div>
           <div v-if="enrichment.job_level != null">
-            <dt>Job Level (ph-proxy)</dt>
-            <dd>
-              {{ enrichment.job_level }}
-              <small class="player-identity-source">{{
-                jobSourceLabel(enrichment.field_evidence?.job_level)
-              }}</small>
-            </dd>
+            <dt>Job Level</dt>
+            <dd>{{ enrichment.job_level }}</dd>
           </div>
           <div v-if="enrichment.job_item_ids != null">
-            <dt>Worn job items (ph-proxy observation)</dt>
+            <dt>Worn job items</dt>
             <dd>
               {{
                 enrichment.job_item_ids.length

@@ -3,7 +3,6 @@ import type { PlayerRecord } from '~/utils/playerRegistry'
 import {
   formatModel,
   jobLabel,
-  jobSourceLabel,
   jobbingLabel,
   registryPlayerName,
   registryJobAlias,
@@ -461,14 +460,6 @@ function formatPlayerTime(value?: string | null) {
             </td>
             <td>
               {{ jobLabel(player.job ?? player.display_fallback?.job) }}
-              <small
-                v-if="
-                  player.job == null && player.display_fallback?.job != null
-                "
-                class="player-identity-source"
-              >
-                {{ jobSourceLabel(player.display_fallback.job_evidence) }}
-              </small>
             </td>
             <td>
               {{
@@ -476,15 +467,6 @@ function formatPlayerTime(value?: string | null) {
                   player.job_level ?? player.display_fallback?.job_level,
                 )
               }}
-              <small
-                v-if="
-                  player.job_level == null &&
-                  player.display_fallback?.job_level != null
-                "
-                class="player-identity-source"
-              >
-                {{ jobSourceLabel(player.display_fallback.job_level_evidence) }}
-              </small>
             </td>
             <td>{{ jobbingLabel(player.is_jobbing) }}</td>
             <td>

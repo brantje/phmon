@@ -2680,3 +2680,40 @@ new demo-parity claim. Isolated full Go/PostgreSQL and focused race checks pass,
 including later admission, staging/promotion and Magik/xDont gear/grouping.
 Read-only source evidence is documented. The requested local Compose rebuild has
 now deployed the admission rule to that local instance; no bot operation was used.
+
+## Right-click Navigate to precision — 2026-10-12
+
+Fixed outdoor generated-navigation preparation after operator-authorized live
+LordLurks tests showed decimal-point no-path/expiry failures and successful
+whole-unit destinations. The patched browser right-click flow sends the rounded
+endpoint through existing authenticated commands; native True and fresh-position
+Arrived were observed. Tile-edge fencing, cave/training precision, session guards
+and exact retries pass focused regression tests; all 251 frontend tests,
+typecheck, changed-file lint and formatting pass.
+[Evidence and limitations](reference/map-navigation-precision-2026-10-12.md).
+The approved Map layout is unchanged; no fresh reference/demo comparison claimed.
+Only the local production web container was rebuilt/recreated from the isolated
+context. Deployed right-click verification observed native True and exact-command
+Arrived for `cmd_ebe240fa-3247-4500-a41e-8c9b43a02400` at 6435,1094 with no browser
+errors. Another whole-unit endpoint returned no path; arbitrary path availability
+remains native evidence, not an inferred success from rounded coordinates.
+
+### Economy analytics repair — 2026-10-13
+
+Fixed direct-entry character selection, fleet history query timeouts and zero-height
+single-entity gold bars. Character/personal-bank and guild totals remain separate
+analytics scopes; the navbar combines both. Production acceptance exercised all 12
+characters and the iBot guild at 1440×1000, 1280×800 and 390×844, with no overflow,
+browser errors or unavailable frames. Plugin observations/history were retained;
+no collection API or bot operation changed. Backend/UI/test and screenshot evidence:
+[Economy repair](reference/economy-analytics-repair-2026-10-13.md). No new public-demo
+comparison or full-parity claim.
+
+Economy follow-up on 2026-10-13: the first short acceptance missed recurring
+summary/pool timeouts during disk-write stalls. Analytics now has one reserved
+read-only connection; matching Economy reads share a bounded five-second snapshot
+with its original AsOf. Unused build cache reclamation relieved disk pressure.
+A 121-second production check with three Economy pages, repeated refreshes and
+Map returned 227 analytics snapshots / 22 distinct AsOf timestamps per page and
+183 map snapshots, with zero unavailable frames or browser errors. See the
+[follow-up evidence](reference/economy-analytics-repair-2026-10-13.md).

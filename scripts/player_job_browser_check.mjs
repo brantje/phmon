@@ -36,7 +36,7 @@ try {
       assert((await cell.innerText()).startsWith(job), `${name}: wrong job display`)
       assert.equal(await row(name).locator('td').nth(7).innerText(), 'No', 'Affiliation changed suit state')
     }
-    assert((await row('NormalTrader').locator('td').nth(5).innerText()).includes('ph-proxy · unverified_reference_mapping'))
+    assert.equal((await row('NormalTrader').locator('td').nth(5).innerText()).trim(), 'Trader')
     assert.equal(await row('NativeZero').locator('td').nth(6).innerText(), '0')
     assert.equal(await row('NativeHunter').locator('td').nth(6).innerText(), '4')
     assert.equal(await row('AliasAttributed').locator('td').nth(6).innerText(), 'Unknown')
@@ -54,15 +54,16 @@ try {
       assert.equal(detail.enrichment.field_evidence.job.reason, 'unverified_reference_mapping')
       await page.goto(`${origin}/players/${player.id}`)
       await page.getByRole('heading', { name: 'ph-proxy enrichment', exact: true }).waitFor()
+      assert.equal((await page.locator('.player-page').innerText()).includes('unverified_reference_mapping'), false)
       const overview = page.locator('.player-card').first()
       const fact = label => overview.locator('.player-facts > div').filter({ has: page.locator('dt').getByText(label, { exact: true }) }).locator('dd')
       assert((await fact('Job').innerText()).startsWith(job), `${name}: wrong detail job display`)
-      const itemFact = page.locator('.player-facts > div').filter({ has: page.getByText('Worn job items (ph-proxy observation)', { exact: true }) }).locator('dd')
+      const itemFact = page.locator('.player-facts > div').filter({ has: page.getByText('Worn job items', { exact: true }) }).locator('dd')
       assert.equal(await itemFact.innerText(), 'None observed')
       if (name === 'NativeZero') assert.equal(await fact('Job Level').innerText(), '0')
       if (name === 'AliasAttributed') {
         assert.equal(await fact('Job').innerText(), 'Unknown')
-        assert((await page.locator('.player-page').innerText()).includes('Inferred from alias AliasPlayer · ph-proxy · unverified_reference_mapping'))
+        assert((await page.locator('.player-page').innerText()).includes('Inferred'))
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
       if (name === 'NormalTrader' || name === 'AliasAttributed') await page.screenshot({ path: join(directory, `${name}-${width}x${height}.png`), fullPage: true })

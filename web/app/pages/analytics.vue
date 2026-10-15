@@ -11,7 +11,7 @@ const router = useRouter()
 const {
   analyticsFeeds,
   analyticsFeedStatus,
-  characters,
+  fleetCharacters,
   groups,
   connectionState,
   liveStale,
@@ -102,7 +102,7 @@ const cursor = ref('')
 const previousCursors = ref<string[]>([])
 const pageNumber = ref(1)
 const availableCharacters = computed(() =>
-  characters.value.filter(
+  fleetCharacters.value.filter(
     (character) =>
       serverScope.value === 'all' ||
       character.server.toLowerCase() === serverScope.value.toLowerCase(),
@@ -129,7 +129,7 @@ const pageDescription = computed(() => {
     case 'normal_drops':
       return 'Normal world-drop observations from verified phBot callbacks and item profiles.'
     case 'economy':
-      return 'Observed character and guild balances, with stall sales shown only when a verified transaction source exists.'
+      return 'Character balances include inventory and personal storage. Guild storage is shown separately; the navbar total combines both.'
     default:
       return 'Observed academy membership changes. Graduation and exact member duration need verified source facts.'
   }
@@ -692,7 +692,9 @@ function dateInput(value: Date) {
           :description="
             view === 'deaths' && groupBy === 'group'
               ? 'Current group membership can overlap; these bars are not additive.'
-              : 'Recorded occurrences in the selected scope.'
+              : view === 'economy'
+                ? 'Latest observed balances in the selected scope and date range.'
+                : 'Recorded occurrences in the selected scope.'
           "
           :points="leftPoints"
           variant="category"

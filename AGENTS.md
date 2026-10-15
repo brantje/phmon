@@ -6375,3 +6375,90 @@ relative to pet callbacks remains unverified. Exact next action: install plugin
 1.9.35 on the target runtime, teleport with a pet and transport active, verify no
 false lifecycle/item events, then confirm genuine dismissals and transport deaths
 outside teleport still publish after the hold.
+
+### Resume — 2026-10-12 right-click navigation precision
+
+Active increment: the operator's Map Navigate to bug report, with explicit live
+test authorization for LordLurks only. Correct menu/admission/24 ms acknowledgement
+was followed by native path-generation expiry/no-path failures. Paired outdoor
+decimal destinations failed while nearest whole-unit destinations succeeded on
+phBot 20.1.3 / plugin 1.9.36. Outdoor navigation now rounds X/Y before preparation
+and admission and keeps rounding inside the clicked region; cave/training
+precision, frozen Z, exact retry, session and fan-out contracts remain intact.
+The patched right-click flow issued cmd_7a7521f7-9424-4277-a7ed-73726bdd2ea0;
+phBot returned True in about 833 ms and the live map observed arrival at 6435,1078.
+
+Files: web/app/utils/{mapCoordinates,mapNavigationAction}.ts,
+web/tests/mapNavigationAction.test.ts, capability/parity notes and
+[paired runtime evidence](docs/reference/map-navigation-precision-2026-10-12.md).
+Validation: 44 focused / 251 full frontend tests, typecheck, changed-file lint,
+Prettier and diff checks pass. Pre-existing Players edits are preserved and
+excluded from the isolated production-web build context. No plugin/backend change
+or unrelated real-character command. Local web rollout completed and is healthy;
+the deployed right-click issued cmd_ebe240fa-3247-4500-a41e-8c9b43a02400, native
+True in about 1.15 s, and exact-command arrival at 6435,1094. A nearby whole-unit
+6436,1094 endpoint still returned native path_not_found; normalization fixes the
+tested decimal failure, not arbitrary native path availability. The development
+server was stopped. Exact next action: none for this focused compatibility fix;
+if another destination fails, retain its command ID and native generation logs
+before changing pathfinding behavior. No full-roadmap completion claim.
+
+### Resume — 2026-10-13 Economy analytics fleet repair
+
+Active increment: the operator's Economy bug report, limited to existing Slice 12
+analytics. Direct entry had an empty Stats-only character selector despite a hidden
+Odin UUID filter; all-character gold queries exceeded the three-second deadline;
+gold bars offset their smallest balance to zero. The selector now uses the fleet
+feed, bank balances are joined after latest-per-bucket selection and reused for
+counts/rankings, character-day summaries aggregate before counting, and gold bars
+use a zero baseline while lines preserve exact integer offsets. The page explains
+character/personal-bank versus guild scope. Observed totals were 79.7B character
+plus personal banks and 163.6B guild bank, matching the 243.3B navbar.
+
+Files: server/internal/analytics/{economy.go,economy_integration_test.go},
+web/app/{pages/analytics.vue,components/AnalyticsChart.vue,
+utils/analyticsGoldScale.ts}, web/tests/analyticsGoldScale.test.ts, calculation/
+parity documentation and [evidence](docs/reference/economy-analytics-repair-2026-10-13.md).
+Validation: full analytics PostgreSQL race suite, new time-fencing/20-series/count/
+leader regressions, 480k-sample load query (1.94 s), live read-only fleet query
+(2.05 s), 254 frontend tests, typecheck, changed-file lint/format, Go vet/build,
+Docker builds and healthy readiness. Authenticated live Odin → all 12 characters
+→ guild flow passed at all three required viewports with visible single-entity
+bars, zero browser errors/unavailable frames and no overflow.
+
+Only local server/web were rebuilt and recreated; PostgreSQL was not restarted.
+The staged web build preserved deployed map precision and excluded pending Players
+changes. Existing gold history, including the October 9 discontinuity, remains
+unchanged; its cause was not inferred. No bot command, merge, external publication
+or notification. Temporary test resources were removed. Exact next action: none
+for this focused fix; broader Slice 12/runtime/parity gates remain as documented.
+
+### Resume — 2026-10-13 Economy recurring timeout follow-up
+
+The operator reported the unavailable banner immediately after the first repair.
+A longer production observation reproduced two unavailable frames in 25 seconds.
+The signed-gold-summary query still exceeded its budget; all five ingestion DB
+connections were also observed waiting 5–7.5 seconds on WAL commits. The preceding
+short browser acceptance was insufficient for sustained concurrent monitoring.
+
+Added a single reserved read-only analytics connection, leaving writes/retention
+on the existing pool; bounded full-filter Economy snapshot reuse for five seconds
+from the original AsOf, concurrent-read sharing, failure exclusion and cancellable
+waiters; disabled transaction-local JIT and logged actual analytics failure reasons.
+Unused Docker build cache older than 24 hours reclaimed 4.945 GB (96% → 92% disk).
+No application records, database volumes or unrelated running containers removed.
+
+Files: server/cmd/server/main.go, server/internal/analytics/{store,query,
+economy_cache,economy_cache_test,economy_integration_test}.go,
+server/internal/httpapi/live.go, calculation/protocol/parity documentation and
+[follow-up evidence](docs/reference/economy-analytics-repair-2026-10-13.md).
+Validation: full analytics/HTTP API PostgreSQL race tests, occupied-ingestion-pool,
+cache expiry/scope/bound/failure/concurrency/cancellation regressions, vet/build,
+Docker build and healthy readiness. Live 121-second acceptance ran two fleet
+Economy pages, Odin and Map concurrently with eight manual refresh rounds:
+227 analytics snapshots, 22 distinct AsOf timestamps per Economy page, 183 map
+snapshots, zero unavailable frames or browser errors. Only the Go container was
+recreated; PostgreSQL and web stayed running. Temporary fixture resources removed.
+Exact next action: none for this follow-up; retain the new failure logs if another
+range fails. No artificial disk-failure test, bot action, external publication,
+merge or broader roadmap acceptance claimed.
