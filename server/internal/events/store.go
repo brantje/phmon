@@ -67,7 +67,7 @@ var validEventSources = map[string]map[string]bool{
 type AgentDeath struct {
 	ID         string          `json:"event_id"`
 	OccurredAt time.Time       `json:"occurred_at"`
-	Source     string          `json:"source"`
+	Source     string `json:"source"`
 	SourceRef  string          `json:"source_ref"`
 	Region     *int            `json:"region,omitempty"`
 	X          *float64        `json:"x,omitempty"`
@@ -88,7 +88,7 @@ type Event struct {
 	Character            string          `json:"character"`
 	OccurredAt           time.Time       `json:"occurred_at"`
 	ReceivedAt           time.Time       `json:"received_at"`
-	Source               string          `json:"source"`
+	Source               string `json:"source"`
 	SourceRef            string          `json:"source_ref"`
 	Region               *int            `json:"region,omitempty"`
 	Zone                 string          `json:"zone,omitempty"`
@@ -135,7 +135,7 @@ type AgentEvent struct {
 	Character   string          `json:"character,omitempty"`
 	OccurredAt  time.Time       `json:"occurred_at"`
 	Sequence    *int64          `json:"sequence,omitempty"`
-	Source      string          `json:"source"`
+	Source      string `json:"source"`
 	SourceRef   string          `json:"source_ref"`
 	DedupeKey   string          `json:"dedupe_key,omitempty"`
 	Region      *int            `json:"region,omitempty"`
@@ -1207,9 +1207,9 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.Ch
 		if len(linkedObservation) > 0 {
 			var payload map[string]json.RawMessage
 			var observed struct {
-				Association string          `json:"association"`
-				EventID     string          `json:"event_id"`
-				Source      string          `json:"source"`
+				Association string `json:"association"`
+				EventID     string `json:"event_id"`
+				Source      string `json:"source"`
 			}
 			if json.Unmarshal(item.Payload, &payload) == nil && payload != nil &&
 				json.Unmarshal(linkedObservation, &observed) == nil &&

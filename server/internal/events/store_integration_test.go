@@ -242,7 +242,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("linked drop lookup = %+v, err=%v", exact, err)
 	}
 	var linkedPayload struct {
-		Item json.RawMessage `json:"item"`
+		Item        json.RawMessage `json:"item"`
 		Observation struct {
 			Association string `json:"association"`
 			EventID     string `json:"event_id"`

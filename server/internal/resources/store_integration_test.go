@@ -91,6 +91,24 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 		itemNext.Items[0].Container == itemPage.Items[0].Container {
 		t.Fatalf("search stable second page = %+v, err=%v", itemNext, err)
 	}
+	// A legacy display name may differ from the canonical server key.
+	// Cursor continuation must still order by the canonical i.server_key.
+	if _, err := pool.Exec(ctx, `UPDATE characters SET server_name='DISPLAY-ONLY' WHERE character_id=$1`, characterID); err != nil {
+		t.Fatal(err)
+	}
+	mismatchFirst, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Limit: 1, IncludeEquipment: true})
+	if err != nil || mismatchFirst.Total != 2 || len(mismatchFirst.Items) != 1 || mismatchFirst.NextCursor == "" {
+		t.Fatalf("server display mismatch search page one: %+v, err=%v", mismatchFirst, err)
+	}
+	mismatchNext, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Limit: 1, IncludeEquipment: true,
+		Cursor: mismatchFirst.NextCursor})
+	if err != nil || mismatchNext.Total != 2 || len(mismatchNext.Items) != 1 ||
+		mismatchNext.Items[0].Container == mismatchFirst.Items[0].Container {
+		t.Fatalf("server display mismatch skipped or repeated a result: %+v, err=%v", mismatchNext, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE characters SET server_name=$1 WHERE character_id=$2`, server, characterID); err != nil {
+		t.Fatal(err)
+	}
 	stackPage, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Query: "ITEM_STACK", Limit: 10, IncludeEquipment: true})
 	if err != nil || stackPage.Total != 1 || len(stackPage.Items) != 1 ||
 		stackPage.Items[0].QuantityExact != "9007199254740993" {
