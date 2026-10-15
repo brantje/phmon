@@ -38,7 +38,12 @@ const tabs = [
       kind: 'drop.item',
     },
   },
-  { label: 'Transfers', key: 'item.transferred', query: { kind: 'item.transferred' } },
+  { label: 'Owned Gains', key: 'item.gains', query: { kind: 'item.gains' } },
+  {
+    label: 'Transfers',
+    key: 'item.transferred',
+    query: { kind: 'item.transferred' },
+  },
   {
     label: 'Uniques',
     key: 'world.unique_spawned',
@@ -170,6 +175,7 @@ const itemTab = computed(
       'drop.rare',
       'alchemy.attempt',
       'item.acquired',
+      'item.gains',
       'item.transferred',
     ].includes(filterKind.value || '') || activeTabLabel.value === 'All',
 )
@@ -274,6 +280,7 @@ watch(
     () => route.query.to_ts,
     () => route.query.character_id,
     () => route.query.server,
+    () => route.query.event_id,
     cursor,
     pageSize,
   ],
@@ -293,6 +300,7 @@ watch(
     _toTs,
     routeCharacterID,
     routeServer,
+    routeEventID,
     pageCursor,
     size,
   ]) => {
@@ -314,20 +322,25 @@ watch(
       character_id:
         typeof routeCharacterID === 'string' ? routeCharacterID : undefined,
       from:
-        typeof _fromTs === 'string'
-          ? _fromTs
-          : from
+        typeof routeEventID === 'string'
+          ? undefined
+          : typeof _fromTs === 'string'
+            ? _fromTs
+            : from
             ? localDateBoundary(from, 0)
             : undefined,
       to:
-        typeof _toTs === 'string'
-          ? _toTs
-          : to
+        typeof routeEventID === 'string'
+          ? undefined
+          : typeof _toTs === 'string'
+            ? _toTs
+            : to
             ? localDateBoundary(to, 1)
             : undefined,
       q: character || undefined,
       item: itemTab.value ? item || undefined : undefined,
       kind: kind || undefined,
+      event_id: typeof routeEventID === 'string' ? routeEventID : undefined,
       category: category || undefined,
       include_pet_pickups: includePickups || undefined,
       include_owned_gains: includeGains || undefined,
@@ -638,7 +651,7 @@ function eventRowLocation(item: ActivityEvent) {
 }
 function eventSourceLabel(item: ActivityEvent) {
   if (item.kind === 'drop.item' || item.kind === 'drop.rare')
-    return 'Drop observed'
+    return 'World drop observed (pickup not implied)'
   if (item.kind === 'item.acquired' && item.source === 'joymax.pet_inventory')
     return 'Pet pickup'
   if (
@@ -646,8 +659,17 @@ function eventSourceLabel(item: ActivityEvent) {
       item.kind === 'item.quantity_increased') &&
     item.source === 'phbot.state_diff'
   )
-    return 'Owned item gain'
+    return 'Observed owned gain · origin unknown'
+  if (item.kind === 'item.transferred')
+    return 'Observed container movement · not a drop'
   return ''
+}
+function linkedObservationID(item: ActivityEvent): string | undefined {
+  const observed = record(record(item.payload).item_observation)
+  return observed.association === 'explicit_drop_event_id' &&
+    typeof observed.event_id === 'string'
+    ? observed.event_id
+    : undefined
 }
 function eventContainerDetail(item: ActivityEvent) {
   const payload = record(item.payload)
@@ -977,7 +999,7 @@ function localDateBoundary(value: string, addDays: number) {
                   <strong>{{ eventSummary(item) }}</strong>
                 </div>
                 <small
-                  v-if="eventSourceLabel(item) && !isDropEvent(item)"
+                  v-if="eventSourceLabel(item)"
                   class="event-origin"
                 >
                   {{ eventSourceLabel(item) }}
@@ -985,6 +1007,23 @@ function localDateBoundary(value: string, addDays: number) {
                     · {{ eventContainerDetail(item) }}
                   </template>
                 </small>
+                <details v-if="linkedObservationID(item)" class="event-origin">
+                  <summary>Linked source observations</summary>
+                  <div>
+                    Callback:
+                    <NuxtLink :to="{ path: '/events', query: { event_id: item.event_id } }">
+                      {{ item.event_id }}
+                    </NuxtLink>
+                  </div>
+                  <div>
+                    Inventory observation:
+                    <NuxtLink
+                      :to="{ path: '/events', query: { event_id: linkedObservationID(item) } }"
+                    >
+                      {{ linkedObservationID(item) }}
+                    </NuxtLink>
+                  </div>
+                </details>
               </div>
               <time :datetime="item.occurred_at">{{
                 formatTimestamp(item.occurred_at)
