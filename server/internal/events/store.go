@@ -1123,6 +1123,18 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
 		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
+	-- All Events shows one row for an explicitly linked callback/drop and
+	-- inventory observation. Both canonical records remain stored and directly
+	-- queryable by kind or event ID. Apply before count and cursor pagination.
+	AND ($4<>'' OR $5<>'' OR $9::uuid IS NOT NULL OR NOT (
+		e.source='phbot.state_diff' AND e.source_ref='item_container'
+		AND e.kind IN ('item.acquired','item.quantity_increased')
+		AND EXISTS (SELECT 1 FROM activity_events d
+			WHERE d.event_id::text=e.payload->>'drop_event_id'
+			AND d.kind IN ('drop.item','drop.rare') AND d.source='phbot.callback'
+			AND d.agent_id=e.agent_id AND d.character_id=e.character_id
+			AND d.session_id=e.session_id AND d.item_model=e.item_model)
+	))
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
