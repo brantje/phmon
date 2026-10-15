@@ -1,0 +1,19 @@
+name: Temporary events Prettier diagnostic
+on:
+  push:
+    branches: [feat/90-economy-item-analytics]
+    paths:
+      - .github/workflows/events-prettier-diagnostic.yml
+jobs:
+  formatting:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix web ci --no-audit --no-fund
+      - name: Show the exact formatting change
+        run: |
+          npm --prefix web exec -- prettier --write app/pages/events.vue
+          git diff -- web/app/pages/events.vue
