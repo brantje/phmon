@@ -335,6 +335,18 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 			t.Fatal("linked gain was duplicated in unfiltered All Events")
 		}
 	}
+	stateDiffs, listErr := store.List(ctx, Filter{Server: server, Source: "phbot.state_diff", Limit: 10})
+	if listErr != nil || stateDiffs.Total < 2 {
+		t.Fatalf("source-filtered canonical observations must remain visible: %+v, err=%v", stateDiffs, listErr)
+	}
+	for _, row := range stateDiffs.Events {
+		if row.Source != "phbot.state_diff" {
+			t.Fatalf("source-filtered result contains %q", row.Source)
+		}
+	}
+	if ValidSourceFilter("phbot.callback; DROP TABLE activity_events") {
+		t.Fatal("invalid provenance filter was accepted")
+	}
 	exactGain, listErr := store.List(ctx, Filter{Server: server, EventID: observedItem.ID, Limit: 1})
 	if listErr != nil || exactGain.Total != 1 || len(exactGain.Events) != 1 {
 		t.Fatalf("canonical gain must remain directly inspectable: %+v, err=%v", exactGain, listErr)
