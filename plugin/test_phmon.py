@@ -1919,7 +1919,52 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.worker._resource_sample_gap = True
         with patch.object(plugin, '_monotonic', return_value=102.0):
             self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        events = self.drain()
+        # The gap destroys proof of a transfer; the prior observed net gain
+        # is still an attributable quantity change, with unknown cause.
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+
+    def test_guild_switch_finalizes_prior_net_change_without_cross_guild_transfer(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(2)}],
+        }
+        halfway = self.resources(bag=[(13, self.item(1))])
+        halfway['guild_storage'] = baseline['guild_storage']
+        self.observe(baseline)
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(halfway)
         self.assertEqual(self.drain(), [])
+        self.identity = dict(self.identity, guild='Different guild')
+        self.worker._current_identity = self.identity
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(self.resources(bag=[(13, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in events))
+
+    def test_guild_owned_net_increase_is_not_character_acquisition(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {'availability': 'observed', 'slots': []}
+        more = self.resources(bag=[])
+        more['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(2)}],
+        }
+        self.observe(baseline)
+        self.observe(more)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(events[0]['payload']['destination_container']['id'], 'guild')
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
 
     def test_partial_storage_move_preserves_transfer_and_net_gain(self):
         self.observe(self.resources(bag=[], storage=[(0, self.item(2))]))
