@@ -213,7 +213,8 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			entry.OwnerID = entry.Guild
 			entry.OwnerName = entry.Guild
 		} else if entry.Container =="pets" {
-			entry.OwnerKind = "pet";entry.OwnerID = entry.PetID
+			entry.OwnerKind = "pet"
+			entry.OwnerID = entry.PetID
 		} else {
 			entry.OwnerKind = "character"
 			entry.OwnerID = entry.ObserverCharacterID
