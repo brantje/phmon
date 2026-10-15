@@ -109,6 +109,8 @@ MAX_EXTERNAL_ROUTE_BYTES = 512 * 1024
 MAX_RESOURCE_SLOTS = 2048
 MAX_ITEM_TYPE_CACHE_ENTRIES = 4096
 RESOURCE_SAMPLE_INTERVAL_SECONDS = 2.0
+ITEM_RECONCILIATION_WINDOW_SECONDS = 6.0
+MAX_ITEM_RECONCILIATION_PENDING = 128
 DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
 DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
 MAX_ITEM_PACKET_COUNT = 128
@@ -3214,6 +3216,7 @@ class AgentWorker(object):
         self._event_diff_session = None
         self._event_diff_identity = None
         self._event_diff = None
+        self._pending_item_reconciliation = []
         self._pending_drop_lock = threading.Lock()
         self._pending_drop_events = []
         self._event_samples = _queue.Queue(maxsize=256)
@@ -3577,6 +3580,7 @@ class AgentWorker(object):
         guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
         scoped_identity_key = (identity_key, guild_scope)
         if scoped_identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
+            self._pending_item_reconciliation = []
             self._event_baseline_required = True
             self._event_diff_identity = scoped_identity_key
             self._event_diff_session = self.session_id
@@ -3585,12 +3589,14 @@ class AgentWorker(object):
                                              if entry['session_id'] == self.session_id and
                                              entry['identity_key'] == identity_key]
         if self._resource_sample_gap:
+            self._pending_item_reconciliation = []
             self._resource_sample_gap = False
             self._event_baseline_required = True
             with self._pending_drop_lock:
                 self._pending_drop_events = []
         current = _event_resource_snapshot(resources, identity)
         if current is None:
+            self._pending_item_reconciliation = []
             self._event_baseline_required = True
             self._event_diff = None
             with self._pending_drop_lock:
@@ -3598,6 +3604,7 @@ class AgentWorker(object):
             return
         previous = self._event_diff
         if self._event_baseline_required or previous is None:
+            self._pending_item_reconciliation = []
             self._event_diff = current
             self._event_baseline_required = False
             with self._pending_drop_lock:
@@ -3645,6 +3652,10 @@ class AgentWorker(object):
         uncertain = set()
         for key in changed:
             uncertain.update((old_containers.get(key) or new_containers.get(key) or {}).keys())
+        if uncertain:
+            self._pending_item_reconciliation = [
+                entry for entry in self._pending_item_reconciliation
+                if entry['signature'] not in uncertain]
         self._emit_item_deltas(identity,
                                {key: old_containers[key] for key in common},
                                {key: new_containers[key] for key in common},
