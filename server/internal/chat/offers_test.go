@@ -4,17 +4,17 @@ import "testing"
 
 func TestClassifyGlobalOfferRequiresExplicitPrefix(t *testing.T) {
 	cases := map[string]string{
-		"WTB elixir":        "WTB",
-		"wts: +7 staff":     "WTS",
-		" WTT Blade":        "WTT",
-		"WTS":               "WTS",
-		"WTS-grade sword":   "WTS",
-		"WTB1234":           "unclassified",
-		"selling silk":      "unclassified",
-		"[WTS] Sword":       "unclassified",
-		"Any WTB?":          "unclassified",
-		"WTX unsupported":   "unclassified",
-		"":                  "unclassified",
+		"WTB elixir":      "WTB",
+		"wts: +7 staff":   "WTS",
+		" WTT Blade":      "WTT",
+		"WTS":             "WTS",
+		"WTS-grade sword": "WTS",
+		"WTB1234":         "unclassified",
+		"selling silk":    "unclassified",
+		"[WTS] Sword":     "unclassified",
+		"Any WTB?":        "unclassified",
+		"WTX unsupported": "unclassified",
+		"":                "unclassified",
 	}
 	for input, want := range cases {
 		if got := GlobalOfferType(input); got != want {
