@@ -18,16 +18,16 @@ type itemSearchHandler struct {
 func (h *itemSearchHandler) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	filter := resources.ItemSearchFilter{
-		Server: strings.TrimSpace(q.Get("server")),
-		Query: strings.TrimSpace(q.Get("q")),
-		Container: strings.TrimSpace(q.Get("container")),
-		Owner: strings.TrimSpace(q.Get("owner")),
-		Type: strings.TrimSpace(q.Get("item_type")),
-		Subcategory: strings.TrimSpace(q.Get("subcategory")),
-		Degree: strings.TrimSpace(q.Get("degree")),
+		Server:           strings.TrimSpace(q.Get("server")),
+		Query:            strings.TrimSpace(q.Get("q")),
+		Container:        strings.TrimSpace(q.Get("container")),
+		Owner:            strings.TrimSpace(q.Get("owner")),
+		Type:             strings.TrimSpace(q.Get("item_type")),
+		Subcategory:      strings.TrimSpace(q.Get("subcategory")),
+		Degree:           strings.TrimSpace(q.Get("degree")),
 		IncludeEquipment: true,
-		Cursor: q.Get("cursor"),
-		Limit: 30,
+		Cursor:           q.Get("cursor"),
+		Limit:            30,
 	}
 	if !validServerFilter(filter.Server) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid server"})
