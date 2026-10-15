@@ -618,7 +618,9 @@ func validContainerReference(value map[string]any) bool {
 	if id, exists := value["id"]; exists {
 		text, ok := id.(string)
 		maxLen := 64
-		if typeName == "guild_storage" { maxLen = 100 }
+		if typeName == "guild_storage" {
+			maxLen = 100
+		}
 		if !ok || text == "" || len(text) > maxLen {
 			return false
 		}
