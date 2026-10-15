@@ -204,6 +204,47 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	if !quantitySeen {
 		t.Fatal("owned-gain quantity denominator was not included in its summary")
 	}
+	// A verified pet receipt and a same-model, same-slot pet state-diff
+	// observation can describe one pickup without sharing acquisition identity.
+	// Both rows remain in Events; only the receipt enters limited owned analytics.
+	_, err = pool.Exec(ctx, `INSERT INTO activity_events(
+		event_id,schema_version,kind,category,agent_id,character_id,session_id,
+		server_name,occurred_at,source,source_ref,item_model,item_code,
+		item_drop_class,item_drop_class_version,payload)
+	VALUES
+	(gen_random_uuid(),1,'item.acquired','item',$1::uuid,$2::uuid,$3::uuid,
+	$4,$5,'phbot.state_diff','item_container',77,'ITEM_RARE','rare','fixture-v1',
+	'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,
+	"destination_container":{"type":"pets","id":"17","slot":2},"acquisition_method":"unknown"}'::jsonb),
+	(gen_random_uuid(),1,'item.acquired','item',$1::uuid,$2::uuid,$3::uuid,
+	$4,$5,'joymax.pet_inventory','0xB034',77,'ITEM_RARE','rare','fixture-v1',
+	'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,
+	"destination_container":{"type":"pets","id":"17","slot":2},"acquisition_method":"pet_pickup",
+	"packet_observation":{"observation_id":"fixture-receipt-1","sequence":"3","decoder_version":"fixture-v1"}}'::jsonb)
+	`, credential.AgentID, aria, ariaSession, server, now.Add(-30*time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limitedOwned, err := store.Query(ctx, analytics.Filter{
+		Server: server, View: analytics.ViewRareDrops, DropSource: "owned_gains",
+		From: from, To: to, Timezone: "UTC",
+	})
+	if err != nil || limitedOwned.Total != "2" || len(limitedOwned.Occurrences) != 2 ||
+		limitedOwned.Status != "limited" {
+		t.Fatalf("unlinked pet state diff doubled pickup receipt or lost limited status: %+v err=%v", limitedOwned, err)
+	}
+	foundQuantity := false
+	for _, metric := range limitedOwned.Summary {
+		if metric.Key == "owned_gain_quantity" {
+			foundQuantity = true
+			if metric.Value != "3" || metric.Status != "limited" {
+				t.Fatalf("inventory 2 plus verified pet receipt 1 must be limited quantity 3: %+v", metric)
+			}
+		}
+	}
+	if !foundQuantity {
+		t.Fatal("limited owned-gain quantity is missing")
+	}
 	filteredDrops, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewRareDrops, From: from, To: to, Timezone: "UTC", GroupBy: "type", ItemType: "Accessory", ItemDegree: "10"})
 	if err != nil || filteredDrops.Total != "1" || len(filteredDrops.Breakdown) != 1 || filteredDrops.Breakdown[0].Label != "Accessory" {
 		t.Fatalf("profile-aware item type/degree filtering failed: snapshot=%+v err=%v", filteredDrops, err)
