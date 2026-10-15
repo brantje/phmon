@@ -1678,7 +1678,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
             'agent_id': AGENT_ID,
             'agent_token': 'phm_test_token',
         }, 'fixture')
-        self.identity = {'server': 'Silkroad', 'name': 'Alpha'}
+        self.identity = {'server': 'Silkroad', 'name': 'Alpha', 'guild': 'Guild'}
         self.worker._current_identity = self.identity
         self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
         self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
@@ -1751,9 +1751,37 @@ class ResourceEventDerivationTests(unittest.TestCase):
         events = self.drain()
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]['kind'], 'item.transferred')
-        self.assertEqual(events[0]['payload']['source_container']['type'], 'guild_storage')
+        self.assertEqual(events[0]['payload']['source_container'], {'type': 'guild_storage', 'id': 'guild', 'slot': 0})
         self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
         self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+
+    def test_guild_switch_rebaselines_without_inventing_movements(self):
+        before = self.resources(bag=[])
+        before['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        self.observe(before)
+        self.identity = dict(self.identity, guild='Other Guild')
+        self.worker._current_identity = self.identity
+        after = self.resources(bag=[(13, self.item(3))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        self.observe(after)
+        self.assertEqual(self.drain(), [])
+
+    def test_unknown_guild_never_attributed_to_guild_storage(self):
+        self.identity = dict(self.identity, guild=None)
+        self.worker._current_identity = self.identity
+        before = self.resources(bag=[])
+        before['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        after = self.resources(bag=[(13, self.item(3))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        self.observe(before)
+        self.observe(after)
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in self.drain()))
 
     def test_newly_observed_guild_storage_does_not_create_acquisition(self):
         self.observe(self.resources(bag=[]))
