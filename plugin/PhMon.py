@@ -3909,7 +3909,8 @@ class AgentWorker(object):
             container = _container_reference(entry['container'], entry['record'])
             payload = {'item': item, 'quantity_delta': quantity}
             if direction == 'gain':
-                kind = 'item.acquired' if entry['old_total'] == 0 else 'item.quantity_increased'
+                kind = ('item.acquired' if entry['old_total'] == 0 and entry['container'] != 'guild_storage'
+                        else 'item.quantity_increased')
                 payload['destination_container'] = container
                 payload['acquisition_method'] = 'unknown'
                 if entry['selected']:
@@ -4095,7 +4096,8 @@ class AgentWorker(object):
                 if not amount or not _item_has_identity(item):
                     continue
                 if direction == 'gain':
-                    kind = 'item.acquired' if old_total == 0 else 'item.quantity_increased'
+                    kind = ('item.acquired' if old_total == 0 and container_key != 'guild_storage'
+                            else 'item.quantity_increased')
                     payload = {'item': item, 'quantity_delta': amount,
                                'destination_container': _container_reference(container_key, record)}
                     if selected:
