@@ -597,10 +597,12 @@ function updateHideOwnCharacters(checked: boolean) {
   })
 }
 function resetFilters() {
-  if (tradersHuntersView.value && route.query.hide_own === '0') {
+  if (tradersHuntersView.value) {
+    // Clear URL-scoped search/date overrides as well as the checkbox; otherwise
+    // refreshing after Reset could silently restore the old filtered view.
     void router.replace({
       path: '/events',
-      query: { ...route.query, hide_own: undefined },
+      query: { kind: 'job.hunter_trader_seen' },
     })
   }
   characterInput.value = ''
