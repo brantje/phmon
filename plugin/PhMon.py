@@ -1750,9 +1750,16 @@ def _normalize_academy(value, api_available):
     return {'availability': 'observed', 'value': payload}
 
 
-def _event_resource_snapshot(resources):
+def _event_resource_snapshot(resources, identity=None):
     if not isinstance(resources, dict):
         return None
+    # Guild inventories are shared by a server/guild, not owned by the
+    # observing character. Without a verified guild name, exclude this
+    # container from movement attribution rather than invent an owner.
+    guild = identity.get('guild') if isinstance(identity, dict) else None
+    guild_key = guild.strip().casefold() if isinstance(guild, str) else ''
+    if not guild_key or len(guild_key) > 100:
+        guild_key = None
     pets_resource = resources.get('pets')
 
     def membership(resource, collection_path):
@@ -1792,7 +1799,12 @@ def _event_resource_snapshot(resources):
         container = resources.get(key)
         if not isinstance(container, dict) or container.get('availability') != 'observed':
             continue
-        containers[key] = _event_item_quantities(container.get('slots', []))
+        if key == 'guild_storage':
+            if guild_key is None:
+                continue
+            containers['guild_storage:' + guild_key] = _event_item_quantities(container.get('slots', []))
+        else:
+            containers[key] = _event_item_quantities(container.get('slots', []))
     for pet in (pets_resource.get('pets', [])[:32] if pets is not None else []):
         if not isinstance(pet, dict) or not pet.get('pet_id') or not pet.get('inventory_available'):
             continue
@@ -3561,9 +3573,12 @@ class AgentWorker(object):
 
     def _derive_resource_events(self, identity, resources, sample):
         identity_key = self._identity_key(identity)
-        if identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
+        guild = identity.get('guild') if isinstance(identity, dict) else None
+        guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
+        scoped_identity_key = (identity_key, guild_scope)
+        if scoped_identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
             self._event_baseline_required = True
-            self._event_diff_identity = identity_key
+            self._event_diff_identity = scoped_identity_key
             self._event_diff_session = self.session_id
             with self._pending_drop_lock:
                 self._pending_drop_events = [entry for entry in self._pending_drop_events
@@ -3574,7 +3589,7 @@ class AgentWorker(object):
             self._event_baseline_required = True
             with self._pending_drop_lock:
                 self._pending_drop_events = []
-        current = _event_resource_snapshot(resources)
+        current = _event_resource_snapshot(resources, identity)
         if current is None:
             self._event_baseline_required = True
             self._event_diff = None
