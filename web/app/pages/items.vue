@@ -132,6 +132,20 @@ onUnmounted(() => {
   requestGate.invalidate()
   if (searchTimer) clearTimeout(searchTimer)
 })
+function resetFilters() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = undefined
+  queryInput.value = ''
+  query.value = ''
+  container.value = ''
+  owner.value = ''
+  itemType.value = ''
+  subcategory.value = ''
+  degree.value = ''
+  includeSets.value = true
+  cursor.value = ''
+  previous.value = []
+}
 function nextPage() {
   if (!page.value?.next_cursor) return
   previous.value.push(cursor.value)
@@ -217,6 +231,9 @@ function previousPage() {
           <span>Include equipped items / character sets</span>
         </label>
         <button class="compact-button self-end" type="submit">Refresh</button>
+        <button class="compact-button self-end" type="button" @click="resetFilters">
+          Reset filters
+        </button>
       </form>
     </section>
     <p v-if="stale" role="status" class="status-banner warning">
