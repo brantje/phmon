@@ -208,11 +208,11 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 		if err := json.Unmarshal(raw, &entry.Item); err != nil {
 			return ItemSearchPage{}, err
 		}
-		if entry.Container =="guild_storage" {
+		if entry.Container == "guild_storage" {
 			entry.OwnerKind = "guild"
 			entry.OwnerID = entry.Guild
 			entry.OwnerName = entry.Guild
-		} else if entry.Container =="pets" {
+		} else if entry.Container == "pets" {
 			entry.OwnerKind = "pet"
 			entry.OwnerID = entry.PetID
 		} else {
@@ -241,4 +241,3 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	}
 	return page, nil
 }
-
