@@ -307,8 +307,8 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	// One explicitly linked acquisition remains visible when its callback is
 	// outside the requested window. Count and pagination operate on the same
 	// filtered logical rows, not client-side hidden items.
-	from := databaseNow.UTC().Add(time.Second)
-	to := databaseNow.UTC().Add(3 * time.Second)
+	from = databaseNow.UTC().Add(time.Second)
+	to = databaseNow.UTC().Add(3 * time.Second)
 	visibleGain, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777",
 		From: &from, To: &to, Limit: 10})
 	if listErr != nil || visibleGain.Total != 1 || len(visibleGain.Events) != 1 ||
