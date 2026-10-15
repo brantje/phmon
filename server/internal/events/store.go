@@ -1229,7 +1229,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.Ch
 		var summary AlchemySummary
 		var highest *int
 		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),count(*) FILTER (WHERE e.payload->>'success' IS NULL OR e.payload->>'success' NOT IN ('true','false')),max(CASE WHEN e.payload->>'plus' ~ '^[0-9]{1,3}$' THEN (e.payload->>'plus')::integer END) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest
