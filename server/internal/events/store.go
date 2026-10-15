@@ -223,7 +223,7 @@ func validDropFeed(filter Filter) bool {
 }
 
 func ValidKind(value string) bool {
-	if value == "" {
+	if value == "" || value == "item.gains" {
 		return true
 	}
 	if strings.HasPrefix(value, "custom.") && len(value) <= 80 {
@@ -1126,7 +1126,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
 	AND ($3='' OR c.character_name ILIKE '%'||$3||'%')
-		AND (($4='' OR e.kind=$4) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))) OR
+		AND (($4='' OR e.kind=$4 OR ($4='item.gains' AND e.kind IN ('item.acquired','item.quantity_increased'))) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))) OR
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
 		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
