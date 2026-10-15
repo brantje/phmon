@@ -1788,7 +1788,7 @@ def _event_resource_snapshot(resources):
             pets[str(pet['pet_id'])[:64]] = {key: value for key, value in pet.items() if key != 'slots'}
 
     containers = {}
-    for key in ('equipment', 'inventory', 'storage', 'job_pouch'):
+    for key in ('equipment', 'inventory', 'storage', 'guild_storage', 'job_pouch'):
         container = resources.get(key)
         if not isinstance(container, dict) or container.get('availability') != 'observed':
             continue
