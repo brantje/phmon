@@ -65,7 +65,8 @@ function load() {
       if (requestGate.isCurrent(id)) page.value = response
     })
     .catch(() => {
-      if (requestGate.isCurrent(id)) error.value = 'Global offer history is unavailable.'
+      if (requestGate.isCurrent(id))
+        error.value = 'Global offer history is unavailable.'
     })
     .finally(() => {
       if (requestGate.isCurrent(id)) loading.value = false
@@ -165,7 +166,11 @@ function previousPage() {
         <button type="submit" class="compact-button self-end">
           Refresh offers
         </button>
-        <button type="button" class="compact-button self-end" @click="resetFilters">
+        <button
+          type="button"
+          class="compact-button self-end"
+          @click="resetFilters"
+        >
           Reset filters
         </button>
       </form>
