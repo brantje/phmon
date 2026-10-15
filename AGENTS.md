@@ -6158,3 +6158,37 @@ includes stable server/name player-registry lock ordering. Files:
 `server/internal/httpapi/agent.go`, `agent_test.go`. Validation: HTTP API race
 tests and vet passed before port; rerun and monitor PR CI/review for this branch.
 The running Docker deployment remains main until separately updated.
+
+### Resume — 2026-10-15 Slice 13 / Issue #90 implementation ledger (PR #91)
+
+Work is limited to issue #90 on `feat/90-economy-item-analytics`. The draft
+PR remains unmerged, and this ledger is not a declaration of acceptance.
+
+- Blocking corrections: default Rare/Normal Drop tabs are callback-only;
+  All Events hides only uniquely explicit `drop_event_id` associations when the
+  callback also satisfies the active filter, while exact event IDs remain
+  inspectable. The matching inventory event is exposed as a linked observation;
+  unrelated nearby state differences must not lend their item-instance rolls.
+- Item movement: observed guild storage is compared only with a verified,
+  session/server/character/guild-scoped identity; an unscoped guild container
+  reference is rejected. Single-source/single-destination transfers preserve
+  the existing `item.transferred` schema; ambiguous balanced movements remain
+  unknown instead of being invented as acquisitions. Delayed/partial transfer
+  reconciliation and packet/state-diff pet receipt correlation require further
+  evidence and tests before this gate can be marked complete.
+- Item Search: `GET /api/items`, `/items` read canonical resource item and
+  observation tables. Guild storage chooses one observer's attributable revision
+  per server/guild; both source and observer/freshness remain visible. Taxonomy
+  filtering requires a server profile to avoid cross-server model assumptions.
+- Global Economy: `GET /api/economy/offers`, `/economy` derive explicit
+  WTB/WTS/WTT ads from canonical inbound Global chat, preserving source IDs,
+  raw text and sender. Conservative multi-observer matching does not merge
+  competing repeated advertisements. No sale/price is fabricated.
+- Stall transactions and realized price history: unsupported without verified
+  observable listing, completed-sale outcome, item/quantity and paid gold.
+  Advertising text is not a completed transaction. See
+  `docs/phbot-capabilities.md`.
+- Validation gates: targeted Python/Go/PostgreSQL tests have been added. The
+  complete `scripts/check.sh`, CI, responsive browser and CodeRabbit gates
+  must be checked on the latest head; untested runtime phBot behavior is not
+  represented as verified.
