@@ -203,3 +203,48 @@ ticks. The keyboard/touch range input and expandable numerical table expose exac
 returned strings; gold plot coordinates are offset from the exact lowest balance
 before conversion to chart coordinates so small changes around large balances are
 not erased by JavaScript's integer precision limit.
+
+## Slice 13 event and economy semantics — issue #90
+
+**World drops:** An observed `drop.item` or `drop.rare` **callback event** is
+one world-drop observation. Counts are event counts, not item quantities or
+successfully collected items. A callback and its linked state-diff inventory
+observation count as **one world drop**, because the latter has another kind.
+Uncollected drops still count as observed world drops.
+
+**Owned gains:** `item.acquired` and `item.quantity_increased` describe
+observed positive container deltas, with `acquisition_method: unknown` unless
+separately verified. `item.transferred` is not a gain or world drop.
+The existing `owned_gains` analytics view reports **recorded gain events**
+across eligible inventory/pet sources, not verified distinct physical item
+instances. Where independently captured `joymax.pet_inventory` and
+`phbot.state_diff` evidence has not been explicitly linked, exact net
+physical-acquisition counts are **not yet established**; do not interpret the
+raw observation total as such. `quantity_delta` is a separate item-count
+field and must not silently replace the occurrence count.
+
+**All Events logical projection:** Only an explicitly linked, unique
+`drop_event_id` state-diff inventory observation can be folded into the
+callback's one visible occurrence, and only if that callback satisfies the
+active server/item/date/location filters. Both canonical events persist.
+Exact event-ID and event-kind searches retain raw records; All Events totals
+and cursors are computed over the filtered projection. Temporal co-occurrence
+or same-model similarity cannot justify fusion or copying item-instance rolls.
+
+**Transfers:** `item.transferred` requires observed source decrease and
+matching destination increase (including guild-scoped shared storage), with
+`quantity_delta` recording moved units, not sale units or net acquisitions.
+Uncertain or unavailable container evidence must not create transfers or
+world-drop events. A guild storage observer is not an owner of guild items.
+
+**Global economy:** WTB/WTS/WTT messages are advertisements, not executed
+trades. One classified retained Global chat message is one observed offer
+occurrence; conservative cross-character observer dedup operates on sender,
+server, raw chat type, identical message and a narrow time window, subject to
+competing-ad checks. The denominator is observed message occurrences under
+coverage of connected bot characters, not all server advertisements or sales.
+There is no verified realized-price or completed-sale denominator.
+
+**Historical policy:** Do not delete, merge or retroactively reclassify
+ambiguous stored events. Query fixes apply read-only. An older event that lacks
+explicit correlation remains independent, even if it resembles a drop.
