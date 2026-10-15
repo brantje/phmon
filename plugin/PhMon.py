@@ -3714,6 +3714,25 @@ class AgentWorker(object):
                 new = after[container_key].get(signature, {}).get('quantity', 0)
                 if new > old: deltas.append(('gain', container_key, new - old, after[container_key][signature]))
                 elif old > new: deltas.append(('loss', container_key, old - new, before[container_key][signature]))
+            # A partially balanced source/destination pair still proves a
+            # transfer of the overlapping quantity. Emit only the residual
+            # as a separate unknown net increase/decrease: neither the moved
+            # units nor their rolls are newly acquired.
+            observed_gains = [entry for entry in deltas if entry[0] == 'gain']
+            observed_losses = [entry for entry in deltas if entry[0] == 'loss']
+            if len(observed_gains) == 1 and len(observed_losses) == 1:
+                _, dest_key, gained, dest_record = observed_gains[0]
+                _, source_key, lost, source_record = observed_losses[0]
+                moved = min(gained, lost)
+                if moved and source_key != dest_key:
+                    moved_item = dest_record.get('item') or source_record.get('item') or {}
+                    if _item_has_identity(moved_item):
+                        payload = {'item': moved_item, 'quantity_delta': moved,
+                                   'source_container': _container_reference(source_key, source_record),
+                                   'destination_container': _container_reference(dest_key, dest_record),
+                                   'method': 'observed_container_delta'}
+                        self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
+                                                  occurred_at, position, moved_item)
             changes = [entry for entry in deltas if entry[0] == ('gain' if positive else 'loss')]
             remaining = positive or negative
             for direction, container_key, quantity, record in changes:
