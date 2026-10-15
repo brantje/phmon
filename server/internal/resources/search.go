@@ -39,6 +39,7 @@ type ItemSearchEntry struct {
 	Revision int64 `json:"revision"`
 	ObservedAt time.Time `json:"observed_at"`
 	CheckedAt time.Time `json:"checked_at"`
+	QuantityExact string `json:"quantity_exact,omitempty"`
 	Item map[string]any `json:"item"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
@@ -156,7 +157,7 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	rows,err := s.pool.Query(ctx,guildCTE+`
 	SELECT i.observer_character_id::text,i.server_key,i.container_key,i.pet_id,
 		i.source_slot,i.guild_key,i.revision,i.observed_at,o.updated_at,
-		i.raw_item,coalesce(i.model,0),coalesce(i.server_name,''),
+		i.raw_item,coalesce(i.model,0),coalesce(i.server_name,''),coalesce(i.quantity::text,''),
 		c.character_name,c.server_name
 	`+scope+`
 	AND ($8='' OR (i.server_key,i.container_key,i.observer_character_id::text,i.pet_id,i.source_slot) >
@@ -174,7 +175,7 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 		var raw []byte
 		if err := rows.Scan(&entry.ObserverCharacterID,&serverKey,&entry.Container,
 			&entry.PetID,&entry.Slot,&entry.Guild,&entry.Revision,&entry.ObservedAt,
-			&entry.CheckedAt,&raw,&model,&code,&entry.ObserverName,&entry.Server); err != nil {
+			&entry.CheckedAt,&raw,&model,&code,&entry.QuantityExact,&entry.ObserverName,&entry.Server); err != nil {
 			return ItemSearchPage{},err
 		}
 		if err := json.Unmarshal(raw,&entry.Item); err != nil { return ItemSearchPage{},err }
