@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   createLatestRequestGate,
+  itemHistoryTarget,
   itemOwnerHref,
   itemSearchQuery,
 } from '~/utils/searchPage'
@@ -146,7 +147,7 @@ function previousPage() {
     <PageHeader
       title="Item Search"
       icon="i-lucide-search"
-      description="Search currently observed items across characters, pets, personal storage and guild storage. Guild items are shown once per guild snapshot."
+      description="Search last confirmed item observations across characters, pets, personal storage and guild storage. Item contents may be stale; guild rows use one observer snapshot."
     />
     <section class="panel p-4" aria-label="Item search filters">
       <form
@@ -267,6 +268,9 @@ function previousPage() {
               }}</NuxtLink></span
             >
             <span v-if="row.pet_id">Pet ID: {{ row.pet_id }}</span>
+            <NuxtLink :to="itemHistoryTarget(row)">
+              View canonical item events
+            </NuxtLink>
             <span
               >Quantity:
               {{ row.quantity_exact || row.item.quantity || 'unknown' }}</span
