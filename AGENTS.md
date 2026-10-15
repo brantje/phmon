@@ -6734,3 +6734,18 @@ test in `TestPackagedMetadata`. Only the local server container was rebuilt;
 PostgreSQL and web stayed up. Live `/api/items` verified. Evidence:
 `docs/reference-parity.md`. Exact next action: none; a future full re-export
 will produce the same values. Not committed.
+
+### Resume — 2026-10-15 Stats Info equipment order and character details
+
+Stats Info now follows phMonitor's equipment column order and info card (see
+`docs/reference-parity.md`). Plugin 1.9.39 / protocol 20 sends `character_info`
+(job name, guild member/online counts, own donated GP, union guilds); server
+accepts protocol 20. Files: `plugin/{PhMon.py,test_phmon.py,README.md}`,
+`server/internal/httpapi/agent.go`, `web/app/{utils/equipmentLayout.ts,
+components/CharacterCard.vue,assets/css/main.css}`, `web/tests/equipmentLayout.test.ts`,
+`docs/protocol.md`. Validation: 288 plugin tests, protocol guard (bump required
+and applied), 283 frontend tests, typecheck, lint, Prettier, Go httpapi/resources
+tests, live browser check at 1440/390. The host rebooted mid-session; PostgreSQL
+was started on its existing volume, then server and web were rebuilt and are
+healthy. Not committed. Exact next action: operator installs plugin 1.9.39 and
+confirms job/guild values on the Info tab against phMonitor.

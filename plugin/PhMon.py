@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.38'
+pVersion = '1.9.39'
 pUrl = ''
 
-PROTOCOL_VERSION = 19
+PROTOCOL_VERSION = 20
 TELEPORT_READY_OPCODE = 0x34B5
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
@@ -1473,7 +1473,8 @@ def _normalize_container(raw, resource_key):
 def collect_resource_inputs(api=None):
     """Call phBot getters on its callback thread; return raw values for worker normalization."""
     inputs = {}
-    for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy'):
+    for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy',
+                 'get_character_data', 'get_guild', 'get_guild_union'):
         function = (api or {}).get(name) if isinstance(api, dict) else None
         if not callable(function):
             function = _optional_phbot_api(name)
@@ -1717,6 +1718,8 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
 
     available, academy = call('get_academy')
     resources['academy'] = _normalize_academy(academy, available)
+    resources['character_info'] = _normalize_character_info(
+        call('get_character_data'), call('get_guild'), call('get_guild_union'))
     resources['party_setup'] = {
         'availability': 'unavailable',
         'mode': 'read_only_unverified',
@@ -1770,6 +1773,51 @@ def _normalize_academy(value, api_available):
     if isinstance(academy_id, int) and not isinstance(academy_id, bool) and academy_id >= 0:
         payload['id'] = academy_id
     return {'availability': 'observed', 'value': payload}
+
+
+def _normalize_character_info(character, guild, union):
+    """Summarize the documented guild/union getters for this character's info card."""
+    character_available, character_data = character
+    guild_available, guild_data = guild
+    union_available, union_data = union
+    if not character_available and not guild_available and not union_available:
+        return {'availability': 'unavailable', 'reason': 'api_missing'}
+    payload = {'availability': 'observed'}
+    own_name = None
+    if isinstance(character_data, dict):
+        own_name = _bounded_text(character_data.get('name'), 64)
+        job_name = _bounded_text(character_data.get('job_name'), 64)
+        if job_name is not None:
+            payload['job_name'] = job_name
+    if isinstance(guild_data, dict):
+        members = online = 0
+        own = None
+        for member in guild_data.values():
+            if not isinstance(member, dict):
+                continue
+            members += 1
+            if member.get('online') is True or (isinstance(member.get('online'), int) and member.get('online') > 0):
+                online += 1
+            name = _bounded_text(member.get('name'), 64)
+            if own_name and name and name.lower() == own_name.lower():
+                own = member
+        summary = {'member_count': members, 'online_count': online}
+        donated = own.get('donated_gp') if own else None
+        if isinstance(donated, int) and not isinstance(donated, bool) and donated >= 0:
+            summary['donated_gp'] = donated
+        payload['guild'] = summary
+    if isinstance(union_data, dict):
+        names = []
+        count = 0
+        for entry in union_data.values():
+            if not isinstance(entry, dict):
+                continue
+            count += 1
+            name = _bounded_text(entry.get('name'), 64)
+            if name is not None and len(names) < 32:
+                names.append(name)
+        payload['union'] = {'count': count, 'names': sorted(names, key=str.lower)}
+    return payload
 
 
 def _event_resource_snapshot(resources, identity=None):

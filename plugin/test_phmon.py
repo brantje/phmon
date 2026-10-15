@@ -836,6 +836,36 @@ class ResourceCollectorTests(unittest.TestCase):
         self.assertNotIn('expiration', result['api_fields'])
         self.assertNotIn('phys_def', result)
 
+    def test_character_info_summarizes_job_guild_and_union(self):
+        api = {
+            'get_character_data': lambda: {'name': 'Nuker1', 'job_name': 'MrTrade'},
+            'get_guild': lambda: {
+                1: {'name': 'nuker1', 'online': 1, 'donated_gp': 486241},
+                2: {'name': 'Other', 'online': 0, 'donated_gp': 5},
+                3: {'name': 'Third', 'online': 1},
+            },
+            'get_guild_union': lambda: {9: {'name': 'Zeta'}, 4: {'name': 'alpha'}},
+        }
+        info = plugin.collect_resources(api=api)['character_info']
+        self.assertEqual(info, {
+            'availability': 'observed',
+            'job_name': 'MrTrade',
+            'guild': {'member_count': 3, 'online_count': 2, 'donated_gp': 486241},
+            'union': {'count': 2, 'names': ['alpha', 'Zeta']},
+        })
+
+    def test_character_info_omits_unobserved_fields(self):
+        api = {
+            'get_character_data': lambda: {'name': 'Solo'},
+            'get_guild': lambda: {},
+            'get_guild_union': lambda: None,
+        }
+        info = plugin.collect_resources(api=api)['character_info']
+        self.assertEqual(info, {
+            'availability': 'observed',
+            'guild': {'member_count': 0, 'online_count': 0},
+        })
+
     def test_collect_resources_preserves_slots_and_separates_equipment(self):
         api = {
             'get_inventory': lambda: {

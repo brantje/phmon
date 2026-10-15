@@ -3,6 +3,11 @@ import { useId } from 'vue'
 import type { CharacterView, PetInventoryRecord } from '~~/shared/types/live'
 import { characterDeathState } from '../utils/characterDeath'
 import { combinedCharacterGold } from '../utils/fleetGold'
+import {
+  characterInfoRows,
+  equipmentColumns,
+  equipmentItemAt,
+} from '../utils/equipmentLayout'
 
 const props = defineProps<{
   character: CharacterView
@@ -109,6 +114,15 @@ const equipmentObservation = computed(() => observation('equipment'))
 const equipmentAvailability = computed(
   () => observation('equipment')?.availability,
 )
+const infoRows = computed(() => {
+  const seen =
+    props.character.last_activity_at || props.character.state_updated_at
+  return characterInfoRows(
+    props.character,
+    payload('character_info'),
+    seen ? formatSyncedTime(seen) : '',
+  )
+})
 const freshness = computed(() => {
   const values = Object.values(resourceMap.value)
     .map((entry) => entry.observed_at)
@@ -143,7 +157,7 @@ const academyMembers = computed(() => {
 const academyHasMembers = computed(() => academyMembers.value.length > 0)
 const activeResourceKeys = computed(() => {
   if (selectedTab.value === 'Overview') return ['pets', 'party']
-  if (selectedTab.value === 'Info') return ['equipment']
+  if (selectedTab.value === 'Info') return ['equipment', 'character_info']
   if (selectedTab.value === 'Inventory') return ['inventory']
   if (selectedTab.value === 'Storage') return [selectedContainer.value]
   if (selectedTab.value === 'Pet') return ['pets', 'item_enrichment']
@@ -228,9 +242,6 @@ async function resetPerformanceRates() {
 
 function available(key: string) {
   return observation(key)?.availability || 'unavailable'
-}
-function itemSlots(value: unknown) {
-  return Array.isArray(value) ? value : []
 }
 function petLabel(pet: PetInventoryRecord) {
   const type = typeof pet.type === 'string' ? pet.type : 'unknown'
@@ -509,35 +520,37 @@ onBeforeUnmount(() => {
                 : 'an unknown time'
             }}.
           </div>
-          <div class="equipment-center">
-            <CharacterPortrait
-              :name="character.name"
-              :portrait-url="character.portrait_url"
-              size="large"
-            />
-            <strong>{{ character.name }}</strong
-            ><span>{{
-              character.level == null
-                ? 'Level unavailable'
-                : `Level ${character.level}`
-            }}</span>
-          </div>
           <div class="equipment-slots">
             <div
-              v-for="(slot, index) in itemSlots(equipment.slots)"
-              :key="index"
-              class="equipment-slot"
+              v-for="(column, side) in equipmentColumns"
+              :key="side"
+              :class="['equipment-column', `equipment-column-${side}`]"
             >
-              <ItemSlot
-                :item="
-                  slot && typeof slot === 'object' && 'item' in slot
-                    ? (slot.item as Record<string, unknown>)
-                    : null
-                "
-                :slot-number="index"
-                :label="`Equipment source slot ${index + 1}`"
+              <div
+                v-for="(cell, index) in column"
+                :key="`${side}-${index}`"
+                class="equipment-slot"
+              >
+                <ItemSlot
+                  v-if="cell.sourceSlot != null"
+                  :item="equipmentItemAt(equipment.slots, cell.sourceSlot)"
+                  :slot-number="cell.sourceSlot"
+                  :label="cell.label"
+                />
+              </div>
+            </div>
+            <div class="equipment-center">
+              <CharacterPortrait
+                :name="character.name"
+                :portrait-url="character.portrait_url"
+                size="card"
               />
-              <small>Slot {{ index + 1 }}</small>
+              <dl class="equipment-info">
+                <div v-for="row in infoRows" :key="row.label">
+                  <dt>{{ row.label }}</dt>
+                  <dd>{{ row.value }}</dd>
+                </div>
+              </dl>
             </div>
           </div>
         </div>

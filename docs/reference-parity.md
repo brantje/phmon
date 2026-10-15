@@ -2873,3 +2873,16 @@ resolved at read time, so no stored records needed rewriting. Exporter (105) and
 resources Go tests pass; the new packaged-catalog regression fails on the old
 data. The authenticated live `/api/items` now reports Suit/Chest,
 Trousers/Legs, Talisman/Shoulders, Wristlet/Hands.
+
+### Stats Info equipment order and character details — 2026-10-15
+
+Per the authorized phMonitor v0.5.0 inspection (`equipmentLayoutHtml`,
+`statsInfoPanelHtml`), the Stats Info tab now places source slots in two columns:
+left weapon 6, head 0, chest 1, legs 4, earring 9, ring 11 (plus an empty spacer);
+right shield 7, shoulders 2, hands 3, feet 5, necklace 10, ring 12, job 8. The
+center card shows Character, Job name, Guild, Guild members (online / total),
+Donated GP, Union guilds and Last seen. These come from the new protocol-20
+`character_info` resource (plugin 1.9.39: `get_character_data()`, `get_guild()`,
+`get_guild_union()`); unobserved values show `-`. Live browser checks at 1440 and
+390 px confirmed order, item parts, no page overflow and no page errors; job and
+guild values remain `-` until plugin 1.9.39 is installed in phBot.

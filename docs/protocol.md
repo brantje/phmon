@@ -1574,6 +1574,16 @@ observed academy ID changes, the plugin emits departures with the old ID and joi
 with the new ID so analytics can attribute each transition to the correct academy.
 This does not establish graduation, bans, or a lifetime-unique member identity.
 
+## Agent protocol 20: character_info resource — 2026-10-15
+
+Plugin 1.9.39 adds a `character_info` resource observation built from documented
+`get_character_data()`, `get_guild()` and `get_guild_union()` getters. Its
+optional fields are `job_name`, `guild` (`member_count`, `online_count` and, when
+the character's own member row is found, `donated_gp`) and `union` (`count` and
+up to 32 sorted `names`). Missing getters or shapes omit the field; the Stats Info
+card shows unknown values as `-`. Older protocol 19 agents do not send the
+resource.
+
 ## Agent protocol 19: personal storage gold in resource snapshots — 2026-10-11
 
 Plugin 1.9.33 preserves a valid non-negative integer `gold` field on normalized
