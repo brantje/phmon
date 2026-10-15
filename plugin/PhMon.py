@@ -3687,27 +3687,9 @@ class AgentWorker(object):
                                    'method': 'observed_container_delta'}
                         self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
                                                   occurred_at, position, item)
-                elif gains or losses:
-                    for container_key, quantity, record in gains:
-                        item, selected, ambiguous = _event_gain_item(
-                            before[container_key].get(signature), record, quantity)
-                        if _item_has_identity(item):
-                            payload = {'item': item, 'quantity_delta': quantity,
-                                       'destination_container': _container_reference(container_key, record),
-                                       'acquisition_method': 'unknown'}
-                            if selected:
-                                payload['destination_container']['slot'] = selected[0]
-                            if ambiguous:
-                                payload['item_instance_unobserved'] = True
-                            self._queue_derived_event(identity, 'item.quantity_increased', 'item_container', payload,
-                                                      occurred_at, position, item)
-                    for container_key, quantity, record in losses:
-                        item = record.get('item') or {}
-                        if _item_has_identity(item):
-                            payload = {'item': item, 'quantity_delta': quantity,
-                                       'source_container': _container_reference(container_key, record)}
-                            self._queue_derived_event(identity, 'item.quantity_decreased', 'item_container', payload,
-                                                      occurred_at, position, item)
+                # Balanced multi-container changes without a unique source and
+                # destination are ambiguous transfers, not acquisitions or
+                # disposals. Do not manufacture gain/loss events.
                 continue
 
             positive, negative = (new_total - old_total, 0) if new_total > old_total else (0, old_total - new_total)
