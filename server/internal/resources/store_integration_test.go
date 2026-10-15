@@ -80,6 +80,22 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	if err := store.Apply(ctx, credential.AgentID, characterID, 1, 1, ownerSession, ownerFull); err != nil {
 		t.Fatal(err)
 	}
+	// Unified search is a read-only projection of the same resource rows.
+	itemPage, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Limit: 1, IncludeEquipment: true})
+	if err != nil || itemPage.Total != 2 || len(itemPage.Items) != 1 || itemPage.NextCursor == "" {
+		t.Fatalf("search first page = %+v, err=%v", itemPage, err)
+	}
+	itemNext, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Limit: 1,
+		IncludeEquipment: true, Cursor: itemPage.NextCursor})
+	if err != nil || itemNext.Total != 2 || len(itemNext.Items) != 1 ||
+		itemNext.Items[0].Container == itemPage.Items[0].Container {
+		t.Fatalf("search stable second page = %+v, err=%v", itemNext, err)
+	}
+	stackPage, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Query: "ITEM_STACK", Limit: 10, IncludeEquipment: true})
+	if err != nil || stackPage.Total != 1 || len(stackPage.Items) != 1 ||
+		stackPage.Items[0].QuantityExact != "9007199254740993" {
+		t.Fatalf("search exact stack quantity = %+v, err=%v", stackPage, err)
+	}
 	contexts, err := store.ReverseReturnContexts(ctx, map[string]string{characterID: ownerSession, observerID: observerSession}, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +192,12 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 		"guild_storage": json.RawMessage(`{"availability":"observed","gold":10000,"capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":99,"quantity":1}}]}`),
 	}}); err != nil {
 		t.Fatal(err)
+	}
+	sharedPage, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Container: "guild_storage",
+		Limit: 10, IncludeEquipment: true})
+	if err != nil || sharedPage.Total != 1 || len(sharedPage.Items) != 1 ||
+		sharedPage.Items[0].OwnerKind != "guild" || sharedPage.Items[0].ObserverCharacterID != observerID {
+		t.Fatalf("one latest guild snapshot per guild = %+v, err=%v", sharedPage, err)
 	}
 	var observerCount int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM guild_gold_samples WHERE server_key=$1 AND guild_key=$2`, strings.ToLower(server), guild).Scan(&observerCount); err != nil || observerCount != 2 {
