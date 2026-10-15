@@ -74,9 +74,10 @@ const offerKindSQL = `CASE
 	ELSE 'unclassified' END`
 
 // Offers is a read-only query over retained Slice 6 Global chat messages.
-// Multiple observers are collapsed only for identical source content/raw type
-// within 500ms, and only if neither observer reported a competing repeated
-// advertisement within two seconds. Ambiguous repeats remain separate.
+// Retained messages have per-observer IDs, not a shared server broadcast ID.
+// Equal sender/text/raw type in a short window cannot prove a single broadcast:
+// two real repeated ads observed by different bots must remain auditable.
+// Do not collapse distinct source IDs until a verified shared identity exists.
 func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, error) {
 	if s == nil || s.pool == nil || !validOfferFilter(filter) {
 		return OfferPage{}, ErrInvalid
@@ -103,33 +104,7 @@ func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, erro
 		AND (($4='' AND (` + offerKindSQL + `)<>'unclassified') OR ($4<>'' AND (` + offerKindSQL + `)=$4))
 		AND ($5::timestamptz IS NULL OR m.occurred_at >= $5)
 		AND ($6::timestamptz IS NULL OR m.occurred_at < $6)
-		AND NOT EXISTS (
-			SELECT 1 FROM chat_messages other
-			WHERE other.channel='global' AND other.direction='inbound'
-				AND other.event_id IS NOT NULL AND other.echo_of_command_id IS NULL
-				AND other.character_id<>m.character_id
-				AND lower(other.server_name)=lower(m.server_name)
-				AND other.sender=m.sender AND other.raw_type=m.raw_type
-				AND other.message=m.message
-				AND other.occurred_at BETWEEN m.occurred_at-interval '500 milliseconds' AND m.occurred_at
-				AND (other.occurred_at,other.message_id)<(m.occurred_at,m.message_id)
-				AND (SELECT count(*) FROM chat_messages self
-					WHERE self.character_id=m.character_id
-					AND lower(self.server_name)=lower(m.server_name)
-					AND self.channel='global' AND self.direction='inbound'
-					AND self.raw_type=m.raw_type AND self.sender=m.sender
-					AND self.message=m.message
-					AND self.occurred_at BETWEEN m.occurred_at-interval '2 seconds'
-						AND m.occurred_at+interval '2 seconds')=1
-				AND (SELECT count(*) FROM chat_messages repeated
-					WHERE repeated.character_id=other.character_id
-					AND lower(repeated.server_name)=lower(m.server_name)
-					AND repeated.channel='global' AND repeated.direction='inbound'
-					AND repeated.raw_type=m.raw_type AND repeated.sender=m.sender
-					AND repeated.message=m.message
-					AND repeated.occurred_at BETWEEN other.occurred_at-interval '2 seconds'
-						AND other.occurred_at+interval '2 seconds')=1
-		)`
+`
 	args := []any{filter.Server, filter.Sender, filter.Query, filter.Kind, filter.From, filter.To}
 	var total int64
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, args...).Scan(&total); err != nil {
