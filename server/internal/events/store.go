@@ -610,9 +610,16 @@ func validContainerReference(value map[string]any) bool {
 	if !ok || (typeName != "equipment" && typeName != "inventory" && typeName != "storage" && typeName != "guild_storage" && typeName != "job_pouch" && typeName != "pets") {
 		return false
 	}
+	// Guild storage cannot be identified by container type alone. A bounded
+	// server-scoped guild key is required to distinguish shared owners.
+	if _, exists := value["id"]; typeName == "guild_storage" && !exists {
+		return false
+	}
 	if id, exists := value["id"]; exists {
 		text, ok := id.(string)
-		if !ok || text == "" || len(text) > 64 {
+		maxLen := 64
+		if typeName == "guild_storage" { maxLen = 100 }
+		if !ok || text == "" || len(text) > maxLen {
 			return false
 		}
 	}
