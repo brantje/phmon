@@ -1123,17 +1123,40 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
 		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
-	-- All Events shows one row for an explicitly linked callback/drop and
-	-- inventory observation. Both canonical records remain stored and directly
-	-- queryable by kind or event ID. Apply before count and cursor pagination.
+	-- Collapse only a one-to-one, explicitly linked drop/acquisition pair.
+	-- A callback must itself pass every active All Events filter; otherwise the
+	-- acquisition remains visible. Both canonical event IDs remain queryable.
 	AND ($4<>'' OR $5<>'' OR $9::uuid IS NOT NULL OR NOT (
 		e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.kind IN ('item.acquired','item.quantity_increased')
-		AND EXISTS (SELECT 1 FROM activity_events d
+		AND e.payload->>'quantity_delta'='1'
+		AND e.payload->'destination_container'->>'type'='inventory'
+		AND EXISTS (
+			SELECT 1 FROM activity_events d
 			WHERE d.event_id::text=e.payload->>'drop_event_id'
 			AND d.kind IN ('drop.item','drop.rare') AND d.source='phbot.callback'
 			AND d.agent_id=e.agent_id AND d.character_id=e.character_id
-			AND d.session_id=e.session_id AND d.item_model=e.item_model)
+			AND d.session_id=e.session_id AND d.item_model=e.item_model
+			AND lower(d.server_name)=lower(e.server_name)
+			AND e.occurred_at BETWEEN d.occurred_at AND d.occurred_at+interval '30 seconds'
+			AND ($1='' OR lower(d.server_name)=lower($1))
+			AND ($6='' OR COALESCE(d.item_code,'') ILIKE '%'||$6||'%'
+				OR COALESCE(d.item_model::text,'') ILIKE '%'||$6||'%'
+				OR d.payload->>'model' ILIKE '%'||$6||'%'
+				OR d.payload->>'item_name' ILIKE '%'||$6||'%'
+				OR d.payload->'item'->>'name' ILIKE '%'||$6||'%'
+				OR d.payload->'item'->>'servername' ILIKE '%'||$6||'%')
+			AND ($7::timestamptz IS NULL OR d.occurred_at >= $7)
+			AND ($8::timestamptz IS NULL OR d.occurred_at < $8)
+			AND ($10::integer IS NULL OR d.region=$10)
+			AND (NOT $11 OR (d.region IS NOT NULL AND d.x IS NOT NULL AND d.y IS NOT NULL))
+			AND (SELECT count(*) FROM activity_events a
+				WHERE a.payload->>'drop_event_id'=d.event_id::text
+				AND a.agent_id=d.agent_id AND a.character_id=d.character_id
+				AND a.session_id=d.session_id AND a.item_model=d.item_model
+				AND a.source='phbot.state_diff' AND a.source_ref='item_container'
+				AND a.kind IN ('item.acquired','item.quantity_increased'))=1
+		)
 	))
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
@@ -1144,33 +1167,30 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
-		COALESCE(
-		(SELECT jsonb_build_object('item',a.payload->'item','association','unique_model_inventory_gain') FROM activity_events a WHERE e.kind IN ('drop.item','drop.rare')
-		AND a.kind IN ('item.acquired','item.quantity_increased') AND a.source='phbot.state_diff' AND a.source_ref='item_container'
-		AND a.agent_id=e.agent_id AND a.character_id=e.character_id AND a.session_id=e.session_id
-		AND a.item_model=e.item_model AND a.payload->>'drop_event_id'=e.event_id::text
-		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
-		ORDER BY a.occurred_at,a.event_id LIMIT 1),
-		(SELECT CASE WHEN count(*)=1 THEN jsonb_build_object(
-			'item',(array_agg(a.payload->'item'))[1],
-			'association','unique_temporal_inventory_gain') END
-		FROM activity_events a WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
-		AND a.kind='item.acquired' AND a.source='phbot.state_diff' AND a.source_ref='item_container'
-		AND a.agent_id=e.agent_id AND a.character_id=e.character_id AND a.session_id=e.session_id
-		AND a.item_model=e.item_model AND a.payload->>'drop_event_id' IS NULL
+		(SELECT jsonb_build_object(
+			'item',a.payload->'item',
+			'association','explicit_drop_event_id',
+			'event_id',a.event_id::text,
+			'source',a.source)
+		FROM activity_events a
+		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
+		AND a.kind IN ('item.acquired','item.quantity_increased')
+		AND a.source='phbot.state_diff' AND a.source_ref='item_container'
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
+		AND a.session_id=e.session_id AND a.item_model=e.item_model
+		AND a.payload->>'drop_event_id'=e.event_id::text
 		AND a.payload->>'quantity_delta'='1'
 		AND a.payload->'destination_container'->>'type'='inventory'
-		AND a.payload->'destination_container' ? 'slot'
-		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '3 seconds'
-		AND e.region=a.region AND e.x IS NOT NULL AND e.y IS NOT NULL AND e.z IS NOT NULL
-		AND a.x IS NOT NULL AND a.y IS NOT NULL AND a.z IS NOT NULL
-		AND abs(a.x-e.x)<=24 AND abs(a.y-e.y)<=24 AND abs(a.z-e.z)<=32
-		AND NOT EXISTS (SELECT 1 FROM activity_events d
-			WHERE d.event_id<>e.event_id AND d.kind IN ('drop.item','drop.rare')
-			AND d.agent_id=e.agent_id AND d.character_id=e.character_id AND d.session_id=e.session_id
-			AND d.item_model=e.item_model
-			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at))
-		)
+		AND a.payload->'item' IS NOT NULL
+		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
+		GROUP BY a.event_id,a.payload,a.source
+		HAVING (SELECT count(*) FROM activity_events linked
+			WHERE linked.payload->>'drop_event_id'=e.event_id::text
+			AND linked.agent_id=e.agent_id AND linked.character_id=e.character_id
+			AND linked.session_id=e.session_id AND linked.item_model=e.item_model
+			AND linked.source='phbot.state_diff' AND linked.source_ref='item_container'
+			AND linked.kind IN ('item.acquired','item.quantity_increased'))=1)
+
 		`+base+` AND ($14::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($14::timestamptz,$15::uuid))
 ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.CharacterID, filter.CharacterQuery,
 		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, cursorAt, cursorID, filter.Limit+1)
@@ -1200,13 +1220,17 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.Ch
 			var observed struct {
 				Item        json.RawMessage `json:"item"`
 				Association string          `json:"association"`
+				EventID     string          `json:"event_id"`
+				Source      string          `json:"source"`
 			}
 			if json.Unmarshal(item.Payload, &payload) == nil && payload != nil &&
 				json.Unmarshal(linkedObservation, &observed) == nil && len(observed.Item) > 0 &&
 				json.Valid(observed.Item) &&
-				(observed.Association == "unique_model_inventory_gain" || observed.Association == "unique_temporal_inventory_gain") {
+				observed.Association == "explicit_drop_event_id" && agentdomain.ValidAgentID(observed.EventID) && observed.Source == "phbot.state_diff" {
 				payload["item"] = observed.Item
-				payload["item_observation"] = json.RawMessage(`{"association":"` + observed.Association + `"}`)
+				payload["item_observation"], _ = json.Marshal(map[string]string{
+					"association": observed.Association, "event_id": observed.EventID, "source": observed.Source,
+				})
 				if enriched, marshalErr := json.Marshal(payload); marshalErr == nil {
 					item.Payload = enriched
 				}
