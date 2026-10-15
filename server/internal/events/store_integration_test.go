@@ -248,9 +248,10 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		} `json:"item"`
 		Observation struct {
 			Association string `json:"association"`
+			EventID string `json:"event_id"`
 		} `json:"item_observation"`
 	}
-	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "unique_model_inventory_gain" {
+	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "explicit_drop_event_id" || linkedPayload.Observation.EventID != observedItem.ID {
 		t.Fatalf("drop did not carry its linked observed item: %s, err=%v", exact.Events[0].Payload, err)
 	}
 	lateDrop := rareDrop
@@ -283,8 +284,8 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		} `json:"item_observation"`
 	}
 	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &temporalPayload) != nil ||
-		temporalPayload.Item.Plus != 4 || temporalPayload.Observation.Association != "unique_temporal_inventory_gain" {
-		t.Fatalf("unique nearby inventory gain was not shown: %+v, err=%v", exact, err)
+		temporalPayload.Item.Plus != 0 || temporalPayload.Observation.Association != "" {
+		t.Fatalf("unlinked nearby gain must not lend an item instance: %+v, err=%v", exact, err)
 	}
 	competingDrop := lateDrop
 	competingDrop.ID = newTestEventID(t)
@@ -302,6 +303,41 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &ambiguousPayload) != nil ||
 		ambiguousPayload.Observation.Association != "" {
 		t.Fatalf("ambiguous nearby drop was still linked: %+v, err=%v", exact, err)
+	}
+	// One explicitly linked acquisition remains visible when its callback is
+	// outside the requested window. Count and pagination operate on the same
+	// filtered logical rows, not client-side hidden items.
+	from := databaseNow.UTC().Add(time.Second)
+	to := databaseNow.UTC().Add(3 * time.Second)
+	visibleGain, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777",
+		From: &from, To: &to, Limit: 10})
+	if listErr != nil || visibleGain.Total != 1 || len(visibleGain.Events) != 1 ||
+		visibleGain.Events[0].ID != observedItem.ID {
+		t.Fatalf("linked callback outside filter hides its gain: %+v, err=%v", visibleGain, listErr)
+	}
+	itemEvents, listErr := store.List(ctx, Filter{Server: server, Kind: "item.gains", Limit: 10})
+	if listErr != nil || itemEvents.Total != 2 {
+		t.Fatalf("owned gains must remain distinct from world drops: %+v, err=%v", itemEvents, listErr)
+	}
+	allItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2})
+	if listErr != nil || allItems.Total != 4 || len(allItems.Events) != 2 ||
+		allItems.NextCursor == "" {
+		t.Fatalf("logical item page one count/cursor = %+v, err=%v", allItems, listErr)
+	}
+	secondItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2,
+		Cursor: allItems.NextCursor})
+	if listErr != nil || secondItems.Total != 4 || len(secondItems.Events) != 2 ||
+		secondItems.Events[0].ID == allItems.Events[0].ID {
+		t.Fatalf("logical item page two = %+v, err=%v", secondItems, listErr)
+	}
+	for _, row := range append(append([]Event{}, allItems.Events...), secondItems.Events...) {
+		if row.ID == observedItem.ID {
+			t.Fatal("linked gain was duplicated in unfiltered All Events")
+		}
+	}
+	exactGain, listErr := store.List(ctx, Filter{Server: server, EventID: observedItem.ID, Limit: 1})
+	if listErr != nil || exactGain.Total != 1 || len(exactGain.Events) != 1 {
+		t.Fatalf("canonical gain must remain directly inspectable: %+v, err=%v", exactGain, listErr)
 	}
 	conflict := rareDrop
 	conflict.Zone = "Donwhang"
