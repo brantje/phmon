@@ -782,7 +782,10 @@ function localDateBoundary(value: string, addDays: number) {
       aria-label="Activity event history"
     >
       <div v-if="dropHistory" class="events-drop-heading">
-        <strong>All {{ selectedTab === 'drop.rare' ? 'rare' : 'normal' }} drops</strong>
+        <strong
+          >All
+          {{ selectedTab === 'drop.rare' ? 'rare' : 'normal' }} drops</strong
+        >
         <span class="event-count">{{ historyTotalLabel }}</span>
       </div>
       <div class="events-tabs" role="tablist" aria-label="Event types">
@@ -801,7 +804,10 @@ function localDateBoundary(value: string, addDays: number) {
         }}</span>
       </div>
 
-      <div class="events-filters" :class="{ 'events-filters--drop': dropHistory }">
+      <div
+        class="events-filters"
+        :class="{ 'events-filters--drop': dropHistory }"
+      >
         <label>
           <span>{{ historyFilterLabel }}</span>
           <input
@@ -816,7 +822,9 @@ function localDateBoundary(value: string, addDays: number) {
           <input
             v-model="itemInput"
             maxlength="128"
-            :placeholder="dropHistory ? 'Filter by item name' : 'Filter by item'"
+            :placeholder="
+              dropHistory ? 'Filter by item name' : 'Filter by item'
+            "
             aria-label="Filter events by item"
           />
         </label>
@@ -866,7 +874,11 @@ function localDateBoundary(value: string, addDays: number) {
       <div v-if="dropHistory" class="event-table-scroll drop-history-scroll">
         <table
           class="event-table drop-event-table drop-history-table"
-          :aria-label="selectedTab === 'drop.rare' ? 'Rare drop observations' : 'Normal drop observations'"
+          :aria-label="
+            selectedTab === 'drop.rare'
+              ? 'Rare drop observations'
+              : 'Normal drop observations'
+          "
         >
           <thead>
             <tr>
@@ -889,7 +901,11 @@ function localDateBoundary(value: string, addDays: number) {
                   :item="itemRecordFromActivityEvent(item)!"
                   :to="eventItemTarget(item)"
                 />
-                <NuxtLink v-else class="event-item-link" :to="eventItemTarget(item)">
+                <NuxtLink
+                  v-else
+                  class="event-item-link"
+                  :to="eventItemTarget(item)"
+                >
                   {{ eventItemName(item) || 'Unknown item' }}
                 </NuxtLink>
               </td>
@@ -903,10 +919,13 @@ function localDateBoundary(value: string, addDays: number) {
                   v-if="item.character_id"
                   class="event-character-link"
                   :to="`/characters/${item.character_id}`"
-                >{{ item.character }}</NuxtLink>
+                  >{{ item.character }}</NuxtLink
+                >
                 <span v-else>{{ item.character || '—' }}</span>
               </td>
-              <td class="drop-history-location">{{ eventRowLocation(item) }}</td>
+              <td class="drop-history-location">
+                {{ eventRowLocation(item) }}
+              </td>
               <td v-if="selectedTab === 'drop.rare'" class="drop-history-map">
                 <NuxtLink
                   v-if="hasReliableMapLocation(item)"
