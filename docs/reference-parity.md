@@ -2740,3 +2740,28 @@ must be verified against a disposable stack with fixture observations. This
 section documents implemented screen intentions; it does not claim screenshot
 parity or real phBot validation. Stalls and realized-price charts are omitted
 because source capabilities remain unverified.
+
+### PR #91 third re-review: verification ledger (2026-10-15)
+
+- Events: a historical `drop_event_id` originating in an earlier model/time
+  heuristic cannot erase the independent state-diff observation from All Events.
+  Callback rows show a marked **stored unverified association** but never borrow
+  the gain's plus, blues or other instance rolls. Counts/cursors and exact-ID
+  audit paths have PostgreSQL regression assertions. No live drop/pickup proof
+  has been asserted.
+- Item reconciliation: bounded pending candidate events are finalized with
+  unknown provenance if a storage/guild resource disappears or the network
+  worker tears down the old character/session. Python fixtures assert the
+  original session and timestamps are retained. Real Windows/phBot availability
+  and reconnect sequences remain to be captured.
+- Item Search: cursor now uses the persisted `server_key`, not the server
+  display name; a PostgreSQL fixture intentionally makes them differ.
+- Global Economy: equal From/To calendar dates are rejected locally because
+  the upper date is exclusive; records are still **observer-message** evidence,
+  not unique advertisements or realized sales.
+- Review: all five CodeRabbit inline threads have replies naming fix commits.
+  Workflow/job outcomes and acceptance limitations are maintained in
+  [issue #90 acceptance](issue-90-acceptance.md).
+- **Browser gate still open:** no local browser run or screenshots were produced
+  for this re-review at 1440×1000, 1280×800 or 390×844. Thus no UI visual
+  parity, keyboard or responsive acceptance is claimed.

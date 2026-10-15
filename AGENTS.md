@@ -6469,9 +6469,11 @@ Work is limited to issue #90 on `feat/90-economy-item-analytics`. The draft
 PR remains unmerged, and this ledger is not a declaration of acceptance.
 
 - Blocking corrections: default Rare/Normal Drop tabs are callback-only;
-  All Events hides only uniquely explicit `drop_event_id` associations when the
-  callback also satisfies the active filter, while exact event IDs remain
-  inspectable. The matching inventory event is exposed as a linked observation;
+  All Events retains older `drop_event_id`-associated callback and gain rows
+  because historical links could have been heuristic rather than verified pickup
+  evidence; exact canonical event IDs remain inspectable, with any stored
+  association labeled unverified. The linked gain never lends historical
+  item-instance attributes to a callback;
   unrelated nearby state differences must not lend their item-instance rolls.
 - Item movement: observed guild storage is compared only with a verified,
   session/server/character/guild-scoped identity; an unscoped guild container
@@ -6498,3 +6500,22 @@ PR remains unmerged, and this ledger is not a declaration of acceptance.
   complete `scripts/check.sh`, CI, responsive browser and CodeRabbit gates
   must be checked on the latest head; untested runtime phBot behavior is not
   represented as verified.
+
+### Resume — 2026-10-15 PR #91 re-review repairs
+
+Latest corrections preserve distinct historical heuristic callback/gain observations,
+prevent cross-event item-instance attribute borrowing, finalize pending net-change
+evidence when a resource becomes unavailable and before old-session teardown,
+validate Events source filters against actual canonical producers, retain the
+canonical Item Search server key in the cursor, reject equal exclusive Economy
+dates and reset Events pagination on exact event navigation. Tests were added
+for historical event totals/cursors, unavailable resource evidence, old-session
+IDs and canonical server-key pagination. Review replies carry the fix SHAs.
+
+Do not mistake these repairs for Slice 13 completion. The requirement-level
+A–G checklist, canonical test locations, unsupported evidence and outstanding
+browser/runtime gates are in [issue #90 acceptance](docs/issue-90-acceptance.md).
+The next action is to inspect the latest Validation, Plugin Version Guard and
+Stack CI results and fix any failures, then carry out real PostgreSQL and
+responsive browser verification. Keep PR #91 draft and unmerged. Do not invent
+verified pickup identity, cross-observer broadcast identity or sales receipts.
