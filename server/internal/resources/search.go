@@ -9,53 +9,52 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 )
 
 type ItemSearchFilter struct {
-	Server string
-	Query string
-	Container string
-	Owner string
-	Type string
-	Subcategory string
-	Degree string
+	Server           string
+	Query            string
+	Container        string
+	Owner            string
+	Type             string
+	Subcategory      string
+	Degree           string
 	IncludeEquipment bool
-	Cursor string
-	Limit int
+	Cursor           string
+	Limit            int
 }
 
 type ItemSearchEntry struct {
-	Server string `json:"server"`
-	Container string `json:"container"`
-	OwnerKind string `json:"owner_kind"`
-	OwnerID string `json:"owner_id"`
-	OwnerName string `json:"owner_name,omitempty"`
-	Guild string `json:"guild,omitempty"`
-	ObserverCharacterID string `json:"observer_character_id"`
-	ObserverName string `json:"observer_name"`
-	PetID string `json:"pet_id,omitempty"`
-	Slot int `json:"slot"`
-	Revision int64 `json:"revision"`
-	ObservedAt time.Time `json:"observed_at"`
-	CheckedAt time.Time `json:"checked_at"`
-	QuantityExact string `json:"quantity_exact,omitempty"`
-	Item map[string]any `json:"item"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Server              string         `json:"server"`
+	Container           string         `json:"container"`
+	OwnerKind           string         `json:"owner_kind"`
+	OwnerID             string         `json:"owner_id"`
+	OwnerName           string         `json:"owner_name,omitempty"`
+	Guild               string         `json:"guild,omitempty"`
+	ObserverCharacterID string         `json:"observer_character_id"`
+	ObserverName        string         `json:"observer_name"`
+	PetID               string         `json:"pet_id,omitempty"`
+	Slot                int            `json:"slot"`
+	Revision            int64          `json:"revision"`
+	ObservedAt          time.Time      `json:"observed_at"`
+	CheckedAt           time.Time      `json:"checked_at"`
+	QuantityExact       string         `json:"quantity_exact,omitempty"`
+	Item                map[string]any `json:"item"`
+	Metadata            map[string]any `json:"metadata,omitempty"`
 }
 
 type ItemSearchPage struct {
-	Items []ItemSearchEntry `json:"items"`
-	Total int64 `json:"total"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	Items      []ItemSearchEntry `json:"items"`
+	Total      int64             `json:"total"`
+	NextCursor string            `json:"next_cursor,omitempty"`
 }
 
 type itemSearchCursor struct {
-	Server string `json:"s"`
+	Server    string `json:"s"`
 	Container string `json:"c"`
-	Observer string `json:"o"`
-	Pet string `json:"p"`
-	Slot int `json:"n"`
+	Observer  string `json:"o"`
+	Pet       string `json:"p"`
+	Slot      int    `json:"n"`
 }
 
 func encodeItemSearchCursor(value itemSearchCursor) string {
@@ -65,8 +64,12 @@ func encodeItemSearchCursor(value itemSearchCursor) string {
 
 func decodeItemSearchCursor(encoded string) (itemSearchCursor, error) {
 	var value itemSearchCursor
-	if encoded == "" { return value, nil }
-	if len(encoded) > 512 { return value, ErrInvalid }
+	if encoded == "" {
+		return value, nil
+	}
+	if len(encoded) > 512 {
+		return value, ErrInvalid
+	}
 	data, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil || json.Unmarshal(data, &value) != nil ||
 		len(value.Server) == 0 || len(value.Server) > 100 ||
@@ -104,17 +107,27 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	models := make([]int64, 0)
 	if useTaxonomy {
 		dataset := ""
-		if s.metadata != nil { dataset = s.metadata.Servers[strings.ToLower(strings.TrimSpace(filter.Server))] }
+		if s.metadata != nil {
+			dataset = s.metadata.Servers[strings.ToLower(strings.TrimSpace(filter.Server))]
+		}
 		if s.metadata != nil {
 			for modelKey, definition := range s.metadata.Catalogs[dataset].Items {
 				pres := definition.Presentation
 				kind, _ := pres["sort_type"].(string)
 				sub, _ := pres["subcategory"].(string)
 				degree := fmt.Sprint(pres["degree"])
-				if filter.Type != "" && !strings.EqualFold(kind, filter.Type) { continue }
-				if filter.Subcategory != "" && !strings.EqualFold(sub, filter.Subcategory) { continue }
-				if filter.Degree != "" && degree != filter.Degree { continue }
-				if value, err := strconv.ParseInt(modelKey, 10, 64); err == nil && value >= 0 { models = append(models, value) }
+				if filter.Type != "" && !strings.EqualFold(kind, filter.Type) {
+					continue
+				}
+				if filter.Subcategory != "" && !strings.EqualFold(sub, filter.Subcategory) {
+					continue
+				}
+				if filter.Degree != "" && degree != filter.Degree {
+					continue
+				}
+				if value, err := strconv.ParseInt(modelKey, 10, 64); err == nil && value >= 0 {
+					models = append(models, value)
+				}
 			}
 		}
 		if len(models) == 0 { return ItemSearchPage{Items: []ItemSearchEntry{}}, nil }
@@ -147,14 +160,14 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			(lower(c.character_name)=lower($4) OR i.owner_character_id::text=$4 OR i.pet_id=$4)))
 	AND ($5::boolean OR i.container_key<>'equipment')
 	AND (NOT $6::boolean OR i.model=ANY($7::bigint[]))`
-	args := []any{filter.Server,filter.Query,filter.Container,filter.Owner,
-		filter.IncludeEquipment,useTaxonomy,models}
+	args := []any{filter.Server, filter.Query, filter.Container, filter.Owner,
+		filter.IncludeEquipment, useTaxonomy, models}
 	var total int64
-	if err := s.pool.QueryRow(ctx,guildCTE+` SELECT count(*) `+scope,args...).Scan(&total); err != nil {
-		return ItemSearchPage{}, fmt.Errorf("count item search: %w",err)
+	if err := s.pool.QueryRow(ctx, guildCTE+` SELECT count(*) `+scope, args...).Scan(&total); err != nil {
+		return ItemSearchPage{}, fmt.Errorf("count item search: %w", err)
 	}
-	page := ItemSearchPage{Items: make([]ItemSearchEntry,0,filter.Limit),Total:total}
-	rows,err := s.pool.Query(ctx,guildCTE+`
+	page := ItemSearchPage{Items: make([]ItemSearchEntry, 0, filter.Limit), Total: total}
+	rows, err := s.pool.Query(ctx, guildCTE+`
 	SELECT i.observer_character_id::text,i.server_key,i.container_key,i.pet_id,
 		i.source_slot,i.guild_key,i.revision,i.observed_at,o.updated_at,
 		i.raw_item,coalesce(i.model,0),coalesce(i.server_name,''),coalesce(i.quantity::text,''),
@@ -164,43 +177,45 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 		($8::text,$9::text,$10::text,$11::text,$12::integer))
 	ORDER BY i.server_key,i.container_key,i.observer_character_id::text,i.pet_id,i.source_slot
 	LIMIT $13`,
-		append(args,cursor.Server,cursor.Container,cursor.Observer,cursor.Pet,cursor.Slot,filter.Limit+1)...)
+		append(args, cursor.Server, cursor.Container, cursor.Observer, cursor.Pet, cursor.Slot, filter.Limit+1)...)
 
-	if err != nil { return ItemSearchPage{}, fmt.Errorf("query item search: %w",err) }
+	if err != nil { return ItemSearchPage{}, fmt.Errorf("query item search: %w", err) }
 	defer rows.Close()
 	for rows.Next() {
 		var entry ItemSearchEntry
-		var serverKey,code string
+		var serverKey, code string
 		var model int64
 		var raw []byte
-		if err := rows.Scan(&entry.ObserverCharacterID,&serverKey,&entry.Container,
-			&entry.PetID,&entry.Slot,&entry.Guild,&entry.Revision,&entry.ObservedAt,
-			&entry.CheckedAt,&raw,&model,&code,&entry.QuantityExact,&entry.ObserverName,&entry.Server); err != nil {
-			return ItemSearchPage{},err
+		if err := rows.Scan(&entry.ObserverCharacterID, &serverKey, &entry.Container,
+			&entry.PetID, &entry.Slot, &entry.Guild, &entry.Revision, &entry.ObservedAt,
+			&entry.CheckedAt, &raw, &model, &code, &entry.QuantityExact, &entry.ObserverName, &entry.Server); err != nil {
+			return ItemSearchPage{}, err
 		}
-		if err := json.Unmarshal(raw,&entry.Item); err != nil { return ItemSearchPage{},err }
-		if entry.Container=="guild_storage" {
-			entry.OwnerKind="guild";entry.OwnerID=entry.Guild;entry.OwnerName=entry.Guild
-		} else if entry.Container=="pets" {
-			entry.OwnerKind="pet";entry.OwnerID=entry.PetID
+		if err := json.Unmarshal(raw, &entry.Item); err != nil { return ItemSearchPage{}, err }
+		if entry.Container =="guild_storage" {
+			entry.OwnerKind = "guild";entry.OwnerID = entry.Guild;entry.OwnerName = entry.Guild
+		} else if entry.Container =="pets" {
+			entry.OwnerKind = "pet";entry.OwnerID = entry.PetID
 		} else {
-			entry.OwnerKind="character";entry.OwnerID=entry.ObserverCharacterID;entry.OwnerName=entry.ObserverName
+			entry.OwnerKind = "character";entry.OwnerID = entry.ObserverCharacterID;entry.OwnerName = entry.ObserverName
 		}
 		var modelPtr *int64
-		if model>0 { modelPtr=&model }
-		entry.Metadata=s.ItemPresentation(entry.Server,modelPtr,code)
-		entry.Item=s.EnrichItemRecord(entry.Server,entry.Item)
-		page.Items=append(page.Items,entry)
+		if model > 0 {
+			modelPtr = &model
+		}
+		entry.Metadata = s.ItemPresentation(entry.Server, modelPtr, code)
+		entry.Item = s.EnrichItemRecord(entry.Server, entry.Item)
+		page.Items = append(page.Items, entry)
 	}
-	if err:=rows.Err();err!=nil{return ItemSearchPage{},err}
-	if len(page.Items)>filter.Limit {
-		page.Items=page.Items[:filter.Limit]
-		last:=page.Items[len(page.Items)-1]
-		page.NextCursor=encodeItemSearchCursor(itemSearchCursor{
-			Server:strings.ToLower(last.Server),Container:last.Container,
-			Observer:last.ObserverCharacterID,Pet:last.PetID,Slot:last.Slot,
+	if err:=rows.Err();err!=nil{return ItemSearchPage{}, err}
+	if len(page.Items) > filter.Limit {
+		page.Items = page.Items[:filter.Limit]
+		last := page.Items[len(page.Items)-1]
+		page.NextCursor = encodeItemSearchCursor(itemSearchCursor{
+			Server: strings.ToLower(last.Server), Container: last.Container,
+			Observer: last.ObserverCharacterID, Pet: last.PetID, Slot: last.Slot,
 		})
 	}
-	return page,nil
+	return page, nil
 }
 
