@@ -15,5 +15,7 @@ jobs:
       - run: npm --prefix web ci --no-audit --no-fund
       - name: Show the exact formatting change
         run: |
-          npm --prefix web exec -- prettier --write app/pages/events.vue
+          cd web
+          npx prettier --write app/pages/events.vue
+          cd ..
           git diff -- web/app/pages/events.vue
