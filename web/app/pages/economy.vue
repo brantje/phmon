@@ -90,6 +90,18 @@ onUnmounted(() => {
   requestGate.invalidate()
   if (searchTimer) clearTimeout(searchTimer)
 })
+function resetFilters() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = undefined
+  searchInput.value = ''
+  search.value = ''
+  type.value = ''
+  seller.value = ''
+  from.value = ''
+  to.value = ''
+  cursor.value = ''
+  previous.value = []
+}
 function nextPage() {
   if (!page.value?.next_cursor) return
   previous.value.push(cursor.value)
@@ -152,6 +164,9 @@ function previousPage() {
         </label>
         <button type="submit" class="compact-button self-end">
           Refresh offers
+        </button>
+        <button type="button" class="compact-button self-end" @click="resetFilters">
+          Reset filters
         </button>
       </form>
     </section>
