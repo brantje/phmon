@@ -189,12 +189,12 @@ func eventKinds(view View, source string) string {
 		return "e.kind='character.died'"
 	case ViewRareDrops:
 		if source == "owned_gains" {
-			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type' IN ('inventory','pets')) OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='rare'`
+			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type'='inventory') OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='rare'`
 		}
 		return "e.kind='drop.rare'"
 	case ViewNormalDrops:
 		if source == "owned_gains" {
-			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type' IN ('inventory','pets')) OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='normal'`
+			return `e.kind IN ('item.acquired','item.quantity_increased') AND ((e.source='phbot.state_diff' AND e.source_ref='item_container' AND e.payload->'destination_container'->>'type'='inventory') OR (e.kind='item.acquired' AND e.source='joymax.pet_inventory')) AND e.item_drop_class='normal'`
 		}
 		return "e.kind='drop.item'"
 	case ViewAcademy:
@@ -377,11 +377,17 @@ func (s *Store) queryDrops(ctx context.Context, tx pgx.Tx, filter Filter, where 
 		knownTypeIndex++
 	}
 	if filter.DropSource == "owned_gains" {
+		// Pet state differences and packet receipts can both describe one
+		// pickup but have no shared stable acquisition identity. Count the
+		// receipt source for pet acquisitions and keep the unlinked state
+		// difference visible in Events, not a second analytics gain.
+		snapshot.Status = "limited"
+		snapshot.Reason = "owned gains are evidence occurrences, not verified unique acquisitions; unlinked pet state-diff gains are excluded"
 		var quantity int64
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN e.payload->>'quantity_delta' ~ '^[0-9]{1,9}$' THEN (e.payload->>'quantity_delta')::bigint ELSE 1 END),0) FROM activity_events e WHERE `+where, args...).Scan(&quantity); err != nil {
 			return err
 		}
-		snapshot.Summary = append(snapshot.Summary, Metric{Key: "owned_gain_quantity", Label: "Observed item quantity gained", Value: strconv.FormatInt(quantity, 10), Unit: "items", Status: "available", Reason: "sum of accepted quantity deltas; destination transfers are excluded"})
+		snapshot.Summary = append(snapshot.Summary, Metric{Key: "owned_gain_quantity", Label: "Recorded gain-evidence quantity", Value: strconv.FormatInt(quantity, 10), Unit: "items", Status: "limited", Reason: "inventory net gains and verified pet pickup receipts only; unlinked pet state differences are excluded to avoid counting the same receipt twice; not verified distinct physical acquisitions"})
 	}
 	if !complete {
 		snapshot.TaxonomyComplete = false
