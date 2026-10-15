@@ -3634,6 +3634,13 @@ class AgentWorker(object):
         guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
         scoped_identity_key = (identity_key, guild_scope)
         if scoped_identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
+            # A guild switch preserves the character/session attribution of
+            # an earlier observation, but breaks any delayed guild transfer
+            # proof. Publish only the old unknown net change, not a movement.
+            if (self._event_diff_identity is not None and
+                    identity_key == self._event_diff_identity[0] and
+                    self.session_id == self._event_diff_session):
+                self._finalize_pending_item_reconciliation(identity, float('inf'))
             self._pending_item_reconciliation = []
             self._event_baseline_required = True
             if self._event_diff_identity is not None or self._event_diff_session is not None:
@@ -3645,6 +3652,12 @@ class AgentWorker(object):
                                              if entry['session_id'] == self.session_id and
                                              entry['identity_key'] == identity_key]
         if self._resource_sample_gap:
+            # Lost intermediate samples destroy delayed transfer proof, not
+            # the already observed net increase/decrease from the last
+            # complete frame. Finalize it in its original session.
+            if (scoped_identity_key == self._event_diff_identity and
+                    self.session_id == self._event_diff_session):
+                self._finalize_pending_item_reconciliation(identity, float('inf'))
             self._pending_item_reconciliation = []
             self._resource_sample_gap = False
             self._event_baseline_required = True
