@@ -1731,6 +1731,43 @@ class ResourceEventDerivationTests(unittest.TestCase):
             except plugin._queue.Empty:
                 return output
 
+    def test_guild_storage_withdrawal_is_a_transfer_not_a_drop(self):
+        before = self.resources(bag=[])
+        before['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        after = self.resources(bag=[(13, self.item(3))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        self.observe(before)
+        self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.transferred')
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'guild_storage')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+
+    def test_newly_observed_guild_storage_does_not_create_acquisition(self):
+        self.observe(self.resources(bag=[]))
+        newly_opened = self.resources(bag=[])
+        newly_opened['guild_storage'] = {
+            'availability': 'observed',
+            'slots': [{'source_slot': 0, 'item': self.item(3)}],
+        }
+        self.observe(newly_opened)
+        self.assertEqual(self.drain(), [])
+
+    def test_storage_movement_cannot_claim_pending_world_drop(self):
+        before = self.resources(bag=[], storage=[(0, self.item(2))])
+        after = self.resources(bag=[(13, self.item(3))], storage=[])
+        self.observe(before)
+        drop_id = '8d16ab39-10b8-4b26-80aa-a4be01e10f18'
+        self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77, drop_id, 0))
+        self.observe(after)
+        events = self.drain()
+        self.assertFalse(any('drop_event_id' in event['payload'] for event in events))
+
     def test_baseline_and_bag_split_merge_do_not_create_item_occurrences(self):
         self.observe(self.resources(bag=[(13, self.item(4))]))
         self.observe(self.resources(bag=[(14, self.item(1)), (15, self.item(3))]))
