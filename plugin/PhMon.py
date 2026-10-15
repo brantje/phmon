@@ -3671,6 +3671,15 @@ class AgentWorker(object):
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
     def _emit_item_deltas(self, identity, before, after, occurred_at, position, uncertain=()):
+        # Only one unambiguous opposite observation, equal model/quantity and
+        # different known containers, may reconcile across consecutive samples.
+        # Expired and overflowed candidates remain unknown resource observations,
+        # never speculative acquisitions or drops. Reset is performed on scope
+        # changes, gaps, unavailable containers and new baselines above.
+        now = _monotonic()
+        self._pending_item_reconciliation = [
+            entry for entry in self._pending_item_reconciliation
+            if entry['expires_at'] > now and entry['signature'] not in uncertain]
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
@@ -3695,6 +3704,74 @@ class AgentWorker(object):
                 continue
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
+            if old_total != new_total:
+                simple_changes = []
+                for container_key in before:
+                    old_quantity = before[container_key].get(signature, {}).get('quantity', 0)
+                    new_quantity = after[container_key].get(signature, {}).get('quantity', 0)
+                    if old_quantity == new_quantity:
+                        continue
+                    direction = 'gain' if new_quantity > old_quantity else 'loss'
+                    row = (after if direction == 'gain' else before)[container_key][signature]
+                    simple_changes.append((direction, container_key, abs(new_quantity - old_quantity), row))
+                if len(simple_changes) == 1:
+                    direction, container_key, amount, record = simple_changes[0]
+                    # Don't guess a multi-container decomposition or borrow
+                    # a same-model copy with unrelated item-instance rolls.
+                    candidates = [
+                        entry for entry in self._pending_item_reconciliation
+                        if entry['signature'] == signature and entry['direction'] != direction
+                        and entry['container'] != container_key and entry['quantity'] == amount]
+                    if len(candidates) == 1:
+                        pending = candidates[0]
+                        conflicts = [entry for entry in self._pending_item_reconciliation
+                                     if entry['signature'] == signature and entry is not pending]
+                        if not conflicts:
+                            if direction == 'gain':
+                                source_key, source_record = pending['container'], pending['record']
+                                dest_key, dest_record = container_key, record
+                                item, selected, ambiguous = _event_gain_item(
+                                    before[dest_key].get(signature), dest_record, amount)
+                            else:
+                                source_key, source_record = container_key, record
+                                dest_key, dest_record = pending['container'], pending['record']
+                                item = pending['item']
+                                selected, ambiguous = pending['selected'], pending['ambiguous']
+                            if _item_has_identity(item):
+                                payload = {'item': item, 'quantity_delta': amount,
+                                           'source_container': _container_reference(source_key, source_record),
+                                           'destination_container': _container_reference(dest_key, dest_record),
+                                           'method': 'observed_container_delta'}
+                                if selected:
+                                    payload['destination_container']['slot'] = selected[0]
+                                if ambiguous:
+                                    payload['item_instance_unobserved'] = True
+                                self._queue_derived_event(identity, 'item.transferred', 'item_container',
+                                                          payload, occurred_at, position, item)
+                                self._pending_item_reconciliation.remove(pending)
+                                continue
+                    # A counterparty with the same item in another observed
+                    # container can move later than the inventory read.
+                    # A loss can move into an empty observed destination.
+                    possible_source = direction == 'gain' and any(
+                        key != container_key and rows.get(signature, {}).get('quantity', 0) > 0
+                        for key, rows in before.items())
+                    possible_destination = direction == 'loss' and any(
+                        key != container_key for key in before)
+                    if possible_source or possible_destination:
+                        if len(self._pending_item_reconciliation) < MAX_ITEM_RECONCILIATION_PENDING:
+                            item, selected, ambiguous = (
+                                _event_gain_item(before[container_key].get(signature), record, amount)
+                                if direction == 'gain'
+                                else (record.get('item') or {}, None, False))
+                            self._pending_item_reconciliation.append({
+                                'signature': signature, 'container': container_key,
+                                'direction': direction, 'quantity': amount,
+                                'record': record, 'item': item, 'selected': selected,
+                                'ambiguous': ambiguous,
+                                'expires_at': now + ITEM_RECONCILIATION_WINDOW_SECONDS,
+                            })
+                        continue
             if old_total == new_total:
                 gains, losses = [], []
                 for container_key in before:
