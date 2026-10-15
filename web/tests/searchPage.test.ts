@@ -32,7 +32,13 @@ test('Item Search scopes every page to the selected server and exact filters', (
     cursor: 'opaque-page-two',
     limit: 30,
   })
-  assert.deepEqual(itemSearchQuery({ ...base, server: 'all', cursor: '', query: '' }), {
+  const allServers = itemSearchQuery({
+    ...base,
+    server: 'all',
+    cursor: '',
+    query: '',
+  })
+  assert.deepEqual(allServers, {
     server: undefined,
     q: undefined,
     container: 'guild_storage',
@@ -46,7 +52,7 @@ test('Item Search scopes every page to the selected server and exact filters', (
   })
 })
 
-test('Item Search owner links never mistake a guild or pet for a character', () => {
+test('owner links preserve character, pet and guild context', () => {
   assert.equal(
     itemOwnerHref({ owner_kind: 'guild', observer_character_id: 'c1' }),
     '/guild-storage',
@@ -84,7 +90,7 @@ test('Economy offers preserve sender, date scope, offer type and pagination', ()
   assert.equal(economySearchQuery({ ...base, server: 'all' }).server, undefined)
 })
 
-test('a response from an old filter/cursor frame cannot replace a newer page', () => {
+test('a stale filter request cannot replace the current page', () => {
   const gate = createLatestRequestGate()
   const first = gate.next()
   assert.equal(gate.isCurrent(first), true)
@@ -98,13 +104,15 @@ test('a response from an old filter/cursor frame cannot replace a newer page', (
   assert.equal(gate.isCurrent(nextPage), false)
 })
 
-test('Item history navigation uses canonical Events and verified server/model identity', () => {
-  assert.deepEqual(
-    itemHistoryTarget({ server: 'Greatest', item: {
-      model: 777, servername: 'ITEM_CH_SWORD_10', name: 'Sword',
-    } }),
-    { path: '/events', query: { server: 'Greatest', item: 'ITEM_CH_SWORD_10' } },
-  )
+test('history links preserve server and item identity', () => {
+  const observed = itemHistoryTarget({
+    server: 'Greatest',
+    item: { model: 777, servername: 'ITEM_CH_SWORD_10', name: 'Sword' },
+  })
+  assert.deepEqual(observed, {
+    path: '/events',
+    query: { server: 'Greatest', item: 'ITEM_CH_SWORD_10' },
+  })
   assert.deepEqual(
     itemHistoryTarget({ server: 'Other', item: { model: 777 } }),
     { path: '/events', query: { server: 'Other', item: '777' } },
