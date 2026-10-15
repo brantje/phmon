@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import {
-  createLatestRequestGate,
-  economySearchQuery,
-} from '~/utils/searchPage'
+import { createLatestRequestGate, economySearchQuery } from '~/utils/searchPage'
 type Offer = {
   message_id: string
   source_event_id: string
