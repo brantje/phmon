@@ -67,9 +67,10 @@ const fromDate = ref(
   ),
 )
 const toDate = ref(initialDate(route.query.to, dateInput(new Date())))
-const defaultItemGrouping = ['rare_drops', 'normal_drops', 'item_history'].includes(
-  String(route.query.view),
-)
+const defaultItemGrouping =
+  route.query.view === 'rare_drops' ||
+  route.query.view === 'normal_drops' ||
+  route.query.view === 'item_history'
 const groupBy = ref<
   'character' | 'group' | 'location' | 'item' | 'type' | 'degree' | 'academy'
 >(
@@ -99,7 +100,9 @@ const groupID = ref(
 const guildName = ref(
   typeof route.query.guild === 'string' ? route.query.guild : '',
 )
-const itemQuery = ref(typeof route.query.item === 'string' ? route.query.item : '')
+const itemQuery = ref(
+  typeof route.query.item === 'string' ? route.query.item : '',
+)
 const sourceContainer = ref(
   typeof route.query.source_container === 'string'
     ? route.query.source_container
@@ -317,15 +320,20 @@ watch(
         nextView === 'rare_drops' || nextView === 'normal_drops'
           ? itemDegree.value || undefined
           : undefined,
-      item: nextView === 'item_history' ? itemQuery.value || undefined : undefined,
+      item:
+        nextView === 'item_history' ? itemQuery.value || undefined : undefined,
       source_container:
-        nextView === 'item_history' ? sourceContainer.value || undefined : undefined,
+        nextView === 'item_history'
+          ? sourceContainer.value || undefined
+          : undefined,
       destination_container:
         nextView === 'item_history'
           ? destinationContainer.value || undefined
           : undefined,
       movement_method:
-        nextView === 'item_history' ? movementMethod.value || undefined : undefined,
+        nextView === 'item_history'
+          ? movementMethod.value || undefined
+          : undefined,
       page_size: 25,
       cursor: pageCursor || undefined,
     })
@@ -469,19 +477,22 @@ watch(
     previousCursors.value = []
   },
 )
-watch([itemQuery, sourceContainer, destinationContainer, movementMethod], () => {
-  void router.replace({
-    path: route.path,
-    query: {
-      ...route.query,
-      item: itemQuery.value || undefined,
-      source_container: sourceContainer.value || undefined,
-      destination_container: destinationContainer.value || undefined,
-      movement_method: movementMethod.value || undefined,
-    },
-    hash: route.hash,
-  })
-})
+watch(
+  [itemQuery, sourceContainer, destinationContainer, movementMethod],
+  () => {
+    void router.replace({
+      path: route.path,
+      query: {
+        ...route.query,
+        item: itemQuery.value || undefined,
+        source_container: sourceContainer.value || undefined,
+        destination_container: destinationContainer.value || undefined,
+        movement_method: movementMethod.value || undefined,
+      },
+      hash: route.hash,
+    })
+  },
+)
 watch(
   () => [
     route.query.item,
@@ -492,7 +503,8 @@ watch(
   ([item, source, destination, method]) => {
     itemQuery.value = typeof item === 'string' ? item : ''
     sourceContainer.value = typeof source === 'string' ? source : ''
-    destinationContainer.value = typeof destination === 'string' ? destination : ''
+    destinationContainer.value =
+      typeof destination === 'string' ? destination : ''
     movementMethod.value = typeof method === 'string' ? method : ''
   },
 )
@@ -733,7 +745,11 @@ function dateInput(value: Date) {
       </label>
       <label v-if="view === 'item_history'">
         Item name or code
-        <input v-model="itemQuery" maxlength="128" placeholder="Find item events" />
+        <input
+          v-model="itemQuery"
+          maxlength="128"
+          placeholder="Find item events"
+        />
       </label>
       <label v-if="view === 'item_history'">
         From container

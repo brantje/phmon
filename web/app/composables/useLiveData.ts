@@ -149,7 +149,8 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.balance_scope || '') === (right.balance_scope || '') &&
     (left.drop_source || '') === (right.drop_source || '') &&
     (left.source_container || '') === (right.source_container || '') &&
-    (left.destination_container || '') === (right.destination_container || '') &&
+    (left.destination_container || '') ===
+      (right.destination_container || '') &&
     (left.movement_method || '') === (right.movement_method || '') &&
     (left.item_type || '') === (right.item_type || '') &&
     (left.item_degree || '') === (right.item_degree || '') &&
