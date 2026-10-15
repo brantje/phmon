@@ -20,10 +20,10 @@ func (h *economyHandler) offers(w http.ResponseWriter, r *http.Request) {
 	filter := chat.OfferFilter{
 		Server: strings.TrimSpace(query.Get("server")),
 		Sender: strings.TrimSpace(query.Get("sender")),
-		Query: strings.TrimSpace(query.Get("q")),
-		Kind: strings.TrimSpace(query.Get("offer_type")),
+		Query:  strings.TrimSpace(query.Get("q")),
+		Kind:   strings.TrimSpace(query.Get("offer_type")),
 		Cursor: strings.TrimSpace(query.Get("cursor")),
-		Limit: 30,
+		Limit:  30,
 	}
 	if !validServerFilter(filter.Server) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid server filter"})
