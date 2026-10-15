@@ -209,15 +209,15 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	// Both rows remain in Events; only the receipt enters limited owned analytics.
 	_, err = pool.Exec(ctx, `INSERT INTO activity_events(
 		event_id,schema_version,kind,category,agent_id,character_id,session_id,
-		server_name,occurred_at,source,source_ref,item_model,item_code,
+		server_name,occurred_at,source,source_ref,region,zone_name,item_model,item_code,
 		item_drop_class,item_drop_class_version,payload)
 	VALUES
 	(gen_random_uuid(),1,'item.acquired','item',$1::uuid,$2::uuid,$3::uuid,
-	$4,$5,'phbot.state_diff','item_container',77,'ITEM_RARE','rare','fixture-v1',
+	$4,$5,'phbot.state_diff','item_container',1,'Jangan',77,'ITEM_RARE','rare','fixture-v1',
 	'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,
 	"destination_container":{"type":"pets","id":"17","slot":2},"acquisition_method":"unknown"}'::jsonb),
 	(gen_random_uuid(),1,'item.acquired','item',$1::uuid,$2::uuid,$3::uuid,
-	$4,$5,'joymax.pet_inventory','0xB034',77,'ITEM_RARE','rare','fixture-v1',
+	$4,$5,'joymax.pet_inventory','0xB034',1,'Jangan',77,'ITEM_RARE','rare','fixture-v1',
 	'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,
 	"destination_container":{"type":"pets","id":"17","slot":2},"acquisition_method":"pet_pickup",
 	"packet_observation":{"observation_id":"fixture-receipt-1","sequence":"3","decoder_version":"fixture-v1"}}'::jsonb)
