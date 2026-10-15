@@ -2596,3 +2596,22 @@ choosing another destination/floor/area, focusing a different character, or
 changing server turns Follow off. Manual pan/zoom stays preserved when Follow is
 off. Follow floor/world remounts pass the last stored zoom into the replacement
 MapCanvas so `setInitialView()` does not reset to 125%.
+
+
+### Slice 13 / PR #91: Items and Global Economy (2026-10-15)
+
+The `/items` route adds a unified read-only Item Search alongside canonical
+per-character and guild inventory views. It uses `ItemDetailPopup`, includes
+source container and observer, marks observed/checked freshness and offers
+server, name/code, owner, category/degree and include-equipped filters. Guild
+rows select one attributable observer revision per server/guild. `/economy`
+adds filtered, source-linked Global WTB/WTS/WTT advertisements without
+representing ads as completed sales. `/events` now has separate Owned Gains
+and Transfers tabs, with linked event IDs available for inspection.
+
+**Visual acceptance pending:** 1440×1000, 1280×800 and 390×844 browser
+checks, keyboard focus, live/disconnected/error states and item popup placement
+must be verified against a disposable stack with fixture observations. This
+section documents implemented screen intentions; it does not claim screenshot
+parity or real phBot validation. Stalls and realized-price charts are omitted
+because source capabilities remain unverified.
