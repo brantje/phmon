@@ -56,6 +56,7 @@ func TestTraderHunterHistorySearchHideOwnAndPagination(t *testing.T) {
 		cleanupCtx := context.Background()
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM activity_events WHERE agent_id=$1::uuid`, credential.AgentID)
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM character_sessions WHERE agent_id=$1::uuid`, credential.AgentID)
+		_, _ = pool.Exec(cleanupCtx, `DELETE FROM players WHERE server_key IN (lower($1),lower($2))`, server, otherServer)
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM characters WHERE server_key IN (lower($1),lower($2))`, server, otherServer)
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM agents WHERE agent_id=$1::uuid`, credential.AgentID)
 	})
@@ -130,6 +131,34 @@ func TestTraderHunterHistorySearchHideOwnAndPagination(t *testing.T) {
 	general, err := store.List(ctx, filter)
 	if err != nil || general.Total != 0 {
 		t.Fatalf("normal event search unexpectedly matches spotted payload: total=%d error=%v", general.Total, err)
+	}
+	// A directly observed normal-name/job-alias pair is an additional
+	// owned identity, but an unrelated server's own name is not.
+	_, err = pool.Exec(ctx, `INSERT INTO players (
+		server_name,server_key,observed_name,observed_name_key,player_name,job_name,
+		first_seen_at,last_seen_at,state_observed_at,last_history_at
+	) VALUES ($1,lower($1),'SelfJobAlias','selfjobalias','SelfHunter','SelfJobAlias',$2,$2,$2,$2)`,
+		server, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO activity_events (
+		event_id,schema_version,kind,category,agent_id,character_id,session_id,
+		server_name,occurred_at,source,source_ref,payload
+	) VALUES (
+		gen_random_uuid(),1,'job.hunter_trader_seen','job',$1::uuid,$2::uuid,$3::uuid,
+		$4,$5,'phbot.callback','EVENT_HUNTER_SPAWN',jsonb_build_object('value','SelfJobAlias')
+	)`, credential.AgentID, reporter, sessionID, server, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hiddenAlias, err := store.List(ctx, Filter{Server: server, Kind: "job.hunter_trader_seen", HideOwn: true, Limit: 10})
+	if err != nil || hiddenAlias.Total != 3 {
+		t.Fatalf("verified owned job alias leaked: total=%d error=%v", hiddenAlias.Total, err)
+	}
+	unhiddenAlias, err := store.List(ctx, Filter{Server: server, Kind: "job.hunter_trader_seen", Limit: 10})
+	if err != nil || unhiddenAlias.Total != 5 {
+		t.Fatalf("unfiltered aliases not restored: total=%d error=%v", unhiddenAlias.Total, err)
 	}
 	if _, err := store.List(ctx, Filter{Server: server, Kind: "character.died", HideOwn: true, Limit: 10}); err == nil {
 		t.Fatal("hide own must not apply to an unrelated event kind")
