@@ -1731,6 +1731,13 @@ class ResourceEventDerivationTests(unittest.TestCase):
             except plugin._queue.Empty:
                 return output
 
+    def test_ambiguous_balanced_multi_container_move_is_not_acquisition(self):
+        before = self.resources(bag=[], storage=[(0, self.item(2))], job=[(0, self.item(2))])
+        after = self.resources(bag=[(13, self.item(3))], storage=[], job=[(0, self.item(1))])
+        self.observe(before)
+        self.observe(after)
+        self.assertEqual(self.drain(), [])
+
     def test_guild_storage_withdrawal_is_a_transfer_not_a_drop(self):
         before = self.resources(bag=[])
         before['guild_storage'] = {
