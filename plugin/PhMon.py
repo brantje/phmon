@@ -3905,6 +3905,25 @@ class AgentWorker(object):
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
+    def _flush_pending_items_before_session_change(self):
+        """Finalize old evidence while queue_event can still bind the old session.
+
+        Pending deltas have provenance only in the previous complete resource
+        pair. A new registration must not own an old character's observations.
+        """
+        if not self._pending_item_reconciliation:
+            return
+        if (self._current_identity is not None and
+                self._event_diff_identity is not None and
+                self._identity_key(self._current_identity) == self._event_diff_identity[0] and
+                self.session_id == self._event_diff_session and
+                _validate_agent_id(self.character_id) and
+                _validate_agent_id(self.session_id)):
+            self._finalize_pending_item_reconciliation(self._current_identity, float('inf'))
+        else:
+            _log('pending item evidence could not be bound to its original active session')
+        self._pending_item_reconciliation = []
+
     def _finalize_pending_item_reconciliation(self, identity, now=None, flush_oldest=False,
                                               invalidated_signatures=()):
         """Publish a bounded, unmatched net change with its original observation time.
@@ -4556,6 +4575,7 @@ class AgentWorker(object):
                 self._clear_navigation_route()
                 self.invalidate_position_authority()
                 self._rewind_external_route()
+                self._flush_pending_items_before_session_change()
                 self.character_id = None
                 self.session_id = None
                 self._current_identity = None
@@ -4579,6 +4599,7 @@ class AgentWorker(object):
                     try:
                         sample = self._samples.get_nowait()
                         if sample.get('leave'):
+                            self._flush_pending_items_before_session_change()
                             if self.character_id is not None:
                                 client.send_json({'type':'character.left','protocol_version':PROTOCOL_VERSION,'character_id':self.character_id,'sent_at':_utc_now()})
                             self.character_id = None
@@ -4668,6 +4689,7 @@ class AgentWorker(object):
                 if client is not None:
                     client.close()
                 self._set_socket(None)
+                self._flush_pending_items_before_session_change()
                 self.invalidate_position_authority()
                 self._reset_pet_transition(release_pending=True)
                 self.character_id = None
@@ -4711,6 +4733,7 @@ class AgentWorker(object):
         if self._rejected_identity is not None and self._rejected_identity != identity_key:
             self._rejected_identity = None
         if identity != self._current_identity or self.character_id is None:
+            self._flush_pending_items_before_session_change()
             self.invalidate_position_authority()
             if self._current_identity is not None and identity != self._current_identity:
                 self._discard_pending_commands('character_changed')
@@ -4899,6 +4922,7 @@ class AgentWorker(object):
     def _handle_character_rejected(self, message):
         if message.get('protocol_version') != PROTOCOL_VERSION or message.get('character_id') != self.character_id or message.get('session_id') != self.session_id:
             raise WebSocketClosed('invalid character rejection')
+        self._flush_pending_items_before_session_change()
         self._discard_pending_commands('session_superseded')
         self._clear_navigation_route()
         self._rejected_identity = self._identity_key(self._current_identity)

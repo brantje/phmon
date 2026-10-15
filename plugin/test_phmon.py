@@ -1826,6 +1826,43 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(events[0]['kind'], 'item.transferred')
         self.assertEqual(events[0]['payload']['source_container']['id'], 'guild')
 
+    def test_pending_change_flushes_under_old_session_before_teardown(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        old_session = self.worker.session_id
+        old_character = self.worker.character_id
+        self.worker._flush_pending_items_before_session_change()
+        self.worker.session_id = 'aaaaaaaa-1111-4222-8333-444444444444'
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['session_id'], old_session)
+        self.assertEqual(events[0]['character_id'], old_character)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+        self.worker._flush_pending_items_before_session_change()
+        self.assertEqual(self.drain(), [])
+
+    def test_rejected_session_flushes_item_evidence_before_revocation(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(1))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        old_session = self.worker.session_id
+        self.worker._handle_character_rejected({
+            'protocol_version': plugin.PROTOCOL_VERSION,
+            'character_id': self.worker.character_id,
+            'session_id': old_session,
+        })
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['session_id'], old_session)
+        self.assertIsNone(self.worker.session_id)
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+
     def test_pending_gain_survives_storage_becoming_unavailable(self):
         self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
         observed_at = '2026-10-15T10:00:00Z'
