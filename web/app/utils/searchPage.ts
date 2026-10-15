@@ -68,8 +68,10 @@ export function itemHistoryTarget(item: {
   const code = typeof item.item.servername === 'string' ? item.item.servername : ''
   const model = item.item.model
   const name = typeof item.item.name === 'string' ? item.item.name : ''
-  const identity = code || (typeof model === 'number' && Number.isInteger(model)
-    ? String(model) : name)
+  let identity = code || name
+  if (!code && typeof model === 'number' && Number.isInteger(model)) {
+    identity = String(model)
+  }
   return {
     path: '/events',
     query: {
