@@ -607,7 +607,7 @@ func validContainerReference(value map[string]any) bool {
 		return false
 	}
 	typeName, ok := value["type"].(string)
-	if !ok || (typeName != "equipment" && typeName != "inventory" && typeName != "storage" && typeName != "job_pouch" && typeName != "pets") {
+	if !ok || (typeName != "equipment" && typeName != "inventory" && typeName != "storage" && typeName != "guild_storage" && typeName != "job_pouch" && typeName != "pets") {
 		return false
 	}
 	if id, exists := value["id"]; exists {
