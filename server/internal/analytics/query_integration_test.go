@@ -98,7 +98,7 @@ VALUES($1::uuid,1,$2,$3,$4::uuid,$5::uuid,$6::uuid,$7,$8,'phmon.test','analytics
 VALUES($1::uuid,1,'item.acquired','item',$2::uuid,$3::uuid,$4::uuid,$5,$6,'phbot.state_diff','item_container',1,'Jangan',77,'ITEM_RARE','rare','fixture-v1',
 '{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":2,"destination_container":{"type":"inventory","slot":4},"acquisition_method":"unknown"}'::jsonb),
 ($7::uuid,1,'item.transferred','item',$2::uuid,$3::uuid,$4::uuid,$5,$6+interval '1 second','phbot.state_diff','item_container',1,'Jangan',77,'ITEM_RARE','rare','fixture-v1',
-'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,"destination_container":{"type":"pets","id":"17","slot":2}}'::jsonb)`, ownedGainID, credential.AgentID, aria, ariaSession, server, now.Add(-time.Hour), transferID)
+'{"item":{"model":77,"servername":"ITEM_RARE"},"quantity_delta":1,"source_container":{"type":"inventory","slot":5},"destination_container":{"type":"pets","id":"17","slot":2},"method":"observed_container_delta"}'::jsonb)`, ownedGainID, credential.AgentID, aria, ariaSession, server, now.Add(-time.Hour), transferID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +204,51 @@ VALUES($1::uuid,$2::uuid,$3::uuid,1,$4,$5,100,$6,1000,$7,$8,1,'Jangan',true,fals
 	if !quantitySeen {
 		t.Fatal("owned-gain quantity denominator was not included in its summary")
 	}
+
+	history, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewItemHistory,
+		From: from, To: to, Timezone: "UTC", GroupBy: "item"})
+	if err != nil || history.Total != "4" || len(history.Occurrences) != 4 {
+		t.Fatalf("item history canonical population: total=%q occurrences=%d err=%v", history.Total, len(history.Occurrences), err)
+	}
+	metrics := make(map[string]analytics.Metric, len(history.Summary))
+	for _, metric := range history.Summary {
+		metrics[metric.Key] = metric
+	}
+	for key, expected := range map[string]string{
+		"world_drops": "2",
+		"owned_gain_observations": "1",
+		"unknown_origin_gains": "1",
+		"quantity_increases": "1",
+		"quantity_increased": "2",
+		"quantity_decreases": "0",
+		"transfer_events": "1",
+		"transferred_quantity": "1",
+		"verified_pet_receipts": "0",
+	} {
+		if got, exists := metrics[key]; !exists || got.Value != expected {
+			t.Fatalf("item history metric %s: %+v, expected %s", key, got, expected)
+		}
+	}
+	if metrics["distinct_acquisitions"].Status != "unsupported" {
+		t.Fatal("distinct physical pickups have no common proven identity")
+	}
+	filteredHistory, err := store.Query(ctx, analytics.Filter{Server: server, View: analytics.ViewItemHistory,
+		From: from, To: to, Timezone: "UTC", GroupBy: "item",
+		SourceContainer: "inventory", DestinationContainer: "pets",
+		MovementMethod: "observed_container_delta"})
+	if err != nil || filteredHistory.Total != "1" || len(filteredHistory.Occurrences) != 1 ||
+		filteredHistory.Occurrences[0].ID != transferID {
+		t.Fatalf("source/destination/method-filtered transfer = %+v, err=%v", filteredHistory, err)
+	}
+	for _, metric := range filteredHistory.Summary {
+		if metric.Key == "transfer_events" && metric.Value != "1" {
+			t.Fatalf("filtered transfer count = %+v", metric)
+		}
+		if metric.Key == "owned_gain_observations" && metric.Value != "0" {
+			t.Fatalf("transfers must be zero new acquisitions: %+v", metric)
+		}
+	}
+
 	// A verified pet receipt and a same-model, same-slot pet state-diff
 	// observation can describe one pickup without sharing acquisition identity.
 	// Both rows remain in Events; only the receipt enters limited owned analytics.
