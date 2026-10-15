@@ -6901,3 +6901,35 @@ comparisons match both captures. Plugin/protocol tests (310), web unit tests
 character was operated by this agent. Actual plugin/UI runtime validation
 remains open: install plugin 1.9.42 in an authorized phBot session, resummon
 the Pick pet and compare an already-held item's tooltip with its bag details.
+
+### Resume — 2026-10-16 Kalypso live Pick-pet check
+
+Kalypso connected with plugin 1.9.42 at 22:04:18 UTC in a fresh session.
+The server recorded one 245-byte `0x30C8` packet, zero `0xB034` packets, and
+eight basic Pick-pet equipment rows in a 56-position `get_pets()` list. No
+`instance` reached the pet rows. Both full prior `0x30C8` captures advertised
+28 positions; the current parser required packet capacity to equal all 56 API
+positions. The live packet bytes were not retained, so the capacity mismatch
+is strongly supported but not directly read from this packet. A 245-byte
+synthetic packet with the previously captured eight equipment bodies parses
+against the current API roster when the 28/56 comparison is corrected.
+
+Plugin 1.9.43 changes the capacity gate to accept an equal-length API list or
+one twice the packet capacity, with no occupied items beyond the packet-covered
+positions. All covered slots, models, quantities and durabilities still match
+strictly. It reports `pet_snapshot_last_error` for future live diagnosis.
+The web Pet panel recognizes decoder build `vsro_pet_item_r3` and shows the
+last mismatch. Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`web/app/components/CharacterCard.vue`, `docs/{reference/pet-item-capture-2026-10-15.md,
+phbot-capabilities.md,item-instance-evidence.md,reference-parity.md}`,
+`tools/pet-item-capture/README.md`. No real
+character action was performed by this agent. Plugin/protocol/capture tests
+(310), web unit tests (285), typecheck, lint, formatting and diff checks pass.
+The plugin protocol contract comparison against the prior commit is unchanged;
+agent protocol remains 20.
+A reconstructed 245-byte packet with eight earlier captured item bodies
+matches Kalypso's current 56-slot API roster under the corrected parser.
+The Go/web containers were rebuilt locally and are healthy; Kalypso
+automatically reconnected with plugin 1.9.42 after the server restart.
+Exact next action: commit/push, then have the operator install plugin 1.9.43
+and resummon the Pick pet for live confirmation.

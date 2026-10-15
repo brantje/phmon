@@ -958,10 +958,15 @@ onBeforeUnmount(() => {
         <strong>Passive pet item packets</strong>
         <span>{{ petPacketProbeSummary('0x30C8') }}</span>
         <span>{{ petPacketProbeSummary('0xB034') }}</span>
+        <span v-if="payload('item_enrichment').pet_snapshot_last_error"
+          >Last snapshot check:
+          {{ payload('item_enrichment').pet_snapshot_last_error }}</span
+        >
         <small
           v-if="
-            payload('item_enrichment').pet_inventory_decoder_build ===
-            'vsro_pet_item_r2'
+            ['vsro_pet_item_r2', 'vsro_pet_item_r3'].includes(
+              String(payload('item_enrichment').pet_inventory_decoder_build),
+            )
           "
           >Pick-pet snapshots and pickups can add plus, rolls and blue options
           when the packet matches the pet inventory. Unsupported item types

@@ -186,3 +186,22 @@ or trailing byte rejects the full snapshot. Simple stackable alchemy elixirs
 are parsed only to advance to later equipment; no synthetic instance is
 created for them. Actual Windows/phBot execution of plugin 1.9.42 remains
 unverified; offline capture decoding and fixture tests are not a live rollout.
+
+## 2026-10-16 live Kalypso restart: packet/API capacity mismatch
+
+The operator restarted Kalypso with plugin 1.9.42. The server recorded a fresh
+session and one `0x30C8` packet of 245 bytes, but zero enriched pet items.
+The pet API reported 56 positions with eight equipment items, all in slots
+0–16. Both earlier complete `0x30C8` captures advertise 28 positions. The
+245-byte live packet is also exactly the size obtained by removing the two
+11-byte elixir entries from the earlier 267-byte packet. Its bytes were not
+retained by the live diagnostic, so its capacity value is inferred from those
+captures, not read directly. The 1.9.42 parser required packet capacity to
+equal the full API list length and would reject a 28-versus-56 layout.
+
+Plugin 1.9.43 accepts either equal lengths or an API list twice the packet
+capacity. It still requires the packet's occupied count and all covered
+slots, models, quantities and durabilities to match, and rejects any occupied
+API slot beyond the packet's capacity. The item-enrichment diagnostic now
+reports the last snapshot mismatch reason. Actual 1.9.43 live attachment
+remains to be verified after the operator installs it and resummons the pet.

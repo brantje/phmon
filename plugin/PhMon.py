@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.42'
+pVersion = '1.9.43'
 pUrl = ''
 
 PROTOCOL_VERSION = 20
@@ -132,7 +132,7 @@ MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # parsed item fields or packet sizes only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
-PET_INVENTORY_DECODER_BUILD = 'vsro_pet_item_r2'
+PET_INVENTORY_DECODER_BUILD = 'vsro_pet_item_r3'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -2281,11 +2281,20 @@ def parse_pet_inventory_snapshot(data, pet):
     for _ in range(name_length):
         reader.u8()
     capacity, count = reader.u8(), reader.u8()
-    if capacity != len(pet['slots']) or count > capacity:
+    # The captured packet advertises 28 positions while this phBot getter
+    # currently exposes 56 positions for the same Pick pet. Only the packet's
+    # covered positions can be reconciled; never infer items on the extra page.
+    api_capacity = len(pet['slots'])
+    if (capacity == 0 or api_capacity not in (capacity, capacity * 2) or
+            count > capacity):
         raise ItemPacketError('pet_snapshot_capacity_mismatch')
     api_slots = {entry.get('source_slot'): entry.get('item')
                  for entry in pet['slots'] if isinstance(entry, dict)}
-    if count != sum(isinstance(item, dict) for item in api_slots.values()):
+    if any(isinstance(item, dict) for slot, item in api_slots.items()
+           if not isinstance(slot, int) or slot >= capacity or slot < 0):
+        raise ItemPacketError('pet_snapshot_uncovered_api_item')
+    if count != sum(isinstance(item, dict) for slot, item in api_slots.items()
+                    if isinstance(slot, int) and 0 <= slot < capacity):
         raise ItemPacketError('pet_snapshot_count_mismatch')
     items = []
     seen = set()
@@ -2338,6 +2347,7 @@ class PassiveItemTracker(object):
         self._states = {}
         self._pet_states = {}
         self._pet_snapshots = {}
+        self._pet_snapshot_last_error = None
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
         self._epoch = 0
@@ -2393,6 +2403,7 @@ class PassiveItemTracker(object):
         self._states.clear()
         self._pet_states.clear()
         self._pet_snapshots.clear()
+        self._pet_snapshot_last_error = None
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
@@ -2464,6 +2475,7 @@ class PassiveItemTracker(object):
             if opcode == 0x30C8:
                 self._pet_snapshot_packet_count = min(
                     self._pet_snapshot_packet_count + 1, 2147483647)
+                self._pet_snapshot_last_error = None
                 if len(payload) >= 4:
                     pet_id = str(struct.unpack_from('<I', payload)[0])
                     for key in list(self._pet_states):
@@ -2628,15 +2640,18 @@ class PassiveItemTracker(object):
                     try:
                         decoded = parse_pet_inventory_snapshot(snapshot['packet'], pet)
                     except ItemPacketError as error:
+                        self._pet_snapshot_last_error = str(error)
                         if str(error) not in (
                                 'pet_snapshot_identity_mismatch',
                                 'pet_snapshot_capacity_mismatch',
                                 'pet_snapshot_count_mismatch',
+                                'pet_snapshot_uncovered_api_item',
                                 'pet_snapshot_api_slot_mismatch',
                                 'pet_snapshot_stack_mismatch',
                                 'pet_snapshot_equipment_mismatch'):
                             self._pet_snapshots.pop(pet_id, None)
                     else:
+                        self._pet_snapshot_last_error = None
                         for observed in decoded['items']:
                             key = (pet_id, observed['source_slot'])
                             previous = self._pet_states.get(key)
@@ -2716,6 +2731,7 @@ class PassiveItemTracker(object):
             'pet_inventory_decoder_build': PET_INVENTORY_DECODER_BUILD,
             'pet_inventory_packet_count': self._pet_packet_count,
             'pet_snapshot_packet_count': self._pet_snapshot_packet_count,
+            'pet_snapshot_last_error': self._pet_snapshot_last_error,
             'pet_inventory_status': (
                 'observed' if pet_attached else
                 'pending_or_unsupported_snapshot' if self._pet_snapshot_packet_count else

@@ -2054,4 +2054,12 @@ simple alchemy reinforcement elixirs, parsed only to reach subsequent
 items. New pickups still use subtype `0x11`. This supplies details for
 already-held Pick-pet equipment when the observed branch parses fully;
 actual plugin 1.9.42 installation and live UI confirmation remain open.
+
+On Kalypso's 2026-10-16 restart, phBot 20.1.3 returned a 56-position Pick-pet
+item list while the earlier complete `0x30C8` captures advertised capacity
+28. Plugin 1.9.42 reported one 245-byte snapshot and no attached instances;
+its strict capacity-equality gate would reject a matching 28-slot packet.
+Plugin 1.9.43 allows an empty second API page while checking every packet-covered slot and
+rejecting occupied uncovered positions. The live packet's own capacity was
+not retained, so 1.9.43 needs a new runtime observation.
 This does not recover historical items whose packet bytes were never captured.

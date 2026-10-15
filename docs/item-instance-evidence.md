@@ -357,3 +357,10 @@ observed enhancement when the pet API omits plus. Absolute stat formulas
 remain unavailable. See the
 [packet-level audit](reference/pet-item-capture-2026-10-15.md) for hashes,
 field bounds and unsupported branches. A live plugin/UI check is pending.
+
+Kalypso's first live 1.9.42 restart exposed a capacity mismatch: the two
+captured `0x30C8` packets each declare 28 slots, while the active phBot API
+list reports 56 with all observed items in the first 28. Version 1.9.43
+reconciles the packet-covered positions and keeps the extra API page empty as
+a safety condition. The 245-byte live packet itself was not retained, so a
+fresh 1.9.43 session is needed to prove the correction on Kalypso.

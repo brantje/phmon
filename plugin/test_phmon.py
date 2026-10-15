@@ -1207,6 +1207,18 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(decoded['items'][1]['fields']['magic_options'][0],
                          {'id': '81', 'value': '60'})
         self.assertEqual(decoded['inventory_slot'], 46)
+        # Live phBot 20.1.3 exposed 56 getter positions for the same Pick
+        # pet whose 0x30C8 packet advertises 28. Reconcile the covered page.
+        slots.extend({'source_slot': slot, 'item': None} for slot in range(28, 56))
+        self.assertEqual(len(plugin.parse_pet_inventory_snapshot(bytes(packet), pet)['items']), 2)
+        slots[40]['item'] = {'model': 10912, 'quantity': 1, 'durability': 93,
+                             'servername': 'ITEM_EU_DAGGER_06_A'}
+        with self.assertRaisesRegex(plugin.ItemPacketError, 'uncovered_api_item'):
+            plugin.parse_pet_inventory_snapshot(bytes(packet), pet)
+        slots[40]['item'] = None
+        mismatched = dict(pet, slots=slots[:27])
+        with self.assertRaisesRegex(plugin.ItemPacketError, 'capacity_mismatch'):
+            plugin.parse_pet_inventory_snapshot(bytes(packet), mismatched)
         tracker = plugin.PassiveItemTracker()
         tracker.set_protocol('vsro-1.188')
         tracker.enqueue(0x30C8, bytes(packet))
@@ -1374,7 +1386,7 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['observed_items'], 0)
         self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'not_observed')
         self.assertEqual(resources['item_enrichment']['pet_inventory_decoder_build'],
-                         'vsro_pet_item_r2')
+                         'vsro_pet_item_r3')
         self.assertFalse(resources['item_enrichment']['pet_packet_probe']['packet_bytes_retained'])
 
     def test_pet_packet_probe_reports_counts_and_lengths_without_packet_bytes(self):

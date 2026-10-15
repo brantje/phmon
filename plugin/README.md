@@ -1,10 +1,11 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.42**, using agent protocol **20**. It
+The current local plugin release is **1.9.43**, using agent protocol **20**. It
 enriches Pick-pet equipment from verified vSRO 1.188 `0x30C8` summon snapshots
 and `0xB034` subtype `0x11` pickups after matching pet ID, slot, model and
 durability to `get_pets()`. The snapshot parser supports observed equipment and
-simple alchemy elixirs; unsupported item families fail closed. It
+simple alchemy elixirs. A 28-slot packet may match phBot's 56-slot Pick-pet
+list when its extra page is empty; unsupported item families fail closed. It
 reports job name, guild member/online counts, donated GP and union guilds as the
 `character_info` resource for the Stats Info card. It
 accepts a display-only route from another plugin in the same phBot process through

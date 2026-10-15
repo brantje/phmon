@@ -2900,3 +2900,17 @@ attaches verified `instance` fields to matching Pick-pet slots; the existing
 Go resolver and Stats/Item Search tooltip consume that shape. Real Windows
 phBot installation and a live tooltip comparison remain open. Unsupported
 pet classes, rental/binding variants and item families remain basic.
+
+### 2026-10-16 — Kalypso live Pick-pet capacity check
+
+Kalypso connected with plugin 1.9.42 and sent one 245-byte `0x30C8` packet;
+its 56-position Pick-pet API roster had eight equipment items in slots 0–16,
+but no item instances attached. The two complete packet captures both advertise
+28 positions, so the parser's equality check against all 56 API positions was
+too strict for the observed layout. The packet bytes were not retained, and
+its exact capacity remains inferred. Plugin 1.9.43 compares the packet-covered
+positions and requires the extra API positions to be empty. The screenshot
+showed an older web build's packet-only text. The web and Go containers were
+rebuilt and passed their health checks; the web artifact now contains the
+current Pick-pet decoder explanation and snapshot mismatch display.
+Live pet item detail remains unverified until a new 1.9.43 snapshot attaches.
