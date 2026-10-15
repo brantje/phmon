@@ -49,8 +49,10 @@ const detailProvenance = computed(() => {
   const observationID =
     typeof instance.observation_id === 'string' ? instance.observation_id : ''
   const association =
-    instance.association === 'unique_model_inventory_gain'
-      ? 'Matched inventory gain; acquisition cause unverified'
+    instance.association === 'explicit_drop_event_id'
+      ? 'Explicitly linked inventory observation; pickup cause still unverified'
+      : instance.association === 'unique_model_inventory_gain'
+        ? 'Matched inventory gain; acquisition cause unverified'
       : instance.association === 'unique_temporal_inventory_gain'
         ? 'Matched nearby inventory gain; acquisition cause unverified'
         : ''
