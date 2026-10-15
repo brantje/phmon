@@ -1775,6 +1775,32 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(events[0]['kind'], 'item.transferred')
         self.assertEqual(events[0]['payload']['source_container']['id'], 'guild')
 
+    def test_expired_delayed_candidate_never_fabricates_acquisition(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=108.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        self.assertEqual(len(self.worker._pending_item_reconciliation), 0)
+
+    def test_ambiguous_delayed_matching_preserves_unknown_cause(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(2))],
+                                    job=[(0, self.item(2))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(2))], job=[(0, self.item(2))]))
+        self.assertEqual(self.drain(), [])
+        # Both storage sources change at once. Neither individual source may
+        # be asserted to be the unique cause of the previous bag increase.
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[(13, self.item(2))], storage=[],
+                                        job=[(0, self.item(1))]))
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in self.drain()))
+
     def test_delayed_transfer_is_fenced_by_sampling_gap(self):
         self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
         with patch.object(plugin, '_monotonic', return_value=100.0):
