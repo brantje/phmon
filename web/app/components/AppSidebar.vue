@@ -49,6 +49,8 @@ const eventNavigation = [
   { label: 'Deaths', key: 'character.died', query: { kind: 'character.died' } },
   { label: 'Rare Drops', key: 'drop.rare', query: { kind: 'drop.rare' } },
   { label: 'Normal Drops', key: 'drop.item', query: { kind: 'drop.item' } },
+  { label: 'Owned Gains', key: 'item.gains', query: { kind: 'item.gains' } },
+  { label: 'Transfers', key: 'item.transferred', query: { kind: 'item.transferred' } },
   {
     label: 'Uniques',
     key: 'world.unique_spawned',
@@ -97,7 +99,7 @@ const advancedNavigation = [
     href: '/analytics?view=deaths',
   },
   { label: 'Map', icon: 'i-lucide-map', href: '/map' },
-  { label: 'Item Search', icon: 'i-lucide-search' },
+  { label: 'Item Search', icon: 'i-lucide-search', href: '/items' },
   { label: 'Skill Builder', icon: 'i-lucide-git-branch' },
   { label: 'Automations', icon: 'i-lucide-zap' },
 ]
