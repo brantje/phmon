@@ -14,6 +14,7 @@ type FoundItem = {
   observed_at: string
   checked_at: string
   item: Record<string, unknown>
+  quantity_exact?: string
   metadata?: Record<string, unknown>
 }
 type ItemSearchPage = {
@@ -208,7 +209,7 @@ function previousPage() {
             <span>Owner: <NuxtLink :to="ownerTarget(row)">{{ row.owner_name || row.owner_id }}</NuxtLink></span>
             <span>Observed by: <NuxtLink :to="`/characters/${row.observer_character_id}`">{{ row.observer_name }}</NuxtLink></span>
             <span v-if="row.pet_id">Pet ID: {{ row.pet_id }}</span>
-            <span>Quantity: {{ row.item.quantity ?? 'unknown' }}</span>
+            <span>Quantity: {{ row.quantity_exact || row.item.quantity || 'unknown' }}</span>
             <span>+{{ row.item.plus ?? '?' }}</span>
             <span>Observed: <time :datetime="row.observed_at">{{ formatTime(row.observed_at) }}</time></span>
             <span>Checked: <time :datetime="row.checked_at">{{ formatTime(row.checked_at) }}</time></span>
