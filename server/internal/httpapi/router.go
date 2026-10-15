@@ -194,6 +194,8 @@ func New(deps Dependencies) http.Handler {
 		}
 	}
 	if deps.Resources != nil {
+		itemsAPI := &itemSearchHandler{store: deps.Resources}
+		register("GET /api/items", false, itemsAPI.list)
 		guildStorageAPI := &guildStorageHandler{store: deps.Resources, live: analyticsLive}
 		register("GET /api/guild-storage", false, guildStorageAPI.get)
 		register("DELETE /api/guild-storage", true, guildStorageAPI.delete)
