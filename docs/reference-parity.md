@@ -2857,3 +2857,19 @@ fencing. Escape closes a focused tooltip before the modal; focus is trapped and
 restored. Inline inventory views keep 4 × 38 px. Browser evidence at 1440 × 1000,
 1280 × 800 and 390 × 844 (real inventory 64 slots, real storage 150 slots,
 browser-only 30/45-slot guild fixtures): `/tmp/phmon-item-dialog-20261015`.
+
+### Armor mounting part correction — 2026-10-15
+
+The operator compared nuker1's Taesang set with phMonitor: PhMon labeled the
+Suit as Shoulders, Trousers as Hands, Talisman as Chest and Wristlet as Legs.
+The exporter mapped armor `TypeID4` in equipment-slot order. It actually follows
+the codename part suffix (HA, SA, BA, LA, AA, FA), confirmed by the client
+textdata names (`*_BA_*` Suit, `*_LA_*` Trousers, `*_SA_*` Talisman, `*_AA_*`
+Wristlet). Exporter mapping is now 1 Head, 2 Shoulders, 3 Chest, 4 Legs,
+5 Hands, 6 Feet. The three packaged server catalogs were corrected from each
+item's own `type_ids` (3,968 entries each; Head/Feet unchanged) rather than
+re-exported, since the source archives are not on this host. Presentation is
+resolved at read time, so no stored records needed rewriting. Exporter (105) and
+resources Go tests pass; the new packaged-catalog regression fails on the old
+data. The authenticated live `/api/items` now reports Suit/Chest,
+Trousers/Legs, Talisman/Shoulders, Wristlet/Hands.

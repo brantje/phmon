@@ -6721,3 +6721,16 @@ reconnected. Future web-only rollouts should check `docker compose ps` afterward
 Nothing committed or pushed. Exact next action: none for this increment; wider
 Slice 13 gates remain open.
 
+
+### Resume — 2026-10-15 armor mounting part mislabel
+
+Operator-reported breaking bug: armor mounting parts were rotated (Taesang Suit
+shown as Shoulders, Trousers as Hands, Talisman as Chest, Wristlet as Legs).
+The exporter's `TypeID4` map used slot order instead of the codename part order
+(HA, SA, BA, LA, AA, FA). Fixed in `item_metadata.py` with an exporter test, and
+corrected `mounted_part` in the three packaged `server/game-data` catalogs from
+`type_ids`; `sort_type`, stats and search taxonomy were unaffected. Regression
+test in `TestPackagedMetadata`. Only the local server container was rebuilt;
+PostgreSQL and web stayed up. Live `/api/items` verified. Evidence:
+`docs/reference-parity.md`. Exact next action: none; a future full re-export
+will produce the same values. Not committed.

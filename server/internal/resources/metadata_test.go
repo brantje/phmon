@@ -449,6 +449,22 @@ func TestPackagedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := m.Catalogs[m.Servers["greatest"]]
+	// Suit/Trousers/Talisman/Wristlet: part suffix, not equipment-slot order.
+	mounted := map[string]string{
+		"ITEM_CH_M_CLOTHES_10_SA_A": "Shoulders", "ITEM_CH_M_CLOTHES_10_BA_A": "Chest",
+		"ITEM_CH_M_CLOTHES_10_LA_A": "Legs", "ITEM_CH_M_CLOTHES_10_AA_A": "Hands",
+	}
+	for _, item := range c.Items {
+		if want, ok := mounted[item.Code]; ok {
+			if item.Presentation["mounted_part"] != want {
+				t.Fatalf("%s mounted_part = %v, want %s", item.Code, item.Presentation["mounted_part"], want)
+			}
+			delete(mounted, item.Code)
+		}
+	}
+	if len(mounted) != 0 {
+		t.Fatalf("packaged catalog lacks %v", mounted)
+	}
 	found := 0
 	for _, item := range c.Items {
 		switch item.Code {
