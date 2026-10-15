@@ -1910,3 +1910,7 @@ Without those observations the capability stays explicitly unsupported.
 withdrawals for personal and guild storage; guild membership changes; pet
 pickup source receipts and state-diff ordering; real Windows phBot runtime.
 A synthetic integration test is not proof of real game-server packet semantics.
+
+### Item reconciliation when a source container disappears
+
+A delayed item movement candidate comes from an already comparable pair of observed resource samples. If a storage container becomes unavailable, a guild snapshot disappears, or the next resource sample cannot be normalized, it invalidates *transfer* proof but does not erase the preceding net-change evidence. The plugin now emits the retained, originally timestamped quantity gain/loss with unknown provenance and clears its pending match. This does not prove a world drop or pickup. New/opened storage remains an unknown baseline and is not interpreted as zero. Cross-session identity loss is not used to fabricate new character ownership; validating this behavior on real Windows/phBot resource availability transitions remains outstanding.

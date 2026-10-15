@@ -3665,6 +3665,12 @@ class AgentWorker(object):
                 self._pending_drop_events = []
         current = _event_resource_snapshot(resources, identity)
         if current is None:
+            # The prior complete samples are still valid net-change evidence.
+            # A missing new sample invalidates transfer matching, not history.
+            if (self._event_diff_identity is not None and
+                    identity_key == self._event_diff_identity[0] and
+                    self.session_id == self._event_diff_session):
+                self._finalize_pending_item_reconciliation(identity, float('inf'))
             self._pending_item_reconciliation = []
             self._event_baseline_required = True
             self._event_diff = None
@@ -3726,12 +3732,10 @@ class AgentWorker(object):
         uncertain = set()
         for key in changed:
             uncertain.update((old_containers.get(key) or new_containers.get(key) or {}).keys())
-        if uncertain:
-            self._pending_item_reconciliation = [
-                entry for entry in self._pending_item_reconciliation
-                if entry['signature'] not in uncertain]
         if rebaseline_pet_items:
-            # A teleport/pet-roster reset invalidates delayed evidence too.
+            # The pet transition breaks transfer proof, but cannot erase an
+            # already observed unmatched change from a previous complete pair.
+            self._finalize_pending_item_reconciliation(identity, float('inf'))
             self._pending_item_reconciliation = []
         else:
             self._emit_item_deltas(identity,
@@ -3901,7 +3905,8 @@ class AgentWorker(object):
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
-    def _finalize_pending_item_reconciliation(self, identity, now=None, flush_oldest=False):
+    def _finalize_pending_item_reconciliation(self, identity, now=None, flush_oldest=False,
+                                              invalidated_signatures=()):
         """Publish a bounded, unmatched net change with its original observation time.
 
         A delayed opposite delta proves a transfer only while the candidate is
@@ -3912,7 +3917,8 @@ class AgentWorker(object):
             now = _monotonic()
         remaining = []
         for index, entry in enumerate(self._pending_item_reconciliation):
-            if entry['expires_at'] > now and not (flush_oldest and index == 0):
+            if (entry['expires_at'] > now and not (flush_oldest and index == 0)
+                    and entry['signature'] not in invalidated_signatures):
                 remaining.append(entry)
                 continue
             item = entry['item']
@@ -3942,10 +3948,11 @@ class AgentWorker(object):
         # transfer. Expired unmatched observations remain canonical unknown
         # gains/losses rather than being silently discarded.
         now = _monotonic()
-        self._finalize_pending_item_reconciliation(identity, now)
-        self._pending_item_reconciliation = [
-            entry for entry in self._pending_item_reconciliation
-            if entry['signature'] not in uncertain]
+        # A container disappearing or becoming newly available cannot be
+        # used as transfer proof. Finalize the previously observed candidate
+        # as unknown instead of silently dropping it.
+        self._finalize_pending_item_reconciliation(
+            identity, now, invalidated_signatures=uncertain)
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)

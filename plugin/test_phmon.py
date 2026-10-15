@@ -1826,6 +1826,60 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(events[0]['kind'], 'item.transferred')
         self.assertEqual(events[0]['payload']['source_container']['id'], 'guild')
 
+    def test_pending_gain_survives_storage_becoming_unavailable(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        observed_at = '2026-10-15T10:00:00Z'
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(3))]), now=observed_at)
+        self.assertEqual(self.drain(), [])
+        unavailable = self.resources(bag=[(13, self.item(2))])
+        unavailable['storage'] = {'availability': 'unavailable'}
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(unavailable)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['occurred_at'], observed_at)
+        self.assertEqual(events[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+
+    def test_pending_guild_observation_survives_guild_storage_disappearing(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {'availability': 'observed',
+                                     'slots': [{'source_slot': 0, 'item': self.item(3)}]}
+        self.observe(baseline)
+        changed = self.resources(bag=[(13, self.item(1))])
+        changed['guild_storage'] = baseline['guild_storage']
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(changed)
+        self.assertEqual(self.drain(), [])
+        unavailable = self.resources(bag=[(13, self.item(1))])
+        unavailable['guild_storage'] = {'availability': 'unavailable'}
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(unavailable)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertFalse(any(e['kind'] == 'item.transferred' for e in events))
+
+    def test_pending_gain_survives_missing_resource_sample(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(2))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.observe(None)
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 2)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(self.worker._pending_item_reconciliation, [])
+
     def test_unmatched_loss_with_identical_model_in_storage_is_preserved(self):
         self.observe(self.resources(bag=[(13, self.item(4))], storage=[(0, self.item(2))]))
         with patch.object(plugin, '_monotonic', return_value=100.0):
