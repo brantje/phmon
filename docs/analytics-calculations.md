@@ -175,10 +175,14 @@ boundary, but never add event counts to the requested window.
 The Rare/Normal source selector is either **world-drop observations** or
 **owned-item gains**. World mode counts canonical `drop.rare` / `drop.item` rows.
 Owned mode counts classified `item.acquired` and `item.quantity_increased` rows
-only from accepted state-diff inventory/pet destinations or the validated pet
-inventory receipt source. It never includes `item.transferred`. The headline is
-an acquisition-event count; a separate exact integer quantity is the sum of the
-accepted `quantity_delta` payloads. These are not unique physical drops. Evidence
+only from accepted state-diff **inventory** destinations or the validated pet
+inventory receipt source. Pet state-diff positives are retained as canonical
+Events but excluded from this analytics population: there is no common
+acquisition ID to prove whether a pet inventory delta and a receipt describe
+the same pickup. It never includes `item.transferred`. The headline is a
+limited **gain-evidence event count**, and quantity is the sum of eligible
+`quantity_delta` payloads. Neither number establishes distinct physical
+acquisitions, and unreceipted pet gains are deliberately not included. Evidence
 rows retain their canonical event kind and destination details.
 
 Progress includes daily and ISO-week summaries over the seven days ending at the
@@ -226,11 +230,14 @@ Uncollected drops still count as observed world drops.
 observed positive container deltas, with `acquisition_method: unknown` unless
 separately verified. `item.transferred` is not a gain or world drop.
 The existing `owned_gains` analytics view reports **recorded gain events**
-across eligible inventory/pet sources, not verified distinct physical item
-instances. Where independently captured `joymax.pet_inventory` and
-`phbot.state_diff` evidence has not been explicitly linked, exact net
-physical-acquisition counts are **not yet established**; do not interpret the
-raw observation total as such. `quantity_delta` is a separate item-count
+from inventory state-diff observations and validated pet receipt sources, not
+verified distinct physical item instances. Unlinked pet state-diff gains remain
+visible in Events but not in this count; otherwise a single pet receipt and its
+state delta would inflate it. If the pet receipt is absent the analytics metric
+may undercount, and if the same physical acquisition is independently recorded
+later in a bag with no proven transfer, it may overcount. Consequently exact
+net physical-acquisition counts are **not established**. The metric status is
+limited, not a verified acquisition count. `quantity_delta` is a separate item-count
 field and must not silently replace the occurrence count.
 
 **All Events logical projection:** Only an explicitly linked, unique
@@ -249,11 +256,23 @@ world-drop events. A guild storage observer is not an owner of guild items.
 
 **Global economy:** WTB/WTS/WTT messages are advertisements, not executed
 trades. One classified retained Global chat message is one observed offer
-occurrence; conservative cross-character observer dedup operates on sender,
-server, raw chat type, identical message and a narrow time window, subject to
-competing-ad checks. The denominator is observed message occurrences under
-coverage of connected bot characters, not all server advertisements or sales.
+occurrence. Independent character observations remain separate: sender, server,
+raw chat type, text and a 500 ms window do not prove one server broadcast and
+would conflate two legitimate repeated advertisements. A shared broadcast ID
+is unavailable, so distinct physical advertisements cannot be reliably
+deduplicated. The denominator is retained observer-message occurrences, not
+globally unique advertisements or sales.
 There is no verified realized-price or completed-sale denominator.
+
+**Delayed reconciliation:** The six-second bounded pending window is for a
+single compatible, opposite container delta. When a complete same-scope
+observation expires without its counterpart, the independently measured net
+increase/decrease is finalized with its original observation timestamp and
+unknown cause; overflow also releases the oldest observation. No same-model
+callback is now auto-claimed as a pickup. Sampling gaps, new/unavailable
+containers and identity/session transitions cannot establish missing source
+facts; resource snapshots remain the audit evidence when provenance is
+incomplete.
 
 **Historical policy:** Do not delete, merge or retroactively reclassify
 ambiguous stored events. Query fixes apply read-only. An older event that lacks
