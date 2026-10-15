@@ -14,6 +14,18 @@ import (
 	"phmon/server/internal/database"
 )
 
+func TestGuildStorageContainerReferences(t *testing.T) {
+	if !validContainerReference(map[string]any{"type": "guild_storage", "slot": float64(12)}) {
+		t.Fatal("observed guild storage slot should be a valid container reference")
+	}
+	if validContainerReference(map[string]any{"type": "guild_storage", "slot": float64(-1)}) {
+		t.Fatal("negative guild storage slot must remain invalid")
+	}
+	if validContainerReference(map[string]any{"type": "guild_storage", "id": ""}) {
+		t.Fatal("empty guild storage id must remain invalid")
+	}
+}
+
 func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
