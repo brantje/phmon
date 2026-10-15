@@ -248,7 +248,7 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		} `json:"item"`
 		Observation struct {
 			Association string `json:"association"`
-			EventID string `json:"event_id"`
+			EventID     string `json:"event_id"`
 		} `json:"item_observation"`
 	}
 	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "explicit_drop_event_id" || linkedPayload.Observation.EventID != observedItem.ID {
