@@ -3976,7 +3976,12 @@ class AgentWorker(object):
                     possible_source = direction == 'gain' and any(
                         key != container_key and rows.get(signature, {}).get('quantity', 0) > 0
                         for key, rows in before.items())
-                    possible_destination = direction == 'loss' and any(
+                    # Do not hold singleton disappearances indefinitely as
+                    # speculative transfers: real weapon/item losses must
+                    # remain promptly visible when no destination gain exists.
+                    # Multi-quantity losses can still be paired with a late
+                    # observation from an already observed destination.
+                    possible_destination = direction == 'loss' and amount > 1 and any(
                         key != container_key for key in before)
                     if possible_source or possible_destination:
                         if len(self._pending_item_reconciliation) < MAX_ITEM_RECONCILIATION_PENDING:
