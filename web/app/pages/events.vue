@@ -59,6 +59,19 @@ const selectedTab = computed(() => {
   if (route.query.category === 'custom') return 'custom'
   return 'all'
 })
+const dropHistory = computed(
+  () => selectedTab.value === 'drop.item' || selectedTab.value === 'drop.rare',
+)
+const visibleTabs = computed(() =>
+  dropHistory.value
+    ? tabs.filter(
+        (tab) =>
+          !['item.gains', 'item.transferred', 'thieves', 'trades'].includes(
+            tab.key,
+          ),
+      )
+    : tabs,
+)
 const thievesView = computed(() => selectedTab.value === 'thieves')
 const tradesView = computed(() => selectedTab.value === 'trades')
 const externalHistory = computed(() => thievesView.value || tradesView.value)
@@ -85,9 +98,11 @@ const includeOwnedGains = computed(
 )
 const activeTabLabel = computed(() => activeTab.value?.label ?? 'All')
 const pageTitle = computed(() =>
-  activeTabLabel.value === 'All'
-    ? 'History · All'
-    : `History · ${activeTabLabel.value}`,
+  dropHistory.value
+    ? activeTabLabel.value
+    : activeTabLabel.value === 'All'
+      ? 'History · All'
+      : `History · ${activeTabLabel.value}`,
 )
 const description = computed(() => {
   if (thievesView.value) {
@@ -113,8 +128,12 @@ const historyFilterAria = computed(() => {
   if (tradesView.value) return 'Filter trade reports'
   return 'Filter events by character'
 })
-const fromDate = ref(dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)))
-const toDate = ref(dateInput(new Date()))
+const fromDate = ref(
+  dropHistory.value
+    ? ''
+    : dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)),
+)
+const toDate = ref(dropHistory.value ? '' : dateInput(new Date()))
 const characterInput = ref(
   typeof route.query.q === 'string' ? route.query.q : '',
 )
@@ -229,6 +248,14 @@ watch(
   },
   { immediate: true },
 )
+
+watch(dropHistory, (isDropView, wasDropView) => {
+  if (isDropView === wasDropView) return
+  fromDate.value = isDropView
+    ? ''
+    : dateInput(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000))
+  toDate.value = isDropView ? '' : dateInput(new Date())
+})
 
 watch(characterInput, (value) => {
   if (characterSearchTimer) clearTimeout(characterSearchTimer)
@@ -747,12 +774,20 @@ function localDateBoundary(value: string, addDays: number) {
     <PageHeader
       :title="pageTitle"
       icon="i-lucide-activity"
-      :description="description"
+      :description="dropHistory ? '' : description"
     />
-    <section class="panel events-panel" aria-label="Activity event history">
+    <section
+      class="panel events-panel"
+      :class="{ 'events-panel--drops': dropHistory }"
+      aria-label="Activity event history"
+    >
+      <div v-if="dropHistory" class="events-drop-heading">
+        <strong>All {{ selectedTab === 'drop.rare' ? 'rare' : 'normal' }} drops</strong>
+        <span class="event-count">{{ historyTotalLabel }}</span>
+      </div>
       <div class="events-tabs" role="tablist" aria-label="Event types">
         <NuxtLink
-          v-for="tab in tabs"
+          v-for="tab in visibleTabs"
           :key="tab.key"
           class="compact-button"
           :class="{ selected: selectedTab === tab.key }"
@@ -761,10 +796,12 @@ function localDateBoundary(value: string, addDays: number) {
           :to="{ path: '/events', query: tab.query }"
           >{{ tab.label }}</NuxtLink
         >
-        <span class="event-count">{{ historyTotalLabel }}</span>
+        <span v-if="!dropHistory" class="event-count">{{
+          historyTotalLabel
+        }}</span>
       </div>
 
-      <div class="events-filters">
+      <div class="events-filters" :class="{ 'events-filters--drop': dropHistory }">
         <label>
           <span>{{ historyFilterLabel }}</span>
           <input
@@ -775,11 +812,11 @@ function localDateBoundary(value: string, addDays: number) {
           />
         </label>
         <label v-if="itemTab">
-          <span>Item</span>
+          <span>{{ dropHistory ? 'Item name' : 'Item' }}</span>
           <input
             v-model="itemInput"
             maxlength="128"
-            placeholder="Filter by item"
+            :placeholder="dropHistory ? 'Filter by item name' : 'Filter by item'"
             aria-label="Filter events by item"
           />
         </label>
@@ -791,7 +828,12 @@ function localDateBoundary(value: string, addDays: number) {
           <span>To date</span>
           <input v-model="toDate" type="date" aria-label="To date" />
         </label>
-        <button class="compact-button" type="button" @click="resetFilters">
+        <button
+          v-if="!dropHistory"
+          class="compact-button"
+          type="button"
+          @click="resetFilters"
+        >
           Reset
         </button>
       </div>
@@ -821,7 +863,76 @@ function localDateBoundary(value: string, addDays: number) {
       >
         Trade reports could not be loaded.
       </div>
-      <div class="event-rows-scroll">
+      <div v-if="dropHistory" class="event-table-scroll drop-history-scroll">
+        <table
+          class="event-table drop-event-table drop-history-table"
+          :aria-label="selectedTab === 'drop.rare' ? 'Rare drop observations' : 'Normal drop observations'"
+        >
+          <thead>
+            <tr>
+              <th scope="col">Item</th>
+              <th scope="col">Time</th>
+              <th scope="col">Character</th>
+              <th scope="col">Location</th>
+              <th v-if="selectedTab === 'drop.rare'" scope="col">Map</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in page?.events || []" :key="item.event_id">
+              <td class="drop-history-item">
+                <ItemDetailPopup
+                  v-if="itemRecordFromActivityEvent(item)"
+                  :item="itemRecordFromActivityEvent(item)!"
+                  :to="eventItemTarget(item)"
+                />
+                <NuxtLink v-else class="event-item-link" :to="eventItemTarget(item)">
+                  {{ eventItemName(item) || 'Unknown item' }}
+                </NuxtLink>
+              </td>
+              <td>
+                <time :datetime="item.occurred_at">{{
+                  formatTimestamp(item.occurred_at)
+                }}</time>
+              </td>
+              <td>
+                <NuxtLink
+                  v-if="item.character_id"
+                  class="event-character-link"
+                  :to="`/characters/${item.character_id}`"
+                >{{ item.character }}</NuxtLink>
+                <span v-else>{{ item.character || '—' }}</span>
+              </td>
+              <td class="drop-history-location">{{ eventRowLocation(item) }}</td>
+              <td v-if="selectedTab === 'drop.rare'" class="drop-history-map">
+                <NuxtLink
+                  v-if="hasReliableMapLocation(item)"
+                  :to="eventMapTarget(item)"
+                  class="compact-button map-event-link"
+                  aria-label="Open rare drop on map"
+                >
+                  <UIcon name="i-lucide-map-pin" />
+                </NuxtLink>
+                <span v-else aria-label="Map location unavailable">—</span>
+              </td>
+            </tr>
+            <tr v-if="!page?.events.length">
+              <td
+                :colspan="selectedTab === 'drop.rare' ? 5 : 4"
+                class="drop-history-empty"
+              >
+                {{
+                  connectionState === 'current'
+                    ? selectedTab === 'drop.rare'
+                      ? 'No rare drops recorded yet.'
+                      : 'No normal drops recorded yet.'
+                    : 'Loading drop history…'
+                }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div v-else class="event-rows-scroll">
         <div v-if="tradesView" class="event-history-rows">
           <article
             v-for="row in tradePage?.reports || []"

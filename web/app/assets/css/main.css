@@ -2406,6 +2406,124 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+/* The two drop history screens use the compact table layout of the reference. */
+.events-drop-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  color: #eaf1ff;
+  font-size: 12px;
+}
+
+.events-drop-heading .event-count {
+  margin-left: 0;
+}
+
+.events-filters--drop {
+  grid-template-columns: minmax(145px, 1fr) minmax(145px, 1fr) 140px 140px;
+}
+
+.drop-history-scroll {
+  border: 0;
+  border-radius: 0;
+}
+
+.drop-history-table {
+  width: 100%;
+  min-width: 690px;
+}
+
+.drop-history-table th {
+  height: 27px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.drop-history-table th:first-child {
+  width: 34%;
+}
+
+.drop-history-table th:nth-child(2) {
+  width: 21%;
+}
+
+.drop-history-table th:nth-child(3) {
+  width: 16%;
+}
+
+.drop-history-table td {
+  height: 42px;
+  padding: 5px 8px;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.drop-history-table td:first-child {
+  min-width: 210px;
+}
+
+.drop-history-item .item-detail-popup {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.drop-history-item .item-detail-icon {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+
+.drop-history-table .item-detail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-history-table .event-character-link {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.drop-history-table td > time {
+  color: #cbd5e3;
+}
+
+.drop-history-location {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drop-history-map {
+  text-align: center;
+}
+
+.drop-history-map .map-event-link {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+}
+
+.drop-history-table .drop-history-empty {
+  height: 33px;
+  text-align: center;
+  color: #b5c1d0;
+  font-size: 11px;
+}
+
+.events-panel--drops .event-pagination > label {
+  display: flex;
+  width: auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.events-panel--drops .event-pagination select {
+  width: 76px;
+}
+
 .event-origin {
   display: block;
   margin-top: 3px;
@@ -2560,6 +2678,10 @@ select:focus-visible {
   }
 
   .events-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .events-filters--drop {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
