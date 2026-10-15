@@ -854,8 +854,8 @@ func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 
 func TestCharacterLeaveOwnerMatches(t *testing.T) {
 	active := characters.ActiveSession{
-		AgentID: testAgentID,
-		SessionID: "22222222-3333-4444-8555-666666666666",
+		AgentID:    testAgentID,
+		SessionID:  "22222222-3333-4444-8555-666666666666",
 		Generation: 7,
 	}
 	if !characterLeaveOwnerMatches(active, true, testAgentID, 7, active.SessionID) ||
@@ -863,11 +863,11 @@ func TestCharacterLeaveOwnerMatches(t *testing.T) {
 		t.Fatal("own current session (including legacy leave) should match")
 	}
 	for _, test := range []struct {
-		name string
-		found bool
-		agentID string
+		name       string
+		found      bool
+		agentID    string
 		generation uint64
-		sessionID string
+		sessionID  string
 	}{
 		{"missing session", false, testAgentID, 7, active.SessionID},
 		{"another agent", true, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", 7, active.SessionID},
