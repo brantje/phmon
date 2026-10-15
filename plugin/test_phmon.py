@@ -2547,9 +2547,26 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(len(self.worker._pet_transition_pending_events), 1)
         self.worker.stop()
         self.assertEqual(self.worker._pet_transition_pending_events, [])
-        released = self.worker._event_samples.get_nowait()
-        self.assertEqual(released['kind'], 'pet.transport_died')
-        self.assertEqual(released['payload'], {'value': 'horse-7'})
+        self.assertTrue(self.worker._event_samples.empty())
+        released = plugin.EventSpool(self.spool_path).pending()
+        self.assertEqual(len(released), 1)
+        self.assertEqual(released[0]['kind'], 'pet.transport_died')
+        self.assertEqual(released[0]['payload'], {'value': 'horse-7'})
+
+    def test_worker_stop_retains_unspooled_event_after_disk_failure(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0), \
+                patch.object(plugin, '_get_character_data', return_value=self.identity), \
+                patch.object(plugin, '_get_position', return_value={'region': 25273, 'x': 10, 'y': 20, 'z': 0}):
+            plugin.handle_event(plugin.EVENT_TRANSPORT_DIED, 'horse-7')
+        held = self.worker._pet_transition_pending_events[0]['record']
+        with patch.object(self.worker._death_spool, 'add', return_value=False):
+            self.worker.stop()
+        self.assertEqual(self.worker._pending_event_spool_record['event_id'], held['event_id'])
+        self.worker._spool_queued_events()
+        self.assertIsNone(self.worker._pending_event_spool_record)
+        persisted = plugin.EventSpool(self.spool_path).pending()
+        self.assertEqual(len(persisted), 1)
+        self.assertEqual(persisted[0]['event_id'], held['event_id'])
 
     def test_teleport_ready_and_callback_cancel_preceding_transport_churn(self):
         plugin._joined_game_teleport_pending = False

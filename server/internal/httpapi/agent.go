@@ -1008,6 +1008,26 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 				rejectAgentFrame(conn, websocket.StatusPolicyViolation, "invalid timestamp", hello.AgentID, hello.ProtocolVersion)
 				return
 			}
+			// Verify the independently recorded connection generation and session
+			// before any DB write. EndSession can time out before its ownership
+			// predicate runs, so its non-ErrNotFound error is not proof of ownership.
+			expectedSessionID := ""
+			if hello.ProtocolVersion >= 3 {
+				expectedSessionID = message.SessionID
+			}
+			ownerCtx, ownerCancel := context.WithTimeout(sessionCtx, 2*time.Second)
+			active, hasActive, ownerErr := h.characters.ActiveSession(ownerCtx, message.CharacterID)
+			ownerCancel()
+			if ownerErr != nil {
+				slog.Warn("character leave owner lookup unavailable", "agent_id", hello.AgentID, "reason", ownerErr.Error())
+				continue
+			}
+			if !characterLeaveOwnerMatches(active, hasActive, hello.AgentID, generation, expectedSessionID) {
+				if !writeCharacterRejected(sessionCtx, writer, hello.ProtocolVersion, message.CharacterID, message.SessionID) {
+					return
+				}
+				continue
+			}
 			ctx, cancel := context.WithTimeout(sessionCtx, 2*time.Second)
 			var e error
 			if hello.ProtocolVersion >= 3 {
@@ -1025,10 +1045,9 @@ func (h *agentHandler) connect(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 			}
-			// A timed-out leave still means this socket stopped observing the
-			// session. Drop its in-memory markers even when the durable write
-			// did not commit; an unowned session stays untouched.
-			h.releaseLiveCharacterSession(message.SessionID)
+			// The verified UUID only belongs to this socket generation. On a
+			// write timeout it is safe to remove that UUID's in-memory snapshots.
+			h.releaseLiveCharacterSession(active.SessionID)
 		case "resource.snapshot", "resource.delta":
 			if hello.ProtocolVersion < 4 || h.resources == nil || h.characters == nil ||
 				!agentdomain.ValidAgentID(message.CharacterID) || !agentdomain.ValidAgentID(message.SessionID) ||
@@ -1364,4 +1383,11 @@ func durationSeconds(value time.Duration) int {
 		return 1
 	}
 	return seconds
+}
+
+// characterLeaveOwnerMatches fences live-state removal to the exact active
+// session that was independently observed before a potentially failed write.
+func characterLeaveOwnerMatches(active characters.ActiveSession, found bool, agentID string, generation uint64, expectedSessionID string) bool {
+	return found && active.AgentID == agentID && active.Generation == generation &&
+		(expectedSessionID == "" || active.SessionID == expectedSessionID)
 }

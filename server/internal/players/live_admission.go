@@ -24,7 +24,23 @@ func (s *Registry) admitLiveObservations(ctx context.Context, observations []Obs
 		return observations, nil
 	}
 	server := serverKey(observations[0].Server)
-	rows, err := s.pool.Query(ctx, identityQuery(`WHERE p.server_key=$1`)+`
+	// Limit the materialized identity projection to candidate names and owners
+	// of candidate aliases. Include *all* candidate alias owners so the
+	// existing unique-owner/conflict checks remain authoritative.
+	rows, err := s.pool.Query(ctx, identityQuery(`WHERE p.server_key=$1 AND (
+   p.observed_name_key=ANY($2::text[])
+   OR EXISTS (
+     SELECT 1 FROM player_enrichments owners
+     CROSS JOIN LATERAL jsonb_array_elements(
+       CASE WHEN jsonb_typeof(owners.extended->'identity_links')='array'
+         THEN owners.extended->'identity_links' ELSE '[]'::jsonb END
+     ) link
+     WHERE owners.player_id=p.id
+       AND lower(btrim(link->>'alias'))=ANY($2::text[])
+       AND link->>'status'='inferred'
+       AND link->>'reason'='job_item_transition'
+   )
+ )`)+`
  SELECT b.observed_name_key FROM identity_base b
  JOIN identity_members m ON m.id=b.id
  JOIN identity_players p ON p.id=m.canonical_id

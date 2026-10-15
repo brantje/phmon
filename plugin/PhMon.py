@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.36'
+pVersion = '1.9.37'
 pUrl = ''
 
 PROTOCOL_VERSION = 19
@@ -3257,6 +3257,8 @@ class AgentWorker(object):
         self._pending_drop_lock = threading.Lock()
         self._pending_drop_events = []
         self._event_samples = _queue.Queue(maxsize=256)
+        self._event_spool_lock = threading.Lock()
+        self._pending_event_spool_record = None
         self._death_samples = self._event_samples
         self._death_spool = DeathEventSpool(self.config.get('death_spool_path'))
         self._map_samples = _queue.Queue(maxsize=1)
@@ -4267,6 +4269,9 @@ class AgentWorker(object):
         # here keeps worker shutdown from dropping it inside the hold window.
         self._reset_pet_transition(release_pending=True)
         self.stop_event.set()
+        # Persist all released lifecycle events before returning from stop().
+        # The spool lock prevents a concurrent network pass from racing us.
+        self._spool_queued_events()
         self._cancel_navigation_generation('plugin_stopped')
         with self._socket_lock:
             client = self._socket
@@ -4529,6 +4534,8 @@ class AgentWorker(object):
                     remaining = deadline - _monotonic()
                     if remaining <= 0 or self.stop_event.wait(min(0.25, remaining)):
                         break
+        # The socket's finally block can release held events after stop() ran.
+        self._spool_queued_events()
 
     def _drain_server_messages(self, client, timeout, max_frames=32):
         # One read per iteration used to fall behind the acknowledgements from
@@ -4977,14 +4984,22 @@ class AgentWorker(object):
             client.send_json(frame)
 
     def _spool_queued_events(self):
-        while True:
-            try:
-                event = self._event_samples.get_nowait()
-            except _queue.Empty:
-                break
-            if not self._death_spool.add(event):
-                self.status = 'Activity event spool is unavailable or full; an occurrence needs operator attention.'
-                _log('activity event was not sent because durable local spooling failed')
+        # Both the phBot stop callback and the network worker may drain here.
+        # Retain the oldest failed record instead of dropping it on disk errors.
+        with self._event_spool_lock:
+            while True:
+                event = self._pending_event_spool_record
+                if event is None:
+                    try:
+                        event = self._event_samples.get_nowait()
+                    except _queue.Empty:
+                        break
+                if not self._death_spool.add(event):
+                    self._pending_event_spool_record = event
+                    self.status = 'Activity event spool is unavailable or full; an occurrence needs operator attention.'
+                    _log('activity event was not sent because durable local spooling failed')
+                    break
+                self._pending_event_spool_record = None
 
     def _flush_events(self, client):
         self._spool_queued_events()

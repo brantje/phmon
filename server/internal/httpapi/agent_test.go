@@ -851,3 +851,33 @@ func TestInvalidMapObservationsDoNotDisconnectAgent(t *testing.T) {
 		t.Fatal("rejected observation ended the session")
 	}
 }
+
+func TestCharacterLeaveOwnerMatches(t *testing.T) {
+	active := characters.ActiveSession{
+		AgentID: testAgentID,
+		SessionID: "22222222-3333-4444-8555-666666666666",
+		Generation: 7,
+	}
+	if !characterLeaveOwnerMatches(active, true, testAgentID, 7, active.SessionID) ||
+		!characterLeaveOwnerMatches(active, true, testAgentID, 7, "") {
+		t.Fatal("own current session (including legacy leave) should match")
+	}
+	for _, test := range []struct {
+		name string
+		found bool
+		agentID string
+		generation uint64
+		sessionID string
+	}{
+		{"missing session", false, testAgentID, 7, active.SessionID},
+		{"another agent", true, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", 7, active.SessionID},
+		{"another generation", true, testAgentID, 8, active.SessionID},
+		{"another session", true, testAgentID, 7, "44444444-5555-4666-8777-888888888888"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if characterLeaveOwnerMatches(active, test.found, test.agentID, test.generation, test.sessionID) {
+				t.Fatal("unowned session must never be eligible for live-state cleanup")
+			}
+		})
+	}
+}
