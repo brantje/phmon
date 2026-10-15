@@ -34,6 +34,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
+      - name: Diagnostic - print exact Prettier changes
+        run: |
+          cd web
+          npx prettier --write app/pages/analytics.vue
+          git diff -- app/pages/analytics.vue
       - run: bash scripts/check.sh
   stack:
     runs-on: ubuntu-latest
