@@ -2725,9 +2725,13 @@ The `/items` route adds a unified read-only Item Search alongside canonical
 per-character and guild inventory views. It uses `ItemDetailPopup`, includes
 source container and observer, marks observed/checked freshness and offers
 server, name/code, owner, category/degree and include-equipped filters. Guild
-rows select one attributable observer revision per server/guild. `/economy`
-adds filtered, source-linked Global WTB/WTS/WTT advertisements without
-representing ads as completed sales. `/events` now has separate Owned Gains
+rows select one attributable observer revision per server/guild; count and
+page use one PostgreSQL repeatable-read snapshot to avoid mixing revisions.
+`/economy` adds filtered, source-linked Global WTB/WTS/WTT advertisements
+without representing ads as completed sales. Stable per-broadcast IDs and
+verified item identity within free text are not available, so it intentionally
+does not fuse identical cross-observer messages or advertise structured item
+taxonomy/seal/degree filters. Original text remains searchable. `/events` now has separate Owned Gains
 and Transfers tabs, with linked event IDs available for inspection.
 
 **Visual acceptance pending:** 1440×1000, 1280×800 and 390×844 browser
