@@ -1540,6 +1540,10 @@ def _item_sort_type(server, model):
         sort_type = 'Weapon'
     elif tid1 == 1 and tid2 == 4:
         sort_type = 'Shield'
+    elif tid1 == 3 and tid2 == 3 and definition.get('tid3') == 4:
+        # Silkroad arrows and bolts share the ammunition family. Keep them out
+        # of activity tracking while retaining their live inventory snapshots.
+        sort_type = 'Ammo'
     elif tid1 == 3 and tid2 == 1:
         sort_type = 'Potion'
     elif tid1 == 3 and tid2 == 2:
@@ -1587,6 +1591,8 @@ def _cache_resource_item_types(inputs, server):
 
 
 def _ignore_item_event(config, sort_type):
+    if sort_type == 'Ammo':
+        return True
     setting = _ITEM_TYPE_FILTERS.get(sort_type)
     if setting is None:
         return False
@@ -4093,6 +4099,16 @@ class AgentWorker(object):
         for signature in sorted(signatures):
             if signature in uncertain:
                 continue
+            # Arrows and bolts remain visible in resource snapshots, but do
+            # not create acquisition, quantity, loss or transfer activity.
+            representative = next((container[signature]
+                                   for group in (before, after)
+                                   for container in group.values()
+                                   if signature in container), None)
+            item = representative.get('item') if isinstance(representative, dict) else None
+            if (_cached_item_sort_type(identity.get('server') if isinstance(identity, dict) else None,
+                                       item.get('model') if isinstance(item, dict) else None) == 'Ammo'):
+                continue
             old_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in before.values())
             new_total = sum(entries.get(signature, {}).get('quantity', 0) for entries in after.values())
             if old_total != new_total:
@@ -4317,6 +4333,10 @@ class AgentWorker(object):
             return selected['event_id']
 
     def _queue_derived_event(self, identity, kind, source_ref, payload, occurred_at, position, item=None):
+        if (isinstance(item, dict) and
+                _cached_item_sort_type(identity.get('server') if isinstance(identity, dict) else None,
+                                       item.get('model')) == 'Ammo'):
+            return False
         gap = self._item_event_gap
         if gap is not None and kind.startswith('item.') and isinstance(payload, dict):
             marker = {key: gap[key] for key in ('reason', 'from', 'to') if gap.get(key)}
@@ -6869,7 +6889,7 @@ def _queue_canonical_event(kind, category, source, source_ref, payload, identity
     }
     if item_model is not None:
         event['item_model'] = item_model
-        if isinstance(identity, dict) and _item_filters_enabled(_profile_config or {}):
+        if isinstance(identity, dict):
             sort_type = _item_sort_type(identity.get('server'), item_model)
             event['_phmon_item_sort_type'] = sort_type
             if _ignore_item_event(_profile_config or {}, sort_type):
