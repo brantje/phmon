@@ -3888,35 +3888,53 @@ class AgentWorker(object):
             payload = {'pet_id': key, 'pet': value}
         self._queue_derived_event(identity, kind, source_ref, payload, occurred_at, position)
 
+    def _finalize_pending_item_reconciliation(self, identity, now=None, flush_oldest=False):
+        """Publish a bounded, unmatched net change with its original observation time.
+
+        A delayed opposite delta proves a transfer only while the candidate is
+        pending. Expiry or buffer pressure must not erase an independently
+        observed quantity change. Never upgrade its unknown cause to a pickup.
+        """
+        if now is None:
+            now = _monotonic()
+        remaining = []
+        for index, entry in enumerate(self._pending_item_reconciliation):
+            if entry['expires_at'] > now and not (flush_oldest and index == 0):
+                remaining.append(entry)
+                continue
+            item = entry['item']
+            if not _item_has_identity(item):
+                continue
+            direction, quantity = entry['direction'], entry['quantity']
+            container = _container_reference(entry['container'], entry['record'])
+            payload = {'item': item, 'quantity_delta': quantity}
+            if direction == 'gain':
+                kind = 'item.acquired' if entry['old_total'] == 0 else 'item.quantity_increased'
+                payload['destination_container'] = container
+                payload['acquisition_method'] = 'unknown'
+                if entry['selected']:
+                    container['slot'] = entry['selected'][0]
+                if entry['ambiguous']:
+                    payload['item_instance_unobserved'] = True
+            else:
+                kind = 'item.quantity_decreased'
+                payload['source_container'] = container
+            self._queue_derived_event(identity, kind, 'item_container', payload,
+                                      entry['occurred_at'], entry['position'], item)
+        self._pending_item_reconciliation = remaining
+
     def _emit_item_deltas(self, identity, before, after, occurred_at, position, uncertain=()):
-        # Only one unambiguous opposite observation, equal model/quantity and
-        # different known containers, may reconcile across consecutive samples.
-        # Expired and overflowed candidates remain unknown resource observations,
-        # never speculative acquisitions or drops. Reset is performed on scope
-        # changes, gaps, unavailable containers and new baselines above.
+        # A unique opposite delta within the bounded window can prove a delayed
+        # transfer. Expired unmatched observations remain canonical unknown
+        # gains/losses rather than being silently discarded.
         now = _monotonic()
+        self._finalize_pending_item_reconciliation(identity, now)
         self._pending_item_reconciliation = [
             entry for entry in self._pending_item_reconciliation
-            if entry['expires_at'] > now and entry['signature'] not in uncertain]
+            if entry['signature'] not in uncertain]
         signatures = set()
         for container in before.values(): signatures.update(container)
         for container in after.values(): signatures.update(container)
-        def inventory_slots(containers):
-            slots = {}
-            for record in containers.get('inventory', {}).values():
-                slots.update(record.get('slot_items', {}))
-            return slots
-
-        before_slots = inventory_slots(before)
-        after_slots = inventory_slots(after)
-        new_model_slots = {}
-        for slot, slot_item in after_slots.items():
-            # Only a formerly empty bag slot can identify one particular item.
-            if slot in before_slots:
-                continue
-            model = slot_item.get('model')
-            if isinstance(model, int) and not isinstance(model, bool) and model > 0:
-                new_model_slots.setdefault(model, []).append((slot, slot_item))
         for signature in sorted(signatures):
             if signature in uncertain:
                 continue
@@ -3984,18 +4002,22 @@ class AgentWorker(object):
                     possible_destination = direction == 'loss' and amount > 1 and any(
                         key != container_key for key in before)
                     if possible_source or possible_destination:
-                        if len(self._pending_item_reconciliation) < MAX_ITEM_RECONCILIATION_PENDING:
-                            item, selected, ambiguous = (
-                                _event_gain_item(before[container_key].get(signature), record, amount)
-                                if direction == 'gain'
-                                else (record.get('item') or {}, None, False))
-                            self._pending_item_reconciliation.append({
-                                'signature': signature, 'container': container_key,
-                                'direction': direction, 'quantity': amount,
-                                'record': record, 'item': item, 'selected': selected,
-                                'ambiguous': ambiguous,
-                                'expires_at': now + ITEM_RECONCILIATION_WINDOW_SECONDS,
-                            })
+                        # Preserve both the oldest observation and the bounded
+                        # memory budget when many independent changes arrive.
+                        if len(self._pending_item_reconciliation) >= MAX_ITEM_RECONCILIATION_PENDING:
+                            self._finalize_pending_item_reconciliation(identity, now, flush_oldest=True)
+                        item, selected, ambiguous = (
+                            _event_gain_item(before[container_key].get(signature), record, amount)
+                            if direction == 'gain'
+                            else (record.get('item') or {}, None, False))
+                        self._pending_item_reconciliation.append({
+                            'signature': signature, 'container': container_key,
+                            'direction': direction, 'quantity': amount,
+                            'record': record, 'item': item, 'selected': selected,
+                            'ambiguous': ambiguous, 'old_total': old_total,
+                            'occurred_at': occurred_at, 'position': position,
+                            'expires_at': now + ITEM_RECONCILIATION_WINDOW_SECONDS,
+                        })
                         continue
             if old_total == new_total:
                 gains, losses = [], []
@@ -4080,27 +4102,11 @@ class AgentWorker(object):
                         payload['destination_container']['slot'] = selected[0]
                     if ambiguous:
                         payload['item_instance_unobserved'] = True
+                    # A same-model callback plus a new bag slot does not prove
+                    # that this gain came from that world drop (trade, storage,
+                    # party and pet sources can compete). Preserve both facts;
+                    # only a verified receipt may establish a pickup link.
                     payload['acquisition_method'] = 'unknown'
-                    model = item.get('model')
-                    candidates = new_model_slots.get(model, [])
-                    if (container_key == 'inventory' and amount == 1 and len(changes) == 1 and
-                            not any(delta[0] == 'loss' for delta in deltas) and
-                            isinstance(model, int) and len(candidates) == 1 and
-                            candidates[0][0] in record.get('slots', []) and
-                            candidates[0][1].get('quantity', 1) == 1):
-                        slot, observed_item = candidates[0]
-                        inventory_quantity = sum(
-                            entry.get('quantity', 0)
-                            for entry in after.get('inventory', {}).values()
-                            if (entry.get('item') or {}).get('model') == model)
-                        drop_event_id = self._claim_drop_for_inventory_gain(identity, observed_item,
-                                                                              inventory_quantity)
-                        if drop_event_id:
-                            payload['item'] = observed_item
-                            payload['destination_container'] = {'type': 'inventory', 'slot': slot}
-                            payload['drop_event_id'] = drop_event_id
-                            payload.pop('item_instance_unobserved', None)
-                            item = observed_item
                 else:
                     kind = 'item.quantity_decreased'
                     payload = {'item': item, 'quantity_delta': amount,
