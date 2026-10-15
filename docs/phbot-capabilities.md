@@ -1918,3 +1918,27 @@ A delayed item movement candidate comes from an already comparable pair of obser
 ### Session teardown and bounded item deltas
 
 The network worker finalizes any supported pending net quantity changes while the old character and session are still authoritative. This occurs before the leave message, character replacement/registration, backend rejection, reconnect setup, and socket teardown clears the old IDs. A candidate is emitted once as an unknown-cause, originally timestamped item quantity observation, never as proof of a pickup or a world drop. No unmatched candidate is carried into the new session as an inferred transfer. If the old session binding was already lost, the plugin logs the limitation instead of attributing the delta to an unrelated character. Regression tests cover old-session IDs and rejection teardown; live phBot reconnect evidence is still needed.
+
+### Item changes across a backend outage or lost sample (plugin 1.9.40)
+
+Item and pet-container changes are derived by comparing complete resource
+snapshots. Earlier plugins discarded the comparison point whenever the backend
+connection dropped (a new character session) or the resource sampler fell behind,
+so an item gained during that interval became part of the next baseline and was
+never reported. Plugin 1.9.40 keeps the last complete snapshot for the same
+character, guild and pet roster for up to 900 seconds and compares it with the
+first complete snapshot after reconnect or the lost sample.
+
+Resulting `item.*` events carry `payload.observation_gap` with `reason`
+(`backend_reconnect` or `sample_gap`), the `from`/`to` times of the unobserved
+interval and, for reconnects, `previous_session_id`. `occurred_at` is the time of
+the later snapshot; the true time inside the interval is unknown and is never
+back-dated. The cause stays `unknown` and no `drop_event_id` is attached. Party,
+academy and pet-lifecycle transitions are not derived across a gap. A character
+leave, character/guild/profile switch, a changed pet roster or a gap above 900
+seconds still starts a fresh baseline.
+
+Limit: the comparison only proves that an item is present now and was not before.
+Pet-held items still expose only the basic `get_pets()` fields (no plus, whites or
+blues), so a gap-reconciled pet gain shows the item without rolls until a verified
+pet item packet decoder exists.

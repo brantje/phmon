@@ -57,7 +57,9 @@ export interface ActivityEvent {
   related_item_observation?: {
     event_id: string
     association:
-      'stored_unverified_drop_event_id' | 'nearby_same_model_observation'
+      | 'stored_unverified_drop_event_id'
+      | 'nearby_same_model_observation'
+      | 'gap_reconciled_same_model'
     source: string
     occurred_at: string
     container: Record<string, unknown>

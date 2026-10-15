@@ -1673,3 +1673,25 @@ tracking. Existing unresolved records/imports are retained.
 
 See [cause, rule and isolated validation](reference/player-admission-2026-10-12.md).
 This source change has not been deployed; it does not establish a new live receipt.
+
+### Item event `observation_gap` (plugin 1.9.40, protocol unchanged)
+
+`item.acquired`, `item.quantity_increased`, `item.quantity_decreased` and
+`item.transferred` events from `phbot.state_diff`/`item_container` may carry an
+additive payload object:
+
+```json
+"observation_gap": {
+  "reason": "backend_reconnect" | "sample_gap",
+  "from": "<RFC3339 of the last complete snapshot>",
+  "to": "<RFC3339 of the snapshot that exposed the change>",
+  "previous_session_id": "<uuid, backend_reconnect only>"
+}
+```
+
+The server rejects unknown keys, a reason other than the two above, `to < from`,
+an interval above one hour, a `previous_session_id` on `sample_gap`, the marker
+on a non-item event or any event that also carries `drop_event_id`. Read-time
+event queries may offer a unique same-model drop callback inside the interval as
+`related_item_observation.association = "gap_reconciled_same_model"`. That
+suggestion is never enrichment, a pickup link or a count.

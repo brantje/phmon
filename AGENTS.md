@@ -250,6 +250,44 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-15 item gains across outages and pet item evidence
+
+Active increment: the operator's "Poison Horn Spear is missing detailed data"
+investigation (Kalypso, rare drop 19:50:41 UTC, model 4115). Two plugin causes:
+(1) the spear was picked up by the pet while the backend was down, and the first
+snapshot after reconnect became a fresh baseline, so no gain event was ever
+emitted; (2) pet-held items never carry plus/whites/blues because `get_pets()`
+returns only seven basic fields and pet packets are only counted.
+
+Implemented Fix 1: plugin **1.9.40** (protocol stays 20) keeps the last complete
+snapshot across a backend reconnect or lost sample (same character, guild and pet
+roster, at most 900 s) and reports the net item change with
+`payload.observation_gap`. Party/academy/pet transitions are not derived across a
+gap; `occurred_at` is the later snapshot time; no `drop_event_id` is attached.
+Server validates the marker and offers a unique same-model drop in the interval as
+`related_item_observation.association = gap_reconciled_same_model` (never
+enrichment, link or count). Web labels it "Observed after a connection gap".
+Existing events are not backfilled; the spear's gain was never emitted.
+
+Fix 2 (pet item stats) is only half possible without evidence: added the read-only
+`tools/pet-item-capture/` probe. The decoder itself is **blocked** until the
+operator supplies a capture; no packet layout was guessed.
+
+Files: `plugin/{PhMon.py,test_phmon.py,README.md}`,
+`server/internal/events/{store.go,validation_test.go,store_integration_test.go}`,
+`web/{shared/types/live.ts,app/utils/itemDetailPopup.ts,app/pages/events.vue,
+tests/itemDetailPopup.test.ts}`, `tools/pet-item-capture/`,
+`docs/{protocol,phbot-capabilities}.md`. The pre-existing uncommitted edits to
+`web/app/assets/css/main.css` and `web/app/pages/events.vue` were preserved.
+
+Validation: 294 plugin tests; protocol fingerprint unchanged; `go test -race
+./internal/events` against a disposable PostgreSQL database (gap validation and
+the unique/competing association); 284 frontend unit tests; typecheck; Prettier.
+Not run: full `scripts/check.sh`, browser viewports, live replay (no backend
+outage was induced; no real phBot runtime). Exact next action: operator installs
+plugin 1.9.40 and the rebuilt server/web, then runs the pet item capture
+(procedure in its README) so the pet decoder can be verified.
+
 ### Resume — 2026-10-12 Stop unidentified nearby-player registry admission
 
 The operator asked for the cause of recurring Unknown/Unknown rows and a source

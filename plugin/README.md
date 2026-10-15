@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.39**, using agent protocol **20**. It
+The current local plugin release is **1.9.40**, using agent protocol **20**. It
 reports job name, guild member/online counts, donated GP and union guilds as the
 `character_info` resource for the Stats Info card. It
 accepts a display-only route from another plugin in the same phBot process through

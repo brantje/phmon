@@ -28,6 +28,7 @@ export function relatedItemDetail(item: Record<string, unknown>) {
     ![
       'stored_unverified_drop_event_id',
       'nearby_same_model_observation',
+      'gap_reconciled_same_model',
     ].includes(String(observation.association)) ||
     typeof observation.event_id !== 'string' ||
     !Object.keys(snapshot).length
@@ -36,6 +37,7 @@ export function relatedItemDetail(item: Record<string, unknown>) {
   const container = asRecord(observation.container)
   return {
     eventID: observation.event_id,
+    afterGap: observation.association === 'gap_reconciled_same_model',
     source:
       container.type === 'pets'
         ? 'Pet inventory observation'
@@ -58,7 +60,9 @@ export function itemTooltipPresentation(item: Record<string, unknown>) {
     model: { ...model, catalogNote: '' },
     caption: related
       ? hasStats
-        ? 'Observed item · pickup unverified'
+        ? related.afterGap
+          ? 'Observed after a connection gap · pickup unverified'
+          : 'Observed item · pickup unverified'
         : 'Observed item · stats unavailable'
       : model.catalogNote.startsWith('Catalog ranges')
         ? 'Catalog ranges · rolls unavailable'
@@ -66,7 +70,7 @@ export function itemTooltipPresentation(item: Record<string, unknown>) {
           ? 'Item stats unavailable'
           : '',
     sourceDescription: related
-      ? `${related.source}. Relation to the drop is unverified. Source event: ${related.eventID}`
+      ? `${related.source}${related.afterGap ? ', found after a connection gap' : ''}. Relation to the drop is unverified. Source event: ${related.eventID}`
       : model.catalogNote,
   }
 }

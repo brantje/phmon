@@ -1,0 +1,89 @@
+import importlib.util
+import json
+from pathlib import Path
+import sys
+import tempfile
+import time
+import types
+import unittest
+
+
+class PetItemCaptureTests(unittest.TestCase):
+    def load(self, pets, inventory, lines):
+        phbot = types.ModuleType('phBot')
+        phbot.get_pets = lambda: pets()
+        phbot.get_inventory = lambda: inventory()
+        phbot.log = lines.append
+        qtbind = types.ModuleType('QtBind')
+        qtbind.init = lambda *_args: object()
+        qtbind.createLabel = lambda *_args: None
+        qtbind.createButton = lambda *_args: None
+        self.before = {name: sys.modules.get(name) for name in ('phBot', 'QtBind')}
+        sys.modules['phBot'] = phbot
+        sys.modules['QtBind'] = qtbind
+        path = Path(__file__).with_name('PetItemCapture.py')
+        spec = importlib.util.spec_from_file_location('pet_capture_test', path)
+        probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(probe)
+        return probe
+
+    def tearDown(self):
+        for name, module in getattr(self, 'before', {}).items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+    def test_probe_is_unarmed_by_default_and_records_only_pet_packets(self):
+        lines = []
+        probe = self.load(lambda: {}, lambda: {'items': []}, lines)
+        self.assertTrue(probe.handle_joymax(0x30C8, b'\x01\x02'))
+        self.assertEqual(probe._packets, [])
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            self.assertTrue(probe.handle_joymax(0x30C8, b'\x01\x02\x03'))
+            self.assertTrue(probe.handle_joymax(0xB034, b'\xAA' * (probe.MAX_PACKET_BYTES + 10)))
+            self.assertTrue(probe.handle_joymax(0x3040, b'secret'))
+            self.assertEqual([p['opcode'] for p in probe._packets], ['0x30C8', '0xB034'])
+            self.assertEqual(probe._packets[0]['hex'], '010203')
+            self.assertTrue(probe._packets[1]['truncated'])
+            self.assertEqual(len(probe._packets[1]['hex']), probe.MAX_PACKET_BYTES * 2)
+            probe.stop_pet_capture()
+            written = list(Path(directory).glob('pet-item-capture-*.json'))
+            self.assertEqual(len(written), 1)
+            document = json.loads(written[0].read_text())
+            self.assertEqual(document['packet_total'], 2)
+            self.assertNotIn('secret', written[0].read_text())
+
+    def test_packet_count_is_bounded_and_item_rows_are_primitives_only(self):
+        lines = []
+        item = {'name': 'Spear', 'model': 4115, 'plus': 5,
+                'blues': {70: 6, 76: 6}, 'whites': {8: 100}, 'handle': object()}
+        probe = self.load(lambda: {7: {'type': 'pick', 'items': [None, item]}},
+                          lambda: {'items': [item]}, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            for _ in range(probe.MAX_PACKETS + 20):
+                probe.handle_joymax(0xB034, b'\x00')
+            self.assertEqual(len(probe._packets), probe.MAX_PACKETS)
+            self.assertEqual(probe._packet_total, probe.MAX_PACKETS + 20)
+            probe.event_loop()
+            snapshot = probe._snapshots[-1]
+            row = snapshot['pets']['7']['items'][0]
+            self.assertEqual(row['slot'], 1)
+            pairs = dict((key, value) for key, value in row['fields']['pairs'])
+            self.assertEqual(pairs['name'], 'Spear')
+            self.assertEqual(pairs['plus'], 5)
+            self.assertEqual(pairs['blues']['pairs'], [[70, 6], [76, 6]])
+            self.assertEqual(pairs['handle'], 'object')
+            self.assertEqual(snapshot['pets']['7']['type'], 'pick')
+            self.assertNotIn('object object', json.dumps(snapshot))
+            probe._capture_until = time.monotonic() - 1
+            probe.event_loop()
+            self.assertTrue(any('wrote pet-item-capture-' in line for line in lines))
+
+
+if __name__ == '__main__':
+    unittest.main()

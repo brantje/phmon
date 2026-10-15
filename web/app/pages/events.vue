@@ -63,16 +63,7 @@ const selectedTab = computed(() => {
 const dropHistory = computed(
   () => selectedTab.value === 'drop.item' || selectedTab.value === 'drop.rare',
 )
-const visibleTabs = computed(() =>
-  dropHistory.value
-    ? tabs.filter(
-        (tab) =>
-          !['item.gains', 'item.transferred', 'thieves', 'trades'].includes(
-            tab.key,
-          ),
-      )
-    : tabs,
-)
+const visibleTabs = computed(() => tabs)
 const thievesView = computed(() => selectedTab.value === 'thieves')
 const tradesView = computed(() => selectedTab.value === 'trades')
 const externalHistory = computed(() => thievesView.value || tradesView.value)
@@ -688,7 +679,9 @@ function eventSourceLabel(item: ActivityEvent) {
       item.kind === 'item.quantity_increased') &&
     item.source === 'phbot.state_diff'
   )
-    return 'Observed owned gain · origin unknown'
+    return record(record(item.payload).observation_gap).reason
+      ? 'Observed owned gain after a connection gap · origin unknown'
+      : 'Observed owned gain · origin unknown'
   if (item.kind === 'item.transferred')
     return 'Observed container movement · not a drop'
   return ''
@@ -782,9 +775,6 @@ function localDateBoundary(value: string, addDays: number) {
       :class="{ 'events-panel--drops': dropHistory }"
       aria-label="Activity event history"
     >
-      <div v-if="dropHistory" class="events-drop-heading">
-        <span class="event-count">{{ historyTotalLabel }}</span>
-      </div>
       <div class="events-tabs" role="tablist" aria-label="Event types">
         <NuxtLink
           v-for="tab in visibleTabs"
@@ -796,9 +786,7 @@ function localDateBoundary(value: string, addDays: number) {
           :to="{ path: '/events', query: tab.query }"
           >{{ tab.label }}</NuxtLink
         >
-        <span v-if="!dropHistory" class="event-count">{{
-          historyTotalLabel
-        }}</span>
+        <span class="event-count">{{ historyTotalLabel }}</span>
       </div>
 
       <div
@@ -883,7 +871,13 @@ function localDateBoundary(value: string, addDays: number) {
               <th scope="col">Time</th>
               <th scope="col">Character</th>
               <th scope="col">Location</th>
-              <th v-if="selectedTab === 'drop.rare'" scope="col">Map</th>
+              <th
+                v-if="selectedTab === 'drop.rare'"
+                class="drop-history-map-head"
+                scope="col"
+              >
+                Map
+              </th>
             </tr>
           </thead>
           <tbody>

@@ -2588,11 +2588,89 @@ class ResourceEventDerivationTests(unittest.TestCase):
         queued_after = self.worker._resource_samples.get_nowait()
         self.assertTrue(self.worker._resource_sample_is_current(queued_after))
 
-    def test_sampling_gap_resets_baseline_after_quantity_change(self):
+    def test_sampling_gap_reports_net_change_with_gap_marker(self):
         self.observe(self.resources(bag=[(13, self.item(1))]))
         self.worker._resource_sample_gap = True
         self.observe(self.resources(bag=[(13, self.item(20))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 19)
+        gap = events[0]['payload']['observation_gap']
+        self.assertEqual(gap['reason'], 'sample_gap')
+        self.assertNotIn('previous_session_id', gap)
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+        # The next ordinary comparison carries no gap marker.
+        self.observe(self.resources(bag=[(13, self.item(21))]))
+        later = self.drain()
+        self.assertEqual(len(later), 1)
+        self.assertNotIn('observation_gap', later[0]['payload'])
+
+    def reconnect(self, session='00000000-1111-4222-8333-444444444444'):
+        old = self.worker.session_id
+        self.worker.session_id = session
+        return old
+
+    def test_reconnect_compares_against_last_snapshot_before_outage(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        old = self.reconnect()
+        self.worker._resource_sample_gap = True
+        self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.acquired'])
+        payload = events[0]['payload']
+        self.assertEqual(payload['destination_container']['type'], 'pets')
+        self.assertEqual(payload['acquisition_method'], 'unknown')
+        self.assertEqual(payload['observation_gap']['reason'], 'backend_reconnect')
+        self.assertEqual(payload['observation_gap']['previous_session_id'], old)
+        self.assertNotIn('drop_event_id', payload)
+        self.assertEqual(events[0]['session_id'], self.worker.session_id)
+
+    def test_reconnect_after_leave_starts_a_fresh_baseline(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        self.worker._event_diff_carry_ok = False
+        self.reconnect()
+        self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
         self.assertEqual(self.drain(), [])
+
+    def test_reconnect_gap_longer_than_limit_starts_a_fresh_baseline(self):
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        self.reconnect()
+        with patch.object(plugin, '_monotonic',
+                          return_value=100.0 + plugin.RESOURCE_GAP_CARRY_SECONDS + 1):
+            self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_reconnect_with_changed_pet_roster_starts_a_fresh_baseline(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[]))
+        self.drain()
+        self.reconnect()
+        self.observe(self.resources(bag=[(13, self.item(1))]))
+        self.assertEqual(self.drain(), [])
+
+    def test_reconnect_does_not_report_membership_or_pet_transitions(self):
+        self.observe(self.resources())
+        self.drain()
+        self.reconnect()
+        resources = self.resources(bag=[(13, self.item(1))])
+        resources['party'] = {'availability': 'observed',
+                              'members': [{'party_id': '9', 'name': 'Buddy'}]}
+        self.observe(resources)
+        kinds = [e['kind'] for e in self.drain()]
+        self.assertEqual(kinds, ['item.acquired'])
+
+    def test_reconnect_balanced_move_inside_gap_is_a_transfer(self):
+        self.observe(self.resources(pet_present=True, pet_inventory=[(11, self.item(1))]))
+        self.drain()
+        self.reconnect()
+        self.worker._resource_sample_gap = True
+        self.observe(self.resources(pet_present=True, pet_inventory=[], bag=[(13, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.transferred'])
+        self.assertEqual(events[0]['payload']['observation_gap']['reason'], 'backend_reconnect')
 
     def test_ignored_potion_loss_advances_baseline_and_other_items_still_emit(self):
         with plugin._ITEM_TYPE_CACHE_LOCK:

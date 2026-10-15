@@ -2407,19 +2407,6 @@ select:focus-visible {
 }
 
 /* Drop history dimensions follow the supplied phMonitor table captures. */
-.events-panel.events-panel--drops {
-  position: relative;
-  padding: 40px 10px 12px;
-}
-.events-drop-heading {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-}
-
-.events-drop-heading .event-count {
-  margin-left: 0;
-}
 
 .events-filters--drop {
   grid-template-columns:
@@ -2427,23 +2414,6 @@ select:focus-visible {
     minmax(0, 150px);
   justify-content: start;
   margin-bottom: 9px;
-}
-.events-panel--drops .events-tabs {
-  gap: 10px;
-  margin-bottom: 13px;
-}
-.events-panel--drops .events-tabs .compact-button {
-  min-height: 39px;
-  padding: 8px 14px;
-  border-color: #2e333a;
-  border-radius: 10px;
-  background: linear-gradient(#1a1e25, #121820);
-  font-size: 13px;
-}
-.events-panel--drops .events-tabs .compact-button.selected {
-  border-color: #776442;
-  background: linear-gradient(#35332f, #1b1c20);
-  box-shadow: inset 0 1px 0 #75644555;
 }
 .events-filters--drop label {
   gap: 4px;
@@ -2545,7 +2515,7 @@ select:focus-visible {
   width: 54px;
   text-align: right;
 }
-.drop-history-table th:last-child {
+.drop-history-table th.drop-history-map-head {
   text-align: right;
 }
 

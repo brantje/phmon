@@ -504,6 +504,53 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err := json.Unmarshal(levelPayload, &unverified); err != nil || unverified["level"] != float64(71) || unverified["callback_level"] != nil {
 		t.Fatalf("unverified-version stored level = %s", levelPayload)
 	}
+	// A gain found across a backend outage has no known time. A unique
+	// same-model drop inside its interval is related evidence only.
+	gapFrom := databaseNow.UTC().Add(40 * time.Second)
+	gapTo := databaseNow.UTC().Add(70 * time.Second)
+	gapDrop := rareDrop
+	gapDrop.ID = newTestEventID(t)
+	gapDrop.OccurredAt = databaseNow.UTC().Add(60 * time.Second)
+	gapDrop.Sequence = int64Pointer64(60)
+	gapDrop.Region, gapDrop.X, gapDrop.Y, gapDrop.Z = nil, nil, nil, nil
+	gapGain := observedItem
+	gapGain.ID = newTestEventID(t)
+	gapGain.Kind = "item.acquired"
+	gapGain.OccurredAt = gapTo
+	gapGain.Sequence = int64Pointer64(61)
+	gapGain.Region, gapGain.X, gapGain.Y, gapGain.Z = nil, nil, nil, nil
+	gapGain.Payload = json.RawMessage(`{"item":{"model":777,"servername":"ITEM_TEST","plus":5},"quantity_delta":1,"destination_container":{"type":"pets","id":"9","slot":11},"acquisition_method":"unknown","observation_gap":{"reason":"backend_reconnect","from":"` +
+		gapFrom.Format(time.RFC3339Nano) + `","to":"` + gapTo.Format(time.RFC3339Nano) + `","previous_session_id":"` + gapDrop.SessionID + `"}}`)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{gapDrop, gapGain})
+	if err != nil || !changed || results[0].Status != "persisted" || results[1].Status != "persisted" {
+		t.Fatalf("gap drop and gain = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: gapDrop.ID, Limit: 1})
+	var gapPayload struct {
+		Item        json.RawMessage `json:"item"`
+		Observation json.RawMessage `json:"item_observation"`
+	}
+	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &gapPayload) != nil ||
+		len(gapPayload.Item) != 0 || len(gapPayload.Observation) != 0 {
+		t.Fatalf("a gap observation must not become drop enrichment: %+v, err=%v", exact, err)
+	}
+	if related := exact.Events[0].RelatedItemObservation; related == nil ||
+		related.EventID != gapGain.ID || related.Association != "gap_reconciled_same_model" ||
+		related.Item["plus"] != json.Number("5") {
+		t.Fatalf("gap observation must be offered as related evidence: %+v", related)
+	}
+	secondGapDrop := gapDrop
+	secondGapDrop.ID = newTestEventID(t)
+	secondGapDrop.OccurredAt = databaseNow.UTC().Add(65 * time.Second)
+	secondGapDrop.Sequence = int64Pointer64(62)
+	results, changed, err = store.AppendBatch(ctx, credential.AgentID, []AgentEvent{secondGapDrop})
+	if err != nil || !changed || results[0].Status != "persisted" {
+		t.Fatalf("second gap drop = %+v, changed=%v, err=%v", results, changed, err)
+	}
+	exact, err = store.List(ctx, Filter{Server: server, EventID: gapDrop.ID, Limit: 1})
+	if err != nil || len(exact.Events) != 1 || exact.Events[0].RelatedItemObservation != nil {
+		t.Fatalf("competing same-model drops in one gap must suppress the suggestion: %+v, err=%v", exact, err)
+	}
 }
 
 func TestInvalidDeathEventReturnsClassifiableError(t *testing.T) {

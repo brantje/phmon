@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.39'
+pVersion = '1.9.40'
 pUrl = ''
 
 PROTOCOL_VERSION = 20
@@ -119,6 +119,9 @@ ITEM_RECONCILIATION_WINDOW_SECONDS = 6.0
 MAX_ITEM_RECONCILIATION_PENDING = 128
 DROP_ENRICHMENT_SAMPLE_INTERVAL_SECONDS = 1.0
 DROP_ENRICHMENT_WINDOW_SECONDS = 30.0
+# Item snapshots from before a backend outage or sampling gap stay comparable
+# for this long; a longer gap makes a net change too coarse to attribute.
+RESOURCE_GAP_CARRY_SECONDS = 900.0
 MAX_ITEM_PACKET_COUNT = 128
 MAX_ITEM_PACKET_BYTES = 2 * 1024 * 1024
 MAX_ITEM_PACKET_SIZE = 256 * 1024
@@ -3303,6 +3306,12 @@ class AgentWorker(object):
         self._event_diff_session = None
         self._event_diff_identity = None
         self._event_diff = None
+        self._event_diff_at = None
+        self._event_diff_monotonic = None
+        # True only while the last comparison snapshot may be resumed after a
+        # reconnect (never after a leave, character switch or profile change).
+        self._event_diff_carry_ok = False
+        self._item_event_gap = None
         self._pet_transition_lock = threading.Lock()
         self._pet_transition_generation = 0
         self._pet_transition_phase = 'normal'
@@ -3681,16 +3690,29 @@ class AgentWorker(object):
         guild = identity.get('guild') if isinstance(identity, dict) else None
         guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
         scoped_identity_key = (identity_key, guild_scope)
+        sample_observed_at = sample.get('observed_at') if isinstance(sample, dict) else None
+        gap = None
         if scoped_identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
-            # A guild switch preserves the character/session attribution of
-            # an earlier observation, but breaks any delayed guild transfer
-            # proof. Publish only the old unknown net change, not a movement.
-            if (self._event_diff_identity is not None and
-                    identity_key == self._event_diff_identity[0] and
-                    self.session_id == self._event_diff_session):
-                self._finalize_pending_item_reconciliation(identity, float('inf'))
-            self._pending_item_reconciliation = []
-            self._event_baseline_required = True
+            # A new registration for the same character, in the same guild,
+            # after a short backend outage keeps the last complete snapshot as
+            # its comparison point: changes made while disconnected are real
+            # owned-item changes, only their exact time is unknown.
+            if (scoped_identity_key == self._event_diff_identity and
+                    self.session_id != self._event_diff_session):
+                gap = self._resource_gap_context('backend_reconnect', sample_observed_at)
+            if gap is None:
+                # A guild switch preserves the character/session attribution of
+                # an earlier observation, but breaks any delayed guild transfer
+                # proof. Publish only the old unknown net change, not a movement.
+                if (self._event_diff_identity is not None and
+                        identity_key == self._event_diff_identity[0] and
+                        self.session_id == self._event_diff_session):
+                    self._finalize_pending_item_reconciliation(identity, float('inf'))
+                self._pending_item_reconciliation = []
+                self._event_baseline_required = True
+            else:
+                gap['previous_session_id'] = self._event_diff_session
+                self._pending_item_reconciliation = []
             if self._event_diff_identity is not None or self._event_diff_session is not None:
                 self._reset_pet_transition(release_pending=True)
             self._event_diff_identity = scoped_identity_key
@@ -3701,14 +3723,18 @@ class AgentWorker(object):
                                              entry['identity_key'] == identity_key]
         if self._resource_sample_gap:
             # Lost intermediate samples destroy delayed transfer proof, not
-            # the already observed net increase/decrease from the last
-            # complete frame. Finalize it in its original session.
+            # the already observed net increase/decrease between the last
+            # complete frame and this one. Finalize pending evidence in its
+            # original session, then compare the two complete snapshots.
             if (scoped_identity_key == self._event_diff_identity and
                     self.session_id == self._event_diff_session):
                 self._finalize_pending_item_reconciliation(identity, float('inf'))
+                if gap is None and not self._event_baseline_required:
+                    gap = self._resource_gap_context('sample_gap', sample_observed_at)
             self._pending_item_reconciliation = []
             self._resource_sample_gap = False
-            self._event_baseline_required = True
+            if gap is None:
+                self._event_baseline_required = True
             with self._pending_drop_lock:
                 self._pending_drop_events = []
         current = _event_resource_snapshot(resources, identity)
@@ -3726,11 +3752,20 @@ class AgentWorker(object):
                 self._pending_drop_events = []
             return
         pet_roster = _pet_roster_signature(current.get('pets'))
+        if gap is not None and (
+                self._event_diff is None or
+                _pet_roster_signature(self._event_diff.get('pets')) != pet_roster):
+            # A pet summoned, dismissed or replaced while unobserved changes
+            # container identity; there is no sound comparison point.
+            gap = None
+            self._event_baseline_required = True
+            self._pending_item_reconciliation = []
         suppress_pet_events, rebaseline_pet_items = self._observe_pet_transition(identity, pet_roster)
         previous = self._event_diff
         if self._event_baseline_required or previous is None:
             self._pending_item_reconciliation = []
             self._event_diff = current
+            self._note_event_diff(sample_observed_at)
             self._event_baseline_required = False
             self._remember_pet_roster_if_normal(pet_roster)
             with self._pending_drop_lock:
@@ -3743,6 +3778,10 @@ class AgentWorker(object):
                 ('party', 'party.member_joined', 'party.member_left', 'party'),
                 ('academy', 'academy.member_joined', 'academy.member_left', 'academy'),
                 ('pets', 'pet.summoned', 'pet.dismissed', 'pet')):
+            if gap is not None:
+                # Membership transitions across a gap would be reported with a
+                # fabricated time; only owned-item changes are carried over.
+                continue
             if group == 'pets' and suppress_pet_events:
                 continue
             before = previous.get(group)
@@ -3786,12 +3825,35 @@ class AgentWorker(object):
             self._finalize_pending_item_reconciliation(identity, float('inf'))
             self._pending_item_reconciliation = []
         else:
-            self._emit_item_deltas(identity,
-                                   {key: old_containers[key] for key in common},
-                                   {key: new_containers[key] for key in common},
-                                   observed_at, position, uncertain)
+            self._item_event_gap = gap
+            try:
+                self._emit_item_deltas(identity,
+                                       {key: old_containers[key] for key in common},
+                                       {key: new_containers[key] for key in common},
+                                       observed_at, position, uncertain)
+            finally:
+                self._item_event_gap = None
         self._event_diff = current
+        self._note_event_diff(sample_observed_at)
         self._remember_pet_roster_if_normal(pet_roster)
+
+    def _note_event_diff(self, observed_at):
+        self._event_diff_at = observed_at if isinstance(observed_at, str) and observed_at else None
+        self._event_diff_monotonic = _monotonic()
+        self._event_diff_carry_ok = True
+
+    def _resource_gap_context(self, reason, observed_at):
+        """Describe an unobserved interval, or None when it cannot be compared."""
+        if (not self._event_diff_carry_ok or self._event_diff is None or
+                self._event_diff_monotonic is None or not self._event_diff_at):
+            return None
+        elapsed = _monotonic() - self._event_diff_monotonic
+        if elapsed < 0 or elapsed > RESOURCE_GAP_CARRY_SECONDS:
+            return None
+        to = observed_at if isinstance(observed_at, str) and observed_at else _worker_utc_now(self)
+        if to < self._event_diff_at:
+            return None
+        return {'reason': reason, 'from': self._event_diff_at, 'to': to}
 
     def _remember_pet_roster_if_normal(self, roster):
         with self._pet_transition_lock:
@@ -4006,8 +4068,13 @@ class AgentWorker(object):
             else:
                 kind = 'item.quantity_decreased'
                 payload['source_container'] = container
-            self._queue_derived_event(identity, kind, 'item_container', payload,
-                                      entry['occurred_at'], entry['position'], item)
+            outer_gap = self._item_event_gap
+            self._item_event_gap = entry.get('gap')
+            try:
+                self._queue_derived_event(identity, kind, 'item_container', payload,
+                                          entry['occurred_at'], entry['position'], item)
+            finally:
+                self._item_event_gap = outer_gap
         self._pending_item_reconciliation = remaining
 
     def _emit_item_deltas(self, identity, before, after, occurred_at, position, uncertain=()):
@@ -4104,6 +4171,7 @@ class AgentWorker(object):
                             'record': record, 'item': item, 'selected': selected,
                             'ambiguous': ambiguous, 'old_total': old_total,
                             'occurred_at': occurred_at, 'position': position,
+                            'gap': self._item_event_gap,
                             'expires_at': now + ITEM_RECONCILIATION_WINDOW_SECONDS,
                         })
                         continue
@@ -4249,6 +4317,16 @@ class AgentWorker(object):
             return selected['event_id']
 
     def _queue_derived_event(self, identity, kind, source_ref, payload, occurred_at, position, item=None):
+        gap = self._item_event_gap
+        if gap is not None and kind.startswith('item.') and isinstance(payload, dict):
+            marker = {key: gap[key] for key in ('reason', 'from', 'to') if gap.get(key)}
+            if _validate_agent_id(gap.get('previous_session_id')):
+                marker['previous_session_id'] = gap['previous_session_id']
+            payload = dict(payload)
+            payload['observation_gap'] = marker
+            # The change happened somewhere inside the interval; report when
+            # it was observed, never an invented earlier time.
+            occurred_at = gap.get('to') or occurred_at
         event = {
             'event_id': str(uuid.uuid4()), 'schema_version': 1, 'kind': kind,
             'category': kind.split('.', 1)[0], 'occurred_at': occurred_at or _worker_utc_now(self),
@@ -4667,6 +4745,7 @@ class AgentWorker(object):
                             self._resource_baseline_required = True
                             self._confirmed_resources = None
                             self._item_tracker.reset('character_left')
+                            self._event_diff_carry_ok = False
 
                         else:
                             self._latest_sample = sample
@@ -4797,6 +4876,7 @@ class AgentWorker(object):
             self._clear_navigation_route()
             self._trace_requested_name = None
             self._item_tracker.reset('character_or_profile_changed')
+            self._event_diff_carry_ok = False
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_worker_utc_now(self)})
             reply = self._wait_for_registration(client)
             if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):

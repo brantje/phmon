@@ -493,6 +493,9 @@ func validateAgentEvent(event AgentEvent) error {
 			return fmt.Errorf("%w: invalid alchemy payload", ErrInvalidEvent)
 		}
 	}
+	if _, hasGap := object["observation_gap"]; hasGap && !strings.HasPrefix(event.Kind, "item.") {
+		return fmt.Errorf("%w: observation gap on a non-item event", ErrInvalidEvent)
+	}
 	if strings.HasPrefix(event.Kind, "session.") && len(object) != 0 {
 		return fmt.Errorf("%w: lifecycle payload must be empty", ErrInvalidEvent)
 	}
@@ -579,6 +582,11 @@ func validateAgentEvent(event AgentEvent) error {
 		}
 		if event.ItemModel != nil && fields.Item.Model != nil && *event.ItemModel != *fields.Item.Model {
 			return fmt.Errorf("%w: item model identity mismatch", ErrInvalidEvent)
+		}
+		if rawGap, hasGap := object["observation_gap"]; hasGap {
+			if err := validateObservationGap(event, rawGap, object); err != nil {
+				return err
+			}
 		}
 		if rawLink, linked := object["drop_event_id"]; linked {
 			var dropID string
@@ -1235,7 +1243,35 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 			AND d.source='phbot.callback' AND d.agent_id=e.agent_id
 			AND d.character_id=e.character_id AND d.session_id=e.session_id
 			AND d.item_model=e.item_model
-			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at)))
+			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at)),
+		-- A gain found by comparing snapshots across a backend outage or lost
+		-- sample has no known time. A unique same-model drop callback inside the
+		-- stated interval is shown as related evidence, never as a pickup link.
+		(SELECT CASE WHEN count(*)=1 THEN (jsonb_agg(jsonb_build_object(
+			'item',a.payload->'item', 'association','gap_reconciled_same_model',
+			'event_id',a.event_id::text, 'source',a.source, 'occurred_at',a.occurred_at,
+			'container',a.payload->'destination_container'))->0) END
+		FROM activity_events a
+		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
+		AND a.kind IN ('item.acquired','item.quantity_increased')
+		AND a.source='phbot.state_diff' AND a.source_ref='item_container'
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
+		AND lower(a.server_name)=lower(e.server_name) AND a.item_model=e.item_model
+		AND a.payload ? 'observation_gap' AND a.payload->>'drop_event_id' IS NULL
+		AND a.payload->>'quantity_delta'='1'
+		AND a.payload->'destination_container'->>'type' IN ('inventory','pets')
+		AND a.payload->'item' IS NOT NULL
+		AND a.payload->>'item_instance_unobserved' IS DISTINCT FROM 'true'
+		AND e.occurred_at >= (a.payload->'observation_gap'->>'from')::timestamptz
+		AND e.occurred_at <= (a.payload->'observation_gap'->>'to')::timestamptz
+		AND (e.session_id=a.session_id OR e.session_id::text=a.payload->'observation_gap'->>'previous_session_id')
+		AND NOT EXISTS (SELECT 1 FROM activity_events d
+			WHERE d.event_id<>e.event_id AND d.kind IN ('drop.item','drop.rare')
+			AND d.source='phbot.callback' AND d.agent_id=e.agent_id
+			AND d.character_id=e.character_id AND d.item_model=e.item_model
+			AND d.occurred_at BETWEEN (a.payload->'observation_gap'->>'from')::timestamptz
+				AND (a.payload->'observation_gap'->>'to')::timestamptz))
+		)
 
 		`+base+` AND ($16::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($16::timestamptz,$17::uuid))
 ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $18`, filter.Server, filter.CharacterID, filter.CharacterQuery,
@@ -1267,7 +1303,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $18`, filter.Server, filter.Ch
 			decoder.UseNumber()
 			if decoder.Decode(&related) == nil &&
 				agentdomain.ValidAgentID(related.EventID) && len(related.Item) > 0 &&
-				(related.Association == "stored_unverified_drop_event_id" || related.Association == "nearby_same_model_observation") {
+				(related.Association == "stored_unverified_drop_event_id" || related.Association == "nearby_same_model_observation" || related.Association == "gap_reconciled_same_model") {
 				item.RelatedItemObservation = &related
 			}
 			var payload map[string]json.RawMessage
@@ -1300,4 +1336,49 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $18`, filter.Server, filter.Ch
 		page.NextCursor = EncodeCursor(Cursor{OccurredAt: last.OccurredAt, EventID: last.ID})
 	}
 	return page, nil
+}
+
+// maxObservationGap bounds the interval a state-diff item change may span.
+const maxObservationGap = time.Hour
+
+// validateObservationGap accepts the marker the plugin adds when an item
+// change was found by comparing snapshots across a backend outage or a lost
+// sample. The change is an owned-item observation whose time is unknown, so it
+// can never also claim a verified pickup link.
+func validateObservationGap(event AgentEvent, raw json.RawMessage, object map[string]json.RawMessage) error {
+	invalid := fmt.Errorf("%w: invalid observation gap", ErrInvalidEvent)
+	var gap struct {
+		Reason  string `json:"reason"`
+		From    string `json:"from"`
+		To      string `json:"to"`
+		Session string `json:"previous_session_id"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&gap) != nil {
+		return invalid
+	}
+	if event.Source != "phbot.state_diff" || event.SourceRef != "item_container" ||
+		(event.Kind != "item.acquired" && event.Kind != "item.quantity_increased" &&
+			event.Kind != "item.transferred" && event.Kind != "item.quantity_decreased") {
+		return invalid
+	}
+	if _, linked := object["drop_event_id"]; linked {
+		return invalid
+	}
+	if gap.Reason != "backend_reconnect" && gap.Reason != "sample_gap" {
+		return invalid
+	}
+	from, fromErr := time.Parse(time.RFC3339Nano, gap.From)
+	to, toErr := time.Parse(time.RFC3339Nano, gap.To)
+	if fromErr != nil || toErr != nil || to.Before(from) || to.Sub(from) > maxObservationGap {
+		return invalid
+	}
+	if gap.Session != "" && !agentdomain.ValidAgentID(gap.Session) {
+		return invalid
+	}
+	if gap.Reason == "sample_gap" && gap.Session != "" {
+		return invalid
+	}
+	return nil
 }

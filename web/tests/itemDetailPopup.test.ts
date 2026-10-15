@@ -73,6 +73,25 @@ test('compact drop popup selects one observation without changing canonical drop
   assert.equal(direct.model.plus, 7)
 })
 
+test('an observation found after a connection gap is labelled and stays unverified', () => {
+  const displayed = itemTooltipPresentation({
+    drop_unobserved: true,
+    related_item_observation: {
+      association: 'gap_reconciled_same_model',
+      event_id: 'gap-source',
+      container: { type: 'inventory' },
+      item: hood,
+    },
+  })
+  assert.equal(displayed.model.plus, 7)
+  assert.equal(
+    displayed.caption,
+    'Observed after a connection gap · pickup unverified',
+  )
+  assert.match(displayed.sourceDescription, /connection gap/)
+  assert.match(displayed.sourceDescription, /gap-source/)
+})
+
 test('captured Gem Necklace renders its own rolls and blues in one compact item model', () => {
   const fixture = JSON.parse(
     readFileSync(
@@ -136,6 +155,7 @@ test('drop tooltip keeps a separate inventory observation with its stats and blu
     for (const association of [
       'stored_unverified_drop_event_id',
       'nearby_same_model_observation',
+      'gap_reconciled_same_model',
     ] as const) {
       const record = itemRecordFromActivityEvent({
         kind,
