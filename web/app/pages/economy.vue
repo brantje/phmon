@@ -31,7 +31,9 @@ const previous = ref<string[]>([])
 let requestID = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 const searchInput = ref('')
-const invalidRange = computed(() => !!from.value && !!to.value && from.value > to.value)
+const invalidRange = computed(
+  () => !!from.value && !!to.value && from.value > to.value,
+)
 const { liveStale, connectionState } = useLiveData()
 const stale = computed(
   () => liveStale.value || connectionState.value === 'stale',
@@ -105,7 +107,10 @@ function previousPage() {
       description="WTB, WTS and WTT advertisements from preserved Global chat observations. Offers are not completed trades."
     />
     <section class="panel p-4" aria-label="Global economy filters">
-      <form class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" @submit.prevent="load">
+      <form
+        class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        @submit.prevent="load"
+      >
         <label class="grid gap-1">
           <span>Offer type</span>
           <select v-model="type" class="rounded border p-2">
@@ -128,7 +133,12 @@ function previousPage() {
         </label>
         <label class="grid gap-1">
           <span>Buyer or seller name</span>
-          <input v-model="seller" maxlength="64" class="min-w-0 rounded border p-2" placeholder="Sender name" />
+          <input
+            v-model="seller"
+            maxlength="64"
+            class="min-w-0 rounded border p-2"
+            placeholder="Sender name"
+          />
         </label>
         <label class="grid gap-1">
           <span>From</span>
@@ -138,7 +148,9 @@ function previousPage() {
           <span>To (exclusive)</span>
           <input v-model="to" type="date" class="rounded border p-2" />
         </label>
-        <button type="submit" class="compact-button self-end">Refresh offers</button>
+        <button type="submit" class="compact-button self-end">
+          Refresh offers
+        </button>
       </form>
     </section>
     <p v-if="stale" class="status-banner warning" role="status">
@@ -150,9 +162,15 @@ function previousPage() {
         <strong>{{ page ? `${page.total} messages` : 'Global offers' }}</strong>
         <span v-if="loading" role="status">Loading offers…</span>
       </div>
-      <div v-if="!loading && !error && page && !page.offers.length" class="event-empty-state">
+      <div
+        v-if="!loading && !error && page && !page.offers.length"
+        class="event-empty-state"
+      >
         <strong>No matching Global messages</strong>
-        <span>No observed advertisements match the selected source and filters.</span>
+        <span
+          >No observed advertisements match the selected source and
+          filters.</span
+        >
       </div>
       <div class="grid gap-3">
         <article
@@ -166,7 +184,9 @@ function previousPage() {
               {{ new Date(offer.occurred_at).toLocaleString() }}
             </time>
           </div>
-          <p class="my-2 whitespace-pre-wrap break-words">{{ offer.message }}</p>
+          <p class="my-2 whitespace-pre-wrap break-words">
+            {{ offer.message }}
+          </p>
           <div class="flex flex-wrap gap-3 text-sm">
             <span>{{ offer.server }} · Global</span>
             <span>Sender: {{ offer.sender }}</span>
@@ -180,20 +200,43 @@ function previousPage() {
           <details class="mt-2 text-sm">
             <summary>Source observation</summary>
             <p>Message ID: {{ offer.message_id }}</p>
-            <NuxtLink :to="{ path: '/events', query: { event_id: offer.source_event_id } }">
+            <NuxtLink
+              :to="{
+                path: '/events',
+                query: { event_id: offer.source_event_id },
+              }"
+            >
               Inspect canonical chat event {{ offer.source_event_id }}
             </NuxtLink>
           </details>
         </article>
       </div>
-      <nav class="mt-4 flex items-center justify-between gap-3" aria-label="Global offers pages">
-        <button type="button" class="compact-button" :disabled="loading || !previous.length" @click="previousPage">Previous</button>
+      <nav
+        class="mt-4 flex items-center justify-between gap-3"
+        aria-label="Global offers pages"
+      >
+        <button
+          type="button"
+          class="compact-button"
+          :disabled="loading || !previous.length"
+          @click="previousPage"
+        >
+          Previous
+        </button>
         <span>{{ page?.offers.length ?? 0 }} results on this page</span>
-        <button type="button" class="compact-button" :disabled="loading || !page?.next_cursor" @click="nextPage">Next</button>
+        <button
+          type="button"
+          class="compact-button"
+          :disabled="loading || !page?.next_cursor"
+          @click="nextPage"
+        >
+          Next
+        </button>
       </nav>
       <p class="mt-4 text-sm">
-        Prices mentioned in advertisements are asking prices only. Confirmed stall sales,
-        realized prices and price history are unsupported without verified transaction evidence.
+        Prices mentioned in advertisements are asking prices only. Confirmed
+        stall sales, realized prices and price history are unsupported without
+        verified transaction evidence.
       </p>
     </section>
   </div>

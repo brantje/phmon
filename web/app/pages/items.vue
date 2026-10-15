@@ -60,7 +60,9 @@ function itemIdentity(item: FoundItem) {
   return (
     String(item.item.name ?? '') ||
     String(item.item.servername ?? '') ||
-    (item.item.model != null ? `Model ${String(item.item.model)}` : 'Unidentified item')
+    (item.item.model != null
+      ? `Model ${String(item.item.model)}`
+      : 'Unidentified item')
   )
 }
 function load() {
@@ -104,7 +106,16 @@ watch(queryInput, (value) => {
   }, 250)
 })
 watch(
-  [serverScope, query, container, owner, itemType, subcategory, degree, includeSets],
+  [
+    serverScope,
+    query,
+    container,
+    owner,
+    itemType,
+    subcategory,
+    degree,
+    includeSets,
+  ],
   () => {
     cursor.value = ''
     previous.value = []
@@ -138,10 +149,19 @@ function previousPage() {
       description="Search currently observed items across characters, pets, personal storage and guild storage. Guild items are shown once per guild snapshot."
     />
     <section class="panel p-4" aria-label="Item search filters">
-      <form class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="load">
+      <form
+        class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        @submit.prevent="load"
+      >
         <label class="grid gap-1">
           <span>Item name, code or model</span>
-          <input v-model="queryInput" class="min-w-0 rounded border p-2" maxlength="128" placeholder="Search items" aria-label="Search item name, code or model" />
+          <input
+            v-model="queryInput"
+            class="min-w-0 rounded border p-2"
+            maxlength="128"
+            placeholder="Search items"
+            aria-label="Search item name, code or model"
+          />
         </label>
         <label class="grid gap-1">
           <span>Container</span>
@@ -157,15 +177,31 @@ function previousPage() {
         </label>
         <label class="grid gap-1">
           <span>Character, guild or pet owner</span>
-          <input v-model="owner" class="min-w-0 rounded border p-2" maxlength="100" placeholder="Owner" aria-label="Filter item owner" />
+          <input
+            v-model="owner"
+            class="min-w-0 rounded border p-2"
+            maxlength="100"
+            placeholder="Owner"
+            aria-label="Filter item owner"
+          />
         </label>
         <label class="grid gap-1">
           <span>Item type</span>
-          <input v-model="itemType" class="min-w-0 rounded border p-2" maxlength="64" placeholder="Verified catalog type" />
+          <input
+            v-model="itemType"
+            class="min-w-0 rounded border p-2"
+            maxlength="64"
+            placeholder="Verified catalog type"
+          />
         </label>
         <label class="grid gap-1">
           <span>Subcategory</span>
-          <input v-model="subcategory" class="min-w-0 rounded border p-2" maxlength="64" placeholder="Verified catalog subcategory" />
+          <input
+            v-model="subcategory"
+            class="min-w-0 rounded border p-2"
+            maxlength="64"
+            placeholder="Verified catalog subcategory"
+          />
         </label>
         <label class="grid gap-1">
           <span>Degree</span>
@@ -182,17 +218,26 @@ function previousPage() {
       </form>
     </section>
     <p v-if="stale" role="status" class="status-banner warning">
-      Agent data may be stale or disconnected. Results show the most recently saved observed snapshots.
+      Agent data may be stale or disconnected. Results show the most recently
+      saved observed snapshots.
     </p>
     <p v-if="error" role="alert" class="status-banner warning">{{ error }}</p>
     <section class="panel p-4" aria-label="Item search results">
       <div class="mb-3 flex items-center justify-between gap-3">
-        <strong>{{ page ? `${page.total} matching slots` : 'Item results' }}</strong>
+        <strong>{{
+          page ? `${page.total} matching slots` : 'Item results'
+        }}</strong>
         <span v-if="loading" role="status">Loading items…</span>
       </div>
-      <div v-if="!loading && !error && page && !page.items.length" class="event-empty-state">
+      <div
+        v-if="!loading && !error && page && !page.items.length"
+        class="event-empty-state"
+      >
         <strong>No matching observed items</strong>
-        <span>Storage that is closed or unavailable is not assumed empty and is not included as current evidence.</span>
+        <span
+          >Storage that is closed or unavailable is not assumed empty and is not
+          included as current evidence.</span
+        >
       </div>
       <div class="grid gap-3">
         <article
@@ -203,23 +248,66 @@ function previousPage() {
         >
           <div class="flex flex-wrap items-center justify-between gap-3">
             <ItemDetailPopup :item="row.item" />
-            <span>{{ row.server }} · {{ row.container.replaceAll('_', ' ') }} · slot {{ row.slot }}</span>
+            <span
+              >{{ row.server }} · {{ row.container.replaceAll('_', ' ') }} ·
+              slot {{ row.slot }}</span
+            >
           </div>
           <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <span>Owner: <NuxtLink :to="ownerTarget(row)">{{ row.owner_name || row.owner_id }}</NuxtLink></span>
-            <span>Observed by: <NuxtLink :to="`/characters/${row.observer_character_id}`">{{ row.observer_name }}</NuxtLink></span>
+            <span
+              >Owner:
+              <NuxtLink :to="ownerTarget(row)">{{
+                row.owner_name || row.owner_id
+              }}</NuxtLink></span
+            >
+            <span
+              >Observed by:
+              <NuxtLink :to="`/characters/${row.observer_character_id}`">{{
+                row.observer_name
+              }}</NuxtLink></span
+            >
             <span v-if="row.pet_id">Pet ID: {{ row.pet_id }}</span>
-            <span>Quantity: {{ row.quantity_exact || row.item.quantity || 'unknown' }}</span>
+            <span
+              >Quantity:
+              {{ row.quantity_exact || row.item.quantity || 'unknown' }}</span
+            >
             <span>+{{ row.item.plus ?? '?' }}</span>
-            <span>Observed: <time :datetime="row.observed_at">{{ formatTime(row.observed_at) }}</time></span>
-            <span>Checked: <time :datetime="row.checked_at">{{ formatTime(row.checked_at) }}</time></span>
+            <span
+              >Observed:
+              <time :datetime="row.observed_at">{{
+                formatTime(row.observed_at)
+              }}</time></span
+            >
+            <span
+              >Checked:
+              <time :datetime="row.checked_at">{{
+                formatTime(row.checked_at)
+              }}</time></span
+            >
           </div>
         </article>
       </div>
-      <nav class="mt-4 flex items-center justify-between gap-3" aria-label="Item search pages">
-        <button type="button" class="compact-button" :disabled="!previous.length || loading" @click="previousPage">Previous</button>
+      <nav
+        class="mt-4 flex items-center justify-between gap-3"
+        aria-label="Item search pages"
+      >
+        <button
+          type="button"
+          class="compact-button"
+          :disabled="!previous.length || loading"
+          @click="previousPage"
+        >
+          Previous
+        </button>
         <span>{{ page?.items.length ?? 0 }} results on this page</span>
-        <button type="button" class="compact-button" :disabled="!page?.next_cursor || loading" @click="nextPage">Next</button>
+        <button
+          type="button"
+          class="compact-button"
+          :disabled="!page?.next_cursor || loading"
+          @click="nextPage"
+        >
+          Next
+        </button>
       </nav>
     </section>
   </div>

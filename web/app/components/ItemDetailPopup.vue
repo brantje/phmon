@@ -53,9 +53,9 @@ const detailProvenance = computed(() => {
       ? 'Explicitly linked inventory observation; pickup cause still unverified'
       : instance.association === 'unique_model_inventory_gain'
         ? 'Matched inventory gain; acquisition cause unverified'
-      : instance.association === 'unique_temporal_inventory_gain'
-        ? 'Matched nearby inventory gain; acquisition cause unverified'
-        : ''
+        : instance.association === 'unique_temporal_inventory_gain'
+          ? 'Matched nearby inventory gain; acquisition cause unverified'
+          : ''
   if (!sources.length && !observationID && !association) return ''
   return [
     sources.length ? `Detail source: ${[...new Set(sources)].join(' + ')}` : '',

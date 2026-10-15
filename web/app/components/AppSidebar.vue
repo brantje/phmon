@@ -50,7 +50,11 @@ const eventNavigation = [
   { label: 'Rare Drops', key: 'drop.rare', query: { kind: 'drop.rare' } },
   { label: 'Normal Drops', key: 'drop.item', query: { kind: 'drop.item' } },
   { label: 'Owned Gains', key: 'item.gains', query: { kind: 'item.gains' } },
-  { label: 'Transfers', key: 'item.transferred', query: { kind: 'item.transferred' } },
+  {
+    label: 'Transfers',
+    key: 'item.transferred',
+    query: { kind: 'item.transferred' },
+  },
   {
     label: 'Uniques',
     key: 'world.unique_spawned',

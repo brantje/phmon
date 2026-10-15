@@ -327,16 +327,16 @@ watch(
           : typeof _fromTs === 'string'
             ? _fromTs
             : from
-            ? localDateBoundary(from, 0)
-            : undefined,
+              ? localDateBoundary(from, 0)
+              : undefined,
       to:
         typeof routeEventID === 'string'
           ? undefined
           : typeof _toTs === 'string'
             ? _toTs
             : to
-            ? localDateBoundary(to, 1)
-            : undefined,
+              ? localDateBoundary(to, 1)
+              : undefined,
       q: character || undefined,
       item: itemTab.value ? item || undefined : undefined,
       kind: kind || undefined,
@@ -998,10 +998,7 @@ function localDateBoundary(value: string, addDays: number) {
                   <UIcon name="i-lucide-activity" />
                   <strong>{{ eventSummary(item) }}</strong>
                 </div>
-                <small
-                  v-if="eventSourceLabel(item)"
-                  class="event-origin"
-                >
+                <small v-if="eventSourceLabel(item)" class="event-origin">
                   {{ eventSourceLabel(item) }}
                   <template v-if="eventContainerDetail(item)">
                     · {{ eventContainerDetail(item) }}
@@ -1011,14 +1008,22 @@ function localDateBoundary(value: string, addDays: number) {
                   <summary>Linked source observations</summary>
                   <div>
                     Callback:
-                    <NuxtLink :to="{ path: '/events', query: { event_id: item.event_id } }">
+                    <NuxtLink
+                      :to="{
+                        path: '/events',
+                        query: { event_id: item.event_id },
+                      }"
+                    >
                       {{ item.event_id }}
                     </NuxtLink>
                   </div>
                   <div>
                     Inventory observation:
                     <NuxtLink
-                      :to="{ path: '/events', query: { event_id: linkedObservationID(item) } }"
+                      :to="{
+                        path: '/events',
+                        query: { event_id: linkedObservationID(item) },
+                      }"
                     >
                       {{ linkedObservationID(item) }}
                     </NuxtLink>
