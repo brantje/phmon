@@ -231,7 +231,11 @@ function previousPage() {
           <span>Include equipped items / character sets</span>
         </label>
         <button class="compact-button self-end" type="submit">Refresh</button>
-        <button class="compact-button self-end" type="button" @click="resetFilters">
+        <button
+          class="compact-button self-end"
+          type="button"
+          @click="resetFilters"
+        >
           Reset filters
         </button>
       </form>
