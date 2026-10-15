@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type OfferFilter struct {
@@ -106,11 +108,20 @@ func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, erro
 		AND ($6::timestamptz IS NULL OR m.occurred_at < $6)
 `
 	args := []any{filter.Server, filter.Sender, filter.Query, filter.Kind, filter.From, filter.To}
+	// Count and page the same set of retained observer messages even while
+	// agents append new Global chat records concurrently.
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return OfferPage{}, fmt.Errorf("begin global offers: %w", err)
+	}
+	defer tx.Rollback(ctx)
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, args...).Scan(&total); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) `+base, args...).Scan(&total); err != nil {
 		return OfferPage{}, fmt.Errorf("count global offers: %w", err)
 	}
-	rows, err := s.pool.Query(ctx, `SELECT m.message_id::text,m.event_id::text,m.server_name,
+	rows, err := tx.Query(ctx, `SELECT m.message_id::text,m.event_id::text,m.server_name,
 		m.character_id::text,m.character_name,m.sender,m.channel,m.raw_type,
 		m.message,`+offerKindSQL+`,m.occurred_at `+base+`
 		AND ($7::timestamptz IS NULL OR
@@ -138,6 +149,10 @@ func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, erro
 		page.Offers = page.Offers[:filter.Limit]
 		last := page.Offers[len(page.Offers)-1]
 		page.NextCursor = EncodeCursor(last.OccurredAt, last.MessageID)
+	}
+	rows.Close()
+	if err := tx.Commit(ctx); err != nil {
+		return OfferPage{}, fmt.Errorf("commit global offers snapshot: %w", err)
 	}
 	return page, nil
 }
