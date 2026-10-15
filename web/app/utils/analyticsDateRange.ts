@@ -8,7 +8,7 @@ export function analyticsGrouping(
   view: string,
   groupBy: string,
 ): AnalyticsGroupBy {
-  const drops = view === 'rare_drops' || view === 'normal_drops'
+  const drops = view === 'rare_drops' || view === 'normal_drops' || view === 'item_history'
   if (
     (groupBy === 'item' || groupBy === 'type' || groupBy === 'degree') &&
     drops

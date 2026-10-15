@@ -281,3 +281,26 @@ explicit correlation remains independent, even if it resembles a drop.
 ## Legacy world-drop links and All Events totals
 
 A pre-existing `drop_event_id` field in an inventory state-difference event is not verified pickup causality: the older producer used a heuristic. All Events lists the callback and inventory evidence as distinct occurrences rather than suppressing a potentially unrelated gain. Historical callback rows expose the stored unverified link for source auditing but never borrow the gain's historical item-instance attributes. World-drop analytics still count only callback occurrences; owned-gain analytics still count limited supported gain observations; transfers remain zero new acquisitions. An exact physical-acquisition count across sources is unsupported without an independently verified shared receipt identity.
+
+## Canonical Item History (issue #90 section E)
+
+The `item_history` view uses the same canonical `activity_events` rows as
+Events and the existing read-only PostgreSQL analytics transaction. Search by
+server, character, item name/code, local-date range, source/destination container
+and recorded movement method, with count-by-character/item/location breakdowns,
+occurrence timeline, cursor pagination and source-event links. Only source
+payload properties are filterable: a missing container or method never becomes
+an inferred value.
+
+The summary keeps **world-drop callback occurrences**, **limited owned-gain
+observations**, **unknown-origin gains**, **net quantity increases/decreases**,
+**transfer event occurrences**, **transferred quantities**, **validated pet
+receipt occurrences**, and **rare/normal classified occurrences** separate.
+Transfer quantity means movement of already held items, **zero acquisitions**.
+A validated receipt count cannot safely be added to state-diff gains as a
+unique pickup count: no independently verified common physical acquisition ID
+exists. The `distinct_acquisitions` metric is therefore explicitly unsupported.
+The historical event population, daily buckets, metrics and paged occurrences
+are evaluated under one repeatable-read transaction, subject to actual
+monitoring coverage/retention. All Events keeps legacy heuristic callback/gain
+rows separate rather than silently collapsing them.

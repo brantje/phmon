@@ -517,6 +517,9 @@ export interface AnalyticsSnapshot {
     guild?: string
     balance_scope?: 'characters' | 'guild_storage'
     drop_source?: 'world' | 'owned_gains'
+    source_container?: string
+    destination_container?: string
+    movement_method?: string
     item_type?: string
     item_degree?: string
     page_size: number
@@ -682,6 +685,9 @@ export interface LiveFilter {
   guild?: string
   balance_scope?: 'characters' | 'guild_storage'
   drop_source?: 'world' | 'owned_gains'
+  source_container?: string
+  destination_container?: string
+  movement_method?: string
   item_type?: string
   item_degree?: string
   page_size?: number
