@@ -8,6 +8,7 @@ const props = defineProps<{
   character: CharacterView
   stale?: boolean
   groupName?: string
+  resource?: string
 }>()
 const {
   characterResources,
@@ -25,6 +26,28 @@ const deathState = computed(() =>
 )
 const selectedTab = ref('Overview')
 const selectedContainer = ref('storage')
+watch(
+  () => props.resource,
+  (resource) => {
+    const tabs: Record<string, string> = {
+      inventory: 'Inventory',
+      equipment: 'Info',
+      storage: 'Storage',
+      guild_storage: 'Storage',
+      job_pouch: 'Storage',
+      pets: 'Pet',
+    }
+    const tab = tabs[resource || '']
+    if (!tab) return
+    selectedTab.value = tab
+    if (
+      resource &&
+      ['storage', 'guild_storage', 'job_pouch'].includes(resource)
+    )
+      selectedContainer.value = resource
+  },
+  { immediate: true },
+)
 const cardElement = ref<HTMLElement | null>(null)
 const cardVisible = ref(false)
 const resourceSubscriptionID = `resources-${useId()

@@ -51,6 +51,11 @@ const detailLoading = computed(
       v-if="detailCharacter"
       :character="detailCharacter"
       :stale="liveStale"
+      :resource="
+        typeof route.query.resource === 'string'
+          ? route.query.resource
+          : undefined
+      "
     />
     <div v-else class="panel empty-state">
       <strong>{{

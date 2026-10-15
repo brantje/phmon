@@ -42,6 +42,9 @@ func eventsWithPortraits(page events.Page, metadata *resources.Store) events.Pag
 			if json.Unmarshal(page.Events[i].Payload, &payload) == nil && len(payload.Item) > 0 {
 				page.Events[i].ItemDetails = metadata.EnrichItemRecord(page.Events[i].Server, payload.Item)
 			}
+			if observed := page.Events[i].RelatedItemObservation; observed != nil {
+				observed.Item = metadata.EnrichItemRecord(page.Events[i].Server, observed.Item)
+			}
 			page.Events[i].Unique = uniqueInfo(metadata, page.Events[i])
 		}
 	}

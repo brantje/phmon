@@ -84,7 +84,7 @@ const primaryNavigation = [
   { label: 'Stats', icon: 'i-lucide-chart-no-axes-combined', href: '/stats' },
   { label: 'Events', icon: 'i-lucide-activity', href: '/events' },
   { label: 'Chat', icon: 'i-lucide-messages-square', href: '/chat' },
-  { label: 'Economy', icon: 'i-lucide-coins' },
+  { label: 'Economy', icon: 'i-lucide-coins', href: '/economy' },
   { label: 'Alchemy', icon: 'i-lucide-flask-conical', href: '/alchemy' },
   { label: 'Academy', icon: 'i-lucide-graduation-cap' },
   {

@@ -2789,3 +2789,71 @@ because source capabilities remain unverified.
 - **Browser gate still open:** no local browser run or screenshots were produced
   for this re-review at 1440×1000, 1280×800 or 390×844. Thus no UI visual
   parity, keyboard or responsive acceptance is claimed.
+
+### 2026-10-15 — Normal/Rare Drops observed item detail repair
+
+Default callback-only Drop tabs had lost access to observed item stats during
+PR #91's evidence-separation changes. The shared item popup now displays eligible
+historical inventory/pet evidence in a separate source-labeled section, with its
+own enhancement, white stats/rolls, durability and blues. The relation to the drop
+remains explicitly unverified; no inventory gain is counted as a world drop and
+no other copy's stats become callback facts. Missing/competing observations retain
+the unavailable state. [Evidence and test contract](reference/item-tooltip-regression-2026-10-15.md).
+
+Item Search follow-up: the missing Nuxt `/api/items` and `/api/economy/offers`
+routes caused 404 responses even though their Go handlers existed. Authenticated
+proxies now connect both pages. Running-instance checks at all three required
+viewports passed for retained results (769 items / 5,410 Global messages),
+search/reset/container filter/cursor, tooltip and error recovery. Normal/Rare
+source-labeled stats/blues also passed desktop and real touch checks. Evidence:
+`/tmp/phmon-item-details-20261015`, including `results.json` and
+`search-results.json`. A read-only proxy check now runs in Stack CI.
+
+### 2026-10-15 — Operator screenshot correction: drops and Global Offers
+
+The duplicate tooltip block is removed. One compact item card now follows the
+supplied Gem Necklace/Leopard Casque captures; a short source qualifier replaces
+the diagnostic section. Drop tables now use 67 px rows, 45 px icons, 13 px text,
+reference-sized filters/tabs, readable local dates and gold map actions. The
+model-only callback name filter now resolves through the server's catalog.
+Dashboard Global Offers consumes the existing canonical offer query over the
+shared live socket; the Economy sidebar link is active. All three required browser
+sizes passed with screenshots and measured dimensions.
+
+The screenshot's pet staff lacks captured rolls/blues in both its saved observation
+and current getter output. It remains an explicit source capability gap; another
+bag copy's stats are not borrowed. This is not full pet-detail or Slice 13 parity.
+[Measurements, actual item evidence, validation and next runtime gate](reference/drop-screenshot-parity-2026-10-15.md).
+
+### 2026-10-15 — Item Search operator screenshot correction
+
+The prior observation-row design did not match the supplied populated reference.
+`/items` now uses one compact filter/results panel, dependent dropdowns,
+character/container groups, complete match counts and 64 px tiles with 45 px
+icons. Observer/freshness attribution appears once per container as Viewed by /
+Last synced; source buttons open the corresponding character resource tab.
+Client grouping reads all bounded canonical pages and retries inconsistent
+container revisions. Server/model metadata and exact stack quantities remain
+source-backed. The canonical persistence/query contracts are unchanged.
+[Design, data boundaries and browser evidence](reference/item-search-screenshot-parity-2026-10-15.md).
+This corrects Item Search presentation; the wider Slice 13 evidence gates remain
+open, including placement of an exact-item history action after removal of the
+old per-row diagnostic link.
+
+### 2026-10-15 — Item Search container dialogs
+
+On `/items`, **Open Char Inventory**, **Open Char Storage** and **Open Guild
+Storage** now open an in-place modal instead of navigating; filters, results and
+scroll position are preserved. The modal (≈1060 px, 20 px padding, muted gold
+border, blurred backdrop) shows the complete container rather than the filtered
+matches: owner, occupied/total slots, last synced time (guild adds Viewed by),
+page tabs above a full-width frame, 44 px left-aligned slots, the occupied total
+and a separate gold bar with the local gold icon (`0` when known zero, `—` when
+unknown). Inventory pages are 4 × 8; personal and guild storage pages are 6 × 5,
+and Item Search page labels use the same shared rule (`utils/containerLayout.ts`).
+Character containers use a dialog-scoped resources subscription on the existing
+live socket; guild storage uses the scoped API on each opening with late-response
+fencing. Escape closes a focused tooltip before the modal; focus is trapped and
+restored. Inline inventory views keep 4 × 38 px. Browser evidence at 1440 × 1000,
+1280 × 800 and 390 × 844 (real inventory 64 slots, real storage 150 slots,
+browser-only 30/45-slot guild fixtures): `/tmp/phmon-item-dialog-20261015`.

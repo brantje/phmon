@@ -42,17 +42,17 @@ presence is not an executed pass; check the current PR SHA's Actions logs.
 
 | Requirement | Status | Implementation | Regression / evidence | Remaining gate |
 | --- | --- | --- | --- | --- |
-| Current canonical containers, ownership, freshness and item detail | Implemented | `server/internal/resources/search.go`, `web/app/pages/items.vue`, `web/app/components/ItemDetailPopup.vue` | `TestResourceSnapshotsPersistFencingAndFreshness`; `web/tests/searchPage.test.ts` | Real browser popups and stale/disconnect inspection |
+| Current canonical containers, ownership, freshness and item detail | Implemented; screenshot correction verified locally | Canonical resources API; grouped `/items`; shared popup and character resource links | `web/tests/itemSearch.test.ts`; `scripts/item_search_browser_check.mjs`; [screenshot audit](reference/item-search-screenshot-parity-2026-10-15.md) | Latest remote CI / remaining real-runtime gates |
 | Single chosen guild observer snapshot, no mixed revisions | Implemented | `server/internal/resources/search.go` | PostgreSQL resource and guild snapshot fixture | Concurrent competing guild observer acceptance |
 | Repeatable-read count/page and canonical server-key cursor | Implemented | `server/internal/resources/search.go` | Display-name/server-key discrepancy fixture and two-page search | Cross-request resource update stability not proved |
-| Item taxonomy/degree only when a grounded server profile is present | Evidence-limited | `server/internal/resources/search.go`, `server/internal/httpapi/items.go` | Filter bounds, frontend query utility fixtures | Coverage for all server-specific item profiles |
+| Item taxonomy/degree only when a grounded server profile is present | Implemented for mapped metadata / explicit exported namespaces; coverage limited | Per-row server-resolved metadata; dependent dropdowns in `/items` | Cross-profile model collision, unknown taxonomy and real category/subcategory/degree browser checks | Unmapped custom item families / profiles remain unknown |
 | Historical item-instance copy details | Evidence-limited | `server/internal/events/store.go` | Event-specific payload assertions | No identity for unobserved historical copies |
 
 ## E — Item movement/history analytics
 
 | Requirement | Status | Implementation | Regression / evidence | Remaining gate |
 | --- | --- | --- | --- | --- |
-| Search → history → filtered canonical Events/source link | Implemented | `web/app/pages/items.vue`, `web/app/pages/events.vue`, `web/app/utils/searchPage.ts` | Frontend history-link tests, Go event ID tests | Browser journey and navigation acceptance |
+| Search → history → filtered canonical Events/source link | Source navigation implemented; exact-item history entry pending | Character resource links; canonical Events routes and `itemHistoryTarget` retained | Frontend history-link tests, real source-tab browser checks | Restore a reference-compatible history action; old per-row diagnostics removed per operator screenshot |
 | Drop observations vs owned gains and observed quantity | Implemented, evidence-limited | `server/internal/analytics/query.go`, `web/app/pages/analytics.vue` | `TestAnalyticsQueriesUseCanonicalEventsAndStableScope` | Unique verified acquisitions cannot be inferred |
 | Method/container-filtered item-history breakdown and timeline | Implemented, pending verification | `server/internal/analytics/query.go`, `web/app/pages/analytics.vue`, canonical Events store | `TestAnalyticsQueriesUseCanonicalEventsAndStableScope` asserts world/gain/transfer counts, moved quantities and source/destination/method filtering | PostgreSQL and UI/browser acceptance, real pet receipt overlap |
 | Historical rarity, seal, plus and blues not borrowed across copies | Evidence-limited | `server/internal/events/store.go`, item presentation helpers | History event payload tests | Some historical source observations lack instance fields |
@@ -93,3 +93,16 @@ presence is not an executed pass; check the current PR SHA's Actions logs.
 - **Recommendation: NOT READY** until the actual latest CI result is green
   and the E, browser, and relevant real-source gates are completed. Keep draft,
   do not merge, deploy or operate live characters.
+
+## 2026-10-15 targeted operator regression verification
+
+The Item Search and Economy pages were missing their Nuxt API proxies; store and
+query-helper tests had not covered that transport. Both proxies now exist and the
+Stack CI job includes `scripts/search_proxy_smoke.py`. Authenticated live browser
+verification passed at all three required sizes for both pages, with search,
+filter/reset/cursor, no-store/auth/error status, empty/error/recovery and item
+popup checks. Normal/Rare Drop popups expose source-labeled separate historical
+item observations and preserve callback facts/counts. Exact-ID live navigation
+and mobile tooltip opening were also repaired. See the [regression report](reference/item-tooltip-regression-2026-10-15.md).
+These passes do not resolve the remaining acquisition identity, runtime or other
+issue #90 capability/acceptance gates above.

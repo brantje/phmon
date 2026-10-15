@@ -244,6 +244,24 @@ func (m *ItemMetadata) PortraitURL(server string, model *int64) string {
 	return portrait.PortraitURL
 }
 
+// ItemNameMatches returns only profile-scoped model identities for name search.
+func (m *ItemMetadata) ItemNameMatches(query string) []string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if m == nil || query == "" {
+		return nil
+	}
+	matches := []string{}
+	for server, dataset := range m.Servers {
+		for model, definition := range m.Catalogs[dataset].Items {
+			name, _ := definition.Presentation["name"].(string)
+			if strings.Contains(strings.ToLower(name), query) || strings.Contains(strings.ToLower(definition.Code), query) {
+				matches = append(matches, strings.ToLower(server)+":"+model)
+			}
+		}
+	}
+	return matches
+}
+
 // ItemPresentation resolves static data using the server's model mapping. A
 // model from an unmapped server is never assumed to identify the same item.
 func (m *ItemMetadata) ItemPresentation(server string, model *int64, code string) map[string]any {

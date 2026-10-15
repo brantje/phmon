@@ -1152,6 +1152,15 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, errors.New("character resources unavailable")
 		}
 		return h.resources.Character(ctx, subscription.Filter.CharacterID, subscription.Filter.ResourceKeys...)
+	case "offers":
+		if h.chat == nil {
+			return nil, errors.New("global offers unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 5
+		}
+		return h.chat.Offers(ctx, chat.OfferFilter{Server: subscription.Filter.Server, Limit: limit})
 	case "events":
 		if h.events == nil {
 			return nil, errors.New("event history unavailable")
@@ -1491,7 +1500,8 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 	case "events":
 		if len(subscription.Filter.Query) > 64 || subscription.Filter.GroupID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || len(subscription.Filter.ResourceKeys) != 0 ||
 			!validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||
-			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 || subscription.Filter.EventID != "" ||
+			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 ||
+			subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
 			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) ||
 			(subscription.Filter.IncludePetPickups || subscription.Filter.IncludeOwnedGains) && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) {
 			return liveSubscription{}, false
@@ -1517,6 +1527,14 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			if _, err := events.DecodeCursor(subscription.Filter.Cursor); err != nil {
 				return liveSubscription{}, false
 			}
+		}
+	case "offers":
+		filter := subscription.Filter
+		if !validServerFilter(filter.Server) || filter.Query != "" || filter.GroupID != "" || filter.CharacterID != "" ||
+			filter.CommandName != "" || filter.CommandState != "" || len(filter.ResourceKeys) != 0 || hasEventSpecificFilters(filter) ||
+			filter.Channel != "" || filter.Peer != "" || filter.Area != "" || filter.Floor != "" || filter.Region != 0 ||
+			(filter.Limit != 0 && (filter.Limit < 1 || filter.Limit > 10)) {
+			return liveSubscription{}, false
 		}
 	case "chat":
 		if !validServerFilter(subscription.Filter.Server) || subscription.Filter.CharacterID != "" && !agentdomain.ValidAgentID(subscription.Filter.CharacterID) ||

@@ -27,6 +27,20 @@ func TestMetadataIdentityAndPrecision(t *testing.T) {
 	}
 }
 
+func TestItemNameSearchKeepsNumericModelsWithinTheirServerProfile(t *testing.T) {
+	m := &ItemMetadata{Servers: map[string]string{"greatest": "a", "other": "b"}, Catalogs: map[string]ItemCatalog{
+		"a": {Items: map[string]ItemDefinition{"847": {Code: "ITEM_NECKLACE", Presentation: map[string]any{"name": "Gem Necklace"}}}},
+		"b": {Items: map[string]ItemDefinition{"847": {Code: "ITEM_RING", Presentation: map[string]any{"name": "Copper Ring"}}}},
+	}}
+	got := m.ItemNameMatches("gem necklace")
+	if len(got) != 1 || got[0] != "greatest:847" {
+		t.Fatalf("cross-profile item name search: %v", got)
+	}
+	if len(m.ItemNameMatches("missing")) != 0 {
+		t.Fatal("missing catalog name matched")
+	}
+}
+
 func TestCharacterPortraitResolutionIsScopedToServerProfile(t *testing.T) {
 	directory := t.TempDir()
 	if err := os.WriteFile(filepath.Join(directory, "servers.json"), []byte(`{"greatest":"gamedata-a","other":"gamedata-b"}`), 0600); err != nil {

@@ -6,6 +6,20 @@ export function formatTimestamp(value?: string) {
   return date.toISOString().replace('T', ' ').replace('.000Z', 'Z')
 }
 
+// Compact local date/time used for container "Last synced" labels.
+export function formatSyncedTime(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? 'Unknown'
+    : date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+}
+
 export function formatHealthMana(character: Character) {
   return `HP ${character.hp?.toLocaleString() ?? '—'} / ${character.hp_max?.toLocaleString() ?? '—'} · MP ${character.mp?.toLocaleString() ?? '—'} / ${character.mp_max?.toLocaleString() ?? '—'}`
 }

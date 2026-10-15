@@ -1,20 +1,28 @@
 <script setup lang="ts">
 import type { RouteLocationRaw } from 'vue-router'
-import { buildItemDetail } from '../utils/itemDetailPopup'
+import { formatUnsignedCount } from '../utils/item-instance-format'
+import {
+  buildItemDetail,
+  itemTooltipPresentation,
+} from '../utils/itemDetailPopup'
 
 const props = withDefaults(
   defineProps<{
     item: Record<string, unknown>
-    layout?: 'inline' | 'slot'
+    layout?: 'inline' | 'slot' | 'tile'
     to?: RouteLocationRaw
     slotNumber?: number
     label?: string
+    subtitle?: string
+    quantityExact?: string
   }>(),
   {
     layout: 'inline',
     to: undefined,
     slotNumber: undefined,
     label: undefined,
+    subtitle: undefined,
+    quantityExact: undefined,
   },
 )
 
@@ -26,44 +34,10 @@ const placed = ref(false)
 const iconFailed = ref(false)
 const tooltipStyle = ref<Record<string, string>>({})
 const model = computed(() => buildItemDetail(props.item))
-const detailProvenance = computed(() => {
-  const instance =
-    props.item.instance && typeof props.item.instance === 'object'
-      ? (props.item.instance as Record<string, unknown>)
-      : {}
-  const details =
-    props.item.instance_details &&
-    typeof props.item.instance_details === 'object'
-      ? (props.item.instance_details as Record<string, unknown>)
-      : {}
-  const rawSources = Array.isArray(details.sources)
-    ? details.sources
-    : typeof details.source === 'string'
-      ? [details.source]
-      : []
-  const sources = rawSources.flatMap((source) => {
-    if (source === 'phbot_api') return ['phBot API']
-    if (source === 'vsro_1188_packet') return ['Joymax packet']
-    return typeof source === 'string' ? [source] : []
-  })
-  const observationID =
-    typeof instance.observation_id === 'string' ? instance.observation_id : ''
-  const association =
-    instance.association === 'explicit_drop_event_id'
-      ? 'Explicitly linked inventory observation; pickup cause still unverified'
-      : instance.association === 'unique_model_inventory_gain'
-        ? 'Matched inventory gain; acquisition cause unverified'
-        : instance.association === 'unique_temporal_inventory_gain'
-          ? 'Matched nearby inventory gain; acquisition cause unverified'
-          : ''
-  if (!sources.length && !observationID && !association) return ''
-  return [
-    sources.length ? `Detail source: ${[...new Set(sources)].join(' + ')}` : '',
-    observationID ? `Packet observation: ${observationID}` : '',
-    association,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+const presentation = computed(() => itemTooltipPresentation(props.item))
+const quantityLabel = computed(() => {
+  const value = formatUnsignedCount(props.quantityExact ?? model.value.quantity)
+  return value && value !== '0' && value !== '1' ? value : null
 })
 const narrow = () => window.matchMedia('(max-width: 640px)').matches
 let listening = false
@@ -127,6 +101,13 @@ function hide() {
   unbind()
 }
 
+// Escape closes an open tooltip first; otherwise it reaches enclosing dialogs.
+function dismiss(event: KeyboardEvent) {
+  if (!visible.value) return
+  event.stopPropagation()
+  hide()
+}
+
 function close(event?: FocusEvent) {
   const next = event?.relatedTarget
   if (next instanceof Node && anchor.value?.contains(next)) return
@@ -134,6 +115,9 @@ function close(event?: FocusEvent) {
   hide()
 }
 
+watch(presentation, () => {
+  if (visible.value) nextTick(place)
+})
 watch(
   () =>
     `${props.item.model ?? ''}:${props.item.servername ?? ''}:${model.value.icon}:${model.value.name}`,
@@ -162,41 +146,56 @@ const slotLabel = computed(() => {
     class="item-detail-popup"
     :class="{
       'item-slot-wrap': layout === 'slot',
+      'item-search-tile-wrap': layout === 'tile',
       'has-item': true,
       'is-rare': model.rare,
+      'has-blue-options': model.blues.length > 0,
     }"
     @mouseenter="open"
     @mouseleave="close()"
     @focusin="open"
     @focusout="close"
-    @keydown.esc.stop="hide"
+    @keydown.esc="dismiss"
   >
     <button
-      v-if="layout === 'slot'"
-      class="item-slot"
+      v-if="layout === 'slot' || layout === 'tile'"
+      :class="layout === 'tile' ? 'item-search-tile' : 'item-slot'"
       type="button"
-      :aria-label="slotLabel"
+      :aria-label="
+        layout === 'tile'
+          ? `Show details for ${model.name}, ${subtitle}${quantityLabel ? `, quantity ${quantityLabel}` : ''}`
+          : slotLabel
+      "
       :aria-describedby="visible ? tooltipID : undefined"
       @click="open"
     >
-      <img
-        v-if="model.icon && !iconFailed"
-        :src="model.icon"
-        class="item-icon"
-        alt=""
-        @error="iconFailed = true"
-      />
-      <span v-else class="item-fallback" aria-hidden="true">{{
-        model.iconFallback
-      }}</span>
-      <span v-if="model.plus !== null && model.plus > 0" class="item-plus"
-        >+{{ model.plus }}</span
-      >
       <span
-        v-if="model.quantity !== null && model.quantity > 1"
-        class="item-quantity"
-        >{{ model.quantity.toLocaleString() }}</span
+        :class="layout === 'tile' ? 'item-search-tile-icon' : 'item-slot-image'"
       >
+        <img
+          v-if="model.icon && !iconFailed"
+          :src="model.icon"
+          class="item-icon"
+          alt=""
+          @error="iconFailed = true"
+        />
+        <span v-else class="item-fallback" aria-hidden="true">{{
+          model.iconFallback
+        }}</span>
+        <span v-if="model.plus !== null && model.plus > 0" class="item-plus"
+          >+{{ model.plus }}</span
+        >
+        <span
+          v-if="quantityLabel"
+          class="item-quantity"
+          :title="`Quantity: ${quantityLabel}`"
+          >{{ quantityLabel }}</span
+        >
+      </span>
+      <span v-if="layout === 'tile'" class="item-search-tile-text">
+        <span class="item-detail-name">{{ model.name }}</span>
+        <span class="item-search-tile-subtitle">{{ subtitle }}</span>
+      </span>
     </button>
     <template v-else>
       <img
@@ -209,17 +208,27 @@ const slotLabel = computed(() => {
       <span v-else class="item-detail-icon item-fallback" aria-hidden="true">{{
         model.iconFallback
       }}</span>
-      <NuxtLink
-        v-if="to"
-        class="item-detail-name"
-        :to="to"
-        :aria-describedby="visible ? tooltipID : undefined"
-      >
-        {{ model.name
-        }}<template v-if="model.plus !== null && model.plus > 0">
-          (+{{ model.plus }})</template
+      <template v-if="to">
+        <NuxtLink
+          class="item-detail-name"
+          :to="to"
+          :aria-describedby="visible ? tooltipID : undefined"
         >
-      </NuxtLink>
+          {{ model.name
+          }}<template v-if="model.plus !== null && model.plus > 0">
+            (+{{ model.plus }})</template
+          >
+        </NuxtLink>
+        <button
+          class="item-detail-touch-trigger"
+          type="button"
+          :aria-label="`Show details for ${model.name}`"
+          :aria-describedby="visible ? tooltipID : undefined"
+          @click.stop="open"
+        >
+          <UIcon name="i-lucide-info" aria-hidden="true" />
+        </button>
+      </template>
       <button
         v-else
         class="item-detail-name"
@@ -244,59 +253,12 @@ const slotLabel = computed(() => {
         :style="tooltipStyle"
         role="tooltip"
       >
-        <strong class="item-tooltip-name">
-          {{ model.name
-          }}<template v-if="model.plus !== null && model.plus > 0">
-            (+{{ model.plus }})</template
-          >
-        </strong>
-        <span v-if="detailProvenance" class="item-tooltip-provenance">
-          {{ detailProvenance }}
-        </span>
-        <span v-if="model.seal" class="item-tooltip-seal">{{
-          model.seal
-        }}</span>
+        <ItemTooltipDetails :model="presentation.model" />
         <span
-          v-for="line in model.classifications"
-          :key="line"
-          class="item-tooltip-classification"
-          >{{ line }}</span
-        >
-        <span
-          v-for="line in model.statsBeforeDurability"
-          :key="line"
-          class="item-tooltip-stat"
-          >{{ line }}</span
-        >
-        <span v-if="model.durability" class="item-tooltip-stat">{{
-          model.durability
-        }}</span>
-        <span
-          v-for="line in model.statsAfterDurability"
-          :key="line"
-          class="item-tooltip-stat"
-          >{{ line }}</span
-        >
-        <span v-if="model.catalogNote" class="item-tooltip-classification">{{
-          model.catalogNote
-        }}</span>
-        <span
-          v-for="requirement in model.requirements"
-          :key="requirement.text"
-          class="item-tooltip-requirement"
-          :class="{ 'item-tooltip-level': requirement.level }"
-          >{{ requirement.text }}</span
-        >
-        <span
-          v-for="blue in model.blues"
-          :key="blue"
-          class="item-tooltip-blue"
-          >{{ blue }}</span
-        >
-        <span
-          v-if="model.quantity !== null && model.quantity > 1"
-          class="item-tooltip-quantity"
-          >Quantity: {{ model.quantity.toLocaleString() }}</span
+          v-if="presentation.caption"
+          class="item-tooltip-caption"
+          :title="presentation.sourceDescription"
+          >{{ presentation.caption }}</span
         >
       </div>
     </Teleport>

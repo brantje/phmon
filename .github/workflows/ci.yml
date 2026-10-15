@@ -52,6 +52,7 @@ jobs:
         run: sed -i 's/^OPERATOR_ALLOW_INSECURE_HTTP=false$/OPERATOR_ALLOW_INSECURE_HTTP=true/' .env
       - run: docker compose up --build -d --wait --wait-timeout 180
       - run: python3 scripts/smoke.py
+      - run: python3 scripts/search_proxy_smoke.py
       - name: Verify production browser live WebSocket path
         run: python3 scripts/live_smoke.py
       - name: Verify authenticated remote command through production plugin worker

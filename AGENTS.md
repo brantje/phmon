@@ -6519,3 +6519,205 @@ The next action is to inspect the latest Validation, Plugin Version Guard and
 Stack CI results and fix any failures, then carry out real PostgreSQL and
 responsive browser verification. Keep PR #91 draft and unmerged. Do not invent
 verified pickup identity, cross-observer broadcast identity or sales receipts.
+
+### Resume — 2026-10-15 PR #91 item details and missing search proxies
+
+Focused operator follow-up, on the existing `feat/90-economy-item-analytics`
+checkout. Normal/Rare Drop stats disappeared when #91 removed historical/temporal
+item promotion and excluded owned gains from default Drop tabs. The captured
+inventory stats still existed; earlier frontend fixtures bypassed the lost
+query/API path. A separate `related_item_observation` now preserves eligible
+source-event snapshots and typed presentation. The shared tooltip shows their
+stats/blues with an explicit unverified-relation label and source event ID,
+without turning them into callback item facts or changing canonical counts.
+Competing/ambiguous suggestions remain suppressed. Exact event-ID live
+subscriptions also now accept valid UUIDs; their previous blanket rejection
+left source-event routes connecting indefinitely. A separate mobile details
+button opens linked-item tooltips without navigating away.
+
+The operator then reported Item Search's load error. Both `/api/items` and
+`/api/economy/offers` existed in Go but had no Nuxt proxy routes and returned 404.
+Both now use existing operator-auth/query/no-store/error forwarding conventions.
+`scripts/search_proxy_smoke.py` checks these real routes in Stack CI, including
+401, limits and upstream 400 preservation. Browser acceptance scripts exercise
+both pages and default Drop tooltips through the actual web transport.
+
+Files: Events store/integration tests; HTTP presentation/live validation/tests;
+shared item popup and extracted tooltip body; item model/types/frontend tests;
+Nuxt item/economy proxy routes; three read-only smoke/browser scripts and Stack
+CI; item-evidence/parity docs. Root cause, boundaries and evidence are recorded in
+[the regression report](docs/reference/item-tooltip-regression-2026-10-15.md).
+
+Validation: PostgreSQL-backed race tests for Events, HTTP API and resources pass
+using a separate `phmon_item_detail_checks` database, removed afterward. Go vet,
+261 frontend unit tests, final Nuxt typecheck, changed-file lint (zero errors;
+two existing void-element style warnings), Prettier, production Docker builds
+and diff checks pass. The authenticated running-instance proxy smoke passes.
+At 1440×1000, 1280×800 and 390×844, browser checks loaded 769 current item slots
+and 5,410 Global messages, verified search/filter/reset/cursor/error recovery,
+matched Normal/Rare tooltip stats/blues to their exact source-event responses,
+and checked touch/focus/Escape, bounds and page overflow with zero page errors.
+Screenshots and JSON results: `/tmp/phmon-item-details-20261015`.
+
+Only local server/web services were rebuilt/recreated; PostgreSQL and existing
+history remained intact. No bot command, plugin/protocol change, merge, remote
+publication or notification. Changes remain in the current checkout. Exact next
+action: none for these targeted regressions; broader issue #90/Slice 13 gates
+remain open. A nearby observation is not proof of pickup identity.
+
+### Resume — 2026-10-15 operator screenshot correction for Slice 13
+
+The operator rejected the first tooltip repair's two-card diagnostics and provided
+precise phMonitor/PhMon Rare Drops comparisons. This increment supersedes that
+presentation, preserving its independent source records and the prior search
+proxy repairs. The popup now renders one compact item source, removes the repeated
+metadata/unknown-stats block, and keeps only a small meaningful source qualifier
+when the relationship is unverified. The reference's 67 px rows, 45 px item frames,
+13 px text, compact filter widths, readable local dates, 39 px tabs and gold map
+buttons are implemented for both Drop tables. The extra 'All rare/normal drops'
+heading is removed. The actual 48%/9% Gem Necklace snapshot and blues are preserved
+in a sanitized item-only frontend fixture, without copying the reference's
+inconsistent leading values or unlabeled raw floats.
+
+The user also identified the dashboard Global Offers 'LATER' placeholder. It now
+reads the existing canonical offer query over a bounded `offers` subscription on
+the shared live socket; no polling/writer was added. It renders source-backed ads,
+observer attribution, source/Economy links and loading/empty/error/stale states.
+Economy's sidebar entry now navigates. Independent observer-message IDs remain
+separate, without claiming a verified common broadcast or completed sale.
+The existing Stack browser audit now requires this card to load without 'LATER'.
+
+A real screen check also found that a model-only callback could not match the
+Item name filter. Catalog-name matches now add only server/model keys to the
+existing Events count/page predicate, with cross-profile regression coverage.
+No historical item-instance attributes are inferred from those name matches.
+
+The screenshot's Lepus Soul Fiend pet item is a real remaining source gap: both
+its immutable observation and current getter row expose durability 82 and basic
+fields only, without whites/blues/attack fields. Another earlier bag copy of the
+same model has richer fields but cannot identify this copy. The pet packet probe
+is still presence-only. Full pet-stat parity requires verified native API/packet
+item evidence; no character command or forced pet transfer was used.
+
+Files: shared popup/model/body/styles; Events page/date helper; sidebar/dashboard;
+shared live client/types and Go offers stream/validation; catalog-name matcher,
+Events query and tests; sanitized Gem Necklace fixture; browser/CI checks; protocol
+and evidence/parity docs. [Full measurements, source IDs and capability gate](docs/reference/drop-screenshot-parity-2026-10-15.md).
+
+Validation: PostgreSQL race suites for Events/resources/HTTP API/chat, Go vet,
+266 frontend tests, Nuxt typecheck, changed-file lint/Prettier, transport audit,
+proxy smoke and production builds pass. The isolated `phmon_drop_parity_checks`
+database was removed after the tests. Browser checks at 1440×1000, 1280×800 and
+390×844 measured exactly 67 px rows / 45 px icons / 13 px text, exercised name
+filtering and live offer server scoping, verified one popup identity and the
+actual Gem Necklace/limited pet item, and passed touch/focus/Escape/bounds with
+zero page errors or page overflow. Artifacts: `/tmp/phmon-drop-parity-20261015`.
+
+A final web rebuild encountered disk exhaustion. Only unused Docker build cache
+older than 15 minutes was pruned (6.449 GB); application containers, volumes and
+historical records were retained. Local server/web rollout was performed with
+health checks; PostgreSQL stayed running. No plugin/agent protocol change, bot
+command, notification, remote publication or merge. Current checkout changes remain
+unpushed. Final web health and post-rollout browser checks passed for all three sizes,
+including Item Search/Economy regression checks (770 item slots / 5,422 messages
+at observation time). Exact next action: none for these screenshot/dashboard
+corrections; pet native evidence and broader issue #90/Slice 13 acceptance remain
+separate open gates.
+
+### Resume — 2026-10-15 Item Search screenshot correction
+
+Active scope remains the operator's targeted Slice 13 corrections on
+`feat/90-economy-item-analytics`, in the existing checkout. The operator rejected
+`/items` showing the internal observation model instead of the supplied populated
+reference. The page now has one compact filter/results panel, real dependent
+category/subcategory/degree dropdowns, character/container groups, full displayed
+match counts, 64 px tiles with 45 px icons and exact stack counts. Source links
+select the matching character resource tab. Observer/freshness details appear
+once per container as Viewed by / Last synced. Internal per-item diagnostic rows
+and the observation-heavy description are removed.
+
+The UI traverses bounded canonical cursor pages before grouping and checks total
+and container snapshot consistency, including guild observer swaps and session
+revision reuse via observation time. It retries once and fails visibly rather
+than mixing snapshots. Scope changes abort/fence older reads. Metadata stays
+server-resolved; unknown taxonomy is not inferred. Existing API/current-container
+semantics, persistence, history, collection and bot capabilities are unchanged.
+The old diagnostic history link is absent from this reference layout; a suitable
+exact-item history entry remains an explicit wider Slice 13 presentation gate.
+
+Files: `web/app/pages/items.vue`, new `useItemSearch` composable and `itemSearch`
+utility/tests, shared popup tile/quantity presentation, CharacterCard and detail
+route resource links, scoped CSS, updated real-data search browser check,
+acceptance/parity docs. [Design and verification boundaries](docs/reference/item-search-screenshot-parity-2026-10-15.md).
+
+Validation: 274 frontend unit tests, Nuxt typecheck, changed-file lint (zero
+errors, four void-element style warnings), formatting and diff checks pass.
+Authenticated browser checks at 1440×1000, 1280×800 and 390×844 passed full
+character/container counts, sets, text/category/subcategory/degree/reset,
+keyboard/touch/Escape tooltips, inventory/storage source tabs, transport failure
+and recovery, with zero browser errors/page overflow. Captured source totals
+were 775 current slots / 5,446 Global messages, which continue changing normally.
+Shared Drop/dashboard regression passed at all three sizes, including the actual
+Gem Necklace, single-item tooltip, live offers and the documented pet-stat gap.
+A wide real-data capture has six approximately 247 px columns matching the
+supplied populated reference structure. Captures/results:
+`/tmp/phmon-items-parity-20261015`.
+
+Public demo Item Search navigation was inspected in Chrome; its content did not
+render within the bounded wait, so the supplied populated screenshot remains the
+baseline. No private endpoint/bundle was inspected. Only unused Docker build
+cache was pruned to make room for local builds; application data/volumes and
+PostgreSQL were retained. No bot command, plugin/protocol change, notification,
+remote publication or merge. All changes remain unpushed.
+
+Final rollout: only web was recreated after the production build completed.
+The running image is `871b1868d9cb`; container health and backend/database health
+are good. Item Search/Economy acceptance passed again against that exact build at
+all three required sizes (777 current slots / 5,446 messages at observation time),
+including the final snapshot guard. The wide six-column capture was refreshed.
+Exact next action: none for this targeted `/items` correction; the separately
+recorded Slice 13 source/history/CI gates remain open.
+
+### Resume — 2026-10-15 Item Search inventory/storage dialogs
+
+Operator-requested increment in the existing checkout (`feat/90-economy-item-analytics`).
+The three Item Search container buttons open `InventoryDialog` instead of
+navigating; other resource links are unchanged. `InventoryGrid` gains an opt-in
+`variant="dialog"` (44 px slots, 4 × 8 inventory / 6 × 5 storage, page tabs above
+a full-width frame, occupied total and compact gold bar); inline callers are
+unchanged. `utils/containerLayout.ts` shares page geometry with Item Search labels
+(storage labels now page by 30). `useLiveData` adds subscription-scoped
+`resourceFeeds`/`resourceFeedStatus` (`resource-dialog-*`, excluded from global
+connection state); `useContainerDialog` reads character containers through it and
+guild storage through `/api/guild-storage` with abort/generation fencing.
+`ItemDetailPopup` Escape now stops propagation only while its tooltip is open.
+No backend, database or plugin changes.
+
+Files: `web/app/{components/{InventoryDialog,InventoryGrid,ItemDetailPopup}.vue,
+composables/{useContainerDialog,useLiveData}.ts,pages/items.vue,
+utils/{containerLayout,itemSearch,characterFormat}.ts,assets/css/main.css}`,
+`web/tests/{containerLayout,itemSearch}.test.ts`,
+`scripts/{item_dialog_browser_check,item_search_browser_check}.mjs`,
+`docs/reference-parity.md`.
+
+Validation (Node 24.20.0): 280 unit tests, Nuxt typecheck, format check, lint (0
+errors; existing void-element warnings), production build, `git diff --check`.
+`item_dialog_browser_check.mjs` passed against a local production preview and the
+deployed web at 1440×1000, 1280×800 and 390×844: no navigation, preserved filters
+and scroll, 4/6 columns × 32/30 slots, 44 px slots, page switching, partial final
+page, known-zero and unknown gold, discarded late guild response, tooltip stacking
+above the modal, Escape ordering, Tab trap, focus restoration, backdrop close,
+every dialog subscription released, inline inventory still 4 × 38 px, zero page
+errors. `item_search_browser_check.mjs` and `drop_parity_browser_check.mjs`
+regressions passed (Gem/pet cases skipped without their event-ID env vars).
+Screenshots/results: `/tmp/phmon-item-dialog-20261015`.
+
+Rollout incident: `docker compose up -d --no-deps --wait web` rebuilt web but also
+recreated the postgres and server containers and left them stopped (cause not
+determined; likely compose config drift since their creation). They were started
+again on the unchanged `phmon_postgres_data` volume about two minutes later; 12
+characters retained, readiness and web health report database OK and both agents
+reconnected. Future web-only rollouts should check `docker compose ps` afterwards.
+Nothing committed or pushed. Exact next action: none for this increment; wider
+Slice 13 gates remain open.
+

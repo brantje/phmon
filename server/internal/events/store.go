@@ -1,6 +1,7 @@
 package events
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -77,38 +78,50 @@ type AgentDeath struct {
 }
 
 type Event struct {
-	ID                   string          `json:"event_id"`
-	Schema               int             `json:"schema_version"`
-	Kind                 string          `json:"kind"`
-	Category             string          `json:"category"`
-	AgentID              string          `json:"agent_id"`
-	CharacterID          string          `json:"character_id"`
-	SessionID            string          `json:"session_id"`
-	Server               string          `json:"server"`
-	Character            string          `json:"character"`
-	OccurredAt           time.Time       `json:"occurred_at"`
-	ReceivedAt           time.Time       `json:"received_at"`
-	Source               string          `json:"source"`
-	SourceRef            string          `json:"source_ref"`
-	Region               *int            `json:"region,omitempty"`
-	Zone                 string          `json:"zone,omitempty"`
-	X                    *float64        `json:"x,omitempty"`
-	Y                    *float64        `json:"y,omitempty"`
-	Z                    *float64        `json:"z,omitempty"`
-	ModelID              *int64          `json:"model_id,omitempty"`
-	PortraitURL          string          `json:"portrait_url,omitempty"`
-	Payload              json.RawMessage `json:"payload"`
-	Sequence             *int64          `json:"sequence,omitempty"`
-	DedupeKey            string          `json:"dedupe_key,omitempty"`
-	ItemModel            *int64          `json:"item_model,omitempty"`
-	ItemCode             string          `json:"item_code,omitempty"`
-	ItemMetadata         map[string]any  `json:"item_metadata,omitempty"`
-	ItemDetails          map[string]any  `json:"item_details,omitempty"`
-	ItemDropClass        string          `json:"item_drop_class,omitempty"`
-	ItemDropClassVersion string          `json:"item_drop_class_version,omitempty"`
-	ItemName             string          `json:"item_name,omitempty"`
-	ItemIconURL          string          `json:"item_icon_url,omitempty"`
-	Unique               *UniqueInfo     `json:"unique,omitempty"`
+	ID                     string           `json:"event_id"`
+	Schema                 int              `json:"schema_version"`
+	Kind                   string           `json:"kind"`
+	Category               string           `json:"category"`
+	AgentID                string           `json:"agent_id"`
+	CharacterID            string           `json:"character_id"`
+	SessionID              string           `json:"session_id"`
+	Server                 string           `json:"server"`
+	Character              string           `json:"character"`
+	OccurredAt             time.Time        `json:"occurred_at"`
+	ReceivedAt             time.Time        `json:"received_at"`
+	Source                 string           `json:"source"`
+	SourceRef              string           `json:"source_ref"`
+	Region                 *int             `json:"region,omitempty"`
+	Zone                   string           `json:"zone,omitempty"`
+	X                      *float64         `json:"x,omitempty"`
+	Y                      *float64         `json:"y,omitempty"`
+	Z                      *float64         `json:"z,omitempty"`
+	ModelID                *int64           `json:"model_id,omitempty"`
+	PortraitURL            string           `json:"portrait_url,omitempty"`
+	Payload                json.RawMessage  `json:"payload"`
+	Sequence               *int64           `json:"sequence,omitempty"`
+	DedupeKey              string           `json:"dedupe_key,omitempty"`
+	ItemModel              *int64           `json:"item_model,omitempty"`
+	ItemCode               string           `json:"item_code,omitempty"`
+	ItemMetadata           map[string]any   `json:"item_metadata,omitempty"`
+	ItemDetails            map[string]any   `json:"item_details,omitempty"`
+	RelatedItemObservation *ItemObservation `json:"related_item_observation,omitempty"`
+	ItemDropClass          string           `json:"item_drop_class,omitempty"`
+	ItemDropClassVersion   string           `json:"item_drop_class_version,omitempty"`
+	ItemName               string           `json:"item_name,omitempty"`
+	ItemIconURL            string           `json:"item_icon_url,omitempty"`
+	Unique                 *UniqueInfo      `json:"unique,omitempty"`
+}
+
+// ItemObservation preserves a separate event's item evidence for inspection.
+// Neither association establishes that this is the world drop's item instance.
+type ItemObservation struct {
+	EventID     string         `json:"event_id"`
+	Association string         `json:"association"`
+	Source      string         `json:"source"`
+	OccurredAt  time.Time      `json:"occurred_at"`
+	Container   map[string]any `json:"container"`
+	Item        map[string]any `json:"item"`
 }
 
 // UniqueInfo is the catalog portrait attached when an event is read.
@@ -194,12 +207,21 @@ type Cursor struct {
 }
 
 type Store struct {
-	pool         *pgxpool.Pool
-	classifyDrop func(server string, model *int64, code string) (string, string)
-	acceptedHook func(Event)
+	pool           *pgxpool.Pool
+	classifyDrop   func(server string, model *int64, code string) (string, string)
+	matchItemNames func(query string) []string
+	acceptedHook   func(Event)
 }
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+// SetItemNameMatcher resolves static catalog names to server-scoped model keys.
+// It does not attach instance values or infer an acquisition relationship.
+func (s *Store) SetItemNameMatcher(match func(string) []string) {
+	if s != nil {
+		s.matchItemNames = match
+	}
+}
 
 // SetDropClassifier installs the active server/profile classifier. A nil or
 // unknown result deliberately leaves the persisted classification NULL.
@@ -1138,6 +1160,10 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if filter.EventID != "" {
 		eventID = filter.EventID
 	}
+	itemNameMatches := []string{}
+	if filter.ItemQuery != "" && s.matchItemNames != nil {
+		itemNameMatches = s.matchItemNames(filter.ItemQuery)
+	}
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
 	AND ($3='' OR c.character_name ILIKE '%'||$3||'%')
@@ -1148,30 +1174,33 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	-- Historical drop_event_id links were sometimes heuristic, not proof of pickup.
 	-- Retain both independent occurrences; do not hide an owned-gain observation.
 	AND ($14='' OR e.source=$14)
-	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
+	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%' OR (lower(e.server_name)||':'||e.item_model::text)=ANY($15::text[]))
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
 		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
-		(SELECT jsonb_build_object(
+		COALESCE((SELECT jsonb_build_object(
 			'item',a.payload->'item',
 			'association','stored_unverified_drop_event_id',
 			'event_id',a.event_id::text,
-			'source',a.source)
+			'source',a.source, 'occurred_at',a.occurred_at,
+			'container',a.payload->'destination_container')
 		FROM activity_events a
 		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
 		AND a.kind IN ('item.acquired','item.quantity_increased')
 		AND a.source='phbot.state_diff' AND a.source_ref='item_container'
 		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
 		AND a.session_id=e.session_id AND a.item_model=e.item_model
+		AND lower(a.server_name)=lower(e.server_name)
 		AND a.payload->>'drop_event_id'=e.event_id::text
 		AND a.payload->>'quantity_delta'='1'
 		AND a.payload->'destination_container'->>'type'='inventory'
 		AND a.payload->'item' IS NOT NULL
+		AND a.payload->>'item_instance_unobserved' IS DISTINCT FROM 'true'
 		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
 		GROUP BY a.event_id,a.payload,a.source
 		HAVING (SELECT count(*) FROM activity_events linked
@@ -1179,11 +1208,38 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 			AND linked.agent_id=e.agent_id AND linked.character_id=e.character_id
 			AND linked.session_id=e.session_id AND linked.item_model=e.item_model
 			AND linked.source='phbot.state_diff' AND linked.source_ref='item_container'
-			AND linked.kind IN ('item.acquired','item.quantity_increased'))=1)
+			AND linked.kind IN ('item.acquired','item.quantity_increased'))=1),
+		-- A unique nearby observation is inspectable evidence, not drop enrichment.
+		-- Keep it separate from payload.item, counts, pickup claims and analytics.
+		(SELECT CASE WHEN count(*)=1 THEN (jsonb_agg(jsonb_build_object(
+			'item',a.payload->'item', 'association','nearby_same_model_observation',
+			'event_id',a.event_id::text, 'source',a.source, 'occurred_at',a.occurred_at,
+			'container',a.payload->'destination_container'))->0) END
+		FROM activity_events a
+		WHERE e.kind IN ('drop.item','drop.rare') AND e.source='phbot.callback'
+		AND a.kind IN ('item.acquired','item.quantity_increased')
+		AND ((a.source='phbot.state_diff' AND a.source_ref='item_container') OR a.source='joymax.pet_inventory')
+		AND a.agent_id=e.agent_id AND a.character_id=e.character_id
+		AND a.session_id=e.session_id AND lower(a.server_name)=lower(e.server_name)
+		AND a.item_model=e.item_model AND a.payload->>'drop_event_id' IS NULL
+		AND a.payload->>'quantity_delta'='1'
+		AND a.payload->'destination_container'->>'type' IN ('inventory','pets')
+		AND a.payload->'item' IS NOT NULL
+		AND a.payload->>'item_instance_unobserved' IS DISTINCT FROM 'true'
+		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '3 seconds'
+		AND e.region=a.region AND e.x IS NOT NULL AND e.y IS NOT NULL AND e.z IS NOT NULL
+		AND a.x IS NOT NULL AND a.y IS NOT NULL AND a.z IS NOT NULL
+		AND abs(a.x-e.x)<=24 AND abs(a.y-e.y)<=24 AND abs(a.z-e.z)<=32
+		AND NOT EXISTS (SELECT 1 FROM activity_events d
+			WHERE d.event_id<>e.event_id AND d.kind IN ('drop.item','drop.rare')
+			AND d.source='phbot.callback' AND d.agent_id=e.agent_id
+			AND d.character_id=e.character_id AND d.session_id=e.session_id
+			AND d.item_model=e.item_model
+			AND d.occurred_at BETWEEN a.occurred_at-interval '3 seconds' AND a.occurred_at)))
 
-		`+base+` AND ($15::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($15::timestamptz,$16::uuid))
-ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.CharacterID, filter.CharacterQuery,
-		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, cursorAt, cursorID, filter.Limit+1)
+		`+base+` AND ($16::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($16::timestamptz,$17::uuid))
+ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $18`, filter.Server, filter.CharacterID, filter.CharacterQuery,
+		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches, cursorAt, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list events: %w", err)
 	}
@@ -1193,7 +1249,7 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.Ch
 		var summary AlchemySummary
 		var highest *int
 		if err := s.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER (WHERE e.payload->>'success'='true'),count(*) FILTER (WHERE e.payload->>'success'='false'),count(*) FILTER (WHERE e.payload->>'success' IS NULL OR e.payload->>'success' NOT IN ('true','false')),max(CASE WHEN e.payload->>'plus' ~ '^[0-9]{1,3}$' THEN (e.payload->>'plus')::integer END) `+base,
-			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
+			filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches).Scan(&summary.Attempts, &summary.Successes, &summary.Failures, &summary.Unknown, &highest); err != nil {
 			return Page{}, fmt.Errorf("summarize alchemy events: %w", err)
 		}
 		summary.HighestPlus = highest
@@ -1206,6 +1262,14 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.Ch
 			return Page{}, err
 		}
 		if len(linkedObservation) > 0 {
+			var related ItemObservation
+			decoder := json.NewDecoder(bytes.NewReader(linkedObservation))
+			decoder.UseNumber()
+			if decoder.Decode(&related) == nil &&
+				agentdomain.ValidAgentID(related.EventID) && len(related.Item) > 0 &&
+				(related.Association == "stored_unverified_drop_event_id" || related.Association == "nearby_same_model_observation") {
+				item.RelatedItemObservation = &related
+			}
 			var payload map[string]json.RawMessage
 			var observed struct {
 				Item        json.RawMessage `json:"item"`

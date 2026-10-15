@@ -1,0 +1,182 @@
+{
+  "provenance": {
+    "source": "retained phBot API item observation",
+    "captured_date": "2026-10-14",
+    "scope": "item fields only; no character/session identifiers"
+  },
+  "item": {
+    "api_evidence_version": 2,
+    "api_field_types": {
+      "blues": {
+        "count": 2,
+        "key_types": ["integer"],
+        "type": "dict"
+      },
+      "durability": {
+        "type": "integer"
+      },
+      "expiration": {
+        "type": "integer"
+      },
+      "mag_absorb_max": {
+        "type": "number"
+      },
+      "mag_absorb_min": {
+        "type": "number"
+      },
+      "model": {
+        "type": "integer"
+      },
+      "name": {
+        "count": 12,
+        "type": "string"
+      },
+      "phys_absorb_max": {
+        "type": "number"
+      },
+      "phys_absorb_min": {
+        "type": "number"
+      },
+      "plus": {
+        "type": "integer"
+      },
+      "quantity": {
+        "type": "integer"
+      },
+      "servername": {
+        "count": 26,
+        "type": "string"
+      },
+      "whites": {
+        "count": 2,
+        "key_types": ["integer"],
+        "type": "dict"
+      }
+    },
+    "api_fields": {
+      "blues": {
+        "mapping_entries": [
+          {
+            "key": "17",
+            "key_type": "integer",
+            "value": 3
+          },
+          {
+            "key": "23",
+            "key_type": "integer",
+            "value": 1
+          }
+        ]
+      },
+      "mag_absorb_max": 27.348386764526367,
+      "mag_absorb_min": 27.348386764526367,
+      "phys_absorb_max": 27.541934967041016,
+      "phys_absorb_min": 27.541934967041016,
+      "whites": {
+        "mapping_entries": [
+          {
+            "key": "11",
+            "key_type": "integer",
+            "value": 48
+          },
+          {
+            "key": "12",
+            "key_type": "integer",
+            "value": 9
+          }
+        ]
+      }
+    },
+    "durability": 0,
+    "instance_details": {
+      "absolute_stats_status": "observed",
+      "blues": [
+        {
+          "code": "MATTR_RESIST_FROSTBITE",
+          "id": "17",
+          "label": "Freezing and frostbite duration reduction",
+          "label_verified": true,
+          "precision": 0,
+          "raw_value": "3",
+          "scale": 1,
+          "unit": "%"
+        },
+        {
+          "code": "MATTR_RESIST_ESHOCK",
+          "id": "23",
+          "label": "Electric shock duration reduction",
+          "label_verified": true,
+          "precision": 0,
+          "raw_value": "1",
+          "scale": 1,
+          "unit": "%"
+        }
+      ],
+      "blues_status": "observed",
+      "definition_version": "phbot-20.1.1-api-v1",
+      "durability": {
+        "current": 0,
+        "maximum": null
+      },
+      "percentages": [
+        {
+          "key": "phy_absorption",
+          "label": "Phy. absorption",
+          "value": 48
+        },
+        {
+          "key": "mag_absorption",
+          "label": "Mag. absorption",
+          "value": 9
+        }
+      ],
+      "source": "phbot_api",
+      "stats": [
+        {
+          "key": "phy_absorption",
+          "label": "Phy. absorption",
+          "percent": 48,
+          "value": "27.5"
+        },
+        {
+          "key": "mag_absorption",
+          "label": "Mag. absorption",
+          "percent": 9,
+          "value": "27.3"
+        }
+      ],
+      "status": "partial",
+      "unresolved_blue_count": 0,
+      "unresolved_white_count": 0,
+      "whites_status": "observed"
+    },
+    "metadata": {
+      "dataset_id": "gamedata-e184cceb0b359ca140c1",
+      "degree": 9,
+      "icon_url": "/game-assets/icon/item/china/acc/necklace_09.png",
+      "name": "Gem Necklace",
+      "rare": true,
+      "rarity": 2,
+      "reference_stats": {
+        "mag_absorption": {
+          "max": "27.8",
+          "min": "27.3"
+        },
+        "phy_absorption": {
+          "max": "27.8",
+          "min": "27.3"
+        }
+      },
+      "required_level": 80,
+      "required_race": "Chinese",
+      "seal": "Seal of Sun",
+      "sort_type": "Necklace",
+      "type_ids": [3, 1, 5, 2]
+    },
+    "model": 5840,
+    "name": "Gem Necklace",
+    "plus": 0,
+    "quantity": 1,
+    "servername": "ITEM_CH_NECKLACE_09_C_RARE"
+  }
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -226,6 +227,16 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || exact.Total != 1 || len(exact.Events) != 1 || exact.Events[0].ID != rareDrop.ID {
 		t.Fatalf("exact event lookup = %+v, err=%v", exact, err)
 	}
+	store.SetItemNameMatcher(func(query string) []string {
+		if query == "Catalog Necklace" {
+			return []string{strings.ToLower(server) + ":777"}
+		}
+		return nil
+	})
+	byName, nameErr := store.List(ctx, Filter{Server: server, Kind: "drop.rare", ItemQuery: "Catalog Necklace", Limit: 10})
+	if nameErr != nil || byName.Total != 1 || len(byName.Events) != 1 || byName.Events[0].ID != rareDrop.ID {
+		t.Fatalf("model-only callback must be searchable by its catalog name: %+v, %v", byName, nameErr)
+	}
 	observedItem := AgentEvent{
 		ID: newTestEventID(t), Schema: 1, Kind: "item.quantity_increased", Category: "item",
 		CharacterID: characterID, SessionID: newSessionID, Server: server, Character: "Alpha",
@@ -253,6 +264,11 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		linkedPayload.Observation.Association != "stored_unverified_drop_event_id" ||
 		linkedPayload.Observation.EventID != observedItem.ID {
 		t.Fatalf("historical association must be auditable but cannot lend instance attributes: %s, err=%v", exact.Events[0].Payload, err)
+	}
+	if related := exact.Events[0].RelatedItemObservation; related == nil ||
+		related.EventID != observedItem.ID || related.Association != "stored_unverified_drop_event_id" ||
+		related.Item["plus"] != json.Number("3") {
+		t.Fatalf("stored observation details must remain separately inspectable: %+v", related)
 	}
 	lateDrop := rareDrop
 	lateDrop.ID = newTestEventID(t)
@@ -287,6 +303,11 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		temporalPayload.Item.Plus != 0 || temporalPayload.Observation.Association != "" {
 		t.Fatalf("unlinked nearby gain must not lend an item instance: %+v, err=%v", exact, err)
 	}
+	if related := exact.Events[0].RelatedItemObservation; related == nil ||
+		related.EventID != unlinkedGain.ID || related.Association != "nearby_same_model_observation" ||
+		related.Item["plus"] != json.Number("4") {
+		t.Fatalf("nearby observation must retain its own source and details: %+v", related)
+	}
 	competingDrop := lateDrop
 	competingDrop.ID = newTestEventID(t)
 	competingDrop.Sequence = int64Pointer64(53)
@@ -303,6 +324,9 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if err != nil || len(exact.Events) != 1 || json.Unmarshal(exact.Events[0].Payload, &ambiguousPayload) != nil ||
 		ambiguousPayload.Observation.Association != "" {
 		t.Fatalf("ambiguous nearby drop was still linked: %+v, err=%v", exact, err)
+	}
+	if exact.Events[0].RelatedItemObservation != nil {
+		t.Fatal("competing same-model callbacks must suppress the nearby observation suggestion")
 	}
 	// One explicitly linked acquisition remains visible when its callback is
 	// outside the requested window. Count and pagination operate on the same

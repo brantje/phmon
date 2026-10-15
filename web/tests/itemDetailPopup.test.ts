@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   buildItemDetail,
   itemRecordFromActivityEvent,
+  relatedItemDetail,
+  itemTooltipPresentation,
+  itemTooltipStatLines,
 } from '../app/utils/itemDetailPopup.ts'
 
 const hood = {
@@ -38,6 +42,161 @@ const hood = {
     blues: [{ label: 'Int increase', value: '3', scale: 1, precision: 0 }],
   },
 }
+
+test('compact drop popup selects one observation without changing canonical drop facts', () => {
+  const item = {
+    model: 777,
+    drop_unobserved: true,
+    metadata: hood.metadata,
+    related_item_observation: {
+      association: 'nearby_same_model_observation',
+      event_id: 'source-event',
+      container: { type: 'inventory' },
+      item: hood,
+    },
+  }
+  const before = structuredClone(item)
+  const displayed = itemTooltipPresentation(item)
+  assert.equal(displayed.model.name, hood.metadata.name)
+  assert.equal(displayed.model.plus, 7)
+  assert.deepEqual(displayed.model.blues, ['Int 3 Increase'])
+  assert.equal(displayed.model.catalogNote, '')
+  assert.equal(displayed.caption, 'Observed item · pickup unverified')
+  assert.match(displayed.sourceDescription, /source-event/)
+  assert.deepEqual(item, before)
+  assert.deepEqual(buildItemDetail(item).statsBeforeDurability, [])
+  const direct = itemTooltipPresentation({
+    ...hood,
+    related_item_observation: item.related_item_observation,
+  })
+  assert.equal(direct.caption, '')
+  assert.equal(direct.model.plus, 7)
+})
+
+test('captured Gem Necklace renders its own rolls and blues in one compact item model', () => {
+  const fixture = JSON.parse(
+    readFileSync(
+      new URL('./fixtures/gem-necklace-tooltip.json', import.meta.url),
+      'utf8',
+    ),
+  )
+  const displayed = itemTooltipPresentation(fixture.item)
+  assert.equal(displayed.model.name, 'Gem Necklace')
+  assert.equal(displayed.model.seal, 'Seal of Sun')
+  assert.deepEqual(itemTooltipStatLines(displayed.model), [
+    'Phy. absorption 27.5 (+48%)',
+    'Mag. absorption 27.3 (+9%)',
+  ])
+  assert.deepEqual(displayed.model.blues, [
+    'Freezing, frostbite 3% Reduce',
+    'Electric shock 1% Reduce',
+  ])
+  assert.equal(displayed.caption, '')
+})
+
+test('basic pet item cannot acquire rolled stats from the catalog or another observation', () => {
+  const displayed = itemTooltipPresentation({
+    drop_unobserved: true,
+    related_item_observation: {
+      association: 'nearby_same_model_observation',
+      event_id: 'pet-source',
+      container: { type: 'pets' },
+      item: {
+        model: 11142,
+        name: 'Lepus Soul Fiend',
+        durability: 82,
+        metadata: {
+          type_ids: [3, 1, 6, 11],
+          reference_stats: { mag_atk_pwr_min: { min: '2819', max: '2989' } },
+        },
+      },
+    },
+  })
+  assert.deepEqual(displayed.model.statsBeforeDurability, [])
+  assert.deepEqual(displayed.model.blues, [])
+  assert.equal(displayed.model.durability, 'Durability 82')
+  assert.equal(displayed.caption, 'Observed item · stats unavailable')
+})
+
+test('compact catalog-only items keep static ranges distinct from observed rolls', () => {
+  const displayed = itemTooltipPresentation({
+    metadata: {
+      name: 'Catalog item',
+      reference_stats: { phy_def_pwr: { min: '40', max: '50' } },
+    },
+  })
+  assert.equal(displayed.caption, 'Catalog ranges · rolls unavailable')
+  assert.deepEqual(displayed.model.statsBeforeDurability, [
+    'Phy. def. pwr 40–50',
+  ])
+})
+
+test('drop tooltip keeps a separate inventory observation with its stats and blues', () => {
+  for (const kind of ['drop.item', 'drop.rare']) {
+    for (const association of [
+      'stored_unverified_drop_event_id',
+      'nearby_same_model_observation',
+    ] as const) {
+      const record = itemRecordFromActivityEvent({
+        kind,
+        item_model: 777,
+        item_metadata: hood.metadata,
+        payload: { model: 777 },
+        related_item_observation: {
+          event_id: '8d16ab39-10b8-4b26-80aa-a4be01e10f18',
+          association,
+          source: 'phbot.state_diff',
+          occurred_at: '2026-10-15T16:16:38Z',
+          container: { type: 'inventory', slot: 14 },
+          item: hood,
+        },
+      })
+      assert.ok(record)
+      const drop = buildItemDetail(record)
+      assert.deepEqual(drop.statsBeforeDurability, [])
+      assert.deepEqual(drop.blues, [])
+      assert.equal(drop.plus, null)
+      const observed = relatedItemDetail(record)
+      assert.ok(observed)
+      assert.equal(observed.eventID, '8d16ab39-10b8-4b26-80aa-a4be01e10f18')
+      assert.equal(observed.source, 'Inventory observation')
+      assert.deepEqual(observed.model.statsBeforeDurability, [
+        'Phy. def. pwr 51.5 (+51%)',
+        'Mag. def. pwr 106 (+0%)',
+      ])
+      assert.deepEqual(observed.model.blues, ['Int 3 Increase'])
+      assert.equal(observed.model.plus, 7)
+      assert.equal(observed.model.durability, 'Durability 62/63 (+38%)')
+    }
+  }
+})
+
+test('unavailable, ambiguous or unsupported related observations never use current inventory', () => {
+  assert.equal(relatedItemDetail(hood), null)
+  assert.equal(
+    relatedItemDetail({ related_item_observation: { item: hood } }),
+    null,
+  )
+  assert.equal(
+    relatedItemDetail({
+      related_item_observation: {
+        association: 'verified_pickup',
+        event_id: 'some-event',
+        item: hood,
+      },
+    }),
+    null,
+  )
+  const pet = relatedItemDetail({
+    related_item_observation: {
+      association: 'nearby_same_model_observation',
+      event_id: 'pet-event',
+      container: { type: 'pets', id: '7' },
+      item: hood,
+    },
+  })
+  assert.equal(pet?.source, 'Pet inventory observation')
+})
 
 test('observed instance stats take precedence over catalog ranges', () => {
   const detail = buildItemDetail(hood)

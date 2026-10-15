@@ -295,3 +295,26 @@ of contents, not proof of pickup or a completed transaction.
 ## Historical drop link provenance (PR #91 follow-up)
 
 Some older `phbot.state_diff` item gains retained a `drop_event_id` chosen by a same-model/time/inventory heuristic. That field identifies a **stored correlation**, not independently verified pickup evidence. The All Events query therefore keeps both canonical callback and gain rows, including totals and cursor pagination, even when the legacy link is one-to-one. The callback exposes an auditable `item_observation` link tagged `stored_unverified_drop_event_id`, but does **not** inherit the gain's plus, blues or other instance attributes. Exact event ID, kind and source filters remain available. A future physical pickup correlation may collapse a logical row only after a separately verified, durable shared acquisition identity exists; no such general proof is currently available. Do not backfill or rewrite old source events to manufacture it.
+
+## 2026-10-15 — Drop tooltip access to separate observed item details
+
+PR #91 removed the old callback/item-gain promotion without retaining access to
+the captured values from default Normal/Rare Drop tooltips. The Events API now
+returns `related_item_observation` as a separate, explicitly unverified source.
+The shared tooltip renders that observation's own stats/blues in a labeled
+section. It does not assign those values to the callback's item. Missing or
+ambiguous evidence stays unavailable; history and acquisition/drop counts retain
+their separate semantics. See the [reproduction, bounds and regression gates](reference/item-tooltip-regression-2026-10-15.md).
+
+## 2026-10-15 — Compact popup correction and explicit pet source gap
+
+The duplicate callback/observation cards from the first regression repair are
+superseded by one compact display source, retaining a small unverified-pickup
+qualifier where applicable. The canonical callback and gain remain independent.
+The user's exact Gem Necklace observation was found with 48%/9% rolls and the two
+blue options; its own typed API values are preserved. The Lepus Soul Fiend pet
+observation contains durability 82 but no whites/blues or attack fields, unlike a
+different earlier bag copy of the same model. No renderer or catalog lookup can
+recover that copy's missing values. The probe remains presence-only and a verified
+native fixture/API source is required for full pet stats. See the
+[compact tooltip evidence and gate](reference/drop-screenshot-parity-2026-10-15.md).

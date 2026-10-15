@@ -19,8 +19,18 @@ const {
   displayDeathCount,
   observedGold,
 } = useFleetSummary()
-const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
-  useLiveData()
+const {
+  eventFeeds,
+  offerFeeds,
+  offerFeedStatus,
+  connectionState,
+  liveStale,
+  setEventFeed,
+  clearEventFeed,
+  setOfferFeed,
+  clearOfferFeed,
+  refreshLiveData,
+} = useLiveData()
 const { serverScope } = useServerScope()
 const lastDeaths = computed(
   () => eventFeeds.value['dashboard-deaths']?.events || [],
@@ -43,6 +53,12 @@ const recentRareDrops = computed(
 )
 const recentChatMessages = computed(
   () => eventFeeds.value['dashboard-chat']?.events || [],
+)
+const recentOffers = computed(
+  () => offerFeeds.value['dashboard-offers']?.offers || [],
+)
+const offersStatus = computed(
+  () => offerFeedStatus.value['dashboard-offers'] || 'loading',
 )
 
 function textField(value: unknown) {
@@ -131,6 +147,7 @@ function dashboardItemTarget(event: ActivityEvent) {
 
 function watchDashboardEvents(server: string) {
   const scope = { server: server === 'all' ? undefined : server }
+  setOfferFeed('dashboard-offers', { ...scope, limit: 5 })
   setEventFeed('dashboard-deaths', {
     ...scope,
     limit: 5,
@@ -161,6 +178,7 @@ onBeforeUnmount(() => {
   clearEventFeed('dashboard-uniques')
   clearEventFeed('dashboard-rare-drops')
   clearEventFeed('dashboard-chat')
+  clearOfferFeed('dashboard-offers')
 })
 </script>
 
@@ -423,17 +441,70 @@ onBeforeUnmount(() => {
       </article>
     </div>
 
-    <article class="panel dashboard-later dashboard-offers">
+    <article
+      class="panel dashboard-offers"
+      aria-label="Recent Global offers"
+      :aria-busy="offersStatus === 'loading'"
+    >
       <div class="panel-header compact">
         <div>
           <h2>Global Offers</h2>
           <p>Recent buy, sell and trade offers</p>
         </div>
-        <span class="later-badge">LATER</span>
+        <NuxtLink class="panel-link" to="/economy"
+          >Show all offers <UIcon name="i-lucide-arrow-up-right"
+        /></NuxtLink>
       </div>
-      <div class="later-content">
-        <UIcon name="i-lucide-store" /><strong>LATER</strong
-        ><span>Economy data arrives in a later slice.</span>
+      <div
+        v-if="liveStale && recentOffers.length"
+        class="event-stale-note"
+        role="status"
+      >
+        Showing the last received offers as stale.
+      </div>
+      <div
+        v-if="offersStatus === 'unavailable'"
+        class="dashboard-offer-status"
+        role="status"
+      >
+        Offers are temporarily unavailable.
+        <button
+          class="compact-button"
+          type="button"
+          @click="refreshLiveData(['dashboard-offers'])"
+        >
+          Retry
+        </button>
+      </div>
+      <ul v-if="recentOffers.length" class="dashboard-offer-list">
+        <li v-for="offer in recentOffers" :key="offer.message_id">
+          <div class="dashboard-offer-meta">
+            <strong>{{ offer.offer_type }}</strong
+            ><span>{{ offer.sender }}</span
+            ><time :datetime="offer.occurred_at">{{
+              formatTimestamp(offer.occurred_at)
+            }}</time>
+          </div>
+          <NuxtLink
+            :to="{
+              path: '/events',
+              query: { event_id: offer.source_event_id },
+            }"
+            :title="offer.message"
+            >{{ offer.message }}</NuxtLink
+          >
+          <small>{{ offer.server }} · Observed by {{ offer.observer }}</small>
+        </li>
+      </ul>
+      <div
+        v-else-if="offersStatus !== 'unavailable'"
+        class="dashboard-event-empty"
+      >
+        <UIcon name="i-lucide-store" /><span>{{
+          offersStatus === 'loading'
+            ? 'Loading Global offers…'
+            : 'No buy, sell or trade offers recorded in this server scope.'
+        }}</span>
       </div>
     </article>
   </section>

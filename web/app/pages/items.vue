@@ -1,340 +1,305 @@
 <script setup lang="ts">
 import {
-  createLatestRequestGate,
-  itemHistoryTarget,
-  itemOwnerHref,
-  itemSearchQuery,
-} from '~/utils/searchPage'
-type FoundItem = {
-  server: string
-  container: string
-  owner_kind: 'character' | 'guild' | 'pet'
-  owner_id: string
-  owner_name?: string
-  guild?: string
-  observer_character_id: string
-  observer_name: string
-  pet_id?: string
-  slot: number
-  revision: number
-  observed_at: string
-  checked_at: string
-  item: Record<string, unknown>
-  quantity_exact?: string
-  metadata?: Record<string, unknown>
-}
-type ItemSearchPage = {
-  items: FoundItem[]
-  total: number
-  next_cursor?: string
-}
+  filterSearchItems,
+  groupSearchItems,
+  itemSearchRowKey,
+  itemSearchSlot,
+  itemSearchTaxonomy,
+  itemSearchTypes,
+} from '~/utils/itemSearch'
+import type { FoundItem } from '~/utils/itemSearch'
+import type { ContainerDialogTarget } from '~/composables/useContainerDialog'
 const { serverScope } = useServerScope()
 const { liveStale, connectionState } = useLiveData()
-const queryInput = ref('')
-const query = ref('')
-const container = ref('')
-const owner = ref('')
+const { items, loading, error, reload } = useItemSearch(serverScope)
+const dialogTarget = shallowRef<ContainerDialogTarget | null>(null)
+let dialogOpener: HTMLElement | null = null
+const search = ref('')
 const itemType = ref('')
 const subcategory = ref('')
 const degree = ref('')
-const includeSets = ref(true)
-const cursor = ref('')
-const previous = ref<string[]>([])
-const page = shallowRef<ItemSearchPage | null>(null)
-const loading = ref(false)
-const error = ref('')
-const requestGate = createLatestRequestGate()
-let searchTimer: ReturnType<typeof setTimeout> | undefined
+const includeSets = ref(false)
 const stale = computed(
   () => liveStale.value || connectionState.value === 'stale',
 )
-const needsServerForTaxonomy = computed(
-  () =>
-    serverScope.value === 'all' &&
-    Boolean(itemType.value || subcategory.value || degree.value),
+const filters = computed(() => ({
+  query: search.value,
+  type: itemType.value,
+  subcategory: subcategory.value,
+  degree: degree.value,
+  includeSets: includeSets.value,
+}))
+const matches = computed(() => filterSearchItems(items.value, filters.value))
+const groups = computed(() => groupSearchItems(matches.value))
+const categoryItems = computed(() =>
+  items.value.filter(
+    (row) =>
+      (!itemType.value || itemSearchTaxonomy(row).type === itemType.value) &&
+      (includeSets.value || row.container !== 'equipment'),
+  ),
 )
-function formatTime(value: string) {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString()
-}
-function itemIdentity(item: FoundItem) {
-  return (
-    String(item.item.name ?? '') ||
-    String(item.item.servername ?? '') ||
-    (item.item.model != null
-      ? `Model ${String(item.item.model)}`
-      : 'Unidentified item')
-  )
-}
-function load() {
-  const id = requestGate.next()
-  if (needsServerForTaxonomy.value) {
-    error.value = 'Select a server before applying item taxonomy filters.'
-    page.value = null
-    loading.value = false
-    return
-  }
-  loading.value = true
-  error.value = ''
-  page.value = null
-  void $fetch<ItemSearchPage>('/api/items', {
-    query: itemSearchQuery({
-      server: serverScope.value,
-      query: query.value,
-      container: container.value,
-      owner: owner.value,
-      itemType: itemType.value,
-      subcategory: subcategory.value,
-      degree: degree.value,
-      includeSets: includeSets.value,
-      cursor: cursor.value,
-    }),
-  })
-    .then((result) => {
-      if (requestGate.isCurrent(id)) page.value = result
-    })
-    .catch(() => {
-      if (requestGate.isCurrent(id))
-        error.value = 'Item Search could not be loaded.'
-    })
-    .finally(() => {
-      if (requestGate.isCurrent(id)) loading.value = false
-    })
-}
-watch(queryInput, (value) => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    query.value = value.trim()
-  }, 250)
-})
-watch(
+const subcategories = computed(() =>
   [
-    serverScope,
-    query,
-    container,
-    owner,
-    itemType,
-    subcategory,
-    degree,
-    includeSets,
-  ],
-  () => {
-    cursor.value = ''
-    previous.value = []
-    if (import.meta.client) load()
-  },
+    ...new Set(
+      categoryItems.value
+        .map((row) => itemSearchTaxonomy(row).subcategory)
+        .filter(Boolean),
+    ),
+  ].sort(),
 )
-watch(cursor, () => {
-  if (import.meta.client) load()
+const degrees = computed(() =>
+  [
+    ...new Set(
+      categoryItems.value
+        .filter(
+          (row) =>
+            !subcategory.value ||
+            itemSearchTaxonomy(row).subcategory === subcategory.value,
+        )
+        .map((row) => itemSearchTaxonomy(row).degree)
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => Number(a) - Number(b)),
+)
+watch(itemType, () => {
+  subcategory.value = ''
+  degree.value = ''
 })
-onMounted(load)
-onUnmounted(() => {
-  requestGate.invalidate()
-  if (searchTimer) clearTimeout(searchTimer)
+watch(subcategory, () => {
+  degree.value = ''
 })
+watch(serverScope, resetFilters)
 function resetFilters() {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = undefined
-  queryInput.value = ''
-  query.value = ''
-  container.value = ''
-  owner.value = ''
+  search.value = ''
   itemType.value = ''
   subcategory.value = ''
   degree.value = ''
-  includeSets.value = true
-  cursor.value = ''
-  previous.value = []
+  includeSets.value = false
 }
-function nextPage() {
-  if (!page.value?.next_cursor) return
-  previous.value.push(cursor.value)
-  cursor.value = page.value.next_cursor
+function dialogTargetFor(row: FoundItem): ContainerDialogTarget | null {
+  if (row.container === 'guild_storage') {
+    const guild = row.guild || row.owner_id
+    return guild ? { kind: 'guild', server: row.server, guild } : null
+  }
+  if (row.container === 'inventory' || row.container === 'storage')
+    return {
+      kind: 'character',
+      server: row.server,
+      characterID: row.observer_character_id,
+      characterName: row.observer_name,
+      container: row.container,
+    }
+  return null
 }
-function previousPage() {
-  if (!previous.value.length) return
-  cursor.value = previous.value.pop() || ''
+function openDialog(row: FoundItem, event: MouseEvent) {
+  const next = dialogTargetFor(row)
+  if (!next) return
+  dialogOpener =
+    event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  dialogTarget.value = next
+}
+function closeDialog() {
+  dialogTarget.value = null
+  const opener = dialogOpener
+  dialogOpener = null
+  void nextTick(() => opener?.focus())
+}
+watch(serverScope, () => {
+  dialogTarget.value = null
+})
+function sourceLabel(container: string) {
+  return (
+    (
+      {
+        inventory: 'Open Char Inventory',
+        storage: 'Open Char Storage',
+        equipment: 'Open Char Set',
+        guild_storage: 'Open Guild Storage',
+        pets: 'Open Pet Inventory',
+        job_pouch: 'Open Job Pouch',
+      } as Record<string, string>
+    )[container] || 'Open Container'
+  )
 }
 </script>
 
 <template>
   <div class="items-page">
-    <PageHeader
-      title="Item Search"
-      icon="i-lucide-search"
-      description="Search last confirmed item observations across characters, pets, personal storage and guild storage. Item contents may be stale; guild rows use one observer snapshot."
-    />
-    <section class="panel p-4" aria-label="Item search filters">
-      <form
-        class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-        @submit.prevent="load"
-      >
-        <label class="grid gap-1">
-          <span>Item name, code or model</span>
-          <input
-            v-model="queryInput"
-            class="min-w-0 rounded border p-2"
-            maxlength="128"
-            placeholder="Search items"
-            aria-label="Search item name, code or model"
-          />
-        </label>
-        <label class="grid gap-1">
-          <span>Container</span>
-          <select v-model="container" class="rounded border p-2">
-            <option value="">All containers</option>
-            <option value="inventory">Bag inventory</option>
-            <option value="equipment">Equipment</option>
-            <option value="storage">Personal storage</option>
-            <option value="guild_storage">Guild storage</option>
-            <option value="pets">Pet inventory</option>
-            <option value="job_pouch">Job pouch</option>
-          </select>
-        </label>
-        <label class="grid gap-1">
-          <span>Character, guild or pet owner</span>
-          <input
-            v-model="owner"
-            class="min-w-0 rounded border p-2"
-            maxlength="100"
-            placeholder="Owner"
-            aria-label="Filter item owner"
-          />
-        </label>
-        <label class="grid gap-1">
-          <span>Item type</span>
-          <input
-            v-model="itemType"
-            class="min-w-0 rounded border p-2"
-            maxlength="64"
-            placeholder="Verified catalog type"
-          />
-        </label>
-        <label class="grid gap-1">
-          <span>Subcategory</span>
-          <input
-            v-model="subcategory"
-            class="min-w-0 rounded border p-2"
-            maxlength="64"
-            placeholder="Verified catalog subcategory"
-          />
-        </label>
-        <label class="grid gap-1">
-          <span>Degree</span>
-          <select v-model="degree" class="rounded border p-2">
-            <option value="">Any degree</option>
-            <option v-for="n in 20" :key="n" :value="String(n)">{{ n }}</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-2 self-end p-2">
-          <input v-model="includeSets" type="checkbox" />
-          <span>Include equipped items / character sets</span>
-        </label>
-        <button class="compact-button self-end" type="submit">Refresh</button>
+    <PageHeader title="Item Search" icon="i-lucide-search" description="" />
+    <section
+      class="panel item-search-panel"
+      aria-label="Item search results"
+      :aria-busy="loading"
+    >
+      <div class="item-search-summary">
         <button
-          class="compact-button self-end"
+          class="compact-button item-search-refresh"
+          type="button"
+          aria-label="Refresh items"
+          :disabled="loading"
+          @click="reload()"
+        >
+          <UIcon name="i-lucide-refresh-cw" />
+        </button>
+        <span
+          v-if="!loading"
+          class="item-search-count"
+          aria-label="Total matching items"
+          >{{ matches.length }}</span
+        >
+      </div>
+      <form
+        class="item-search-filters"
+        aria-label="Item search filters"
+        @submit.prevent
+      >
+        <label class="item-search-text"
+          ><span>Search</span
+          ><input
+            v-model="search"
+            maxlength="128"
+            aria-label="Search item name, code or model"
+            type="search"
+        /></label>
+        <label
+          ><span>Item Type</span
+          ><select v-model="itemType" aria-label="Item Type">
+            <option value="">Any type</option>
+            <option
+              v-for="[value, label] in itemSearchTypes"
+              :key="value"
+              :value="value"
+            >
+              {{ label }}
+            </option>
+          </select></label
+        >
+        <label
+          ><span>Subcategory</span
+          ><select
+            v-model="subcategory"
+            aria-label="Subcategory"
+            :disabled="!itemType || !subcategories.length"
+          >
+            <option value="">Subcategory</option>
+            <option v-for="value in subcategories" :key="value" :value="value">
+              {{ value }}
+            </option>
+          </select></label
+        >
+        <label
+          ><span>Degree</span
+          ><select
+            v-model="degree"
+            aria-label="Degree"
+            :disabled="!itemType || !degrees.length"
+          >
+            <option value="">Degree</option>
+            <option v-for="value in degrees" :key="value" :value="value">
+              {{ value }}
+            </option>
+          </select></label
+        >
+        <label class="item-search-sets"
+          ><input
+            v-model="includeSets"
+            type="checkbox"
+            aria-label="Include char sets"
+          /><span>Include char sets</span></label
+        >
+        <button
+          class="compact-button item-search-reset"
           type="button"
           @click="resetFilters"
         >
-          Reset filters
+          Reset Filters
         </button>
       </form>
-    </section>
-    <p v-if="stale" role="status" class="status-banner warning">
-      Agent data may be stale or disconnected. Results show the most recently
-      saved observed snapshots.
-    </p>
-    <p v-if="error" role="alert" class="status-banner warning">{{ error }}</p>
-    <section class="panel p-4" aria-label="Item search results">
-      <div class="mb-3 flex items-center justify-between gap-3">
-        <strong>{{
-          page ? `${page.total} matching slots` : 'Item results'
-        }}</strong>
-        <span v-if="loading" role="status">Loading items…</span>
-      </div>
+      <p v-if="loading" class="item-search-status" role="status">
+        Loading items…
+      </p>
+      <p v-if="error" class="status-banner warning" role="alert">
+        {{ error }}
+        <button type="button" class="compact-button" @click="reload()">
+          Retry
+        </button>
+      </p>
+      <p v-if="stale" class="status-banner warning" role="status">
+        Disconnected · showing last synced items.
+      </p>
       <div
-        v-if="!loading && !error && page && !page.items.length"
+        v-if="!loading && !error && !matches.length"
         class="event-empty-state"
       >
-        <strong>No matching observed items</strong>
-        <span
-          >Storage that is closed or unavailable is not assumed empty and is not
-          included as current evidence.</span
-        >
+        <strong>No matching items</strong>
       </div>
-      <div class="grid gap-3">
-        <article
-          v-for="row in page?.items || []"
-          :key="`${row.server}/${row.observer_character_id}/${row.container}/${row.pet_id || ''}/${row.slot}`"
-          class="rounded border p-3"
-          :aria-label="`${itemIdentity(row)} in ${row.container}`"
-        >
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <ItemDetailPopup :item="row.item" />
-            <span
-              >{{ row.server }} · {{ row.container.replaceAll('_', ' ') }} ·
-              slot {{ row.slot }}</span
-            >
-          </div>
-          <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            <span
-              >Owner:
-              <NuxtLink :to="itemOwnerHref(row)">{{
-                row.owner_name || row.owner_id
-              }}</NuxtLink></span
-            >
-            <span
-              >Observed by:
-              <NuxtLink :to="`/characters/${row.observer_character_id}`">{{
-                row.observer_name
-              }}</NuxtLink></span
-            >
-            <span v-if="row.pet_id">Pet ID: {{ row.pet_id }}</span>
-            <NuxtLink :to="itemHistoryTarget(row)">
-              View canonical item events
-            </NuxtLink>
-            <span
-              >Quantity:
-              {{ row.quantity_exact || row.item.quantity || 'unknown' }}</span
-            >
-            <span>+{{ row.item.plus ?? '?' }}</span>
-            <span
-              >Observed:
-              <time :datetime="row.observed_at">{{
-                formatTime(row.observed_at)
-              }}</time></span
-            >
-            <span
-              >Checked:
-              <time :datetime="row.checked_at">{{
-                formatTime(row.checked_at)
-              }}</time></span
-            >
-          </div>
-        </article>
-      </div>
-      <nav
-        class="mt-4 flex items-center justify-between gap-3"
-        aria-label="Item search pages"
+      <article
+        v-for="group in groups"
+        :key="group.key"
+        class="item-search-owner"
+        :aria-label="`${group.name} items`"
       >
-        <button
-          type="button"
-          class="compact-button"
-          :disabled="!previous.length || loading"
-          @click="previousPage"
+        <div class="item-search-owner-heading">
+          <h2>{{ group.name }}</h2>
+          <span class="item-search-count">{{ group.count }} matches</span
+          ><span v-if="serverScope === 'all'" class="item-search-server">{{
+            group.server
+          }}</span>
+        </div>
+        <p class="item-search-meta">Owner: {{ group.name }}</p>
+        <section
+          v-for="container in group.containers"
+          :key="container.key"
+          class="item-search-container"
+          :aria-label="`${container.name} | ${group.name}`"
         >
-          Previous
-        </button>
-        <span>{{ page?.items.length ?? 0 }} results on this page</span>
-        <button
-          type="button"
-          class="compact-button"
-          :disabled="!page?.next_cursor || loading"
-          @click="nextPage"
-        >
-          Next
-        </button>
-      </nav>
+          <div class="item-search-container-heading">
+            <div>
+              <div class="item-search-owner-heading">
+                <h3>{{ container.name }} | {{ group.name }}</h3>
+                <span class="item-search-count"
+                  >{{ container.items.length }} matches</span
+                >
+              </div>
+              <p class="item-search-meta">
+                Owner: {{ group.name }} | Viewed by:
+                {{ container.row.observer_name }} | Last synced:
+                {{ formatSyncedTime(container.row.observed_at) }}
+              </p>
+            </div>
+            <button
+              v-if="dialogTargetFor(container.row)"
+              class="compact-button item-search-open"
+              type="button"
+              aria-haspopup="dialog"
+              @click="openDialog(container.row, $event)"
+            >
+              {{ sourceLabel(container.row.container) }}
+            </button>
+            <NuxtLink
+              v-else
+              class="compact-button item-search-open"
+              :to="container.source"
+              >{{ sourceLabel(container.row.container) }}</NuxtLink
+            >
+          </div>
+          <div class="item-search-grid">
+            <ItemDetailPopup
+              v-for="row in container.items"
+              :key="itemSearchRowKey(row)"
+              :item="row.item"
+              :quantity-exact="row.quantity_exact"
+              layout="tile"
+              :subtitle="itemSearchSlot(row)"
+            />
+          </div>
+        </section>
+      </article>
     </section>
+    <InventoryDialog
+      v-if="dialogTarget"
+      :target="dialogTarget"
+      @close="closeDialog"
+    />
   </div>
 </template>

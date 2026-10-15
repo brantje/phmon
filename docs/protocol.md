@@ -237,6 +237,15 @@ Examples:
     {"type":"subscribe","protocol_version":1,
      "subscription_id":"groups","revision":1,"stream":"groups"}
 
+The additive `offers` stream returns the canonical Global offer query used by
+the dashboard. Its filter accepts an optional `server` and `limit` (1–10, default
+5); other selectors are rejected. Replacement data has the existing
+`{"offers":[...],"total":N,"next_cursor":"..."}` shape, including each observer
+message's canonical source event ID. Repeated observer messages are not silently
+collapsed into a presumed common broadcast. It uses the same authentication,
+revision fencing, invalidation, unavailable/recovery and unsubscribe lifecycle.
+No agent protocol or browser protocol-version change is required.
+
 Character-list search preserves the existing backend search semantics for
 name/guild/server/zone and optional persisted `group_id`. Character detail uses the
 stable server-scoped `character_id`. Identity and filtering remain server-owned; the

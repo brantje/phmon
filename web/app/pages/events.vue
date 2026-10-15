@@ -10,6 +10,7 @@ import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
 import { deathCauseLabel } from '~/utils/deathCause'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
+import { formatDropTimestamp } from '~/utils/dropHistory'
 import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
@@ -782,10 +783,6 @@ function localDateBoundary(value: string, addDays: number) {
       aria-label="Activity event history"
     >
       <div v-if="dropHistory" class="events-drop-heading">
-        <strong
-          >All
-          {{ selectedTab === 'drop.rare' ? 'rare' : 'normal' }} drops</strong
-        >
         <span class="event-count">{{ historyTotalLabel }}</span>
       </div>
       <div class="events-tabs" role="tablist" aria-label="Event types">
@@ -911,7 +908,7 @@ function localDateBoundary(value: string, addDays: number) {
               </td>
               <td>
                 <time :datetime="item.occurred_at">{{
-                  formatTimestamp(item.occurred_at)
+                  formatDropTimestamp(item.occurred_at)
                 }}</time>
               </td>
               <td>
@@ -933,7 +930,7 @@ function localDateBoundary(value: string, addDays: number) {
                   class="compact-button map-event-link"
                   aria-label="Open rare drop on map"
                 >
-                  <UIcon name="i-lucide-map-pin" />
+                  <UIcon name="i-lucide-globe" />
                 </NuxtLink>
                 <span v-else aria-label="Map location unavailable">—</span>
               </td>
