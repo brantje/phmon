@@ -65,7 +65,8 @@ export function itemHistoryTarget(item: {
   server: string
   item: Record<string, unknown>
 }) {
-  const code = typeof item.item.servername === 'string' ? item.item.servername : ''
+  const code =
+    typeof item.item.servername === 'string' ? item.item.servername : ''
   const model = item.item.model
   const name = typeof item.item.name === 'string' ? item.item.name : ''
   let identity = code || name
