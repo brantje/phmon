@@ -161,6 +161,7 @@ type Filter struct {
 	Kind               string
 	Category           string
 	ItemQuery          string
+	Source             string
 	EventID            string
 	Region             *int
 	RequireMapPosition bool
@@ -220,6 +221,18 @@ func (s *Store) SetAcceptedHook(hook func(Event)) {
 func validDropFeed(filter Filter) bool {
 	return !(filter.IncludePetPickups || filter.IncludeOwnedGains) ||
 		(filter.Category == "" && (filter.Kind == "drop.item" || filter.Kind == "drop.rare"))
+}
+
+// ValidSourceFilter limits source-scoped history searches to canonical provenance.
+func ValidSourceFilter(value string) bool {
+	switch value {
+	case "", "phbot.callback", "phbot.state_diff", "joymax.pet_inventory",
+		"phbot.chat_callback", "phbot.packet", "phbot.plugin",
+		"phbot.alchemy", "phbot.death":
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidKind(value string) bool {
@@ -1110,6 +1123,9 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
+	if filter.Source != "" && !ValidSourceFilter(filter.Source) {
+		return Page{}, errors.New("invalid event source")
+	}
 	if filter.EventID != "" && !agentdomain.ValidAgentID(filter.EventID) {
 		return Page{}, errors.New("invalid event ID")
 	}
@@ -1135,7 +1151,7 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	-- Collapse only a one-to-one, explicitly linked drop/acquisition pair.
 	-- A callback must itself pass every active All Events filter; otherwise the
 	-- acquisition remains visible. Both canonical event IDs remain queryable.
-	AND ($4<>'' OR $5<>'' OR $9::uuid IS NOT NULL OR NOT (
+	AND ($4<>'' OR $5<>'' OR $9::uuid IS NOT NULL OR $14<>'' OR NOT (
 		e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.kind IN ('item.acquired','item.quantity_increased')
 		AND e.payload->>'quantity_delta'='1'
@@ -1167,12 +1183,13 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 				AND a.kind IN ('item.acquired','item.quantity_increased'))=1
 		)
 	))
+	AND ($14='' OR e.source=$14)
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
 		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
 	var total int64
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
@@ -1200,9 +1217,9 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 			AND linked.source='phbot.state_diff' AND linked.source_ref='item_container'
 			AND linked.kind IN ('item.acquired','item.quantity_increased'))=1)
 
-		`+base+` AND ($14::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($14::timestamptz,$15::uuid))
-ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $16`, filter.Server, filter.CharacterID, filter.CharacterQuery,
-		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, cursorAt, cursorID, filter.Limit+1)
+		`+base+` AND ($15::timestamptz IS NULL OR (e.occurred_at,e.event_id)<($15::timestamptz,$16::uuid))
+ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.CharacterID, filter.CharacterQuery,
+		filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, cursorAt, cursorID, filter.Limit+1)
 	if err != nil {
 		return Page{}, fmt.Errorf("list events: %w", err)
 	}
