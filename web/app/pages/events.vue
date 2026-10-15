@@ -29,8 +29,6 @@ const tabs = [
     key: 'drop.rare',
     query: {
       kind: 'drop.rare',
-      include_pet_pickups: 'true',
-      include_owned_gains: 'true',
     },
   },
   {
@@ -38,8 +36,6 @@ const tabs = [
     key: 'drop.item',
     query: {
       kind: 'drop.item',
-      include_pet_pickups: 'true',
-      include_owned_gains: 'true',
     },
   },
   {
@@ -73,13 +69,13 @@ const includePetPickups = computed(
   () =>
     !filterCategory.value &&
     (filterKind.value === 'drop.item' || filterKind.value === 'drop.rare') &&
-    route.query.include_pet_pickups !== 'false',
+    route.query.include_pet_pickups === 'true',
 )
 const includeOwnedGains = computed(
   () =>
     !filterCategory.value &&
     (filterKind.value === 'drop.item' || filterKind.value === 'drop.rare') &&
-    route.query.include_owned_gains !== 'false',
+    route.query.include_owned_gains === 'true',
 )
 const activeTabLabel = computed(() => activeTab.value?.label ?? 'All')
 const pageTitle = computed(() =>
