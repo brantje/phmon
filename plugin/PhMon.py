@@ -3694,12 +3694,17 @@ class AgentWorker(object):
                 if len(gains) == 1 and len(losses) == 1 and gains[0][1] == losses[0][1]:
                     source_key, quantity, source_item = losses[0]
                     dest_key, _, dest_item = gains[0]
-                    item = dest_item.get('item') or source_item.get('item') or {}
+                    item, selected, ambiguous = _event_gain_item(
+                        before[dest_key].get(signature), dest_item, quantity)
                     if _item_has_identity(item):
                         payload = {'item': item, 'quantity_delta': quantity,
                                    'source_container': _container_reference(source_key, source_item),
                                    'destination_container': _container_reference(dest_key, dest_item),
                                    'method': 'observed_container_delta'}
+                        if selected:
+                            payload['destination_container']['slot'] = selected[0]
+                        if ambiguous:
+                            payload['item_instance_unobserved'] = True
                         self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
                                                   occurred_at, position, item)
                 # Balanced multi-container changes without a unique source and
@@ -3725,12 +3730,17 @@ class AgentWorker(object):
                 _, source_key, lost, source_record = observed_losses[0]
                 moved = min(gained, lost)
                 if moved and source_key != dest_key:
-                    moved_item = dest_record.get('item') or source_record.get('item') or {}
+                    moved_item, selected, ambiguous = _event_gain_item(
+                        before[dest_key].get(signature), dest_record, moved)
                     if _item_has_identity(moved_item):
                         payload = {'item': moved_item, 'quantity_delta': moved,
                                    'source_container': _container_reference(source_key, source_record),
                                    'destination_container': _container_reference(dest_key, dest_record),
                                    'method': 'observed_container_delta'}
+                        if selected:
+                            payload['destination_container']['slot'] = selected[0]
+                        if ambiguous:
+                            payload['item_instance_unobserved'] = True
                         self._queue_derived_event(identity, 'item.transferred', 'item_container', payload,
                                                   occurred_at, position, moved_item)
             changes = [entry for entry in deltas if entry[0] == ('gain' if positive else 'loss')]
