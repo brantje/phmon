@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type ItemSearchFilter struct {
@@ -174,12 +176,22 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	AND (NOT $6::boolean OR i.model=ANY($7::bigint[]))`
 	args := []any{filter.Server, filter.Query, filter.Container, filter.Owner,
 		filter.IncludeEquipment, useTaxonomy, models}
+	// Counting and paging from different snapshots can mix two guild
+	// observers' replacements, producing a total that doesn't match the page.
+	// Use one read-only snapshot for the complete response.
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return ItemSearchPage{}, fmt.Errorf("begin item search: %w", err)
+	}
+	defer tx.Rollback(ctx)
 	var total int64
-	if err := s.pool.QueryRow(ctx, guildCTE+` SELECT count(*) `+scope, args...).Scan(&total); err != nil {
+	if err := tx.QueryRow(ctx, guildCTE+` SELECT count(*) `+scope, args...).Scan(&total); err != nil {
 		return ItemSearchPage{}, fmt.Errorf("count item search: %w", err)
 	}
 	page := ItemSearchPage{Items: make([]ItemSearchEntry, 0, filter.Limit), Total: total}
-	rows, err := s.pool.Query(ctx, guildCTE+`
+	rows, err := tx.Query(ctx, guildCTE+`
 	SELECT i.observer_character_id::text,i.server_key,i.container_key,i.pet_id,
 		i.source_slot,i.guild_key,i.revision,i.observed_at,o.updated_at,
 		i.raw_item,coalesce(i.model,0),coalesce(i.server_name,''),coalesce(i.quantity::text,''),
@@ -238,6 +250,10 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			Server: strings.ToLower(last.Server), Container: last.Container,
 			Observer: last.ObserverCharacterID, Pet: last.PetID, Slot: last.Slot,
 		})
+	}
+	rows.Close()
+	if err := tx.Commit(ctx); err != nil {
+		return ItemSearchPage{}, fmt.Errorf("commit item search snapshot: %w", err)
 	}
 	return page, nil
 }
