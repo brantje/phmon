@@ -25,14 +25,33 @@ func (s *Store) Query(ctx context.Context, input Filter) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	if filter.View == ViewEconomy {
+		key, err := json.Marshal(filter)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		return s.economyCache.query(ctx, string(key), func() (Snapshot, error) {
+			return s.query(ctx, filter)
+		})
+	}
+	return s.query(ctx, filter)
+}
+
+func (s *Store) query(ctx context.Context, filter Filter) (Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	pool := s.readPool
+	if pool == nil {
+		pool = s.pool
+	}
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Snapshot{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout='2500ms'`); err != nil {
+	// Avoid spending this short query budget on JIT compilation for large CTE
+	// cardinality estimates before any observations can be returned.
+	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout='2500ms'; SET LOCAL jit=off`); err != nil {
 		return Snapshot{}, err
 	}
 	var asOf time.Time

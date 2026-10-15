@@ -9,9 +9,17 @@ import {
   formatPlayerLocation,
   jobLabel,
   jobbingLabel,
+  registryPlayerName,
+  registryJobAlias,
+  identityStatusLabel,
   safePlayersReturn,
   textOrUnknown,
 } from '~/utils/playerRegistry'
+import {
+  type PlayerEnrichment,
+  visibleGearItemRecord,
+  visibleGearLabel,
+} from '~/utils/visibleGear'
 
 type Observation = {
   id: string
@@ -47,7 +55,10 @@ type LevelPage = {
 }
 
 const route = useRoute()
-const player = ref<PlayerRecord | null>(null)
+const player = ref<
+  (PlayerRecord & { enrichment?: PlayerEnrichment | null }) | null
+>(null)
+const enrichment = computed(() => player.value?.enrichment ?? null)
 const levels = ref<LevelPage | null>(null)
 const history = ref<ObservationPage | null>(null)
 const loading = ref(true)
@@ -68,7 +79,9 @@ async function load() {
   const id = String(route.params.id || '')
   try {
     const [detail, progression, sightings] = await Promise.all([
-      $fetch<PlayerRecord>(`/api/players/${id}`),
+      $fetch<PlayerRecord & { enrichment?: PlayerEnrichment | null }>(
+        `/api/players/${id}`,
+      ),
       $fetch<LevelPage>(`/api/players/${id}/levels`, { query: route.query }),
       $fetch<ObservationPage>(`/api/players/${id}/observations`, {
         query: { limit: 25, offset: route.query.history_offset || 0 },
@@ -113,9 +126,13 @@ watch(
 <template>
   <section class="player-page">
     <PageHeader
-      :title="player?.observed_name || 'Player'"
+      :title="
+        (player && registryPlayerName(player)) ||
+        player?.observed_name ||
+        'Player'
+      "
       icon="i-lucide-users"
-      description="Observed name, job information, and sampled level history. Different names stay separate."
+      description="Player identity, job aliases, and sampled level history. Original sightings are retained."
     />
     <NuxtLink class="player-back" :to="backTo">Back to Players</NuxtLink>
     <p v-if="loading" class="player-note">Loading player…</p>
@@ -125,6 +142,32 @@ watch(
     <template v-else>
       <section class="player-card">
         <h2>Character Information</h2>
+        <p v-if="identityStatusLabel(player)" class="player-enrichment-note">
+          {{ identityStatusLabel(player) }}
+        </p>
+        <p
+          v-if="player.display_identity?.aliases.length"
+          class="player-enrichment-note"
+        >
+          Job aliases: {{ player.display_identity.aliases.join(', ') }}
+        </p>
+        <p
+          v-if="(player.display_identity?.related_record_ids.length ?? 0) > 1"
+          class="player-enrichment-note"
+        >
+          Original sighting records:
+          <NuxtLink
+            v-for="recordID in player.display_identity?.related_record_ids"
+            :key="recordID"
+            :to="{ path: `/players/${recordID}`, query: { back: backTo } }"
+            class="player-related-record"
+            >{{
+              recordID === player.display_identity?.canonical_id
+                ? 'Player name'
+                : 'Job alias'
+            }}{{ recordID === player.id ? ' (current)' : '' }}</NuxtLink
+          >
+        </p>
         <dl class="player-facts">
           <div>
             <dt>Observed Name</dt>
@@ -132,11 +175,11 @@ watch(
           </div>
           <div>
             <dt>Player Name</dt>
-            <dd>{{ textOrUnknown(player.player_name) }}</dd>
+            <dd>{{ textOrUnknown(registryPlayerName(player)) }}</dd>
           </div>
           <div>
-            <dt>Job Name</dt>
-            <dd>{{ textOrUnknown(player.job_name) }}</dd>
+            <dt>Job alias</dt>
+            <dd>{{ textOrUnknown(registryJobAlias(player)) }}</dd>
           </div>
           <div>
             <dt>Server</dt>
@@ -152,11 +195,17 @@ watch(
           </div>
           <div>
             <dt>Job</dt>
-            <dd>{{ jobLabel(player.job) }}</dd>
+            <dd>{{ jobLabel(player.job ?? player.display_fallback?.job) }}</dd>
           </div>
           <div>
             <dt>Job Level</dt>
-            <dd>{{ textOrUnknown(player.job_level) }}</dd>
+            <dd>
+              {{
+                textOrUnknown(
+                  player.job_level ?? player.display_fallback?.job_level,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Jobbing</dt>
@@ -172,11 +221,24 @@ watch(
           </div>
           <div>
             <dt>First Seen</dt>
-            <dd>{{ formatPlayerTime(player.first_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.first_seen_at ??
+                    player.first_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Last Seen</dt>
-            <dd>{{ formatPlayerTime(player.last_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.last_seen_at ?? player.last_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Last Known Location</dt>
@@ -189,6 +251,129 @@ watch(
                   player.last_y,
                 )
               }}
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section
+        v-if="
+          enrichment &&
+          (enrichment.level_observed_at ||
+            enrichment.job != null ||
+            enrichment.job_level != null ||
+            enrichment.job_item_ids != null ||
+            enrichment.position_observed_at ||
+            enrichment.identity_links?.length)
+        "
+        class="player-card"
+      >
+        <h2>ph-proxy enrichment</h2>
+        <dl
+          v-if="
+            enrichment.level_observed_at ||
+            enrichment.position_observed_at ||
+            enrichment.job != null ||
+            enrichment.job_level != null ||
+            enrichment.job_item_ids != null
+          "
+          class="player-facts"
+        >
+          <div v-if="enrichment.level_observed_at">
+            <dt>Level</dt>
+            <dd>{{ textOrUnknown(enrichment.level) }}</dd>
+          </div>
+          <div v-if="enrichment.guild">
+            <dt>Guild</dt>
+            <dd>{{ enrichment.guild }}</dd>
+          </div>
+          <div v-if="enrichment.job != null">
+            <dt>Job</dt>
+            <dd>{{ jobLabel(enrichment.job) }} (code {{ enrichment.job }})</dd>
+          </div>
+          <div v-if="enrichment.job_level != null">
+            <dt>Job Level</dt>
+            <dd>{{ enrichment.job_level }}</dd>
+          </div>
+          <div v-if="enrichment.job_item_ids != null">
+            <dt>Worn job items</dt>
+            <dd>
+              {{
+                enrichment.job_item_ids.length
+                  ? enrichment.job_item_ids.join(', ')
+                  : 'None observed'
+              }}
+            </dd>
+          </div>
+          <div v-if="enrichment.position_observed_at && enrichment.position">
+            <dt>Spawn position</dt>
+            <dd>
+              region {{ enrichment.position.region }}, x
+              {{ enrichment.position.x }}, y {{ enrichment.position.y }}, z
+              {{ enrichment.position.z }}
+            </dd>
+          </div>
+        </dl>
+        <ul
+          v-if="enrichment.identity_links?.length"
+          class="player-enrichment-links"
+        >
+          <li v-for="(link, index) in enrichment.identity_links" :key="index">
+            Inferred alias {{ link.alias }} ({{ link.matches }} matches)
+          </li>
+        </ul>
+      </section>
+
+      <section
+        v-if="enrichment && enrichment.gear_observed_at"
+        class="player-card"
+      >
+        <h2>Visible Gear (ph-proxy)</h2>
+        <p class="player-enrichment-note">
+          Observed {{ formatPlayerTime(enrichment.gear_observed_at) }}. This
+          observation contains visible item references and verified enhancement
+          only. Rolled stats, blues, durability and untransmitted equipment are
+          unavailable.
+        </p>
+        <div
+          v-if="enrichment.gear?.length"
+          class="equipment-slots player-visible-gear"
+        >
+          <div
+            v-for="(entry, index) in enrichment.gear"
+            :key="`${entry.ref_item_id}-${index}`"
+            class="equipment-slot"
+          >
+            <ItemSlot
+              :item="visibleGearItemRecord(entry)"
+              :label="visibleGearLabel(entry)"
+            />
+          </div>
+        </div>
+        <p v-else class="player-note">No visible items were observed.</p>
+      </section>
+
+      <section v-if="enrichment?.field_evidence" class="player-card">
+        <h2>Enrichment sources</h2>
+        <dl class="player-facts">
+          <div
+            v-for="(evidence, field) in enrichment.field_evidence"
+            :key="field"
+          >
+            <dt>{{ field }}</dt>
+            <dd>
+              {{ evidence.reason }} ·
+              {{ evidence.source_identity_kind || 'character_name' }}
+              <span v-if="evidence.source_name">{{
+                evidence.source_name
+              }}</span>
+              · {{ formatPlayerTime(evidence.observed_at) }} · opcode
+              {{ evidence.source_opcode }}
+              <span v-if="evidence.association">
+                · inferred association with {{ evidence.association.alias }} ({{
+                  evidence.association.reason
+                }}, {{ formatPlayerTime(evidence.association.observed_at) }})
+              </span>
             </dd>
           </div>
         </dl>
@@ -215,11 +400,24 @@ watch(
           </div>
           <div>
             <dt>First Seen</dt>
-            <dd>{{ formatPlayerTime(player.first_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.first_seen_at ??
+                    player.first_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Last Seen</dt>
-            <dd>{{ formatPlayerTime(player.last_seen_at) }}</dd>
+            <dd>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.last_seen_at ?? player.last_seen_at,
+                )
+              }}
+            </dd>
           </div>
           <div>
             <dt>Latest Observed Level Change</dt>

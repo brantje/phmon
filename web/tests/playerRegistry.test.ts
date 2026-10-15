@@ -6,6 +6,8 @@ import {
   jobLabel,
   jobbingLabel,
   registryPlayerName,
+  registryJobAlias,
+  identityStatusLabel,
   safePlayersReturn,
   type LevelSnapshot,
 } from '../app/utils/playerRegistry.ts'
@@ -33,7 +35,7 @@ test('player and job names stay independent', () => {
       player_name: null,
       job_name: null,
     }),
-    'UnknownWarrior',
+    '',
   )
 })
 
@@ -44,6 +46,21 @@ test('job role and jobbing state use separate labels', () => {
   assert.equal(jobbingLabel(false), 'No')
   assert.equal(jobbingLabel(true), 'Yes')
   assert.equal(jobbingLabel(null), 'Unknown')
+})
+
+test('numeric affiliation preserves known zero and unknown codes without a suit', () => {
+  for (const [code, label] of [
+    [0, 'None'],
+    [1, 'Trader'],
+    [2, 'Thief'],
+    [3, 'Hunter'],
+    [9, 'Unknown (9)'],
+    [255, 'Unknown (255)'],
+  ] as const) {
+    assert.equal(jobLabel(code), label)
+    assert.equal(jobLabel(String(code)), label)
+  }
+  assert.equal(jobbingLabel(false), 'No')
 })
 
 test('model fallback keeps the numeric id', () => {
@@ -87,3 +104,39 @@ function snapshot(level: number, at: string): LevelSnapshot {
     source: 'map.players',
   }
 }
+
+test('known jobbing state classifies names without guessing unknown identities', () => {
+  assert.equal(
+    registryPlayerName({ observed_name: 'Normal', is_jobbing: false }),
+    'Normal',
+  )
+  assert.equal(
+    registryJobAlias({ observed_name: 'Alias', is_jobbing: true }),
+    'Alias',
+  )
+  assert.equal(
+    registryPlayerName({ observed_name: 'Alias', is_jobbing: true }),
+    '',
+  )
+  assert.equal(registryJobAlias({ observed_name: 'Unclassified' }), '')
+})
+
+test('linked names resolve consistently while inferred attribution stays visible', () => {
+  const player = {
+    observed_name: 'xDont',
+    display_identity: {
+      canonical_id: 'magik-id',
+      player_name: 'Magik',
+      job_alias: 'xDont',
+      aliases: ['xDont'],
+      related_record_ids: ['magik-id', 'alias-id'],
+      source: 'ph-proxy',
+      status: 'inferred' as const,
+      first_seen_at: '2026-10-12T00:00:00Z',
+      last_seen_at: '2026-10-12T01:00:00Z',
+    },
+  }
+  assert.equal(registryPlayerName(player), 'Magik')
+  assert.equal(registryJobAlias(player), 'xDont')
+  assert.equal(identityStatusLabel(player), 'Inferred (ph-proxy)')
+})

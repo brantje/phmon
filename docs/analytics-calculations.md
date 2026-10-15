@@ -108,7 +108,17 @@ selected across observers with observer ID as a deterministic tie-break; observe
 are never summed, and conflicting values are not described as reconciled. Guild net
 change remains unsupported until a continuous observer policy is verified.
 Character signed balance deltas remain inventory-only net change. No interpolation
-bridges stale or missing samples.
+bridges stale or missing samples. Latest inventory samples are selected before bank
+lookups; bucket balances also supply scope counts and rankings. The navbar combines
+character/personal-bank balances and distinct guild balances, while Economy shows
+those scopes separately. Gold bars use absolute balances from a zero baseline;
+line charts offset exact integer values before numeric conversion to preserve small
+changes, with original balances retained in labels, tooltips and accessible data.
+Economy snapshots may be shared for at most five seconds from their original AsOf,
+keyed by the full normalized filter and bounded to 16 entries; timestamps are not
+rewritten and failed reads are never cached. Analytics has a separate one-connection
+read-only pool so ingestion commit stalls do not consume its acquisition budget.
+Retention and rate resets continue on the ingestion pool.
 
 Alchemy counts use unique canonical `alchemy.attempt` event IDs. `success=true` and
 `success=false` count as successes/failures; absent/null outcomes count as unknown.

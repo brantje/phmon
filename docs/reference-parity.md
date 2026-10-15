@@ -2598,6 +2598,127 @@ off. Follow floor/world remounts pass the last stored zoom into the replacement
 MapCanvas so `setInitialView()` does not reset to 125%.
 
 
+## Players identity projection — 2026-10-12
+
+The existing compact Players layout and controls are retained. Player name and
+Job alias render independently with explicit Unknown values; inferred mappings
+show ph-proxy attribution. Original record links and field evidence are visible
+on details. No new public-demo screen or control is claimed from this increment.
+
+Backend evidence: shared server-scoped SQL display projection, grouping before
+search/count/sort/pagination, native histories preserved, pending v2 promotion,
+association-aware validation/merges, and safe validation diagnostics. Plugin
+collection/commands and live map contracts are unchanged. Synthetic Magik/xDont
+records produce one displayed identity and seven visible gear entries; a separate
+server's alias remains unlinked. Proxy-only names still stage under the selected
+contract. Live Windows/phBot validation is separate from fixture evidence.
+
+Browser checks at **1440 × 1000**, **1280 × 800**, and **390 × 844** cover name/alias
+search, default own-character hiding and opt-out, keyboard row navigation,
+canonical and alias detail gear, original-record navigation, empty/error/recovery
+states, and no document overflow. A long server option exposed filter overflow;
+controls now shrink within their cells and tables scroll inside their region.
+The selected server and servers present on the current page remain available in
+the filter before live-fleet options arrive.
+
+Local screenshots (synthetic isolated fixtures):
+[desktop list](reference/local/player-identity-list-1440.png),
+[desktop details](reference/local/player-identity-detail-1440.png),
+[1280 list](reference/local/player-identity-list-1280.png),
+[1280 details](reference/local/player-identity-detail-1280.png),
+[mobile list](reference/local/player-identity-list-mobile.png),
+[mobile details](reference/local/player-identity-detail-mobile.png), and
+[browser results](reference/local/player-identity-browser-results.json).
+
+
+## Cleanup of unknown player identities — 2026-10-12 follow-up
+
+The operator selected permanent deletion, including history ("Yes + history").
+Using the same display projection, a locked transaction backed up and deleted
+103 records whose player name and job alias were both unavailable, with 3,261
+observations and 133 level snapshots. The selection retained 241 other player
+records; live data had advanced since the earlier inspection counts. No attached
+player enrichment was removed (zero such rows belonged to the selection).
+Verification found zero original selected IDs, observations or snapshots remaining.
+Two fresh unclassified records had already arrived through ordinary live tracking.
+
+The recovery JSON is private outside the repository under
+`~/.local/share/phmon/backups/` with directory mode 0700 and file mode 0600.
+No backup contents or real player identities are committed. This is a one-time
+cleanup, without changing ingestion/list policy or deploying code. Future tracking
+can recreate unidentified records and their newly observed history.
+
+## Players normal-name job enrichment — 2026-10-12
+
+The focused [v2 job verification](reference/player-job-enrichment-2026-10-12.md)
+closes normal-player job affiliation fallback/display, preserving known zero,
+native precedence, numeric unknown codes, source confidence and separately
+inferred alias attribution. Suit classification stays independent. Migration 35
+recovers existing direct attached/staged job enrichment; no tracking/history or
+live-map data is rewritten. Same server-side native-first values drive job and
+job-level filters, sort, counts and pagination.
+
+Isolated synthetic HTTP → PostgreSQL → Go/Nuxt → Chrome list/details passed at
+1440×1000, 1280×800 and 390×844 with no browser errors or page overflow. Evidence:
+[list](reference/local/player-job-list-1440.png),
+[normal details](reference/local/player-job-detail-1440.png),
+[mobile alias details](reference/local/player-job-alias-mobile.png),
+[results](reference/local/player-job-browser-results.json). Existing Players shell
+layout is retained; this is a behavior correction, not a new major screen or a
+new demo-parity claim. After the requested local Compose server/web rebuild, migration
+35 applied and authenticated list/detail reads displayed live stored numeric job
+codes with their original unverified confidence. No actual character operation was
+used for testing; Windows phBot runtime validation is still separate.
+
+## Unclassified player source admission — 2026-10-12
+
+The [source investigation](reference/player-admission-2026-10-12.md) traces
+Unknown/Unknown recreation to unconditional persistence of generic nearby names.
+The receiver now admits resolved identities before registry/history writes; all
+validated sightings remain in the independent live map. No list/layout changes or
+new demo-parity claim. Isolated full Go/PostgreSQL and focused race checks pass,
+including later admission, staging/promotion and Magik/xDont gear/grouping.
+Read-only source evidence is documented. The requested local Compose rebuild has
+now deployed the admission rule to that local instance; no bot operation was used.
+
+## Right-click Navigate to precision — 2026-10-12
+
+Fixed outdoor generated-navigation preparation after operator-authorized live
+LordLurks tests showed decimal-point no-path/expiry failures and successful
+whole-unit destinations. The patched browser right-click flow sends the rounded
+endpoint through existing authenticated commands; native True and fresh-position
+Arrived were observed. Tile-edge fencing, cave/training precision, session guards
+and exact retries pass focused regression tests; all 251 frontend tests,
+typecheck, changed-file lint and formatting pass.
+[Evidence and limitations](reference/map-navigation-precision-2026-10-12.md).
+The approved Map layout is unchanged; no fresh reference/demo comparison claimed.
+Only the local production web container was rebuilt/recreated from the isolated
+context. Deployed right-click verification observed native True and exact-command
+Arrived for `cmd_ebe240fa-3247-4500-a41e-8c9b43a02400` at 6435,1094 with no browser
+errors. Another whole-unit endpoint returned no path; arbitrary path availability
+remains native evidence, not an inferred success from rounded coordinates.
+
+### Economy analytics repair — 2026-10-13
+
+Fixed direct-entry character selection, fleet history query timeouts and zero-height
+single-entity gold bars. Character/personal-bank and guild totals remain separate
+analytics scopes; the navbar combines both. Production acceptance exercised all 12
+characters and the iBot guild at 1440×1000, 1280×800 and 390×844, with no overflow,
+browser errors or unavailable frames. Plugin observations/history were retained;
+no collection API or bot operation changed. Backend/UI/test and screenshot evidence:
+[Economy repair](reference/economy-analytics-repair-2026-10-13.md). No new public-demo
+comparison or full-parity claim.
+
+Economy follow-up on 2026-10-13: the first short acceptance missed recurring
+summary/pool timeouts during disk-write stalls. Analytics now has one reserved
+read-only connection; matching Economy reads share a bounded five-second snapshot
+with its original AsOf. Unused build cache reclamation relieved disk pressure.
+A 121-second production check with three Economy pages, repeated refreshes and
+Map returned 227 analytics snapshots / 22 distinct AsOf timestamps per page and
+183 map snapshots, with zero unavailable frames or browser errors. See the
+[follow-up evidence](reference/economy-analytics-repair-2026-10-13.md).
+
+
 ### Slice 13 / PR #91: Items and Global Economy (2026-10-15)
 
 The `/items` route adds a unified read-only Item Search alongside canonical

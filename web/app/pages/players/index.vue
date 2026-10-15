@@ -5,6 +5,8 @@ import {
   jobLabel,
   jobbingLabel,
   registryPlayerName,
+  registryJobAlias,
+  identityStatusLabel,
   textOrUnknown,
 } from '~/utils/playerRegistry'
 
@@ -36,6 +38,34 @@ type FilterKey = (typeof filterKeys)[number]
 
 const queryText = (key: string) =>
   typeof route.query[key] === 'string' ? String(route.query[key]) : ''
+
+const playerServerOptions = computed(() =>
+  [
+    ...new Set(
+      [
+        ...serverOptions.value,
+        ...(page.value?.players ?? []).map((player) => player.server),
+        queryText('server'),
+      ].filter((server) => server && server !== 'all'),
+    ),
+  ].sort((left, right) => left.localeCompare(right)),
+)
+
+const unknownJobCodes = computed(() =>
+  [
+    ...new Set([
+      queryText('job'),
+      ...(page.value?.players ?? []).map(
+        (player) => player.job ?? player.display_fallback?.job ?? '',
+      ),
+    ]),
+  ]
+    .filter(
+      (value) =>
+        /^\d+$/.test(value) && Number(value) >= 4 && Number(value) <= 255,
+    )
+    .sort((left, right) => Number(left) - Number(right)),
+)
 
 const filterDrafts = reactive(
   Object.fromEntries(filterKeys.map((key) => [key, queryText(key)])) as Record<
@@ -135,6 +165,11 @@ onBeforeUnmount(() => {
   for (const key of filterKeys) clearTimeout(filterTimers[key])
 })
 
+const hideOwnCharacters = computed(() => {
+  const value = queryText('hide_own').trim().toLowerCase()
+  return value !== '0' && value !== 'false' && value !== 'no'
+})
+
 const total = computed(() => page.value?.total ?? 0)
 const offset = computed(() => page.value?.offset ?? 0)
 const limit = computed(() => page.value?.limit ?? 25)
@@ -152,7 +187,7 @@ function formatPlayerTime(value?: string | null) {
     <PageHeader
       title="Player"
       icon="i-lucide-users"
-      description="Observed Silkroad players, kept as separate names on each server."
+      description="Observed Silkroad players and job aliases, scoped to each server."
     />
     <form class="player-filters" @submit.prevent>
       <label>
@@ -166,7 +201,11 @@ function formatPlayerTime(value?: string | null) {
           "
         >
           <option value="">All servers</option>
-          <option v-for="server in serverOptions" :key="server" :value="server">
+          <option
+            v-for="server in playerServerOptions"
+            :key="server"
+            :value="server"
+          >
             {{ server }}
           </option>
         </select>
@@ -176,7 +215,7 @@ function formatPlayerTime(value?: string | null) {
         <input
           :value="nameDraft"
           type="search"
-          placeholder="Observed, player, or job name"
+          placeholder="Observed name, player name, or job alias"
           @input="onNameInput(($event.target as HTMLInputElement).value)"
         />
       </label>
@@ -218,6 +257,7 @@ function formatPlayerTime(value?: string | null) {
       <label>
         Job
         <select
+          aria-label="Job"
           :value="queryText('job')"
           @change="
             replaceQuery({
@@ -231,6 +271,9 @@ function formatPlayerTime(value?: string | null) {
           <option value="thief">Thief</option>
           <option value="hunter">Hunter</option>
           <option value="unknown">Unknown</option>
+          <option v-for="code in unknownJobCodes" :key="code" :value="code">
+            {{ jobLabel(code) }}
+          </option>
         </select>
       </label>
       <label>
@@ -302,6 +345,20 @@ function formatPlayerTime(value?: string | null) {
           <option value="30d">Last 30 days</option>
         </select>
       </label>
+      <label class="player-check">
+        <input
+          type="checkbox"
+          :checked="hideOwnCharacters"
+          @change="
+            replaceQuery({
+              hide_own: ($event.target as HTMLInputElement).checked
+                ? undefined
+                : '0',
+            })
+          "
+        />
+        Hide own characters
+      </label>
       <button
         type="button"
         class="player-clear"
@@ -329,7 +386,7 @@ function formatPlayerTime(value?: string | null) {
             </th>
             <th>
               <button type="button" @click="toggleSort('job_name')">
-                Job Name
+                Job alias
               </button>
             </th>
             <th>
@@ -379,15 +436,54 @@ function formatPlayerTime(value?: string | null) {
             @keydown.enter="openPlayer(player.id)"
           >
             <td>{{ registryPlayerName(player) || 'Unknown' }}</td>
-            <td>{{ textOrUnknown(player.job_name) }}</td>
+            <td>
+              {{ textOrUnknown(registryJobAlias(player)) }}
+              <small
+                v-if="identityStatusLabel(player)"
+                class="player-identity-source"
+              >
+                {{ identityStatusLabel(player) }}
+              </small>
+            </td>
             <td>{{ player.server }}</td>
-            <td>{{ textOrUnknown(player.level) }}</td>
-            <td>{{ textOrUnknown(player.guild_name) }}</td>
-            <td>{{ jobLabel(player.job) }}</td>
-            <td>{{ textOrUnknown(player.job_level) }}</td>
+            <td>
+              {{
+                textOrUnknown(player.level ?? player.display_fallback?.level)
+              }}
+            </td>
+            <td>
+              {{
+                textOrUnknown(
+                  player.guild_name ?? player.display_fallback?.guild,
+                )
+              }}
+            </td>
+            <td>
+              {{ jobLabel(player.job ?? player.display_fallback?.job) }}
+            </td>
+            <td>
+              {{
+                textOrUnknown(
+                  player.job_level ?? player.display_fallback?.job_level,
+                )
+              }}
+            </td>
             <td>{{ jobbingLabel(player.is_jobbing) }}</td>
-            <td>{{ formatModel(player.model_name, player.model_id) }}</td>
-            <td>{{ formatPlayerTime(player.last_seen_at) }}</td>
+            <td>
+              {{
+                formatModel(
+                  player.model_name || player.display_fallback?.model_name,
+                  player.model_id ?? player.display_fallback?.model_id,
+                )
+              }}
+            </td>
+            <td>
+              {{
+                formatPlayerTime(
+                  player.display_identity?.last_seen_at ?? player.last_seen_at,
+                )
+              }}
+            </td>
           </tr>
         </tbody>
       </table>

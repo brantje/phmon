@@ -9,11 +9,18 @@ import (
 	"strings"
 	"time"
 
+	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
 )
 
 type playerHandler struct {
-	store *players.Registry
+	store      *players.Registry
+	enrichment *phproxy.Store
+}
+
+type playerDetailResponse struct {
+	players.PlayerRecord
+	Enrichment *phproxy.EnrichmentProjection `json:"enrichment,omitempty"`
 }
 
 func (h *playerHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +55,29 @@ func (h *playerHandler) get(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
 		return
 	}
-	respondJSON(w, http.StatusOK, player)
+	detail := playerDetailResponse{PlayerRecord: player}
+	// Alias detail URLs retain their native history, while equipment comes from
+	// the displayed normal-name anchor and keeps its original field evidence.
+	enrichmentID, enrichmentName := player.ID, player.ObservedName
+	if identity := player.DisplayIdentity; identity != nil && identity.CanonicalID != player.ID && identity.PlayerName != nil {
+		enrichmentID, enrichmentName = identity.CanonicalID, *identity.PlayerName
+	}
+	if h.enrichment != nil {
+		sk := strings.ToLower(strings.TrimSpace(player.Server))
+		nk := strings.ToLower(strings.TrimSpace(enrichmentName))
+		enrichment, enrichErr := h.enrichment.LoadEnrichmentWithPromotion(ctx, enrichmentID, player.Server, sk, nk)
+		if enrichErr == nil && enrichment != nil {
+			// Promotion can attach a newly staged mapping during this read.
+			if refreshed, refreshErr := h.store.Get(ctx, player.ID); refreshErr == nil {
+				detail.PlayerRecord = refreshed
+			}
+			// A concurrent mapping change must not attach the previous owner's gear.
+			if detail.DisplayIdentity == nil || detail.DisplayIdentity.CanonicalID == enrichmentID {
+				detail.Enrichment = enrichment
+			}
+		}
+	}
+	respondJSON(w, http.StatusOK, detail)
 }
 
 func (h *playerHandler) observations(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +158,14 @@ func playerFilter(query url.Values, now time.Time) (players.ListFilter, error) {
 		Model:      strings.TrimSpace(query.Get("model")),
 		Sort:       strings.TrimSpace(query.Get("sort")),
 		Descending: query.Get("dir") != "asc",
+		HideOwn:    true,
+	}
+	switch strings.ToLower(strings.TrimSpace(query.Get("hide_own"))) {
+	case "", "1", "true", "yes":
+	case "0", "false", "no":
+		filter.HideOwn = false
+	default:
+		return filter, players.ErrInvalidFilter
 	}
 	if filter.Server == "all" {
 		filter.Server = ""

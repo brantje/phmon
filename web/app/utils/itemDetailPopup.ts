@@ -251,7 +251,8 @@ export function buildItemDetail(
     scalars.length ||
     item.drop_unobserved === true ||
     item.instance_unobserved === true ||
-    item.owned_gain === true
+    item.owned_gain === true ||
+    item.visible_equipment_only === true
       ? []
       : referenceRangeLines(metadata)
   const name =
@@ -309,19 +310,21 @@ export function buildItemDetail(
       ...rolls.filter((line) => !line.startsWith('Durability ')),
     ],
     catalogNote:
-      item.drop_unobserved === true
-        ? 'Rolled stats and blue options were not observed for this drop.'
-        : item.instance_unobserved === true
-          ? 'The gained instance could not be identified among copies of this item.'
-          : item.owned_gain === true &&
-              !instanceStats.length &&
-              !scalars.length &&
-              !durability &&
-              !blues.length
-            ? 'Rolled stats and blue options were not observed for this item gain.'
-            : ranges.length
-              ? catalogNote
-              : '',
+      item.visible_equipment_only === true
+        ? 'Visible equipment references and verified enhancement only. Rolled stats, blues, durability and untransmitted equipment were not observed.'
+        : item.drop_unobserved === true
+          ? 'Rolled stats and blue options were not observed for this drop.'
+          : item.instance_unobserved === true
+            ? 'The gained instance could not be identified among copies of this item.'
+            : item.owned_gain === true &&
+                !instanceStats.length &&
+                !scalars.length &&
+                !durability &&
+                !blues.length
+              ? 'Rolled stats and blue options were not observed for this item gain.'
+              : ranges.length
+                ? catalogNote
+                : '',
     requirements,
     blues,
   }

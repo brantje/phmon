@@ -171,4 +171,63 @@ func TestPlayerRegistryPersistsLevelsAndRestarts(t *testing.T) {
 	}
 }
 
+func TestListCanHideOwnCharacters(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run player registry integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	serverName := "OwnCharacters-" + time.Now().UTC().Format("150405.000")
+	other := serverName + "-other"
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM players WHERE server_key=$1 OR server_key=$2`, serverKey(serverName), serverKey(other))
+		_, _ = pool.Exec(context.Background(), `DELETE FROM characters WHERE server_key=$1`, serverKey(serverName))
+	})
+	if _, err := pool.Exec(ctx, `INSERT INTO characters (server_name, server_key, character_name, identity_key)
+		VALUES ($1,$2,'OwnHero','ownhero')`, serverName, serverKey(serverName)); err != nil {
+		t.Fatal(err)
+	}
+	store := NewRegistry(pool)
+	start := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	ownName := "OwnHero"
+	if err := store.Apply(ctx, []Observation{
+		{Server: serverName, ObservedName: "OwnHero", PlayerName: &ownName, Source: SourceMapPlayers, ObservedAt: start, X: floatPtr(1), Y: floatPtr(2)},
+		{Server: serverName, ObservedName: "JobAlias", PlayerName: &ownName, Source: SourceMapPlayers, ObservedAt: start, X: floatPtr(3), Y: floatPtr(4)},
+		{Server: serverName, ObservedName: "Stranger", Source: SourceMapPlayers, ObservedAt: start, X: floatPtr(5), Y: floatPtr(6)},
+		{Server: other, ObservedName: "OwnHero", Source: SourceMapPlayers, ObservedAt: start, X: floatPtr(7), Y: floatPtr(8)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := store.List(ctx, ListFilter{Server: serverName, HideOwn: true, Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hidden.Total != 1 || len(hidden.Players) != 1 || hidden.Players[0].ObservedName != "Stranger" {
+		t.Fatalf("hidden list = %+v", hidden.Players)
+	}
+	shown, err := store.List(ctx, ListFilter{Server: serverName, Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shown.Total != 3 {
+		t.Fatalf("unfiltered players = %d", shown.Total)
+	}
+	otherPage, err := store.List(ctx, ListFilter{Server: other, HideOwn: true, Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherPage.Total != 1 || otherPage.Players[0].ObservedName != "OwnHero" {
+		t.Fatalf("other server = %+v", otherPage.Players)
+	}
+}
+
 func boolPtr(value bool) *bool { return &value }

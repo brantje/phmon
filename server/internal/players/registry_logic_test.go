@@ -1,6 +1,7 @@
 package players
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,6 +85,23 @@ func TestLivePlayerRejectsUnknownJob(t *testing.T) {
 		PlayerID: "7", Name: "DarkWizard", X: 1, Y: 2, Job: "Warrior",
 	}}, now, now); err == nil {
 		t.Fatal("expected unknown job to be rejected")
+	}
+}
+
+func TestHideOwnCharactersClause(t *testing.T) {
+	shown, _ := (ListFilter{}).where()
+	if strings.Contains(shown, "own_characters") {
+		t.Fatalf("own characters are visible unless requested: %s", shown)
+	}
+	hidden, _ := (ListFilter{HideOwn: true}).where()
+	for _, piece := range []string{
+		"own_characters.server_key = players.server_key",
+		"own_characters.identity_key = players.observed_name_key",
+		"lower(btrim(players.display_player_name))",
+	} {
+		if !strings.Contains(hidden, piece) {
+			t.Fatalf("missing %q in %s", piece, hidden)
+		}
 	}
 }
 

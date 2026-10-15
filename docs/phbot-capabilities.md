@@ -1775,10 +1775,108 @@ runtime-id cache entry. Runtime ids are not player identities. A directly observ
 TradeNexus thief name is stored as its own player with job `thief` and unknown
 jobbing state. No selection packet is sent.
 
+## ph-proxy visible equipment (HTTP integration)
+
+ph-proxy may POST verified visible spawn gear to PhMon using the same agent bearer
+token as the plugin, without opening `/agent` or mutating live `map.players` rows.
+This path is **not** `get_players()` equipment: it stores `ref_item_id`, optional
+`opt_level`, optional `slot`, and field evidence from opcodes `0x3015` / `0x3019`
+under profile `silkroad-equipment-v1`. Rolled stats, blues, durability, and items
+not present in the verified payload remain unavailable on the player detail page.
+Player tracking (`players` / observations / level snapshots) is unchanged by
+enrichment writes; staged rows promote when the same server/name is later observed
+through normal tracking.
+
+## Weapon swap activity filtering (1.9.34)
+
+phBot's official [Game Data API](https://plugins.phbot.org/phbot-api/game-data)
+documents `get_item(id)` and numeric `tid1`, `tid2`, and `tid3` values. The active
+server game-data catalog `gamedata-e184cceb0b359ca140c1.json` labels model 71
+(`ITEM_CH_SWORD_01_A`) as `Weapon` with `type_ids [3,1,6,2]`, and model 251
+(`ITEM_CH_SHIELD_01_A`) as `Shield` with `type_ids [3,1,4,1]`. The phBot API's
+documented Gold example omits the leading outer item type from that catalog tuple;
+following that same mapping, weapons resolve as `tid1=1, tid2=6` and shields as
+`tid1=1, tid2=4`.
+
+Plugin **1.9.34** caches these item families from `get_item(model)` on phBot's
+callback thread, even when Potion and Pill event filters are disabled. The event
+worker suppresses only equal-quantity `item.transferred` records whose source and
+destination are equipment and inventory and whose item is known as a Weapon or
+Shield. It reads the cache and never calls phBot APIs. The resource diff baseline
+still advances, so the suppressed move is not reconsidered later. Unknown metadata
+keeps the transfer eligible. Acquisitions, losses, other container transfers and
+other gear families retain their existing behavior. No event history is rewritten.
+
+The plugin regression suite covers repeated weapon swaps, weapon/shield changes,
+preserved armor, storage and pet transfers, simultaneous weapon gains/losses,
+unknown types, cache warming with filters off, reconnects, sample gaps and baseline
+advancement. The mapping derives from the documented API shape and checked-in
+versioned catalog; natural Windows/phBot validation remains necessary to confirm
+that the installed runtime's `get_item` values match it.
+
+## Pet lifecycle events across teleport (1.9.36)
+
+The official [Events API](https://plugins.phbot.org/phbot-api/events) documents
+`teleported()` after a teleport and immediately after `joined_game()`, as well as
+`EVENT_TRANSPORT_DIED` with the transport ID. It does not specify callback order
+relative to pet teardown. The [Pets API](https://plugins.phbot.org/phbot-api/pets)
+provides the currently summoned roster keyed by runtime pet IDs.
+
+Plugin **1.9.36** holds `pet.summoned`, `pet.dismissed`, and
+`pet.transport_died` events for five seconds. Stopping the worker releases
+events still inside that hold instead of dropping them. A pending `0x34B5` signal extends
+the hold through its ten-second confirmation window. The network worker assigns each
+event's ID, occurrence time, session and sequence before holding it, preserving
+original attribution on release. Server packet `0x34B5` fences queued resource
+samples; `teleported()` confirms the transition and cancels held pet lifecycle
+candidates. The initial callback after `joined_game()` is excluded.
+
+During recovery, pet lifecycle deltas and pet-owned inventory diffs are suppressed.
+The plugin compares type/model/name multiplicities rather than runtime IDs and
+resumes after two consecutive matching roster observations. Unavailable pet
+observations do not count toward recovery. After 30 seconds it logs a diagnostic
+and accepts a fresh stable roster baseline without synthesizing a death. Party and
+academy deltas and unrelated callback events remain active. Resource samples carry
+a transition generation, preventing samples queued before teleport from restoring
+an old baseline.
+
+The `0x34B5` name and role are identified by the public vSRO implementation in
+[xBot-WinForms `Agent.cs`](https://github.com/JellyBitz/xBot-WinForms/blob/master/xBot/Network/Agent.cs).
+No installed Windows/phBot runtime was available in this run, so its ordering
+relative to the target server's pet callbacks remains unverified. Plugin tests
+cover pre-signal transport callbacks, confirmed and failed transitions, changed
+runtime pet IDs, unavailable rosters, pet inventory rebasing, and genuine
+lifecycle events.
+
+## Unclassified nearby names — 2026-10-12
+
+The official [Players API](https://plugins.phbot.org/phbot-api/players), checked
+again on 2026-10-12, documents a generic nearby `name` without active job state.
+Existing runtime evidence above establishes an eight-field shape without a
+normal-name/alias discriminator. Four records recreated after operator cleanup
+had seven `map.players` observations, all lacking identity and active-job evidence.
+No new phBot capability was inferred. Receiver admission now skips durable writes
+for such unidentified sightings while preserving the independent live map.
+Later native/accepted proxy identity evidence permits ordinary tracking.
+[Source investigation](reference/player-admission-2026-10-12.md).
+
+## Outdoor generated-navigation precision — 2026-10-12
+
+Operator-authorized LordLurks checks on plugin 1.9.36 / phBot 20.1.3 found native
+no-path/expiry failures for sub-unit outdoor destinations and successful script
+starts/observed arrivals at nearby whole-unit endpoints. Paired evidence and
+command IDs: [runtime investigation](reference/map-navigation-precision-2026-10-12.md).
+The official [Paths API](https://plugins.phbot.org/phbot-api/paths) and
+[Script API](https://plugins.phbot.org/phbot-api/script) were rechecked; they do not
+state an integer-only constraint. Rounding is an installed-runtime compatibility
+workaround, not a newly inferred API signature. Outdoor map preparation rounds
+X/Y within its original region; cave coordinates/training positions are unchanged.
+No automatic fallback/retry, longer deadline or unsupported primitive was added.
+
 
 ## Issue #90 Slice 13: observation and price capability gate (2026-10-15)
 
-Plugin **1.9.34** with monitor protocol **19** uses the existing
+Plugin **1.9.38** with monitor protocol **19** uses the existing
 `get_inventory`, `get_storage`, `get_guild_storage`, `get_job_pouch` and
 `get_pets` snapshots, the documented item-drop callbacks and preserved
 Global chat messages. Guild storage must be paired with the actively observed

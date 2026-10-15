@@ -1,0 +1,35 @@
+[
+  {
+    "width": 1440,
+    "height": 1000,
+    "groupedRows": 4,
+    "gearItems": 7,
+    "aliasDetail": true,
+    "ownFilter": true,
+    "keyboardNavigation": true,
+    "emptyErrorRecovery": true,
+    "pageOverflow": false
+  },
+  {
+    "width": 1280,
+    "height": 800,
+    "groupedRows": 4,
+    "gearItems": 7,
+    "aliasDetail": true,
+    "ownFilter": true,
+    "keyboardNavigation": true,
+    "emptyErrorRecovery": true,
+    "pageOverflow": false
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "groupedRows": 4,
+    "gearItems": 7,
+    "aliasDetail": true,
+    "ownFilter": true,
+    "keyboardNavigation": true,
+    "emptyErrorRecovery": true,
+    "pageOverflow": false
+  }
+]

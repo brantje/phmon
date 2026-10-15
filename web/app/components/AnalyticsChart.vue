@@ -7,6 +7,7 @@ import {
 } from 'chart.js'
 import type { AnalyticsPoint } from '~~/shared/types/live'
 import { buildAnalyticsTimeBuckets } from '~/utils/analyticsTimeBuckets'
+import { analyticsGoldOrigin } from '~/utils/analyticsGoldScale'
 
 Chart.register(...registerables)
 
@@ -99,17 +100,13 @@ const model = computed(() => {
     ? [props.title]
     : [...new Set(props.points.map((point) => point.series || props.title))]
   if (!seriesNames.length && keys.length) seriesNames.push(props.title)
-  let goldOrigin = 0n
-  if (props.unit === 'gold') {
-    const exactValues = props.points
-      .map((point) => point.value)
-      .filter((value) => /^-?\d+$/.test(value))
-      .map((value) => BigInt(value))
-    if (exactValues.length)
-      goldOrigin = exactValues.reduce((minimum, value) =>
-        value < minimum ? value : minimum,
-      )
-  }
+  const goldOrigin =
+    props.unit === 'gold'
+      ? analyticsGoldOrigin(
+          props.points.map((point) => point.value),
+          props.chartType,
+        )
+      : 0n
   const labels = keys.map((key) => (category ? key : bucketLabel(key, unit)))
   const datasets = seriesNames.map((seriesName) => {
     const sourceName = category ? undefined : seriesName
@@ -245,7 +242,7 @@ function buildChart() {
             grid: { color: 'rgba(134, 155, 184, 0.12)' },
           },
           y: {
-            beginAtZero: props.unit !== 'gold',
+            beginAtZero: props.chartType === 'bar' || props.unit !== 'gold',
             ticks: {
               color: '#8f9db0',
               precision: props.unit === 'count' ? 0 : undefined,

@@ -25,6 +25,7 @@ import (
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/npcs"
+	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
@@ -69,7 +70,17 @@ func run() error {
 	}
 
 	store := agents.NewStore(pool)
+	analyticsPoolCfg := poolCfg.Copy()
+	analyticsPoolCfg.MaxConns = 1
+	analyticsPoolCfg.MinConns = 1
+	analyticsPoolCfg.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	analyticsPool, err := pgxpool.NewWithConfig(ctx, analyticsPoolCfg)
+	if err != nil {
+		return errors.New("cannot initialize analytics read pool")
+	}
+	defer analyticsPool.Close()
 	analyticsStore := analytics.NewStore(pool)
+	analyticsStore.SetReadPool(analyticsPool)
 	analyticsStore.SetRetentionDays(cfg.AnalyticsRetentionDays)
 	characterStore := characters.NewStore(pool)
 	resourceStore := resources.NewStore(pool)
@@ -90,6 +101,8 @@ func run() error {
 	if metadataErr != nil {
 		return fmt.Errorf("load item metadata: %w", metadataErr)
 	}
+	phProxyStore := phproxy.NewStore(pool, metadata)
+	playerRegistry.SetEnrichmentPromoter(phProxyStore)
 	resourceStore.SetItemMetadata(metadata)
 	playerRegistry.SetModelNamer(metadata)
 	analyticsStore.SetItemTaxonomy(
@@ -197,6 +210,7 @@ func run() error {
 		Analytics:      analyticsStore,
 		TradeNexus:     tradeHub,
 		ThiefSightings: thiefSightings,
+		PhProxy:        phProxyStore,
 	})
 
 	// Keep liveness available during database outages; readiness checks the pool.

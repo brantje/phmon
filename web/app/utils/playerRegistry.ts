@@ -21,6 +21,31 @@ export type PlayerRecord = {
   first_seen_at: string
   last_seen_at: string
   progression?: PlayerProgress | null
+  display_identity?: DisplayIdentity | null
+  display_fallback?: {
+    level?: number | null
+    job?: string | null
+    job_source?: string
+    job_evidence?: JobEvidence | null
+    job_level?: number | null
+    job_level_source?: string
+    job_level_evidence?: JobEvidence | null
+    guild?: string | null
+    model_id?: number | null
+    model_name?: string | null
+  } | null
+}
+
+export type DisplayIdentity = {
+  canonical_id: string
+  player_name?: string | null
+  job_alias?: string | null
+  aliases: string[]
+  related_record_ids: string[]
+  source: string
+  status: 'inferred' | 'conflict' | 'observed' | 'unknown'
+  first_seen_at: string
+  last_seen_at: string
 }
 
 export type PlayerProgress = {
@@ -55,7 +80,17 @@ export type LevelSnapshot = {
   source: string
 }
 
-export function jobLabel(job?: string | null) {
+export type JobEvidence = {
+  reason: string
+  source_identity_kind?: string
+  source_name?: string
+}
+
+export function jobLabel(job?: string | number | null) {
+  if (job != null && /^\d+$/.test(String(job))) {
+    const code = Number(job)
+    return ['None', 'Trader', 'Thief', 'Hunter'][code] ?? `Unknown (${job})`
+  }
   switch (job) {
     case 'none':
       return 'None'
@@ -78,13 +113,34 @@ export function jobbingLabel(value?: boolean | null) {
   return 'Unknown'
 }
 
-export function registryPlayerName(player: {
+type PlayerIdentityInput = {
   player_name?: string | null
   job_name?: string | null
   observed_name: string
-}) {
+  is_jobbing?: boolean | null
+  display_identity?: DisplayIdentity | null
+}
+
+export function registryPlayerName(player: PlayerIdentityInput) {
+  if (player.display_identity) return player.display_identity.player_name || ''
   if (player.player_name) return player.player_name
-  if (!player.job_name) return player.observed_name
+  if (!player.job_name && player.is_jobbing === false)
+    return player.observed_name
+  return ''
+}
+
+export function registryJobAlias(player: PlayerIdentityInput) {
+  if (player.display_identity) return player.display_identity.job_alias || ''
+  if (player.job_name) return player.job_name
+  if (player.is_jobbing === true) return player.observed_name
+  return ''
+}
+
+export function identityStatusLabel(player: PlayerIdentityInput) {
+  if (player.display_identity?.status === 'inferred')
+    return `Inferred (${player.display_identity.source})`
+  if (player.display_identity?.status === 'conflict')
+    return 'Unresolved mapping'
   return ''
 }
 

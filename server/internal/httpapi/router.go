@@ -17,6 +17,7 @@ import (
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
 	"phmon/server/internal/npcs"
+	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
 	"phmon/server/internal/resources"
@@ -56,6 +57,7 @@ type Dependencies struct {
 	Analytics      *analytics.Store
 	TradeNexus     *tradenexus.Hub
 	ThiefSightings *tradenexus.Store
+	PhProxy        *phproxy.Store
 }
 
 func New(deps Dependencies) http.Handler {
@@ -205,11 +207,18 @@ func New(deps Dependencies) http.Handler {
 		register("DELETE /api/guild-storage", true, guildStorageAPI.delete)
 	}
 	if deps.PlayerRegistry != nil {
-		playerAPI := &playerHandler{store: deps.PlayerRegistry}
+		playerAPI := &playerHandler{store: deps.PlayerRegistry, enrichment: deps.PhProxy}
 		register("GET /api/players", false, playerAPI.list)
 		register("GET /api/players/{id}", false, playerAPI.get)
 		register("GET /api/players/{id}/observations", false, playerAPI.observations)
 		register("GET /api/players/{id}/levels", false, playerAPI.levels)
+	}
+	if deps.PhProxy != nil && deps.Agents != nil {
+		phProxyAPI := &phProxyHandler{agents: deps.Agents, store: deps.PhProxy}
+		mux.HandleFunc("POST /api/integrations/ph-proxy/v1/enrichments", phProxyAPI.submitEnrichment)
+		mux.HandleFunc("POST /api/integrations/ph-proxy/v2/enrichments", phProxyAPI.submitEnrichment)
+		register("GET /api/integrations/ph-proxy/v1/status", false, phProxyAPI.integrationStatus)
+		register("GET /api/integrations/ph-proxy/v2/status", false, phProxyAPI.integrationStatus)
 	}
 	if deps.Analytics != nil {
 		analyticsAPI := &analyticsRateResetHandler{store: deps.Analytics, live: analyticsLive}
