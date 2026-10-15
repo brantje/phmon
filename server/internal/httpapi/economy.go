@@ -38,7 +38,7 @@ func (h *economyHandler) offers(w http.ResponseWriter, r *http.Request) {
 		filter.Limit = n
 	}
 	for _, bound := range []struct {
-		raw string
+		raw    string
 		target **time.Time
 	}{
 		{query.Get("from"), &filter.From},
