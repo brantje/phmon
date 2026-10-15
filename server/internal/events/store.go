@@ -225,14 +225,11 @@ func validDropFeed(filter Filter) bool {
 
 // ValidSourceFilter limits source-scoped history searches to canonical provenance.
 func ValidSourceFilter(value string) bool {
-	switch value {
-	case "", "phbot.callback", "phbot.state_diff", "joymax.pet_inventory",
-		"phbot.chat_callback", "phbot.packet", "phbot.plugin",
-		"phbot.alchemy", "phbot.death":
+	if value == "" {
 		return true
-	default:
-		return false
 	}
+	_, ok := validEventSources[value]
+	return ok
 }
 
 func ValidKind(value string) bool {

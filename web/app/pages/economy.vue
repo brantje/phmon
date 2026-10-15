@@ -33,7 +33,7 @@ const requestGate = createLatestRequestGate()
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 const searchInput = ref('')
 const invalidRange = computed(
-  () => !!from.value && !!to.value && from.value > to.value,
+  () => !!from.value && !!to.value && from.value >= to.value,
 )
 const { liveStale, connectionState } = useLiveData()
 const stale = computed(

@@ -383,6 +383,16 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	if listErr != nil || onlyIncrease.Total != 1 || onlyIncrease.Events[0].ID != observedItem.ID {
 		t.Fatalf("explicit gain kind must bypass logical collapse: %+v, err=%v", onlyIncrease, listErr)
 	}
+	for _, source := range []string{"phbot.lifecycle_callback", "phbot.alchemy_callback", "joymax.unique_notice"} {
+		if !ValidSourceFilter(source) {
+			t.Fatalf("canonical source %s was rejected", source)
+		}
+	}
+	for _, source := range []string{"phbot.packet", "phbot.plugin", "phbot.alchemy", "phbot.death"} {
+		if ValidSourceFilter(source) {
+			t.Fatalf("noncanonical source %s was accepted", source)
+		}
+	}
 	if ValidSourceFilter("phbot.callback; DROP TABLE activity_events") {
 		t.Fatal("invalid provenance filter was accepted")
 	}

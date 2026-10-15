@@ -28,6 +28,7 @@ type ItemSearchFilter struct {
 
 type ItemSearchEntry struct {
 	Server              string         `json:"server"`
+	serverKey           string
 	Container           string         `json:"container"`
 	OwnerKind           string         `json:"owner_kind"`
 	OwnerID             string         `json:"owner_id"`
@@ -217,6 +218,7 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			&entry.CheckedAt, &raw, &model, &code, &entry.QuantityExact, &entry.ObserverName, &entry.Server); err != nil {
 			return ItemSearchPage{}, err
 		}
+		entry.serverKey = serverKey
 		if err := json.Unmarshal(raw, &entry.Item); err != nil {
 			return ItemSearchPage{}, err
 		}
@@ -247,7 +249,7 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 		page.Items = page.Items[:filter.Limit]
 		last := page.Items[len(page.Items)-1]
 		page.NextCursor = encodeItemSearchCursor(itemSearchCursor{
-			Server: strings.ToLower(last.Server), Container: last.Container,
+			Server: last.serverKey, Container: last.Container,
 			Observer: last.ObserverCharacterID, Pet: last.PetID, Slot: last.Slot,
 		})
 	}

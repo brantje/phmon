@@ -362,6 +362,7 @@ watch(
     includePetPickups,
     includeOwnedGains,
     pageSize,
+    () => route.query.event_id,
   ],
   () => {
     cursor.value = ''
