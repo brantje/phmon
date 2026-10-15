@@ -1599,6 +1599,32 @@ def _ignore_item_event(config, sort_type):
     return config.get(setting, True) is True
 
 
+def _event_item_sort_type(identity, event):
+    """Resolve an item's cached family or its stable server-name code."""
+    if not isinstance(event, dict):
+        return None
+    sort_type = event.get('_phmon_item_sort_type')
+    if sort_type == 'Ammo':
+        return sort_type
+    payload = event.get('payload')
+    item = payload.get('item') if isinstance(payload, dict) else None
+    code = event.get('item_code')
+    if not isinstance(code, str) and isinstance(item, dict):
+        code = item.get('servername')
+    if isinstance(code, str):
+        normalized = code.upper()
+        if 'AMMO_ARROW' in normalized or 'AMMO_BOLT' in normalized:
+            return 'Ammo'
+    model = event.get('item_model')
+    if not isinstance(model, int) and isinstance(item, dict):
+        model = item.get('model')
+    if not isinstance(model, int) and isinstance(payload, dict):
+        model = payload.get('model')
+    if isinstance(identity, dict):
+        return _cached_item_sort_type(identity.get('server'), model)
+    return None
+
+
 def _is_weapon_or_shield_equipment_transfer(identity, item, source, destination):
     """Classify a balanced inventory/equipment transfer using cached metadata."""
     if not isinstance(identity, dict) or not isinstance(item, dict):
@@ -4455,12 +4481,13 @@ class AgentWorker(object):
                 self._identity_key(identity) != self._identity_key(self._current_identity)):
             _log('activity event was rejected because its character identity is no longer active')
             return False
-        if _item_filters_enabled(self.config):
-            sort_type = event.get('_phmon_item_sort_type')
-            if not isinstance(sort_type, str) and isinstance(identity, dict):
-                sort_type = _cached_item_sort_type(identity.get('server'), event.get('item_model'))
-            if _ignore_item_event(self.config, sort_type):
-                return False
+        sort_type = _event_item_sort_type(identity, event)
+        # Ammunition is always excluded, including packet-derived pet pickups
+        # and when the optional potion/pill filters are disabled.
+        if sort_type == 'Ammo':
+            return False
+        if _item_filters_enabled(self.config) and _ignore_item_event(self.config, sort_type):
+            return False
         record = dict(event)
         record.pop('_phmon_item_sort_type', None)
         if isinstance(identity, dict):
