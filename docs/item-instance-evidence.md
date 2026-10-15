@@ -318,3 +318,23 @@ different earlier bag copy of the same model. No renderer or catalog lookup can
 recover that copy's missing values. The probe remains presence-only and a verified
 native fixture/API source is required for full pet stats. See the
 [compact tooltip evidence and gate](reference/drop-screenshot-parity-2026-10-15.md).
+
+## 2026-10-15 — Two operator pet packet captures
+
+The first capture has one complete `0x30C8` Pick-pet response. An independently
+derived candidate reader consumes all 267 bytes and matches the phBot API's
+slot/model/quantity/durability for all 10 occupied slots. It exposes candidate
+enhancement and attribute bytes, but every magic-option count is zero and the
+pet API has no rich fields for independent comparison. The second capture
+contains paired `0x7034`/`0xB034` moves: pet slot 12 to pet slot 19, then pet
+slot 19 to character bag slot 64. The same Divine Weave copy appears in the bag
+with plus 5, white rolls and six blue options. Its pet API row had only basic
+fields. These move packets contain no item-detail body, and there was no
+floor-to-pet operation in either capture. Another already equipped copy of the
+same model had different durability, confirming that model-only association
+would be unsafe. [Packet-level audit and hashes](reference/pet-item-capture-2026-10-15.md).
+
+That gate was met by the third capture. Plugin 1.9.41 attaches decoded subtype
+`0x11` details to a Pick-pet slot only after the API agrees on pet ID, slot,
+model and durability. See the third-capture audit for values and remaining
+branches. Actual plugin 1.9.41 runtime validation remains open.

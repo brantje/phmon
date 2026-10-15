@@ -1112,6 +1112,98 @@ class ResourceCollectorTests(unittest.TestCase):
 
 class PassiveItemPacketTests(unittest.TestCase):
     @staticmethod
+    def pet_pickup_packet(pet_id=4560936, slot=10, model=14650, plus=5,
+                          variance=0x3fffffff, durability=243,
+                          options=None):
+        options = options if options is not None else [
+            (88, 160), (136, 40), (76, 6), (208, 6), (70, 6), (202, 6)]
+        payload = bytearray(struct.pack('<BBIBIIBQI', 1, 0x11, pet_id, slot,
+                                        0, model, plus, variance, durability))
+        payload.append(len(options))
+        for option_id, value in options:
+            payload.extend(struct.pack('<II', option_id, value))
+        payload.extend(bytes([1, 0, 2, 0]))
+        return bytes(payload)
+
+    @staticmethod
+    def pet_resources(pet_id='4560936', slot=10, model=14650, durability=243):
+        return {'equipment': {'availability': 'observed', 'slots': []},
+                'inventory': {'availability': 'observed', 'slots': []},
+                'pets': {'availability': 'observed', 'pets': [{
+                    'pet_id': pet_id, 'type': 'pick', 'inventory_available': True,
+                    'slots': [{'source_slot': slot, 'item': {
+                        'model': model, 'durability': durability, 'quantity': 1}}]}]}}
+
+    def test_pick_pet_pickup_enriches_confirmed_instance_and_move_removes_it(self):
+        packet = self.pet_pickup_packet()
+        self.assertEqual(len(packet), 81)
+        parsed = plugin.parse_pet_inventory_operation(packet)
+        self.assertEqual(parsed['fields']['variance'], str(0x3fffffff))
+        self.assertEqual(len(parsed['fields']['magic_options']), 6)
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0xB034, packet)
+        resources = self.pet_resources()
+        tracker.decorate(resources, 'session-one')
+        instance = resources['pets']['pets'][0]['slots'][0]['item']['instance']
+        self.assertEqual(instance['plus'], 5)
+        self.assertEqual(instance['durability'], 243)
+        self.assertEqual(instance['magic_options'][0], {'id': '88', 'value': '160'})
+        self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'observed')
+        self.assertEqual(resources['item_enrichment']['observed_items'], 1)
+        tracker.decorate(resources, 'session-one')
+        self.assertEqual(resources['pets']['pets'][0]['slots'][0]['item']['instance'], instance)
+        # The next character drop in the real capture did not invalidate an
+        # earlier pet item. A pet slot move carries the state to its new slot.
+        tracker.enqueue(0xB034, bytes([1, 7, 64]))
+        tracker.enqueue(0xB034, struct.pack('<BBIBBH', 1, 0x10, 4560936, 10, 19, 1))
+        moved = self.pet_resources(slot=19)
+        tracker.decorate(moved, 'session-one')
+        self.assertEqual(moved['pets']['pets'][0]['slots'][0]['item']['instance']['variance'],
+                         str(0x3fffffff))
+        tracker.enqueue(0xB034, struct.pack('<BBIBB', 1, 0x1A, 4560936, 19, 63))
+        tracker.decorate(moved, 'session-one')
+        self.assertNotIn('instance', moved['pets']['pets'][0]['slots'][0]['item'])
+
+    def test_third_capture_item_body_with_two_blues(self):
+        packet = self.pet_pickup_packet(slot=9, model=5573, plus=0,
+                                        variance=9743371, durability=58,
+                                        options=[(54, 5), (11, 1)])
+        self.assertEqual(len(packet), 49)
+        parsed = plugin.parse_pet_inventory_operation(packet)
+        self.assertEqual(parsed['fields']['magic_options'], [
+            {'id': '54', 'value': '5'}, {'id': '11', 'value': '1'}])
+
+    def test_pick_pet_packet_waits_for_matching_api_and_rejects_unsupported_forms(self):
+        tracker = plugin.PassiveItemTracker()
+        tracker.set_protocol('vsro-1.188')
+        tracker.enqueue(0xB034, self.pet_pickup_packet())
+        stale = self.pet_resources(model=11125)
+        tracker.decorate(stale, 'session-one')
+        self.assertNotIn('instance', stale['pets']['pets'][0]['slots'][0]['item'])
+        wrong_pet = self.pet_resources(pet_id='1')
+        tracker.decorate(wrong_pet, 'session-one')
+        self.assertNotIn('instance', wrong_pet['pets']['pets'][0]['slots'][0]['item'])
+        current = self.pet_resources()
+        tracker.decorate(current, 'session-one')
+        self.assertIn('instance', current['pets']['pets'][0]['slots'][0]['item'])
+        mismatch = self.pet_resources(durability=242)
+        tracker.decorate(mismatch, 'session-one')
+        self.assertNotIn('instance', mismatch['pets']['pets'][0]['slots'][0]['item'])
+        tracker.decorate(self.pet_resources(), 'session-one')
+        self.assertEqual(tracker._pet_states, {})
+        tracker.enqueue(0xB034, self.pet_pickup_packet())
+        tracker.decorate(self.pet_resources(), 'session-one')
+        tracker.decorate({'pets': {'availability': 'observed', 'pets': []}}, 'session-one')
+        self.assertEqual(tracker._pet_states, {})
+        for broken in (self.pet_pickup_packet()[:-1],
+                       self.pet_pickup_packet() + b'\x00',
+                       self.pet_pickup_packet().replace(bytes([1, 0, 2, 0]),
+                                                        bytes([1, 1, 2, 0]))):
+            with self.assertRaises(plugin.ItemPacketError):
+                plugin.parse_pet_inventory_operation(broken)
+
+    @staticmethod
     def stats_packet(slot=13, flags=0x35, model=71, plus=5,
                      variance=2**64 - 1, durability=57, options=None):
         options = options if options is not None else [(9, 3), (9, 3)]
@@ -1223,7 +1315,7 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(resources['item_enrichment']['observed_items'], 0)
         self.assertEqual(resources['item_enrichment']['pet_inventory_status'], 'not_observed')
         self.assertEqual(resources['item_enrichment']['pet_inventory_decoder_build'],
-                         'vsro_pet_packet_probe_r1')
+                         'vsro_pet_pickup_r1')
         self.assertFalse(resources['item_enrichment']['pet_packet_probe']['packet_bytes_retained'])
 
     def test_pet_packet_probe_reports_counts_and_lengths_without_packet_bytes(self):

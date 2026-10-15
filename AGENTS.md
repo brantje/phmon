@@ -250,6 +250,31 @@ Advanced phBot/analytics/automation screens and hidden subtabs still require foc
 reference inspection when accessible. Their labels were visible in public markup;
 only the visible easy-mode flows were exercised during the initial inspection.
 
+### Resume — 2026-10-15 two pet item packet captures
+
+The operator supplied two read-only probe 0.2.0 captures. The first has one
+complete 267-byte `0x30C8` Pick-pet snapshot; a strict offline candidate read
+matches all 10 API slot/model/quantity/durability tuples and consumes every
+byte. It has no blues and no independent rich API fields. The second has paired
+`0x7034`/`0xB034` subtype `0x10` pet-slot and `0x1A` pet-to-bag moves. The
+same model-14650 Divine Weave moves from pet slot 12 to 19 to bag 64, where
+phBot exposes plus 5, whites and six blues; its pet row had only basic fields.
+An equipped same-model copy has different durability, so no model-only
+enrichment is allowed. Move responses contain no item body. Neither capture
+has a floor-to-pet `0xB034` subtype `0x11`; rich pet-held byte decoding and
+pickup receipts remain blocked on that observed operation. Raw captures are
+not committed. See `docs/reference/pet-item-capture-2026-10-15.md` and
+`docs/item-instance-evidence.md` for hashes, sources and limits.
+
+The probe is updated to 0.2.2 with successful `0xB034` subtype counts and a
+warning if no candidate `0x11` pickup arrived. Its README and tests, capability
+doc and evidence ledger are updated. No production plugin/server/UI parser was
+enabled and no bot action was initiated here. Exact next action: operator arms
+the updated probe **before** a Pick pet picks up a new equipment item with
+blues, then moves that exact item to the bag if convenient and sends the
+capture. Validate the `0x11` item body against the observed pet slot and the
+same bag copy before implementing the gated decoder.
+
 ### Resume — 2026-10-15 pet item opcode research and capture probe
 
 Targeted operator request: research how to obtain per-instance pet item details,
@@ -6811,3 +6836,32 @@ tests, live browser check at 1440/390. The host rebooted mid-session; PostgreSQL
 was started on its existing volume, then server and web were rebuilt and are
 healthy. Not committed. Exact next action: operator installs plugin 1.9.39 and
 confirms job/guild values on the Info tab against phMonitor.
+
+### Resume — 2026-10-15 Pick-pet item packet details
+
+The third operator attachment, `pet-item-capture-20261015T213224Z.json`, supplies
+two complete Pick-pet `0xB034` subtype `0x11` pickup bodies. Model 5573 and
+model 14650 match preceding bag copies and subsequent pet slots, including
+plus, durability, variance-derived whites and 2/6 blue ID/value pairs. The
+first two captures established the `0x30C8` snapshot boundaries and `0x10`/
+`0x1A` move behavior. See `docs/reference/pet-item-capture-2026-10-15.md`.
+
+Plugin 1.9.41 decodes the observed zero-rental, empty-binding vSRO 1.188
+subtype `0x11` equipment body and attaches details only when Pick pet ID,
+slot, model and durability match the live API row. It tracks confirmed slot
+moves/removals, rejects unsupported branches and expires unmatched data.
+Existing pet items without a fresh pickup, other pet classes and variant
+rental/binding packets remain basic. The existing Go resolver and web item
+popup consume the pet slot's `instance`; the Stats pet packet note reflects
+this decoder. The temporary capture probe remains read-only and can gather
+other branches. No live character action or Windows plugin installation was
+performed by this agent.
+
+Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`web/app/components/CharacterCard.vue`, `tools/pet-item-capture/`,
+`docs/{reference/pet-item-capture-2026-10-15.md,item-instance-evidence.md,
+phbot-capabilities.md}`, `AGENTS.md`. Focused capture and packet tests pass;
+full validation/commit/push results are recorded in the current chat. Exact
+next action: validate plugin 1.9.41 in an authorized phBot test session using
+a new natural pickup and inspect pet tooltip details; continue researching
+`0x30C8` snapshots for already-held items separately.

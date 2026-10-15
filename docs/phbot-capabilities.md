@@ -1534,6 +1534,29 @@ verify pet ID, slot, item model, full instance fields and version-specific
 branches against the API before implementing a decoder. A clientless session may
 not deliver outgoing `0x7034` through `handle_silkroad`.
 
+### Observed pet packets and remaining item-detail gate — 2026-10-15
+
+Two operator captures from the current Pick-pet session now establish more than
+the presence probe. The first `0x30C8` packet is a complete 267-byte pet
+snapshot with 10 occupied entries; a strict candidate read based on the pinned
+RSBot pet/item handlers consumes the full packet and matches every observed
+phBot `get_pets()` slot, model, quantity and durability. It contains no blue
+options and no independent API enhancement/attribute values for confirmation.
+The second capture has `0x7034` requests and matching `0xB034` responses for
+subtype `0x10` pet-slot movement and subtype `0x1A` pet-to-bag movement. Both
+subtypes are corroborated by the independent
+[operation enum](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Inventory/InventoryOperation.cs).
+Those operation responses contain no item-detail body. The moved item gains
+plus/white/blue fields in the character bag; the pet API row had none. The
+same-model equipped copy has different durability, so it cannot supply the
+pet copy's missing fields. [Exact packet audit](reference/pet-item-capture-2026-10-15.md).
+
+Neither capture contains subtype `0x11`, the pinned handler's floor-to-pet
+branch. That is now the precise runtime blocker for decoding rich details as
+an item enters a pet. The capture probe is at 0.2.2 and counts successful
+`0xB034` subtypes, warning when only movements were observed. It remains
+read-only; production packet enrichment and pickup attribution remain off.
+
 ## Drop tooltip observation link — 2026-10-03
 
 The official [Events API](https://plugins.phbot.org/phbot-api/events) still gives
@@ -1980,3 +2003,26 @@ Limit: the comparison only proves that an item is present now and was not before
 Pet-held items still expose only the basic `get_pets()` fields (no plus, whites or
 blues), so a gap-reconciled pet gain shows the item without rolls until a verified
 pet item packet decoder exists.
+
+### Pick-pet equipment details from subtype 0x11 (plugin 1.9.41)
+
+The official [phBot Pets API](https://plugins.phbot.org/phbot-api/pets) gives
+pet IDs and inventory slots but its observed rows omit the rich equipment
+fields. The official [packet callback API](https://plugins.phbot.org/phbot-api/events)
+permits passive `handle_joymax` observation. The independently published
+[RSBot operation handler](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Network/Handler/Agent/Inventory/InventoryOperationResponse.cs)
+and [item parser](https://github.com/myildirimofficial/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/Library/RSBot.Core/Objects/Inventory/InventoryItem.cs)
+provided a candidate layout. Three operator captures, audited in
+[the packet evidence](reference/pet-item-capture-2026-10-15.md), confirm Pick-pet
+snapshot boundaries, slot moves and, finally, two rich subtype `0x11` item
+bodies. Both pickup bodies exactly match their preceding bag copies' model,
+plus, durability and blue ID/value pairs, and their subsequent pet slots.
+
+Plugin 1.9.41 decodes only successful vSRO 1.188 subtype `0x11` equipment
+with zero rental type and empty binding groups. It requires matching `get_pets()`
+pet ID/slot/model/durability/quantity before exposing the packet instance. The
+backend's existing item-detail resolver converts the variance and option IDs
+for pet slots. Runtime validation of this production build is still pending.
+Already-held pet items, other pet families and packet branches remain basic
+until separate verified evidence supports decoding them. No pet pickup event
+causality or transfer of details into an independent bag copy is inferred.

@@ -20,7 +20,7 @@ from phBot import get_inventory, get_pets, log
 import QtBind
 
 pName = 'Pet Item Capture'
-pVersion = '0.2.0'
+pVersion = '0.2.2'
 
 CAPTURE_SECONDS = 600.0
 SAMPLE_INTERVAL_SECONDS = 1.0
@@ -39,6 +39,7 @@ _next_sample_at = 0.0
 _started_at = 0.0
 _packets = []
 _packet_total = 0
+_packet_counts = {}
 _snapshots = []
 _last_signature = None
 _pending_after_packet = False
@@ -148,13 +149,14 @@ def _first_pets_marker():
 
 
 def arm_pet_capture():
-    global _capture_until, _next_sample_at, _started_at, _packets, _packet_total
+    global _capture_until, _next_sample_at, _started_at, _packets, _packet_total, _packet_counts
     global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory
     _started_at = time.monotonic()
     _capture_until = _started_at + CAPTURE_SECONDS
     _next_sample_at = 0.0
     _packets = []
     _packet_total = 0
+    _packet_counts = {}
     _snapshots = []
     _last_signature = None
     _pending_after_packet = False
@@ -188,6 +190,14 @@ def _capture_packet(direction, opcode, data):
     allowed = SERVER_OPCODES if direction == 'server_to_client' else CLIENT_OPCODES
     if _capture_until and time.monotonic() < _capture_until and opcode in allowed:
         _packet_total += 1
+        key = '%s:0x%04X' % (direction, opcode)
+        _packet_counts[key] = _packet_counts.get(key, 0) + 1
+        if direction == 'server_to_client' and opcode == 0xB034 and isinstance(data, (bytes, bytearray)):
+            # The first byte is the operation result. Count only successful
+            # operation subtypes; this is a diagnostic, not an item decoder.
+            if len(data) >= 2 and data[0] == 1:
+                subtype_key = key + ':0x%02X' % data[1]
+                _packet_counts[subtype_key] = _packet_counts.get(subtype_key, 0) + 1
         _pending_after_packet = True
         if len(_packets) < MAX_PACKETS and isinstance(data, (bytes, bytearray)):
             payload = bytes(data)[:MAX_PACKET_BYTES]
@@ -214,7 +224,8 @@ def handle_silkroad(opcode, data):
 def _write_file(reason):
     document = {
         'schema': 1, 'plugin': pName, 'version': pVersion, 'reason': reason,
-        'packet_total': _packet_total, 'packets': _packets, 'snapshots': _snapshots,
+        'packet_total': _packet_total, 'packet_counts': _packet_counts,
+        'packets': _packets, 'snapshots': _snapshots,
     }
     text = json.dumps(document, separators=(',', ':'), sort_keys=True)
     while len(text.encode('utf-8')) > MAX_FILE_BYTES and len(document['snapshots']) > 2:
@@ -245,6 +256,10 @@ def _finish(reason):
         _write_file(reason)
         log('PetItemCapture wrote %s (%d packets seen, %d kept, %d snapshots)'
             % (os.path.basename(_file_path), _packet_total, len(_packets), len(_snapshots)))
+        if not _packet_counts.get('server_to_client:0xB034'):
+            log('PetItemCapture: no 0xB034 item operation was seen; this file cannot verify pet pickup or pet-to-bag movement.')
+        elif not _packet_counts.get('server_to_client:0xB034:0x11'):
+            log('PetItemCapture: no candidate floor-to-pet 0xB034 subtype 0x11 was seen; pet moves alone cannot verify item detail bytes.')
     except Exception as error:
         log('PetItemCapture could not write its file: %s' % type(error).__name__)
 

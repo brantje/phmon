@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.40'
+pVersion = '1.9.41'
 pUrl = ''
 
 PROTOCOL_VERSION = 20
@@ -132,7 +132,7 @@ MAX_ITEM_CAPTURE_BYTES = 2 * 1024 * 1024
 # parsed item fields or packet sizes only; the live callback never writes to disk.
 ITEM_PACKET_CAPTURE_ENABLED = False
 ITEM_DECODER_BUILD = 'vsro_1188_passive_r2'
-PET_INVENTORY_DECODER_BUILD = 'vsro_pet_packet_probe_r1'
+PET_INVENTORY_DECODER_BUILD = 'vsro_pet_pickup_r1'
 ITEM_API_EVIDENCE_VERSION = 2
 ITEM_API_EVIDENCE_FIELDS = (
     'variance', 'magic_options', 'magic_option', 'blues', 'blue', 'options',
@@ -2206,6 +2206,56 @@ def parse_item_durability_update(data):
     return {'source_slot': slot, 'fields': {'durability': durability}}
 
 
+def parse_pet_inventory_operation(data):
+    """Decode only Pick-pet operations confirmed by the October 2026 captures."""
+    reader = LittleEndianReader(data)
+    if reader.u8() != 1:
+        raise ItemPacketError('operation_not_successful')
+    subtype = reader.u8()
+    if subtype == 0x07:
+        reader.u8()  # Character-bag slot dropped on the floor.
+        reader.finish()
+        return {'subtype': subtype}
+    if subtype not in (0x10, 0x11, 0x1A):
+        raise ItemPacketError('unsupported_pet_operation')
+    pet_id = reader.u32()
+    if not pet_id:
+        raise ItemPacketError('invalid_pet_id')
+    source_slot = reader.u8()
+    if subtype == 0x10:
+        destination_slot, quantity = reader.u8(), reader.u16()
+        reader.finish()
+        if quantity != 1:
+            raise ItemPacketError('unsupported_pet_move_quantity')
+        return {'subtype': subtype, 'pet_id': str(pet_id),
+                'source_slot': source_slot, 'destination_slot': destination_slot}
+    if subtype == 0x1A:
+        reader.u8()  # Character-bag destination.
+        reader.finish()
+        return {'subtype': subtype, 'pet_id': str(pet_id), 'source_slot': source_slot}
+    rental_type = reader.u32()
+    if rental_type != 0:
+        raise ItemPacketError('unsupported_pet_item_rental')
+    model, plus, variance, durability = reader.u32(), reader.u8(), reader.u64(), reader.u32()
+    if not model:
+        raise ItemPacketError('invalid_model')
+    count = reader.u8()
+    if count > MAX_ITEM_MAGIC_OPTIONS:
+        raise ItemPacketError('magic_option_count_exceeds_limit')
+    options = [{'id': str(reader.u32()), 'value': str(reader.u32())}
+               for _ in range(count)]
+    # The captured equipment has two binding groups, both empty. Other
+    # branches need separate runtime evidence before their bytes are trusted.
+    if (reader.u8(), reader.u8(), reader.u8(), reader.u8()) != (1, 0, 2, 0):
+        raise ItemPacketError('unsupported_pet_item_binding')
+    reader.finish()
+    return {'subtype': subtype, 'pet_id': str(pet_id),
+            'source_slot': source_slot, 'model': model,
+            'fields': {'plus': plus, 'variance': str(variance),
+                       'durability': durability, 'magic_options': options,
+                       'magic_options_available': True}}
+
+
 
 class PassiveItemTracker(object):
     """Bounded packet queue plus session-local, fail-closed item observations."""
@@ -2218,6 +2268,7 @@ class PassiveItemTracker(object):
         self._queued_bytes = 0
         self._overflow = False
         self._states = {}
+        self._pet_states = {}
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
         self._epoch = 0
@@ -2271,6 +2322,7 @@ class PassiveItemTracker(object):
 
     def reset(self, reason='session_changed', protocol=None):
         self._states.clear()
+        self._pet_states.clear()
         self._epoch += 1
         self._sequence = 0
         self._last_invalidation = reason
@@ -2342,12 +2394,40 @@ class PassiveItemTracker(object):
             if opcode == 0x30C8:
                 self._pet_snapshot_packet_count = min(
                     self._pet_snapshot_packet_count + 1, 2147483647)
+                # A newly summoned pet receives a fresh object ID and slots.
+                self._pet_states.clear()
             else:
                 self._pet_packet_count = min(self._pet_packet_count + 1, 2147483647)
                 # This operation stream can change character inventory state;
                 # discard character-slot enrichment until a verified handler
                 # can reconcile the specific operation.
                 self._invalidate('inventory_operation_unclassified')
+                try:
+                    operation = parse_pet_inventory_operation(payload)
+                except ItemPacketError:
+                    self._pet_states.clear()
+                else:
+                    subtype = operation['subtype']
+                    if self._protocol != 'vsro-1.188':
+                        self._pet_states.clear()
+                    elif subtype == 0x11:
+                        key = (operation['pet_id'], operation['source_slot'])
+                        if len(self._pet_states) >= MAX_RESOURCE_SLOTS:
+                            self._pet_states.clear()
+                        self._pet_states[key] = {
+                            'model': operation['model'], 'fields': operation['fields'],
+                            'sequence': self._sequence, 'received_at': _monotonic(),
+                            'confirmed': False,
+                        }
+                    elif subtype == 0x10:
+                        source = (operation['pet_id'], operation['source_slot'])
+                        destination = (operation['pet_id'], operation['destination_slot'])
+                        state = self._pet_states.pop(source, None)
+                        self._pet_states.pop(destination, None)
+                        if state is not None and source != destination:
+                            self._pet_states[destination] = state
+                    elif subtype == 0x1A:
+                        self._pet_states.pop((operation['pet_id'], operation['source_slot']), None)
             self._capture({'opcode': opcode_name, 'sequence': str(self._sequence),
                            'result': 'presence_and_size_only',
                            'packet_bytes': packet_size,
@@ -2388,6 +2468,7 @@ class PassiveItemTracker(object):
         overflow, events = self._take_queue()
         if overflow:
             self._invalidate('packet_queue_overflow')
+            self._pet_states.clear()
         for opcode, payload in events:
             self._process(opcode, payload)
 
@@ -2445,6 +2526,66 @@ class PassiveItemTracker(object):
                 item['instance'] = instance
                 attached += 1
 
+        pet_attached = 0
+        observed_pet_slots = set()
+        pets_resource = resources.get('pets')
+        if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
+            for pet in pets_resource.get('pets', []):
+                if not isinstance(pet, dict) or not pet.get('inventory_available'):
+                    continue
+                pet_id = pet.get('pet_id')
+                # This packet path is verified only for Pick pet equipment.
+                is_pick = str(pet.get('type', '')).lower() == 'pick'
+                for slot_entry in pet.get('slots', []):
+                    if not isinstance(slot_entry, dict):
+                        continue
+                    slot, item = slot_entry.get('source_slot'), slot_entry.get('item')
+                    if isinstance(item, dict):
+                        item.pop('instance', None)
+                    if not is_pick or not isinstance(slot, int):
+                        continue
+                    key = (pet_id, slot)
+                    observed_pet_slots.add(key)
+                    state = self._pet_states.get(key)
+                    if state is None:
+                        continue
+                    if (not isinstance(item, dict) or
+                            item.get('model') != state['model'] or
+                            item.get('durability') != state['fields']['durability'] or
+                            item.get('quantity') not in (None, 1) or
+                            (item.get('plus') is not None and
+                             item['plus'] != state['fields']['plus'])):
+                        # The getter can briefly lag a packet. Pending data has
+                        # a short window to match; confirmed data must match on
+                        # every sample or its item lifetime ends.
+                        if state['confirmed'] or _monotonic() - state['received_at'] > 30:
+                            self._pet_states.pop(key, None)
+                        continue
+                    state['confirmed'] = True
+                    fields = state['fields']
+                    item['instance'] = {
+                        'availability': 'observed', 'source': 'vsro_1188_packet',
+                        'observation_id': '%s:%d:%d:pet:%s:%d' % (
+                            session_id or 'unregistered', self._epoch,
+                            state['sequence'], pet_id, slot),
+                        'capture_epoch': str(self._epoch),
+                        'observation_sequence': str(state['sequence']),
+                        'model': str(state['model']),
+                        'plus': fields['plus'], 'variance': fields['variance'],
+                        'durability': fields['durability'],
+                        'magic_options_availability': 'observed',
+                        'magic_options': list(fields['magic_options']),
+                    }
+                    pet_attached += 1
+            attached += pet_attached
+
+        # A confirmed observation ends when its pet/slot leaves the roster.
+        # Pending packets can wait briefly for a lagging getter to catch up.
+        for key, state in list(self._pet_states.items()):
+            if ((state['confirmed'] and key not in observed_pet_slots) or
+                    (not state['confirmed'] and _monotonic() - state['received_at'] > 30)):
+                self._pet_states.pop(key, None)
+
         resources['item_enrichment'] = {
             'availability': 'observed' if attached else 'not_observed',
             'protocol': self._protocol,
@@ -2459,8 +2600,9 @@ class PassiveItemTracker(object):
             'pet_inventory_packet_count': self._pet_packet_count,
             'pet_snapshot_packet_count': self._pet_snapshot_packet_count,
             'pet_inventory_status': (
-                'candidate_layout_unverified'
-                if self._pet_snapshot_packet_count else 'not_observed'),
+                'observed' if pet_attached else
+                'candidate_layout_unverified' if self._pet_snapshot_packet_count else
+                'not_observed'),
             'pet_packet_probe': {
                 'mode': 'presence_and_size_only',
                 'packet_bytes_retained': False,

@@ -58,6 +58,11 @@ class PetItemCaptureTests(unittest.TestCase):
             self.assertEqual(len(written), 1)
             document = json.loads(written[0].read_text())
             self.assertEqual(document['packet_total'], 3)
+            self.assertEqual(document['packet_counts'], {
+                'server_to_client:0x30C8': 1,
+                'server_to_client:0xB034': 1,
+                'client_to_server:0x7034': 1,
+            })
             self.assertNotIn('secret', written[0].read_text())
 
     def test_unchanged_inventory_is_not_resampled_and_expiration_is_ignored(self):
@@ -105,7 +110,8 @@ class PetItemCaptureTests(unittest.TestCase):
             self.assertGreater(document['packets_omitted_for_size'], 0)
 
     def test_disconnect_writes_capture_once(self):
-        probe = self.load(lambda: {}, lambda: {'items': []}, [])
+        lines = []
+        probe = self.load(lambda: {}, lambda: {'items': []}, lines)
         with tempfile.TemporaryDirectory() as directory:
             probe.OUTPUT_DIRECTORY = directory
             probe.arm_pet_capture()
@@ -115,6 +121,33 @@ class PetItemCaptureTests(unittest.TestCase):
             written = list(Path(directory).glob('pet-item-capture-*.json'))
             self.assertEqual(len(written), 1)
             self.assertEqual(json.loads(written[0].read_text())['reason'], 'disconnected')
+            self.assertTrue(any('no 0xB034 item operation' in line for line in lines))
+
+    def test_move_only_capture_warns_about_missing_pet_pickup(self):
+        lines = []
+        probe = self.load(lambda: {}, lambda: {'items': []}, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.handle_joymax(0xB034, b'\x01\x10\x01\x00')
+            probe.handle_joymax(0xB034, b'\x01\x1a\x01\x00')
+            probe.stop_pet_capture()
+            document = json.loads(next(Path(directory).glob('pet-item-capture-*.json')).read_text())
+            self.assertEqual(document['packet_counts']['server_to_client:0xB034:0x10'], 1)
+            self.assertEqual(document['packet_counts']['server_to_client:0xB034:0x1A'], 1)
+            self.assertTrue(any('no candidate floor-to-pet' in line for line in lines))
+
+    def test_pet_pickup_subtype_is_counted_without_decoding(self):
+        lines = []
+        probe = self.load(lambda: {}, lambda: {'items': []}, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.handle_joymax(0xB034, b'\x01\x11\x01\x00')
+            probe.stop_pet_capture()
+            document = json.loads(next(Path(directory).glob('pet-item-capture-*.json')).read_text())
+            self.assertEqual(document['packet_counts']['server_to_client:0xB034:0x11'], 1)
+            self.assertFalse(any('no candidate floor-to-pet' in line for line in lines))
 
     def test_packet_count_is_bounded_and_item_rows_are_primitives_only(self):
         lines = []
@@ -129,6 +162,7 @@ class PetItemCaptureTests(unittest.TestCase):
                 probe.handle_joymax(0xB034, b'\x00')
             self.assertEqual(len(probe._packets), probe.MAX_PACKETS)
             self.assertEqual(probe._packet_total, probe.MAX_PACKETS + 20)
+            self.assertEqual(probe._packet_counts['server_to_client:0xB034'], probe.MAX_PACKETS + 20)
             probe.event_loop()
             snapshot = probe._snapshots[-1]
             row = snapshot['pets']['7']['items'][0]

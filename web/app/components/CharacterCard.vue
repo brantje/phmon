@@ -955,12 +955,21 @@ onBeforeUnmount(() => {
         }}</span>
       </div>
       <div v-if="petPacketProbe" class="pet-packet-probe" role="status">
-        <strong>Passive packet probe · V14</strong>
+        <strong>Passive pet item packets</strong>
         <span>{{ petPacketProbeSummary('0x30C8') }}</span>
         <span>{{ petPacketProbeSummary('0xB034') }}</span>
         <small
-          >This build reports packet counts and sizes only. It does not decode
-          packet contents or change pet items.</small
+          v-if="
+            payload('item_enrichment').pet_inventory_decoder_build ===
+            'vsro_pet_pickup_r1'
+          "
+          >Verified Pick-pet pickups can add plus, rolls and blue options after
+          the pet inventory matches. Existing items may still show basic
+          facts.</small
+        >
+        <small v-else
+          >This plugin build reports packet counts and sizes only. Pet item
+          details require a newer plugin.</small
         >
       </div>
       <article v-for="pet in pets" :key="String(pet.pet_id)" class="pet-card">
