@@ -273,3 +273,16 @@ Full detailed inventory and pickup acceptance remains open until matching Window
 phBot packet evidence and naturally observed pickup/retry behavior are verified. The
 1.9.14 upload is limited to a passive count/size probe so the live packet families
 can be confirmed before enabling a parser.
+
+
+## Slice 13 linked callback observation policy (2026-10-15)
+
+A shared item model and nearby timestamp do not identify the same physical
+item instance. The Events query only enriches an observed world-drop callback
+with a unique, explicitly `drop_event_id`-linked state-diff item, under the
+same character, agent, session, model and bounded interval. The enriched
+callback exposes the linked event ID, and neither source event is deleted.
+Any historic unlinked or ambiguous inventory observation retains its own
+stored detail and is not used to borrow plus/blues from a different copy.
+PhBot snapshots of storage, guild storage and pet containers are observations
+of contents, not proof of pickup or a completed transaction.
