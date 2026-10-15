@@ -38,6 +38,7 @@ const tabs = [
       kind: 'drop.item',
     },
   },
+  { label: 'Transfers', key: 'item.transferred', query: { kind: 'item.transferred' } },
   {
     label: 'Uniques',
     key: 'world.unique_spawned',
