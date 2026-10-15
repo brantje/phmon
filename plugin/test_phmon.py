@@ -1731,6 +1731,61 @@ class ResourceEventDerivationTests(unittest.TestCase):
             except plugin._queue.Empty:
                 return output
 
+    def test_delayed_personal_storage_withdrawal_reconciles_without_gain(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.transferred'])
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'storage')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+
+    def test_delayed_personal_storage_deposit_reconciles_without_gain(self):
+        self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[], storage=[]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        events = self.drain()
+        self.assertEqual([e['kind'] for e in events], ['item.transferred'])
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'inventory')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'storage')
+
+    def test_delayed_guild_storage_withdrawal_preserves_owner_scope(self):
+        baseline = self.resources(bag=[])
+        baseline['guild_storage'] = {'availability': 'observed',
+                                      'slots': [{'source_slot': 0, 'item': self.item(2)}]}
+        self.observe(baseline)
+        halfway = self.resources(bag=[(13, self.item(2))])
+        halfway['guild_storage'] = baseline['guild_storage']
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(halfway)
+        self.assertEqual(self.drain(), [])
+        after = self.resources(bag=[(13, self.item(2))])
+        after['guild_storage'] = {'availability': 'observed', 'slots': []}
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(after)
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.transferred')
+        self.assertEqual(events[0]['payload']['source_container']['id'], 'guild')
+
+    def test_delayed_transfer_is_fenced_by_sampling_gap(self):
+        self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(3))],
+                                        storage=[(0, self.item(3))]))
+        self.assertEqual(self.drain(), [])
+        self.worker._resource_sample_gap = True
+        with patch.object(plugin, '_monotonic', return_value=102.0):
+            self.observe(self.resources(bag=[(13, self.item(3))], storage=[]))
+        self.assertEqual(self.drain(), [])
+
     def test_partial_storage_move_preserves_transfer_and_net_gain(self):
         self.observe(self.resources(bag=[], storage=[(0, self.item(2))]))
         self.observe(self.resources(bag=[(13, self.item(5))], storage=[]))
