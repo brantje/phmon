@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import {
+  createLatestRequestGate,
+  itemOwnerHref,
+  itemSearchQuery,
+} from '~/utils/searchPage'
 type FoundItem = {
   server: string
   container: string
@@ -37,7 +42,7 @@ const previous = ref<string[]>([])
 const page = shallowRef<ItemSearchPage | null>(null)
 const loading = ref(false)
 const error = ref('')
-let requestID = 0
+const requestGate = createLatestRequestGate()
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 const stale = computed(
   () => liveStale.value || connectionState.value === 'stale',
@@ -51,11 +56,6 @@ function formatTime(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString()
 }
-function ownerTarget(item: FoundItem) {
-  return item.owner_kind === 'guild'
-    ? '/guild-storage'
-    : `/characters/${item.observer_character_id}`
-}
 function itemIdentity(item: FoundItem) {
   return (
     String(item.item.name ?? '') ||
@@ -66,7 +66,7 @@ function itemIdentity(item: FoundItem) {
   )
 }
 function load() {
-  const id = ++requestID
+  const id = requestGate.next()
   if (needsServerForTaxonomy.value) {
     error.value = 'Select a server before applying item taxonomy filters.'
     page.value = null
@@ -75,28 +75,28 @@ function load() {
   }
   loading.value = true
   error.value = ''
+  page.value = null
   void $fetch<ItemSearchPage>('/api/items', {
-    query: {
-      server: serverScope.value === 'all' ? undefined : serverScope.value,
-      q: query.value || undefined,
-      container: container.value || undefined,
-      owner: owner.value.trim() || undefined,
-      item_type: itemType.value.trim() || undefined,
-      subcategory: subcategory.value.trim() || undefined,
-      degree: degree.value || undefined,
-      include_sets: String(includeSets.value),
-      cursor: cursor.value || undefined,
-      limit: 30,
-    },
+    query: itemSearchQuery({
+      server: serverScope.value,
+      query: query.value,
+      container: container.value,
+      owner: owner.value,
+      itemType: itemType.value,
+      subcategory: subcategory.value,
+      degree: degree.value,
+      includeSets: includeSets.value,
+      cursor: cursor.value,
+    }),
   })
     .then((result) => {
-      if (requestID === id) page.value = result
+      if (requestGate.isCurrent(id)) page.value = result
     })
     .catch(() => {
-      if (requestID === id) error.value = 'Item Search could not be loaded.'
+      if (requestGate.isCurrent(id)) error.value = 'Item Search could not be loaded.'
     })
     .finally(() => {
-      if (requestID === id) loading.value = false
+      if (requestGate.isCurrent(id)) loading.value = false
     })
 }
 watch(queryInput, (value) => {
@@ -127,7 +127,7 @@ watch(cursor, () => {
 })
 onMounted(load)
 onUnmounted(() => {
-  requestID++
+  requestGate.invalidate()
   if (searchTimer) clearTimeout(searchTimer)
 })
 function nextPage() {
@@ -256,7 +256,7 @@ function previousPage() {
           <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <span
               >Owner:
-              <NuxtLink :to="ownerTarget(row)">{{
+              <NuxtLink :to="itemOwnerHref(row)">{{
                 row.owner_name || row.owner_id
               }}</NuxtLink></span
             >
