@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   createLatestRequestGate,
   economySearchQuery,
+  itemHistoryTarget,
   itemOwnerHref,
   itemSearchQuery,
 } from '../app/utils/searchPage.ts'
@@ -95,4 +96,17 @@ test('a response from an old filter/cursor frame cannot replace a newer page', (
   assert.equal(gate.isCurrent(nextPage), true)
   gate.invalidate()
   assert.equal(gate.isCurrent(nextPage), false)
+})
+
+test('Item history navigation uses canonical Events and verified server/model identity', () => {
+  assert.deepEqual(
+    itemHistoryTarget({ server: 'Greatest', item: {
+      model: 777, servername: 'ITEM_CH_SWORD_10', name: 'Sword',
+    } }),
+    { path: '/events', query: { server: 'Greatest', item: 'ITEM_CH_SWORD_10' } },
+  )
+  assert.deepEqual(
+    itemHistoryTarget({ server: 'Other', item: { model: 777 } }),
+    { path: '/events', query: { server: 'Other', item: '777' } },
+  )
 })
