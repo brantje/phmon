@@ -344,6 +344,32 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 			t.Fatalf("source-filtered result contains %q", row.Source)
 		}
 	}
+	// A code-based search must not collapse an acquisition when its callback
+	// only identifies a model; hiding it would lose the entire occurrence.
+	byCode, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "ITEM_TEST", Limit: 10})
+	if listErr != nil || byCode.Total != 2 || len(byCode.Events) != 2 {
+		t.Fatalf("item code search must retain source observations excluded by the callback filter: %+v, err=%v", byCode, listErr)
+	}
+	for _, row := range byCode.Events {
+		if row.Kind != "item.acquired" && row.Kind != "item.quantity_increased" {
+			t.Fatalf("callback matched a code that was not observed on it: %+v", row)
+		}
+	}
+	onlyCallbacks, listErr := store.List(ctx, Filter{Server: server,
+		Source: "phbot.callback", ItemQuery: "777", Limit: 10})
+	if listErr != nil || onlyCallbacks.Total != 3 || len(onlyCallbacks.Events) != 3 {
+		t.Fatalf("callback source filter must show all three independent world drops: %+v, err=%v", onlyCallbacks, listErr)
+	}
+	onlyItemCategory, listErr := store.List(ctx, Filter{Server: server,
+		Category: "item", ItemQuery: "777", Limit: 10})
+	if listErr != nil || onlyItemCategory.Total != 2 || len(onlyItemCategory.Events) != 2 {
+		t.Fatalf("item category filter must retain both raw gains: %+v, err=%v", onlyItemCategory, listErr)
+	}
+	onlyIncrease, listErr := store.List(ctx, Filter{Server: server,
+		Kind: "item.quantity_increased", ItemQuery: "777", Limit: 10})
+	if listErr != nil || onlyIncrease.Total != 1 || onlyIncrease.Events[0].ID != observedItem.ID {
+		t.Fatalf("explicit gain kind must bypass logical collapse: %+v, err=%v", onlyIncrease, listErr)
+	}
 	if ValidSourceFilter("phbot.callback; DROP TABLE activity_events") {
 		t.Fatal("invalid provenance filter was accepted")
 	}
