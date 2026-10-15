@@ -277,3 +277,7 @@ incomplete.
 **Historical policy:** Do not delete, merge or retroactively reclassify
 ambiguous stored events. Query fixes apply read-only. An older event that lacks
 explicit correlation remains independent, even if it resembles a drop.
+
+## Legacy world-drop links and All Events totals
+
+A pre-existing `drop_event_id` field in an inventory state-difference event is not verified pickup causality: the older producer used a heuristic. All Events lists the callback and inventory evidence as distinct occurrences rather than suppressing a potentially unrelated gain. Historical callback rows expose the stored unverified link for source auditing but never borrow the gain's historical item-instance attributes. World-drop analytics still count only callback occurrences; owned-gain analytics still count limited supported gain observations; transfers remain zero new acquisitions. An exact physical-acquisition count across sources is unsupported without an independently verified shared receipt identity.

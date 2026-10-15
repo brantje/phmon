@@ -666,7 +666,7 @@ function eventSourceLabel(item: ActivityEvent) {
 }
 function linkedObservationID(item: ActivityEvent): string | undefined {
   const observed = record(record(item.payload).item_observation)
-  return observed.association === 'explicit_drop_event_id' &&
+  return observed.association === 'stored_unverified_drop_event_id' &&
     typeof observed.event_id === 'string'
     ? observed.event_id
     : undefined
@@ -1005,7 +1005,8 @@ function localDateBoundary(value: string, addDays: number) {
                   </template>
                 </small>
                 <details v-if="linkedObservationID(item)" class="event-origin">
-                  <summary>Linked source observations</summary>
+                  <summary>Historical source link (pickup unverified)</summary>
+                  <div>Stored correlation is not proof of pickup or the callback item's attributes.</div>
                   <div>
                     Callback:
                     <NuxtLink

@@ -242,17 +242,17 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("linked drop lookup = %+v, err=%v", exact, err)
 	}
 	var linkedPayload struct {
-		Item struct {
-			Plus      int            `json:"plus"`
-			APIFields map[string]any `json:"api_fields"`
-		} `json:"item"`
+		Item json.RawMessage `json:"item"`
 		Observation struct {
 			Association string `json:"association"`
 			EventID     string `json:"event_id"`
 		} `json:"item_observation"`
 	}
-	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil || linkedPayload.Item.Plus != 3 || linkedPayload.Item.APIFields == nil || linkedPayload.Observation.Association != "explicit_drop_event_id" || linkedPayload.Observation.EventID != observedItem.ID {
-		t.Fatalf("drop did not carry its linked observed item: %s, err=%v", exact.Events[0].Payload, err)
+	if err := json.Unmarshal(exact.Events[0].Payload, &linkedPayload); err != nil ||
+		len(linkedPayload.Item) != 0 ||
+		linkedPayload.Observation.Association != "stored_unverified_drop_event_id" ||
+		linkedPayload.Observation.EventID != observedItem.ID {
+		t.Fatalf("historical association must be auditable but cannot lend instance attributes: %s, err=%v", exact.Events[0].Payload, err)
 	}
 	lateDrop := rareDrop
 	lateDrop.ID = newTestEventID(t)
@@ -320,19 +320,32 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("owned gains must remain distinct from world drops: %+v, err=%v", itemEvents, listErr)
 	}
 	allItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2})
-	if listErr != nil || allItems.Total != 4 || len(allItems.Events) != 2 ||
+	if listErr != nil || allItems.Total != 5 || len(allItems.Events) != 2 ||
 		allItems.NextCursor == "" {
-		t.Fatalf("logical item page one count/cursor = %+v, err=%v", allItems, listErr)
+		t.Fatalf("historical item page one count/cursor = %+v, err=%v", allItems, listErr)
 	}
 	secondItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2,
 		Cursor: allItems.NextCursor})
-	if listErr != nil || secondItems.Total != 4 || len(secondItems.Events) != 2 ||
-		secondItems.Events[0].ID == allItems.Events[0].ID {
-		t.Fatalf("logical item page two = %+v, err=%v", secondItems, listErr)
+	if listErr != nil || secondItems.Total != 5 || len(secondItems.Events) != 2 ||
+		secondItems.NextCursor == "" {
+		t.Fatalf("historical item page two = %+v, err=%v", secondItems, listErr)
 	}
-	for _, row := range append(append([]Event{}, allItems.Events...), secondItems.Events...) {
-		if row.ID == observedItem.ID {
-			t.Fatal("linked gain was duplicated in unfiltered All Events")
+	thirdItems, listErr := store.List(ctx, Filter{Server: server, ItemQuery: "777", Limit: 2,
+		Cursor: secondItems.NextCursor})
+	if listErr != nil || thirdItems.Total != 5 || len(thirdItems.Events) != 1 ||
+		thirdItems.NextCursor != "" {
+		t.Fatalf("historical item page three = %+v, err=%v", thirdItems, listErr)
+	}
+	seen := make(map[string]bool)
+	for _, row := range append(append(allItems.Events, secondItems.Events...), thirdItems.Events...) {
+		if seen[row.ID] {
+			t.Fatalf("repeated canonical event across pages: %s", row.ID)
+		}
+		seen[row.ID] = true
+	}
+	for _, id := range []string{rareDrop.ID, observedItem.ID, lateDrop.ID, unlinkedGain.ID, competingDrop.ID} {
+		if !seen[id] {
+			t.Fatalf("unverified historical link hid an independent event: %s", id)
 		}
 	}
 	stateDiffs, listErr := store.List(ctx, Filter{Server: server, Source: "phbot.state_diff", Limit: 10})

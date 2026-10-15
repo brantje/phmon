@@ -1148,41 +1148,9 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
 		AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))))
-	-- Collapse only a one-to-one, explicitly linked drop/acquisition pair.
-	-- A callback must itself pass every active All Events filter; otherwise the
-	-- acquisition remains visible. Both canonical event IDs remain queryable.
-	AND ($4<>'' OR $5<>'' OR $9::uuid IS NOT NULL OR $14<>'' OR NOT (
-		e.source='phbot.state_diff' AND e.source_ref='item_container'
-		AND e.kind IN ('item.acquired','item.quantity_increased')
-		AND e.payload->>'quantity_delta'='1'
-		AND e.payload->'destination_container'->>'type'='inventory'
-		AND EXISTS (
-			SELECT 1 FROM activity_events d
-			WHERE d.event_id::text=e.payload->>'drop_event_id'
-			AND d.kind IN ('drop.item','drop.rare') AND d.source='phbot.callback'
-			AND d.agent_id=e.agent_id AND d.character_id=e.character_id
-			AND d.session_id=e.session_id AND d.item_model=e.item_model
-			AND lower(d.server_name)=lower(e.server_name)
-			AND e.occurred_at BETWEEN d.occurred_at AND d.occurred_at+interval '30 seconds'
-			AND ($1='' OR lower(d.server_name)=lower($1))
-			AND ($6='' OR COALESCE(d.item_code,'') ILIKE '%'||$6||'%'
-				OR COALESCE(d.item_model::text,'') ILIKE '%'||$6||'%'
-				OR d.payload->>'model' ILIKE '%'||$6||'%'
-				OR d.payload->>'item_name' ILIKE '%'||$6||'%'
-				OR d.payload->'item'->>'name' ILIKE '%'||$6||'%'
-				OR d.payload->'item'->>'servername' ILIKE '%'||$6||'%')
-			AND ($7::timestamptz IS NULL OR d.occurred_at >= $7)
-			AND ($8::timestamptz IS NULL OR d.occurred_at < $8)
-			AND ($10::integer IS NULL OR d.region=$10)
-			AND (NOT $11 OR (d.region IS NOT NULL AND d.x IS NOT NULL AND d.y IS NOT NULL))
-			AND (SELECT count(*) FROM activity_events a
-				WHERE a.payload->>'drop_event_id'=d.event_id::text
-				AND a.agent_id=d.agent_id AND a.character_id=d.character_id
-				AND a.session_id=d.session_id AND a.item_model=d.item_model
-				AND a.source='phbot.state_diff' AND a.source_ref='item_container'
-				AND a.kind IN ('item.acquired','item.quantity_increased'))=1
-		)
-	))
+	-- Historical drop_event_id links may have come from model/time heuristics.
+	-- No persisted pickup proof exists for these links; never hide the gain.
+	-- Both callback and observation remain independent canonical occurrences.
 	AND ($14='' OR e.source=$14)
 	AND ($5='' OR e.category=$5) AND ($6='' OR COALESCE(e.item_code,'') ILIKE '%'||$6||'%' OR COALESCE(e.item_model::text,'') ILIKE '%'||$6||'%' OR e.payload->>'model' ILIKE '%'||$6||'%' OR e.payload->>'item_name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'name' ILIKE '%'||$6||'%' OR e.payload->'item'->>'servername' ILIKE '%'||$6||'%')
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
@@ -1194,8 +1162,7 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 	}
 	rows, err := s.pool.Query(ctx, `SELECT e.event_id::text,e.schema_version,e.kind,e.category,e.agent_id::text,COALESCE(e.character_id::text,''),COALESCE(e.session_id::text,''),COALESCE(e.server_name,''),COALESCE(c.character_name,''),e.occurred_at,e.received_at,e.source,e.source_ref,e.region,e.x,e.y,e.z,e.payload,e.sequence,COALESCE(e.dedupe_key,''),e.item_model,COALESCE(e.item_code,''),c.model_id,COALESCE(e.zone_name,''),COALESCE(e.item_drop_class,''),COALESCE(e.item_drop_class_version,''),
 		(SELECT jsonb_build_object(
-			'item',a.payload->'item',
-			'association','explicit_drop_event_id',
+			'association','stored_unverified_drop_event_id',
 			'event_id',a.event_id::text,
 			'source',a.source)
 		FROM activity_events a
@@ -1207,7 +1174,6 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		AND a.payload->>'drop_event_id'=e.event_id::text
 		AND a.payload->>'quantity_delta'='1'
 		AND a.payload->'destination_container'->>'type'='inventory'
-		AND a.payload->'item' IS NOT NULL
 		AND a.occurred_at BETWEEN e.occurred_at AND e.occurred_at+interval '30 seconds'
 		GROUP BY a.event_id,a.payload,a.source
 		HAVING (SELECT count(*) FROM activity_events linked
@@ -1244,16 +1210,13 @@ ORDER BY e.occurred_at DESC,e.event_id DESC LIMIT $17`, filter.Server, filter.Ch
 		if len(linkedObservation) > 0 {
 			var payload map[string]json.RawMessage
 			var observed struct {
-				Item        json.RawMessage `json:"item"`
 				Association string          `json:"association"`
 				EventID     string          `json:"event_id"`
 				Source      string          `json:"source"`
 			}
 			if json.Unmarshal(item.Payload, &payload) == nil && payload != nil &&
-				json.Unmarshal(linkedObservation, &observed) == nil && len(observed.Item) > 0 &&
-				json.Valid(observed.Item) &&
-				observed.Association == "explicit_drop_event_id" && agentdomain.ValidAgentID(observed.EventID) && observed.Source == "phbot.state_diff" {
-				payload["item"] = observed.Item
+				json.Unmarshal(linkedObservation, &observed) == nil &&
+				observed.Association == "stored_unverified_drop_event_id" && agentdomain.ValidAgentID(observed.EventID) && observed.Source == "phbot.state_diff" {
 				payload["item_observation"], _ = json.Marshal(map[string]string{
 					"association": observed.Association, "event_id": observed.EventID, "source": observed.Source,
 				})

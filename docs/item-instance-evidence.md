@@ -291,3 +291,7 @@ Any historic unlinked or ambiguous inventory observation retains its own
 stored detail and is not used to borrow plus/blues from a different copy.
 PhBot snapshots of storage, guild storage and pet containers are observations
 of contents, not proof of pickup or a completed transaction.
+
+## Historical drop link provenance (PR #91 follow-up)
+
+Some older `phbot.state_diff` item gains retained a `drop_event_id` chosen by a same-model/time/inventory heuristic. That field identifies a **stored correlation**, not independently verified pickup evidence. The All Events query therefore keeps both canonical callback and gain rows, including totals and cursor pagination, even when the legacy link is one-to-one. The callback exposes an auditable `item_observation` link tagged `stored_unverified_drop_event_id`, but does **not** inherit the gain's plus, blues or other instance attributes. Exact event ID, kind and source filters remain available. A future physical pickup correlation may collapse a logical row only after a separately verified, durable shared acquisition identity exists; no such general proof is currently available. Do not backfill or rewrite old source events to manufacture it.
