@@ -94,7 +94,8 @@ function load() {
       if (requestGate.isCurrent(id)) page.value = result
     })
     .catch(() => {
-      if (requestGate.isCurrent(id)) error.value = 'Item Search could not be loaded.'
+      if (requestGate.isCurrent(id))
+        error.value = 'Item Search could not be loaded.'
     })
     .finally(() => {
       if (requestGate.isCurrent(id)) loading.value = false
