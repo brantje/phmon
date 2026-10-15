@@ -82,6 +82,10 @@ type liveFilter struct {
 	ItemType          string   `json:"item_type,omitempty"`
 	ItemDegree        string   `json:"item_degree,omitempty"`
 	PageSize          int      `json:"page_size,omitempty"`
+
+	SourceContainer      string `json:"source_container,omitempty"`
+	DestinationContainer string `json:"destination_container,omitempty"`
+	MovementMethod       string `json:"movement_method,omitempty"`
 }
 
 type liveClientMessage struct {

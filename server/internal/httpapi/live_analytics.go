@@ -22,10 +22,12 @@ func analyticsFilter(input liveFilter) (analytics.Filter, error) {
 		Timezone: input.Timezone, Bucket: input.Bucket, GroupBy: input.GroupBy,
 		Guild: input.Guild, BalanceScope: input.BalanceScope, DropSource: input.DropSource, ItemType: input.ItemType, ItemDegree: input.ItemDegree, ItemQuery: input.Item,
 		PageSize: input.PageSize, Cursor: input.Cursor,
+		SourceContainer: input.SourceContainer, DestinationContainer: input.DestinationContainer, MovementMethod: input.MovementMethod,
 	})
 }
 
 func hasAnalyticsFilters(filter liveFilter) bool {
 	return filter.AnalyticsView != "" || filter.Timezone != "" || filter.Bucket != "" ||
-		filter.GroupBy != "" || filter.Guild != "" || filter.PageSize != 0 || filter.BalanceScope != "" || filter.DropSource != "" || filter.ItemType != "" || filter.ItemDegree != ""
+		filter.GroupBy != "" || filter.Guild != "" || filter.PageSize != 0 || filter.BalanceScope != "" || filter.DropSource != "" || filter.ItemType != "" || filter.ItemDegree != "" ||
+		filter.SourceContainer != "" || filter.DestinationContainer != "" || filter.MovementMethod != ""
 }
