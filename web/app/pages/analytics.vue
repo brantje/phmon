@@ -252,7 +252,9 @@ watch(
   view,
   (next) => {
     groupBy.value =
-      next === 'rare_drops' || next === 'normal_drops' || next === 'item_history'
+      next === 'rare_drops' ||
+      next === 'normal_drops' ||
+      next === 'item_history'
         ? 'item'
         : 'character'
     cursor.value = ''
