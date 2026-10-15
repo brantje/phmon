@@ -240,13 +240,14 @@ net physical-acquisition counts are **not established**. The metric status is
 limited, not a verified acquisition count. `quantity_delta` is a separate item-count
 field and must not silently replace the occurrence count.
 
-**All Events logical projection:** Only an explicitly linked, unique
-`drop_event_id` state-diff inventory observation can be folded into the
-callback's one visible occurrence, and only if that callback satisfies the
-active server/item/date/location filters. Both canonical events persist.
-Exact event-ID and event-kind searches retain raw records; All Events totals
-and cursors are computed over the filtered projection. Temporal co-occurrence
-or same-model similarity cannot justify fusion or copying item-instance rolls.
+**All Events logical projection:** A linked state-diff inventory
+observation remains a distinct visible occurrence alongside its world-drop
+callback. Even an explicit `drop_event_id` is retained for audit rather than
+used to collapse rows or infer pickup causality. All Events totals and cursors
+count the distinct canonical events matching the active filters. Exact event-ID
+and event-kind searches also retain the original records. Temporal
+co-occurrence or same-model similarity cannot justify fusion or copying
+item-instance rolls.
 
 **Transfers:** `item.transferred` requires observed source decrease and
 matching destination increase (including guild-scoped shared storage), with

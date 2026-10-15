@@ -214,7 +214,7 @@ func eventScope() string {
  AND ($2='' OR e.character_id=$2::uuid)
  AND ($3='' OR EXISTS (SELECT 1 FROM character_group_members scope_member WHERE scope_member.character_id=e.character_id AND scope_member.group_id=$3::uuid))
  AND ($6='' OR EXISTS (SELECT 1 FROM characters scope_character WHERE scope_character.character_id=e.character_id AND scope_character.character_name ILIKE '%'||$6||'%'))
- AND ($7='' OR coalesce(e.item_code,'') ILIKE '%'||$7||'%' OR coalesce(e.payload->>'item_name',e.payload->>'name','') ILIKE '%'||$7||'%')`
+ AND ($7='' OR coalesce(e.item_code,'') ILIKE '%'||$7||'%' OR coalesce(e.payload->>'item_name',e.payload->>'name','') ILIKE '%'||$7||'%' OR coalesce(e.payload->'item'->>'name','') ILIKE '%'||$7||'%')`
 }
 
 func (s *Store) queryEventView(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
