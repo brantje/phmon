@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  createLatestRequestGate,
+  economySearchQuery,
+} from '~/utils/searchPage'
 type Offer = {
   message_id: string
   source_event_id: string
@@ -28,7 +32,7 @@ const error = ref('')
 const loading = ref(false)
 const cursor = ref('')
 const previous = ref<string[]>([])
-let requestID = 0
+const requestGate = createLatestRequestGate()
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 const searchInput = ref('')
 const invalidRange = computed(
@@ -39,34 +43,35 @@ const stale = computed(
   () => liveStale.value || connectionState.value === 'stale',
 )
 function load() {
-  const id = ++requestID
+  const id = requestGate.next()
   if (invalidRange.value) {
     page.value = null
     error.value = 'The start date must be before the end date.'
+    loading.value = false
     return
   }
   error.value = ''
   loading.value = true
+  page.value = null
   void $fetch<OfferPage>('/api/economy/offers', {
-    query: {
-      server: serverScope.value === 'all' ? undefined : serverScope.value,
-      offer_type: type.value || undefined,
-      sender: seller.value.trim() || undefined,
-      q: search.value || undefined,
-      from: from.value || undefined,
-      to: to.value || undefined,
-      cursor: cursor.value || undefined,
-      limit: 30,
-    },
+    query: economySearchQuery({
+      server: serverScope.value,
+      type: type.value,
+      sender: seller.value,
+      query: search.value,
+      from: from.value,
+      to: to.value,
+      cursor: cursor.value,
+    }),
   })
     .then((response) => {
-      if (id === requestID) page.value = response
+      if (requestGate.isCurrent(id)) page.value = response
     })
     .catch(() => {
-      if (id === requestID) error.value = 'Global offer history is unavailable.'
+      if (requestGate.isCurrent(id)) error.value = 'Global offer history is unavailable.'
     })
     .finally(() => {
-      if (id === requestID) loading.value = false
+      if (requestGate.isCurrent(id)) loading.value = false
     })
 }
 watch(searchInput, (value) => {
@@ -85,7 +90,7 @@ watch(cursor, () => {
 })
 onMounted(load)
 onUnmounted(() => {
-  requestID++
+  requestGate.invalidate()
   if (searchTimer) clearTimeout(searchTimer)
 })
 function nextPage() {
