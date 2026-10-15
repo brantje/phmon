@@ -67,6 +67,7 @@ type liveFilter struct {
 	Cursor            string   `json:"cursor,omitempty"`
 	IncludePetPickups bool     `json:"include_pet_pickups,omitempty"`
 	IncludeOwnedGains bool     `json:"include_owned_gains,omitempty"`
+	HideOwn           bool     `json:"hide_own,omitempty"`
 	Channel           string   `json:"channel,omitempty"`
 	Peer              string   `json:"peer,omitempty"`
 	Area              string   `json:"area,omitempty"`
@@ -1168,7 +1169,7 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
 			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item, EventID: subscription.Filter.EventID,
 			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit, IncludePetPickups: subscription.Filter.IncludePetPickups,
-			IncludeOwnedGains: subscription.Filter.IncludeOwnedGains}
+			IncludeOwnedGains: subscription.Filter.IncludeOwnedGains, HideOwn: subscription.Filter.HideOwn}
 		var err error
 		if subscription.Filter.From != "" {
 			value, parseErr := parseEventBound(subscription.Filter.From, false)
@@ -1399,6 +1400,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 			IncludePetPickups: message.Filter.IncludePetPickups,
 			IncludeOwnedGains: message.Filter.IncludeOwnedGains,
+			HideOwn:           message.Filter.HideOwn,
 			Channel:           message.Filter.Channel, Peer: message.Filter.Peer,
 			Area: message.Filter.Area, Floor: message.Filter.Floor, Region: message.Filter.Region,
 			AnalyticsView: message.Filter.AnalyticsView, Timezone: message.Filter.Timezone,
@@ -1503,7 +1505,8 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			!events.ValidKind(subscription.Filter.Kind) || !events.ValidCategory(subscription.Filter.Category) || len(subscription.Filter.Item) > 128 || len(subscription.Filter.Cursor) > 256 ||
 			subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
 			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) ||
-			(subscription.Filter.IncludePetPickups || subscription.Filter.IncludeOwnedGains) && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) {
+			(subscription.Filter.IncludePetPickups || subscription.Filter.IncludeOwnedGains) && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) ||
+			subscription.Filter.HideOwn && subscription.Filter.Kind != "job.hunter_trader_seen" {
 			return liveSubscription{}, false
 		}
 		var from, to *time.Time
@@ -1640,7 +1643,7 @@ func hasEventFilters(filter liveFilter) bool {
 }
 
 func hasEventSpecificFilters(filter liveFilter) bool {
-	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != "" || filter.IncludePetPickups || filter.IncludeOwnedGains
+	return filter.Kind != "" || filter.Category != "" || filter.Item != "" || filter.EventID != "" || filter.From != "" || filter.To != "" || filter.Cursor != "" || filter.IncludePetPickups || filter.IncludeOwnedGains || filter.HideOwn
 }
 
 type mapEventLister interface {
