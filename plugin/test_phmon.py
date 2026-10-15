@@ -1826,7 +1826,59 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(events[0]['kind'], 'item.transferred')
         self.assertEqual(events[0]['payload']['source_container']['id'], 'guild')
 
-    def test_expired_delayed_candidate_never_fabricates_acquisition(self):
+    def test_unmatched_loss_with_identical_model_in_storage_is_preserved(self):
+        self.observe(self.resources(bag=[(13, self.item(4))], storage=[(0, self.item(2))]))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=[(13, self.item(1))], storage=[(0, self.item(2))]))
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=108.0):
+            self.observe(self.resources(bag=[(13, self.item(1))], storage=[(0, self.item(2))]))
+        events = self.drain()
+        self.assertEqual([event['kind'] for event in events], ['item.quantity_decreased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(events[0]['payload']['source_container']['type'], 'inventory')
+        self.assertNotIn('acquisition_method', events[0]['payload'])
+
+    def test_expired_unmatched_guild_storage_gain_does_not_disappear(self):
+        before = self.resources(bag=[])
+        before['guild_storage'] = {'availability': 'observed',
+                                    'slots': [{'source_slot': 0, 'item': self.item(2)}]}
+        after = self.resources(bag=[(13, self.item(1))])
+        after['guild_storage'] = before['guild_storage']
+        self.observe(before)
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(after)
+        self.assertEqual(self.drain(), [])
+        with patch.object(plugin, '_monotonic', return_value=107.0):
+            self.observe(after)
+        events = self.drain()
+        self.assertEqual([event['kind'] for event in events], ['item.quantity_increased'])
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
+
+    def test_buffer_saturation_preserves_evicted_quantity_observation(self):
+        storage = [(i, self.classified_item(3000+i, 'ITEM_TEST_%d' % i, 'Test %d' % i))
+                   for i in range(plugin.MAX_ITEM_RECONCILIATION_PENDING + 1)]
+        bag = [(i+13, dict(item)) for i, item in storage]
+        self.observe(self.resources(bag=[], storage=storage))
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            self.observe(self.resources(bag=bag, storage=storage))
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.quantity_increased')
+        self.assertEqual(events[0]['payload']['quantity_delta'], 1)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(len(self.worker._pending_item_reconciliation),
+                         plugin.MAX_ITEM_RECONCILIATION_PENDING)
+        with patch.object(plugin, '_monotonic', return_value=108.0):
+            self.observe(self.resources(bag=bag, storage=storage))
+        rest = self.drain()
+        self.assertEqual(len(rest), plugin.MAX_ITEM_RECONCILIATION_PENDING)
+        self.assertEqual(sum(e['payload']['quantity_delta'] for e in events+rest),
+                         plugin.MAX_ITEM_RECONCILIATION_PENDING + 1)
+
+    def test_expired_delayed_candidate_preserves_observed_net_gain(self):
         self.observe(self.resources(bag=[], storage=[(0, self.item(3))]))
         with patch.object(plugin, '_monotonic', return_value=100.0):
             self.observe(self.resources(bag=[(13, self.item(3))],
@@ -1835,7 +1887,13 @@ class ResourceEventDerivationTests(unittest.TestCase):
         with patch.object(plugin, '_monotonic', return_value=108.0):
             self.observe(self.resources(bag=[(13, self.item(3))],
                                         storage=[(0, self.item(3))]))
-        self.assertEqual(self.drain(), [])
+        events = self.drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['kind'], 'item.quantity_increased')
+        self.assertEqual(events[0]['payload']['quantity_delta'], 3)
+        self.assertEqual(events[0]['payload']['acquisition_method'], 'unknown')
+        self.assertEqual(events[0]['payload']['destination_container']['type'], 'inventory')
+        self.assertNotIn('drop_event_id', events[0]['payload'])
         self.assertEqual(len(self.worker._pending_item_reconciliation), 0)
 
     def test_ambiguous_delayed_matching_preserves_unknown_cause(self):
@@ -2143,7 +2201,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertEqual(by_container['job_pouch']['payload']['quantity_delta'], 2)
         self.assertEqual(by_container['inventory']['region'], 25273)
 
-    def test_unique_drop_links_the_observed_inventory_item_and_its_api_evidence(self):
+    def test_unique_drop_callback_does_not_claim_unproven_inventory_pickup(self):
         self.observe(self.resources(bag=[]))
         drop_id = '8d16ab39-10b8-4b26-80aa-a4be01e10f18'
         self.assertTrue(self.worker.register_drop_for_enrichment(self.identity, 77, drop_id, 0))
@@ -2153,12 +2211,12 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, item)]))
         event = self.drain()[0]
         self.assertEqual(event['kind'], 'item.acquired')
-        self.assertEqual(event['payload']['drop_event_id'], drop_id)
+        self.assertNotIn('drop_event_id', event['payload'])
         self.assertEqual(event['payload']['item']['api_fields'], item['api_fields'])
         self.assertEqual(event['payload']['acquisition_method'], 'unknown')
-        self.assertFalse(self.worker.has_pending_drop_enrichment(self.identity))
+        self.assertTrue(self.worker.has_pending_drop_enrichment(self.identity))
 
-    def test_drop_links_new_slot_when_same_model_is_already_owned(self):
+    def test_same_model_callback_does_not_claim_new_inventory_slot(self):
         existing = self.item()
         existing['api_fields'] = {'blues': {'9': 1}}
         self.observe(self.resources(bag=[(13, existing)]))
@@ -2169,7 +2227,7 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.observe(self.resources(bag=[(13, existing), (14, dropped)]))
         event = self.drain()[0]
         self.assertEqual(event['kind'], 'item.quantity_increased')
-        self.assertEqual(event['payload']['drop_event_id'], drop_id)
+        self.assertNotIn('drop_event_id', event['payload'])
         self.assertEqual(event['payload']['destination_container'], {'type': 'inventory', 'slot': 14})
         self.assertEqual(event['payload']['item']['api_fields'], dropped['api_fields'])
 
