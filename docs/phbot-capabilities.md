@@ -1774,3 +1774,36 @@ and it does not decode fields. A four-byte `0x3016` despawn removes a temporary
 runtime-id cache entry. Runtime ids are not player identities. A directly observed
 TradeNexus thief name is stored as its own player with job `thief` and unknown
 jobbing state. No selection packet is sent.
+
+
+## Issue #90 Slice 13: observation and price capability gate (2026-10-15)
+
+Plugin **1.9.34** with monitor protocol **19** uses the existing
+`get_inventory`, `get_storage`, `get_guild_storage`, `get_job_pouch` and
+`get_pets` snapshots, the documented item-drop callbacks and preserved
+Global chat messages. Guild storage must be paired with the actively observed
+server and guild identity; absent membership information means no guild
+movement attribution. Initial opening, reconnect and unavailable getters are
+unknown/baseline, not an empty container.
+
+The ordinary phBot API/state snapshots do **not** by themselves prove that an
+inventory gain was a world drop, that a nearby matching item was picked up,
+that the observing character owns the shared guild storage, or that a
+disappearing item was sold.
+
+**Stall sale and realized-price history remain unsupported.** The reviewed
+plugin pathways and available documented event handlers do not provide a
+confirmed completed-sale receipt tying outcome, stable item identity, paid
+gold and quantity together. A stall advertisement or a change in inventory
+or gold is insufficient. No packet opcode is assumed to be a universal stall
+transaction decoder. To enable this: capture an authorized, bounded real
+phBot callback/API trace of a successful stall listing and completed sale,
+including item, quantity, final gold, success/failure response and stable
+transaction identity; verify vSRO server/profile semantics and repeated
+observation/reconnect behavior in fixtures before adding storage or charts.
+Without those observations the capability stays explicitly unsupported.
+
+**Live validation still required:** same-sample and delayed deposits and
+withdrawals for personal and guild storage; guild membership changes; pet
+pickup source receipts and state-diff ordering; real Windows phBot runtime.
+A synthetic integration test is not proof of real game-server packet semantics.
