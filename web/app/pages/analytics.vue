@@ -702,7 +702,11 @@ function dateInput(value: Date) {
             Observed academy ID
           </option>
           <option
-            v-if="view === 'rare_drops' || view === 'normal_drops' || view === 'item_history'"
+            v-if="
+              view === 'rare_drops' ||
+              view === 'normal_drops' ||
+              view === 'item_history'
+            "
             value="item"
           >
             Item
