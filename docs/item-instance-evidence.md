@@ -278,10 +278,15 @@ can be confirmed before enabling a parser.
 ## Slice 13 linked callback observation policy (2026-10-15)
 
 A shared item model and nearby timestamp do not identify the same physical
-item instance. The Events query only enriches an observed world-drop callback
-with a unique, explicitly `drop_event_id`-linked state-diff item, under the
-same character, agent, session, model and bounded interval. The enriched
-callback exposes the linked event ID, and neither source event is deleted.
+item instance. As of PR #91, new inventory state-diff gains no longer claim
+`drop_event_id` solely because one same-model callback was pending: storage,
+pet/party and other sources can produce that same item. Historical explicitly
+linked rows are not rewritten. The Events query may still project a unique
+historical `drop_event_id` association under the same agent/character/session,
+model and bounded interval. Its linked event ID is exposed for audit, but an
+old heuristic link is **not proof of actual pickup** and should not be
+described as a verified physical acquisition. Neither canonical source event
+is deleted.
 Any historic unlinked or ambiguous inventory observation retains its own
 stored detail and is not used to borrow plus/blues from a different copy.
 PhBot snapshots of storage, guild storage and pet containers are observations
