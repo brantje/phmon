@@ -1007,7 +1007,10 @@ function localDateBoundary(value: string, addDays: number) {
                 </small>
                 <details v-if="linkedObservationID(item)" class="event-origin">
                   <summary>Historical source link (pickup unverified)</summary>
-                  <div>Stored correlation is not proof of pickup or the callback item's attributes.</div>
+                  <div>
+                    Stored correlation is not proof of pickup or the callback
+                    item's attributes.
+                  </div>
                   <div>
                     Callback:
                     <NuxtLink
