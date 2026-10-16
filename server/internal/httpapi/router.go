@@ -16,6 +16,7 @@ import (
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
+	"phmon/server/internal/notifications"
 	"phmon/server/internal/npcs"
 	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
@@ -47,6 +48,7 @@ type Dependencies struct {
 	Resources      *resources.Store
 	Events         *events.Store
 	Chat           *chat.Store
+	Notifications  *notifications.Store
 	Mobs           *mobs.Store
 	MobLive        *mobs.LiveStore
 	NPCLive        *npcs.LiveStore
@@ -198,6 +200,12 @@ func New(deps Dependencies) http.Handler {
 	if deps.Chat != nil {
 		economyAPI := &economyHandler{store: deps.Chat}
 		register("GET /api/economy/offers", false, economyAPI.offers)
+	}
+	if deps.Notifications != nil {
+		notificationAPI := &notificationPreferencesHandler{store: deps.Notifications}
+		register("GET /api/notifications/catalog", false, notificationAPI.catalog)
+		register("GET /api/notifications/preferences", false, notificationAPI.preferences)
+		register("PUT /api/notifications/preferences", true, notificationAPI.preferences)
 	}
 	if deps.Resources != nil {
 		itemsAPI := &itemSearchHandler{store: deps.Resources}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	agentdomain "phmon/server/internal/agents"
 	"phmon/server/internal/tradenexus"
 )
 
@@ -17,12 +18,13 @@ type tradeReportHandler struct {
 func (h *tradeReportHandler) list(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	filter := tradenexus.Filter{
-		Server: strings.TrimSpace(query.Get("server")),
-		Query:  strings.TrimSpace(query.Get("q")),
-		Cursor: strings.TrimSpace(query.Get("cursor")),
-		Limit:  10,
+		Server:  strings.TrimSpace(query.Get("server")),
+		Query:   strings.TrimSpace(query.Get("q")),
+		TradeID: strings.TrimSpace(query.Get("trade_id")),
+		Cursor:  strings.TrimSpace(query.Get("cursor")),
+		Limit:   10,
 	}
-	if !validServerFilter(filter.Server) || len(filter.Query) > 64 || len(filter.Cursor) > 256 {
+	if !validServerFilter(filter.Server) || len(filter.Query) > 64 || len(filter.Cursor) > 256 || filter.TradeID != "" && !agentdomain.ValidAgentID(filter.TradeID) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid trade report filter"})
 		return
 	}

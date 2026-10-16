@@ -24,6 +24,7 @@ import (
 	"phmon/server/internal/httpapi"
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
+	"phmon/server/internal/notifications"
 	"phmon/server/internal/npcs"
 	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
@@ -86,6 +87,7 @@ func run() error {
 	resourceStore := resources.NewStore(pool)
 	eventStore := events.NewStore(pool)
 	chatStore := chat.NewStore(pool)
+	notificationStore := notifications.NewStore(pool)
 	mobStore := mobs.NewStore(pool)
 	mapAnalyticsStore := mapanalytics.NewStore(pool)
 	mobLive := mobs.NewLiveStore()
@@ -144,6 +146,7 @@ func run() error {
 		thiefSightings = tradenexus.NewStore(pool)
 		tradeHub = tradenexus.NewHub(tradenexus.Options{
 			Store: thiefSightings, Trades: thiefSightings, Invalidate: live.Invalidate,
+			TradeAccepted: live.PublishTradeNotification,
 			PlayerRecorder: func(recordCtx context.Context, sighting tradenexus.Sighting) {
 				job := "thief"
 				obs := players.Observation{
@@ -166,7 +169,10 @@ func run() error {
 		})
 		live.SetThiefSightings(thiefSightings)
 		go thiefSightings.RunRetention(ctx, cfg.TradeNexusRetentionDays, time.Hour)
-		eventStore.SetAcceptedHook(func(event events.Event) {
+	}
+	eventStore.SetAcceptedHook(func(event events.Event) {
+		live.PublishNotification(event)
+		if tradeHub != nil {
 			sighting, ok := tradenexus.SightingFromEvent(event)
 			if !ok {
 				return
@@ -181,8 +187,8 @@ func run() error {
 			if fresh {
 				tradeHub.Broadcast(recorded)
 			}
-		})
-	}
+		}
+	})
 	dispatchStore := commands.NewStore(pool)
 	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
 		return errors.New("cannot recover interrupted commands")
@@ -204,6 +210,7 @@ func run() error {
 		Resources:      resourceStore,
 		Events:         eventStore,
 		Chat:           chatStore,
+		Notifications:  notificationStore,
 		Mobs:           mobStore,
 		MobLive:        mobLive,
 		NPCLive:        npcLive,

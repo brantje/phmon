@@ -447,6 +447,7 @@ watch(
     characterQuery,
     tradeCursor,
     pageSize,
+    () => route.query.trade_id,
   ],
   () => {
     if (tradeTimer) clearInterval(tradeTimer)
@@ -458,7 +459,15 @@ watch(
   { immediate: true },
 )
 watch(
-  [tradesView, serverScope, fromDate, toDate, characterQuery, pageSize],
+  [
+    tradesView,
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    pageSize,
+    () => route.query.trade_id,
+  ],
   () => {
     tradeCursor.value = ''
     tradePrevious.value = []
@@ -520,6 +529,10 @@ async function loadTrades() {
       query: {
         server: serverScope.value === 'all' ? undefined : serverScope.value,
         q: characterQuery.value || undefined,
+        trade_id:
+          typeof route.query.trade_id === 'string'
+            ? route.query.trade_id
+            : undefined,
         from: fromDate.value ? localDateBoundary(fromDate.value, 0) : undefined,
         to: toDate.value ? localDateBoundary(toDate.value, 1) : undefined,
         cursor: tradeCursor.value || undefined,

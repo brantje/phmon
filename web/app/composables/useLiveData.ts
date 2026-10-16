@@ -29,6 +29,7 @@ import {
   type LiveFilter,
   type LiveServerFrame,
   type LiveStream,
+  type NotificationEvent,
 } from '~~/shared/types/live'
 import { mapSnapshotMatchesScope } from '~/utils/mapRefresh'
 import {
@@ -112,6 +113,7 @@ const hasSnapshot = ref(false)
 const staleCycle = ref(false)
 
 const subscriptions = new Map<string, Subscription>()
+const notificationListeners = new Set<(event: NotificationEvent) => void>()
 const subscriptionRevisions = new Map<string, number>()
 const commandFanOutOwners = new Map<string, CommandFanOutOwner>()
 const visibleProgressRegistrations = new Map<string, number>()
@@ -144,6 +146,7 @@ function sameFilter(left: LiveFilter, right: LiveFilter) {
     (left.resource_keys || []).join('\u0000') ===
       (right.resource_keys || []).join('\u0000') &&
     (left.server || '') === (right.server || '') &&
+    (left.kinds || []).join('\u0000') === (right.kinds || []).join('\u0000') &&
     (left.kind || '') === (right.kind || '') &&
     (left.category || '') === (right.category || '') &&
     (left.item || '') === (right.item || '') &&
@@ -344,6 +347,29 @@ function ensureBaseSubscriptions() {
   // Keep the shared group snapshot server-neutral. Individual screens filter
   // members to their own server scope; this also supports map route overrides.
   ensureSubscription('groups', 'groups')
+}
+
+function setNotificationFeed(kinds: string[], server?: string) {
+  if (kinds.length === 0) {
+    removeSubscription('notifications')
+    return
+  }
+  ensureSubscription(
+    'notifications',
+    'notifications',
+    { kinds, server },
+    undefined,
+    false,
+  )
+}
+
+function clearNotificationFeed() {
+  removeSubscription('notifications')
+}
+
+function onNotification(listener: (event: NotificationEvent) => void) {
+  notificationListeners.add(listener)
+  return () => notificationListeners.delete(listener)
 }
 
 function clearCharacterListFilter() {
@@ -1267,6 +1293,26 @@ function handleFrame(frame: LiveServerFrame) {
     return
   }
   if (frame.type === 'delta') {
+    if (subscription.stream === 'notifications') {
+      const data = frame.data as { event?: NotificationEvent } | undefined
+      const item = data?.event
+      if (
+        !item ||
+        typeof item.event_id !== 'string' ||
+        typeof item.kind !== 'string' ||
+        typeof item.category !== 'string' ||
+        typeof item.server !== 'string' ||
+        typeof item.occurred_at !== 'string' ||
+        !item.payload ||
+        typeof item.payload !== 'object' ||
+        Array.isArray(item.payload)
+      ) {
+        socket?.close(1002, 'invalid notification event')
+        return
+      }
+      for (const listener of notificationListeners) listener(item)
+      return
+    }
     if (
       subscription.stream !== 'positions' ||
       !applyRealtimePositionDelta(subscription, frame.data)
@@ -1293,6 +1339,8 @@ function applySnapshot(subscription: Subscription, data: unknown) {
     return applyCommandFanOutSnapshot(subscription, data)
   if (subscription.stream === 'positions')
     return applyRealtimePositionSnapshot(subscription, data)
+  if (subscription.stream === 'notifications')
+    return (data as { ready?: unknown }).ready === true
   switch (subscription.id) {
     case 'agents': {
       const snapshot = data as AgentsSnapshot
@@ -1679,6 +1727,9 @@ function stopLiveData() {
 
 export function useLiveData() {
   return {
+    setNotificationFeed,
+    clearNotificationFeed,
+    onNotification,
     agents: readonly(agents),
     characters: readonly(characters),
     fleetCharacters: readonly(fleetCharacters),

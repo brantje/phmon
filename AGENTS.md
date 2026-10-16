@@ -6995,3 +6995,58 @@ and the local contract check confirms the required protocol bump. CodeRabbit
 reported its free review quota will reset about 30 minutes after its
 2026-10-16 07:24 UTC comment; the operator explicitly said there is no need
 to wait for CodeRabbit. Finish CI checks and leave PR #94 open and unmerged.
+
+### Resume — 2026-10-16 event notifications and Settings redesign
+
+Focused user request implemented on the existing checkout: Settings has
+Notifications, Agents and Command Review tabs. Notifications lists the 28
+canonical kinds and two additional Trade Nexus report outcomes
+(`trade.completed`, `trade.failed`) with per-kind popup/native choices, category
+all/mixed controls and chat channel switches. PostgreSQL migration 000037 and
+validated API persist choices; all event kinds start off. The authenticated
+live stream sends only new committed occurrences, including legacy deaths and
+fresh completed/failed trade reports, with no history replay. Trader/Hunter
+notifications use the history hide-own rule. The global bottom-right host
+queues popups above a three-card limit, uses distinct event summaries and
+exact history/chat links, and handles hidden-tab native alerts and chat sound.
+The old chat-only listener is unmounted. Existing Trade Nexus accepted-event
+behavior remains wired. Cancelled trade reports are outside the two outcome
+choices.
+
+Files: `server/internal/{notifications,database/migrations/000037_notification_preferences.sql,
+events/store.go,httpapi/{live.go,notification_preferences.go,trade_reports.go},
+tradenexus/{hub.go,store.go}}`, `server/cmd/server/main.go`,
+`web/app/{pages/{settings.vue,events.vue},components/EventNotificationHost.vue,
+composables/{useNotificationPreferences.ts,useLiveData.ts},utils/notificationPresentation.ts}`,
+`web/server/api/notifications`, shared live types, focused tests, and
+`docs/reference-parity.md`. Go focused unit and PostgreSQL integration tests,
+289 web unit tests, Nuxt typecheck and focused ESLint passed. Local authenticated
+Chrome checks at 1440×1000, 1280×800 and 390×844 covered all Settings tabs,
+mobile choices, popup queue/placement, hidden-tab filtering, native permission
+states and keyboard focus using fixture WebSocket frames. Screenshots and
+remaining limits are in `docs/reference-parity.md`. No bot command or real
+character action was sent. Operator preference selections were restored to
+all-off and seven channels selected after tests; the prior chat sound setting
+was retained. The focused feature does not advance a roadmap slice. Exact next
+action: run the normal review/CI gates, then validate actual phBot delivery and
+OS-native alert display in an authorized operator session.
+
+Follow-up UI correction (2026-10-16): in-app event cards show the occurrence
+time and remaining seconds at the upper right, plus an eight-second countdown
+bar along the bottom.
+Their expiry now uses elapsed time, including time spent in a hidden tab; stale
+visible cards are removed when the tab returns. Native browser notifications
+also receive an eight-second close request, subject to browser and OS timing.
+The live subscription includes browser choices and chat sound. Chat sound
+works without requiring a popup choice.
+Focused Prettier, ESLint and Nuxt typecheck pass on Node 24.20.0. Browser visual
+validation and actual OS notification timing remain to be checked locally.
+
+Follow-up chat popup correction (2026-10-16): the live stream retains each
+observer's canonical chat event, while the notification host now collapses
+server-wide copies from different observers using the existing chat history
+rule: same server/channel/raw type/sender/text within two seconds. Repeated
+messages from the same observer and private/guild/union observations stay
+separate. This applies before popup, native alert and sound presentation.
+The 292-test web unit suite, Nuxt typecheck, focused ESLint and Prettier pass
+on Node 24.20.0; browser fixture validation remains pending.

@@ -18,12 +18,13 @@ type Store struct {
 }
 
 type Filter struct {
-	Server string
-	Query  string
-	From   *time.Time
-	To     *time.Time
-	Cursor string
-	Limit  int
+	Server  string
+	Query   string
+	TradeID string
+	From    *time.Time
+	To      *time.Time
+	Cursor  string
+	Limit   int
 }
 
 type Page struct {
@@ -317,10 +318,11 @@ func (s *Store) ListTrades(ctx context.Context, filter Filter) (TradePage, error
     OR route_to ILIKE $2 ESCAPE '\' OR outcome ILIKE $2 ESCAPE '\'
     OR reason ILIKE $2 ESCAPE '\')
   AND ($3::timestamptz IS NULL OR finished_at >= $3)
-  AND ($4::timestamptz IS NULL OR finished_at < $4)`
+  AND ($4::timestamptz IS NULL OR finished_at < $4)
+  AND ($5 = '' OR trade_id = $5::uuid)`
 	var total int
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM trade_reports `+where,
-		filter.Server, pattern, filter.From, filter.To).Scan(&total); err != nil {
+		filter.Server, pattern, filter.From, filter.To, filter.TradeID).Scan(&total); err != nil {
 		return TradePage{}, fmt.Errorf("count trade reports: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT trade_id::text, server_name, client_ref, outcome, reason,
@@ -328,9 +330,9 @@ func (s *Store) ListTrades(ctx context.Context, filter Filter) (TradePage, error
        reporter_name, reporter_app, reporter_version, finished_at, received_at
 FROM trade_reports
 `+where+`
-  AND ($5::timestamptz IS NULL OR (finished_at, trade_id) < ($5, $6::uuid))
+  AND ($6::timestamptz IS NULL OR (finished_at, trade_id) < ($6, $7::uuid))
 ORDER BY finished_at DESC, trade_id DESC
-LIMIT $7`, filter.Server, pattern, filter.From, filter.To, cursorTime, cursorID, filter.Limit+1)
+LIMIT $8`, filter.Server, pattern, filter.From, filter.To, filter.TradeID, cursorTime, cursorID, filter.Limit+1)
 	if err != nil {
 		return TradePage{}, fmt.Errorf("list trade reports: %w", err)
 	}

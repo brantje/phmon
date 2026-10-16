@@ -29,6 +29,7 @@ type Options struct {
 	Invalidate       func()
 	Now              func() time.Time
 	PlayerRecorder   func(context.Context, Sighting)
+	TradeAccepted    func(TradeReport)
 	MaxConnections   int
 	MaxPerIP         int
 	MaxServers       int
@@ -66,6 +67,7 @@ type Hub struct {
 	active *activeCache
 
 	playerRecorder func(context.Context, Sighting)
+	tradeAccepted  func(TradeReport)
 }
 
 type client struct {
@@ -107,6 +109,7 @@ func NewHub(options Options) *Hub {
 		sendQueue: options.SendQueue, maxInvalidFrames: options.MaxInvalidFrames,
 		clients: map[*client]struct{}{}, perIP: map[string]int{},
 		active: newActiveCache(), playerRecorder: options.PlayerRecorder,
+		tradeAccepted: options.TradeAccepted,
 	}
 }
 
@@ -247,10 +250,14 @@ func (h *Hub) RecordTrade(ctx context.Context, report TradeReport) (TradeReport,
 	if h.trades == nil {
 		return report, nil
 	}
+	requestedID := report.ID
 	stored, err := h.trades.InsertTrade(ctx, report)
 	if err != nil {
 		slog.Warn("tradenexus trade report was not stored", "server", report.Server, "reason", err.Error())
 		return TradeReport{}, err
+	}
+	if stored.ID == requestedID && h.tradeAccepted != nil {
+		h.tradeAccepted(stored)
 	}
 	return stored, nil
 }

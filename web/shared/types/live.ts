@@ -675,6 +675,20 @@ export type LiveStream =
   | 'chat'
   | 'map'
   | 'positions'
+  | 'notifications'
+
+export interface NotificationEvent {
+  event_id: string
+  kind: string
+  category: string
+  server: string
+  character_id: string
+  character: string
+  occurred_at: string
+  payload: Record<string, unknown>
+  item_name?: string
+  unique?: ActivityEvent['unique']
+}
 
 export interface GlobalOfferItem {
   item_type: string
@@ -721,6 +735,7 @@ export interface LiveFilter {
   limit?: number
   resource_keys?: string[]
   server?: string
+  kinds?: string[]
   kind?: string
   category?: string
   item?: string

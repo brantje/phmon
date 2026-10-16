@@ -77,6 +77,12 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 	})
 
 	store := NewStore(pool)
+	var acceptedDeaths int
+	store.SetAcceptedHook(func(event Event) {
+		if event.Kind == DeathKind {
+			acceptedDeaths++
+		}
+	})
 	first := AgentDeath{
 		ID: credential.AgentID, OccurredAt: baseTime,
 		Source: "phbot.callback", SourceRef: "EVENT_DIED",
@@ -88,6 +94,9 @@ func TestDeathEventsAreDurableIdempotentAndScoped(t *testing.T) {
 		t.Fatalf("first event insert = %v, %v", inserted, err)
 	}
 	inserted, err = store.AppendDeath(ctx, credential.AgentID, characterID, sessionID, first)
+	if acceptedDeaths != 1 {
+		t.Fatalf("legacy death hook count=%d, want 1 after replay", acceptedDeaths)
+	}
 	if err != nil || inserted {
 		t.Fatalf("idempotent retry = %v, %v", inserted, err)
 	}
