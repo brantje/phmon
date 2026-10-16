@@ -324,7 +324,7 @@ onMounted(() => void loadMapProfile(props.server))
 
 .map-preview-card--character .map-preview-note {
   margin-top: 3px;
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .map-preview-content {

@@ -24,6 +24,8 @@ const statsGroupID = computed(() =>
   typeof route.query.group_id === 'string' ? route.query.group_id : '',
 )
 const currentEventView = computed(() => {
+  if (route.query.view === 'thieves') return 'thieves'
+  if (route.query.view === 'trades') return 'trades'
   if (typeof route.query.kind === 'string') return route.query.kind
   if (route.query.category === 'custom') return 'custom'
   return 'all'
@@ -60,6 +62,13 @@ const eventNavigation = [
     key: 'world.unique_spawned',
     query: { kind: 'world.unique_spawned' },
   },
+  { label: 'Thieves', key: 'thieves', query: { view: 'thieves' } },
+  {
+    label: 'Traders / Hunters',
+    key: 'job.hunter_trader_seen',
+    query: { kind: 'job.hunter_trader_seen' },
+  },
+  { label: 'Trades', key: 'trades', query: { view: 'trades' } },
 ]
 const groupHasDeadCharacter = (
   members: readonly CharacterGroup['members'][number][],
@@ -186,7 +195,11 @@ const advancedNavigation = [
           <span class="nav-soon">later</span>
         </button>
         <nav
-          v-if="item.href === '/stats' && scopedGroups.length"
+          v-if="
+            item.href === '/stats' &&
+            navigationActive('/stats') &&
+            scopedGroups.length
+          "
           class="sidebar-groups"
           aria-label="Saved character groups"
         >
@@ -209,7 +222,7 @@ const advancedNavigation = [
           </NuxtLink>
         </nav>
         <nav
-          v-if="item.href === '/events'"
+          v-if="item.href === '/events' && navigationActive('/events')"
           class="sidebar-groups sidebar-event-links"
           aria-label="Event categories"
         >
@@ -262,7 +275,7 @@ const advancedNavigation = [
             <span>{{ item.label }}</span>
           </NuxtLink>
           <nav
-            v-if="item.label === 'Analytics'"
+            v-if="item.label === 'Analytics' && route.path === '/analytics'"
             class="sidebar-groups"
             aria-label="Analytics views"
           >

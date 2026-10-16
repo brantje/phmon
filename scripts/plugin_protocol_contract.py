@@ -177,6 +177,14 @@ def resource_fixture(plugin):
                 },
             },
         },
+        "get_mastery": {
+            "available": True,
+            "value": {
+                257: {"name": "Bicheon", "level": 0, "sp": -1},
+                259: {"name": "Pacheon", "level": 100, "sp": 13174},
+                275: {"name": "Fire", "level": 100, "sp": 13174},
+            },
+        },
     }
     return plugin.normalize_resource_inputs(inputs, None, "Greatest", 22)
 

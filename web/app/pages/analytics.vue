@@ -857,7 +857,7 @@ function dateInput(value: Date) {
             <p>
               {{
                 snapshot?.as_of
-                  ? `As of ${new Date(snapshot.as_of).toLocaleString()}`
+                  ? `As of ${formatDate(snapshot.as_of)}`
                   : 'Selected range'
               }}
             </p>
@@ -896,9 +896,7 @@ function dateInput(value: Date) {
           <span>{{ snapshot.coverage.reason }}</span>
           <span v-if="snapshot.coverage.oldest_sample"
             >History begins
-            {{
-              new Date(snapshot.coverage.oldest_sample).toLocaleDateString()
-            }}</span
+            {{ formatDate(snapshot.coverage.oldest_sample, 'date') }}</span
           >
         </div>
       </aside>
@@ -932,7 +930,7 @@ function dateInput(value: Date) {
               v-for="item in snapshot?.occurrences || []"
               :key="item.event_id"
             >
-              <td>{{ new Date(item.occurred_at).toLocaleString() }}</td>
+              <td><FormattedDate :value="item.occurred_at" /></td>
               <td>
                 <NuxtLink :to="eventHref(item)">{{ item.character }}</NuxtLink>
               </td>

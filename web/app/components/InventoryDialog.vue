@@ -38,9 +38,7 @@ const owner = computed(() =>
     : props.target.characterName,
 )
 const lastSynced = computed(() =>
-  resource.value?.observed_at
-    ? formatSyncedTime(resource.value.observed_at)
-    : null,
+  resource.value?.observed_at ? formatDate(resource.value.observed_at) : null,
 )
 const slotSummary = computed(() =>
   occupied.value !== null && capacity.value !== null

@@ -231,9 +231,7 @@ function formatConnectionAge(value?: string) {
               }}
             </td>
             <td>
-              <time :datetime="agent.last_seen_at">
-                {{ formatTimestamp(agent.last_seen_at) }}
-              </time>
+              <FormattedDate :value="agent.last_seen_at" fallback="Never" />
             </td>
             <td>
               <button
@@ -302,10 +300,10 @@ function formatConnectionAge(value?: string) {
             <span>
               {{
                 agentsUnavailable
-                  ? formatTimestamp(agent.last_seen_at)
+                  ? formatDate(agent.last_seen_at, 'datetime', 'Never')
                   : agent.connected
                     ? formatConnectionAge(agent.connected_at)
-                    : formatTimestamp(agent.last_seen_at)
+                    : formatDate(agent.last_seen_at, 'datetime', 'Never')
               }}
             </span>
           </div>

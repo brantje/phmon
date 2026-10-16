@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { TradeReport } from '../shared/types/live.ts'
 import {
+  formatSignedTradeGold,
   tradeOutcomeLabel,
   tradeReportSummary,
   tradeRouteLabel,
@@ -75,4 +76,10 @@ test('navigation detail is included and a single waypoint stays singular', () =>
     waypoints: [{ name: 'chau_approach', x: 1, y: 2 }],
   })
   assert.equal(tradeReportSummary(row), '1 waypoint · path blocked')
+})
+
+test('signed trade gold marks profit, loss and zero', () => {
+  assert.equal(formatSignedTradeGold(45000), '+45,000 gold')
+  assert.equal(formatSignedTradeGold(-1200), '-1,200 gold')
+  assert.equal(formatSignedTradeGold(0), '0 gold')
 })

@@ -9,6 +9,7 @@ const WEB_URL = (process.env.SMOKE_WEB_URL || 'http://127.0.0.1:3005').replace(/
 const OPERATOR_ACCESS_SECRET = process.env.OPERATOR_ACCESS_SECRET || ''
 const READY_FILE = process.env.BROWSER_AUDIT_READY_FILE || ''
 const RESTART_READY_FILE = process.env.BROWSER_AUDIT_RESTART_READY_FILE || ''
+const MASTERY_UPDATE_FILE = process.env.BROWSER_AUDIT_MASTERY_UPDATE_FILE || ''
 const REQUIRE_RECONNECT = process.env.BROWSER_AUDIT_REQUIRE_RECONNECT === '1'
 const TIMEOUT_MS = Number(process.env.BROWSER_AUDIT_TIMEOUT_MS || 60000)
 
@@ -268,6 +269,32 @@ async function main() {
     )
     await sleep(700)
 
+    if (MASTERY_UPDATE_FILE) {
+      await waitFor(
+        () => evaluate(cdp, `(() => {
+          const card = [...document.querySelectorAll('.character-card')].find((item) =>
+            item.querySelector('.character-card-name')?.textContent.trim() === 'FixtureBeta'
+          )
+          card?.scrollIntoView({ block: 'center' })
+          return card?.querySelector('.character-card-mastery')?.textContent.trim() === 'Pacheon · Fire'
+        })()`),
+        'initial mastery summary streamed into the Stats card',
+        20000,
+      )
+      writeFileSync(MASTERY_UPDATE_FILE, 'observed\n')
+      await waitFor(
+        () => evaluate(cdp, `(() => {
+          const card = [...document.querySelectorAll('.character-card')].find((item) =>
+            item.querySelector('.character-card-name')?.textContent.trim() === 'FixtureBeta'
+          )
+          card?.scrollIntoView({ block: 'center' })
+          return card?.querySelector('.character-card-mastery')?.textContent.trim() === 'Ice · Fire'
+        })()`),
+        'updated mastery summary streamed into the Stats card',
+        20000,
+      )
+    }
+
     // Manual refresh buttons must send protocol refresh frames, never HTTP reads.
     const refreshCount = await evaluate(
       cdp,
@@ -380,6 +407,7 @@ async function main() {
     // Verify the current responsive shell still fits both mobile and desktop widths.
     for (const [width, height] of [
       [390, 844],
+      [1280, 800],
       [1440, 1000],
     ]) {
       await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -488,7 +516,7 @@ async function main() {
     }
 
     console.log(
-      `Browser live-data audit passed: ${successfulLiveSockets} successful /api/live WebSocket connection(s), zero HTTP/SSE live-data reads across startup, filtering, manual refresh, mutations${REQUIRE_RECONNECT ? ', backend restart/recovery' : ''}, and responsive layout checks.`,
+      `Browser live-data audit passed: ${successfulLiveSockets} successful /api/live WebSocket connection(s), zero HTTP/SSE live-data reads across startup, filtering, manual refresh, mutations${MASTERY_UPDATE_FILE ? ', live mastery card updates' : ''}${REQUIRE_RECONNECT ? ', backend restart/recovery' : ''}, and responsive layout checks at 390x844, 1280x800 and 1440x1000.`,
     )
   } finally {
     try {

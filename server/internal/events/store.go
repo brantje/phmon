@@ -49,6 +49,16 @@ var eventKinds = map[string]string{
 	"item.quantity_increased": "item", "item.quantity_decreased": "item",
 }
 
+// CanonicalKinds returns the persisted activity kinds and their categories.
+// Query-only aliases such as item.gains are deliberately excluded.
+func CanonicalKinds() map[string]string {
+	kinds := make(map[string]string, len(eventKinds))
+	for kind, category := range eventKinds {
+		kinds[kind] = category
+	}
+	return kinds
+}
+
 var validEventSources = map[string]map[string]bool{
 	"phbot.callback": {"EVENT_DIED": true, "EVENT_LEVEL_UP": true, "EVENT_PLAYER_ATTACKING": true,
 		"EVENT_ITEM_DROP": true, "EVENT_RARE_DROP": true, "EVENT_UNIQUE_SPAWN": true,
@@ -971,7 +981,7 @@ func (s *Store) AppendDeath(ctx context.Context, agentID, characterID, sessionID
 		return false, fmt.Errorf("%w: invalid payload", ErrInvalidEvent)
 	}
 	deferredSessionBinding, _ := payloadFields["session_binding"].(string)
-	var rows int64
+	var insertedServer string
 	err := s.pool.QueryRow(ctx, `
 INSERT INTO activity_events(event_id,schema_version,kind,category,agent_id,character_id,session_id,server_name,occurred_at,source,source_ref,region,x,y,z,payload)
 SELECT $1::uuid,1,$2,$3,$4::uuid,$5::uuid,$6::uuid,c.server_name,$7,$8,$9,$10,$11,$12,$13,$14::jsonb
@@ -991,10 +1001,19 @@ AND (
        AND (other.ended_at IS NULL OR $7 <= other.ended_at + interval '5 minutes')))
 )
 ON CONFLICT(event_id) DO NOTHING
-RETURNING 1`, incoming.ID, DeathKind, DeathCategory, agentID, characterID, sessionID,
+RETURNING server_name`, incoming.ID, DeathKind, DeathCategory, agentID, characterID, sessionID,
 		incoming.OccurredAt.UTC(), incoming.Source, incoming.SourceRef, incoming.Region, incoming.X,
-		incoming.Y, incoming.Z, string(payload), deferredSessionBinding).Scan(&rows)
+		incoming.Y, incoming.Z, string(payload), deferredSessionBinding).Scan(&insertedServer)
 	if err == nil {
+		if s.acceptedHook != nil {
+			var character string
+			_ = s.pool.QueryRow(ctx, `SELECT character_name FROM characters WHERE character_id=$1::uuid`, characterID).Scan(&character)
+			s.notifyAccepted(Event{ID: incoming.ID, Schema: 1, Kind: DeathKind, Category: DeathCategory,
+				AgentID: agentID, CharacterID: characterID, SessionID: sessionID, Server: insertedServer,
+				Character: character, OccurredAt: incoming.OccurredAt, Source: incoming.Source,
+				SourceRef: incoming.SourceRef, Region: incoming.Region, X: incoming.X, Y: incoming.Y,
+				Z: incoming.Z, Payload: payload})
+		}
 		return true, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -1207,6 +1226,14 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 			 AND spotted.player_name IS NOT NULL
 			 AND spotted.job_name IS NOT NULL
 			 AND lower(btrim(spotted.job_name)) = lower(btrim(e.payload->>'value'))
+		) AND NOT EXISTS (
+			-- Own characters report their current job alias through character_info.
+			SELECT 1 FROM character_resource_observations own_info
+			WHERE own_info.resource_key = 'character_info'
+			 AND own_info.availability = 'observed'
+			 AND own_info.server_key = lower(e.server_name)
+			 AND own_info.character_id = own_info.observer_character_id
+			 AND lower(btrim(own_info.payload->>'job_name')) = lower(btrim(e.payload->>'value'))
 		)`
 	}
 	var total int64

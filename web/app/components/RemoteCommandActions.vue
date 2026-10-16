@@ -562,7 +562,7 @@ function reverseCurrentCharacter(id: string) {
                   >{{ command.state }}</span
                 >
               </td>
-              <td>{{ formatTimestamp(command.created_at) }}</td>
+              <td><FormattedDate :value="command.created_at" /></td>
               <td>
                 {{
                   command.message ||

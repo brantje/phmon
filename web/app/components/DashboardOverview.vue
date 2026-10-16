@@ -1,7 +1,21 @@
 <script setup lang="ts">
-import type { ActivityEvent } from '~~/shared/types/live'
+import type {
+  ActivityEvent,
+  RecentTradesSnapshot,
+  ThiefSighting,
+  ThiefSightingPage,
+  TradeReport,
+} from '~~/shared/types/live'
+import {
+  formatSignedTradeGold,
+  formatTradeDuration,
+  tradeOutcomeLabel,
+  tradeRouteLabel,
+} from '~/utils/tradeReportSummary'
 import { groupRecentEvents } from '~/utils/groupRecentEvents'
 import { deathCauseLabel } from '~/utils/deathCause'
+import { formatCompactObservedGold } from '~/utils/fleetGold'
+import { offerItemChips } from '~/utils/offerTaxonomy'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import {
   dashboardNoisyEvent,
@@ -29,6 +43,14 @@ const {
   clearEventFeed,
   setOfferFeed,
   clearOfferFeed,
+  tradeFeeds,
+  tradeFeedStatus,
+  setTradeFeed,
+  clearTradeFeed,
+  thiefFeeds,
+  thiefFeedStatus,
+  setThiefFeed,
+  clearThiefFeed,
   refreshLiveData,
 } = useLiveData()
 const { serverScope } = useServerScope()
@@ -40,8 +62,10 @@ const recentEvents = computed(() => {
     (event) => !dashboardNoisyEvent(event.kind),
   )
   const uniques = eventFeeds.value['dashboard-uniques']?.events || []
+  const hunters = eventFeeds.value['dashboard-hunters']?.events || []
   const byID = new Map<string, ActivityEvent>()
-  for (const event of [...uniques, ...general]) byID.set(event.event_id, event)
+  for (const event of [...uniques, ...hunters, ...general])
+    byID.set(event.event_id, event)
   const merged = [...byID.values()].sort(
     (left, right) =>
       Date.parse(right.occurred_at) - Date.parse(left.occurred_at),
@@ -51,12 +75,98 @@ const recentEvents = computed(() => {
 const recentRareDrops = computed(
   () => eventFeeds.value['dashboard-rare-drops']?.events || [],
 )
-const recentChatMessages = computed(
-  () => eventFeeds.value['dashboard-chat']?.events || [],
+// Several characters observe the same General/Global line; show it once.
+const recentChatMessages = computed(() =>
+  groupRecentEvents(eventFeeds.value['dashboard-chat']?.events || [], 3),
 )
+const chatChannelLabels: Record<string, string> = {
+  general: 'General chat',
+  private: 'Private message',
+  party: 'Party chat',
+  guild: 'Guild chat',
+  union: 'Union chat',
+  global: 'Global chat',
+}
+
+function chatChannelLabel(event: ActivityEvent) {
+  return chatChannelLabels[textField(event.payload.channel)] || 'Chat'
+}
+
+function chatSender(event: ActivityEvent) {
+  return textField(event.payload.sender) || event.character || 'Unknown'
+}
+
+function chatObservers(item: (typeof recentChatMessages.value)[number]) {
+  const names = item.observers.map((observer) => observer.character)
+  const observed = names.length
+    ? names.join(', ')
+    : item.event.character || 'Agent'
+  return item.event.server
+    ? `${item.event.server} · Observed by ${observed}`
+    : `Observed by ${observed}`
+}
 const recentOffers = computed(
   () => offerFeeds.value['dashboard-offers']?.offers || [],
 )
+const tradeSnapshot = computed(
+  () =>
+    (tradeFeeds.value['dashboard-trades'] as
+      RecentTradesSnapshot | undefined) ?? null,
+)
+const recentTrades = computed(() => tradeSnapshot.value?.reports || [])
+const tradesStatus = computed(
+  () => tradeFeedStatus.value['dashboard-trades'] || 'loading',
+)
+const thiefPage = computed(
+  () =>
+    (thiefFeeds.value['dashboard-thieves'] as ThiefSightingPage | undefined) ??
+    null,
+)
+const recentThieves = computed(() => thiefPage.value?.sightings || [])
+const thievesStatus = computed(
+  () => thiefFeedStatus.value['dashboard-thieves'] || 'loading',
+)
+
+function thiefRowMeta(row: ThiefSighting) {
+  const source =
+    row.origin === 'phmon'
+      ? 'PhMon'
+      : row.reporter.app?.trim() || 'AdvancedAutoTrade'
+  const location =
+    row.zone?.trim() ||
+    (row.position ? `Region ${row.position.region}` : 'Location unknown')
+  return [location, row.reporter.name || 'Unknown reporter', source].join(' · ')
+}
+
+const tradeProfitLabel = computed(() => {
+  const snapshot = tradeSnapshot.value
+  if (!snapshot || snapshot.profit_samples_24h === 0) return '—'
+  const sign = snapshot.profit_24h > 0 ? '+' : ''
+  return `${sign}${formatCompactObservedGold(snapshot.profit_24h)} gold`
+})
+const tradeProfitTitle = computed(() => {
+  const snapshot = tradeSnapshot.value
+  if (!snapshot || snapshot.profit_samples_24h === 0) return undefined
+  return formatSignedTradeGold(snapshot.profit_24h)
+})
+
+function tradeOutcomeIcon(trade: TradeReport) {
+  if (trade.outcome === 'success') return 'i-lucide-circle-check'
+  if (trade.outcome === 'failed') return 'i-lucide-circle-x'
+  return 'i-lucide-circle-slash'
+}
+
+function tradeRowMeta(trade: TradeReport) {
+  const parts = [tradeOutcomeLabel(trade), trade.reporter.name]
+  if (typeof trade.duration_s === 'number') {
+    parts.push(formatTradeDuration(trade.duration_s))
+  }
+  if (trade.stars) {
+    parts.push(trade.stars === 'Max' ? 'Max stars' : `${trade.stars} stars`)
+  }
+  return parts.join(' · ')
+}
+
 const offersStatus = computed(
   () => offerFeedStatus.value['dashboard-offers'] || 'loading',
 )
@@ -148,6 +258,8 @@ function dashboardItemTarget(event: ActivityEvent) {
 function watchDashboardEvents(server: string) {
   const scope = { server: server === 'all' ? undefined : server }
   setOfferFeed('dashboard-offers', { ...scope, limit: 5 })
+  setTradeFeed('dashboard-trades', { ...scope, limit: 5 })
+  setThiefFeed('dashboard-thieves', { ...scope, limit: 5 })
   setEventFeed('dashboard-deaths', {
     ...scope,
     limit: 5,
@@ -159,6 +271,12 @@ function watchDashboardEvents(server: string) {
     limit: 5,
     kind: 'world.unique_spawned',
   })
+  setEventFeed('dashboard-hunters', {
+    ...scope,
+    limit: 5,
+    kind: 'job.hunter_trader_seen',
+    hide_own: true,
+  })
   setEventFeed('dashboard-rare-drops', {
     ...scope,
     limit: 5,
@@ -166,7 +284,8 @@ function watchDashboardEvents(server: string) {
   })
   setEventFeed('dashboard-chat', {
     ...scope,
-    limit: 3,
+    // Fetch extra rows so observer duplicates still leave three messages.
+    limit: 12,
     kind: 'chat.message_received',
   })
 }
@@ -176,9 +295,12 @@ onBeforeUnmount(() => {
   clearEventFeed('dashboard-deaths')
   clearEventFeed('dashboard-events')
   clearEventFeed('dashboard-uniques')
+  clearEventFeed('dashboard-hunters')
   clearEventFeed('dashboard-rare-drops')
   clearEventFeed('dashboard-chat')
   clearOfferFeed('dashboard-offers')
+  clearTradeFeed('dashboard-trades')
+  clearThiefFeed('dashboard-thieves')
 })
 </script>
 
@@ -252,9 +374,7 @@ onBeforeUnmount(() => {
               >
             </span>
           </NuxtLink>
-          <time :datetime="item.occurred_at">{{
-            formatTimestamp(item.occurred_at)
-          }}</time>
+          <FormattedDate :value="item.occurred_at" />
         </li>
       </ul>
       <div v-else class="dashboard-event-empty">
@@ -267,17 +387,155 @@ onBeforeUnmount(() => {
       </div>
     </article>
 
-    <article class="panel dashboard-later dashboard-server">
+    <article
+      class="panel recent-trades"
+      aria-label="Recent trades"
+      :aria-busy="tradesStatus === 'loading'"
+    >
       <div class="panel-header compact">
         <div>
-          <h2>Server Information</h2>
-          <p>Operator managed</p>
+          <h2>Recent Trades</h2>
+          <p>
+            Last 24h:
+            <strong
+              :title="tradeProfitTitle"
+              :class="{
+                'trade-profit-positive': (tradeSnapshot?.profit_24h ?? 0) > 0,
+                'trade-profit-negative': (tradeSnapshot?.profit_24h ?? 0) < 0,
+              }"
+              >{{ tradeProfitLabel }}</strong
+            >
+            <template v-if="tradeSnapshot">
+              · {{ tradeSnapshot.trades_24h }}
+              {{ tradeSnapshot.trades_24h === 1 ? 'trade' : 'trades' }}
+            </template>
+          </p>
         </div>
-        <span class="later-badge">LATER</span>
+        <NuxtLink class="panel-link" to="/events?view=trades">
+          Show all trades <UIcon name="i-lucide-arrow-up-right" />
+        </NuxtLink>
       </div>
-      <div class="later-content">
-        <UIcon name="i-lucide-server" /><strong>LATER</strong
-        ><span>Server artwork and metadata arrive in a later slice.</span>
+      <div
+        v-if="liveStale && recentTrades.length"
+        class="event-stale-note"
+        role="status"
+      >
+        Showing the last received trades as stale.
+      </div>
+      <div
+        v-if="tradesStatus === 'unavailable'"
+        class="dashboard-offer-status"
+        role="status"
+      >
+        Trades are temporarily unavailable.
+        <button
+          class="compact-button"
+          type="button"
+          @click="refreshLiveData(['dashboard-trades'])"
+        >
+          Retry
+        </button>
+      </div>
+      <ul v-if="recentTrades.length" class="dashboard-event-list">
+        <li v-for="trade in recentTrades" :key="trade.trade_id">
+          <NuxtLink to="/events?view=trades">
+            <UIcon
+              class="dashboard-trade-icon"
+              :class="`is-${trade.outcome}`"
+              :name="tradeOutcomeIcon(trade)"
+            />
+            <span class="dashboard-event-identity">
+              <strong>{{ tradeRouteLabel(trade) }}</strong>
+              <span>{{ tradeRowMeta(trade) }}</span>
+            </span>
+          </NuxtLink>
+          <span class="dashboard-trade-side">
+            <strong
+              v-if="typeof trade.gold === 'number'"
+              :class="{
+                'trade-profit-positive': trade.gold > 0,
+                'trade-profit-negative': trade.gold < 0,
+              }"
+              >{{ formatSignedTradeGold(trade.gold) }}</strong
+            >
+            <FormattedDate :value="trade.finished_at" />
+          </span>
+        </li>
+      </ul>
+      <div
+        v-else-if="tradesStatus !== 'unavailable'"
+        class="dashboard-event-empty"
+      >
+        <UIcon name="i-lucide-route" /><span>{{
+          tradesStatus === 'loading'
+            ? 'Loading trades…'
+            : 'No trade reports recorded in this server scope.'
+        }}</span>
+      </div>
+    </article>
+
+    <article
+      class="panel recent-thieves"
+      aria-label="Recent thieves"
+      :aria-busy="thievesStatus === 'loading'"
+    >
+      <div class="panel-header compact">
+        <div>
+          <h2>Recent Thieves</h2>
+          <p>
+            Last 5 sightings<template v-if="thiefPage">
+              · {{ thiefPage.total }} recorded</template
+            >
+          </p>
+        </div>
+        <NuxtLink class="panel-link" to="/events?view=thieves">
+          Show all thieves <UIcon name="i-lucide-arrow-up-right" />
+        </NuxtLink>
+      </div>
+      <div
+        v-if="liveStale && recentThieves.length"
+        class="event-stale-note"
+        role="status"
+      >
+        Showing the last received sightings as stale.
+      </div>
+      <div
+        v-if="thievesStatus === 'unavailable'"
+        class="dashboard-offer-status"
+        role="status"
+      >
+        Thief sightings are temporarily unavailable.
+        <button
+          class="compact-button"
+          type="button"
+          @click="refreshLiveData(['dashboard-thieves'])"
+        >
+          Retry
+        </button>
+      </div>
+      <ul v-if="recentThieves.length" class="dashboard-event-list">
+        <li v-for="row in recentThieves" :key="row.sighting_id">
+          <NuxtLink to="/events?view=thieves">
+            <UIcon class="dashboard-trade-icon" name="i-lucide-user-x" />
+            <span class="dashboard-event-identity">
+              <strong>{{ row.thief_name }}</strong>
+              <span>{{ thiefRowMeta(row) }}</span>
+            </span>
+          </NuxtLink>
+          <span class="dashboard-trade-side">
+            <FormattedDate :value="row.received_at" />
+          </span>
+        </li>
+      </ul>
+      <div
+        v-else-if="thievesStatus !== 'unavailable'"
+        class="dashboard-event-empty"
+      >
+        <UIcon name="i-lucide-user-x" /><span>{{
+          thievesStatus === 'loading'
+            ? 'Loading sightings…'
+            : 'No thief sightings recorded in this server scope.'
+        }}</span>
       </div>
     </article>
 
@@ -348,9 +606,7 @@ onBeforeUnmount(() => {
             <strong>{{ eventHeadline(item.event) }}</strong>
             <span>{{ eventObservers(item) }}</span>
           </div>
-          <time :datetime="item.event.occurred_at">{{
-            formatTimestamp(item.event.occurred_at)
-          }}</time>
+          <FormattedDate :value="item.event.occurred_at" />
         </li>
       </ul>
       <div v-else class="dashboard-event-empty">
@@ -364,37 +620,54 @@ onBeforeUnmount(() => {
     </article>
 
     <div class="dashboard-stack">
-      <article class="panel dashboard-later">
+      <article class="panel dashboard-rare-drops">
         <div class="panel-header compact">
           <div><h2>Rare Drops</h2></div>
           <NuxtLink class="panel-link" to="/events?kind=drop.rare"
             >View all</NuxtLink
           >
         </div>
-        <div
-          v-if="recentRareDrops[0]"
-          class="later-content compact-later dashboard-rare-link"
+        <ul
+          v-if="recentRareDrops.length"
+          class="dashboard-event-list dashboard-rare-list"
         >
-          <ItemDetailPopup
-            v-if="itemRecordFromActivityEvent(recentRareDrops[0])"
-            :item="itemRecordFromActivityEvent(recentRareDrops[0])!"
-            :to="{
-              path: '/events',
-              query: {
-                kind: 'drop.rare',
-                item: rareItemFilter(recentRareDrops[0]) || undefined,
-              },
-            }"
-          />
-          <strong v-else class="rare-drop-item">{{
-            eventHeadline(recentRareDrops[0])
-          }}</strong>
-          <span>{{
-            recentRareDrops[0].character || recentRareDrops[0].server
-          }}</span>
-        </div>
-        <div v-else class="later-content compact-later">
-          <UIcon name="i-lucide-gem" /><strong>No rare drops recorded</strong>
+          <li
+            v-for="event in recentRareDrops.slice(0, 5)"
+            :key="event.event_id"
+          >
+            <span class="dashboard-event-item">
+              <ItemDetailPopup
+                v-if="itemRecordFromActivityEvent(event)"
+                :item="itemRecordFromActivityEvent(event)!"
+                :to="{
+                  path: '/events',
+                  query: {
+                    kind: 'drop.rare',
+                    item: rareItemFilter(event) || undefined,
+                  },
+                }"
+              />
+              <strong v-else class="rare-drop-item">{{
+                eventHeadline(event)
+              }}</strong>
+            </span>
+            <span class="dashboard-trade-side">
+              <NuxtLink
+                v-if="event.character_id"
+                class="dashboard-rare-character"
+                :to="`/characters/${event.character_id}`"
+                >{{ event.character }}</NuxtLink
+              >
+              <span v-else class="dashboard-rare-character">{{
+                event.character || event.server
+              }}</span>
+              <FormattedDate :value="event.occurred_at" />
+            </span>
+          </li>
+        </ul>
+        <div v-else class="dashboard-event-empty">
+          <UIcon name="i-lucide-gem" />
+          <span>No rare drops recorded</span>
         </div>
       </article>
       <article class="panel dashboard-chat">
@@ -402,35 +675,47 @@ onBeforeUnmount(() => {
           <div><h2>Chat Messages</h2></div>
           <NuxtLink class="panel-link" to="/chat">Open chat</NuxtLink>
         </div>
-        <ul
-          v-if="recentChatMessages.length"
-          class="dashboard-event-list dashboard-chat-list"
-        >
-          <li v-for="item in recentChatMessages" :key="item.event_id">
-            <UIcon name="i-lucide-messages-square" />
+        <ul v-if="recentChatMessages.length" class="dashboard-chat-list">
+          <li
+            v-for="{ event, observers } in recentChatMessages"
+            :key="event.event_id"
+          >
             <NuxtLink
+              :class="[
+                'dashboard-chat-message',
+                `channel-${textField(event.payload.channel) || 'unknown'}`,
+              ]"
               :to="{
                 path: '/chat',
                 query: {
-                  character_id: item.character_id,
-                  channel: textField(item.payload.channel) || 'unknown',
+                  character_id: event.character_id,
+                  channel: textField(event.payload.channel) || 'unknown',
+                  peer:
+                    textField(event.payload.channel) === 'private'
+                      ? chatSender(event)
+                      : undefined,
                 },
               }"
             >
-              <strong>{{
-                textField(item.payload.sender) || item.character
-              }}</strong>
-              <span class="dashboard-chat-preview"
-                >{{
-                  textField(item.payload.message) || 'Message text unavailable'
-                }}
-                · {{ textField(item.payload.channel) || 'Unknown' }} ·
-                {{ item.server }}</span
-              >
+              <span class="dashboard-chat-avatar" aria-hidden="true">{{
+                chatSender(event).charAt(0).toUpperCase()
+              }}</span>
+              <span class="dashboard-chat-body">
+                <span class="dashboard-chat-head">
+                  <strong>{{ chatSender(event) }}</strong>
+                  <FormattedDate :value="event.occurred_at" />
+                </span>
+                <span class="dashboard-chat-channel">{{
+                  chatChannelLabel(event)
+                }}</span>
+                <span class="dashboard-chat-text">{{
+                  textField(event.payload.message) || 'Message text unavailable'
+                }}</span>
+                <small class="dashboard-chat-source">{{
+                  chatObservers({ event, observers })
+                }}</small>
+              </span>
             </NuxtLink>
-            <time :datetime="item.occurred_at">{{
-              formatTimestamp(item.occurred_at)
-            }}</time>
           </li>
         </ul>
         <div v-else class="later-content compact-later dashboard-chat-empty">
@@ -481,9 +766,7 @@ onBeforeUnmount(() => {
           <div class="dashboard-offer-meta">
             <strong>{{ offer.offer_type }}</strong
             ><span>{{ offer.sender }}</span
-            ><time :datetime="offer.occurred_at">{{
-              formatTimestamp(offer.occurred_at)
-            }}</time>
+            ><FormattedDate :value="offer.occurred_at" />
           </div>
           <NuxtLink
             :to="{
@@ -493,7 +776,29 @@ onBeforeUnmount(() => {
             :title="offer.message"
             >{{ offer.message }}</NuxtLink
           >
-          <small>{{ offer.server }} · Observed by {{ offer.observer }}</small>
+          <div v-if="offer.items?.length" class="economy-chips">
+            <span
+              v-for="chip in offerItemChips(offer.items[0]!).slice(0, 5)"
+              :key="chip"
+              class="economy-chip"
+              >{{ chip }}</span
+            >
+          </div>
+          <div class="dashboard-offer-foot">
+            <small>{{ offer.server }} · Observed by {{ offer.observer }}</small>
+            <NuxtLink
+              class="compact-button"
+              :to="{
+                path: '/chat',
+                query: {
+                  channel: 'private',
+                  character_id: offer.observer_character_id,
+                  peer: offer.sender,
+                },
+              }"
+              >Write PM</NuxtLink
+            >
+          </div>
         </li>
       </ul>
       <div

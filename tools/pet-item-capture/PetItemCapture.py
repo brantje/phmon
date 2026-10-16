@@ -7,7 +7,11 @@ it records, into one bounded JSON file next to this plugin:
 
 * incoming 0x30C8 / 0xB034 pet data and item operations, and outgoing
   0x7034 item-move requests (direction, opcode, length, bounded hex),
-* get_pets() and get_inventory() item rows sampled about once per second.
+* get_pets() and get_inventory() item rows sampled about once per second,
+  including each pet's type, model, name, mounted flag and reported hp/level-like
+  primitive fields (any pet class: attack, fellow, pick, transport, horse, wolf),
+* lead stat-update packets (0x3057 / 0x30C9) but ONLY when their first four
+  bytes equal the ID of a currently summoned pet; each lead opcode is capped.
 
 Arm it only in the chosen test session and remove it after the capture.
 """
@@ -20,7 +24,7 @@ from phBot import get_inventory, get_pets, log
 import QtBind
 
 pName = 'Pet Item Capture'
-pVersion = '0.2.2'
+pVersion = '0.6.0'
 
 CAPTURE_SECONDS = 600.0
 SAMPLE_INTERVAL_SECONDS = 1.0
@@ -31,6 +35,18 @@ MAX_ITEM_ROWS = 128
 MAX_FILE_BYTES = 2 * 1024 * 1024
 SERVER_OPCODES = (0x30C8, 0xB034)
 CLIENT_OPCODES = (0x7034,)
+# Unverified leads for pet HP/level updates. Recorded only when the packet
+# starts with a current pet ID (little-endian u32), so entity traffic of
+# other units is never kept.
+PET_STAT_LEAD_OPCODES = (0x3057, 0x30C9)
+# Cap per packet *shape* (opcode, length, bytes 4..6) so frequent HP updates
+# cannot crowd out a rarer update type such as hunger.
+MAX_LEAD_PACKETS_PER_OPCODE = 6
+MAX_LEAD_SHAPES = 64
+# Any other opcode whose first four bytes are a current pet ID is kept too
+# (bounded), because the real hunger update opcode is not yet known.
+# Opcode counts only (no bytes) for all other server packets.
+_seen_opcodes = {}
 # None writes beside this plugin file.
 OUTPUT_DIRECTORY = None
 
@@ -45,6 +61,14 @@ _last_signature = None
 _pending_after_packet = False
 _file_path = None
 _last_inventory = None
+_pet_ids = set()
+# HGP read from the 0x30C8 wolf header at summon (see docs/phbot-capabilities.md).
+_hgp_baseline = None
+_scan_counts = {}
+HGP_WINDOW_BELOW = 600
+MAX_SCAN_PER_OPCODE = 6
+MAX_SCAN_BYTES = 256
+_lead_counts = {}
 
 
 def _bounded(value, depth=0):
@@ -97,14 +121,23 @@ def _pet_rows():
     if not isinstance(pets, dict):
         return {'error': 'not_a_dict'}
     result = {}
+    ids = set()
     for pet_id, pet in list(pets.items())[:8]:
         if not isinstance(pet, dict):
             continue
-        result[str(pet_id)[:32]] = {
+        row = {
             'type': _bounded(pet.get('type')),
             'servername': _bounded(pet.get('servername')),
             'items': _rows(pet.get('items')),
         }
+        for key, value in list(pet.items())[:32]:
+            if key != 'items' and key not in row and isinstance(value, (int, float, bool, str)):
+                row[str(key)[:32]] = _bounded(value)
+        result[str(pet_id)[:32]] = row
+        if str(pet_id).isdigit():
+            ids.add(int(pet_id))
+    _pet_ids.clear()
+    _pet_ids.update(ids)
     return result
 
 
@@ -150,7 +183,7 @@ def _first_pets_marker():
 
 def arm_pet_capture():
     global _capture_until, _next_sample_at, _started_at, _packets, _packet_total, _packet_counts
-    global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory
+    global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory, _lead_counts, _hgp_baseline
     _started_at = time.monotonic()
     _capture_until = _started_at + CAPTURE_SECONDS
     _next_sample_at = 0.0
@@ -161,6 +194,11 @@ def arm_pet_capture():
     _last_signature = None
     _pending_after_packet = False
     _last_inventory = None
+    _lead_counts = {}
+    _scan_counts.clear()
+    _hgp_baseline = None
+    _seen_opcodes.clear()
+    _pet_ids.clear()
     _file_path = os.path.join(
         OUTPUT_DIRECTORY or os.path.dirname(os.path.abspath(__file__)),
         'pet-item-capture-%s.json' % time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()))
@@ -185,9 +223,64 @@ def finished():
     _finish('unloaded')
 
 
+def _scan_packet(direction, opcode, data):
+    """Keep packets that mention a pet ID anywhere or hold a value near the HGP baseline."""
+    global _hgp_baseline
+    if not isinstance(data, (bytes, bytearray)) or len(data) > MAX_SCAN_BYTES:
+        return
+    body = bytes(data)
+    if opcode == 0x30C8 and len(body) >= 27:
+        level = body[24]
+        hunger = int.from_bytes(body[25:27], 'little')
+        if 1 <= level <= 255 and hunger <= 10000:
+            _hgp_baseline = hunger
+    reasons = []
+    for pet_id in _pet_ids:
+        offset = body.find(pet_id.to_bytes(4, 'little'), 4)
+        if offset >= 0:
+            reasons.append('pet_id_at_%d' % offset)
+    if _hgp_baseline is not None:
+        low = max(0, _hgp_baseline - HGP_WINDOW_BELOW)
+        for offset in range(0, len(body) - 1):
+            if low <= int.from_bytes(body[offset:offset + 2], 'little') <= _hgp_baseline + 5:
+                reasons.append('hgp_window_at_%d' % offset)
+                break
+    key = (direction, opcode)
+    if reasons and _scan_counts.get(key, 0) < MAX_SCAN_PER_OPCODE:
+        _scan_counts[key] = _scan_counts.get(key, 0) + 1
+        _packets.append({
+            't': round(time.monotonic() - _started_at, 3), 'direction': direction,
+            'opcode': '0x%04X' % opcode, 'length': len(body), 'truncated': False,
+            'hex': body.hex(), 'scan_reasons': reasons, 'hgp_baseline': _hgp_baseline,
+        })
+
+
 def _capture_packet(direction, opcode, data):
     global _packet_total, _pending_after_packet
+    if _capture_until and time.monotonic() < _capture_until and direction == 'server_to_client':
+        _scan_packet(direction, opcode, data)
     allowed = SERVER_OPCODES if direction == 'server_to_client' else CLIENT_OPCODES
+    pet_id_match = (isinstance(data, (bytes, bytearray)) and len(data) >= 4 and
+                    int.from_bytes(bytes(data[:4]), 'little') in _pet_ids)
+    if (_capture_until and time.monotonic() < _capture_until and
+            direction == 'server_to_client' and opcode not in SERVER_OPCODES):
+        if opcode not in PET_STAT_LEAD_OPCODES:
+            _seen_opcodes['0x%04X' % opcode] = _seen_opcodes.get('0x%04X' % opcode, 0) + 1
+        shape = (opcode, len(data) if pet_id_match else 0,
+                 bytes(data[4:7]).hex() if pet_id_match else '')
+        if (pet_id_match and (shape in _lead_counts or len(_lead_counts) < MAX_LEAD_SHAPES) and
+                _lead_counts.get(shape, 0) < MAX_LEAD_PACKETS_PER_OPCODE):
+            _lead_counts[shape] = _lead_counts.get(shape, 0) + 1
+            key = 'server_to_client:0x%04X' % opcode
+            _packet_counts[key] = _packet_counts.get(key, 0) + 1
+            _packets.append({
+                't': round(time.monotonic() - _started_at, 3),
+                'direction': direction, 'opcode': '0x%04X' % opcode,
+                'length': len(data), 'truncated': len(data) > 512,
+                'hex': bytes(data)[:512].hex(), 'pet_stat_lead': True,
+            })
+            _pending_after_packet = True
+        return
     if _capture_until and time.monotonic() < _capture_until and opcode in allowed:
         _packet_total += 1
         key = '%s:0x%04X' % (direction, opcode)
@@ -226,6 +319,7 @@ def _write_file(reason):
         'schema': 1, 'plugin': pName, 'version': pVersion, 'reason': reason,
         'packet_total': _packet_total, 'packet_counts': _packet_counts,
         'packets': _packets, 'snapshots': _snapshots,
+        'other_server_opcode_counts': _seen_opcodes,
     }
     text = json.dumps(document, separators=(',', ':'), sort_keys=True)
     while len(text.encode('utf-8')) > MAX_FILE_BYTES and len(document['snapshots']) > 2:

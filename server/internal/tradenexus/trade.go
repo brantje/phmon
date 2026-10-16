@@ -78,6 +78,16 @@ type TradePage struct {
 	Total      int           `json:"total"`
 }
 
+// RecentTrades is the dashboard snapshot: the latest reports plus the net gold
+// reported by every trade finished since Since.
+type RecentTrades struct {
+	Reports          []TradeReport `json:"reports"`
+	Profit24h        int64         `json:"profit_24h"`
+	Trades24h        int           `json:"trades_24h"`
+	ProfitSamples24h int           `json:"profit_samples_24h"`
+	Since            time.Time     `json:"since"`
+}
+
 type tradeEnvelope struct {
 	Ref        string          `json:"ref"`
 	Server     string          `json:"server"`

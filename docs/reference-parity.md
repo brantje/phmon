@@ -4,6 +4,20 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Stats card mastery summary — 2026-10-16
+
+The public phMonitor v0.5.0 Stats card places the mastery summary directly below
+the character level. PhMon now collects `get_mastery()` through the existing
+`character_info` resource and renders up to two learned mastery names in the same
+position on each shared character card. Unknown or empty data displays `—`.
+The server persists and streams this field through the existing resource path;
+there is no schema migration or new endpoint. Plugin 1.9.47 uses protocol 22,
+with the server continuing to accept protocols 2–21.
+
+Automated plugin, protocol-contract and frontend checks cover populated, empty,
+unavailable and malformed mastery data. Responsive visual validation is recorded
+after the local browser check; no phBot character was operated.
+
 ## Teleport / ferry crossing connectors — 2026-10-10
 
 Walked-route follow-up: an authenticated read-only capture of nuker1 showed an
@@ -2929,3 +2943,65 @@ showed an older web build's packet-only text. The web and Go containers were
 rebuilt and passed their health checks; the web artifact now contains the
 current Pick-pet decoder explanation and snapshot mismatch display.
 Live pet item detail remains unverified until a new 1.9.43 snapshot attaches.
+
+### 2026-10-16 — Event notifications and Settings tabs
+
+Settings now presents **Notifications**, **Agents**, and **Command Review** in
+that order. Notifications exposes 28 canonical activity kinds under their
+categories, plus `trade.completed` and `trade.failed` from the separately
+stored Trade Nexus report source. Category checkboxes show all, none, or mixed;
+each kind has an in-app popup and native browser choice. Chat adds seven inbound
+channel switches. New operator preferences persist in PostgreSQL via validated
+`GET/PUT /api/notifications/preferences`; event selections start off while
+channels start selected. Existing chat sound choice is carried forward.
+
+The Go live hub uses one authenticated, server-scoped `notifications` stream.
+The stream's initial snapshot has only `{ "ready": true }`; newly committed
+canonical events, legacy deaths, and fresh successful/failed trade reports emit
+event deltas. Stored/replayed IDs do not emit again. Trader/Hunter sightings
+reuse the Events history hide-own predicate, including observed job aliases.
+Trade outcomes retain their own history table and exact `trade_id` filter;
+cancelled reports do not claim completion or failure. The old chat-only alert
+listener is no longer mounted. The browser presents at most three cards,
+queues further occurrences, deduplicates event IDs, and opens the exact
+Events record or chat conversation. Hidden-tab native alerts and chat sound
+use the selected kinds/channels and browser permission.
+
+Local evidence: [Settings 1440](reference/local-settings-notifications-1440.png),
+[Settings 1280](reference/local-settings-notifications-1280.png),
+[Settings mobile](reference/local-settings-notifications-390.png),
+[expanded mobile choices](reference/local-settings-notifications-expanded-390.png),
+[Agents](reference/local-settings-agents-1440.png),
+[Command Review](reference/local-settings-command-review-1440.png),
+[desktop fixture popups](reference/local-event-popups-1440.png),
+[1280 px fixture popups](reference/local-event-popups-1280.png), and
+[mobile fixture popups](reference/local-event-popups-390.png). Browser checks
+used an authenticated local Nuxt/Go instance and intercepted WebSocket frames
+as explicitly labelled fixtures; no real character was operated. They verified
+three visible popups plus queued delivery after dismissal, kind-specific titles,
+mobile placement, all/mixed category controls, saved per-kind choices, keyboard
+focus, granted and denied permission, hidden-tab channel filtering, event-ID
+deduplication, and no Settings document overflow at all three target sizes.
+Go unit and PostgreSQL integration tests cover catalog/validation/persistence,
+live server/kind filtering, fresh trade delivery and duplicate trade/death
+suppression. Frontend templates cover all 30 selectable kinds. Actual Windows
+phBot event delivery and OS-level native alert display remain operator runtime
+checks; the browser native alert behavior was verified with a local permission
+fixture.
+
+Follow-up (2026-10-16): popup cards now show the occurrence time and remaining
+seconds beside the dismiss control, plus a bottom countdown bar. The
+eight-second lifetime uses elapsed time, and expired cards clear when a hidden
+tab becomes visible. Native alerts receive an eight-second close request; the
+browser/OS may delay it. Browser alert kinds and chat sound now enter the live
+subscription; chat sound does not require a popup choice. Prettier, focused
+ESLint and Nuxt typecheck
+pass on Node 24.20.0. A fresh local browser visual/timing check is still pending.
+
+Chat notification follow-up (2026-10-16): the notification host now applies
+the existing backend chat presentation rule to live observations before
+popup/native/sound delivery. Two characters observing the same server-wide
+message within two seconds produce one alert; true repeated sends from one
+observer remain separate. The underlying per-observer records stay intact.
+The 292-test frontend unit suite, Nuxt typecheck, focused ESLint and Prettier
+pass on Node 24.20.0; a live browser fixture check remains.

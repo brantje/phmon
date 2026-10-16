@@ -179,5 +179,58 @@ class PetItemCaptureTests(unittest.TestCase):
             self.assertTrue(any('wrote pet-item-capture-' in line for line in lines))
 
 
+    def test_pet_stat_leads_only_kept_for_current_pet_ids(self):
+        lines = []
+        pets = {'77': {'type': 'wolf', 'servername': 'COS_P_WOLF_001', 'hp': 5, 'level': 3, 'items': []}}
+        probe = self.load(lambda: pets, lambda: {'items': []}, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            self.assertEqual(probe._snapshots[0]['pets']['77']['level'], 3)
+            self.assertTrue(probe.handle_joymax(0x3057, (77).to_bytes(4, 'little') + b'\x01'))
+            self.assertTrue(probe.handle_joymax(0x3057, (99).to_bytes(4, 'little') + b'\x01'))
+            self.assertTrue(probe.handle_joymax(0x3057, b'\x01'))
+            self.assertEqual([p['opcode'] for p in probe._packets], ['0x3057'])
+            for _ in range(40):
+                probe.handle_joymax(0x30C9, (77).to_bytes(4, 'little'))
+            self.assertEqual(probe._lead_counts[(0x30C9, 4, '')], probe.MAX_LEAD_PACKETS_PER_OPCODE)
+            probe.stop_pet_capture()
+
+
+    def test_unknown_opcode_with_pet_id_is_kept_and_others_only_counted(self):
+        pets = {'77': {'type': 'wolf', 'servername': 'COS_P_WOLF_001', 'hp': 5, 'items': []}}
+        probe = self.load(lambda: pets, lambda: {'items': []}, [])
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.handle_joymax(0x3099, (77).to_bytes(4, 'little') + b'\x02')
+            probe.handle_joymax(0x3098, (5).to_bytes(4, 'little') + b'secret')
+            self.assertEqual([p['opcode'] for p in probe._packets], ['0x3099'])
+            self.assertEqual(probe._seen_opcodes, {'0x3099': 1, '0x3098': 1})
+            probe.stop_pet_capture()
+            text = next(Path(directory).glob('*.json')).read_text()
+            self.assertNotIn('secret', text)
+
+
+    def test_scan_keeps_pet_id_anywhere_and_values_near_summon_hgp(self):
+        pets = {'77': {'type': 'wolf', 'servername': 'COS_P_WOLF_001', 'hp': 5, 'items': []}}
+        probe = self.load(lambda: pets, lambda: {'items': []}, [])
+        header = (77).to_bytes(4, 'little') + (6142).to_bytes(4, 'little') + (6022).to_bytes(4, 'little') \
+            + bytes(4) + (1000).to_bytes(8, 'little') + bytes([37]) + (9316).to_bytes(2, 'little') + bytes(12)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.handle_joymax(0x30C8, header)
+            self.assertEqual(probe._hgp_baseline, 9316)
+            probe.handle_joymax(0x3AAA, b'\x01\x02' + (9250).to_bytes(2, 'little') + b'\x00')
+            probe.handle_joymax(0x3AAB, b'\x01\x02\x03\x04' + (77).to_bytes(4, 'little'))
+            probe.handle_joymax(0x3AAC, b'\x01\x02\x03\x04\x05\x06')
+            scanned = {p['opcode']: p['scan_reasons'] for p in probe._packets if 'scan_reasons' in p}
+            self.assertEqual(scanned['0x3AAA'], ['hgp_window_at_2'])
+            self.assertEqual(scanned['0x3AAB'], ['pet_id_at_4'])
+            self.assertNotIn('0x3AAC', scanned)
+            probe.stop_pet_capture()
+
+
 if __name__ == '__main__':
     unittest.main()

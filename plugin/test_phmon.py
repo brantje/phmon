@@ -845,14 +845,63 @@ class ResourceCollectorTests(unittest.TestCase):
                 3: {'name': 'Third', 'online': 1},
             },
             'get_guild_union': lambda: {9: {'name': 'Zeta'}, 4: {'name': 'alpha'}},
+            'get_mastery': lambda: {
+                275: {'name': 'Fire', 'level': 100, 'sp': 13174},
+                259: {'name': 'Pacheon', 'level': 100, 'sp': 13174},
+            },
         }
         info = plugin.collect_resources(api=api)['character_info']
         self.assertEqual(info, {
             'availability': 'observed',
+            'masteries': [
+                {'id': 259, 'name': 'Pacheon', 'level': 100},
+                {'id': 275, 'name': 'Fire', 'level': 100},
+            ],
             'job_name': 'MrTrade',
             'guild': {'member_count': 3, 'online_count': 2, 'donated_gp': 486241},
             'union': {'count': 2, 'names': ['alpha', 'Zeta']},
         })
+
+    def test_character_info_masteries_are_bounded_and_invalid_rows_are_skipped(self):
+        api = {
+            'get_mastery': lambda: {
+                275: {'name': ' Fire ', 'level': 100, 'sp': 13174},
+                259: {'name': 'Pacheon', 'level': 0},
+                True: {'name': 'Invalid ID', 'level': 99},
+                276: {'name': 'No level'},
+                277: {'name': 'Invalid level', 'level': True},
+                'bad': {'name': 'Bad ID', 'level': 1},
+            },
+        }
+        info = plugin.collect_resources(api=api)['character_info']
+        self.assertEqual(info, {
+            'availability': 'observed',
+            'masteries': [
+                {'id': 259, 'name': 'Pacheon', 'level': 0},
+                {'id': 275, 'name': 'Fire', 'level': 100},
+            ],
+        })
+
+        many = {index: {'name': 'Mastery %d' % index, 'level': 1}
+                for index in range(1, 41)}
+        capped = plugin.collect_resources(api={
+            'get_mastery': lambda: many,
+        })['character_info']['masteries']
+        self.assertEqual(len(capped), 32)
+        self.assertEqual(capped[0]['id'], 1)
+        self.assertEqual(capped[-1]['id'], 32)
+
+    def test_character_info_omits_unavailable_masteries_and_preserves_observed_empty(self):
+        unavailable = plugin.collect_resources(api={
+            'get_character_data': lambda: {'name': 'Solo'},
+            'get_mastery': lambda: None,
+        })['character_info']
+        self.assertEqual(unavailable, {'availability': 'observed'})
+
+        empty = plugin.collect_resources(api={
+            'get_mastery': lambda: {},
+        })['character_info']
+        self.assertEqual(empty, {'availability': 'observed', 'masteries': []})
 
     def test_character_info_omits_unobserved_fields(self):
         api = {
@@ -911,6 +960,19 @@ class ResourceCollectorTests(unittest.TestCase):
             },
         })
         self.assertEqual(result['party_setup']['mode'], 'read_only_unverified')
+
+    def test_pet_level_and_exp_forwarded_only_for_growing_pets(self):
+        result = plugin.collect_resources(api={
+            'get_pets': lambda: {
+                1: {'name': 'Wolf cub', 'type': 'wolf', 'hp': 6022, 'level': 37,
+                    'exp': 2219335, 'max_exp': 0},
+                2: {'name': '', 'type': 'pick', 'hp': 109, 'level': 0, 'exp': 5},
+            },
+        })['pets']
+        by_id = {pet['pet_id']: pet for pet in result['pets']}
+        self.assertEqual((by_id['1']['level'], by_id['1']['exp']), (37, 2219335))
+        self.assertNotIn('level', by_id['2'])
+        self.assertNotIn('exp', by_id['2'])
 
     def test_pet_inventories_keep_per_pet_slots_empty_and_missing_distinct(self):
         result = plugin.collect_resources(api={
@@ -1196,6 +1258,35 @@ class PassiveItemPacketTests(unittest.TestCase):
         parsed = plugin.parse_pet_inventory_operation(packet)
         self.assertEqual(parsed['fields']['magic_options'], [
             {'id': '54', 'value': '5'}, {'id': '11', 'value': '1'}])
+
+    def test_wolf_header_reports_hunger_only_when_roster_matches(self):
+        header = bytes.fromhex(
+            'dcb16200fe170000861700000000000053132b000000000025'
+            '6424010000000000'
+            '00a0646200' '0f')
+        parsed = plugin.parse_attack_pet_header(header)
+        self.assertEqual((parsed['model'], parsed['hp'], parsed['exp'],
+                          parsed['level'], parsed['hunger']),
+                         (6142, 6022, 2822995, 37, 9316))
+        tracker = plugin.PassiveItemTracker()
+        tracker.enqueue(0x30C8, header)
+
+        def resources(level, model=6142, pet_type='wolf'):
+            return {'equipment': {'availability': 'observed', 'slots': []},
+                    'inventory': {'availability': 'observed', 'slots': []},
+                    'pets': {'availability': 'observed', 'pets': [{
+                        'pet_id': '6468060', 'type': pet_type, 'model': model,
+                        'level': level, 'inventory_available': False}]}}
+        matching = resources(37)
+        tracker.decorate(matching, 'session-one')
+        pet = matching['pets']['pets'][0]
+        self.assertEqual(pet['hgp'], 9316)
+        self.assertIn('hgp_age_s', pet)
+        for mismatch in (resources(36), resources(37, model=1), resources(37, pet_type='pick')):
+            tracker.decorate(mismatch, 'session-one')
+            self.assertNotIn('hgp', mismatch['pets']['pets'][0])
+        with self.assertRaises(plugin.ItemPacketError):
+            plugin.parse_attack_pet_header(header[:20])
 
     def test_rich_pick_pet_snapshot_reconciles_entire_packet(self):
         pet_id = 4584763

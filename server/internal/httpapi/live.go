@@ -24,6 +24,7 @@ import (
 	"phmon/server/internal/mapprofile"
 	"phmon/server/internal/mobs"
 	"phmon/server/internal/navigation"
+	"phmon/server/internal/notifications"
 	"phmon/server/internal/npcs"
 	"phmon/server/internal/players"
 	"phmon/server/internal/positions"
@@ -40,6 +41,7 @@ const (
 	liveSnapshotTimeout              = 3 * time.Second
 	liveWriteTimeout                 = 3 * time.Second
 	liveHeartbeatInterval            = 10 * time.Second
+	liveRollingWindowRefresh         = time.Minute
 	liveHeartbeatTimeout             = 35 * time.Second
 	liveSnapshotCoalesce             = 500 * time.Millisecond
 	livePositionCoalesce             = 100 * time.Millisecond
@@ -58,6 +60,7 @@ type liveFilter struct {
 	Limit             int      `json:"limit,omitempty"`
 	ResourceKeys      []string `json:"resource_keys,omitempty"`
 	Server            string   `json:"server,omitempty"`
+	Kinds             []string `json:"kinds,omitempty"`
 	Kind              string   `json:"kind,omitempty"`
 	Category          string   `json:"category,omitempty"`
 	Item              string   `json:"item,omitempty"`
@@ -405,6 +408,86 @@ func (h *LiveHub) InvalidateAnalytics() {
 	}
 }
 
+// PublishNotification sends a newly committed canonical occurrence to current
+// notification subscriptions. No historical records are replayed on subscribe.
+func (h *LiveHub) PublishNotification(event events.Event) {
+	if h == nil {
+		return
+	}
+	if event.Kind == "job.hunter_trader_seen" {
+		// Reuse the event-history predicate, including directly observed job aliases.
+		if h.events == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		page, err := h.events.List(ctx, events.Filter{Server: event.Server, Kind: event.Kind, EventID: event.ID, HideOwn: true, Limit: 1})
+		cancel()
+		if err != nil || len(page.Events) == 0 {
+			return
+		}
+	}
+	itemName := ""
+	if h.resources != nil {
+		itemName, _ = h.resources.MapItemPresentation(event.Server, event.ItemModel, event.ItemCode)
+	}
+	data := map[string]any{
+		"event_id": event.ID, "kind": event.Kind, "category": event.Category,
+		"server": event.Server, "character_id": event.CharacterID, "character": event.Character,
+		"occurred_at": event.OccurredAt, "payload": event.Payload,
+	}
+	if itemName != "" {
+		data["item_name"] = itemName
+	}
+	if unique := uniqueInfo(h.resources, event); unique != nil {
+		data["unique"] = unique
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for client := range h.clients {
+		client.mu.RLock()
+		matching := make([]liveSubscription, 0, 1)
+		for _, subscription := range client.subscriptions {
+			if subscription.Stream != "notifications" ||
+				subscription.Filter.Server != "" && !strings.EqualFold(subscription.Filter.Server, event.Server) {
+				continue
+			}
+			for _, kind := range subscription.Filter.Kinds {
+				if kind == event.Kind {
+					matching = append(matching, subscription)
+					break
+				}
+			}
+		}
+		client.mu.RUnlock()
+		for _, subscription := range matching {
+			client.enqueue(liveServerMessage{Type: "delta", ProtocolVersion: liveProtocolVersion,
+				SubscriptionID: subscription.ID, Revision: subscription.Revision,
+				Stream: "notifications", Data: map[string]any{"event": data}})
+		}
+	}
+}
+
+// PublishTradeNotification adapts a newly stored Trade Nexus report to the
+// shared live notification feed without adding it to canonical activity history.
+func (h *LiveHub) PublishTradeNotification(report tradenexus.TradeReport) {
+	if h == nil || report.ID == "" {
+		return
+	}
+	kind := "trade.failed"
+	if report.Outcome == "success" {
+		kind = "trade.completed"
+	} else if report.Outcome != "failed" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"reason": report.Reason, "route_from": report.Route.From,
+		"route_to": report.Route.To, "gold": report.Gold,
+	})
+	h.PublishNotification(events.Event{ID: report.ID, Kind: kind, Category: "trade",
+		Server: report.Server, Character: report.Reporter.Name,
+		OccurredAt: report.FinishedAt, Payload: payload})
+}
+
 func (h *LiveHub) register(client *liveClient) {
 	h.mu.Lock()
 	h.clients[client] = struct{}{}
@@ -591,6 +674,17 @@ func (c *liveClient) notifyAnalytics() {
 	c.invalidateFlags |= 2
 	c.invalidateMu.Unlock()
 	c.signalSnapshot()
+}
+
+func (c *liveClient) hasStream(stream string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, subscription := range c.subscriptions {
+		if subscription.Stream == stream {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *liveClient) signalSnapshot() {
@@ -786,10 +880,18 @@ func (c *liveClient) refresh(message liveClientMessage) {
 func (c *liveClient) writeLoop() {
 	ticker := time.NewTicker(liveHeartbeatInterval)
 	defer ticker.Stop()
+	// Trades use a rolling 24-hour window; refresh it as time advances even when
+	// no new report arrives.
+	windowTicker := time.NewTicker(liveRollingWindowRefresh)
+	defer windowTicker.Stop()
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
+		case <-windowTicker.C:
+			if c.hasStream("trades") {
+				c.notifyStandard()
+			}
 		case payload := <-c.outgoing:
 			writeCtx, cancel := context.WithTimeout(c.ctx, liveWriteTimeout)
 			err := c.conn.Write(writeCtx, websocket.MessageText, payload)
@@ -1025,6 +1127,8 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			return nil, err
 		}
 		return map[string]any{"agents": agents}, nil
+	case "notifications":
+		return map[string]any{"ready": true}, nil
 	case "positions":
 		if h.positions == nil {
 			return nil, errors.New("realtime positions unavailable")
@@ -1162,6 +1266,33 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			limit = 5
 		}
 		return h.chat.Offers(ctx, chat.OfferFilter{Server: subscription.Filter.Server, Limit: limit})
+	case "trades":
+		if h.thiefSightings == nil {
+			return nil, errors.New("trade reports unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 5
+		}
+		return h.thiefSightings.RecentTrades(ctx, subscription.Filter.Server, limit, time.Now().Add(-24*time.Hour))
+	case "thieves":
+		if h.thiefSightings == nil {
+			return nil, errors.New("thief sightings unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 5
+		}
+		page, err := h.thiefSightings.List(ctx, tradenexus.Filter{Server: subscription.Filter.Server, Limit: limit})
+		if err != nil {
+			return nil, err
+		}
+		for index, sighting := range page.Sightings {
+			if sighting.Position != nil && h.resources != nil {
+				page.Sightings[index].Zone = h.resources.ZoneName(sighting.Server, sighting.Position.Region)
+			}
+		}
+		return page, nil
 	case "events":
 		if h.events == nil {
 			return nil, errors.New("event history unavailable")
@@ -1396,6 +1527,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			Limit:           message.Filter.Limit,
 			ResourceKeys:    append([]string(nil), message.Filter.ResourceKeys...),
 			Server:          strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
+			Kinds:   cloneOptionalStringSlice(message.Filter.Kinds),
 			EventID: message.Filter.EventID,
 			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 			IncludePetPickups: message.Filter.IncludePetPickups,
@@ -1422,7 +1554,18 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 	if subscription.Stream != "analytics" && hasAnalyticsFilters(subscription.Filter) {
 		return liveSubscription{}, false
 	}
+	if subscription.Stream != "notifications" && subscription.Filter.Kinds != nil {
+		return liveSubscription{}, false
+	}
 	switch subscription.Stream {
+	case "notifications":
+		filter := subscription.Filter
+		if !validServerFilter(filter.Server) || len(filter.Kinds) == 0 || !notifications.ValidKinds(filter.Kinds) ||
+			filter.Query != "" || filter.GroupID != "" || filter.CharacterID != "" || filter.CommandName != "" || filter.CommandState != "" ||
+			filter.Limit != 0 || len(filter.ResourceKeys) != 0 || hasEventSpecificFilters(filter) ||
+			filter.Channel != "" || filter.Peer != "" || filter.Area != "" || filter.Floor != "" || filter.Region != 0 {
+			return liveSubscription{}, false
+		}
 	case "agents":
 		if subscription.Filter.Query != "" || subscription.Filter.GroupID != "" || subscription.Filter.CharacterID != "" || subscription.Filter.CommandName != "" || subscription.Filter.CommandState != "" || subscription.Filter.Limit != 0 || len(subscription.Filter.ResourceKeys) != 0 || hasEventFilters(subscription.Filter) {
 			return liveSubscription{}, false
@@ -1531,7 +1674,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 				return liveSubscription{}, false
 			}
 		}
-	case "offers":
+	case "offers", "trades", "thieves":
 		filter := subscription.Filter
 		if !validServerFilter(filter.Server) || filter.Query != "" || filter.GroupID != "" || filter.CharacterID != "" ||
 			filter.CommandName != "" || filter.CommandState != "" || len(filter.ResourceKeys) != 0 || hasEventSpecificFilters(filter) ||

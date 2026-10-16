@@ -15,6 +15,7 @@ import (
 	agentdomain "phmon/server/internal/agents"
 	authdomain "phmon/server/internal/auth"
 	"phmon/server/internal/events"
+	"phmon/server/internal/tradenexus"
 )
 
 type liveEnvelope struct {
@@ -41,6 +42,45 @@ func TestTakeInvalidateFlagsLeavesRedundantWakeAsNoop(t *testing.T) {
 	}
 	if got := client.takeInvalidateFlags(); got != 0 {
 		t.Fatalf("cleared invalidation flags = %d, want 0", got)
+	}
+}
+
+func TestNotificationSubscriptionFiltersCommittedDeltas(t *testing.T) {
+	store := newFakeAgentStore()
+	registry := agentdomain.NewRegistry()
+	live := NewLiveHub(store, registry, nil)
+	server := httptest.NewServer(New(Dependencies{
+		Database: pingFunc(func(context.Context) error { return nil }),
+		Agents:   store, Registry: registry, Live: live,
+	}))
+	defer server.Close()
+	conn := dialLive(t, server.URL, server.URL)
+	defer conn.CloseNow()
+	writeLive(t, conn, liveClientMessage{Type: "subscribe", ProtocolVersion: liveProtocolVersion,
+		SubscriptionID: "notifications", Revision: 1, Stream: "notifications",
+		Filter: liveFilter{Server: "Ares", Kinds: []string{"character.died", "trade.completed", "trade.failed"}}})
+	snapshot := readLiveType(t, conn, "snapshot")
+	if string(snapshot.Data) != `{"ready":true}` {
+		t.Fatalf("notification snapshot contained history: %s", snapshot.Data)
+	}
+	live.PublishNotification(events.Event{ID: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", Kind: "character.died", Category: "character", Server: "Other", OccurredAt: time.Now().UTC(), Payload: json.RawMessage(`{"cause":"unknown"}`)})
+	live.PublishNotification(events.Event{ID: "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", Kind: "drop.rare", Category: "drop", Server: "Ares", OccurredAt: time.Now().UTC(), Payload: json.RawMessage(`{}`)})
+	live.PublishTradeNotification(tradenexus.TradeReport{ID: "cccccccc-bbbb-4ccc-8ddd-eeeeeeeeeeee", Server: "Ares", Outcome: "success", Reason: "sold", Route: tradenexus.TradeRoute{From: "Jangan", To: "Donwhang"}, Reporter: tradenexus.Reporter{Name: "Alpha"}, FinishedAt: time.Now().UTC()})
+	delta := readLiveType(t, conn, "delta")
+	var data struct {
+		Event struct {
+			ID        string `json:"event_id"`
+			Kind      string `json:"kind"`
+			Character string `json:"character"`
+		} `json:"event"`
+	}
+	if err := json.Unmarshal(delta.Data, &data); err != nil || data.Event.ID != "cccccccc-bbbb-4ccc-8ddd-eeeeeeeeeeee" || data.Event.Kind != "trade.completed" || data.Event.Character != "Alpha" {
+		t.Fatalf("unexpected notification delta: %+v err=%v", data, err)
+	}
+	live.PublishTradeNotification(tradenexus.TradeReport{ID: "dddddddd-bbbb-4ccc-8ddd-eeeeeeeeeeee", Server: "Ares", Outcome: "failed", Reason: "thief", Reporter: tradenexus.Reporter{Name: "Beta"}, FinishedAt: time.Now().UTC()})
+	delta = readLiveType(t, conn, "delta")
+	if err := json.Unmarshal(delta.Data, &data); err != nil || data.Event.Kind != "trade.failed" || data.Event.Character != "Beta" {
+		t.Fatalf("unexpected failed trade delta: %+v err=%v", data, err)
 	}
 }
 
@@ -607,6 +647,21 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 		},
 		"offers reject unrelated event filter": {
 			message: liveClientMessage{SubscriptionID: "dashboard-offers", Revision: 1, Stream: "offers", Filter: liveFilter{Kind: "drop.rare"}},
+		},
+		"dashboard trades": {
+			message: liveClientMessage{SubscriptionID: "dashboard-trades", Revision: 1, Stream: "trades", Filter: liveFilter{Server: "Greatest", Limit: 5}}, valid: true,
+		},
+		"oversized dashboard trades": {
+			message: liveClientMessage{SubscriptionID: "dashboard-trades", Revision: 1, Stream: "trades", Filter: liveFilter{Limit: 11}},
+		},
+		"trades reject unrelated event filter": {
+			message: liveClientMessage{SubscriptionID: "dashboard-trades", Revision: 1, Stream: "trades", Filter: liveFilter{Kind: "drop.rare"}},
+		},
+		"dashboard thieves": {
+			message: liveClientMessage{SubscriptionID: "dashboard-thieves", Revision: 1, Stream: "thieves", Filter: liveFilter{Server: "Greatest", Limit: 5}}, valid: true,
+		},
+		"oversized dashboard thieves": {
+			message: liveClientMessage{SubscriptionID: "dashboard-thieves", Revision: 1, Stream: "thieves", Filter: liveFilter{Limit: 11}},
 		},
 		"exact item source event": {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", EventID: "8d16ab39-10b8-4b26-80aa-a4be01e10f18"}},

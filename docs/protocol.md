@@ -1,4 +1,4 @@
-# Agent protocol versions 2–18
+# Agent protocol versions 2–22
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -33,9 +33,9 @@ extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: latest 18. Version 1 agents are rejected with an explicit
+Protocol version: latest 22. Version 1 agents are rejected with an explicit
 unsupported protocol close reason because the character identity/state contract is
-required. Versions 2–18 remain accepted for rolling deployment compatibility.
+required. Versions 2–22 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -245,6 +245,15 @@ message's canonical source event ID. Repeated observer messages are not silently
 collapsed into a presumed common broadcast. It uses the same authentication,
 revision fencing, invalidation, unavailable/recovery and unsubscribe lifecycle.
 No agent protocol or browser protocol-version change is required.
+
+The additive `trades` stream backs the dashboard Recent Trades card. Its filter
+accepts an optional `server` and `limit` (1–10, default 5); other selectors are
+rejected. Replacement data is `{"reports":[TradeReport...],"profit_24h":N,
+"trades_24h":N,"profit_samples_24h":N,"since":"..."}`: the latest reports by
+`finished_at`, plus the summed signed `gold` of every outcome finished since
+`now − 24h` (computed at each rebuild; reports without `gold` are counted in
+`trades_24h` but not `profit_samples_24h`). It rebuilds on each stored trade
+report through the existing invalidation path.
 
 Character-list search preserves the existing backend search semantics for
 name/guild/server/zone and optional persisted `group_id`. Character detail uses the
@@ -1584,6 +1593,16 @@ and carries a positive `source_item_count`. The server accepts older protocols
 and ranks their nonempty items or nonzero gold ahead of ambiguous legacy
 empty/zero-gold guild snapshots. Raw getter lists were not retained for older
 observations.
+
+## Agent protocol 22: character mastery observations — 2026-10-16
+
+Plugin 1.9.47 adds optional `masteries` to the observed `character_info` resource.
+When `get_mastery()` returns a dictionary, the plugin sends up to 32 entries with
+numeric `id`, bounded `name` and non-negative `level`; SP is not included. An empty
+dictionary is an observed empty list. Missing, `None` or malformed getter data
+omits `masteries`, so it is not interpreted as an empty build. The Stats card
+shows up to two learned names beneath the character level. Protocols 2–21 remain
+accepted; older plugins omit the field.
 
 ## Agent protocol 20: character_info resource — 2026-10-15
 

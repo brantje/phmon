@@ -24,6 +24,19 @@ implementation run. Explicit limits in the current user request always take prio
 
 Draft PR [#92](https://github.com/brantje/phmon/pull/92) adds **Events → Traders / Hunters** with the existing `job.hunter_trader_seen` event storage and live subscription. The spotted name is searchable alongside the reporter; **Hide own characters** defaults on and excludes the spotted character (not the reporting bot), server-scoped, with direct observed own job aliases. URL `hide_own=0` shows all recorded events. The callback does not disambiguate trader/hunter or report an authoritative spotted-player location; map links are labeled reporter location. No plugin or migration changes. Tests: PostgreSQL event-history integration, REST validation, live-subscription validation. Browser and actual phBot runtime validation remain manual; PR CI results must be checked before approval. See [feature documentation](docs/trader-hunter-sightings.md).
 
+Sidebar refinement (2026-10-16): Stats groups, Events categories and Analytics views
+appear only while their parent page is active. Events category labels align with the
+Events navigation label. This changes presentation only; no roadmap slice advances.
+Prettier, focused ESLint and Nuxt typecheck pass on Node 24.20.0. Local browser
+visual validation still requires an operator session.
+
+Sidebar pointer correction (2026-10-16): clickable primary and nested links use the
+pointer cursor; disabled menu items retain the default cursor.
+
+Events sidebar completion (2026-10-16): the active Events page shows all twelve
+history subitems, including Thieves, Traders / Hunters and Trades, in the same order
+and with the same routes as the Events page tabs. View-based links receive the
+correct active state.
 
 Working loop:
 
@@ -195,7 +208,9 @@ operational diagnostic, and add real panels as their data slices become availabl
   borders, subdued secondary text and restrained status colors. Start with these
   as semantic CSS tokens; validate actual contrast and screenshots.
 - Typography: **Segoe UI, Tahoma, Arial, sans-serif**, roughly **14 px** base text,
-  **25 px** page titles, compact **13–14 px** menu text. Observed menu rows are about
+  **25 px** page titles, compact **13–14 px** menu text. Global rule: no text smaller
+  than **10 px** (root is 14 px, so never below 0.715rem); badges, map labels and
+  dense captions use 10 px at minimum. Observed menu rows are about
   **32 px** tall with **4 px** corners and thin borders. Headings are gold/cream;
   labels and dense tables remain readable. Avoid oversized landing-page headings,
   excessive whitespace, large pill controls or bright SaaS-style gradients.
@@ -477,6 +492,43 @@ the historical 400 cannot be attributed to that character. Actual Windows/phBot
 sender validation and deployment remain separate, intentionally outside this
 request. Exact next action: review the implementation/evidence; deploy only under
 separate operator authorization and then observe naturally occurring v2 uploads.
+
+### Resume — 2026-10-16 map disappearance from shared live database
+
+A host `go run ./cmd/server` used the live PostgreSQL database alongside Compose.
+Its startup marked the live character sessions `backend_restart`, and its
+three-second reconciler ended sessions owned by the Compose server. A subsequent
+`TEST_DATABASE_URL="$DATABASE_URL" go test ./...` also targeted the live database;
+it was stopped. The host `.env` `DATABASE_URL` now points to the separate local
+`phmon_scratch` database while Compose still uses `phmon`. Integration tests must
+use a disposable database. The Go server now holds a database advisory lease
+before migrations and session reconciliation, rejecting a second server on the
+same database. The Compose server was rebuilt; PostgreSQL was not restarted.
+A second server startup against the live database was rejected, and
+the authenticated 1440×1000 map showed all 12 character markers throughout a
+60-second, 13-sample browser check. Focused Go tests passed. Test fixture rows
+were written to the live database before the test was stopped; review their
+server scopes and dependencies before any cleanup. Exact next action: verify
+no host process is using the live database, keep test runs on `phmon_scratch`,
+and investigate the separate duplicate-event warnings if they recur.
+
+### Resume — 2026-10-16 live database test-data cleanup
+
+The operator requested removal of test data while preserving active characters.
+A private full recovery dump was saved outside Git at
+`~/.local/share/phmon/backups/live-before-test-cleanup-20261016.dump` (0600;
+`pg_restore -l` verified). A guarded transaction selected only the 2026-10-16
+12:28–12:33 UTC test cohort: 33 agents and 167 characters in non-`Greatest`
+scopes, with no open character sessions or active-scope event overlap. It removed
+those records and their dependent history, including 100,000 test position samples,
+100,003 test mob samples, 78 events, 299 sessions, 35 proxy requests, 11 proxy
+status rows, two pending enrichments and one test player. The two real agents,
+12 `Greatest` characters, 12 open sessions and all `Greatest` history were retained.
+Post-commit queries found zero non-`Greatest` characters, players, events, position
+or mob samples, proxy status rows or pending enrichments. All 12 active character
+state timestamps continued to advance; PostgreSQL, server and web were healthy.
+Host `.env` still targets `phmon_scratch`; do not point integration tests at the
+live `phmon` database.
 
 ### Resume — 2026-10-12 agent reconnect storm from PostgreSQL timeouts
 
@@ -6980,3 +7032,58 @@ and the local contract check confirms the required protocol bump. CodeRabbit
 reported its free review quota will reset about 30 minutes after its
 2026-10-16 07:24 UTC comment; the operator explicitly said there is no need
 to wait for CodeRabbit. Finish CI checks and leave PR #94 open and unmerged.
+
+### Resume — 2026-10-16 event notifications and Settings redesign
+
+Focused user request implemented on the existing checkout: Settings has
+Notifications, Agents and Command Review tabs. Notifications lists the 28
+canonical kinds and two additional Trade Nexus report outcomes
+(`trade.completed`, `trade.failed`) with per-kind popup/native choices, category
+all/mixed controls and chat channel switches. PostgreSQL migration 000037 and
+validated API persist choices; all event kinds start off. The authenticated
+live stream sends only new committed occurrences, including legacy deaths and
+fresh completed/failed trade reports, with no history replay. Trader/Hunter
+notifications use the history hide-own rule. The global bottom-right host
+queues popups above a three-card limit, uses distinct event summaries and
+exact history/chat links, and handles hidden-tab native alerts and chat sound.
+The old chat-only listener is unmounted. Existing Trade Nexus accepted-event
+behavior remains wired. Cancelled trade reports are outside the two outcome
+choices.
+
+Files: `server/internal/{notifications,database/migrations/000037_notification_preferences.sql,
+events/store.go,httpapi/{live.go,notification_preferences.go,trade_reports.go},
+tradenexus/{hub.go,store.go}}`, `server/cmd/server/main.go`,
+`web/app/{pages/{settings.vue,events.vue},components/EventNotificationHost.vue,
+composables/{useNotificationPreferences.ts,useLiveData.ts},utils/notificationPresentation.ts}`,
+`web/server/api/notifications`, shared live types, focused tests, and
+`docs/reference-parity.md`. Go focused unit and PostgreSQL integration tests,
+289 web unit tests, Nuxt typecheck and focused ESLint passed. Local authenticated
+Chrome checks at 1440×1000, 1280×800 and 390×844 covered all Settings tabs,
+mobile choices, popup queue/placement, hidden-tab filtering, native permission
+states and keyboard focus using fixture WebSocket frames. Screenshots and
+remaining limits are in `docs/reference-parity.md`. No bot command or real
+character action was sent. Operator preference selections were restored to
+all-off and seven channels selected after tests; the prior chat sound setting
+was retained. The focused feature does not advance a roadmap slice. Exact next
+action: run the normal review/CI gates, then validate actual phBot delivery and
+OS-native alert display in an authorized operator session.
+
+Follow-up UI correction (2026-10-16): in-app event cards show the occurrence
+time and remaining seconds at the upper right, plus an eight-second countdown
+bar along the bottom.
+Their expiry now uses elapsed time, including time spent in a hidden tab; stale
+visible cards are removed when the tab returns. Native browser notifications
+also receive an eight-second close request, subject to browser and OS timing.
+The live subscription includes browser choices and chat sound. Chat sound
+works without requiring a popup choice.
+Focused Prettier, ESLint and Nuxt typecheck pass on Node 24.20.0. Browser visual
+validation and actual OS notification timing remain to be checked locally.
+
+Follow-up chat popup correction (2026-10-16): the live stream retains each
+observer's canonical chat event, while the notification host now collapses
+server-wide copies from different observers using the existing chat history
+rule: same server/channel/raw type/sender/text within two seconds. Repeated
+messages from the same observer and private/guild/union observations stay
+separate. This applies before popup, native alert and sound presentation.
+The 292-test web unit suite, Nuxt typecheck, focused ESLint and Prettier pass
+on Node 24.20.0; browser fixture validation remains pending.

@@ -20,6 +20,9 @@ export type EconomySearchInputs = {
   from: string
   to: string
   cursor: string
+  itemType?: string
+  subtype?: string
+  degree?: string
 }
 
 export function itemSearchQuery(filters: ItemSearchInputs) {
@@ -45,6 +48,13 @@ export function economySearchQuery(filters: EconomySearchInputs) {
     q: filters.query || undefined,
     from: filters.from || undefined,
     to: filters.to || undefined,
+    ...(filters.itemType
+      ? {
+          item_type: filters.itemType,
+          subtype: filters.subtype || undefined,
+        }
+      : {}),
+    ...(filters.degree ? { degree: filters.degree } : {}),
     cursor: filters.cursor || undefined,
     limit: 30,
   }

@@ -66,13 +66,6 @@ const failed = ref(false)
 const openLevel = ref<number | null>(null)
 const backTo = computed(() => safePlayersReturn(route.query.back))
 
-function formatPlayerTime(value?: string | null) {
-  if (!value) return 'Unknown'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Unknown'
-  return date.toLocaleString()
-}
-
 async function load() {
   loading.value = true
   failed.value = false
@@ -223,7 +216,7 @@ watch(
             <dt>First Seen</dt>
             <dd>
               {{
-                formatPlayerTime(
+                formatDate(
                   player.display_identity?.first_seen_at ??
                     player.first_seen_at,
                 )
@@ -234,7 +227,7 @@ watch(
             <dt>Last Seen</dt>
             <dd>
               {{
-                formatPlayerTime(
+                formatDate(
                   player.display_identity?.last_seen_at ?? player.last_seen_at,
                 )
               }}
@@ -330,7 +323,7 @@ watch(
       >
         <h2>Visible Gear (ph-proxy)</h2>
         <p class="player-enrichment-note">
-          Observed {{ formatPlayerTime(enrichment.gear_observed_at) }}. This
+          Observed <FormattedDate :value="enrichment.gear_observed_at" />. This
           observation contains visible item references and verified enhancement
           only. Rolled stats, blues, durability and untransmitted equipment are
           unavailable.
@@ -367,12 +360,12 @@ watch(
               <span v-if="evidence.source_name">{{
                 evidence.source_name
               }}</span>
-              · {{ formatPlayerTime(evidence.observed_at) }} · opcode
+              · <FormattedDate :value="evidence.observed_at" /> · opcode
               {{ evidence.source_opcode }}
               <span v-if="evidence.association">
                 · inferred association with {{ evidence.association.alias }} ({{
                   evidence.association.reason
-                }}, {{ formatPlayerTime(evidence.association.observed_at) }})
+                }}, <FormattedDate :value="evidence.association.observed_at" />)
               </span>
             </dd>
           </div>
@@ -402,7 +395,7 @@ watch(
             <dt>First Seen</dt>
             <dd>
               {{
-                formatPlayerTime(
+                formatDate(
                   player.display_identity?.first_seen_at ??
                     player.first_seen_at,
                 )
@@ -413,7 +406,7 @@ watch(
             <dt>Last Seen</dt>
             <dd>
               {{
-                formatPlayerTime(
+                formatDate(
                   player.display_identity?.last_seen_at ?? player.last_seen_at,
                 )
               }}
@@ -424,7 +417,7 @@ watch(
             <dd>
               {{
                 levels.progress.latest_level_change != null
-                  ? `${levels.progress.latest_level_change} at ${formatPlayerTime(levels.progress.latest_level_change_at)}`
+                  ? `${levels.progress.latest_level_change} at ${formatDate(levels.progress.latest_level_change_at)}`
                   : 'Unknown'
               }}
             </dd>
@@ -463,8 +456,8 @@ watch(
                   "
                 >
                   <td>{{ snapshot.level }}</td>
-                  <td>{{ formatPlayerTime(snapshot.first_seen_at) }}</td>
-                  <td>{{ formatPlayerTime(snapshot.last_seen_at) }}</td>
+                  <td><FormattedDate :value="snapshot.first_seen_at" /></td>
+                  <td><FormattedDate :value="snapshot.last_seen_at" /></td>
                   <td>{{ textOrUnknown(snapshot.guild_name) }}</td>
                   <td>{{ jobLabel(snapshot.job) }}</td>
                   <td>{{ textOrUnknown(snapshot.job_level) }}</td>
@@ -491,11 +484,15 @@ watch(
                       </div>
                       <div>
                         <dt>First Seen</dt>
-                        <dd>{{ formatPlayerTime(snapshot.first_seen_at) }}</dd>
+                        <dd>
+                          <FormattedDate :value="snapshot.first_seen_at" />
+                        </dd>
                       </div>
                       <div>
                         <dt>Last Seen</dt>
-                        <dd>{{ formatPlayerTime(snapshot.last_seen_at) }}</dd>
+                        <dd>
+                          <FormattedDate :value="snapshot.last_seen_at" />
+                        </dd>
                       </div>
                       <div>
                         <dt>Player Name</dt>
@@ -591,7 +588,7 @@ watch(
             </thead>
             <tbody>
               <tr v-for="row in history?.observations || []" :key="row.id">
-                <td>{{ formatPlayerTime(row.observed_at) }}</td>
+                <td><FormattedDate :value="row.observed_at" /></td>
                 <td>{{ row.observed_name }}</td>
                 <td>{{ textOrUnknown(row.level) }}</td>
                 <td>{{ textOrUnknown(row.guild_name) }}</td>

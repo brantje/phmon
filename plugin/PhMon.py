@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.45'
+pVersion = '1.9.49'
 pUrl = ''
 
-PROTOCOL_VERSION = 21
+PROTOCOL_VERSION = 22
 TELEPORT_READY_OPCODE = 0x34B5
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
@@ -1483,7 +1483,7 @@ def collect_resource_inputs(api=None):
     """Call phBot getters on its callback thread; return raw values for worker normalization."""
     inputs = {}
     for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy',
-                 'get_character_data', 'get_guild', 'get_guild_union'):
+                 'get_character_data', 'get_guild', 'get_guild_union', 'get_mastery'):
         function = (api or {}).get(name) if isinstance(api, dict) else None
         if not callable(function):
             function = _optional_phbot_api(name)
@@ -1718,6 +1718,21 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
                 value = raw_pet.get(key)
                 if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                     pet[key] = value
+            # Observed in phBot 20.1.x get_pets() for growing pets (wolf: level 37,
+            # exp 2219335); pick pets report level 0, which is not a level.
+            level = raw_pet.get('level')
+            if isinstance(level, int) and not isinstance(level, bool) and 0 < level <= 255:
+                pet['level'] = level
+            exp = raw_pet.get('exp')
+            if isinstance(exp, int) and not isinstance(exp, bool) and exp >= 0 and pet.get('level'):
+                pet['exp'] = exp
+            # Not documented by phBot's get_pets(); forwarded only when the
+            # runtime supplies it. Never inferred from observed peaks.
+            for source in ('hp_max', 'max_hp'):
+                value = raw_pet.get(source)
+                if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                    pet['hp_max'] = value
+                    break
             if isinstance(raw_pet.get('mounted'), bool):
                 pet['mounted'] = raw_pet['mounted']
             pets.append(pet)
@@ -1760,7 +1775,8 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
     available, academy = call('get_academy')
     resources['academy'] = _normalize_academy(academy, available)
     resources['character_info'] = _normalize_character_info(
-        call('get_character_data'), call('get_guild'), call('get_guild_union'))
+        call('get_character_data'), call('get_guild'), call('get_guild_union'),
+        call('get_mastery'))
     resources['party_setup'] = {
         'availability': 'unavailable',
         'mode': 'read_only_unverified',
@@ -1816,14 +1832,18 @@ def _normalize_academy(value, api_available):
     return {'availability': 'observed', 'value': payload}
 
 
-def _normalize_character_info(character, guild, union):
-    """Summarize the documented guild/union getters for this character's info card."""
+def _normalize_character_info(character, guild, union, mastery=(False, None)):
+    """Summarize documented character, guild, union and mastery getters."""
     character_available, character_data = character
     guild_available, guild_data = guild
     union_available, union_data = union
-    if not character_available and not guild_available and not union_available:
+    mastery_available, mastery_data = mastery
+    if not character_available and not guild_available and not union_available and not mastery_available:
         return {'availability': 'unavailable', 'reason': 'api_missing'}
     payload = {'availability': 'observed'}
+    masteries = _normalize_masteries(mastery_data) if mastery_available else None
+    if masteries is not None:
+        payload['masteries'] = masteries
     own_name = None
     if isinstance(character_data, dict):
         own_name = _bounded_text(character_data.get('name'), 64)
@@ -1859,6 +1879,32 @@ def _normalize_character_info(character, guild, union):
                 names.append(name)
         payload['union'] = {'count': count, 'names': sorted(names, key=str.lower)}
     return payload
+
+
+def _normalize_masteries(value):
+    """Return bounded, observed mastery identities and levels, or None if unknown."""
+    if not isinstance(value, dict):
+        return None
+    masteries = []
+    for raw_id, raw in itertools.islice(value.items(), 32):
+        if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+            mastery_id = raw_id
+        elif isinstance(raw_id, str) and raw_id.isdecimal():
+            try:
+                mastery_id = int(raw_id, 10)
+            except (ValueError, OverflowError):
+                continue
+        else:
+            continue
+        if mastery_id <= 0 or mastery_id > 100000 or not isinstance(raw, dict):
+            continue
+        name = _bounded_text(raw.get('name'), 64)
+        level = raw.get('level')
+        if (name is None or not isinstance(level, int) or isinstance(level, bool)
+                or level < 0 or level > 255):
+            continue
+        masteries.append({'id': mastery_id, 'name': name, 'level': level})
+    return sorted(masteries, key=lambda entry: entry['id'])
 
 
 def _event_resource_snapshot(resources, identity=None):
@@ -2267,6 +2313,22 @@ def parse_pet_inventory_operation(data):
     return item
 
 
+def parse_attack_pet_header(data):
+    """Read the observed vSRO wolf (growing pet) 0x30C8 header.
+
+    Layout from operator captures (id u32, model u32, hp u32, u32 0, exp u64,
+    level u8, hunger u16): level and exp matched get_pets() and hunger tracked
+    the in-game HGP window (max 10000). Callers must still match the roster.
+    """
+    if len(data) < 27:
+        raise ItemPacketError('attack_pet_header_too_short')
+    pet_id, model, hp, _reserved, exp, level, hgp = struct.unpack_from('<IIIIQBH', data)
+    if not 1 <= level <= 255 or hgp > 10000:
+        raise ItemPacketError('attack_pet_header_out_of_range')
+    return {'pet_id': str(pet_id), 'model': model, 'hp': hp, 'exp': exp,
+            'level': level, 'hunger': hgp}
+
+
 def parse_pet_inventory_snapshot(data, pet):
     """Reconcile the observed Pick-pet 0x30C8 branch with a fresh API roster."""
     if (not isinstance(pet, dict) or
@@ -2353,6 +2415,7 @@ class PassiveItemTracker(object):
         self._states = {}
         self._pet_states = {}
         self._pet_snapshots = {}
+        self._pet_hunger = {}
         self._pet_snapshot_last_error = None
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
@@ -2409,6 +2472,7 @@ class PassiveItemTracker(object):
         self._states.clear()
         self._pet_states.clear()
         self._pet_snapshots.clear()
+        self._pet_hunger.clear()
         self._pet_snapshot_last_error = None
         self._epoch += 1
         self._sequence = 0
@@ -2489,6 +2553,15 @@ class PassiveItemTracker(object):
                             self._pet_states.pop(key, None)
                 else:
                     self._pet_states.clear()
+                try:
+                    header = parse_attack_pet_header(payload)
+                except (ItemPacketError, struct.error):
+                    pass
+                else:
+                    if len(self._pet_hunger) >= 32:
+                        self._pet_hunger.clear()
+                    header['received_at'] = _monotonic()
+                    self._pet_hunger[header['pet_id']] = header
                 if self._protocol == 'vsro-1.188' and 4 <= len(payload) <= 32768:
                     if len(self._pet_snapshots) >= 32:
                         self._pet_snapshots.clear()
@@ -2634,6 +2707,24 @@ class PassiveItemTracker(object):
         pet_attached = 0
         observed_pet_slots = set()
         pets_resource = resources.get('pets')
+        if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
+            roster = set()
+            for pet in pets_resource.get('pets', []):
+                if not isinstance(pet, dict):
+                    continue
+                roster.add(pet.get('pet_id'))
+                header = self._pet_hunger.get(pet.get('pet_id'))
+                # Only the wolf header layout is verified; require the packet's
+                # model and level to match the live roster entry.
+                if (header is not None and str(pet.get('type', '')).lower() == 'wolf' and
+                        header['model'] == pet.get('model') and
+                        header['level'] == pet.get('level')):
+                    pet['hgp'] = header['hunger']
+                    pet['hgp_age_s'] = int(max(0, _monotonic() - header['received_at']))
+            for pet_id, header in list(self._pet_hunger.items()):
+                # A header can arrive just before the getter lists the pet.
+                if pet_id not in roster and _monotonic() - header['received_at'] > 30:
+                    self._pet_hunger.pop(pet_id, None)
         if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
             for pet in pets_resource.get('pets', []):
                 if not isinstance(pet, dict) or not pet.get('inventory_available'):

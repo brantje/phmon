@@ -8,6 +8,7 @@ import {
   equipmentColumns,
   equipmentItemAt,
 } from '../utils/equipmentLayout'
+import { masterySummary } from '../utils/masterySummary'
 
 const props = defineProps<{
   character: CharacterView
@@ -94,6 +95,11 @@ const resources = computed(
 const resourceMap = computed(() => resources.value?.resources || {})
 const observation = (key: string) => resourceMap.value[key]
 const payload = (key: string) => observation(key)?.payload || {}
+const masteryText = computed(() => {
+  const infoObservation = observation('character_info')
+  if (infoObservation?.availability !== 'observed') return ''
+  return masterySummary(payload('character_info').masteries)
+})
 const containerObservation = (key: string) => ({
   ...payload(key),
   availability: observation(key)?.availability || 'unavailable',
@@ -120,7 +126,7 @@ const infoRows = computed(() => {
   return characterInfoRows(
     props.character,
     payload('character_info'),
-    seen ? formatSyncedTime(seen) : '',
+    seen ? formatDate(seen) : '',
   )
 })
 const freshness = computed(() => {
@@ -128,7 +134,7 @@ const freshness = computed(() => {
     .map((entry) => entry.observed_at)
     .filter((value): value is string => !!value)
   if (!values.length) return 'Waiting for resource baseline'
-  return `Observed ${formatTimestamp(values.sort().at(-1))}`
+  return `Observed ${formatDate(values.sort().at(-1))}`
 })
 const pets = computed(() => {
   const list = payload('pets').pets
@@ -156,15 +162,84 @@ const academyMembers = computed(() => {
 })
 const academyHasMembers = computed(() => academyMembers.value.length > 0)
 const activeResourceKeys = computed(() => {
-  if (selectedTab.value === 'Overview') return ['pets', 'party']
-  if (selectedTab.value === 'Info') return ['equipment', 'character_info']
-  if (selectedTab.value === 'Inventory') return ['inventory']
-  if (selectedTab.value === 'Storage') return [selectedContainer.value]
-  if (selectedTab.value === 'Pet') return ['pets', 'item_enrichment']
-  if (selectedTab.value === 'Party') return ['party', 'party_setup']
-  if (selectedTab.value === 'Academy') return ['academy']
-  return []
+  const keys = ['character_info']
+  if (selectedTab.value === 'Overview') keys.push('pets', 'party', 'inventory')
+  else if (selectedTab.value === 'Info') keys.push('equipment')
+  else if (selectedTab.value === 'Inventory') keys.push('inventory')
+  else if (selectedTab.value === 'Storage') keys.push(selectedContainer.value)
+  else if (selectedTab.value === 'Pet') keys.push('pets', 'item_enrichment')
+  else if (selectedTab.value === 'Party') keys.push('party', 'party_setup')
+  else if (selectedTab.value === 'Academy') keys.push('academy')
+  return [...new Set(keys)]
 })
+
+function ratioPercent(value?: number | null, max?: number | null) {
+  if (value == null || max == null || max <= 0) return 0
+  return Math.max(0, Math.min(100, (value / max) * 100))
+}
+function compactNumber(value?: number | null) {
+  if (value == null) return '—'
+  const units: [number, string][] = [
+    [1e12, 'T'],
+    [1e9, 'B'],
+    [1e6, 'M'],
+    [1e3, 'K'],
+  ]
+  for (const [size, suffix] of units) {
+    if (Math.abs(value) >= size)
+      return `${(value / size).toFixed(1).replace(/\.0$/, '')}${suffix}`
+  }
+  return value.toLocaleString()
+}
+const xpPercentLabel = computed(() => {
+  const { current_exp: cur, max_exp: max } = props.character
+  return cur != null && max != null && max > 0
+    ? `${((cur / max) * 100).toFixed(3)}%`
+    : '—'
+})
+const goldLabel = computed(() =>
+  compactNumber(combinedCharacterGold(props.character) ?? props.character.gold),
+)
+const inventoryUsage = computed(() => {
+  const slots = payload('inventory').slots
+  const capacity = payload('inventory').capacity
+  if (!Array.isArray(slots) || typeof capacity !== 'number' || capacity <= 0)
+    return null
+  return { used: slots.filter(Boolean).length, capacity }
+})
+const inventorySegments = computed(() =>
+  Array.from({ length: 10 }, (_, i) => i + 1),
+)
+const inventoryFilled = computed(() =>
+  inventoryUsage.value
+    ? Math.ceil(
+        (inventoryUsage.value.used / inventoryUsage.value.capacity) * 10,
+      )
+    : 0,
+)
+const statusLabel = computed(() => {
+  if (props.stale) return 'Stale'
+  if (!props.character.online) return 'Offline'
+  if (props.character.botting == null) return 'Online'
+  return props.character.botting ? 'Training' : 'Idle'
+})
+const positionLabel = computed(() => {
+  const { x, y } = props.character
+  return x == null || y == null
+    ? '—'
+    : `${Math.round(x).toLocaleString()}, ${Math.round(y).toLocaleString()}`
+})
+function petHpPercent(pet: PetInventoryRecord): number | null {
+  const max = (pet as { hp_max?: unknown }).hp_max
+  return typeof pet.hp === 'number' && typeof max === 'number' && max > 0
+    ? ratioPercent(pet.hp, max)
+    : null
+}
+function petExpPercent(pet: PetInventoryRecord): string | null {
+  return typeof pet.exp === 'number' && pet.max_exp && pet.max_exp > 0
+    ? Math.min(100, (pet.exp / pet.max_exp) * 100).toFixed(1)
+    : null
+}
 let releaseProgressCharacter: (() => void) | undefined
 
 watch(
@@ -362,6 +437,12 @@ onBeforeUnmount(() => {
           >{{ character.name }}</NuxtLink
         >
         <strong>Lv. {{ character.level ?? '—' }}</strong>
+        <span
+          class="character-card-mastery"
+          :title="masteryText || 'Mastery unavailable'"
+          :aria-label="`Masteries: ${masteryText || 'unavailable'}`"
+          >{{ masteryText || '—' }}</span
+        >
         <span>{{ character.guild || 'Guild unknown' }}</span>
       </div>
       <div class="character-presence">
@@ -415,59 +496,83 @@ onBeforeUnmount(() => {
       Showing the last received resource observations as stale.
     </div>
     <div v-if="selectedTab === 'Overview'" class="character-overview">
-      <div class="character-overview-main">
-        <dl class="character-stats">
+      <div class="ov-bars">
+        <div class="ov-bar-block">
+          <div class="ov-bar-label">
+            <span>HP</span
+            ><span
+              >{{ character.hp?.toLocaleString() ?? '—' }} /
+              {{ character.hp_max?.toLocaleString() ?? '—' }}</span
+            >
+          </div>
+          <div class="ov-bar ov-bar-hp">
+            <i
+              :style="{
+                width: `${ratioPercent(character.hp, character.hp_max)}%`,
+              }"
+            />
+          </div>
+        </div>
+        <div class="ov-bar-block">
+          <div class="ov-bar-label">
+            <span>MP</span
+            ><span
+              >{{ character.mp?.toLocaleString() ?? '—' }} /
+              {{ character.mp_max?.toLocaleString() ?? '—' }}</span
+            >
+          </div>
+          <div class="ov-bar ov-bar-mp">
+            <i
+              :style="{
+                width: `${ratioPercent(character.mp, character.mp_max)}%`,
+              }"
+            />
+          </div>
+        </div>
+        <div class="ov-bar-block">
+          <div class="ov-bar-label">
+            <span>Level XP</span><span>{{ xpPercentLabel }}</span>
+          </div>
+          <div class="ov-bar ov-bar-xp">
+            <i
+              :style="{
+                width: `${ratioPercent(character.current_exp, character.max_exp)}%`,
+              }"
+            />
+          </div>
+        </div>
+        <div class="ov-bar-block">
+          <div class="ov-bar-label">
+            <span>Inv</span
+            ><span>{{
+              inventoryUsage
+                ? `${inventoryUsage.used}/${inventoryUsage.capacity}`
+                : '—'
+            }}</span>
+          </div>
+          <div class="ov-bar ov-bar-inv">
+            <i
+              v-for="n in inventorySegments"
+              :key="n"
+              :class="{ filled: inventoryUsage && n <= inventoryFilled }"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="ov-middle">
+        <dl class="ov-facts">
           <div>
-            <dt>HP</dt>
-            <dd>
-              {{ character.hp?.toLocaleString() ?? '—' }} /
-              {{ character.hp_max?.toLocaleString() ?? '—' }}
-            </dd>
+            <dt>Status</dt>
+            <dd>{{ statusLabel }}</dd>
           </div>
           <div>
-            <dt>MP</dt>
-            <dd>
-              {{ character.mp?.toLocaleString() ?? '—' }} /
-              {{ character.mp_max?.toLocaleString() ?? '—' }}
-            </dd>
-          </div>
-          <div>
-            <dt>XP</dt>
-            <dd>{{ formatProgress(character) }}</dd>
-          </div>
-          <div>
-            <dt>SP</dt>
-            <dd>{{ character.sp?.toLocaleString() ?? '—' }}</dd>
-          </div>
-          <div>
-            <dt>Gold</dt>
-            <dd>
-              {{
-                combinedCharacterGold(character)?.toLocaleString() ??
-                character.gold?.toLocaleString() ??
-                '—'
-              }}
-            </dd>
-          </div>
-          <div>
-            <dt>Location</dt>
+            <dt>Region</dt>
             <dd>{{ character.zone || 'Unknown zone' }}</dd>
           </div>
           <div>
-            <dt>Training</dt>
-            <dd>
-              {{
-                character.botting == null
-                  ? 'Unknown'
-                  : character.botting
-                    ? 'Training'
-                    : 'Idle'
-              }}
-            </dd>
-          </div>
-          <div>
-            <dt>Resource freshness</dt>
-            <dd>{{ freshness }}</dd>
+            <dt>Position</dt>
+            <dd>{{ positionLabel }}</dd>
           </div>
         </dl>
         <MapPreview
@@ -478,12 +583,54 @@ onBeforeUnmount(() => {
           character-card
         />
       </div>
+
+      <section class="ov-pets" aria-label="Active pets">
+        <h4>Active pets</h4>
+        <p v-if="!pets.length" class="ov-pets-empty">No summoned pets.</p>
+        <div v-for="pet in pets" :key="String(pet.pet_id)" class="ov-pet">
+          <strong
+            >{{ pet.name || pet.servername || petLabel(pet)
+            }}<small v-if="pet.level" class="ov-pet-level">
+              Lv {{ pet.level }}</small
+            ></strong
+          >
+          <span class="ov-pet-hp">
+            <span v-if="petHpPercent(pet) !== null" class="ov-bar ov-bar-pet"
+              ><i :style="{ width: `${petHpPercent(pet)}%` }"
+            /></span>
+            <b v-if="typeof pet.hp === 'number'"
+              >{{ pet.hp.toLocaleString()
+              }}<template v-if="pet.hp_max">
+                / {{ pet.hp_max.toLocaleString() }}</template
+              ></b
+            >
+            <small
+              v-if="typeof pet.hgp === 'number'"
+              class="ov-pet-level"
+              :title="`Hunger read ${Math.round((pet.hgp_age_s ?? 0) / 60)} min ago, when the pet was summoned`"
+            >
+              HGP {{ Math.round(pet.hgp / 100) }}%</small
+            >
+            <small v-if="petExpPercent(pet) !== null" class="ov-pet-level">
+              EXP {{ petExpPercent(pet) }}%</small
+            >
+          </span>
+        </div>
+      </section>
+
+      <div class="ov-tiles">
+        <div class="ov-tile ov-tile-gold">
+          <span>Gold (inv)</span>
+          <strong>{{ goldLabel }}</strong>
+        </div>
+        <div class="ov-tile ov-tile-sp">
+          <span>SP</span>
+          <strong>{{ compactNumber(character.sp) }}</strong>
+        </div>
+      </div>
       <div class="character-mini-summary">
-        <span
-          >{{ pets.length }} summoned
-          {{ pets.length === 1 ? 'pet' : 'pets' }}</span
-        >
         <span>{{ partyMembers.length }} party members reported</span>
+        <span>{{ freshness }}</span>
       </div>
     </div>
 
@@ -516,7 +663,7 @@ onBeforeUnmount(() => {
             Showing the last confirmed equipment observation from
             {{
               equipmentObservation?.observed_at
-                ? formatTimestamp(equipmentObservation.observed_at)
+                ? formatDate(equipmentObservation.observed_at)
                 : 'an unknown time'
             }}.
           </div>
@@ -950,7 +1097,7 @@ onBeforeUnmount(() => {
         ><span>{{
           Array.isArray(payload('pets').pets) &&
           observation('pets')?.observed_at
-            ? `Last contents observed ${formatTimestamp(observation('pets')?.observed_at)}`
+            ? `Last contents observed ${formatDate(observation('pets')?.observed_at)}`
             : 'phBot has not supplied a current pet observation.'
         }}</span>
       </div>
@@ -1057,7 +1204,7 @@ onBeforeUnmount(() => {
         ><span>{{
           Array.isArray(payload('party').members) &&
           observation('party')?.observed_at
-            ? `Last contents observed ${formatTimestamp(observation('party')?.observed_at)}`
+            ? `Last contents observed ${formatDate(observation('party')?.observed_at)}`
             : 'Party membership and Party Setup are separate observations.'
         }}</span>
       </div>
@@ -1135,7 +1282,7 @@ onBeforeUnmount(() => {
         }}</strong
         ><span>{{
           academy && observation('academy')?.observed_at
-            ? `Last contents observed ${formatTimestamp(observation('academy')?.observed_at)}`
+            ? `Last contents observed ${formatDate(observation('academy')?.observed_at)}`
             : 'Waiting for the phBot academy getter.'
         }}</span>
       </div>

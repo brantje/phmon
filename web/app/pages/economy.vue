@@ -1,30 +1,28 @@
 <script setup lang="ts">
 import { createLatestRequestGate, economySearchQuery } from '~/utils/searchPage'
-type Offer = {
-  message_id: string
-  source_event_id: string
-  server: string
-  observer_character_id: string
-  observer: string
-  sender: string
-  channel: string
-  raw_type: string
-  message: string
-  offer_type: 'WTB' | 'WTS' | 'WTT' | 'unclassified'
-  occurred_at: string
-}
-type OfferPage = {
-  offers: Offer[]
-  total: number
-  next_cursor?: string
-}
+import {
+  offerDegrees,
+  offerItemChips,
+  offerItemTypes,
+  offerSubtypeOptions,
+} from '~/utils/offerTaxonomy'
+import type { GlobalOffer, GlobalOffersPage } from '~~/shared/types/live'
+
+type Offer = GlobalOffer
+type OfferPage = GlobalOffersPage
 const { serverScope } = useServerScope()
 const type = ref('')
+const itemType = ref('')
+const subtype = ref('')
+const degree = ref('')
 const seller = ref('')
 const search = ref('')
 const from = ref('')
 const to = ref('')
 const page = shallowRef<OfferPage | null>(null)
+// Tab counts follow every filter except the offer type, so keep the last
+// complete set while the next page loads.
+const counts = ref<Record<string, number>>({})
 const error = ref('')
 const loading = ref(false)
 const cursor = ref('')
@@ -39,6 +37,23 @@ const { liveStale, connectionState } = useLiveData()
 const stale = computed(
   () => liveStale.value || connectionState.value === 'stale',
 )
+const subtypeOptions = computed(() => offerSubtypeOptions(itemType.value))
+const tabs = [
+  { key: '', label: 'All' },
+  { key: 'WTB', label: 'WTB' },
+  { key: 'WTS', label: 'WTS' },
+  { key: 'WTT', label: 'WTT' },
+  { key: 'unclassified', label: 'Other' },
+]
+function tabCount(key: string) {
+  if (key === 'unclassified') return null
+  if (key === '')
+    return ['WTB', 'WTS', 'WTT'].reduce(
+      (sum, k) => sum + (counts.value[k] || 0),
+      0,
+    )
+  return counts.value[key] ?? null
+}
 function load() {
   const id = requestGate.next()
   if (invalidRange.value) {
@@ -59,10 +74,15 @@ function load() {
       from: from.value,
       to: to.value,
       cursor: cursor.value,
+      itemType: itemType.value,
+      subtype: subtype.value,
+      degree: degree.value,
     }),
   })
     .then((response) => {
-      if (requestGate.isCurrent(id)) page.value = response
+      if (!requestGate.isCurrent(id)) return
+      page.value = response
+      if (response.counts) counts.value = response.counts
     })
     .catch(() => {
       if (requestGate.isCurrent(id))
@@ -72,17 +92,41 @@ function load() {
       if (requestGate.isCurrent(id)) loading.value = false
     })
 }
+const pmLink = (offer: Offer) => ({
+  path: '/chat',
+  query: {
+    channel: 'private',
+    character_id: offer.observer_character_id,
+    peer: offer.sender,
+  },
+})
+function offerIcons(offer: Offer) {
+  const urls: string[] = []
+  for (const item of offer.items || [])
+    if (item.icon_url && !urls.includes(item.icon_url) && urls.length < 2)
+      urls.push(item.icon_url)
+  return urls
+}
+function offerChipRows(offer: Offer) {
+  return (offer.items || []).map((item) => offerItemChips(item))
+}
 watch(searchInput, (value) => {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
     search.value = value.trim()
   }, 250)
 })
-watch([serverScope, type, seller, search, from, to], () => {
-  cursor.value = ''
-  previous.value = []
-  if (import.meta.client) load()
+watch(itemType, () => {
+  subtype.value = ''
 })
+watch(
+  [serverScope, type, seller, search, from, to, itemType, subtype, degree],
+  () => {
+    cursor.value = ''
+    previous.value = []
+    if (import.meta.client) load()
+  },
+)
 watch(cursor, () => {
   if (import.meta.client) load()
 })
@@ -97,6 +141,9 @@ function resetFilters() {
   searchInput.value = ''
   search.value = ''
   type.value = ''
+  itemType.value = ''
+  subtype.value = ''
+  degree.value = ''
   seller.value = ''
   from.value = ''
   to.value = ''
@@ -121,56 +168,78 @@ function previousPage() {
       icon="i-lucide-coins"
       description="WTB, WTS and WTT advertisements from preserved Global chat observations. Offers are not completed trades."
     />
-    <section class="panel p-4" aria-label="Global economy filters">
-      <form
-        class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-        @submit.prevent="load"
+    <div class="economy-tabs" role="tablist" aria-label="Offer type">
+      <button
+        v-for="tab in tabs"
+        :key="tab.key"
+        type="button"
+        role="tab"
+        class="economy-tab"
+        :class="[`kind-${tab.key || 'all'}`, { active: type === tab.key }]"
+        :aria-selected="type === tab.key"
+        @click="type = tab.key"
       >
-        <label class="grid gap-1">
-          <span>Offer type</span>
-          <select v-model="type" class="rounded border p-2">
-            <option value="">All classified offers</option>
-            <option value="WTB">WTB · Want to buy</option>
-            <option value="WTS">WTS · Want to sell</option>
-            <option value="WTT">WTT · Want to trade</option>
-            <option value="unclassified">Unclassified Global messages</option>
-          </select>
-        </label>
-        <label class="grid gap-1">
-          <span>Item, offer text or notes</span>
+        {{ tab.label }}
+        <span v-if="tabCount(tab.key) !== null" class="economy-count">{{
+          tabCount(tab.key)
+        }}</span>
+      </button>
+    </div>
+    <section class="panel economy-filters" aria-label="Global economy filters">
+      <form class="economy-filter-row" @submit.prevent="load">
+        <label>
+          <span>Search</span>
           <input
             v-model="searchInput"
             maxlength="128"
-            placeholder="Search original messages"
+            placeholder="Search offer text, item or notes"
             aria-label="Search Global offer text"
-            class="min-w-0 rounded border p-2"
           />
         </label>
-        <label class="grid gap-1">
-          <span>Buyer or seller name</span>
+        <label>
+          <span>Buyer / seller</span>
           <input
             v-model="seller"
             maxlength="64"
-            class="min-w-0 rounded border p-2"
-            placeholder="Sender name"
+            placeholder="Filter by player"
           />
         </label>
-        <label class="grid gap-1">
+        <label>
+          <span>Item type</span>
+          <select v-model="itemType">
+            <option value="">Any type</option>
+            <option v-for="t in offerItemTypes" :key="t.key" :value="t.key">
+              {{ t.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span>Subcategory</span>
+          <select v-model="subtype" :disabled="!subtypeOptions.length">
+            <option value="">Any subcategory</option>
+            <option v-for="t in subtypeOptions" :key="t.key" :value="t.key">
+              {{ t.label }}
+            </option>
+          </select>
+        </label>
+        <label>
+          <span>Degree</span>
+          <select v-model="degree">
+            <option value="">Any degree</option>
+            <option v-for="d in offerDegrees" :key="d" :value="String(d)">
+              D{{ d }}
+            </option>
+          </select>
+        </label>
+        <label>
           <span>From</span>
-          <input v-model="from" type="date" class="rounded border p-2" />
+          <input v-model="from" type="date" />
         </label>
-        <label class="grid gap-1">
+        <label>
           <span>To (exclusive)</span>
-          <input v-model="to" type="date" class="rounded border p-2" />
+          <input v-model="to" type="date" />
         </label>
-        <button type="submit" class="compact-button self-end">
-          Refresh offers
-        </button>
-        <button
-          type="button"
-          class="compact-button self-end"
-          @click="resetFilters"
-        >
+        <button type="button" class="compact-button" @click="resetFilters">
           Reset filters
         </button>
       </form>
@@ -179,9 +248,10 @@ function previousPage() {
       The live connection is stale. Saved Global messages remain available.
     </p>
     <p v-if="error" class="status-banner warning" role="alert">{{ error }}</p>
-    <section class="panel p-4" aria-label="Classified Global offers">
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <strong>{{ page ? `${page.total} messages` : 'Global offers' }}</strong>
+    <section aria-label="Classified Global offers">
+      <div class="economy-list-head">
+        <strong>{{ page ? `${page.total} offers` : 'Offers' }}</strong>
+        <span>Newest first</span>
         <span v-if="loading" role="status">Loading offers…</span>
       </div>
       <div
@@ -194,43 +264,57 @@ function previousPage() {
           filters.</span
         >
       </div>
-      <div class="grid gap-3">
+      <div class="economy-grid">
         <article
           v-for="offer in page?.offers || []"
           :key="offer.message_id"
-          class="rounded border p-3"
+          class="economy-card panel"
         >
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <strong>{{ offer.offer_type }}</strong>
-            <time :datetime="offer.occurred_at">
-              {{ new Date(offer.occurred_at).toLocaleString() }}
-            </time>
+          <header>
+            <span class="economy-kind" :class="`kind-${offer.offer_type}`">{{
+              offer.offer_type
+            }}</span>
+            <FormattedDate :value="offer.occurred_at" />
+          </header>
+          <div class="economy-body">
+            <div v-if="offerIcons(offer).length" class="economy-icons">
+              <span
+                v-for="url in offerIcons(offer)"
+                :key="url"
+                class="economy-icon"
+              >
+                <img :src="url" alt="" loading="lazy" />
+              </span>
+            </div>
+            <p class="economy-text">{{ offer.message }}</p>
           </div>
-          <p class="my-2 whitespace-pre-wrap break-words">
-            {{ offer.message }}
+          <div
+            v-for="(chips, index) in offerChipRows(offer)"
+            :key="index"
+            class="economy-chips"
+          >
+            <span v-for="chip in chips" :key="chip" class="economy-chip">{{
+              chip
+            }}</span>
+          </div>
+          <p class="economy-meta">
+            <strong>{{ offer.sender }}</strong>
+            <span>{{ offer.server }}</span>
           </p>
-          <div class="flex flex-wrap gap-3 text-sm">
-            <span>{{ offer.server }} · Global</span>
-            <span>Sender: {{ offer.sender }}</span>
-            <NuxtLink
-              :to="`/chat?channel=global&character_id=${offer.observer_character_id}`"
+          <footer>
+            <NuxtLink class="compact-button" :to="pmLink(offer)"
+              >Write PM</NuxtLink
             >
-              View Global chat
-            </NuxtLink>
-            <span>Observed by {{ offer.observer }}</span>
-          </div>
-          <details class="mt-2 text-sm">
-            <summary>Source observation</summary>
-            <p>Message ID: {{ offer.message_id }}</p>
             <NuxtLink
+              class="economy-source"
               :to="{
                 path: '/events',
                 query: { event_id: offer.source_event_id },
               }"
+              :title="`Seen by ${offer.observer}`"
+              >Source event</NuxtLink
             >
-              Inspect canonical chat event {{ offer.source_event_id }}
-            </NuxtLink>
-          </details>
+          </footer>
         </article>
       </div>
       <nav

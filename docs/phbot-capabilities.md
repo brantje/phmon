@@ -1,5 +1,16 @@
 # phBot capability evidence
 
+## Character mastery display — 2026-10-16
+
+The official [Character API](https://plugins.phbot.org/phbot-api/character)
+documents `get_mastery()` as returning `None` or a dictionary keyed by mastery
+ID. Its example provides each mastery name, level and SP value. Plugin 1.9.47
+collects only the ID, name and level for the existing `character_info` resource;
+missing or malformed data is omitted, and an observed empty dictionary remains
+an empty list. The Stats card displays up to two learned mastery names under the
+character level. Automated fixtures cover the shape, but no Windows/phBot runtime
+was used, so actual installed-runtime getter behavior remains unverified.
+
 ## Slice 12 source review — 2026-10-07
 
 Official [Character](https://plugins.phbot.org/phbot-api/character),
@@ -2077,3 +2088,32 @@ Plugin 1.9.43 allows an empty second API page while checking every packet-covere
 rejecting occupied uncovered positions. The live packet's own capacity was
 not retained, so 1.9.43 needs a new runtime observation.
 This does not recover historical items whose packet bytes were never captured.
+
+### Pet level, HP and EXP (2026-10-16, operator captures)
+
+phBot 20.1.x `get_pets()` returns `hp` (current; tracks `0x3057` HP-update packets exactly),
+and for growing pets `level` and `exp` (current-level EXP). Pick pets report level 0.
+`max_exp` is always 0 and there is no max HP. PhMon 1.9.48 forwards `level`/`exp`.
+The server adds catalog maxima at read time from `server/game-data/pet-reference.json`
+(built by `tools/game-data-exporter/build_pet_reference.py`): `hp_max` from
+`characterdata` column 59 by pet model and `max_exp` from `leveldata.txt` by level, each
+marked `*_source: "catalog"`. Verified against the in-game pet window: model 6142 is level
+37, HP 6018/6022, EXP 2805019/3239210 (86.60%). Catalog values never override a runtime
+value, and max HP is skipped when observed HP exceeds it.
+
+Pet HGP (hunger, max 10000) is not in `get_pets()` and no update packet carrying it was
+found (probe 0.4.0/0.5.0 captures). It exists only in the `0x30C8` header sent when the pet
+is summoned. Wolf layout (verified over three captures, header 39 bytes): id u32, model u32,
+hp u32, u32 0, exp u64, level u8 at offset 24, hunger u16 at offset 25, then fields not
+decoded. Level and exp equal `get_pets()`; hunger read 9745, 9316 against in-game values
+falling 9524 → 9450 → 9378 → 9355 over the same session. Plugin 1.9.49 forwards `hgp` and
+`hgp_age_s` only for `wolf` pets whose packet model and level match the live roster. The
+value is a snapshot from summon time and goes stale; other pet classes' headers are
+unverified. `0x30D0` packets look like speed floats and `0x30BF` is 6 bytes (unknown).
+
+Probe 0.6.0 (2026-10-16, 432 s capture, summon header HGP 8966, in-game 8965 → 8815)
+scanned every server packet for the pet ID at any offset and for any u16 from 600 below to
+5 above the baseline. Only the `0x30C8` header matched, so no later packet carries HGP; the
+client most likely decays it locally. `0x30BF` is the pet ID plus constant `0x0004`. Decay
+is uneven (about 0.23-0.47 per second across windows), so it cannot be estimated. Live HGP
+is therefore not obtainable; keep the summon-time value.

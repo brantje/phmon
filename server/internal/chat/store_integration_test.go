@@ -213,15 +213,15 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 	// visible to the chat history query, so inserting them earlier changes the
 	// established source test's expected message count.
 	// The economy projection reuses durable Global chat events. Two independent
-	// observers of possibly repeated broadcasts retain separate source events.
-	// Without a shared broadcast ID, identical messages 100ms apart cannot
-	// safely be collapsed. Cursor totals count source observations.
+	// observers of one broadcast retain separate source events, but the offers
+	// query collapses identical messages from different observers within 2s.
+	// Repeats from the same observer stay distinct.
 	wtsAlpha := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 101,
-		databaseNow.Add(7*time.Second), "global", "6", "Trader", "WTS +7 staff")
+		databaseNow.Add(7*time.Second), "global", "6", "Trader", "WTS +7 staff d12")
 	wtsBeta := makeChannelChatEvent(credential.AgentID, secondCharacterID, secondSessionID, server, "Beta", 102,
-		databaseNow.Add(7*time.Second+100*time.Millisecond), "global", "6", "Trader", "WTS +7 staff")
+		databaseNow.Add(7*time.Second+100*time.Millisecond), "global", "6", "Trader", "WTS +7 staff d12")
 	wtsRepeat := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 103,
-		databaseNow.Add(12*time.Second), "global", "6", "Trader", "WTS +7 staff")
+		databaseNow.Add(12*time.Second), "global", "6", "Trader", "WTS +7 staff d12")
 	wttOffer := makeChannelChatEvent(credential.AgentID, characterID, sessionID, server, "Alpha", 104,
 		databaseNow.Add(14*time.Second), "global", "6", "Trader", "WTT blade for spear")
 	if inserted, changed, err := store.AppendBatch(ctx, credential.AgentID,
@@ -229,17 +229,32 @@ func TestChatProjectionPaginationUnreadAndPreferences(t *testing.T) {
 		t.Fatalf("classified Global chat events = %+v changed=%v err=%v", inserted, changed, err)
 	}
 	offers, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 1})
-	if offerErr != nil || offers.Total != 4 || len(offers.Offers) != 1 || offers.NextCursor == "" {
+	if offerErr != nil || offers.Total != 3 || len(offers.Offers) != 1 || offers.NextCursor == "" {
 		t.Fatalf("offer first cursor and auditable observations = %+v err=%v", offers, offerErr)
 	}
 	offersNext, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 2,
 		Cursor: offers.NextCursor})
-	if offerErr != nil || offersNext.Total != 4 || len(offersNext.Offers) != 2 {
+	if offerErr != nil || offersNext.Total != 3 || len(offersNext.Offers) != 2 {
 		t.Fatalf("offer second cursor = %+v err=%v", offersNext, offerErr)
 	}
 	wtsOffers, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 20, Kind: "WTS"})
-	if offerErr != nil || wtsOffers.Total != 3 || len(wtsOffers.Offers) != 3 {
-		t.Fatalf("independent identical observations must survive ambiguous pairing: %+v err=%v", wtsOffers, offerErr)
+	if offerErr != nil || wtsOffers.Total != 2 || len(wtsOffers.Offers) != 2 {
+		t.Fatalf("cross-observer duplicates within 2s collapse, same-observer repeat survives: %+v err=%v", wtsOffers, offerErr)
+	}
+	if wtsOffers.Counts["WTS"] != 2 || wtsOffers.Counts["WTT"] != 1 || wtsOffers.Counts["WTB"] != 0 {
+		t.Fatalf("tab counts = %+v", wtsOffers.Counts)
+	}
+	if len(wtsOffers.Offers[0].Items) != 1 || wtsOffers.Offers[0].Items[0].Type != "weapons" ||
+		wtsOffers.Offers[0].Items[0].Subtype != "staff" || wtsOffers.Offers[0].Items[0].Plus != 7 {
+		t.Fatalf("parsed tags missing: %+v", wtsOffers.Offers[0].Items)
+	}
+	tagged, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 20, ItemType: "weapons", Subtype: "staff"})
+	if offerErr != nil || tagged.Total != 2 || tagged.Counts["WTS"] != 2 {
+		t.Fatalf("tag filter = %+v err=%v", tagged, offerErr)
+	}
+	none, offerErr := chatStore.Offers(ctx, chat.OfferFilter{Server: server, Limit: 20, ItemType: "weapons", Degree: 9})
+	if offerErr != nil || none.Total != 0 {
+		t.Fatalf("degree filter = %+v err=%v", none, offerErr)
 	}
 	if wtsOffers.Offers[0].SourceEventID == "" {
 		t.Fatal("economy offer lacks source event identity")

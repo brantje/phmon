@@ -4429,7 +4429,7 @@ useHead({ title: 'Map · PhMon' })
                     ></span
                   ><time
                     :datetime="event.occurred_at"
-                    :title="formatTimestamp(event.occurred_at)"
+                    :title="formatDate(event.occurred_at)"
                     >{{ eventAge(event.occurred_at) }}</time
                   >
                 </button>
@@ -5623,7 +5623,7 @@ useHead({ title: 'Map · PhMon' })
 .map-section-toggle > span {
   margin-left: auto;
   color: #8796aa;
-  font-size: 0.68rem;
+  font-size: 10px;
 }
 
 .map-section-toggle :deep(.i-lucide-chevron-down) {

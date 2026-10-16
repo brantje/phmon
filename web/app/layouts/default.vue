@@ -24,16 +24,13 @@ const {
   loginOperator,
 } = useOperatorSession()
 const { startLiveData, stopLiveData } = useLiveData()
-const chatNotifications = useChatNotifications()
 
 watch(
   operatorAuthenticated,
   (authenticated) => {
     if (authenticated) {
       startLiveData()
-      chatNotifications.start()
     } else {
-      chatNotifications.stop()
       stopLiveData()
     }
   },
@@ -114,5 +111,6 @@ await useBackendHealthMonitor()
       />
       <main class="workspace-content"><slot /></main>
     </div>
+    <EventNotificationHost />
   </div>
 </template>

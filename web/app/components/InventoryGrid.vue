@@ -83,7 +83,7 @@ const displayable = computed(() => observed.value || hasLastContents.value)
 const staleContents = computed(() => displayable.value && !observed.value)
 const lastObserved = computed(() => {
   const value = props.observation?.observed_at
-  return typeof value === 'string' ? formatTimestamp(value) : 'time unavailable'
+  return typeof value === 'string' ? formatDate(value) : 'time unavailable'
 })
 const reasonText = computed(() => {
   if (props.reason) return props.reason.replaceAll('_', ' ')

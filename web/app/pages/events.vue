@@ -10,7 +10,6 @@ import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
 import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
 import { deathCauseLabel } from '~/utils/deathCause'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
-import { formatDropTimestamp } from '~/utils/dropHistory'
 import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
 const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
@@ -448,6 +447,7 @@ watch(
     characterQuery,
     tradeCursor,
     pageSize,
+    () => route.query.trade_id,
   ],
   () => {
     if (tradeTimer) clearInterval(tradeTimer)
@@ -459,7 +459,15 @@ watch(
   { immediate: true },
 )
 watch(
-  [tradesView, serverScope, fromDate, toDate, characterQuery, pageSize],
+  [
+    tradesView,
+    serverScope,
+    fromDate,
+    toDate,
+    characterQuery,
+    pageSize,
+    () => route.query.trade_id,
+  ],
   () => {
     tradeCursor.value = ''
     tradePrevious.value = []
@@ -521,6 +529,10 @@ async function loadTrades() {
       query: {
         server: serverScope.value === 'all' ? undefined : serverScope.value,
         q: characterQuery.value || undefined,
+        trade_id:
+          typeof route.query.trade_id === 'string'
+            ? route.query.trade_id
+            : undefined,
         from: fromDate.value ? localDateBoundary(fromDate.value, 0) : undefined,
         to: toDate.value ? localDateBoundary(toDate.value, 1) : undefined,
         cursor: tradeCursor.value || undefined,
@@ -956,9 +968,7 @@ function localDateBoundary(value: string, addDays: number) {
                 </NuxtLink>
               </td>
               <td>
-                <time :datetime="item.occurred_at">{{
-                  formatDropTimestamp(item.occurred_at)
-                }}</time>
+                <FormattedDate :value="item.occurred_at" />
               </td>
               <td>
                 <NuxtLink
@@ -1012,9 +1022,7 @@ function localDateBoundary(value: string, addDays: number) {
             <div class="event-row-primary">
               <strong>{{ tradeOutcomeLabel(row) }}</strong>
             </div>
-            <time :datetime="row.finished_at">{{
-              formatTimestamp(row.finished_at)
-            }}</time>
+            <FormattedDate :value="row.finished_at" />
             <div class="event-row-character">{{ row.reporter.name }}</div>
             <div>{{ tradeRouteLabel(row) }}</div>
             <div class="event-row-detail">{{ tradeReportSummary(row) }}</div>
@@ -1044,9 +1052,7 @@ function localDateBoundary(value: string, addDays: number) {
             <div class="event-row-primary">
               <strong>{{ row.thief_name }}</strong>
             </div>
-            <time :datetime="row.received_at">{{
-              formatTimestamp(row.received_at)
-            }}</time>
+            <FormattedDate :value="row.received_at" />
             <div class="event-row-character">
               {{ row.reporter.name || '—' }}
             </div>
@@ -1089,9 +1095,7 @@ function localDateBoundary(value: string, addDays: number) {
               <UIcon name="i-lucide-users" />
               <strong>{{ spottedPlayerName(item) }}</strong>
             </div>
-            <time :datetime="item.occurred_at">{{
-              formatTimestamp(item.occurred_at)
-            }}</time>
+            <FormattedDate :value="item.occurred_at" />
             <div class="event-row-character">
               <NuxtLink
                 v-if="item.character_id"
@@ -1179,9 +1183,7 @@ function localDateBoundary(value: string, addDays: number) {
                 <strong>{{ eventRowTitle(item) }}</strong>
                 <span>{{ eventRowSubtitle(item) }}</span>
               </div>
-              <time :datetime="item.occurred_at">{{
-                formatTimestamp(item.occurred_at)
-              }}</time>
+              <FormattedDate :value="item.occurred_at" />
               <NuxtLink
                 v-if="hasReliableMapLocation(item)"
                 class="compact-button map-event-link featured-event-map-link"
@@ -1266,9 +1268,7 @@ function localDateBoundary(value: string, addDays: number) {
                   </div>
                 </details>
               </div>
-              <time :datetime="item.occurred_at">{{
-                formatTimestamp(item.occurred_at)
-              }}</time>
+              <FormattedDate :value="item.occurred_at" />
               <div class="event-row-character">
                 <NuxtLink
                   v-if="item.character_id"

@@ -287,6 +287,8 @@ export interface ThiefSighting {
   server: string
   thief_name: string
   position?: ThiefSightingPosition
+  /** Client zone name resolved from the region on the live dashboard stream. */
+  zone?: string
   position_source: 'thief' | 'observer' | 'unknown'
   reporter: { name: string; app: string; version: string }
   origin: 'phmon' | 'external'
@@ -336,6 +338,14 @@ export interface TradeReportPage {
   reports: TradeReport[]
   next_cursor?: string
   total: number
+}
+
+export interface RecentTradesSnapshot {
+  reports: TradeReport[]
+  profit_24h: number
+  trades_24h: number
+  profit_samples_24h: number
+  since: string
 }
 
 export interface MapPartySnapshot {
@@ -659,10 +669,40 @@ export type LiveStream =
   | 'resources'
   | 'events'
   | 'offers'
+  | 'trades'
+  | 'thieves'
   | 'analytics'
   | 'chat'
   | 'map'
   | 'positions'
+  | 'notifications'
+
+export interface NotificationEvent {
+  event_id: string
+  kind: string
+  category: string
+  server: string
+  character_id: string
+  character: string
+  occurred_at: string
+  payload: Record<string, unknown>
+  item_name?: string
+  unique?: ActivityEvent['unique']
+}
+
+export interface GlobalOfferItem {
+  item_type: string
+  subtype?: string
+  part?: string
+  degree?: number
+  race?: string
+  seal?: string
+  plus?: number
+  price?: string
+  currency?: string
+  notes?: readonly string[]
+  icon_url?: string
+}
 
 export interface GlobalOffer {
   message_id: string
@@ -674,11 +714,13 @@ export interface GlobalOffer {
   message: string
   offer_type: 'WTB' | 'WTS' | 'WTT'
   occurred_at: string
+  items?: GlobalOfferItem[]
 }
 
 export interface GlobalOffersPage {
   offers: GlobalOffer[]
   total: number
+  counts?: Record<string, number>
   next_cursor?: string
 }
 
@@ -693,6 +735,7 @@ export interface LiveFilter {
   limit?: number
   resource_keys?: string[]
   server?: string
+  kinds?: string[]
   kind?: string
   category?: string
   item?: string
@@ -815,7 +858,13 @@ export interface PetInventoryRecord {
   servername?: string
   type?: string
   model?: number
+  level?: number
+  exp?: number
+  max_exp?: number
+  hgp?: number
+  hgp_age_s?: number
   hp?: number
+  hp_max?: number
   mounted?: boolean
   inventory_available: boolean
   slots?: (PetInventorySlot | null)[]

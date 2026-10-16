@@ -24,6 +24,7 @@ import (
 	"phmon/server/internal/httpapi"
 	"phmon/server/internal/mapanalytics"
 	"phmon/server/internal/mobs"
+	"phmon/server/internal/notifications"
 	"phmon/server/internal/npcs"
 	"phmon/server/internal/phproxy"
 	"phmon/server/internal/players"
@@ -57,6 +58,29 @@ func run() error {
 		return errors.New("cannot initialize database pool")
 	}
 	defer pool.Close()
+	// A second backend pointed at this database must never reconcile the first
+	// backend's live character sessions. Keep this session-level lock on a
+	// dedicated pool connection for the entire server lifetime.
+	leaseCtx, leaseCancel := context.WithTimeout(ctx, 2*time.Second)
+	lease, err := pool.Acquire(leaseCtx)
+	if err != nil {
+		leaseCancel()
+		return errors.New("cannot acquire database server lease")
+	}
+	const serverLeaseKey int64 = 0x70686d6f6e736572 // "phmonser"
+	var leaseAcquired bool
+	err = lease.QueryRow(leaseCtx, `SELECT pg_try_advisory_lock($1)`, serverLeaseKey).Scan(&leaseAcquired)
+	leaseCancel()
+	if err != nil || !leaseAcquired {
+		lease.Release()
+		return errors.New("another PhMon server is already using this database")
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_, _ = lease.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, serverLeaseKey)
+		lease.Release()
+	}()
 
 	migrationCtx, migrationCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer migrationCancel()
@@ -86,6 +110,7 @@ func run() error {
 	resourceStore := resources.NewStore(pool)
 	eventStore := events.NewStore(pool)
 	chatStore := chat.NewStore(pool)
+	notificationStore := notifications.NewStore(pool)
 	mobStore := mobs.NewStore(pool)
 	mapAnalyticsStore := mapanalytics.NewStore(pool)
 	mobLive := mobs.NewLiveStore()
@@ -111,6 +136,9 @@ func run() error {
 		resourceStore.AnalyticsTaxonomyOptions,
 	)
 	analyticsStore.SetItemDetailsResolver(resourceStore.AnalyticsItemDetails)
+	chatStore.SetOfferIconResolver(func(server string, item chat.OfferItem) string {
+		return metadata.OfferIcon(server, item.Type, item.Subtype, item.Part, item.Race, item.Degree)
+	})
 	eventStore.SetDropClassifier(metadata.ItemDropClassification)
 	eventStore.SetItemNameMatcher(metadata.ItemNameMatches)
 	mobStore.SetLevelLookup(metadata.MonsterLevel)
@@ -141,6 +169,7 @@ func run() error {
 		thiefSightings = tradenexus.NewStore(pool)
 		tradeHub = tradenexus.NewHub(tradenexus.Options{
 			Store: thiefSightings, Trades: thiefSightings, Invalidate: live.Invalidate,
+			TradeAccepted: live.PublishTradeNotification,
 			PlayerRecorder: func(recordCtx context.Context, sighting tradenexus.Sighting) {
 				job := "thief"
 				obs := players.Observation{
@@ -163,7 +192,10 @@ func run() error {
 		})
 		live.SetThiefSightings(thiefSightings)
 		go thiefSightings.RunRetention(ctx, cfg.TradeNexusRetentionDays, time.Hour)
-		eventStore.SetAcceptedHook(func(event events.Event) {
+	}
+	eventStore.SetAcceptedHook(func(event events.Event) {
+		live.PublishNotification(event)
+		if tradeHub != nil {
 			sighting, ok := tradenexus.SightingFromEvent(event)
 			if !ok {
 				return
@@ -178,8 +210,8 @@ func run() error {
 			if fresh {
 				tradeHub.Broadcast(recorded)
 			}
-		})
-	}
+		}
+	})
 	dispatchStore := commands.NewStore(pool)
 	if err := dispatchStore.RecoverInterrupted(ctx, time.Now().UTC()); err != nil {
 		return errors.New("cannot recover interrupted commands")
@@ -201,6 +233,7 @@ func run() error {
 		Resources:      resourceStore,
 		Events:         eventStore,
 		Chat:           chatStore,
+		Notifications:  notificationStore,
 		Mobs:           mobStore,
 		MobLive:        mobLive,
 		NPCLive:        npcLive,

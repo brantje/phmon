@@ -18,12 +18,13 @@ type Store struct {
 }
 
 type Filter struct {
-	Server string
-	Query  string
-	From   *time.Time
-	To     *time.Time
-	Cursor string
-	Limit  int
+	Server  string
+	Query   string
+	TradeID string
+	From    *time.Time
+	To      *time.Time
+	Cursor  string
+	Limit   int
 }
 
 type Page struct {
@@ -317,10 +318,11 @@ func (s *Store) ListTrades(ctx context.Context, filter Filter) (TradePage, error
     OR route_to ILIKE $2 ESCAPE '\' OR outcome ILIKE $2 ESCAPE '\'
     OR reason ILIKE $2 ESCAPE '\')
   AND ($3::timestamptz IS NULL OR finished_at >= $3)
-  AND ($4::timestamptz IS NULL OR finished_at < $4)`
+  AND ($4::timestamptz IS NULL OR finished_at < $4)
+  AND ($5 = '' OR trade_id = $5::uuid)`
 	var total int
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM trade_reports `+where,
-		filter.Server, pattern, filter.From, filter.To).Scan(&total); err != nil {
+		filter.Server, pattern, filter.From, filter.To, filter.TradeID).Scan(&total); err != nil {
 		return TradePage{}, fmt.Errorf("count trade reports: %w", err)
 	}
 	rows, err := s.pool.Query(ctx, `SELECT trade_id::text, server_name, client_ref, outcome, reason,
@@ -328,9 +330,9 @@ func (s *Store) ListTrades(ctx context.Context, filter Filter) (TradePage, error
        reporter_name, reporter_app, reporter_version, finished_at, received_at
 FROM trade_reports
 `+where+`
-  AND ($5::timestamptz IS NULL OR (finished_at, trade_id) < ($5, $6::uuid))
+  AND ($6::timestamptz IS NULL OR (finished_at, trade_id) < ($6, $7::uuid))
 ORDER BY finished_at DESC, trade_id DESC
-LIMIT $7`, filter.Server, pattern, filter.From, filter.To, cursorTime, cursorID, filter.Limit+1)
+LIMIT $8`, filter.Server, pattern, filter.From, filter.To, filter.TradeID, cursorTime, cursorID, filter.Limit+1)
 	if err != nil {
 		return TradePage{}, fmt.Errorf("list trade reports: %w", err)
 	}
@@ -349,6 +351,45 @@ LIMIT $7`, filter.Server, pattern, filter.From, filter.To, cursorTime, cursorID,
 		page.Reports = []TradeReport{}
 	}
 	return page, nil
+}
+
+// RecentTrades returns the latest trade reports for a server (all servers when
+// empty) and the summed signed gold of reports finished at or after since.
+// Reports without a gold value count as trades but not as profit samples.
+func (s *Store) RecentTrades(ctx context.Context, server string, limit int, since time.Time) (RecentTrades, error) {
+	if s == nil || s.pool == nil {
+		return RecentTrades{}, errors.New("trade report store is unavailable")
+	}
+	if limit < 1 || limit > MaxPageSize {
+		limit = 5
+	}
+	result := RecentTrades{Since: since.UTC()}
+	if err := s.pool.QueryRow(ctx, `SELECT COALESCE(sum(gold), 0)::bigint, count(*), count(gold)
+FROM trade_reports
+WHERE ($1 = '' OR lower(server_name) = lower($1)) AND finished_at >= $2`,
+		server, since.UTC()).Scan(&result.Profit24h, &result.Trades24h, &result.ProfitSamples24h); err != nil {
+		return RecentTrades{}, fmt.Errorf("sum recent trade gold: %w", err)
+	}
+	rows, err := s.pool.Query(ctx, `SELECT trade_id::text, server_name, client_ref, outcome, reason,
+       route_from, route_to, waypoints, goods, gold, duration_s, stars, detail, thief_name, transport,
+       reporter_name, reporter_app, reporter_version, finished_at, received_at
+FROM trade_reports
+WHERE ($1 = '' OR lower(server_name) = lower($1))
+ORDER BY finished_at DESC, trade_id DESC
+LIMIT $2`, server, limit)
+	if err != nil {
+		return RecentTrades{}, fmt.Errorf("list recent trade reports: %w", err)
+	}
+	defer rows.Close()
+	reports, err := scanTradeReports(rows)
+	if err != nil {
+		return RecentTrades{}, err
+	}
+	if reports == nil {
+		reports = []TradeReport{}
+	}
+	result.Reports = reports
+	return result, nil
 }
 
 func (s *Store) DeleteTradesOlderThan(ctx context.Context, days int) (int64, error) {

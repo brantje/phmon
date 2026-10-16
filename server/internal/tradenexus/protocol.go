@@ -63,6 +63,7 @@ type Sighting struct {
 	Server         string    `json:"server"`
 	ThiefName      string    `json:"thief_name"`
 	Position       *Position `json:"position,omitempty"`
+	Zone           string    `json:"zone,omitempty"`
 	PositionSource string    `json:"position_source"`
 	Reporter       Reporter  `json:"reporter"`
 	Origin         string    `json:"origin"`

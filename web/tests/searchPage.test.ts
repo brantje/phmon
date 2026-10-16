@@ -88,6 +88,15 @@ test('Economy offers preserve sender, date scope, offer type and pagination', ()
     limit: 30,
   })
   assert.equal(economySearchQuery({ ...base, server: 'all' }).server, undefined)
+  const tagged = economySearchQuery({
+    ...base,
+    itemType: 'weapons',
+    subtype: 'staff',
+    degree: '13',
+  })
+  assert.equal(tagged.item_type, 'weapons')
+  assert.equal(tagged.subtype, 'staff')
+  assert.equal(tagged.degree, '13')
 })
 
 test('a stale filter request cannot replace the current page', () => {

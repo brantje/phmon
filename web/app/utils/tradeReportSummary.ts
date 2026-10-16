@@ -44,3 +44,8 @@ export function tradeReportSummary(report: TradeReport) {
   if (report.detail) parts.push(report.detail)
   return parts.join(' · ')
 }
+
+export function formatSignedTradeGold(value: number) {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${formatTradeGold(value)}`
+}

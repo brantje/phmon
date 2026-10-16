@@ -139,6 +139,20 @@ func TestTradeReportStoreInsertListAndRetention(t *testing.T) {
 	if err != nil || routePage.Total != 4 {
 		t.Fatalf("route page = %+v err=%v", routePage, err)
 	}
+	exact, err := store.ListTrades(ctx, Filter{Server: serverName, TradeID: stored.ID, Limit: 10})
+	if err != nil || exact.Total != 1 || len(exact.Reports) != 1 || exact.Reports[0].ID != stored.ID {
+		t.Fatalf("exact trade page = %+v err=%v", exact, err)
+	}
+	recent, err := store.RecentTrades(ctx, strings.ToUpper(serverName), 2, base.Add(-24*time.Hour))
+	// 45000 - 1200 + 0 within 24h; the 48h-old trade is excluded from the sum.
+	if err != nil || recent.Profit24h != 43800 || recent.Trades24h != 3 || recent.ProfitSamples24h != 3 ||
+		len(recent.Reports) != 2 || recent.Reports[0].Ref != "aat-2" {
+		t.Fatalf("recent trades = %+v err=%v", recent, err)
+	}
+	none, err := store.RecentTrades(ctx, "Nonexistent-"+serverName, 5, base.Add(-24*time.Hour))
+	if err != nil || none.Profit24h != 0 || none.Trades24h != 0 || len(none.Reports) != 0 || none.Reports == nil {
+		t.Fatalf("empty recent trades = %+v err=%v", none, err)
+	}
 	removed, err := store.DeleteTradesOlderThan(ctx, 1)
 	if err != nil || removed < 1 {
 		t.Fatalf("removed = %d err=%v", removed, err)

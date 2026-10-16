@@ -187,6 +187,30 @@ type memoryTrades struct {
 	rows map[string]TradeReport
 }
 
+func TestTradeAcceptedHookOnlyRunsForNewReports(t *testing.T) {
+	var accepted []TradeReport
+	hub := NewHub(Options{Trades: &memoryTrades{}, TradeAccepted: func(report TradeReport) { accepted = append(accepted, report) }})
+	now := time.Now().UTC()
+	first := sampleTrade("Ares", "ref-1", now, 500)
+	if _, err := hub.RecordTrade(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	duplicate := first
+	duplicate.ID = newTestID(now.Add(time.Second), "duplicate")
+	if _, err := hub.RecordTrade(context.Background(), duplicate); err != nil {
+		t.Fatal(err)
+	}
+	failed := sampleTrade("Ares", "ref-2", now, -100)
+	failed.Outcome, failed.Reason = "failed", "thief"
+	failed.Thief = &tradeName{Name: "Bandit"}
+	if _, err := hub.RecordTrade(context.Background(), failed); err != nil {
+		t.Fatal(err)
+	}
+	if len(accepted) != 2 || accepted[0].ID != first.ID || accepted[1].ID != failed.ID {
+		t.Fatalf("accepted=%+v", accepted)
+	}
+}
+
 func (m *memoryTrades) InsertTrade(_ context.Context, report TradeReport) (TradeReport, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

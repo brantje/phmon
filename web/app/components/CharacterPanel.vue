@@ -575,7 +575,7 @@ onUnmounted(() => {
             </td>
             <td>
               {{
-                formatTimestamp(
+                formatDate(
                   character.last_activity_at || character.state_updated_at,
                 )
               }}

@@ -903,6 +903,40 @@ def main():
         worker.update_character(alpha, {"level": 76, "hp": 950, "hp_max": 1000, "mp": 410, "mp_max": 500, "current_exp": 1800, "max_exp": 5000, "sp": 255, "gold": 123999, "region": 25000, "zone": "Fixture Jangan", "x": 11.0, "y": 21.0, "z": 0.0, "botting": True})
         time.sleep(1.2)
         worker.update_character(beta, {"level": 42, "hp": 300, "hp_max": 600, "mp": 700, "mp_max": 900, "current_exp": 12, "max_exp": 120, "sp": 17, "gold": 456, "region": 25200, "zone": "Fixture Donwhang", "x": 50.0, "y": 75.0, "z": 2.0, "botting": False})
+        mastery_update_file = os.environ.get("PHMON_SIMULATOR_MASTERY_UPDATE_FILE")
+        if mastery_update_file:
+            wait_until(
+                lambda: worker.character_id is not None
+                and worker.session_id is not None
+                and worker._current_identity == beta,
+                15,
+                "final Beta character session",
+            )
+            worker.update_resources(beta, {
+                "character_info": {
+                    "availability": "observed",
+                    "masteries": [
+                        {"id": 259, "name": "Pacheon", "level": 100},
+                        {"id": 275, "name": "Fire", "level": 100},
+                    ],
+                },
+            })
+            update_deadline = time.monotonic() + 60.0
+            while not os.path.exists(mastery_update_file) and time.monotonic() < update_deadline:
+                time.sleep(0.05)
+            if not os.path.exists(mastery_update_file):
+                raise SystemExit("browser did not observe initial mastery summary")
+            worker.update_resources(beta, {
+                "character_info": {
+                    "availability": "observed",
+                    "masteries": [
+                        {"id": 259, "name": "Pacheon", "level": 95},
+                        {"id": 275, "name": "Fire", "level": 100},
+                        {"id": 276, "name": "Ice", "level": 101},
+                    ],
+                },
+            })
+            time.sleep(1.0)
         print("PASS deterministic character lifecycle fixture completed")
 
     if os.environ.get("PHMON_SIMULATOR_SCENARIO") == "stable-character":

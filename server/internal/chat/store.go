@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -30,7 +31,11 @@ func serverScopedChannel(channel string) bool {
 	return channel != "private" && channel != "guild" && channel != "union"
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool         *pgxpool.Pool
+	tagMu        sync.Mutex
+	iconResolver OfferIconResolver
+}
 
 type EventInput struct {
 	EventID, CharacterID, SessionID string

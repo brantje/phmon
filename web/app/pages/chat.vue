@@ -165,11 +165,16 @@ watch(
   { immediate: true },
 )
 watch(
-  () => route.query.channel,
-  (value) => {
+  () => [route.query.channel, route.query.peer] as const,
+  ([value]) => {
     if (channels.some((channel) => channel.key === value))
       activeChannel.value = value as ChatChannel
     else if (value === 'unknown') activeChannel.value = 'unknown'
+    const peer = route.query.peer
+    if (value === 'private' && typeof peer === 'string' && peer.trim()) {
+      privatePeer.value = peer.trim()
+      recipientDraft.value = peer.trim()
+    }
   },
   { immediate: true },
 )
@@ -631,9 +636,8 @@ onBeforeUnmount(() => {
                     v-if="advancedMode && item.raw_type"
                     class="message-raw-type"
                     >type {{ item.raw_type }}</span
-                  ><time :datetime="item.occurred_at">{{
-                    new Date(item.occurred_at).toLocaleString()
-                  }}</time
+                  ><time :datetime="item.occurred_at"
+                    ><FormattedDate :value="item.occurred_at" /></time
                   ><span
                     v-if="item.direction === 'outbound'"
                     class="message-state"
