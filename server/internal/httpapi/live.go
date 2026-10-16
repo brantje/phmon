@@ -1171,6 +1171,24 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			limit = 5
 		}
 		return h.thiefSightings.RecentTrades(ctx, subscription.Filter.Server, limit, time.Now().Add(-24*time.Hour))
+	case "thieves":
+		if h.thiefSightings == nil {
+			return nil, errors.New("thief sightings unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 5
+		}
+		page, err := h.thiefSightings.List(ctx, tradenexus.Filter{Server: subscription.Filter.Server, Limit: limit})
+		if err != nil {
+			return nil, err
+		}
+		for index, sighting := range page.Sightings {
+			if sighting.Position != nil && h.resources != nil {
+				page.Sightings[index].Zone = h.resources.ZoneName(sighting.Server, sighting.Position.Region)
+			}
+		}
+		return page, nil
 	case "events":
 		if h.events == nil {
 			return nil, errors.New("event history unavailable")
@@ -1540,7 +1558,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 				return liveSubscription{}, false
 			}
 		}
-	case "offers", "trades":
+	case "offers", "trades", "thieves":
 		filter := subscription.Filter
 		if !validServerFilter(filter.Server) || filter.Query != "" || filter.GroupID != "" || filter.CharacterID != "" ||
 			filter.CommandName != "" || filter.CommandState != "" || len(filter.ResourceKeys) != 0 || hasEventSpecificFilters(filter) ||

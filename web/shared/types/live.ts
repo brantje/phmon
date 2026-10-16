@@ -287,6 +287,8 @@ export interface ThiefSighting {
   server: string
   thief_name: string
   position?: ThiefSightingPosition
+  /** Client zone name resolved from the region on the live dashboard stream. */
+  zone?: string
   position_source: 'thief' | 'observer' | 'unknown'
   reporter: { name: string; app: string; version: string }
   origin: 'phmon' | 'external'
@@ -668,6 +670,7 @@ export type LiveStream =
   | 'events'
   | 'offers'
   | 'trades'
+  | 'thieves'
   | 'analytics'
   | 'chat'
   | 'map'

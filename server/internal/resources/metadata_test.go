@@ -492,6 +492,14 @@ func TestPackagedMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for region, want := range map[int]string{24229: "Grassland", 25244: "Western China Ferry", -32750: "Flame Mountain"} {
+		if got := m.ZoneName("Greatest", region); got != want {
+			t.Fatalf("Greatest zone %d = %q, want %q", region, got, want)
+		}
+	}
+	if got := m.ZoneName("unknown", 24229); got != "" {
+		t.Fatalf("unmapped server zone = %q", got)
+	}
 	c := m.Catalogs[m.Servers["greatest"]]
 	for id, code := range map[string]string{"81": "MATTR_DUR", "129": "MATTR_ER", "6": "MATTR_INT", "12": "MATTR_STR", "54": "MATTR_SOLID"} {
 		if c.MagicOptions[id].Code != code {

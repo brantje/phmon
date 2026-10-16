@@ -617,6 +617,12 @@ func TestLiveSubscriptionValidation(t *testing.T) {
 		"trades reject unrelated event filter": {
 			message: liveClientMessage{SubscriptionID: "dashboard-trades", Revision: 1, Stream: "trades", Filter: liveFilter{Kind: "drop.rare"}},
 		},
+		"dashboard thieves": {
+			message: liveClientMessage{SubscriptionID: "dashboard-thieves", Revision: 1, Stream: "thieves", Filter: liveFilter{Server: "Greatest", Limit: 5}}, valid: true,
+		},
+		"oversized dashboard thieves": {
+			message: liveClientMessage{SubscriptionID: "dashboard-thieves", Revision: 1, Stream: "thieves", Filter: liveFilter{Limit: 11}},
+		},
 		"exact item source event": {
 			message: liveClientMessage{SubscriptionID: "events", Revision: 1, Stream: "events", Filter: liveFilter{Kind: "drop.item", EventID: "8d16ab39-10b8-4b26-80aa-a4be01e10f18"}},
 			valid:   true,

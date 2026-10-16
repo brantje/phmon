@@ -14,6 +14,7 @@ The new tab keeps the existing server scope, name, from/to date range, 10/25/50-
 
 - Name searches the **spotted name or reporting character** only in the trader/hunter event kind. Other event kinds retain their existing reporter-name search.
 - **Hide own characters** is enabled by default for this tab. The URL omits `hide_own` when checked and uses `hide_own=0` when unchecked. Reset restores the checked default.
+- The hide rule also excludes a spotted name equal to the job alias an own character reported through plugin `character_info.job_name` (plugin 1.9.39+); characters whose plugin has not sent it are covered only by the name/observed-pair rules.
 - Exclusion uses the **spotted name**, not the reporter, against registered PhMon character identities on the **same server**. Known directly observed player-name/job-alias pairs may also exclude own aliases. Unverified identity guesses are not sufficient.
 - The Go REST and live filters implement `hide_own=true` only for `kind=job.hunter_trader_seen`. Omitting it from API requests keeps old behavior; other kinds cannot request the exclusion.
 - Name, time, server and own filters apply before both total counts and cursor paging; there is no frontend-only filtering or duplicate suppression.

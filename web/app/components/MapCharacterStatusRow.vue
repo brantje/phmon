@@ -219,13 +219,13 @@ const staleLabel = computed(() => {
 
 .map-character-level {
   flex: 0 0 auto;
-  font-size: 0.61rem;
+  font-size: 10px;
 }
 
 .map-character-presence {
   flex: 0 1 auto;
   color: #a9bad0;
-  font-size: 0.64rem;
+  font-size: 10px;
   text-align: right;
 }
 
@@ -233,7 +233,7 @@ const staleLabel = computed(() => {
   overflow: hidden;
   margin-top: 0.05rem;
   color: #91a0b4;
-  font-size: 0.64rem;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

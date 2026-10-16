@@ -208,7 +208,9 @@ operational diagnostic, and add real panels as their data slices become availabl
   borders, subdued secondary text and restrained status colors. Start with these
   as semantic CSS tokens; validate actual contrast and screenshots.
 - Typography: **Segoe UI, Tahoma, Arial, sans-serif**, roughly **14 px** base text,
-  **25 px** page titles, compact **13–14 px** menu text. Observed menu rows are about
+  **25 px** page titles, compact **13–14 px** menu text. Global rule: no text smaller
+  than **10 px** (root is 14 px, so never below 0.715rem); badges, map labels and
+  dense captions use 10 px at minimum. Observed menu rows are about
   **32 px** tall with **4 px** corners and thin borders. Headings are gold/cream;
   labels and dense tables remain readable. Avoid oversized landing-page headings,
   excessive whitespace, large pill controls or bright SaaS-style gradients.

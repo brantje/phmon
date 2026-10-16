@@ -1207,6 +1207,13 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 			 AND spotted.player_name IS NOT NULL
 			 AND spotted.job_name IS NOT NULL
 			 AND lower(btrim(spotted.job_name)) = lower(btrim(e.payload->>'value'))
+		) AND NOT EXISTS (
+			-- Own characters report their current job alias through character_info.
+			SELECT 1 FROM character_resource_observations own_info
+			WHERE own_info.resource_key = 'character_info'
+			 AND own_info.server_key = lower(e.server_name)
+			 AND own_info.character_id = own_info.observer_character_id
+			 AND lower(btrim(own_info.payload->>'job_name')) = lower(btrim(e.payload->>'value'))
 		)`
 	}
 	var total int64

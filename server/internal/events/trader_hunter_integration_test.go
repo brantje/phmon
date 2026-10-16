@@ -160,6 +160,33 @@ func TestTraderHunterHistorySearchHideOwnAndPagination(t *testing.T) {
 	if err != nil || unhiddenAlias.Total != 5 {
 		t.Fatalf("unfiltered aliases not restored: total=%d error=%v", unhiddenAlias.Total, err)
 	}
+	// A job alias reported by our own plugin through character_info is hidden too.
+	_, err = pool.Exec(ctx, `INSERT INTO character_resource_observations (
+		character_id,observer_character_id,server_key,resource_key,session_id,revision,
+		availability,payload,content_hash,observed_at
+	) VALUES ($1::uuid,$1::uuid,lower($2),'character_info',$3::uuid,1,'observed',
+		jsonb_build_object('job_name','ReportedAlias'),decode(repeat('00',32),'hex'),$4)`,
+		reporter, server, sessionID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO activity_events (
+		event_id,schema_version,kind,category,agent_id,character_id,session_id,
+		server_name,occurred_at,source,source_ref,payload
+	) VALUES (
+		gen_random_uuid(),1,'job.hunter_trader_seen','job',$1::uuid,$2::uuid,$3::uuid,
+		$4,$5,'phbot.callback','EVENT_TRADER_SPAWN',jsonb_build_object('value','reportedalias')
+	)`, credential.AgentID, reporter, sessionID, server, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reported, err = store.List(ctx, Filter{Server: server, Kind: "job.hunter_trader_seen", HideOwn: true, Limit: 10})
+	if err != nil || reported.Total != 3 {
+		t.Fatalf("plugin-reported job alias leaked: total=%d error=%v", reported.Total, err)
+	}
+	if all, err := store.List(ctx, Filter{Server: server, Kind: "job.hunter_trader_seen", Limit: 10}); err != nil || all.Total != 6 {
+		t.Fatalf("unfiltered total after reported alias: %d %v", all.Total, err)
+	}
 	if _, err := store.List(ctx, Filter{Server: server, Kind: "character.died", HideOwn: true, Limit: 10}); err == nil {
 		t.Fatal("hide own must not apply to an unrelated event kind")
 	}

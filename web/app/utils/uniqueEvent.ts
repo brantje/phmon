@@ -11,6 +11,10 @@ export interface UniqueEventDetails {
 const DASHBOARD_NOISY_KINDS = new Set([
   'item.quantity_increased',
   'item.quantity_decreased',
+  'item.acquired',
+  'item.transferred',
+  'pet.transport_died',
+  'job.hunter_trader_seen',
   'chat.message_received',
   'session.connected',
   'session.disconnected',

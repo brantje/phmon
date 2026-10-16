@@ -8,6 +8,7 @@ import {
   type EventPage,
   type GlobalOffersPage,
   type RecentTradesSnapshot,
+  type ThiefSightingPage,
   type AnalyticsSnapshot,
   type CharactersSnapshot,
   type GuildStorageGoldEntry,
@@ -77,6 +78,10 @@ const offerFeedStatus = ref<
 >({})
 const tradeFeeds = ref<Record<string, RecentTradesSnapshot>>({})
 const tradeFeedStatus = ref<
+  Record<string, 'loading' | 'current' | 'unavailable'>
+>({})
+const thiefFeeds = ref<Record<string, ThiefSightingPage>>({})
+const thiefFeedStatus = ref<
   Record<string, 'loading' | 'current' | 'unavailable'>
 >({})
 const analyticsFeeds = ref<Record<string, AnalyticsSnapshot>>({})
@@ -516,6 +521,31 @@ function clearTradeFeed(subscriptionID: string) {
     )
     tradeFeedStatus.value = Object.fromEntries(
       Object.entries(tradeFeedStatus.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
+  })
+}
+
+function setThiefFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'thieves', filter, () => {
+    thiefFeeds.value = Object.fromEntries(
+      Object.entries(thiefFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    thiefFeedStatus.value = {
+      ...thiefFeedStatus.value,
+      [subscriptionID]: 'loading',
+    }
+  })
+}
+
+function clearThiefFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    thiefFeeds.value = Object.fromEntries(
+      Object.entries(thiefFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    thiefFeedStatus.value = Object.fromEntries(
+      Object.entries(thiefFeedStatus.value).filter(
         ([id]) => id !== subscriptionID,
       ),
     )
@@ -1172,6 +1202,12 @@ function handleFrame(frame: LiveServerFrame) {
         [subscription.id]: 'unavailable',
       }
     }
+    if (subscription.stream === 'thieves') {
+      thiefFeedStatus.value = {
+        ...thiefFeedStatus.value,
+        [subscription.id]: 'unavailable',
+      }
+    }
     if (subscription.stream === 'offers') {
       offerFeedStatus.value = {
         ...offerFeedStatus.value,
@@ -1340,6 +1376,28 @@ function applySnapshot(subscription: Subscription, data: unknown) {
         tradeFeeds.value = { ...tradeFeeds.value, [subscription.id]: snapshot }
         tradeFeedStatus.value = {
           ...tradeFeedStatus.value,
+          [subscription.id]: 'current',
+        }
+        return true
+      }
+      if (subscription.stream === 'thieves') {
+        const page = data as ThiefSightingPage
+        if (
+          !page ||
+          !Array.isArray(page.sightings) ||
+          typeof page.total !== 'number' ||
+          page.sightings.some(
+            (row) =>
+              !row ||
+              typeof row.sighting_id !== 'string' ||
+              typeof row.thief_name !== 'string' ||
+              typeof row.received_at !== 'string',
+          )
+        )
+          return false
+        thiefFeeds.value = { ...thiefFeeds.value, [subscription.id]: page }
+        thiefFeedStatus.value = {
+          ...thiefFeedStatus.value,
           [subscription.id]: 'current',
         }
         return true
@@ -1635,6 +1693,8 @@ export function useLiveData() {
     offerFeedStatus: readonly(offerFeedStatus),
     tradeFeeds: readonly(tradeFeeds),
     tradeFeedStatus: readonly(tradeFeedStatus),
+    thiefFeeds: readonly(thiefFeeds),
+    thiefFeedStatus: readonly(thiefFeedStatus),
     analyticsFeeds: readonly(analyticsFeeds),
     analyticsFeedStatus: readonly(analyticsFeedStatus),
     resourceFeeds: readonly(resourceFeeds),
@@ -1667,6 +1727,8 @@ export function useLiveData() {
     setOfferFeed,
     clearOfferFeed,
     setTradeFeed,
+    setThiefFeed,
+    clearThiefFeed,
     clearTradeFeed,
     setAnalyticsFeed,
     clearAnalyticsFeed,

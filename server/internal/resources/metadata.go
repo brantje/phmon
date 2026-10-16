@@ -29,6 +29,7 @@ type ItemMetadata struct {
 	SharedPresentations map[string]map[string]any
 	SharedMagicOptions  map[string]MagicOptionDefinition
 	ReverseReturnNames  map[string][]string
+	ZoneNames           map[string]map[string]string
 }
 
 // DatasetForServer returns the selected exported profile using the same
@@ -84,6 +85,7 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 		SharedPresentations: map[string]map[string]any{},
 		SharedMagicOptions:  map[string]MagicOptionDefinition{},
 		ReverseReturnNames:  map[string][]string{},
+		ZoneNames:           map[string]map[string]string{},
 	}
 	ambiguousIcons := map[string]bool{}
 	ambiguousPresentations := map[string]map[string]bool{}
@@ -120,6 +122,19 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 				return nil, fmt.Errorf("invalid Reverse return location name")
 			}
 			seen[strings.ToLower(name)] = true
+		}
+	}
+	if err := read(filepath.Join(directory, "zone-names.json"), &m.ZoneNames); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	for dataset, names := range m.ZoneNames {
+		if !datasetName.MatchString(dataset) || len(names) > 65536 {
+			return nil, fmt.Errorf("invalid zone name catalog")
+		}
+		for region, name := range names {
+			if _, err := strconv.ParseInt(region, 10, 16); err != nil || name == "" || len(name) > 100 || strings.ContainsFunc(name, unicode.IsControl) {
+				return nil, fmt.Errorf("invalid zone name entry")
+			}
 		}
 	}
 	for server, dataset := range m.Servers {
