@@ -111,6 +111,9 @@ func run() error {
 		resourceStore.AnalyticsTaxonomyOptions,
 	)
 	analyticsStore.SetItemDetailsResolver(resourceStore.AnalyticsItemDetails)
+	chatStore.SetOfferIconResolver(func(server string, item chat.OfferItem) string {
+		return metadata.OfferIcon(server, item.Type, item.Subtype, item.Part, item.Race, item.Degree)
+	})
 	eventStore.SetDropClassifier(metadata.ItemDropClassification)
 	eventStore.SetItemNameMatcher(metadata.ItemNameMatches)
 	mobStore.SetLevelLookup(metadata.MonsterLevel)

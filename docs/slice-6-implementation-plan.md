@@ -109,7 +109,7 @@ open Party Setup/item gates; do not mislabel them as Slice 6 completion.
    semantics, direction and optional resolved item reference. Keep raw type and
    original message unchanged. Version the payload/mapping so older `unknown`
    events remain interpretable; backfill only types whose meaning is proven for
-   their recorded profile. Never parse arbitrary chat text into an item or offer.
+   their recorded profile. Never parse arbitrary chat text into a verified item or offer. Slice 13 adds explicit heuristic advertisement tags (see docs/reference/economy-offer-parsing-2026-10-16.md); they are labelled as text-derived and never create item identity.
 2. Add migration `000009_chat.sql` for a projection keyed by canonical `event_id`
    for inbound rows and `command_id` for outbound rows, with exactly one origin per
    row. Keep first-class server, character, channel, normalized private peer,

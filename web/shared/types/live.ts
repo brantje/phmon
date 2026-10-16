@@ -664,6 +664,20 @@ export type LiveStream =
   | 'map'
   | 'positions'
 
+export interface GlobalOfferItem {
+  item_type: string
+  subtype?: string
+  part?: string
+  degree?: number
+  race?: string
+  seal?: string
+  plus?: number
+  price?: string
+  currency?: string
+  notes?: readonly string[]
+  icon_url?: string
+}
+
 export interface GlobalOffer {
   message_id: string
   source_event_id: string
@@ -674,11 +688,13 @@ export interface GlobalOffer {
   message: string
   offer_type: 'WTB' | 'WTS' | 'WTT'
   occurred_at: string
+  items?: GlobalOfferItem[]
 }
 
 export interface GlobalOffersPage {
   offers: GlobalOffer[]
   total: number
+  counts?: Record<string, number>
   next_cursor?: string
 }
 

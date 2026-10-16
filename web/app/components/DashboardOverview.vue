@@ -2,6 +2,7 @@
 import type { ActivityEvent } from '~~/shared/types/live'
 import { groupRecentEvents } from '~/utils/groupRecentEvents'
 import { deathCauseLabel } from '~/utils/deathCause'
+import { offerItemChips } from '~/utils/offerTaxonomy'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import {
   dashboardNoisyEvent,
@@ -493,6 +494,14 @@ onBeforeUnmount(() => {
             :title="offer.message"
             >{{ offer.message }}</NuxtLink
           >
+          <div v-if="offer.items?.length" class="economy-chips">
+            <span
+              v-for="chip in offerItemChips(offer.items[0]!).slice(0, 5)"
+              :key="chip"
+              class="economy-chip"
+              >{{ chip }}</span
+            >
+          </div>
           <small>{{ offer.server }} · Observed by {{ offer.observer }}</small>
         </li>
       </ul>

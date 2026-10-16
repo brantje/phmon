@@ -170,6 +170,11 @@ watch(
     if (channels.some((channel) => channel.key === value))
       activeChannel.value = value as ChatChannel
     else if (value === 'unknown') activeChannel.value = 'unknown'
+    const peer = route.query.peer
+    if (value === 'private' && typeof peer === 'string' && peer.trim()) {
+      privatePeer.value = peer.trim()
+      recipientDraft.value = peer.trim()
+    }
   },
   { immediate: true },
 )

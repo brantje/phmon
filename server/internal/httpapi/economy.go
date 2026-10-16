@@ -25,6 +25,16 @@ func (h *economyHandler) offers(w http.ResponseWriter, r *http.Request) {
 		Cursor: strings.TrimSpace(query.Get("cursor")),
 		Limit:  30,
 	}
+	filter.ItemType = strings.TrimSpace(query.Get("item_type"))
+	filter.Subtype = strings.TrimSpace(query.Get("subtype"))
+	if value := query.Get("degree"); value != "" {
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 0 || n > 14 {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid degree"})
+			return
+		}
+		filter.Degree = n
+	}
 	if !validServerFilter(filter.Server) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid server filter"})
 		return
