@@ -275,6 +275,7 @@ async function main() {
           const card = [...document.querySelectorAll('.character-card')].find((item) =>
             item.querySelector('.character-card-name')?.textContent.trim() === 'FixtureBeta'
           )
+          card?.scrollIntoView({ block: 'center' })
           return card?.querySelector('.character-card-mastery')?.textContent.trim() === 'Pacheon · Fire'
         })()`),
         'initial mastery summary streamed into the Stats card',
@@ -286,6 +287,7 @@ async function main() {
           const card = [...document.querySelectorAll('.character-card')].find((item) =>
             item.querySelector('.character-card-name')?.textContent.trim() === 'FixtureBeta'
           )
+          card?.scrollIntoView({ block: 'center' })
           return card?.querySelector('.character-card-mastery')?.textContent.trim() === 'Ice · Fire'
         })()`),
         'updated mastery summary streamed into the Stats card',
