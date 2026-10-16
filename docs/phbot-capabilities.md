@@ -1997,7 +1997,9 @@ the later snapshot; the true time inside the interval is unknown and is never
 back-dated. The cause stays `unknown` and no `drop_event_id` is attached. Party,
 academy and pet-lifecycle transitions are not derived across a gap. A character
 leave, character/guild/profile switch, a changed pet roster or a gap above 900
-seconds still starts a fresh baseline.
+seconds still starts a fresh baseline. Plugin 1.9.44 preserves the comparison
+point through same-scope re-registration and includes the active profile in the
+comparison scope; a different profile starts a fresh baseline.
 
 Limit: the comparison only proves that an item is present now and was not before.
 Pet-held items still expose only the basic `get_pets()` fields (no plus, whites or
@@ -2055,8 +2057,9 @@ items. New pickups still use subtype `0x11`. This supplies details for
 already-held Pick-pet equipment when the observed branch parses fully;
 actual plugin 1.9.42 installation and live UI confirmation remain open.
 
-On Kalypso's 2026-10-16 restart, phBot 20.1.3 returned a 56-position Pick-pet
-item list while the earlier complete `0x30C8` captures advertised capacity
+On Kalypso's 2026-10-16 restart (Europe/Amsterdam local date), phBot 20.1.3
+returned a 56-position Pick-pet item list while the earlier complete `0x30C8`
+captures advertised capacity
 28. Plugin 1.9.42 reported one 245-byte snapshot and no attached instances;
 its strict capacity-equality gate would reject a matching 28-slot packet.
 Plugin 1.9.43 allows an empty second API page while checking every packet-covered slot and

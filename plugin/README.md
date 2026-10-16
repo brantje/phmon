@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.43**, using agent protocol **20**. It
+The current local plugin release is **1.9.44**, using agent protocol **20**. It
 enriches Pick-pet equipment from verified vSRO 1.188 `0x30C8` summon snapshots
 and `0xB034` subtype `0x11` pickups after matching pet ID, slot, model and
 durability to `get_pets()`. The snapshot parser supports observed equipment and

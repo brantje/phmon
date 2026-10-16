@@ -2789,6 +2789,45 @@ class ResourceEventDerivationTests(unittest.TestCase):
         self.assertNotIn('drop_event_id', payload)
         self.assertEqual(events[0]['session_id'], self.worker.session_id)
 
+    def test_reregistration_keeps_same_profile_snapshot_and_fences_profile_switch(self):
+        original_session = self.worker.session_id
+        self.identity = dict(self.identity, profile_key='ProfileOne')
+        self.worker._current_identity = self.identity
+        self.observe(self.resources(bag=[]))
+        self.drain()
+
+        def register(identity):
+            self.worker.character_id = None
+            self.worker.session_id = None
+            self.worker._current_identity = None
+            self.worker._resource_baseline_required = True
+            self.worker._latest_resources = None
+            self.identity = identity
+            with patch.object(self.worker, '_wait_for_registration', return_value={
+                    'type': 'character.registered',
+                    'protocol_version': plugin.PROTOCOL_VERSION,
+                    'character_id': 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+                    'session_id': '00000000-1111-4222-8333-444444444444',
+            }):
+                self.worker._publish_sample(Mock(), {
+                    'identity': identity, 'state': {'hp': 1},
+                }, True)
+
+        register(self.identity)
+        self.assertTrue(self.worker._event_diff_carry_ok)
+        self.observe(self.resources(bag=[(13, self.item(1))]))
+        events = self.drain()
+        self.assertEqual([event['kind'] for event in events], ['item.acquired'])
+        self.assertEqual(events[0]['payload']['observation_gap']['reason'], 'backend_reconnect')
+        self.assertEqual(events[0]['payload']['observation_gap']['previous_session_id'],
+                         original_session)
+
+        changed_profile = dict(self.identity, profile_key='ProfileTwo')
+        register(changed_profile)
+        self.assertFalse(self.worker._event_diff_carry_ok)
+        self.observe(self.resources(bag=[(13, self.item(2))]))
+        self.assertEqual(self.drain(), [])
+
     def test_reconnect_after_leave_starts_a_fresh_baseline(self):
         self.observe(self.resources(pet_present=True, pet_inventory=[]))
         self.drain()

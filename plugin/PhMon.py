@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.43'
+pVersion = '1.9.44'
 pUrl = ''
 
 PROTOCOL_VERSION = 20
@@ -3996,7 +3996,8 @@ class AgentWorker(object):
         identity_key = self._identity_key(identity)
         guild = identity.get('guild') if isinstance(identity, dict) else None
         guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
-        scoped_identity_key = (identity_key, guild_scope)
+        profile_key = identity.get('profile_key') if isinstance(identity, dict) else None
+        scoped_identity_key = (identity_key, guild_scope, profile_key)
         sample_observed_at = sample.get('observed_at') if isinstance(sample, dict) else None
         gap = None
         if scoped_identity_key != self._event_diff_identity or self.session_id != self._event_diff_session:
@@ -5198,7 +5199,15 @@ class AgentWorker(object):
             self._clear_navigation_route()
             self._trace_requested_name = None
             self._item_tracker.reset('character_or_profile_changed')
-            self._event_diff_carry_ok = False
+            # A reconnect clears the active registration, but its last complete
+            # resource snapshot remains a valid comparison for the same scope.
+            guild = identity.get('guild')
+            guild_scope = guild.strip().casefold() if isinstance(guild, str) else ''
+            snapshot_scope = (identity_key, guild_scope, identity.get('profile_key'))
+            if ((self._current_identity is not None and identity != self._current_identity) or
+                    (self._event_diff_identity is not None and
+                     snapshot_scope != self._event_diff_identity)):
+                self._event_diff_carry_ok = False
             client.send_json({'type':'character.identify','protocol_version':PROTOCOL_VERSION,'server':identity['server'],'name':identity['name'],'guild':identity.get('guild',''),'sent_at':_worker_utc_now(self)})
             reply = self._wait_for_registration(client)
             if not isinstance(reply,dict) or reply.get('type')!='character.registered' or reply.get('protocol_version')!=PROTOCOL_VERSION or not _validate_agent_id(reply.get('character_id')) or not _validate_agent_id(reply.get('session_id')):

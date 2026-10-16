@@ -187,7 +187,7 @@ are parsed only to advance to later equipment; no synthetic instance is
 created for them. Actual Windows/phBot execution of plugin 1.9.42 remains
 unverified; offline capture decoding and fixture tests are not a live rollout.
 
-## 2026-10-16 live Kalypso restart: packet/API capacity mismatch
+## 2026-10-16 (Europe/Amsterdam) live Kalypso restart: packet/API capacity mismatch
 
 The operator restarted Kalypso with plugin 1.9.42. The server recorded a fresh
 session and one `0x30C8` packet of 245 bytes, but zero enriched pet items.
