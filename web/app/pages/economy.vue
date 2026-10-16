@@ -92,12 +92,6 @@ function load() {
       if (requestGate.isCurrent(id)) loading.value = false
     })
 }
-function offerTime(value: string) {
-  return new Date(value).toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
-}
 const pmLink = (offer: Offer) => ({
   path: '/chat',
   query: {
@@ -280,9 +274,7 @@ function previousPage() {
             <span class="economy-kind" :class="`kind-${offer.offer_type}`">{{
               offer.offer_type
             }}</span>
-            <time :datetime="offer.occurred_at">{{
-              offerTime(offer.occurred_at)
-            }}</time>
+            <FormattedDate :value="offer.occurred_at" />
           </header>
           <div class="economy-body">
             <div v-if="offerIcons(offer).length" class="economy-icons">

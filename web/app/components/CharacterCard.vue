@@ -120,7 +120,7 @@ const infoRows = computed(() => {
   return characterInfoRows(
     props.character,
     payload('character_info'),
-    seen ? formatSyncedTime(seen) : '',
+    seen ? formatDate(seen) : '',
   )
 })
 const freshness = computed(() => {
@@ -128,7 +128,7 @@ const freshness = computed(() => {
     .map((entry) => entry.observed_at)
     .filter((value): value is string => !!value)
   if (!values.length) return 'Waiting for resource baseline'
-  return `Observed ${formatTimestamp(values.sort().at(-1))}`
+  return `Observed ${formatDate(values.sort().at(-1))}`
 })
 const pets = computed(() => {
   const list = payload('pets').pets
@@ -516,7 +516,7 @@ onBeforeUnmount(() => {
             Showing the last confirmed equipment observation from
             {{
               equipmentObservation?.observed_at
-                ? formatTimestamp(equipmentObservation.observed_at)
+                ? formatDate(equipmentObservation.observed_at)
                 : 'an unknown time'
             }}.
           </div>
@@ -950,7 +950,7 @@ onBeforeUnmount(() => {
         ><span>{{
           Array.isArray(payload('pets').pets) &&
           observation('pets')?.observed_at
-            ? `Last contents observed ${formatTimestamp(observation('pets')?.observed_at)}`
+            ? `Last contents observed ${formatDate(observation('pets')?.observed_at)}`
             : 'phBot has not supplied a current pet observation.'
         }}</span>
       </div>
@@ -1057,7 +1057,7 @@ onBeforeUnmount(() => {
         ><span>{{
           Array.isArray(payload('party').members) &&
           observation('party')?.observed_at
-            ? `Last contents observed ${formatTimestamp(observation('party')?.observed_at)}`
+            ? `Last contents observed ${formatDate(observation('party')?.observed_at)}`
             : 'Party membership and Party Setup are separate observations.'
         }}</span>
       </div>
@@ -1135,7 +1135,7 @@ onBeforeUnmount(() => {
         }}</strong
         ><span>{{
           academy && observation('academy')?.observed_at
-            ? `Last contents observed ${formatTimestamp(observation('academy')?.observed_at)}`
+            ? `Last contents observed ${formatDate(observation('academy')?.observed_at)}`
             : 'Waiting for the phBot academy getter.'
         }}</span>
       </div>

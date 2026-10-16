@@ -319,16 +319,12 @@ onBeforeUnmount(() => {
           <span>
             Last contents observed
             {{
-              resource.observed_at
-                ? formatTimestamp(resource.observed_at)
-                : 'never'
+              resource.observed_at ? formatDate(resource.observed_at) : 'never'
             }}
           </span>
           <span>
             Checked
-            {{
-              resource.checked_at ? formatTimestamp(resource.checked_at) : '—'
-            }}
+            {{ resource.checked_at ? formatDate(resource.checked_at) : '—' }}
           </span>
         </div>
         <div
@@ -349,7 +345,7 @@ onBeforeUnmount(() => {
             Search results show last confirmed contents from
             {{
               resource?.observed_at
-                ? formatTimestamp(resource.observed_at)
+                ? formatDate(resource.observed_at)
                 : 'an unknown time'
             }}.
           </div>

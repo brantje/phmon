@@ -607,51 +607,26 @@ a.nav-item {
   min-height: 205px;
 }
 
-.recent-trades-list {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.recent-trades-list li + li {
-  border-top: 1px solid var(--ph-border-soft);
-}
-
-.recent-trades-list a {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  padding: 6px 2px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.recent-trades-main,
-.recent-trades-side {
-  display: grid;
-  min-width: 0;
-  gap: 1px;
-}
-
-.recent-trades-side {
+.dashboard-trade-icon {
+  width: 18px;
+  height: 18px;
   flex: none;
-  text-align: right;
-}
-
-.recent-trades-main > *,
-.recent-trades-side > * {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-trades-main small,
-.recent-trades-side time {
   color: var(--ph-muted);
-  font-size: 12px;
+}
+
+.dashboard-trade-icon.is-success {
+  color: #58bd8a;
+}
+
+.dashboard-trade-icon.is-failed {
+  color: #e5736f;
+}
+
+.dashboard-trade-side {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  white-space: nowrap;
 }
 
 .trade-profit-positive {

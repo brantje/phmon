@@ -327,7 +327,7 @@ function dateInput(value: Date) {
           </strong>
           <strong v-else>Unavailable</strong>
           <small v-if="latestAttempt"
-            >{{ formatTimestamp(latestAttempt.occurred_at) }} ·
+            ><FormattedDate :value="latestAttempt.occurred_at" /> ·
             {{
               latestAttempt.item_name ||
               latestAttempt.item_code ||
@@ -428,10 +428,11 @@ function dateInput(value: Date) {
                 :key="`${segment.key}|${segment.firstAt}`"
               >
                 <td>
-                  {{ formatTimestamp(segment.firstAt)
-                  }}<span v-if="segment.lastAt !== segment.firstAt">
-                    – {{ formatTimestamp(segment.lastAt) }}</span
+                  <FormattedDate :value="segment.firstAt" /><span
+                    v-if="segment.lastAt !== segment.firstAt"
                   >
+                    – <FormattedDate :value="segment.lastAt"
+                  /></span>
                 </td>
                 <td>{{ segment.character }} · {{ segment.item }}</td>
                 <td>{{ segment.slot ?? 'Unknown' }}</td>
@@ -506,9 +507,7 @@ function dateInput(value: Date) {
             <tbody>
               <tr v-for="event in page?.events || []" :key="event.event_id">
                 <td>
-                  <time :datetime="event.occurred_at">{{
-                    formatTimestamp(event.occurred_at)
-                  }}</time>
+                  <FormattedDate :value="event.occurred_at" />
                 </td>
                 <td>
                   <NuxtLink

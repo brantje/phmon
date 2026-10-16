@@ -4429,7 +4429,7 @@ useHead({ title: 'Map · PhMon' })
                     ></span
                   ><time
                     :datetime="event.occurred_at"
-                    :title="formatTimestamp(event.occurred_at)"
+                    :title="formatDate(event.occurred_at)"
                     >{{ eventAge(event.occurred_at) }}</time
                   >
                 </button>

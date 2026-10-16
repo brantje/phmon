@@ -264,7 +264,7 @@ function sourceLabel(container: string) {
               <p class="item-search-meta">
                 Owner: {{ group.name }} | Viewed by:
                 {{ container.row.observer_name }} | Last synced:
-                {{ formatSyncedTime(container.row.observed_at) }}
+                <FormattedDate :value="container.row.observed_at" />
               </p>
             </div>
             <button

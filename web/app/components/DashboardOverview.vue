@@ -12,6 +12,7 @@ import {
 } from '~/utils/tradeReportSummary'
 import { groupRecentEvents } from '~/utils/groupRecentEvents'
 import { deathCauseLabel } from '~/utils/deathCause'
+import { formatCompactObservedGold } from '~/utils/fleetGold'
 import { offerItemChips } from '~/utils/offerTaxonomy'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import {
@@ -84,11 +85,23 @@ const tradesStatus = computed(
 const tradeProfitLabel = computed(() => {
   const snapshot = tradeSnapshot.value
   if (!snapshot || snapshot.profit_samples_24h === 0) return '—'
+  const sign = snapshot.profit_24h > 0 ? '+' : ''
+  return `${sign}${formatCompactObservedGold(snapshot.profit_24h)} gold`
+})
+const tradeProfitTitle = computed(() => {
+  const snapshot = tradeSnapshot.value
+  if (!snapshot || snapshot.profit_samples_24h === 0) return undefined
   return formatSignedTradeGold(snapshot.profit_24h)
 })
 
+function tradeOutcomeIcon(trade: TradeReport) {
+  if (trade.outcome === 'success') return 'i-lucide-circle-check'
+  if (trade.outcome === 'failed') return 'i-lucide-circle-x'
+  return 'i-lucide-circle-slash'
+}
+
 function tradeRowMeta(trade: TradeReport) {
-  const parts = [trade.reporter.name]
+  const parts = [tradeOutcomeLabel(trade), trade.reporter.name]
   if (typeof trade.duration_s === 'number') {
     parts.push(formatTradeDuration(trade.duration_s))
   }
@@ -295,9 +308,7 @@ onBeforeUnmount(() => {
               >
             </span>
           </NuxtLink>
-          <time :datetime="item.occurred_at">{{
-            formatTimestamp(item.occurred_at)
-          }}</time>
+          <FormattedDate :value="item.occurred_at" />
         </li>
       </ul>
       <div v-else class="dashboard-event-empty">
@@ -319,8 +330,9 @@ onBeforeUnmount(() => {
         <div>
           <h2>Recent Trades</h2>
           <p>
-            Last 24h profit:
+            Last 24h:
             <strong
+              :title="tradeProfitTitle"
               :class="{
                 'trade-profit-positive': (tradeSnapshot?.profit_24h ?? 0) > 0,
                 'trade-profit-negative': (tradeSnapshot?.profit_24h ?? 0) < 0,
@@ -358,28 +370,30 @@ onBeforeUnmount(() => {
           Retry
         </button>
       </div>
-      <ul v-if="recentTrades.length" class="recent-trades-list">
+      <ul v-if="recentTrades.length" class="dashboard-event-list">
         <li v-for="trade in recentTrades" :key="trade.trade_id">
           <NuxtLink to="/events?view=trades">
-            <span class="recent-trades-main">
+            <UIcon
+              class="dashboard-trade-icon"
+              :class="`is-${trade.outcome}`"
+              :name="tradeOutcomeIcon(trade)"
+            />
+            <span class="dashboard-event-identity">
               <strong>{{ tradeRouteLabel(trade) }}</strong>
-              <span>{{ tradeOutcomeLabel(trade) }}</span>
-              <small>{{ tradeRowMeta(trade) }}</small>
-            </span>
-            <span class="recent-trades-side">
-              <strong
-                v-if="typeof trade.gold === 'number'"
-                :class="{
-                  'trade-profit-positive': trade.gold > 0,
-                  'trade-profit-negative': trade.gold < 0,
-                }"
-                >{{ formatSignedTradeGold(trade.gold) }}</strong
-              >
-              <time :datetime="trade.finished_at">{{
-                formatTimestamp(trade.finished_at)
-              }}</time>
+              <span>{{ tradeRowMeta(trade) }}</span>
             </span>
           </NuxtLink>
+          <span class="dashboard-trade-side">
+            <strong
+              v-if="typeof trade.gold === 'number'"
+              :class="{
+                'trade-profit-positive': trade.gold > 0,
+                'trade-profit-negative': trade.gold < 0,
+              }"
+              >{{ formatSignedTradeGold(trade.gold) }}</strong
+            >
+            <FormattedDate :value="trade.finished_at" />
+          </span>
         </li>
       </ul>
       <div
@@ -461,9 +475,7 @@ onBeforeUnmount(() => {
             <strong>{{ eventHeadline(item.event) }}</strong>
             <span>{{ eventObservers(item) }}</span>
           </div>
-          <time :datetime="item.event.occurred_at">{{
-            formatTimestamp(item.event.occurred_at)
-          }}</time>
+          <FormattedDate :value="item.event.occurred_at" />
         </li>
       </ul>
       <div v-else class="dashboard-event-empty">
@@ -541,9 +553,7 @@ onBeforeUnmount(() => {
                 {{ item.server }}</span
               >
             </NuxtLink>
-            <time :datetime="item.occurred_at">{{
-              formatTimestamp(item.occurred_at)
-            }}</time>
+            <FormattedDate :value="item.occurred_at" />
           </li>
         </ul>
         <div v-else class="later-content compact-later dashboard-chat-empty">
@@ -594,9 +604,7 @@ onBeforeUnmount(() => {
           <div class="dashboard-offer-meta">
             <strong>{{ offer.offer_type }}</strong
             ><span>{{ offer.sender }}</span
-            ><time :datetime="offer.occurred_at">{{
-              formatTimestamp(offer.occurred_at)
-            }}</time>
+            ><FormattedDate :value="offer.occurred_at" />
           </div>
           <NuxtLink
             :to="{

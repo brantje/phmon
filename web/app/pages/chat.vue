@@ -636,9 +636,8 @@ onBeforeUnmount(() => {
                     v-if="advancedMode && item.raw_type"
                     class="message-raw-type"
                     >type {{ item.raw_type }}</span
-                  ><time :datetime="item.occurred_at">{{
-                    new Date(item.occurred_at).toLocaleString()
-                  }}</time
+                  ><time :datetime="item.occurred_at"
+                    ><FormattedDate :value="item.occurred_at" /></time
                   ><span
                     v-if="item.direction === 'outbound'"
                     class="message-state"

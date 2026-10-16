@@ -173,13 +173,6 @@ const hideOwnCharacters = computed(() => {
 const total = computed(() => page.value?.total ?? 0)
 const offset = computed(() => page.value?.offset ?? 0)
 const limit = computed(() => page.value?.limit ?? 25)
-
-function formatPlayerTime(value?: string | null) {
-  if (!value) return 'Unknown'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Unknown'
-  return date.toLocaleString()
-}
 </script>
 
 <template>
@@ -479,7 +472,7 @@ function formatPlayerTime(value?: string | null) {
             </td>
             <td>
               {{
-                formatPlayerTime(
+                formatDate(
                   player.display_identity?.last_seen_at ?? player.last_seen_at,
                 )
               }}
