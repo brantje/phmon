@@ -193,7 +193,7 @@ class PetItemCaptureTests(unittest.TestCase):
             self.assertEqual([p['opcode'] for p in probe._packets], ['0x3057'])
             for _ in range(40):
                 probe.handle_joymax(0x30C9, (77).to_bytes(4, 'little'))
-            self.assertEqual(probe._lead_counts[0x30C9], probe.MAX_LEAD_PACKETS_PER_OPCODE)
+            self.assertEqual(probe._lead_counts[(0x30C9, 4, '')], probe.MAX_LEAD_PACKETS_PER_OPCODE)
             probe.stop_pet_capture()
 
 

@@ -24,7 +24,7 @@ from phBot import get_inventory, get_pets, log
 import QtBind
 
 pName = 'Pet Item Capture'
-pVersion = '0.4.0'
+pVersion = '0.5.0'
 
 CAPTURE_SECONDS = 600.0
 SAMPLE_INTERVAL_SECONDS = 1.0
@@ -39,10 +39,12 @@ CLIENT_OPCODES = (0x7034,)
 # starts with a current pet ID (little-endian u32), so entity traffic of
 # other units is never kept.
 PET_STAT_LEAD_OPCODES = (0x3057, 0x30C9)
-MAX_LEAD_PACKETS_PER_OPCODE = 24
+# Cap per packet *shape* (opcode, length, bytes 4..6) so frequent HP updates
+# cannot crowd out a rarer update type such as hunger.
+MAX_LEAD_PACKETS_PER_OPCODE = 6
+MAX_LEAD_SHAPES = 64
 # Any other opcode whose first four bytes are a current pet ID is kept too
-# (bounded), because the real HP/hunger update opcode is not yet known.
-MAX_PET_ID_OPCODES = 24
+# (bounded), because the real hunger update opcode is not yet known.
 # Opcode counts only (no bytes) for all other server packets.
 _seen_opcodes = {}
 # None writes beside this plugin file.
@@ -222,10 +224,11 @@ def _capture_packet(direction, opcode, data):
             direction == 'server_to_client' and opcode not in SERVER_OPCODES):
         if opcode not in PET_STAT_LEAD_OPCODES:
             _seen_opcodes['0x%04X' % opcode] = _seen_opcodes.get('0x%04X' % opcode, 0) + 1
-        known = opcode in PET_STAT_LEAD_OPCODES
-        if (pet_id_match and (known or len(_lead_counts) < MAX_PET_ID_OPCODES or opcode in _lead_counts) and
-                _lead_counts.get(opcode, 0) < MAX_LEAD_PACKETS_PER_OPCODE):
-            _lead_counts[opcode] = _lead_counts.get(opcode, 0) + 1
+        shape = (opcode, len(data) if pet_id_match else 0,
+                 bytes(data[4:7]).hex() if pet_id_match else '')
+        if (pet_id_match and (shape in _lead_counts or len(_lead_counts) < MAX_LEAD_SHAPES) and
+                _lead_counts.get(shape, 0) < MAX_LEAD_PACKETS_PER_OPCODE):
+            _lead_counts[shape] = _lead_counts.get(shape, 0) + 1
             key = 'server_to_client:0x%04X' % opcode
             _packet_counts[key] = _packet_counts.get(key, 0) + 1
             _packets.append({
