@@ -168,6 +168,7 @@ type AppendResult struct {
 }
 
 type Filter struct {
+	HideOwn            bool
 	Server             string
 	CharacterID        string
 	CharacterQuery     string
@@ -1143,6 +1144,9 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if !validDropFeed(filter) {
 		return Page{}, errors.New("owned item gains may only be included in a normal or rare drop feed")
 	}
+	if filter.HideOwn && filter.Kind != "job.hunter_trader_seen" {
+		return Page{}, errors.New("hide own is only supported for trader/hunter sightings")
+	}
 	if filter.Limit < 1 || filter.Limit > MaxPageSize {
 		filter.Limit = 10
 	}
@@ -1174,7 +1178,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	}
 	base := `FROM activity_events e LEFT JOIN characters c ON c.character_id=e.character_id
 WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2::uuid)
-	AND ($3='' OR c.character_name ILIKE '%'||$3||'%')
+	AND ($3='' OR c.character_name ILIKE '%'||$3||'%' OR ($4='job.hunter_trader_seen' AND e.payload->>'value' ILIKE '%'||$3||'%'))
 		AND (($4='' OR e.kind=$4 OR ($4='item.gains' AND e.kind IN ('item.acquired','item.quantity_increased'))) OR ($12::boolean AND e.kind='item.acquired' AND e.source='joymax.pet_inventory' AND ((e.item_drop_class='rare' AND $4='drop.rare') OR (e.item_drop_class='normal' AND $4='drop.item'))) OR
 		($13::boolean AND e.kind IN ('item.acquired','item.quantity_increased') AND e.source='phbot.state_diff' AND e.source_ref='item_container'
 		AND e.payload->'destination_container'->>'type' IN ('inventory','pets')
@@ -1186,6 +1190,25 @@ WHERE ($1='' OR lower(e.server_name)=lower($1)) AND ($2='' OR e.character_id=$2:
 		AND ($7::timestamptz IS NULL OR e.occurred_at >= $7)
 		AND ($8::timestamptz IS NULL OR e.occurred_at < $8) AND ($9::uuid IS NULL OR e.event_id=$9::uuid)
 		AND ($10::integer IS NULL OR e.region=$10) AND (NOT $11 OR (e.region IS NOT NULL AND e.x IS NOT NULL AND e.y IS NOT NULL))`
+	if filter.HideOwn {
+		// The callback payload names the spotted player; the reporting character
+		// is always owned and must never be the exclusion target.
+		base += ` AND NOT EXISTS (
+			SELECT 1 FROM characters own
+			WHERE own.server_key = lower(e.server_name)
+			AND own.identity_key = lower(btrim(e.payload->>'value'))
+		) AND NOT EXISTS (
+			-- A directly observed normal-name/job-alias pair can also identify
+			-- one of our characters without trusting speculative alias links.
+			SELECT 1 FROM players spotted
+			JOIN characters own ON own.server_key = spotted.server_key
+			 AND own.identity_key = lower(btrim(spotted.player_name))
+			WHERE spotted.server_key = lower(e.server_name)
+			 AND spotted.player_name IS NOT NULL
+			 AND spotted.job_name IS NOT NULL
+			 AND lower(btrim(spotted.job_name)) = lower(btrim(e.payload->>'value'))
+		)`
+	}
 	var total int64
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) `+base, filter.Server, filter.CharacterID, filter.CharacterQuery, filter.Kind, filter.Category, filter.ItemQuery, filter.From, filter.To, eventID, filter.Region, filter.RequireMapPosition, filter.IncludePetPickups, filter.IncludeOwnedGains, filter.Source, itemNameMatches).Scan(&total); err != nil {
 		return Page{}, fmt.Errorf("count events: %w", err)

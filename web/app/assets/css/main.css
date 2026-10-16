@@ -2346,6 +2346,25 @@ select:focus-visible {
   font-size: 10px;
 }
 
+.events-filters label.events-hide-own {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 31px;
+  color: var(--ph-text);
+  font-size: 12px;
+}
+.events-filters label.events-hide-own input[type='checkbox'] {
+  width: 16px;
+  min-height: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #8eb4ff;
+  flex: 0 0 auto;
+}
+
 .events-filters input,
 .event-pagination select {
   width: 100%;

@@ -16,6 +16,7 @@ const { eventFeeds, connectionState, liveStale, setEventFeed, clearEventFeed } =
   useLiveData()
 const { serverScope } = useServerScope()
 const route = useRoute()
+const router = useRouter()
 const tabs = [
   { label: 'All', key: 'all', query: {} },
   {
@@ -51,6 +52,11 @@ const tabs = [
     query: { kind: 'world.unique_spawned' },
   },
   { label: 'Thieves', key: 'thieves', query: { view: 'thieves' } },
+  {
+    label: 'Traders / Hunters',
+    key: 'job.hunter_trader_seen',
+    query: { kind: 'job.hunter_trader_seen' },
+  },
   { label: 'Trades', key: 'trades', query: { view: 'trades' } },
 ]
 const selectedTab = computed(() => {
@@ -66,6 +72,12 @@ const dropHistory = computed(
 const visibleTabs = computed(() => tabs)
 const thievesView = computed(() => selectedTab.value === 'thieves')
 const tradesView = computed(() => selectedTab.value === 'trades')
+const tradersHuntersView = computed(
+  () => selectedTab.value === 'job.hunter_trader_seen',
+)
+const hideOwnCharacters = computed(
+  () => tradersHuntersView.value && route.query.hide_own !== '0',
+)
 const externalHistory = computed(() => thievesView.value || tradesView.value)
 const activeTab = computed(
   () => tabs.find((tab) => tab.key === selectedTab.value) || tabs[0],
@@ -103,21 +115,27 @@ const description = computed(() => {
   if (tradesView.value) {
     return 'Finished trade trips reported by AdvancedAutoTrade.'
   }
+  if (tradersHuntersView.value) {
+    return 'All recorded hunter/trader sightings from connected PhMon characters.'
+  }
   return 'Recorded activity from phBot callbacks and reliable state observations.'
 })
 const historyFilterLabel = computed(() => {
   if (thievesView.value) return 'Name'
   if (tradesView.value) return 'Trader'
+  if (tradersHuntersView.value) return 'Name'
   return 'Character'
 })
 const historyFilterPlaceholder = computed(() => {
   if (thievesView.value) return 'Filter by thief or reporter'
   if (tradesView.value) return 'Filter by reporter, route, transport, or thief'
+  if (tradersHuntersView.value) return 'Filter by spotted player or reporter'
   return 'Filter by character'
 })
 const historyFilterAria = computed(() => {
   if (thievesView.value) return 'Filter thief sightings by name'
   if (tradesView.value) return 'Filter trade reports'
+  if (tradersHuntersView.value) return 'Filter hunter/trader sightings by name'
   return 'Filter events by character'
 })
 const fromDate = ref(
@@ -293,6 +311,7 @@ watch(
     filterCategory,
     includePetPickups,
     includeOwnedGains,
+    hideOwnCharacters,
     thievesView,
     tradesView,
     () => route.query.from_ts,
@@ -313,6 +332,7 @@ watch(
     category,
     includePickups,
     includeGains,
+    hideOwn,
     _thieves,
     _trades,
     _fromTs,
@@ -363,6 +383,7 @@ watch(
       category: category || undefined,
       include_pet_pickups: includePickups || undefined,
       include_owned_gains: includeGains || undefined,
+      hide_own: hideOwn || undefined,
       cursor: pageCursor || undefined,
       limit: size,
     })
@@ -380,6 +401,7 @@ watch(
     filterCategory,
     includePetPickups,
     includeOwnedGains,
+    hideOwnCharacters,
     pageSize,
     () => route.query.event_id,
   ],
@@ -568,7 +590,21 @@ function previousPage() {
   if (!previousCursors.value.length) return
   cursor.value = previousCursors.value.pop() || ''
 }
+function updateHideOwnCharacters(checked: boolean) {
+  void router.replace({
+    path: '/events',
+    query: { ...route.query, hide_own: checked ? undefined : '0' },
+  })
+}
 function resetFilters() {
+  if (tradersHuntersView.value) {
+    // Clear URL-scoped search/date overrides as well as the checkbox; otherwise
+    // refreshing after Reset could silently restore the old filtered view.
+    void router.replace({
+      path: '/events',
+      query: { kind: 'job.hunter_trader_seen' },
+    })
+  }
   characterInput.value = ''
   characterQuery.value = ''
   itemInput.value = ''
@@ -577,6 +613,12 @@ function resetFilters() {
   toDate.value = dateInput(new Date())
   cursor.value = ''
   previousCursors.value = []
+}
+function spottedPlayerName(item: ActivityEvent): string {
+  const value = item.payload?.value
+  return typeof value === 'string' && value.trim()
+    ? value.trim()
+    : 'Unknown player'
 }
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object'
@@ -813,6 +855,19 @@ function localDateBoundary(value: string, addDays: number) {
             aria-label="Filter events by item"
           />
         </label>
+        <label v-if="tradersHuntersView" class="events-hide-own">
+          <input
+            type="checkbox"
+            :checked="hideOwnCharacters"
+            aria-label="Hide own characters"
+            @change="
+              updateHideOwnCharacters(
+                ($event.target as HTMLInputElement).checked,
+              )
+            "
+          />
+          Hide own characters
+        </label>
         <label>
           <span>From date</span>
           <input v-model="fromDate" type="date" aria-label="From date" />
@@ -1020,6 +1075,57 @@ function localDateBoundary(value: string, addDays: number) {
               sightingStatus === 'current'
                 ? 'No sightings match this server, name and date range.'
                 : 'Waiting for the thief sighting history.'
+            }}</span>
+          </div>
+        </div>
+        <div v-else-if="tradersHuntersView" class="event-history-rows">
+          <article
+            v-for="item in page?.events || []"
+            :key="item.event_id"
+            class="event-row-grid event-row-standard"
+            :aria-label="`${spottedPlayerName(item)} reported by ${item.character || 'unknown reporter'}`"
+          >
+            <div class="event-row-primary">
+              <UIcon name="i-lucide-users" />
+              <strong>{{ spottedPlayerName(item) }}</strong>
+            </div>
+            <time :datetime="item.occurred_at">{{
+              formatTimestamp(item.occurred_at)
+            }}</time>
+            <div class="event-row-character">
+              <NuxtLink
+                v-if="item.character_id"
+                :to="`/characters/${item.character_id}`"
+                >{{ item.character }}</NuxtLink
+              >
+              <span v-else>{{ item.character || '—' }}</span>
+            </div>
+            <div class="event-row-detail">{{ item.server }}</div>
+            <div class="event-row-location">
+              Reporter location: {{ eventRowLocation(item) }}
+            </div>
+            <div class="event-row-map">
+              <NuxtLink
+                v-if="hasReliableMapLocation(item)"
+                class="compact-button map-event-link"
+                :to="eventMapTarget(item)"
+                aria-label="Open reporting character location on map"
+                title="Observer location, not the spotted player's exact position"
+              >
+                <UIcon name="i-lucide-map-pin" />
+              </NuxtLink>
+            </div>
+          </article>
+          <div v-if="!page?.events.length" class="event-empty-state">
+            <strong>{{
+              connectionState === 'current'
+                ? 'No trader/hunter sightings found'
+                : 'Loading trader/hunter sightings'
+            }}</strong>
+            <span>{{
+              connectionState === 'current'
+                ? 'No sightings match this server, name and date range.'
+                : 'Waiting for a current event snapshot.'
             }}</span>
           </div>
         </div>

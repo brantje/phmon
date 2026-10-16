@@ -783,3 +783,29 @@ func readLiveType(t *testing.T, conn *websocket.Conn, want string) liveEnvelope 
 func liveWSURL(baseURL string) string {
 	return "ws" + strings.TrimPrefix(baseURL, "http") + "/api/live"
 }
+
+func TestTraderHunterLiveFilterValidation(t *testing.T) {
+	base := liveClientMessage{
+		Type: "subscribe", ProtocolVersion: liveProtocolVersion,
+		SubscriptionID: "hunter-history", Revision: 1, Stream: "events",
+		Filter: liveFilter{Kind: "job.hunter_trader_seen", HideOwn: true, Limit: 10},
+	}
+	subscription, ok := validateLiveSubscription(base)
+	if !ok || !subscription.Filter.HideOwn {
+		t.Fatalf("valid trader/hunter subscription rejected: %+v", subscription)
+	}
+	base.Filter.Kind = "character.died"
+	if _, ok := validateLiveSubscription(base); ok {
+		t.Fatal("hide own accepted for unrelated event kind")
+	}
+	base.Filter.Kind = ""
+	base.Stream = "chat"
+	if _, ok := validateLiveSubscription(base); ok {
+		t.Fatal("event-only hide own accepted for chat")
+	}
+	base.Stream = "events"
+	base.Filter.HideOwn = false
+	if _, ok := validateLiveSubscription(base); !ok {
+		t.Fatal("unfiltered event feed compatibility broken")
+	}
+}
