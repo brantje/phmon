@@ -3285,13 +3285,15 @@ button.item-detail-name {
 .item-tooltip-identity,
 .item-tooltip-stats,
 .item-tooltip-requirements,
-.item-tooltip-blues {
+.item-tooltip-blues,
+.item-tooltip-notes {
   display: flex;
   flex-direction: column;
 }
 .item-tooltip-stats,
 .item-tooltip-requirements,
-.item-tooltip-blues {
+.item-tooltip-blues,
+.item-tooltip-notes {
   margin-top: 8px;
 }
 .item-tooltip-caption {
@@ -4106,9 +4108,6 @@ button.item-detail-name {
 }
 .item-tooltip-classification {
   color: #ddc382;
-}
-.item-tooltip-level {
-  color: #f06055;
 }
 
 .map-page {

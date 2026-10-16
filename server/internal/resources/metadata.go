@@ -66,6 +66,10 @@ type MagicOptionDefinition struct {
 	Precision uint8              `json:"precision,omitempty"`
 	Level     uint8              `json:"level,omitempty"`
 	RawRanges []MagicOptionRange `json:"raw_ranges,omitempty"`
+	// ValueMin/ValueMax bound the rollable value (smallest and largest non-zero
+	// range cell). They drive the blue roll percentage only.
+	ValueMin uint32 `json:"value_min,omitempty"`
+	ValueMax uint32 `json:"value_max,omitempty"`
 }
 type MagicOptionRange struct {
 	Minimum string `json:"minimum"`
@@ -184,7 +188,7 @@ func LoadItemMetadata(directory string) (*ItemMetadata, error) {
 		}
 		for id, option := range catalog.MagicOptions {
 			parsed, err := strconv.ParseUint(id, 10, 32)
-			if err != nil || parsed == 0 || len(option.Code) > 128 || strings.TrimSpace(option.Code) != option.Code || strings.TrimSpace(option.Label) != option.Label || len(option.Label) > 96 || len(option.Unit) > 24 || option.Precision > 6 || option.Scale > 1000000 || len(option.RawRanges) > 3 {
+			if err != nil || parsed == 0 || len(option.Code) > 128 || strings.TrimSpace(option.Code) != option.Code || strings.TrimSpace(option.Label) != option.Label || len(option.Label) > 96 || len(option.Unit) > 24 || option.Precision > 6 || option.Scale > 1000000 || len(option.RawRanges) > 3 || (option.ValueMax != 0 && option.ValueMin >= option.ValueMax) || (option.ValueMax == 0 && option.ValueMin != 0) {
 				return nil, fmt.Errorf("invalid magic option definition")
 			}
 			for _, valueRange := range option.RawRanges {
@@ -925,12 +929,16 @@ func resolveBlueOptions(instance map[string]any, definitions map[string]MagicOpt
 				presentation.Label = definition.Code
 			}
 		}
-		resolved = append(resolved, map[string]any{
+		row := map[string]any{
 			"id": id, "label": presentation.Label, "raw_value": value,
 			"unit": presentation.Unit, "scale": presentation.Scale,
 			"precision": presentation.Precision, "code": definition.Code,
 			"label_verified": verified,
-		})
+		}
+		if percent, ok := blueRollPercent(definition, value); ok {
+			row["percent"] = percent
+		}
+		resolved = append(resolved, row)
 	}
 	return resolved, unresolved
 }

@@ -1022,6 +1022,12 @@ func (c *liveClient) snapshotSubscriptionsForFlags(flags uint8) []liveSubscripti
 		if flags&2 == 0 && subscription.Stream == "analytics" {
 			continue
 		}
+		// The notification snapshot is the constant {"ready":true}; only a
+		// subscribe or explicit refresh (both flags) needs to resend it.
+		// Committed-change invalidations must not re-snapshot it.
+		if flags != 3 && subscription.Stream == "notifications" {
+			continue
+		}
 		if subscription.Stream == "positions" {
 			if positionSnapshots[subscription.ID] != subscription.Revision {
 				continue

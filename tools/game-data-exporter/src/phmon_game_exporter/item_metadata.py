@@ -7,6 +7,10 @@ Only the legacy equipment taxonomy and seal classes verified there are mapped.
 from decimal import Decimal, InvalidOperation
 import re
 
+# skillmasterydata.txt IDs for the six European/Chinese masteries.
+MASTERY_NAMES = {513: 'Warrior', 514: 'Wizard', 515: 'Rogue', 516: 'Warlock', 517: 'Bard', 518: 'Cleric'}
+
+
 def item_metadata(fields: list[str]) -> dict:
     if len(fields) < 62:
         return {}
@@ -20,12 +24,18 @@ def item_metadata(fields: list[str]) -> dict:
     if type1 != 3:
         return {}
     result = {'type_ids': [type1, type2, family, part], 'rarity': rarity}
+    masteries = []
     for index in (32, 34, 36, 38):
         try:
-            if int(fields[index]) == 1 and int(fields[index + 1]) > 0:
-                result['required_level'] = int(fields[index + 1])
+            requirement, level = int(fields[index]), int(fields[index + 1])
         except ValueError:
-            pass
+            continue
+        if requirement == 1 and level > 0:
+            result['required_level'] = level
+        elif requirement in MASTERY_NAMES and level > 0:
+            masteries.append({'mastery': MASTERY_NAMES[requirement], 'level': level})
+    if masteries and type2 == 1:
+        result['mastery_requirements'] = masteries
     if type2 == 1:
         result['rare'] = rarity in (2, 3, 6, 7)
         if 1 <= item_class <= 30:
@@ -54,6 +64,16 @@ def item_metadata(fields: list[str]) -> dict:
             result['sort_type'] = 'Shield'
         elif family == 6:
             result['sort_type'] = 'Weapon'
+        if family == 6:
+            distance = _attack_distance(fields)
+            if distance:
+                result['attack_distance'] = distance
+        try:
+            max_options = int(fields[158]) if len(fields) > 158 else 0
+        except ValueError:
+            max_options = 0
+        if 0 < max_options <= 255:
+            result['max_magic_options'] = max_options
         reference_stats = _reference_stats(fields, family)
         if reference_stats:
             result['reference_stats'] = reference_stats
@@ -63,6 +83,17 @@ def item_metadata(fields: list[str]) -> dict:
         elif family == 2:
             result['sort_type'] = 'Pill'
     return result
+
+
+def _attack_distance(fields: list[str]) -> str | None:
+    """Range column is in tenths of a unit; display value has one decimal."""
+    try:
+        value = int(fields[94])
+    except (ValueError, IndexError):
+        return None
+    if value <= 0 or value > 1000:
+        return None
+    return f'{value // 10}.{value % 10}'
 
 
 def _decimal_cell(fields: list[str], index: int) -> str | None:

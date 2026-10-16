@@ -24,6 +24,11 @@ const shouldShowChatNotification = createChatNotificationDeduper()
 const displayMilliseconds = 8000
 let removeListener: (() => void) | undefined
 let progressTimer: ReturnType<typeof setInterval> | undefined
+// The map page uses its own layout that wraps the default one, so a navigation
+// between layouts mounts the new host before the old one unmounts. The shared
+// notification subscription belongs to the last host standing.
+const liveHosts = useState('notification-hosts', () => 0)
+if (import.meta.client) liveHosts.value += 1
 
 function dismiss(card: Card) {
   active.value = active.value.filter((item) => item !== card)
@@ -47,7 +52,9 @@ function pump() {
   while (active.value.length < 3 && waiting.length) {
     const card = waiting.shift()!
     card.expiresAt = now.value + displayMilliseconds
-    active.value = [...active.value, card]
+    // Newest first: the stack is anchored to the bottom, so a new card grows it
+    // upward instead of pushing every visible card (and its countdown) up a slot.
+    active.value = [card, ...active.value]
   }
   if (active.value.length && !progressTimer)
     progressTimer = setInterval(tick, 100)
@@ -153,7 +160,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   removeListener?.()
-  clearNotificationFeed()
+  liveHosts.value -= 1
+  if (liveHosts.value <= 0) clearNotificationFeed()
   document.removeEventListener('visibilitychange', onVisibilityChange)
   stopProgressTimer()
   active.value = []
@@ -162,7 +170,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
+  <TransitionGroup
+    tag="div"
+    name="event-popup"
     class="event-popup-stack"
     aria-live="polite"
     aria-label="Event notifications"
@@ -210,7 +220,7 @@ onBeforeUnmount(() => {
         aria-hidden="true"
       />
     </article>
-  </div>
+  </TransitionGroup>
 </template>
 
 <style scoped>
@@ -319,6 +329,26 @@ onBeforeUnmount(() => {
   transform-origin: left;
   transition: transform 100ms linear;
   pointer-events: none;
+}
+/* Cards leave instantly; the ones left behind slide down into the gap. */
+.event-popup-leave-active {
+  display: none;
+}
+.event-popup-move,
+.event-popup-enter-active {
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+.event-popup-enter-from {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .event-popup-move,
+  .event-popup-enter-active {
+    transition: none;
+  }
 }
 @media (max-width: 640px) {
   .event-popup-stack {

@@ -35,7 +35,7 @@ const hood = {
         percent: 51,
       },
       { key: 'mag_def_pwr', label: 'Mag. def. pwr', value: '106', percent: 0 },
-      { key: 'parry_ratio', label: 'Parry ratio', value: '23', percent: 32 },
+      { key: 'parry_ratio', label: 'Parry rate', value: '23', percent: 32 },
     ],
     durability: { current: 62, maximum: 63 },
     percentages: [{ key: 'durability', label: 'Durability', value: 38 }],
@@ -229,14 +229,13 @@ test('observed instance stats take precedence over catalog ranges', () => {
     'Mag. def. pwr 106 (+0%)',
   ])
   assert.equal(detail.durability, 'Durability 62/63 (+38%)')
-  assert.deepEqual(detail.statsAfterDurability, ['Parry ratio 23 (+32%)'])
+  assert.deepEqual(detail.statsAfterDurability, ['Parry rate 23 (+32%)'])
   assert.equal(detail.catalogNote, '')
   assert.deepEqual(detail.blues, ['Int 3 Increase'])
   assert.deepEqual(
     detail.requirements.map((line) => line.text),
     ['Required level 63', 'Male', 'Chinese'],
   )
-  assert.equal(detail.requirements[0]?.level, true)
 })
 
 test('pet packet enhancement and resolved blues render without pet API detail fields', () => {
@@ -316,7 +315,7 @@ test('Events drop item renders the reference observed suit details in order', ()
           },
           {
             key: 'parry_ratio',
-            label: 'Parry ratio',
+            label: 'Parry rate',
             value: '84',
             percent: 100,
           },
@@ -374,7 +373,7 @@ test('Events drop item renders the reference observed suit details in order', ()
   ])
   assert.equal(detail.durability, 'Durability 227/93 (+100%)')
   assert.deepEqual(detail.statsAfterDurability, [
-    'Parry ratio 84 (+100%)',
+    'Parry rate 84 (+100%)',
     'Phy. reinforce 31.1% (+100%)',
     'Mag. reinforce 66.3% (+100%)',
   ])
@@ -455,7 +454,7 @@ test('catalog ranges render only when no observed stats exist', () => {
   })
   assert.deepEqual(detail.statsBeforeDurability, [
     'Phy. def. pwr 40–60',
-    'Parry ratio 10',
+    'Parry rate 10',
   ])
   assert.equal(
     detail.catalogNote,
@@ -476,7 +475,7 @@ test('observed scalar stats suppress catalog ranges', () => {
       reference_stats: { mag_def_pwr: { min: '1', max: '2' } },
     },
   })
-  assert.deepEqual(detail.statsBeforeDurability, ['Phy. def. pwr: 51 (+12%)'])
+  assert.deepEqual(detail.statsBeforeDurability, ['Phy. def. pwr 51 (+12%)'])
   assert.equal(detail.catalogNote, '')
 })
 
@@ -673,4 +672,208 @@ test('basic owned gain never shows catalog ranges as its rolled stats', () => {
   const detail = buildItemDetail(record)
   assert.deepEqual(detail.statsBeforeDurability, [])
   assert.match(detail.catalogNote, /not observed for this item gain/)
+})
+
+test('weapon tooltip follows the in-game section order with blue roll percentages', () => {
+  const detail = buildItemDetail({
+    plus: 7,
+    metadata: {
+      name: 'Soul Fiend',
+      seal: 'Seal of Star',
+      rare: true,
+      type_ids: [3, 1, 6, 11],
+      sort_type: 'Weapon',
+      item_group: 'Twohand staff',
+      degree: 10,
+      required_level: 90,
+      required_race: 'European',
+      attack_distance: '0.6',
+      max_magic_options: 9,
+    },
+    instance_details: {
+      durability: { current: 291, maximum: 291 },
+      percentages: [{ key: 'durability', label: 'Durability', value: 100 }],
+      stats: [
+        { key: 'critical_ratio', label: 'Critical', value: '2', percent: 100 },
+        {
+          key: 'mag_atk_pwr',
+          label: 'Mag. atk. pwr',
+          value: '3357 ~ 3966',
+          percent: 100,
+        },
+        { key: 'hit_ratio', label: 'Attack rate', value: '329', percent: 100 },
+      ],
+      blues: [
+        { id: '209', label: 'Lucky', raw_value: '2', unit: ' uses', scale: 1 },
+        {
+          id: '101',
+          label: 'Attack rate increase',
+          raw_value: '40',
+          unit: '%',
+          scale: 1,
+          percent: 63,
+        },
+        {
+          id: '71',
+          label: 'Str increase',
+          raw_value: '6',
+          scale: 1,
+          percent: 100,
+        },
+      ],
+    },
+  })
+  assert.deepEqual(itemTooltipStatLines(detail), [
+    'Mag. atk. pwr 3357 ~ 3966 (+100%)',
+    'Durability 291/291 (+100%)',
+    'Attack distance 0.6',
+    'Attack rate 329 (+100%)',
+    'Critical 2 (+100%)',
+  ])
+  assert.deepEqual(detail.classifications, [
+    'Sort of item: Twohand staff',
+    'Degree: 10 degrees',
+  ])
+  assert.deepEqual(
+    detail.requirements.map((line) => line.text),
+    ['Required level 90', 'European', 'Max no. of magic options: 9'],
+  )
+  assert.deepEqual(detail.blues, [
+    'Str 6 Increase (+100%)',
+    'Attack rate 40% Increase (+63%)',
+    'Lucky(2Time/times)',
+  ])
+  assert.deepEqual(detail.notes, ['Able to use Advanced elixir.'])
+})
+
+test('robe lists mastery requirements and keeps armor stat order', () => {
+  const detail = buildItemDetail({
+    metadata: {
+      name: 'Divine Robe',
+      type_ids: [3, 1, 9, 3],
+      item_group: 'Robe',
+      mounted_part: 'Chest',
+      required_gender: 'Female',
+      required_race: 'European',
+      mastery_requirements: [
+        { mastery: 'Wizard', level: 92 },
+        { mastery: 'Cleric', level: 92 },
+      ],
+    },
+    instance_details: {
+      stats: [
+        { key: 'phy_reinforce', label: 'Phy. reinforce', value: '33.0%' },
+        { key: 'parry_ratio', label: 'Parry ratio', value: '85' },
+        { key: 'mag_def_pwr', label: 'Mag. def. pwr', value: '446.8' },
+        { key: 'phy_def_pwr', label: 'Phy. def. pwr', value: '228.6' },
+      ],
+    },
+  })
+  assert.deepEqual(itemTooltipStatLines(detail), [
+    'Phy. def. pwr 228.6',
+    'Mag. def. pwr 446.8',
+    'Parry rate 85',
+    'Phy. reinforce 33.0%',
+  ])
+  assert.deepEqual(
+    detail.requirements.map((line) => line.text),
+    [
+      'Mastery level: Wizard 92',
+      'Mastery level: Cleric 92',
+      'Female',
+      'European',
+    ],
+  )
+})
+
+test('packet rolls skip stats the item lacks and use tooltip labels', () => {
+  const detail = buildItemDetail({
+    metadata: {
+      type_ids: [3, 1, 6, 11],
+      reference_stats: {
+        phy_atk_pwr_min: { min: '0', max: '0' },
+        phy_atk_pwr_max: { min: '0', max: '0' },
+        mag_atk_pwr_min: { min: '2580', max: '2737' },
+        mag_atk_pwr_max: { min: '3153', max: '3346' },
+      },
+    },
+    instance_details: {
+      percentages: [
+        { key: 'phy_atk_pwr', label: 'Phy. atk. pwr', value: 100 },
+        { key: 'mag_atk_pwr', label: 'Mag. atk. pwr', value: 90 },
+        { key: 'hit_ratio', label: 'Attack rating', value: 41 },
+      ],
+    },
+  })
+  assert.deepEqual(detail.statsAfterDurability, [
+    'Mag. atk. pwr (+90%)',
+    'Attack rate (+41%)',
+  ])
+})
+
+test('ring resist blues share one phrasing', () => {
+  const blue = (id: string, label: string) => ({
+    id,
+    label,
+    raw_value: '20',
+    unit: '%',
+    scale: 1,
+    percent: 100,
+  })
+  const detail = buildItemDetail({
+    metadata: { type_ids: [3, 1, 12, 3] },
+    instance_details: {
+      blues: [
+        blue('191', 'Zombie duration reduction'),
+        blue('179', 'Burn duration reduction'),
+        blue('185', 'Poison duration reduction'),
+      ],
+    },
+  })
+  assert.deepEqual(detail.blues, [
+    'Burn 20% Reduce (+100%)',
+    'Poisoning 20% Reduce (+100%)',
+    'Zombie 20% Reduce (+100%)',
+  ])
+})
+
+test('advanced elixir note only on elixir equipment without an applied elixir', () => {
+  const note = (item: Record<string, unknown>) => buildItemDetail(item).notes
+  assert.deepEqual(note({ metadata: { type_ids: [3, 1, 4, 1] } }), [
+    'Able to use Advanced elixir.',
+  ])
+  assert.deepEqual(note({ metadata: { type_ids: [3, 1, 13, 2] } }), [])
+  assert.deepEqual(note({ metadata: { type_ids: [3, 1, 7, 1] } }), [])
+  assert.deepEqual(
+    note({
+      metadata: { type_ids: [3, 1, 6, 11] },
+      instance_details: {
+        blues: [
+          {
+            id: '1',
+            label: 'Advanced elixir is in effect',
+            raw_value: '2',
+            scale: 1,
+          },
+        ],
+      },
+    }),
+    [],
+  )
+})
+
+test('catalog reinforce ranges are shown as percentages', () => {
+  const detail = buildItemDetail({
+    metadata: {
+      type_ids: [3, 1, 9, 3],
+      reference_stats: {
+        phy_reinforce: { min: '299', max: '330' },
+        mag_reinforce: { min: '703', max: '703' },
+      },
+    },
+  })
+  assert.deepEqual(itemTooltipStatLines(detail), [
+    'Phy. reinforce 29.9%–33.0%',
+    'Mag. reinforce 70.3%',
+  ])
 })

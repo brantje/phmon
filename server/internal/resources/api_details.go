@@ -134,11 +134,15 @@ func resolveAPIItemDetails(item, metadata map[string]any, options map[string]Mag
 				presentation.Label = definition.Code
 			}
 		}
-		resolved = append(resolved, map[string]any{
+		row := map[string]any{
 			"id": option.id, "label": presentation.Label, "raw_value": option.value,
 			"unit": presentation.Unit, "scale": 1, "precision": 0, "code": definition.Code,
 			"label_verified": verified,
-		})
+		}
+		if percent, ok := blueRollPercent(definition, option.value); ok {
+			row["percent"] = percent
+		}
+		resolved = append(resolved, row)
 	}
 	details["blues"] = resolved
 	details["unresolved_blue_count"] = unresolved
@@ -201,7 +205,7 @@ func verifiedAPIBlueDefinition(code string) (MagicOptionDefinition, bool) {
 	case "EVADE_CRITICAL", "CRITICAL":
 		return MagicOptionDefinition{Label: "Critical", Scale: 1}, true
 	case "REPAIR":
-		return MagicOptionDefinition{Label: "Able to use Advanced elixir.", Scale: 1}, true
+		return MagicOptionDefinition{Label: "Available number of repair", Scale: 1}, true
 	case "REINFORCE_ITEM":
 		return MagicOptionDefinition{Label: "Advanced elixir is in effect", Scale: 1}, true
 	case "RESIST_FROSTBITE":
@@ -320,7 +324,7 @@ func resolveAPIStats(item, meta map[string]any, whites map[string]uint64, blues 
 	addRange := func(key, label, low, high string, decimal bool) {
 		a, okA := apiStatNumber(item, low)
 		b, okB := apiStatNumber(item, high)
-		if !okA || !okB || a > b {
+		if !okA || !okB || a > b || (a == 0 && b == 0) {
 			return
 		}
 		format := func(n float64) string {
@@ -380,4 +384,32 @@ func resolveAPIStats(item, meta map[string]any, whites map[string]uint64, blues 
 		addRange("mag_absorption", "Mag. absorption", "mag_absorb_min", "mag_absorb_max", true)
 	}
 	return lines
+}
+
+// blueRollPercent reproduces the client's roll percentage for value options:
+// floor(100*(value-min)/(max-min)) over the option's rollable range. Count
+// options (uses) and values outside the range show no percentage. Verified
+// against the GreatestSRO client tooltips; see docs/item-instance-evidence.md.
+func blueRollPercent(definition MagicOptionDefinition, rawValue string) (int, bool) {
+	if definition.ValueMax == 0 || definition.ValueMin >= definition.ValueMax || countOptionCode(definition.Code) {
+		return 0, false
+	}
+	value, err := strconv.ParseUint(rawValue, 10, 32)
+	if err != nil || uint32(value) < definition.ValueMin || uint32(value) > definition.ValueMax {
+		return 0, false
+	}
+	return int(100 * (uint32(value) - definition.ValueMin) / (definition.ValueMax - definition.ValueMin)), true
+}
+
+func countOptionCode(code string) bool {
+	base := strings.TrimPrefix(code, "MATTR_")
+	base = strings.TrimPrefix(base, "AVATAR_")
+	base = strings.TrimSuffix(base, "_SET")
+	base = strings.TrimSuffix(base, "_AVATAR")
+	base = strings.TrimSuffix(base, "_3JOB")
+	switch base {
+	case "SOLID", "LUCK", "ATHANASIA", "ASTRAL", "REPAIR", "REINFORCE_ITEM":
+		return true
+	}
+	return false
 }
