@@ -604,6 +604,13 @@ onBeforeUnmount(() => {
                 / {{ pet.hp_max.toLocaleString() }}</template
               ></b
             >
+            <small
+              v-if="typeof pet.hgp === 'number'"
+              class="ov-pet-level"
+              :title="`Hunger read ${Math.round((pet.hgp_age_s ?? 0) / 60)} min ago, when the pet was summoned`"
+            >
+              HGP {{ Math.round(pet.hgp / 100) }}%</small
+            >
             <small v-if="petExpPercent(pet) !== null" class="ov-pet-level">
               EXP {{ petExpPercent(pet) }}%</small
             >

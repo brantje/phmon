@@ -1259,6 +1259,35 @@ class PassiveItemPacketTests(unittest.TestCase):
         self.assertEqual(parsed['fields']['magic_options'], [
             {'id': '54', 'value': '5'}, {'id': '11', 'value': '1'}])
 
+    def test_wolf_header_reports_hunger_only_when_roster_matches(self):
+        header = bytes.fromhex(
+            'dcb16200fe170000861700000000000053132b000000000025'
+            '6424010000000000'
+            '00a0646200' '0f')
+        parsed = plugin.parse_attack_pet_header(header)
+        self.assertEqual((parsed['model'], parsed['hp'], parsed['exp'],
+                          parsed['level'], parsed['hunger']),
+                         (6142, 6022, 2822995, 37, 9316))
+        tracker = plugin.PassiveItemTracker()
+        tracker.enqueue(0x30C8, header)
+
+        def resources(level, model=6142, pet_type='wolf'):
+            return {'equipment': {'availability': 'observed', 'slots': []},
+                    'inventory': {'availability': 'observed', 'slots': []},
+                    'pets': {'availability': 'observed', 'pets': [{
+                        'pet_id': '6468060', 'type': pet_type, 'model': model,
+                        'level': level, 'inventory_available': False}]}}
+        matching = resources(37)
+        tracker.decorate(matching, 'session-one')
+        pet = matching['pets']['pets'][0]
+        self.assertEqual(pet['hgp'], 9316)
+        self.assertIn('hgp_age_s', pet)
+        for mismatch in (resources(36), resources(37, model=1), resources(37, pet_type='pick')):
+            tracker.decorate(mismatch, 'session-one')
+            self.assertNotIn('hgp', mismatch['pets']['pets'][0])
+        with self.assertRaises(plugin.ItemPacketError):
+            plugin.parse_attack_pet_header(header[:20])
+
     def test_rich_pick_pet_snapshot_reconciles_entire_packet(self):
         pet_id = 4584763
         slots = [{'source_slot': slot, 'item': None} for slot in range(28)]

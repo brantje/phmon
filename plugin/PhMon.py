@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.48'
+pVersion = '1.9.49'
 pUrl = ''
 
 PROTOCOL_VERSION = 22
@@ -2313,6 +2313,22 @@ def parse_pet_inventory_operation(data):
     return item
 
 
+def parse_attack_pet_header(data):
+    """Read the observed vSRO wolf (growing pet) 0x30C8 header.
+
+    Layout from operator captures (id u32, model u32, hp u32, u32 0, exp u64,
+    level u8, hunger u16): level and exp matched get_pets() and hunger tracked
+    the in-game HGP window (max 10000). Callers must still match the roster.
+    """
+    if len(data) < 27:
+        raise ItemPacketError('attack_pet_header_too_short')
+    pet_id, model, hp, _reserved, exp, level, hgp = struct.unpack_from('<IIIIQBH', data)
+    if not 1 <= level <= 255 or hgp > 10000:
+        raise ItemPacketError('attack_pet_header_out_of_range')
+    return {'pet_id': str(pet_id), 'model': model, 'hp': hp, 'exp': exp,
+            'level': level, 'hunger': hgp}
+
+
 def parse_pet_inventory_snapshot(data, pet):
     """Reconcile the observed Pick-pet 0x30C8 branch with a fresh API roster."""
     if (not isinstance(pet, dict) or
@@ -2399,6 +2415,7 @@ class PassiveItemTracker(object):
         self._states = {}
         self._pet_states = {}
         self._pet_snapshots = {}
+        self._pet_hunger = {}
         self._pet_snapshot_last_error = None
         self._protocol = 'unknown'
         self._protocol_reason = 'not_resolved'
@@ -2455,6 +2472,7 @@ class PassiveItemTracker(object):
         self._states.clear()
         self._pet_states.clear()
         self._pet_snapshots.clear()
+        self._pet_hunger.clear()
         self._pet_snapshot_last_error = None
         self._epoch += 1
         self._sequence = 0
@@ -2535,6 +2553,15 @@ class PassiveItemTracker(object):
                             self._pet_states.pop(key, None)
                 else:
                     self._pet_states.clear()
+                try:
+                    header = parse_attack_pet_header(payload)
+                except (ItemPacketError, struct.error):
+                    pass
+                else:
+                    if len(self._pet_hunger) >= 32:
+                        self._pet_hunger.clear()
+                    header['received_at'] = _monotonic()
+                    self._pet_hunger[header['pet_id']] = header
                 if self._protocol == 'vsro-1.188' and 4 <= len(payload) <= 32768:
                     if len(self._pet_snapshots) >= 32:
                         self._pet_snapshots.clear()
@@ -2680,6 +2707,24 @@ class PassiveItemTracker(object):
         pet_attached = 0
         observed_pet_slots = set()
         pets_resource = resources.get('pets')
+        if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
+            roster = set()
+            for pet in pets_resource.get('pets', []):
+                if not isinstance(pet, dict):
+                    continue
+                roster.add(pet.get('pet_id'))
+                header = self._pet_hunger.get(pet.get('pet_id'))
+                # Only the wolf header layout is verified; require the packet's
+                # model and level to match the live roster entry.
+                if (header is not None and str(pet.get('type', '')).lower() == 'wolf' and
+                        header['model'] == pet.get('model') and
+                        header['level'] == pet.get('level')):
+                    pet['hgp'] = header['hunger']
+                    pet['hgp_age_s'] = int(max(0, _monotonic() - header['received_at']))
+            for pet_id, header in list(self._pet_hunger.items()):
+                # A header can arrive just before the getter lists the pet.
+                if pet_id not in roster and _monotonic() - header['received_at'] > 30:
+                    self._pet_hunger.pop(pet_id, None)
         if isinstance(pets_resource, dict) and pets_resource.get('availability') == 'observed':
             for pet in pets_resource.get('pets', []):
                 if not isinstance(pet, dict) or not pet.get('inventory_available'):

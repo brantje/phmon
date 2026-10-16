@@ -2101,7 +2101,12 @@ marked `*_source: "catalog"`. Verified against the in-game pet window: model 614
 37, HP 6018/6022, EXP 2805019/3239210 (86.60%). Catalog values never override a runtime
 value, and max HP is skipped when observed HP exceeds it.
 
-Unresolved: pet HGP (hunger, max 10000). Not in `get_pets()`. The `0x30C8` header holds a
-u16 at byte offset 25 (after a level byte at 24) that read 9745 at summon, consistent with
-the operator's estimate, but only one sample exists and no later packet updates it.
-`0x30D0` packets look like speed floats.
+Pet HGP (hunger, max 10000) is not in `get_pets()` and no update packet carrying it was
+found (probe 0.4.0/0.5.0 captures). It exists only in the `0x30C8` header sent when the pet
+is summoned. Wolf layout (verified over three captures, header 39 bytes): id u32, model u32,
+hp u32, u32 0, exp u64, level u8 at offset 24, hunger u16 at offset 25, then fields not
+decoded. Level and exp equal `get_pets()`; hunger read 9745, 9316 against in-game values
+falling 9524 → 9450 → 9378 → 9355 over the same session. Plugin 1.9.49 forwards `hgp` and
+`hgp_age_s` only for `wolf` pets whose packet model and level match the live roster. The
+value is a snapshot from summon time and goes stale; other pet classes' headers are
+unverified. `0x30D0` packets look like speed floats and `0x30BF` is 6 bytes (unknown).
