@@ -65,7 +65,7 @@ presence is not an executed pass; check the current PR SHA's Actions logs.
 | Classified WTB/WTS/WTT from retained Global chat with raw source links | Implemented | `server/internal/chat/offers.go`, `server/internal/httpapi/economy.go`, `web/app/pages/economy.vue` | `TestClassifyGlobalOfferRequiresExplicitPrefix`; chat integration tests | Real multilingual/ambiguous ad examples |
 | Source-backed text, sender, type, server and bounded date filters | Implemented | Same files | `TestOfferFiltersFailClosed`, `web/tests/searchPage.test.ts` | Browser/stale and filter interaction verification |
 | Structured item/seal/type/subcategory/degree filters | Evidence-limited / incomplete | Free text is retained without invented item IDs | `TestClassifyGlobalOfferRequiresExplicitPrefix` | Verified attributable item identity/parser for chat text |
-| Cross-observer dedup of identical actual broadcast while retaining repeats | Evidence-limited | `server/internal/chat/offers.go` | Repeated-observer fixtures | Verified shared broadcast identity unavailable; count observer-message occurrences |
+| Cross-observer dedup of identical actual broadcast while retaining repeats | Implemented (heuristic) | `server/internal/chat/offers.go` | Repeated-observer fixtures | No shared broadcast ID; identical text from a different observer within 2 s is collapsed, same-observer repeats kept |
 | Confirmed sales and realized prices | **Blocked** | No capability-backed source writer | None (intentionally unsupported) | Verified sale transaction/outcome and paid amount evidence |
 
 ## G — Stall/price history

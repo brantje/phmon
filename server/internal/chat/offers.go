@@ -77,9 +77,9 @@ const offerKindSQL = `CASE
 
 // Offers is a read-only query over retained Slice 6 Global chat messages.
 // Retained messages have per-observer IDs, not a shared server broadcast ID.
-// Equal sender/text/raw type in a short window cannot prove a single broadcast:
-// two real repeated ads observed by different bots must remain auditable.
-// Do not collapse distinct source IDs until a verified shared identity exists.
+// The same server/sender/raw type/text seen by a different observer within two
+// seconds of an earlier copy is treated as that earlier broadcast and omitted;
+// repeats from the same observer stay distinct. The earliest copy is kept.
 func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, error) {
 	if s == nil || s.pool == nil || !validOfferFilter(filter) {
 		return OfferPage{}, ErrInvalid
@@ -106,6 +106,15 @@ func (s *Store) Offers(ctx context.Context, filter OfferFilter) (OfferPage, erro
 		AND (($4='' AND (` + offerKindSQL + `)<>'unclassified') OR ($4<>'' AND (` + offerKindSQL + `)=$4))
 		AND ($5::timestamptz IS NULL OR m.occurred_at >= $5)
 		AND ($6::timestamptz IS NULL OR m.occurred_at < $6)
+		AND NOT EXISTS (SELECT 1 FROM chat_messages p
+			WHERE p.channel='global' AND p.direction='inbound'
+				AND p.event_id IS NOT NULL AND p.echo_of_command_id IS NULL
+				AND p.character_id<>m.character_id
+				AND lower(p.server_name)=lower(m.server_name)
+				AND p.raw_type=m.raw_type AND p.sender=m.sender
+				AND p.message=m.message
+				AND p.occurred_at BETWEEN m.occurred_at-interval '2 seconds' AND m.occurred_at
+				AND (p.occurred_at<m.occurred_at OR p.message_id<m.message_id))
 `
 	args := []any{filter.Server, filter.Sender, filter.Query, filter.Kind, filter.From, filter.To}
 	// Count and page the same set of retained observer messages even while
