@@ -24,7 +24,7 @@ from phBot import get_inventory, get_pets, log
 import QtBind
 
 pName = 'Pet Item Capture'
-pVersion = '0.5.0'
+pVersion = '0.6.0'
 
 CAPTURE_SECONDS = 600.0
 SAMPLE_INTERVAL_SECONDS = 1.0
@@ -62,6 +62,12 @@ _pending_after_packet = False
 _file_path = None
 _last_inventory = None
 _pet_ids = set()
+# HGP read from the 0x30C8 wolf header at summon (see docs/phbot-capabilities.md).
+_hgp_baseline = None
+_scan_counts = {}
+HGP_WINDOW_BELOW = 600
+MAX_SCAN_PER_OPCODE = 6
+MAX_SCAN_BYTES = 256
 _lead_counts = {}
 
 
@@ -177,7 +183,7 @@ def _first_pets_marker():
 
 def arm_pet_capture():
     global _capture_until, _next_sample_at, _started_at, _packets, _packet_total, _packet_counts
-    global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory, _lead_counts
+    global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory, _lead_counts, _hgp_baseline
     _started_at = time.monotonic()
     _capture_until = _started_at + CAPTURE_SECONDS
     _next_sample_at = 0.0
@@ -189,6 +195,8 @@ def arm_pet_capture():
     _pending_after_packet = False
     _last_inventory = None
     _lead_counts = {}
+    _scan_counts.clear()
+    _hgp_baseline = None
     _seen_opcodes.clear()
     _pet_ids.clear()
     _file_path = os.path.join(
@@ -215,8 +223,42 @@ def finished():
     _finish('unloaded')
 
 
+def _scan_packet(direction, opcode, data):
+    """Keep packets that mention a pet ID anywhere or hold a value near the HGP baseline."""
+    global _hgp_baseline
+    if not isinstance(data, (bytes, bytearray)) or len(data) > MAX_SCAN_BYTES:
+        return
+    body = bytes(data)
+    if opcode == 0x30C8 and len(body) >= 27:
+        level = body[24]
+        hunger = int.from_bytes(body[25:27], 'little')
+        if 1 <= level <= 255 and hunger <= 10000:
+            _hgp_baseline = hunger
+    reasons = []
+    for pet_id in _pet_ids:
+        offset = body.find(pet_id.to_bytes(4, 'little'), 4)
+        if offset >= 0:
+            reasons.append('pet_id_at_%d' % offset)
+    if _hgp_baseline is not None:
+        low = max(0, _hgp_baseline - HGP_WINDOW_BELOW)
+        for offset in range(0, len(body) - 1):
+            if low <= int.from_bytes(body[offset:offset + 2], 'little') <= _hgp_baseline + 5:
+                reasons.append('hgp_window_at_%d' % offset)
+                break
+    key = (direction, opcode)
+    if reasons and _scan_counts.get(key, 0) < MAX_SCAN_PER_OPCODE:
+        _scan_counts[key] = _scan_counts.get(key, 0) + 1
+        _packets.append({
+            't': round(time.monotonic() - _started_at, 3), 'direction': direction,
+            'opcode': '0x%04X' % opcode, 'length': len(body), 'truncated': False,
+            'hex': body.hex(), 'scan_reasons': reasons, 'hgp_baseline': _hgp_baseline,
+        })
+
+
 def _capture_packet(direction, opcode, data):
     global _packet_total, _pending_after_packet
+    if _capture_until and time.monotonic() < _capture_until and direction == 'server_to_client':
+        _scan_packet(direction, opcode, data)
     allowed = SERVER_OPCODES if direction == 'server_to_client' else CLIENT_OPCODES
     pet_id_match = (isinstance(data, (bytes, bytearray)) and len(data) >= 4 and
                     int.from_bytes(bytes(data[:4]), 'little') in _pet_ids)

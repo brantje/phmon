@@ -23,6 +23,10 @@ To learn where each pet class reports level and HP (phBot's `get_pets()` gives o
 
 The file now keeps every primitive field phBot returns per pet (`hp`, `model`, `name`, `mounted`, and any level-like field if the runtime has one) and records any server packet whose first four bytes are a currently summoned pet's ID (6 per packet shape, where a shape is opcode + length + bytes 4..6, at most 64 shapes, so frequent HP updates `0x3057` cannot crowd out a rarer type) plus bare counts of all other opcodes. Nothing is decoded or enabled from this evidence yet.
 
+### Hunger (HGP) search (probe 0.6.0)
+
+The HGP value is only known to be in the `0x30C8` summon header. To find a live update packet, **arm the probe before summoning the wolf** so the header sets a baseline. For the rest of the capture the probe also keeps (6 per opcode, up to 256 bytes) any server packet that contains the pet's ID at any offset after the first four bytes, or a 16-bit value within 600 below / 5 above the summon HGP. Entries carry `scan_reasons` (for example `hgp_window_at_6`). Write down the in-game HGP at a few times so a candidate can be matched. Hits can be false positives.
+
 ## What the file contains
 
 * `packets`: up to 64 incoming `0x30C8` and `0xB034` packets and outgoing `0x7034` item-move requests with direction, opcode, length, time and hex payload (each capped at 32 KiB; other opcodes are ignored). A `truncated` marker identifies an incomplete packet. `packet_counts` also records successful `0xB034` subtypes even if the packet buffer fills.
