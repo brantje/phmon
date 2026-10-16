@@ -5122,3 +5122,170 @@ button.item-detail-name {
   flex: none;
   text-decoration: none;
 }
+
+.ov-bars {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem 1.1rem;
+  margin-bottom: 0.8rem;
+}
+.ov-bar-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.2rem;
+  color: var(--ph-muted);
+  font-size: 0.75rem;
+}
+.ov-bar-label span:last-child {
+  color: var(--ph-text);
+}
+.ov-bar {
+  display: flex;
+  gap: 3px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #1b2535;
+}
+.ov-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+.ov-bar-hp > i {
+  background: #e86a6a;
+}
+.ov-bar-mp > i {
+  background: #6cc9f5;
+}
+.ov-bar-xp > i {
+  background: #8a94ee;
+}
+.ov-bar-pet {
+  flex: 1;
+  height: 7px;
+}
+.ov-bar-pet > i {
+  background: #5be08a;
+}
+.ov-bar-inv {
+  background: none;
+}
+.ov-bar-inv > i {
+  flex: 1;
+  border-radius: 2px;
+  background: #222c3c;
+}
+.ov-bar-inv > i.filled {
+  background: #d9b57a;
+}
+.ov-middle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 0.8rem;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+.ov-facts {
+  margin: 0;
+}
+.ov-facts > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 2.1rem;
+  border-bottom: 1px solid var(--ph-border-soft);
+  font-size: 0.78rem;
+}
+.ov-facts dt {
+  color: var(--ph-muted);
+}
+.ov-facts dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+.ov-pets {
+  margin-bottom: 0.8rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--ph-border);
+  border-radius: 6px;
+  background: rgba(6, 11, 18, 0.5);
+}
+.ov-pets h4 {
+  margin: 0 0 0.45rem;
+  color: var(--ph-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ov-pets-empty {
+  margin: 0;
+  color: var(--ph-muted);
+  font-size: 0.75rem;
+}
+.ov-pet {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.82rem;
+}
+.ov-pet strong {
+  white-space: nowrap;
+}
+.ov-pet-hp {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.ov-pet-hp b {
+  color: var(--ph-green);
+  font-size: 0.78rem;
+}
+.ov-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.ov-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--ph-border);
+  border-radius: 6px;
+}
+.ov-tile span {
+  color: var(--ph-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ov-tile strong {
+  font-size: 1.05rem;
+}
+.ov-tile-gold {
+  background: linear-gradient(
+    135deg,
+    rgba(80, 62, 34, 0.55),
+    rgba(30, 24, 16, 0.6)
+  );
+  border-color: #5b4a2c;
+}
+.ov-tile-sp {
+  background: linear-gradient(
+    135deg,
+    rgba(30, 45, 72, 0.6),
+    rgba(14, 20, 32, 0.6)
+  );
+  border-color: #2d405e;
+}
+@media (max-width: 640px) {
+  .ov-middle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -859,6 +859,7 @@ export interface PetInventoryRecord {
   type?: string
   model?: number
   hp?: number
+  hp_max?: number
   mounted?: boolean
   inventory_available: boolean
   slots?: (PetInventorySlot | null)[]
