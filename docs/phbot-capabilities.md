@@ -291,6 +291,17 @@ Slice 3 agent path only.
   preserves those observed API values instead of discarding them. Boolean, negative,
   non-integer, or missing values remain omitted. Closing storage marks the source
   `not_observed` while retaining the last confirmed payload, including gold.
+  On Greatest/iBot, 2026-10-16 snapshots exposed a misleading older-plugin
+  pattern: `get_guild_storage()` normalized as 121 empty slots and zero gold,
+  while another member's loaded observation had 60 slots, 18 items and nonzero
+  gold. The raw getter list was not retained, so an unopened response is an
+  inference supported by the API documentation and matching empty personal
+  storage. Plugin 1.9.45 treats a positive capacity with a zero-length personal
+  or guild item list as `not_observed`; a nonempty list of `None` slots remains
+  a confirmed empty observation and records `source_item_count`. Legacy empty,
+  zero-gold rows lack this evidence and rank behind confirmed guild contents
+  in the current guild, search and gold projections. Live phBot validation of
+  the new raw-list distinction remains pending operator installation.
   Storage gold does not use a Joymax packet fallback; the passive packet decoder
   remains limited to item-instance evidence that is unavailable from verified API
   fields.

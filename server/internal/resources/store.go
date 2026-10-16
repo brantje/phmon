@@ -21,6 +21,16 @@ type Store struct {
 	metadata *ItemMetadata
 }
 
+// Legacy plugins padded a getter's empty item list to its nominal capacity and
+// called it observed. Prefer evidence of a loaded list (or legacy non-empty
+// contents/gold) before comparing observation times across guild members.
+// New plugins provide source_item_count, including for a truly empty chest.
+const guildStorageEvidenceOrder = `CASE WHEN
+    coalesce(o.payload->>'source_item_count','0') <> '0' OR
+    coalesce(o.payload->>'used_slots','0') <> '0' OR
+    coalesce(o.payload->>'gold','0') <> '0'
+    THEN 1 ELSE 0 END DESC`
+
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 func (s *Store) Apply(ctx context.Context, agentID, characterID string, generation, revision uint64, sessionID string, snapshot Snapshot) error {
@@ -203,7 +213,7 @@ func (s *Store) GuildStorage(ctx context.Context, server, guild string) ([]Obser
 	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (o.resource_key) o.resource_key,o.availability,o.payload,o.observed_at,o.updated_at,o.revision,o.observer_character_id::text,c.character_name
 FROM character_resource_observations o JOIN characters c ON c.character_id=o.observer_character_id
 WHERE o.resource_key='guild_storage' AND o.server_key=$1 AND o.guild_key=$2
-ORDER BY o.resource_key,o.observed_at DESC NULLS LAST,o.updated_at DESC,o.observer_character_id`, strings.ToLower(strings.TrimSpace(server)), normalizeGuild(guild))
+ORDER BY o.resource_key,`+guildStorageEvidenceOrder+`,o.observed_at DESC NULLS LAST,o.updated_at DESC,o.observer_character_id`, strings.ToLower(strings.TrimSpace(server)), normalizeGuild(guild))
 	if err != nil {
 		return nil, err
 	}
@@ -237,8 +247,8 @@ func (s *Store) GuildStorageGold(ctx context.Context) ([]GuildStorageGoldEntry, 
 	rows, err := s.pool.Query(ctx, `SELECT DISTINCT ON (o.server_key, o.guild_key) c.server_name, c.guild_name, o.payload
 FROM character_resource_observations o
 JOIN characters c ON c.character_id = o.observer_character_id
-WHERE o.resource_key = 'guild_storage' AND o.guild_key <> '' AND o.availability = 'observed'
-ORDER BY o.server_key, o.guild_key, o.observed_at DESC NULLS LAST, o.updated_at DESC, o.observer_character_id`)
+WHERE o.resource_key = 'guild_storage' AND o.guild_key <> '' AND o.observed_at IS NOT NULL
+ORDER BY o.server_key, o.guild_key, `+guildStorageEvidenceOrder+`, o.observed_at DESC NULLS LAST, o.updated_at DESC, o.observer_character_id`)
 	if err != nil {
 		return nil, err
 	}

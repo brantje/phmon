@@ -744,6 +744,21 @@ name through the server API. It does not alter in-game storage. A later agent
 observation can create new saved data. The operation is logged with scope and row
 counts; it does not keep a durable audit-history record.
 
+Greatest/iBot verification on 2026-10-16 found 18 saved guild items in the
+07:58 Amsterdam observation, hidden by a later 08:45 legacy observation with
+121 empty slots and zero gold. The guild API, Item Search and current guild-gold
+projection now rank observations with evidence of a loaded getter list (or
+legacy items/nonzero gold) before ambiguous legacy empty polls. Plugin 1.9.45
+marks a positive-capacity storage response with no item-list entries as
+`not_observed` and records source-list length for real loaded observations.
+An opened, entirely empty chest with a list of `None` slots can therefore
+replace older contents. Existing legacy empty rows remain saved; their raw
+getter list cannot be reconstructed. After the local server rebuild, the
+authenticated web-proxy API returned `nuker3`, 60 slots/18 items,
+163583368773 gold; Item Search returned total 18. The rendered page was not
+automated in this environment. The installed Windows/phBot plugin still needs
+an operator update and live confirmation.
+
 Local evidence to date: see the 2026-09-28 audit below. The authenticated deployed
 PhMon tab was stale after backend restart; current equipment was unavailable. A
 matching 1440 × 1000 capture could not be obtained from the local tab, and the Stats

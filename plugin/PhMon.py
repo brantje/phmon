@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.44'
+pVersion = '1.9.45'
 pUrl = ''
 
 PROTOCOL_VERSION = 20
@@ -1461,6 +1461,11 @@ def _normalize_container(raw, resource_key):
         return {'availability': 'unavailable', 'reason': 'capacity_exceeds_limit'}
     if len(items) > raw_size:
         return {'availability': 'unavailable', 'reason': 'item_list_exceeds_reported_capacity'}
+    if resource_key in ('storage', 'guild_storage') and raw_size > 0 and len(items) == 0:
+        # phBot can report a nominal capacity before this character has opened
+        # storage. An opened, genuinely empty container still has a slot list
+        # containing None entries. Do not turn the absent list into empty slots.
+        return {'availability': 'not_observed', 'reason': 'item_list_not_loaded'}
     slots = _normalize_slots(items, raw_size)
     if slots is None:
         return {'availability': 'unavailable', 'reason': 'invalid_api_shape'}
@@ -1469,6 +1474,7 @@ def _normalize_container(raw, resource_key):
         'availability': 'observed',
         'capacity': raw_size,
         'used_slots': used,
+        'source_item_count': len(items),
         'slots': slots,
     }
 
