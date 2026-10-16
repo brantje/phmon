@@ -583,7 +583,12 @@ onBeforeUnmount(() => {
         <h4>Active pets</h4>
         <p v-if="!pets.length" class="ov-pets-empty">No summoned pets.</p>
         <div v-for="pet in pets" :key="String(pet.pet_id)" class="ov-pet">
-          <strong>{{ pet.name || pet.servername || petLabel(pet) }}</strong>
+          <strong
+            >{{ pet.name || pet.servername || petLabel(pet)
+            }}<small v-if="pet.level" class="ov-pet-level">
+              Lv {{ pet.level }}</small
+            ></strong
+          >
           <span class="ov-pet-hp">
             <span v-if="petHpPercent(pet) !== null" class="ov-bar ov-bar-pet"
               ><i :style="{ width: `${petHpPercent(pet)}%` }"

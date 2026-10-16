@@ -961,6 +961,19 @@ class ResourceCollectorTests(unittest.TestCase):
         })
         self.assertEqual(result['party_setup']['mode'], 'read_only_unverified')
 
+    def test_pet_level_and_exp_forwarded_only_for_growing_pets(self):
+        result = plugin.collect_resources(api={
+            'get_pets': lambda: {
+                1: {'name': 'Wolf cub', 'type': 'wolf', 'hp': 6022, 'level': 37,
+                    'exp': 2219335, 'max_exp': 0},
+                2: {'name': '', 'type': 'pick', 'hp': 109, 'level': 0, 'exp': 5},
+            },
+        })['pets']
+        by_id = {pet['pet_id']: pet for pet in result['pets']}
+        self.assertEqual((by_id['1']['level'], by_id['1']['exp']), (37, 2219335))
+        self.assertNotIn('level', by_id['2'])
+        self.assertNotIn('exp', by_id['2'])
+
     def test_pet_inventories_keep_per_pet_slots_empty_and_missing_distinct(self):
         result = plugin.collect_resources(api={
             'get_pets': lambda: {

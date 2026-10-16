@@ -858,6 +858,8 @@ export interface PetInventoryRecord {
   servername?: string
   type?: string
   model?: number
+  level?: number
+  exp?: number
   hp?: number
   hp_max?: number
   mounted?: boolean

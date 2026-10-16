@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.47'
+pVersion = '1.9.48'
 pUrl = ''
 
 PROTOCOL_VERSION = 22
@@ -1718,6 +1718,14 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
                 value = raw_pet.get(key)
                 if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                     pet[key] = value
+            # Observed in phBot 20.1.x get_pets() for growing pets (wolf: level 37,
+            # exp 2219335); pick pets report level 0, which is not a level.
+            level = raw_pet.get('level')
+            if isinstance(level, int) and not isinstance(level, bool) and 0 < level <= 255:
+                pet['level'] = level
+            exp = raw_pet.get('exp')
+            if isinstance(exp, int) and not isinstance(exp, bool) and exp >= 0 and pet.get('level'):
+                pet['exp'] = exp
             # Not documented by phBot's get_pets(); forwarded only when the
             # runtime supplies it. Never inferred from observed peaks.
             for source in ('hp_max', 'max_hp'):

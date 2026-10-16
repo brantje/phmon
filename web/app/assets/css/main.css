@@ -5296,3 +5296,10 @@ button.item-detail-name {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.ov-pet-level {
+  margin-left: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--ui-text-muted, #9fb0c9);
+}
