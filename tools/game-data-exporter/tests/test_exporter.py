@@ -717,3 +717,24 @@ def test_refresh_item_catalog_merges_static_facts(tmp_path) -> None:
     with pytest.raises(ValueError, match="code differs"):
         refresh(catalog_path, textdata)
     assert catalog_path.read_bytes() == before
+
+
+def test_refresh_item_catalog_removes_temporary_file_on_failure(tmp_path, monkeypatch) -> None:
+    module = _load_refresh_script()
+    textdata = tmp_path / "textdata"
+    textdata.mkdir()
+    _write_utf16(textdata / "item_grouping.txt", [])
+    _write_utf16(textdata / "textdata_object.txt", [])
+    _write_utf16(textdata / "magicoption.txt", [])
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps({"items": {}, "magic_options": {}}), encoding="utf-8")
+    before = catalog_path.read_bytes()
+
+    def fail(*_args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module.os, "replace", fail)
+    with pytest.raises(OSError, match="disk full"):
+        module.refresh(catalog_path, textdata)
+    assert catalog_path.read_bytes() == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["catalog.json", "textdata"]

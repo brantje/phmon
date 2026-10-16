@@ -106,12 +106,15 @@ def refresh(catalog_path: Path, textdata: Path) -> dict:
             option['value_min'], option['value_max'] = ranges[option_id]
             counts['magic_option_ranges'] += 1
     descriptor, temporary = tempfile.mkstemp(dir=catalog_path.parent, suffix='.tmp')
-    with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
-        json.dump(catalog, handle, ensure_ascii=False, separators=(',', ':'))
-    # mkstemp creates the file 0600; the server image reads it as another user.
-    os.chmod(temporary, catalog_path.stat().st_mode & 0o777)
-    os.chmod(temporary, catalog_path.stat().st_mode & 0o777)
-    os.replace(temporary, catalog_path)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+            json.dump(catalog, handle, ensure_ascii=False, separators=(',', ':'))
+        # mkstemp creates the file 0600; the server image reads it as another user.
+        os.chmod(temporary, catalog_path.stat().st_mode & 0o777)
+        os.replace(temporary, catalog_path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
     return counts
 
 
