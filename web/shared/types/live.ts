@@ -338,6 +338,14 @@ export interface TradeReportPage {
   total: number
 }
 
+export interface RecentTradesSnapshot {
+  reports: TradeReport[]
+  profit_24h: number
+  trades_24h: number
+  profit_samples_24h: number
+  since: string
+}
+
 export interface MapPartySnapshot {
   status: 'observed' | 'unavailable' | 'truncated'
   truncated?: boolean
@@ -659,6 +667,7 @@ export type LiveStream =
   | 'resources'
   | 'events'
   | 'offers'
+  | 'trades'
   | 'analytics'
   | 'chat'
   | 'map'

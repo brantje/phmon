@@ -246,6 +246,15 @@ collapsed into a presumed common broadcast. It uses the same authentication,
 revision fencing, invalidation, unavailable/recovery and unsubscribe lifecycle.
 No agent protocol or browser protocol-version change is required.
 
+The additive `trades` stream backs the dashboard Recent Trades card. Its filter
+accepts an optional `server` and `limit` (1–10, default 5); other selectors are
+rejected. Replacement data is `{"reports":[TradeReport...],"profit_24h":N,
+"trades_24h":N,"profit_samples_24h":N,"since":"..."}`: the latest reports by
+`finished_at`, plus the summed signed `gold` of every outcome finished since
+`now − 24h` (computed at each rebuild; reports without `gold` are counted in
+`trades_24h` but not `profit_samples_24h`). It rebuilds on each stored trade
+report through the existing invalidation path.
+
 Character-list search preserves the existing backend search semantics for
 name/guild/server/zone and optional persisted `group_id`. Character detail uses the
 stable server-scoped `character_id`. Identity and filtering remain server-owned; the

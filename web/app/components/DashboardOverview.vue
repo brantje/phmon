@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import type { ActivityEvent } from '~~/shared/types/live'
+import type {
+  ActivityEvent,
+  RecentTradesSnapshot,
+  TradeReport,
+} from '~~/shared/types/live'
+import {
+  formatSignedTradeGold,
+  formatTradeDuration,
+  tradeOutcomeLabel,
+  tradeRouteLabel,
+} from '~/utils/tradeReportSummary'
 import { groupRecentEvents } from '~/utils/groupRecentEvents'
 import { deathCauseLabel } from '~/utils/deathCause'
 import { offerItemChips } from '~/utils/offerTaxonomy'
@@ -30,6 +40,10 @@ const {
   clearEventFeed,
   setOfferFeed,
   clearOfferFeed,
+  tradeFeeds,
+  tradeFeedStatus,
+  setTradeFeed,
+  clearTradeFeed,
   refreshLiveData,
 } = useLiveData()
 const { serverScope } = useServerScope()
@@ -58,6 +72,32 @@ const recentChatMessages = computed(
 const recentOffers = computed(
   () => offerFeeds.value['dashboard-offers']?.offers || [],
 )
+const tradeSnapshot = computed(
+  () =>
+    (tradeFeeds.value['dashboard-trades'] as
+      RecentTradesSnapshot | undefined) ?? null,
+)
+const recentTrades = computed(() => tradeSnapshot.value?.reports || [])
+const tradesStatus = computed(
+  () => tradeFeedStatus.value['dashboard-trades'] || 'loading',
+)
+const tradeProfitLabel = computed(() => {
+  const snapshot = tradeSnapshot.value
+  if (!snapshot || snapshot.profit_samples_24h === 0) return '—'
+  return formatSignedTradeGold(snapshot.profit_24h)
+})
+
+function tradeRowMeta(trade: TradeReport) {
+  const parts = [trade.reporter.name]
+  if (typeof trade.duration_s === 'number') {
+    parts.push(formatTradeDuration(trade.duration_s))
+  }
+  if (trade.stars) {
+    parts.push(trade.stars === 'Max' ? 'Max stars' : `${trade.stars} stars`)
+  }
+  return parts.join(' · ')
+}
+
 const offersStatus = computed(
   () => offerFeedStatus.value['dashboard-offers'] || 'loading',
 )
@@ -149,6 +189,7 @@ function dashboardItemTarget(event: ActivityEvent) {
 function watchDashboardEvents(server: string) {
   const scope = { server: server === 'all' ? undefined : server }
   setOfferFeed('dashboard-offers', { ...scope, limit: 5 })
+  setTradeFeed('dashboard-trades', { ...scope, limit: 5 })
   setEventFeed('dashboard-deaths', {
     ...scope,
     limit: 5,
@@ -180,6 +221,7 @@ onBeforeUnmount(() => {
   clearEventFeed('dashboard-rare-drops')
   clearEventFeed('dashboard-chat')
   clearOfferFeed('dashboard-offers')
+  clearTradeFeed('dashboard-trades')
 })
 </script>
 
@@ -268,17 +310,87 @@ onBeforeUnmount(() => {
       </div>
     </article>
 
-    <article class="panel dashboard-later dashboard-server">
+    <article
+      class="panel recent-trades"
+      aria-label="Recent trades"
+      :aria-busy="tradesStatus === 'loading'"
+    >
       <div class="panel-header compact">
         <div>
-          <h2>Server Information</h2>
-          <p>Operator managed</p>
+          <h2>Recent Trades</h2>
+          <p>
+            Last 24h profit:
+            <strong
+              :class="{
+                'trade-profit-positive': (tradeSnapshot?.profit_24h ?? 0) > 0,
+                'trade-profit-negative': (tradeSnapshot?.profit_24h ?? 0) < 0,
+              }"
+              >{{ tradeProfitLabel }}</strong
+            >
+            <template v-if="tradeSnapshot">
+              · {{ tradeSnapshot.trades_24h }}
+              {{ tradeSnapshot.trades_24h === 1 ? 'trade' : 'trades' }}
+            </template>
+          </p>
         </div>
-        <span class="later-badge">LATER</span>
+        <NuxtLink class="panel-link" to="/events?view=trades">
+          Show all trades <UIcon name="i-lucide-arrow-up-right" />
+        </NuxtLink>
       </div>
-      <div class="later-content">
-        <UIcon name="i-lucide-server" /><strong>LATER</strong
-        ><span>Server artwork and metadata arrive in a later slice.</span>
+      <div
+        v-if="liveStale && recentTrades.length"
+        class="event-stale-note"
+        role="status"
+      >
+        Showing the last received trades as stale.
+      </div>
+      <div
+        v-if="tradesStatus === 'unavailable'"
+        class="dashboard-offer-status"
+        role="status"
+      >
+        Trades are temporarily unavailable.
+        <button
+          class="compact-button"
+          type="button"
+          @click="refreshLiveData(['dashboard-trades'])"
+        >
+          Retry
+        </button>
+      </div>
+      <ul v-if="recentTrades.length" class="recent-trades-list">
+        <li v-for="trade in recentTrades" :key="trade.trade_id">
+          <NuxtLink to="/events?view=trades">
+            <span class="recent-trades-main">
+              <strong>{{ tradeRouteLabel(trade) }}</strong>
+              <span>{{ tradeOutcomeLabel(trade) }}</span>
+              <small>{{ tradeRowMeta(trade) }}</small>
+            </span>
+            <span class="recent-trades-side">
+              <strong
+                v-if="typeof trade.gold === 'number'"
+                :class="{
+                  'trade-profit-positive': trade.gold > 0,
+                  'trade-profit-negative': trade.gold < 0,
+                }"
+                >{{ formatSignedTradeGold(trade.gold) }}</strong
+              >
+              <time :datetime="trade.finished_at">{{
+                formatTimestamp(trade.finished_at)
+              }}</time>
+            </span>
+          </NuxtLink>
+        </li>
+      </ul>
+      <div
+        v-else-if="tradesStatus !== 'unavailable'"
+        class="dashboard-event-empty"
+      >
+        <UIcon name="i-lucide-route" /><span>{{
+          tradesStatus === 'loading'
+            ? 'Loading trades…'
+            : 'No trade reports recorded in this server scope.'
+        }}</span>
       </div>
     </article>
 

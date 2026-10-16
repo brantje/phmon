@@ -7,6 +7,7 @@ import {
   type CharacterResourcesView,
   type EventPage,
   type GlobalOffersPage,
+  type RecentTradesSnapshot,
   type AnalyticsSnapshot,
   type CharactersSnapshot,
   type GuildStorageGoldEntry,
@@ -72,6 +73,10 @@ const characterControls = ref<ControlsSnapshot | null>(null)
 const eventFeeds = ref<Record<string, EventPage>>({})
 const offerFeeds = ref<Record<string, GlobalOffersPage>>({})
 const offerFeedStatus = ref<
+  Record<string, 'loading' | 'current' | 'unavailable'>
+>({})
+const tradeFeeds = ref<Record<string, RecentTradesSnapshot>>({})
+const tradeFeedStatus = ref<
   Record<string, 'loading' | 'current' | 'unavailable'>
 >({})
 const analyticsFeeds = ref<Record<string, AnalyticsSnapshot>>({})
@@ -489,6 +494,31 @@ function setOfferFeed(subscriptionID: string, filter: LiveFilter) {
       ...offerFeedStatus.value,
       [subscriptionID]: 'loading',
     }
+  })
+}
+
+function setTradeFeed(subscriptionID: string, filter: LiveFilter) {
+  ensureSubscription(subscriptionID, 'trades', filter, () => {
+    tradeFeeds.value = Object.fromEntries(
+      Object.entries(tradeFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    tradeFeedStatus.value = {
+      ...tradeFeedStatus.value,
+      [subscriptionID]: 'loading',
+    }
+  })
+}
+
+function clearTradeFeed(subscriptionID: string) {
+  removeSubscription(subscriptionID, () => {
+    tradeFeeds.value = Object.fromEntries(
+      Object.entries(tradeFeeds.value).filter(([id]) => id !== subscriptionID),
+    )
+    tradeFeedStatus.value = Object.fromEntries(
+      Object.entries(tradeFeedStatus.value).filter(
+        ([id]) => id !== subscriptionID,
+      ),
+    )
   })
 }
 
@@ -1136,6 +1166,12 @@ function handleFrame(frame: LiveServerFrame) {
   if (frame.type === 'subscription.unavailable') {
     subscription.current = false
     subscription.unavailable = true
+    if (subscription.stream === 'trades') {
+      tradeFeedStatus.value = {
+        ...tradeFeedStatus.value,
+        [subscription.id]: 'unavailable',
+      }
+    }
     if (subscription.stream === 'offers') {
       offerFeedStatus.value = {
         ...offerFeedStatus.value,
@@ -1284,6 +1320,30 @@ function applySnapshot(subscription: Subscription, data: unknown) {
       return true
     }
     default: {
+      if (subscription.stream === 'trades') {
+        const snapshot = data as RecentTradesSnapshot
+        if (
+          !snapshot ||
+          !Array.isArray(snapshot.reports) ||
+          typeof snapshot.profit_24h !== 'number' ||
+          typeof snapshot.trades_24h !== 'number' ||
+          typeof snapshot.profit_samples_24h !== 'number' ||
+          snapshot.reports.some(
+            (report) =>
+              !report ||
+              typeof report.trade_id !== 'string' ||
+              typeof report.finished_at !== 'string' ||
+              !report.route,
+          )
+        )
+          return false
+        tradeFeeds.value = { ...tradeFeeds.value, [subscription.id]: snapshot }
+        tradeFeedStatus.value = {
+          ...tradeFeedStatus.value,
+          [subscription.id]: 'current',
+        }
+        return true
+      }
       if (subscription.stream === 'offers') {
         const page = data as GlobalOffersPage
         if (
@@ -1573,6 +1633,8 @@ export function useLiveData() {
     eventFeeds: readonly(eventFeeds),
     offerFeeds: readonly(offerFeeds),
     offerFeedStatus: readonly(offerFeedStatus),
+    tradeFeeds: readonly(tradeFeeds),
+    tradeFeedStatus: readonly(tradeFeedStatus),
     analyticsFeeds: readonly(analyticsFeeds),
     analyticsFeedStatus: readonly(analyticsFeedStatus),
     resourceFeeds: readonly(resourceFeeds),
@@ -1604,6 +1666,8 @@ export function useLiveData() {
     clearEventFeed,
     setOfferFeed,
     clearOfferFeed,
+    setTradeFeed,
+    clearTradeFeed,
     setAnalyticsFeed,
     clearAnalyticsFeed,
     registerVisibleProgressCharacter,

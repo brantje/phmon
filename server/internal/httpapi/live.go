@@ -1162,6 +1162,15 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 			limit = 5
 		}
 		return h.chat.Offers(ctx, chat.OfferFilter{Server: subscription.Filter.Server, Limit: limit})
+	case "trades":
+		if h.thiefSightings == nil {
+			return nil, errors.New("trade reports unavailable")
+		}
+		limit := subscription.Filter.Limit
+		if limit == 0 {
+			limit = 5
+		}
+		return h.thiefSightings.RecentTrades(ctx, subscription.Filter.Server, limit, time.Now().Add(-24*time.Hour))
 	case "events":
 		if h.events == nil {
 			return nil, errors.New("event history unavailable")
@@ -1531,7 +1540,7 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 				return liveSubscription{}, false
 			}
 		}
-	case "offers":
+	case "offers", "trades":
 		filter := subscription.Filter
 		if !validServerFilter(filter.Server) || filter.Query != "" || filter.GroupID != "" || filter.CharacterID != "" ||
 			filter.CommandName != "" || filter.CommandState != "" || len(filter.ResourceKeys) != 0 || hasEventSpecificFilters(filter) ||
