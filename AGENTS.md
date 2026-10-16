@@ -493,6 +493,43 @@ sender validation and deployment remain separate, intentionally outside this
 request. Exact next action: review the implementation/evidence; deploy only under
 separate operator authorization and then observe naturally occurring v2 uploads.
 
+### Resume — 2026-10-16 map disappearance from shared live database
+
+A host `go run ./cmd/server` used the live PostgreSQL database alongside Compose.
+Its startup marked the live character sessions `backend_restart`, and its
+three-second reconciler ended sessions owned by the Compose server. A subsequent
+`TEST_DATABASE_URL="$DATABASE_URL" go test ./...` also targeted the live database;
+it was stopped. The host `.env` `DATABASE_URL` now points to the separate local
+`phmon_scratch` database while Compose still uses `phmon`. Integration tests must
+use a disposable database. The Go server now holds a database advisory lease
+before migrations and session reconciliation, rejecting a second server on the
+same database. The Compose server was rebuilt; PostgreSQL was not restarted.
+A second server startup against the live database was rejected, and
+the authenticated 1440×1000 map showed all 12 character markers throughout a
+60-second, 13-sample browser check. Focused Go tests passed. Test fixture rows
+were written to the live database before the test was stopped; review their
+server scopes and dependencies before any cleanup. Exact next action: verify
+no host process is using the live database, keep test runs on `phmon_scratch`,
+and investigate the separate duplicate-event warnings if they recur.
+
+### Resume — 2026-10-16 live database test-data cleanup
+
+The operator requested removal of test data while preserving active characters.
+A private full recovery dump was saved outside Git at
+`~/.local/share/phmon/backups/live-before-test-cleanup-20261016.dump` (0600;
+`pg_restore -l` verified). A guarded transaction selected only the 2026-10-16
+12:28–12:33 UTC test cohort: 33 agents and 167 characters in non-`Greatest`
+scopes, with no open character sessions or active-scope event overlap. It removed
+those records and their dependent history, including 100,000 test position samples,
+100,003 test mob samples, 78 events, 299 sessions, 35 proxy requests, 11 proxy
+status rows, two pending enrichments and one test player. The two real agents,
+12 `Greatest` characters, 12 open sessions and all `Greatest` history were retained.
+Post-commit queries found zero non-`Greatest` characters, players, events, position
+or mob samples, proxy status rows or pending enrichments. All 12 active character
+state timestamps continued to advance; PostgreSQL, server and web were healthy.
+Host `.env` still targets `phmon_scratch`; do not point integration tests at the
+live `phmon` database.
+
 ### Resume — 2026-10-12 agent reconnect storm from PostgreSQL timeouts
 
 Live agents were reconnecting because PostgreSQL commits waited on `WALWrite`

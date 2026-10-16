@@ -58,6 +58,29 @@ func run() error {
 		return errors.New("cannot initialize database pool")
 	}
 	defer pool.Close()
+	// A second backend pointed at this database must never reconcile the first
+	// backend's live character sessions. Keep this session-level lock on a
+	// dedicated pool connection for the entire server lifetime.
+	leaseCtx, leaseCancel := context.WithTimeout(ctx, 2*time.Second)
+	lease, err := pool.Acquire(leaseCtx)
+	if err != nil {
+		leaseCancel()
+		return errors.New("cannot acquire database server lease")
+	}
+	const serverLeaseKey int64 = 0x70686d6f6e736572 // "phmonser"
+	var leaseAcquired bool
+	err = lease.QueryRow(leaseCtx, `SELECT pg_try_advisory_lock($1)`, serverLeaseKey).Scan(&leaseAcquired)
+	leaseCancel()
+	if err != nil || !leaseAcquired {
+		lease.Release()
+		return errors.New("another PhMon server is already using this database")
+	}
+	defer func() {
+		unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_, _ = lease.Exec(unlockCtx, `SELECT pg_advisory_unlock($1)`, serverLeaseKey)
+		lease.Release()
+	}()
 
 	migrationCtx, migrationCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer migrationCancel()

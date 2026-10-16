@@ -228,8 +228,9 @@ origins are detected and are not offered as mobile QR targets.
 nvm use
 npm --prefix web ci
 bash scripts/check.sh
-# Include a real database check (after starting PostgreSQL):
-TEST_DATABASE_URL='postgres://phmon:phmon_local_only@127.0.0.1:5435/phmon?sslmode=disable' bash scripts/check.sh
+# Include database integration checks only against a disposable database:
+docker compose exec -T postgres createdb -U phmon phmon_test
+TEST_DATABASE_URL='postgres://phmon:phmon_local_only@127.0.0.1:5435/phmon_test?sslmode=disable' bash scripts/check.sh
 # Format source:
 (cd server && gofmt -w .)
 npm --prefix web run format
