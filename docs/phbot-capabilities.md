@@ -2110,3 +2110,10 @@ falling 9524 → 9450 → 9378 → 9355 over the same session. Plugin 1.9.49 for
 `hgp_age_s` only for `wolf` pets whose packet model and level match the live roster. The
 value is a snapshot from summon time and goes stale; other pet classes' headers are
 unverified. `0x30D0` packets look like speed floats and `0x30BF` is 6 bytes (unknown).
+
+Probe 0.6.0 (2026-10-16, 432 s capture, summon header HGP 8966, in-game 8965 → 8815)
+scanned every server packet for the pet ID at any offset and for any u16 from 600 below to
+5 above the baseline. Only the `0x30C8` header matched, so no later packet carries HGP; the
+client most likely decays it locally. `0x30BF` is the pet ID plus constant `0x0004`. Decay
+is uneven (about 0.23-0.47 per second across windows), so it cannot be estimated. Live HGP
+is therefore not obtainable; keep the summon-time value.
