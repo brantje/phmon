@@ -17,7 +17,7 @@ Why it exists: phBot's public `get_pets()` example shows pet item slots with mod
 
 * `packets`: up to 64 incoming `0x30C8` and `0xB034` packets and outgoing `0x7034` item-move requests with direction, opcode, length, time and hex payload (each capped at 32 KiB; other opcodes are ignored). A `truncated` marker identifies an incomplete packet. `packet_counts` also records successful `0xB034` subtypes even if the packet buffer fills.
 * `snapshots`: `get_pets()` and `get_inventory()` item rows taken about once per second and after each pet packet, with only primitive values, at most 128 rows each. Unchanged interval samples are skipped.
-* The file is capped at 8 MiB; if necessary snapshots are thinned and late packets omitted with an explicit counter. It is written next to the plugin. Raw packet data can contain pet names or other personal game data, so review it before sharing. The probe does not intentionally collect chat, account credentials or character names.
+* The file is capped at 2 MiB; if necessary snapshots are thinned and late packets omitted with an explicit counter. It is written next to the plugin. Raw packet data can contain pet names or other personal game data, so review it before sharing. The probe does not intentionally collect chat, account credentials or character names.
 
 ## Next step
 
