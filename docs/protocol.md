@@ -1,4 +1,4 @@
-# Agent protocol versions 2–18
+# Agent protocol versions 2–22
 
 Slice 1 introduced authenticated agent connectivity (v1). Slice 2 evolves that
 contract to v2 and adds character identity registration, snapshots, state updates and
@@ -33,9 +33,9 @@ extensions and limits.
 - Application messages are JSON text frames. Protocol v2/v3 frames are limited to
   8 KiB; v4 resource snapshot/delta frames may be up to 256 KiB.
 
-Protocol version: latest 18. Version 1 agents are rejected with an explicit
+Protocol version: latest 22. Version 1 agents are rejected with an explicit
 unsupported protocol close reason because the character identity/state contract is
-required. Versions 2–18 remain accepted for rolling deployment compatibility.
+required. Versions 2–22 remain accepted for rolling deployment compatibility.
 
 ## hello
 
@@ -1593,6 +1593,16 @@ and carries a positive `source_item_count`. The server accepts older protocols
 and ranks their nonempty items or nonzero gold ahead of ambiguous legacy
 empty/zero-gold guild snapshots. Raw getter lists were not retained for older
 observations.
+
+## Agent protocol 22: character mastery observations — 2026-10-16
+
+Plugin 1.9.47 adds optional `masteries` to the observed `character_info` resource.
+When `get_mastery()` returns a dictionary, the plugin sends up to 32 entries with
+numeric `id`, bounded `name` and non-negative `level`; SP is not included. An empty
+dictionary is an observed empty list. Missing, `None` or malformed getter data
+omits `masteries`, so it is not interpreted as an empty build. The Stats card
+shows up to two learned names beneath the character level. Protocols 2–21 remain
+accepted; older plugins omit the field.
 
 ## Agent protocol 20: character_info resource — 2026-10-15
 

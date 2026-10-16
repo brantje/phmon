@@ -1954,6 +1954,13 @@ a.nav-item {
   color: var(--ph-primary);
   font-size: 0.82rem;
 }
+.character-card-mastery {
+  overflow: hidden;
+  color: #aeb8c7;
+  font-size: 0.73rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .character-card-identity > span,
 .character-server {
   color: #aeb8c7;

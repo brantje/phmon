@@ -28,10 +28,10 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.46'
+pVersion = '1.9.47'
 pUrl = ''
 
-PROTOCOL_VERSION = 21
+PROTOCOL_VERSION = 22
 TELEPORT_READY_OPCODE = 0x34B5
 EVENT_DIED = 7
 EVENT_UNIQUE_SPAWN = 0
@@ -1483,7 +1483,7 @@ def collect_resource_inputs(api=None):
     """Call phBot getters on its callback thread; return raw values for worker normalization."""
     inputs = {}
     for name in ('get_inventory', 'get_storage', 'get_guild_storage', 'get_job_pouch', 'get_pets', 'get_party', 'get_academy',
-                 'get_character_data', 'get_guild', 'get_guild_union'):
+                 'get_character_data', 'get_guild', 'get_guild_union', 'get_mastery'):
         function = (api or {}).get(name) if isinstance(api, dict) else None
         if not callable(function):
             function = _optional_phbot_api(name)
@@ -1767,7 +1767,8 @@ def normalize_resource_inputs(inputs, config_dir=None, server=None, locale=None)
     available, academy = call('get_academy')
     resources['academy'] = _normalize_academy(academy, available)
     resources['character_info'] = _normalize_character_info(
-        call('get_character_data'), call('get_guild'), call('get_guild_union'))
+        call('get_character_data'), call('get_guild'), call('get_guild_union'),
+        call('get_mastery'))
     resources['party_setup'] = {
         'availability': 'unavailable',
         'mode': 'read_only_unverified',
@@ -1823,14 +1824,18 @@ def _normalize_academy(value, api_available):
     return {'availability': 'observed', 'value': payload}
 
 
-def _normalize_character_info(character, guild, union):
-    """Summarize the documented guild/union getters for this character's info card."""
+def _normalize_character_info(character, guild, union, mastery=(False, None)):
+    """Summarize documented character, guild, union and mastery getters."""
     character_available, character_data = character
     guild_available, guild_data = guild
     union_available, union_data = union
-    if not character_available and not guild_available and not union_available:
+    mastery_available, mastery_data = mastery
+    if not character_available and not guild_available and not union_available and not mastery_available:
         return {'availability': 'unavailable', 'reason': 'api_missing'}
     payload = {'availability': 'observed'}
+    masteries = _normalize_masteries(mastery_data) if mastery_available else None
+    if masteries is not None:
+        payload['masteries'] = masteries
     own_name = None
     if isinstance(character_data, dict):
         own_name = _bounded_text(character_data.get('name'), 64)
@@ -1866,6 +1871,32 @@ def _normalize_character_info(character, guild, union):
                 names.append(name)
         payload['union'] = {'count': count, 'names': sorted(names, key=str.lower)}
     return payload
+
+
+def _normalize_masteries(value):
+    """Return bounded, observed mastery identities and levels, or None if unknown."""
+    if not isinstance(value, dict):
+        return None
+    masteries = []
+    for raw_id, raw in itertools.islice(value.items(), 32):
+        if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+            mastery_id = raw_id
+        elif isinstance(raw_id, str) and raw_id.isdecimal():
+            try:
+                mastery_id = int(raw_id, 10)
+            except (ValueError, OverflowError):
+                continue
+        else:
+            continue
+        if mastery_id <= 0 or mastery_id > 100000 or not isinstance(raw, dict):
+            continue
+        name = _bounded_text(raw.get('name'), 64)
+        level = raw.get('level')
+        if (name is None or not isinstance(level, int) or isinstance(level, bool)
+                or level < 0 or level > 255):
+            continue
+        masteries.append({'id': mastery_id, 'name': name, 'level': level})
+    return sorted(masteries, key=lambda entry: entry['id'])
 
 
 def _event_resource_snapshot(resources, identity=None):

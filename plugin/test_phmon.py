@@ -845,14 +845,63 @@ class ResourceCollectorTests(unittest.TestCase):
                 3: {'name': 'Third', 'online': 1},
             },
             'get_guild_union': lambda: {9: {'name': 'Zeta'}, 4: {'name': 'alpha'}},
+            'get_mastery': lambda: {
+                275: {'name': 'Fire', 'level': 100, 'sp': 13174},
+                259: {'name': 'Pacheon', 'level': 100, 'sp': 13174},
+            },
         }
         info = plugin.collect_resources(api=api)['character_info']
         self.assertEqual(info, {
             'availability': 'observed',
+            'masteries': [
+                {'id': 259, 'name': 'Pacheon', 'level': 100},
+                {'id': 275, 'name': 'Fire', 'level': 100},
+            ],
             'job_name': 'MrTrade',
             'guild': {'member_count': 3, 'online_count': 2, 'donated_gp': 486241},
             'union': {'count': 2, 'names': ['alpha', 'Zeta']},
         })
+
+    def test_character_info_masteries_are_bounded_and_invalid_rows_are_skipped(self):
+        api = {
+            'get_mastery': lambda: {
+                275: {'name': ' Fire ', 'level': 100, 'sp': 13174},
+                259: {'name': 'Pacheon', 'level': 0},
+                True: {'name': 'Invalid ID', 'level': 99},
+                276: {'name': 'No level'},
+                277: {'name': 'Invalid level', 'level': True},
+                'bad': {'name': 'Bad ID', 'level': 1},
+            },
+        }
+        info = plugin.collect_resources(api=api)['character_info']
+        self.assertEqual(info, {
+            'availability': 'observed',
+            'masteries': [
+                {'id': 259, 'name': 'Pacheon', 'level': 0},
+                {'id': 275, 'name': 'Fire', 'level': 100},
+            ],
+        })
+
+        many = {index: {'name': 'Mastery %d' % index, 'level': 1}
+                for index in range(1, 41)}
+        capped = plugin.collect_resources(api={
+            'get_mastery': lambda: many,
+        })['character_info']['masteries']
+        self.assertEqual(len(capped), 32)
+        self.assertEqual(capped[0]['id'], 1)
+        self.assertEqual(capped[-1]['id'], 32)
+
+    def test_character_info_omits_unavailable_masteries_and_preserves_observed_empty(self):
+        unavailable = plugin.collect_resources(api={
+            'get_character_data': lambda: {'name': 'Solo'},
+            'get_mastery': lambda: None,
+        })['character_info']
+        self.assertEqual(unavailable, {'availability': 'observed'})
+
+        empty = plugin.collect_resources(api={
+            'get_mastery': lambda: {},
+        })['character_info']
+        self.assertEqual(empty, {'availability': 'observed', 'masteries': []})
 
     def test_character_info_omits_unobserved_fields(self):
         api = {

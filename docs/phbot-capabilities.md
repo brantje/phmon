@@ -1,5 +1,16 @@
 # phBot capability evidence
 
+## Character mastery display — 2026-10-16
+
+The official [Character API](https://plugins.phbot.org/phbot-api/character)
+documents `get_mastery()` as returning `None` or a dictionary keyed by mastery
+ID. Its example provides each mastery name, level and SP value. Plugin 1.9.47
+collects only the ID, name and level for the existing `character_info` resource;
+missing or malformed data is omitted, and an observed empty dictionary remains
+an empty list. The Stats card displays up to two learned mastery names under the
+character level. Automated fixtures cover the shape, but no Windows/phBot runtime
+was used, so actual installed-runtime getter behavior remains unverified.
+
 ## Slice 12 source review — 2026-10-07
 
 Official [Character](https://plugins.phbot.org/phbot-api/character),

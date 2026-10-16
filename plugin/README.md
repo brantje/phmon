@@ -1,6 +1,6 @@
 # PhMon phBot plugin
 
-The current local plugin release is **1.9.46**, using agent protocol **21**. It
+The current local plugin release is **1.9.47**, using agent protocol **22**. It
 enriches Pick-pet equipment from verified vSRO 1.188 `0x30C8` summon snapshots
 and `0xB034` subtype `0x11` pickups after matching pet ID, slot, model and
 durability to `get_pets()`. The snapshot parser supports observed equipment and
@@ -11,6 +11,8 @@ marks positive-capacity personal/guild storage with an empty getter item list as
 so an opened but empty chest remains distinguishable from an unopened one. It
 reports job name, guild member/online counts, donated GP and union guilds as the
 `character_info` resource for the Stats Info card. It
+also includes the observed mastery IDs, names and levels in that resource for the
+Stats character-card header. Missing `get_mastery()` data remains unknown.
 accepts a display-only route from another plugin in the same phBot process through
 `submit_external_route` and publishes `navigation.observed`. PhMon does not start
 or stop that route. Walks stay visible when a trade script also contains blank

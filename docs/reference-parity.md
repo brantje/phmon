@@ -4,6 +4,20 @@ This ledger records implementation evidence against the public phMonitor demo
 baseline captured in docs/reference on 2026-09-26. Reference screenshots are
 inspection evidence only and are never shipped as PhMon application assets.
 
+## Stats card mastery summary — 2026-10-16
+
+The public phMonitor v0.5.0 Stats card places the mastery summary directly below
+the character level. PhMon now collects `get_mastery()` through the existing
+`character_info` resource and renders up to two learned mastery names in the same
+position on each shared character card. Unknown or empty data displays `—`.
+The server persists and streams this field through the existing resource path;
+there is no schema migration or new endpoint. Plugin 1.9.47 uses protocol 22,
+with the server continuing to accept protocols 2–21.
+
+Automated plugin, protocol-contract and frontend checks cover populated, empty,
+unavailable and malformed mastery data. Responsive visual validation is recorded
+after the local browser check; no phBot character was operated.
+
 ## Teleport / ferry crossing connectors — 2026-10-10
 
 Walked-route follow-up: an authenticated read-only capture of nuker1 showed an

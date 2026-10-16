@@ -8,6 +8,7 @@ import {
   equipmentColumns,
   equipmentItemAt,
 } from '../utils/equipmentLayout'
+import { masterySummary } from '../utils/masterySummary'
 
 const props = defineProps<{
   character: CharacterView
@@ -94,6 +95,11 @@ const resources = computed(
 const resourceMap = computed(() => resources.value?.resources || {})
 const observation = (key: string) => resourceMap.value[key]
 const payload = (key: string) => observation(key)?.payload || {}
+const masteryText = computed(() => {
+  const infoObservation = observation('character_info')
+  if (infoObservation?.availability !== 'observed') return ''
+  return masterySummary(payload('character_info').masteries)
+})
 const containerObservation = (key: string) => ({
   ...payload(key),
   availability: observation(key)?.availability || 'unavailable',
@@ -156,14 +162,15 @@ const academyMembers = computed(() => {
 })
 const academyHasMembers = computed(() => academyMembers.value.length > 0)
 const activeResourceKeys = computed(() => {
-  if (selectedTab.value === 'Overview') return ['pets', 'party', 'inventory']
-  if (selectedTab.value === 'Info') return ['equipment', 'character_info']
-  if (selectedTab.value === 'Inventory') return ['inventory']
-  if (selectedTab.value === 'Storage') return [selectedContainer.value]
-  if (selectedTab.value === 'Pet') return ['pets', 'item_enrichment']
-  if (selectedTab.value === 'Party') return ['party', 'party_setup']
-  if (selectedTab.value === 'Academy') return ['academy']
-  return []
+  const keys = ['character_info']
+  if (selectedTab.value === 'Overview') keys.push('pets', 'party', 'inventory')
+  else if (selectedTab.value === 'Info') keys.push('equipment')
+  else if (selectedTab.value === 'Inventory') keys.push('inventory')
+  else if (selectedTab.value === 'Storage') keys.push(selectedContainer.value)
+  else if (selectedTab.value === 'Pet') keys.push('pets', 'item_enrichment')
+  else if (selectedTab.value === 'Party') keys.push('party', 'party_setup')
+  else if (selectedTab.value === 'Academy') keys.push('academy')
+  return [...new Set(keys)]
 })
 
 function ratioPercent(value?: number | null, max?: number | null) {
@@ -425,6 +432,12 @@ onBeforeUnmount(() => {
           >{{ character.name }}</NuxtLink
         >
         <strong>Lv. {{ character.level ?? '—' }}</strong>
+        <span
+          class="character-card-mastery"
+          :title="masteryText || 'Mastery unavailable'"
+          :aria-label="`Masteries: ${masteryText || 'unavailable'}`"
+          >{{ masteryText || '—' }}</span
+        >
         <span>{{ character.guild || 'Guild unknown' }}</span>
       </div>
       <div class="character-presence">

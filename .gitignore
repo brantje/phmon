@@ -15,3 +15,4 @@ __pycache__/
 /tools/game-data-exporter/src/*.egg-info/
 /tools/game-data-exporter/build/
 /tools/game-data-exporter/dist/
+HANDOVER*
