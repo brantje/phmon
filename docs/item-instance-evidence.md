@@ -364,3 +364,33 @@ list reports 56 with all observed items in the first 28. Version 1.9.43
 reconciles the packet-covered positions and keeps the extra API page empty as
 a safety condition. The 245-byte live packet itself was not retained, so a
 fresh 1.9.43 session is needed to prove the correction on Kalypso.
+
+## Item tooltip static facts and blue roll percentage (2026-10-16)
+
+Catalog presentations gained `item_group` (specific "Sort of item", from
+`item_grouping.txt` + `textdata_object.txt`), `attack_distance` (itemdata Range
+column / 10), `max_magic_options` (column 158) and `mastery_requirements`
+(ReqLevelType 513–518 → Warrior/Wizard/Rogue/Warlock/Bard/Cleric). `sort_type`
+and `seal` are unchanged because Item Search and analytics filter on them.
+Magic options gained `value_min`/`value_max`. Both come from
+`tools/game-data-exporter/refresh_item_catalog.py`, which updates the packaged
+catalog in place and aborts if an item code differs.
+
+Blue roll percentage is `floor(100 × (value − min) / (max − min))` over the
+smallest and largest non-zero 16-bit halves of the option's three range cells.
+Screenshot-verified only: it matches all 13 blue percentages in the supplied
+GreatestSRO tooltips (Str/Int 100, Durability 100, Attack rate/Parry 63, HP/MP
+67, resists 100). It is not a documented formula. Count options (Steady, Lucky,
+Immortal, Astral, repair) show no percentage. Blues display in ascending option
+ID order, as in the client. `PARAM_REPAIR` is "Available Number of Repair"; the
+earlier "Able to use Advanced elixir." label for REPAIR was wrong. The popup
+shows that elixir line as a static note on weapons, armor, shields and
+accessories (families 1–6, 9–12), not on job suits, avatars or devil spirits,
+and not when an "Advanced elixir is in effect" option is present.
+Unmet-requirement red is not shown; the popup takes only the item.
+
+Catalog reinforce cells are tenths of a percent: Soul Fiend's 4608/5632 are
+the screenshot's 460.8%/563.2%, Divine Robe's 330/703 are 33.0%/70.3% and
+Cancer Viper Sting's 913/1116 are 91.3%/111.6%. Catalog-range tooltips show
+them that way. A white roll for a stat whose catalog range is all zero (a
+staff's physical attack and reinforce) is not shown, matching the client.

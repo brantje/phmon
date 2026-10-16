@@ -34,13 +34,17 @@ defineProps<{ model: ItemDetailModel }>()
       v-for="requirement in model.requirements"
       :key="requirement.text"
       class="item-tooltip-requirement"
-      :class="{ 'item-tooltip-level': requirement.level }"
       >{{ requirement.text }}</span
     >
   </div>
   <div v-if="model.blues.length" class="item-tooltip-blues">
     <span v-for="blue in model.blues" :key="blue" class="item-tooltip-blue">{{
       blue
+    }}</span>
+  </div>
+  <div v-if="model.notes.length" class="item-tooltip-notes">
+    <span v-for="note in model.notes" :key="note" class="item-tooltip-stat">{{
+      note
     }}</span>
   </div>
   <span

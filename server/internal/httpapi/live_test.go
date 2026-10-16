@@ -775,6 +775,23 @@ func TestAnalyticsSnapshotsRequireAnalyticsInvalidation(t *testing.T) {
 	}
 }
 
+func TestNotificationSnapshotIsNotRebuiltByInvalidation(t *testing.T) {
+	client := &liveClient{subscriptions: map[string]liveSubscription{
+		"events":        {ID: "events", Revision: 1, Stream: "events"},
+		"notifications": {ID: "notifications", Revision: 1, Stream: "notifications"},
+	}}
+	for _, flags := range []uint8{1, 2} {
+		for _, subscription := range client.snapshotSubscriptionsForFlags(flags) {
+			if subscription.Stream == "notifications" {
+				t.Fatalf("invalidation flags %d re-snapshotted the notification feed", flags)
+			}
+		}
+	}
+	if got := client.snapshotSubscriptionsForFlags(3); len(got) != 2 {
+		t.Fatalf("subscribe or refresh must still snapshot every feed: %+v", got)
+	}
+}
+
 func dialLive(t *testing.T, baseURL, origin string) *websocket.Conn {
 	t.Helper()
 	headers := http.Header{}

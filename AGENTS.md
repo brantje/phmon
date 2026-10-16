@@ -6866,6 +6866,38 @@ Nothing committed or pushed. Exact next action: none for this increment; wider
 Slice 13 gates remain open.
 
 
+### Resume — 2026-10-16 item detail popup sections and blue roll %
+
+Implemented HANDOVER_ITEM_DETAIL.md (user-approved full plan, plain wording,
+elixir line shown, in-place catalog refresh, names not filled). Exporter
+`item_metadata` adds attack distance, max magic options and mastery
+requirements; `refresh_item_catalog.py` merged them plus `item_group` and
+magic-option value ranges into the packaged Greatest catalog. Go resources add
+blue `percent` (count options excluded), validate ranges, fix the REPAIR label
+and skip all-zero stat ranges. The web popup orders stats by item family
+(Attack distance, Attack/Parry/Blocking rate), sorts blues by option ID with
+(+N%), lists mastery/max-option requirements in the neutral colour and adds the
+elixir note. Files: exporter, `server/internal/resources`, `web/app/utils/
+itemDetailPopup.ts`, `ItemTooltipDetails.vue`, CSS, tests, evidence doc.
+Validation: 53 exporter, Go resources, 297 frontend tests, typecheck, ESLint and
+Prettier pass. Not run: browser comparison, server/web rebuild, live check
+(blue % formula is screenshot-verified only). Not committed.
+Exact next action: rebuild server and web, then hover Soul Fiend/Divine Robe
+on Stats at 1440×1000 and 390×844 and compare with the screenshots.
+
+Verification follow-up (2026-10-16): end-to-end Go `enrich` → web model runs of
+Soul Fiend, Divine Robe and Amber Ring reproduce every screenshot stat, order
+and blue %. Fixes: the refresh script had left the catalog mode 0600, which the
+uid-65532 server image cannot read (now 0644; script keeps the mode, with a
+test); the zero-range skip left orphan "Phy. atk. pwr (+100%)" roll lines on
+staffs (rolls for all-zero catalog stats are now hidden); packet roll labels
+use the tooltip names; Burn/Poison/Zombie blues share the Reduce phrasing;
+catalog reinforce ranges show as % (tenths, screenshot-verified); the elixir
+note is limited to legacy equipment families and hidden when an elixir is in
+effect. Added a refresh-script exporter test and four web tests. Known gap:
+11D+ sealed items (rarity 2, item class > 30) show a gold name but no seal or
+degree line.
+
 ### Resume — 2026-10-15 armor mounting part mislabel
 
 Operator-reported breaking bug: armor mounting parts were rotated (Taesang Suit
@@ -7087,3 +7119,18 @@ messages from the same observer and private/guild/union observations stay
 separate. This applies before popup, native alert and sound presentation.
 The 292-test web unit suite, Nuxt typecheck, focused ESLint and Prettier pass
 on Node 24.20.0; browser fixture validation remains pending.
+
+Follow-up popup countdown correction (2026-10-16): the countdown bar appeared to
+go low → high → low and jump vertically. Each card's own bar was always
+decreasing; the stack listed oldest-first, so every arriving notification pushed
+all visible cards up a slot and put a fresh full bar where a nearly expired one
+had been. `EventNotificationHost.vue` now lists newest first (arrivals grow the
+bottom-anchored stack upward without moving existing cards), slides the remaining
+cards into the gap when one expires (`TransitionGroup` move, disabled under
+reduced motion) and removes an expired card from layout immediately so no more
+than three are ever visible. Verified in Chrome at 1440×1000 against the local
+instance with fixture notification frames injected on the live socket (no events
+were produced and no preferences were saved): burst of six, every card strictly
+decreasing, never more than three visible, no mid-countdown reset to 100%; a
+single notification decreases monotonically. Typecheck, ESLint and Prettier pass.
+Only the production web container needs a rebuild to pick this up.

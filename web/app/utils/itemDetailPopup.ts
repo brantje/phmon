@@ -17,8 +17,9 @@ export interface ItemDetailModel {
   durability: string
   statsAfterDurability: string[]
   catalogNote: string
-  requirements: { text: string; level: boolean }[]
+  requirements: { text: string }[]
   blues: string[]
+  notes: string[]
 }
 
 export function relatedItemDetail(item: Record<string, unknown>) {
@@ -54,7 +55,9 @@ export function itemTooltipPresentation(item: Record<string, unknown>) {
   const model = related?.model ?? own
   const hasStats =
     model.statsBeforeDurability.length ||
-    model.statsAfterDurability.length ||
+    model.statsAfterDurability.some(
+      (line) => !line.startsWith('Attack distance'),
+    ) ||
     model.blues.length
   return {
     model: { ...model, catalogNote: '' },
@@ -75,34 +78,37 @@ export function itemTooltipPresentation(item: Record<string, unknown>) {
   }
 }
 
+const statOrder = [
+  'Phy. atk. pwr',
+  'Mag. atk. pwr',
+  'Phy. def. pwr',
+  'Mag. def. pwr',
+  'Phy. absorption',
+  'Mag. absorption',
+  'Durability',
+  'Attack distance',
+  'Attack rate',
+  'Parry rate',
+  'Blocking rate',
+  'Critical',
+  'Phy. reinforce',
+  'Mag. reinforce',
+]
+
+// Order follows the in-game item description; unknown lines keep their place
+// after the known ones (Array.sort is stable).
 export function itemTooltipStatLines(model: ItemDetailModel) {
-  const order = [
-    'Phy. def. pwr',
-    'Parry ratio',
-    'Mag. def. pwr',
-    'Phy. atk. pwr',
-    'Mag. atk. pwr',
-    'Phy. absorption',
-    'Mag. absorption',
-    'Attack rating',
-    'Critical',
-    'Phy. reinforce',
-    'Mag. reinforce',
-    'Durability',
-  ]
+  const rank = (line: string) => {
+    const index = statOrder.findIndex((label) => line.startsWith(label))
+    return index < 0 ? statOrder.length : index
+  }
   return [
     ...model.statsBeforeDurability,
     ...model.statsAfterDurability,
     model.durability,
   ]
     .filter(Boolean)
-    .sort((left, right) => {
-      const rank = (line: string) => {
-        const index = order.findIndex((label) => line.startsWith(label))
-        return index < 0 ? order.length : index
-      }
-      return rank(left) - rank(right)
-    })
+    .sort((left, right) => rank(left) - rank(right))
 }
 
 const statLabels: Record<string, string> = {
@@ -112,15 +118,17 @@ const statLabels: Record<string, string> = {
   mag_reinforce: 'Mag. reinforce',
   phy_def_pwr: 'Phy. def. pwr',
   mag_def_pwr: 'Mag. def. pwr',
-  parry_ratio: 'Parry ratio',
+  parry_ratio: 'Parry rate',
+  block_ratio: 'Blocking rate',
   phy_absorption: 'Phy. absorption',
   mag_absorption: 'Mag. absorption',
-  hit_ratio: 'Attack rating',
+  hit_ratio: 'Attack rate',
   critical_ratio: 'Critical',
   durability: 'Durability',
 }
 
 const scalarStatKeys = [
+  'block_ratio',
   'phy_atk_pwr',
   'mag_atk_pwr',
   'phy_def_pwr',
@@ -134,23 +142,12 @@ const scalarStatKeys = [
   'critical_ratio',
 ]
 
-const referenceStatLabels: Record<string, string> = {
-  phy_atk_pwr_min: 'Phy. atk. pwr min',
-  phy_atk_pwr_max: 'Phy. atk. pwr max',
-  mag_atk_pwr_min: 'Mag. atk. pwr min',
-  mag_atk_pwr_max: 'Mag. atk. pwr max',
-  phy_def_pwr: 'Phy. def. pwr',
-  mag_def_pwr: 'Mag. def. pwr',
-  phy_reinforce: 'Phy. reinforce',
-  mag_reinforce: 'Mag. reinforce',
-  parry_ratio: 'Parry ratio',
-  durability: 'Durability',
-  hit_ratio: 'Attack rating',
-  critical_ratio: 'Critical',
-}
-
 const catalogNote =
   "Catalog ranges; this drop's rolled values were not observed."
+
+// Weapons, armor, shields and accessories. Job suits, avatars and devil
+// spirits (7, 13, 14) do not take Advanced elixirs.
+const elixirFamilies = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12]
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -201,22 +198,37 @@ function instanceStatLines(details: Record<string, unknown> | null) {
     return [
       {
         key: String(stat.key ?? ''),
-        text: `${stat.label} ${stat.value}${percent}`,
+        text: `${statLabels[String(stat.key)] ?? stat.label} ${stat.value}${percent}`,
       },
     ]
   })
 }
 
+// A white roll for a stat the item does not have (a staff's physical attack)
+// is not shown; the catalog marks such stats with an all-zero range.
+function zeroReferenceStat(metadata: Record<string, unknown>, key: string) {
+  const ranges = asRecord(metadata.reference_stats)
+  const parts = [ranges[key], ranges[`${key}_min`], ranges[`${key}_max`]]
+    .map(asRecord)
+    .filter((range) => Object.keys(range).length)
+  return (
+    parts.length > 0 &&
+    parts.every((range) => range.min === '0' && range.max === '0')
+  )
+}
+
 function rollLines(
   details: Record<string, unknown> | null,
   statKeys: string[],
+  metadata: Record<string, unknown>,
 ) {
   const values = details?.percentages
   if (!Array.isArray(values)) return []
   return values.flatMap((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
     const record = entry as Record<string, unknown>
-    if (statKeys.includes(String(record.key ?? ''))) return []
+    const key = String(record.key ?? '')
+    if (statKeys.includes(key) || zeroReferenceStat(metadata, key)) return []
     if (
       typeof record.label !== 'string' ||
       typeof record.value !== 'number' ||
@@ -225,7 +237,23 @@ function rollLines(
       record.value > 100
     )
       return []
-    return [`${record.label} (+${record.value}%)`]
+    return [`${statLabels[key] ?? record.label} (+${record.value}%)`]
+  })
+}
+
+function masteryRequirements(detail: Record<string, unknown>) {
+  const values = Array.isArray(detail.mastery_requirements)
+    ? detail.mastery_requirements
+    : []
+  return values.flatMap((entry) => {
+    const record = asRecord(entry)
+    return typeof record.mastery === 'string' &&
+      /^[A-Za-z ]{1,24}$/.test(record.mastery) &&
+      typeof record.level === 'number' &&
+      Number.isInteger(record.level) &&
+      record.level > 0
+      ? [{ text: `Mastery level: ${record.mastery} ${record.level}` }]
+      : []
   })
 }
 
@@ -262,13 +290,16 @@ function blueLines(details: Record<string, unknown> | null) {
       Lucky: (amount) => `Lucky(${amount}Time/times)`,
       Immortal: (amount) => `Immortal(${amount}Time/times)`,
       Astral: (amount) => `Astral(${amount}Time/times)`,
-      'Able to use Advanced elixir.': () => 'Able to use Advanced elixir.',
       'Advanced elixir is in effect': (amount) =>
         `Advanced elixir is in effect [+${amount}]`,
       'Freezing and frostbite duration reduction': (amount) =>
         `Freezing, frostbite ${amount}${unit} Reduce`,
       'Electric shock duration reduction': (amount) =>
         `Electric shock ${amount}${unit} Reduce`,
+      'Burn duration reduction': (amount) => `Burn ${amount}${unit} Reduce`,
+      'Poison duration reduction': (amount) =>
+        `Poisoning ${amount}${unit} Reduce`,
+      'Zombie duration reduction': (amount) => `Zombie ${amount}${unit} Reduce`,
     }
     return [blueNames[name]?.(formatted) ?? `${name} ${formatted}${unit}`]
   })
@@ -281,22 +312,64 @@ function scalarStatLines(item: Record<string, unknown>) {
     const percent = numberField(item, `${key}_percent`)
     const percentText = percent === null ? '' : ` (+${formatNumber(percent)}%)`
     return [
-      `${statLabels[key] || key.replaceAll('_', ' ')}: ${formatNumber(value)}${percentText}`,
+      `${statLabels[key] || key.replaceAll('_', ' ')} ${formatNumber(value)}${percentText}`,
     ]
   })
 }
 
+// itemdata stores reinforce as tenths of a percent (4608 -> 460.8%).
+function reinforcePercent(value: string) {
+  return /^\d+$/.test(value) ? `${(Number(value) / 10).toFixed(1)}%` : value
+}
+
 function referenceRangeLines(metadata: Record<string, unknown>) {
   const ranges = asRecord(metadata.reference_stats)
-  return Object.entries(ranges).flatMap(([key, raw]) => {
-    const range = asRecord(raw)
-    if (typeof range.min !== 'string' || typeof range.max !== 'string')
-      return []
-    const label = referenceStatLabels[key] || key.replaceAll('_', ' ')
-    const value =
-      range.min === range.max ? range.min : `${range.min}–${range.max}`
-    return [`${label} ${value}`]
-  })
+  const lines: string[] = []
+  const done = new Set<string>()
+  for (const [key, raw] of Object.entries(ranges)) {
+    const base = key.replace(/_(min|max)$/, '')
+    if (done.has(base)) continue
+    done.add(base)
+    const lowRange = asRecord(ranges[key === base ? key : `${base}_min`])
+    const highRange = asRecord(ranges[key === base ? key : `${base}_max`])
+    const range = key === base ? asRecord(raw) : lowRange
+    const low = range.min
+    const high = key === base ? range.max : highRange.max
+    if (typeof low !== 'string' || typeof high !== 'string') continue
+    if (low === '0' && high === '0') continue
+    const label = statLabels[base] || base.replaceAll('_', ' ')
+    const format = base.endsWith('_reinforce') ? reinforcePercent : String
+    lines.push(
+      `${label} ${low === high ? format(low) : `${format(low)}–${format(high)}`}`,
+    )
+  }
+  return lines
+}
+
+function blueEntries(details: Record<string, unknown> | null) {
+  const values = Array.isArray(details?.blues) ? details.blues : []
+  return values
+    .flatMap((entry) => {
+      const text = blueLines({ blues: [entry] })[0]
+      if (!text) return []
+      const record = asRecord(entry)
+      const id = Number(record.id)
+      const percent = record.percent
+      return [
+        {
+          id: Number.isFinite(id) ? id : Number.MAX_SAFE_INTEGER,
+          text:
+            typeof percent === 'number' &&
+            Number.isInteger(percent) &&
+            percent >= 0 &&
+            percent <= 100
+              ? `${text} (+${percent}%)`
+              : text,
+        },
+      ]
+    })
+    .sort((left, right) => left.id - right.id)
+    .map((entry) => entry.text)
 }
 
 export function buildItemDetail(
@@ -312,6 +385,7 @@ export function buildItemDetail(
   const rolls = rollLines(
     Object.keys(instance).length ? instance : null,
     instanceStats.map((stat) => stat.key),
+    metadata,
   )
   const hasDurability =
     Array.isArray(metadata.type_ids) &&
@@ -334,7 +408,7 @@ export function buildItemDetail(
     }
   }
   const scalars = instanceStats.length ? [] : scalarStatLines(item)
-  const blues = blueLines(Object.keys(instance).length ? instance : null)
+  const blues = blueEntries(Object.keys(instance).length ? instance : null)
   const ranges =
     instanceStats.length ||
     scalars.length ||
@@ -350,8 +424,8 @@ export function buildItemDetail(
     'Unknown item'
   const degree = numberField(detail, 'degree')
   const classifications = [
-    stringField(detail, 'sort_type')
-      ? `Sort of item: ${stringField(detail, 'sort_type')}`
+    stringField(detail, 'item_group') || stringField(detail, 'sort_type')
+      ? `Sort of item: ${stringField(detail, 'item_group') || stringField(detail, 'sort_type')}`
       : '',
     stringField(detail, 'mounted_part')
       ? `Mounting part: ${stringField(detail, 'mounted_part')}`
@@ -368,16 +442,25 @@ export function buildItemDetail(
         return [
           {
             text: `Required ${key.replace('required_', '').replaceAll('_', ' ')} ${value}`,
-            level: key === 'required_level',
           },
         ]
       },
     ),
+    ...masteryRequirements(detail),
     ...['required_gender', 'required_race'].flatMap((key) => {
       const value = stringField(detail, key)
-      return value ? [{ text: value, level: false }] : []
+      return value ? [{ text: value }] : []
     }),
+    ...(numberField(detail, 'max_magic_options') === null
+      ? []
+      : [
+          {
+            text: `Max no. of magic options: ${numberField(detail, 'max_magic_options')}`,
+          },
+        ]),
   ]
+  const typeIDs = Array.isArray(metadata.type_ids) ? metadata.type_ids : []
+  const attackDistance = stringField(detail, 'attack_distance')
   return {
     name,
     plus:
@@ -402,6 +485,9 @@ export function buildItemDetail(
     statsAfterDurability: [
       ...instanceStats.slice(2).map((stat) => stat.text),
       ...rolls.filter((line) => !line.startsWith('Durability ')),
+      ...(attackDistance && /^\d+(?:\.\d)?$/.test(attackDistance)
+        ? [`Attack distance ${attackDistance}`]
+        : []),
     ],
     catalogNote:
       item.visible_equipment_only === true
@@ -421,6 +507,13 @@ export function buildItemDetail(
                 : '',
     requirements,
     blues,
+    notes:
+      typeIDs[0] === 3 &&
+      typeIDs[1] === 1 &&
+      elixirFamilies.includes(Number(typeIDs[2])) &&
+      !blues.some((line) => line.startsWith('Advanced elixir is in effect'))
+        ? ['Able to use Advanced elixir.']
+        : [],
   }
 }
 

@@ -637,3 +637,83 @@ def test_public_asset_export_preserves_unowned_destination(tmp_path, monkeypatch
         exporter.export_dataset(source, tmp_path / "exports", "unused-test-key", public_assets)
     assert unrelated.read_text(encoding="utf-8") == "operator file"
     assert not (tmp_path / "exports").exists()
+
+
+def test_item_tooltip_static_facts() -> None:
+    fields = ["0"] * 160
+    fields[9:13] = ["3", "1", "6", "11"]
+    fields[14], fields[15] = "1", "2"
+    fields[32:34] = ["514", "92"]
+    fields[34:36] = ["518", "92"]
+    fields[58:62] = ["0", "0", "0", "1"]
+    fields[94] = "6"
+    fields[158] = "9"
+    presentation = item_metadata(fields)
+    assert presentation["attack_distance"] == "0.6"
+    assert presentation["max_magic_options"] == 9
+    assert presentation["mastery_requirements"] == [
+        {"mastery": "Wizard", "level": 92},
+        {"mastery": "Cleric", "level": 92},
+    ]
+    assert "required_level" not in presentation
+
+
+def _load_refresh_script():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "refresh_item_catalog.py"
+    spec = importlib.util.spec_from_file_location("refresh_item_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _write_utf16(path: Path, rows: list[list[str]]) -> None:
+    text = "﻿" + "".join("\t".join(row) + "\r\n" for row in rows)
+    path.write_bytes(text.encode("utf-16-le"))
+
+
+def test_refresh_item_catalog_merges_static_facts(tmp_path) -> None:
+    refresh = _load_refresh_script().refresh
+    textdata = tmp_path / "textdata"
+    textdata.mkdir()
+    fields = ["0"] * 160
+    fields[0:3] = ["1", "100", "ITEM_EU_TSTAFF_10_A_RARE"]
+    fields[9:13] = ["3", "1", "6", "11"]
+    fields[14], fields[15] = "1", "2"
+    fields[32:34] = ["1", "90"]
+    fields[58:62] = ["0", "0", "0", "28"]
+    fields[94], fields[158] = "6", "9"
+    _write_utf16(textdata / "ItemData_5000.txt", [fields])
+    _write_utf16(
+        textdata / "item_grouping.txt",
+        [["//description", "TID1", "TID2", "TID3", "TID4", "STRING"], ["staff", "3", "1", "6", "11", "SN_GROUP_11"]],
+    )
+    _write_utf16(textdata / "textdata_object.txt", [["1", "SN_GROUP_11", "", "", "", "", "", "", "Twohand staff"]])
+    packed = [str(low | high << 16) for low, high in ((5, 10), (20, 30), (40, 60))]
+    _write_utf16(textdata / "magicoption.txt", [["1", "101", "MATTR_HR", "", "10", "", "", "", *packed]])
+    catalog_path = tmp_path / "catalog.json"
+    catalog = {
+        "items": {"100": {"code": "ITEM_EU_TSTAFF_10_A_RARE", "presentation": {"name": "Soul Fiend", "sort_type": "Weapon"}}},
+        "magic_options": {"101": {"code": "MATTR_HR", "level": 10}},
+    }
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    catalog_path.chmod(0o644)
+
+    counts = refresh(catalog_path, textdata)
+
+    assert counts["item_group"] == 1 and counts["magic_option_ranges"] == 1
+    refreshed = json.loads(catalog_path.read_text(encoding="utf-8"))
+    presentation = refreshed["items"]["100"]["presentation"]
+    assert presentation["name"] == "Soul Fiend" and presentation["sort_type"] == "Weapon"
+    assert presentation["item_group"] == "Twohand staff"
+    assert presentation["attack_distance"] == "0.6" and presentation["max_magic_options"] == 9
+    assert (refreshed["magic_options"]["101"]["value_min"], refreshed["magic_options"]["101"]["value_max"]) == (5, 60)
+    assert catalog_path.stat().st_mode & 0o777 == 0o644
+
+    catalog["items"]["100"]["code"] = "ITEM_OTHER"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    before = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="code differs"):
+        refresh(catalog_path, textdata)
+    assert catalog_path.read_bytes() == before

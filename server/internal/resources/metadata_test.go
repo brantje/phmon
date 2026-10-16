@@ -2,6 +2,7 @@ package resources
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -552,5 +553,55 @@ func TestPackagedMetadata(t *testing.T) {
 	}
 	if found != 4 {
 		t.Fatalf("found %d screenshot fixtures", found)
+	}
+}
+
+func TestBlueRollPercentMatchesClientTooltips(t *testing.T) {
+	for _, tc := range []struct {
+		code     string
+		min, max uint32
+		value    string
+		want     int
+		ok       bool
+	}{
+		{"MATTR_HR", 5, 60, "40", 63, true},
+		{"MATTR_HP", 70, 850, "600", 67, true},
+		{"MATTR_STR", 1, 6, "6", 100, true},
+		{"MATTR_DUR", 10, 160, "160", 100, true},
+		{"MATTR_SOLID", 1, 6, "5", 0, false},
+		{"MATTR_LUCK", 1, 6, "2", 0, false},
+		{"MATTR_REPAIR", 1, 6, "2", 0, false},
+		{"MATTR_HR", 5, 60, "61", 0, false},
+		{"MATTR_HR", 0, 0, "40", 0, false},
+	} {
+		got, ok := blueRollPercent(MagicOptionDefinition{Code: tc.code, ValueMin: tc.min, ValueMax: tc.max}, tc.value)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("%s %s = %d,%v want %d,%v", tc.code, tc.value, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+func TestPackagedTooltipFacts(t *testing.T) {
+	m, err := LoadItemMetadata("../../game-data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := m.Catalogs[m.Servers["greatest"]]
+	staff := c.Items["11464"].Presentation
+	if staff["item_group"] != "Twohand staff" || staff["attack_distance"] != "0.6" || fmt.Sprint(staff["max_magic_options"]) != "9" {
+		t.Fatalf("Soul Fiend presentation = %v", staff)
+	}
+	masteries, _ := c.Items["13030"].Presentation["mastery_requirements"].([]any)
+	if len(masteries) != 4 {
+		t.Fatalf("Divine Robe masteries = %v", masteries)
+	}
+	var hr MagicOptionDefinition
+	for _, option := range c.MagicOptions {
+		if option.Code == "MATTR_HR" && option.Level == 10 {
+			hr = option
+		}
+	}
+	if hr.ValueMin != 5 || hr.ValueMax != 60 {
+		t.Fatalf("level 10 MATTR_HR range = %d..%d", hr.ValueMin, hr.ValueMax)
 	}
 }
