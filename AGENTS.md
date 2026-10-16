@@ -6950,7 +6950,7 @@ storage getter has no items; the old plugin padded an empty getter list and
 marked it observed. Raw getter lists were not retained, so this diagnosis is
 strongly supported but not directly proven for those past polls.
 
-Active fix: plugin 1.9.45 treats positive-capacity personal/guild storage with
+Active fix: plugin 1.9.45 / protocol 21 treats positive-capacity personal/guild storage with
 a zero-length item list as `not_observed`, retaining opened all-`None` lists
 as confirmed empty and recording `source_item_count`. Go guild API, Item
 Search and guild-gold projections rank loaded-list evidence or legacy
@@ -6972,3 +6972,11 @@ actual runtime. Focused PostgreSQL integration was rerun on a temporary
 database from current main and passed; the database was dropped. The branch
 is `codex/fix-guild-storage-observations`, based on `origin/main`. Do not
 operate a bot merely for the test.
+PR #94 was opened from commit `3116c80`. Its first CI plugin guard found that
+the new `source_item_count` changes the generated monitor output contract, so
+protocol 21 is required. The plugin and Go server now both use 21; existing
+protocol versions remain accepted. Full Go and plugin suites passed again,
+and the local contract check confirms the required protocol bump. CodeRabbit
+reported its free review quota will reset about 30 minutes after its
+2026-10-16 07:24 UTC comment; inspect review status again and request a fresh
+review after the reset if none arrives automatically. Do not merge PR #94.
