@@ -24,6 +24,19 @@ implementation run. Explicit limits in the current user request always take prio
 
 Draft PR [#92](https://github.com/brantje/phmon/pull/92) adds **Events → Traders / Hunters** with the existing `job.hunter_trader_seen` event storage and live subscription. The spotted name is searchable alongside the reporter; **Hide own characters** defaults on and excludes the spotted character (not the reporting bot), server-scoped, with direct observed own job aliases. URL `hide_own=0` shows all recorded events. The callback does not disambiguate trader/hunter or report an authoritative spotted-player location; map links are labeled reporter location. No plugin or migration changes. Tests: PostgreSQL event-history integration, REST validation, live-subscription validation. Browser and actual phBot runtime validation remain manual; PR CI results must be checked before approval. See [feature documentation](docs/trader-hunter-sightings.md).
 
+Sidebar refinement (2026-10-16): Stats groups, Events categories and Analytics views
+appear only while their parent page is active. Events category labels align with the
+Events navigation label. This changes presentation only; no roadmap slice advances.
+Prettier, focused ESLint and Nuxt typecheck pass on Node 24.20.0. Local browser
+visual validation still requires an operator session.
+
+Sidebar pointer correction (2026-10-16): clickable primary and nested links use the
+pointer cursor; disabled menu items retain the default cursor.
+
+Events sidebar completion (2026-10-16): the active Events page shows all twelve
+history subitems, including Thieves, Traders / Hunters and Trades, in the same order
+and with the same routes as the Events page tabs. View-based links receive the
+correct active state.
 
 Working loop:
 

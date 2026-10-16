@@ -217,6 +217,10 @@ select:focus-visible {
   cursor: default;
 }
 
+a.nav-item {
+  cursor: pointer;
+}
+
 .sidebar-death-indicator {
   position: absolute;
   top: 4px;
@@ -245,6 +249,10 @@ select:focus-visible {
   margin: 0 0 3px 27px;
 }
 
+.sidebar-event-links {
+  margin-left: 24px;
+}
+
 .sidebar-group-link {
   display: flex;
   min-height: 27px;
@@ -257,6 +265,7 @@ select:focus-visible {
   color: #aeb9ca;
   font-size: 10px;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .sidebar-group-link:hover,
