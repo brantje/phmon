@@ -860,7 +860,11 @@ function localDateBoundary(value: string, addDays: number) {
             type="checkbox"
             :checked="hideOwnCharacters"
             aria-label="Hide own characters"
-            @change="updateHideOwnCharacters(($event.target as HTMLInputElement).checked)"
+            @change="
+              updateHideOwnCharacters(
+                ($event.target as HTMLInputElement).checked,
+              )
+            "
           />
           Hide own characters
         </label>
@@ -1085,12 +1089,15 @@ function localDateBoundary(value: string, addDays: number) {
               <UIcon name="i-lucide-users" />
               <strong>{{ spottedPlayerName(item) }}</strong>
             </div>
-            <time :datetime="item.occurred_at">{{ formatTimestamp(item.occurred_at) }}</time>
+            <time :datetime="item.occurred_at">{{
+              formatTimestamp(item.occurred_at)
+            }}</time>
             <div class="event-row-character">
               <NuxtLink
                 v-if="item.character_id"
                 :to="`/characters/${item.character_id}`"
-              >{{ item.character }}</NuxtLink>
+                >{{ item.character }}</NuxtLink
+              >
               <span v-else>{{ item.character || '—' }}</span>
             </div>
             <div class="event-row-detail">{{ item.server }}</div>
@@ -1110,8 +1117,16 @@ function localDateBoundary(value: string, addDays: number) {
             </div>
           </article>
           <div v-if="!page?.events.length" class="event-empty-state">
-            <strong>{{ connectionState === 'current' ? 'No trader/hunter sightings found' : 'Loading trader/hunter sightings' }}</strong>
-            <span>{{ connectionState === 'current' ? 'No sightings match this server, name and date range.' : 'Waiting for a current event snapshot.' }}</span>
+            <strong>{{
+              connectionState === 'current'
+                ? 'No trader/hunter sightings found'
+                : 'Loading trader/hunter sightings'
+            }}</strong>
+            <span>{{
+              connectionState === 'current'
+                ? 'No sightings match this server, name and date range.'
+                : 'Waiting for a current event snapshot.'
+            }}</span>
           </div>
         </div>
         <div v-else class="event-history-rows">
