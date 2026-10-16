@@ -6898,6 +6898,36 @@ effect. Added a refresh-script exporter test and four web tests. Known gap:
 11D+ sealed items (rarity 2, item class > 30) show a gold name but no seal or
 degree line.
 
+### Resume — 2026-10-16 degree and seal for 11D+ items
+
+Closes the PR #96 known gap on branch `fix/sealed-11d-plus` (from `origin/main`
+after the squash merge). Exporter `item_metadata` now derives degree for item
+classes 1–60 (31 → 11, 34–36 → 12 … 43–45 → 15; verified against item-code stems
+and required levels for all 1,996 stemmed class > 30 equipment rows) and
+reports "Seal of Nova" for class 31 sealed items (client `PARAM_RARE_FIRST2` and
+"11th Grade Seal of Nova"). Degrees 12–15 get a degree line but **no seal**: the
+client has no seal string for them (tiers are Magic/Rare/Legend) and none is
+invented. `refresh_item_catalog.py` now refreshes `degree` and `seal`; running it
+on the packaged Greatest catalog added 2,000 degrees (11: 588, 12: 566, 13–15:
+282 each) and 304 Nova seals with no other change. The web Advanced elixir note
+is hidden from degree 12 up (client `UIIT_MSG_UPGRADE_SUPER_ELIXIR_NOT_USE`).
+Files: `tools/game-data-exporter/{src/phmon_game_exporter/item_metadata.py,
+refresh_item_catalog.py,tests/test_exporter.py,format-notes.md}`,
+`server/game-data/gamedata-e184cceb0b359ca140c1.json`,
+`server/internal/resources/metadata_test.go`, `web/app/utils/itemDetailPopup.ts`,
+`web/tests/itemDetailPopup.test.ts`, `docs/{phbot-capabilities,item-instance-evidence}.md`.
+Validation: 109 exporter tests (venv), Go `./internal/resources` tests/vet/gofmt,
+304 frontend unit tests, Nuxt typecheck (exit 0), ESLint and Prettier on the
+changed web files, all on Node 24.20.0; served presentation checked for
+Reaper Ghost Sword (11D Nova) and Divine Sword (12D, no seal). Not run: browser
+tooltip comparison, server/web rebuild, and comparison against a real in-game
+11D+ tooltip. Open: what the game shows for the 12D+ seal
+line (if anything) is unverified; the 14th-grade quest text "Seal of Nova
+Mythical" hints at a longer name but no item evidence supports it. Not committed.
+Exact next action: rebuild server and web, hover an 11D and a 12D item on Stats,
+and send a game screenshot of a 12D+ sealed tooltip if you want the seal line
+added.
+
 ### Resume — 2026-10-15 armor mounting part mislabel
 
 Operator-reported breaking bug: armor mounting parts were rotated (Taesang Suit

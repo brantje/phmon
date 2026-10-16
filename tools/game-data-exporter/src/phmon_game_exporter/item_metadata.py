@@ -11,6 +11,25 @@ import re
 MASTERY_NAMES = {513: 'Warrior', 514: 'Wizard', 515: 'Rogue', 516: 'Warlock', 517: 'Bard', 518: 'Cleric'}
 
 
+# Keeps the derived degree inside the 1-20 range the backend accepts.
+MAX_ITEM_CLASS = 60
+
+# Client strings PARAM_RARE_FIRST/SECOND/THIRD (textuisystem.txt) for degrees 1-10.
+# Degree 11 uses PARAM_RARE_FIRST2 ("Seal Of Nova"; also "11th grade Seal of Nova" in the
+# client's event and quest text). No client string names a seal for degrees 12 and up
+# (their A/B/C tiers are Magic/Rare/Legend), so none is reported for them.
+LEGACY_SEALS = ('Seal of Star', 'Seal of Moon', 'Seal of Sun')
+NOVA_ITEM_CLASS = 31
+
+
+def _seal(item_class: int) -> str | None:
+    if item_class <= 30:
+        return LEGACY_SEALS[(item_class - 1) % 3]
+    if item_class == NOVA_ITEM_CLASS:
+        return 'Seal of Nova'
+    return None
+
+
 def item_metadata(fields: list[str]) -> dict:
     if len(fields) < 62:
         return {}
@@ -38,10 +57,14 @@ def item_metadata(fields: list[str]) -> dict:
         result['mastery_requirements'] = masteries
     if type2 == 1:
         result['rare'] = rarity in (2, 3, 6, 7)
-        if 1 <= item_class <= 30:
+        if 1 <= item_class <= MAX_ITEM_CLASS:
+            # Three classes per degree: 1-30 are degrees 1-10, 31 is degree 11 (32-33
+            # unused) and 34-45 are degrees 12-15. Item codes and required levels agree.
             result['degree'] = (item_class - 1) // 3 + 1
             if rarity == 2:
-                result['seal'] = ('Seal of Star', 'Seal of Moon', 'Seal of Sun')[(item_class - 1) % 3]
+                seal = _seal(item_class)
+                if seal:
+                    result['seal'] = seal
         for key, value in (('required_strength', strength), ('required_intelligence', intelligence)):
             if value > 0:
                 result[key] = value

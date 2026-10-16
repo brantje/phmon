@@ -148,6 +148,9 @@ const catalogNote =
 // Weapons, armor, shields and accessories. Job suits, avatars and devil
 // spirits (7, 13, 14) do not take Advanced elixirs.
 const elixirFamilies = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12]
+// Client string UIIT_MSG_UPGRADE_SUPER_ELIXIR_NOT_USE: "(Advanced) Elixirs cannot be
+// used on equipment items of the 12th grade and higher."
+const noElixirDegree = 12
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -511,6 +514,7 @@ export function buildItemDetail(
       typeIDs[0] === 3 &&
       typeIDs[1] === 1 &&
       elixirFamilies.includes(Number(typeIDs[2])) &&
+      (degree === null || degree < noElixirDegree) &&
       !blues.some((line) => line.startsWith('Advanced elixir is in effect'))
         ? ['Able to use Advanced elixir.']
         : [],

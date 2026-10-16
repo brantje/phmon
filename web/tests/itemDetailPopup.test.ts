@@ -862,6 +862,60 @@ test('advanced elixir note only on elixir equipment without an applied elixir', 
   )
 })
 
+test('advanced elixir note stops at the 12th degree', () => {
+  const note = (degree?: number) =>
+    buildItemDetail({
+      metadata: {
+        type_ids: [3, 1, 6, 11],
+        ...(degree === undefined ? {} : { degree }),
+      },
+    }).notes
+  assert.deepEqual(note(), ['Able to use Advanced elixir.'])
+  assert.deepEqual(note(10), ['Able to use Advanced elixir.'])
+  assert.deepEqual(note(11), ['Able to use Advanced elixir.'])
+  assert.deepEqual(note(12), [])
+  assert.deepEqual(note(15), [])
+})
+
+test('11th degree sealed item shows the Nova seal and degree', () => {
+  const detail = buildItemDetail({
+    metadata: {
+      name: 'Nova Sword',
+      seal: 'Seal of Nova',
+      rare: true,
+      type_ids: [3, 1, 6, 2],
+      sort_type: 'Weapon',
+      item_group: 'Sword',
+      degree: 11,
+    },
+  })
+  assert.equal(detail.rare, true)
+  assert.equal(detail.seal, 'Seal of Nova')
+  assert.deepEqual(detail.classifications, [
+    'Sort of item: Sword',
+    'Degree: 11 degrees',
+  ])
+})
+
+test('12th degree sealed item shows its degree without inventing a seal', () => {
+  const detail = buildItemDetail({
+    metadata: {
+      name: 'Divine Sword',
+      rare: true,
+      type_ids: [3, 1, 6, 2],
+      sort_type: 'Weapon',
+      item_group: 'Sword',
+      degree: 12,
+    },
+  })
+  assert.equal(detail.rare, true)
+  assert.equal(detail.seal, '')
+  assert.deepEqual(detail.classifications, [
+    'Sort of item: Sword',
+    'Degree: 12 degrees',
+  ])
+})
+
 test('catalog reinforce ranges are shown as percentages', () => {
   const detail = buildItemDetail({
     metadata: {

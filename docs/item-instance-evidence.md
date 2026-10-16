@@ -372,6 +372,12 @@ Catalog presentations gained `item_group` (specific "Sort of item", from
 column / 10), `max_magic_options` (column 158) and `mastery_requirements`
 (ReqLevelType 513–518 → Warrior/Wizard/Rogue/Warlock/Bard/Cleric). `sort_type`
 and `seal` are unchanged because Item Search and analytics filter on them.
+`degree` and `seal` now cover item classes above 30: degree = (class − 1) // 3 + 1
+(31 → 11, 34–36 → 12 … 43–45 → 15), and class 31 sealed items get "Seal of
+Nova" (client `PARAM_RARE_FIRST2`; "11th Grade Seal of Nova" in event and quest
+text). Degree 12 and up have no client seal string (tiers are Magic/Rare/Legend
+per `UIIT_STT_UPGRADE_ITEM_GRADE_*`), so they show a degree but no seal line.
+The Advanced elixir note is hidden from degree 12 up (`UIIT_MSG_UPGRADE_SUPER_ELIXIR_NOT_USE`).
 Magic options gained `value_min`/`value_max`. Both come from
 `tools/game-data-exporter/refresh_item_catalog.py`, which updates the packaged
 catalog in place and aborts if an item code differs.
