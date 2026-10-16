@@ -21,7 +21,7 @@ To learn where each pet class reports level and HP (phBot's `get_pets()` gives o
 2. For an attack/fellow/wolf pet, let it take damage or heal, and if possible gain a level or experience, so HP and level updates appear. Note the in-game level and HP/max HP values you see for each pet (write them down with the time) so the bytes can be matched.
 3. Stop and send the file.
 
-The file now keeps every primitive field phBot returns per pet (`hp`, `model`, `name`, `mounted`, and any level-like field if the runtime has one) and records the unverified lead opcodes `0x3057` / `0x30C9` only when they start with a currently summoned pet's ID (24 packets per opcode). Nothing is decoded or enabled from this evidence yet.
+The file now keeps every primitive field phBot returns per pet (`hp`, `model`, `name`, `mounted`, and any level-like field if the runtime has one) and records any server packet whose first four bytes are a currently summoned pet's ID (24 per opcode, at most 24 opcodes; `0x3057` / `0x30C9` are the known leads) plus bare counts of all other opcodes. Nothing is decoded or enabled from this evidence yet.
 
 ## What the file contains
 

@@ -197,5 +197,20 @@ class PetItemCaptureTests(unittest.TestCase):
             probe.stop_pet_capture()
 
 
+    def test_unknown_opcode_with_pet_id_is_kept_and_others_only_counted(self):
+        pets = {'77': {'type': 'wolf', 'servername': 'COS_P_WOLF_001', 'hp': 5, 'items': []}}
+        probe = self.load(lambda: pets, lambda: {'items': []}, [])
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            probe.handle_joymax(0x3099, (77).to_bytes(4, 'little') + b'\x02')
+            probe.handle_joymax(0x3098, (5).to_bytes(4, 'little') + b'secret')
+            self.assertEqual([p['opcode'] for p in probe._packets], ['0x3099'])
+            self.assertEqual(probe._seen_opcodes, {'0x3099': 1, '0x3098': 1})
+            probe.stop_pet_capture()
+            text = next(Path(directory).glob('*.json')).read_text()
+            self.assertNotIn('secret', text)
+
+
 if __name__ == '__main__':
     unittest.main()

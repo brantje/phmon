@@ -24,7 +24,7 @@ from phBot import get_inventory, get_pets, log
 import QtBind
 
 pName = 'Pet Item Capture'
-pVersion = '0.3.0'
+pVersion = '0.4.0'
 
 CAPTURE_SECONDS = 600.0
 SAMPLE_INTERVAL_SECONDS = 1.0
@@ -40,6 +40,11 @@ CLIENT_OPCODES = (0x7034,)
 # other units is never kept.
 PET_STAT_LEAD_OPCODES = (0x3057, 0x30C9)
 MAX_LEAD_PACKETS_PER_OPCODE = 24
+# Any other opcode whose first four bytes are a current pet ID is kept too
+# (bounded), because the real HP/hunger update opcode is not yet known.
+MAX_PET_ID_OPCODES = 24
+# Opcode counts only (no bytes) for all other server packets.
+_seen_opcodes = {}
 # None writes beside this plugin file.
 OUTPUT_DIRECTORY = None
 
@@ -182,6 +187,7 @@ def arm_pet_capture():
     _pending_after_packet = False
     _last_inventory = None
     _lead_counts = {}
+    _seen_opcodes.clear()
     _pet_ids.clear()
     _file_path = os.path.join(
         OUTPUT_DIRECTORY or os.path.dirname(os.path.abspath(__file__)),
@@ -210,10 +216,14 @@ def finished():
 def _capture_packet(direction, opcode, data):
     global _packet_total, _pending_after_packet
     allowed = SERVER_OPCODES if direction == 'server_to_client' else CLIENT_OPCODES
+    pet_id_match = (isinstance(data, (bytes, bytearray)) and len(data) >= 4 and
+                    int.from_bytes(bytes(data[:4]), 'little') in _pet_ids)
     if (_capture_until and time.monotonic() < _capture_until and
-            direction == 'server_to_client' and opcode in PET_STAT_LEAD_OPCODES):
-        if (isinstance(data, (bytes, bytearray)) and len(data) >= 4 and
-                int.from_bytes(bytes(data[:4]), 'little') in _pet_ids and
+            direction == 'server_to_client' and opcode not in SERVER_OPCODES):
+        if opcode not in PET_STAT_LEAD_OPCODES:
+            _seen_opcodes['0x%04X' % opcode] = _seen_opcodes.get('0x%04X' % opcode, 0) + 1
+        known = opcode in PET_STAT_LEAD_OPCODES
+        if (pet_id_match and (known or len(_lead_counts) < MAX_PET_ID_OPCODES or opcode in _lead_counts) and
                 _lead_counts.get(opcode, 0) < MAX_LEAD_PACKETS_PER_OPCODE):
             _lead_counts[opcode] = _lead_counts.get(opcode, 0) + 1
             key = 'server_to_client:0x%04X' % opcode
@@ -264,6 +274,7 @@ def _write_file(reason):
         'schema': 1, 'plugin': pName, 'version': pVersion, 'reason': reason,
         'packet_total': _packet_total, 'packet_counts': _packet_counts,
         'packets': _packets, 'snapshots': _snapshots,
+        'other_server_opcode_counts': _seen_opcodes,
     }
     text = json.dumps(document, separators=(',', ':'), sort_keys=True)
     while len(text.encode('utf-8')) > MAX_FILE_BYTES and len(document['snapshots']) > 2:
