@@ -7,7 +7,11 @@ it records, into one bounded JSON file next to this plugin:
 
 * incoming 0x30C8 / 0xB034 pet data and item operations, and outgoing
   0x7034 item-move requests (direction, opcode, length, bounded hex),
-* get_pets() and get_inventory() item rows sampled about once per second.
+* get_pets() and get_inventory() item rows sampled about once per second,
+  including each pet's type, model, name, mounted flag and reported hp/level-like
+  primitive fields (any pet class: attack, fellow, pick, transport, horse, wolf),
+* lead stat-update packets (0x3057 / 0x30C9) but ONLY when their first four
+  bytes equal the ID of a currently summoned pet; each lead opcode is capped.
 
 Arm it only in the chosen test session and remove it after the capture.
 """
@@ -20,7 +24,7 @@ from phBot import get_inventory, get_pets, log
 import QtBind
 
 pName = 'Pet Item Capture'
-pVersion = '0.2.2'
+pVersion = '0.3.0'
 
 CAPTURE_SECONDS = 600.0
 SAMPLE_INTERVAL_SECONDS = 1.0
@@ -31,6 +35,11 @@ MAX_ITEM_ROWS = 128
 MAX_FILE_BYTES = 2 * 1024 * 1024
 SERVER_OPCODES = (0x30C8, 0xB034)
 CLIENT_OPCODES = (0x7034,)
+# Unverified leads for pet HP/level updates. Recorded only when the packet
+# starts with a current pet ID (little-endian u32), so entity traffic of
+# other units is never kept.
+PET_STAT_LEAD_OPCODES = (0x3057, 0x30C9)
+MAX_LEAD_PACKETS_PER_OPCODE = 24
 # None writes beside this plugin file.
 OUTPUT_DIRECTORY = None
 
@@ -45,6 +54,8 @@ _last_signature = None
 _pending_after_packet = False
 _file_path = None
 _last_inventory = None
+_pet_ids = set()
+_lead_counts = {}
 
 
 def _bounded(value, depth=0):
@@ -97,14 +108,23 @@ def _pet_rows():
     if not isinstance(pets, dict):
         return {'error': 'not_a_dict'}
     result = {}
+    ids = set()
     for pet_id, pet in list(pets.items())[:8]:
         if not isinstance(pet, dict):
             continue
-        result[str(pet_id)[:32]] = {
+        row = {
             'type': _bounded(pet.get('type')),
             'servername': _bounded(pet.get('servername')),
             'items': _rows(pet.get('items')),
         }
+        for key, value in list(pet.items())[:32]:
+            if key != 'items' and key not in row and isinstance(value, (int, float, bool, str)):
+                row[str(key)[:32]] = _bounded(value)
+        result[str(pet_id)[:32]] = row
+        if str(pet_id).isdigit():
+            ids.add(int(pet_id))
+    _pet_ids.clear()
+    _pet_ids.update(ids)
     return result
 
 
@@ -150,7 +170,7 @@ def _first_pets_marker():
 
 def arm_pet_capture():
     global _capture_until, _next_sample_at, _started_at, _packets, _packet_total, _packet_counts
-    global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory
+    global _snapshots, _last_signature, _pending_after_packet, _file_path, _last_inventory, _lead_counts
     _started_at = time.monotonic()
     _capture_until = _started_at + CAPTURE_SECONDS
     _next_sample_at = 0.0
@@ -161,6 +181,8 @@ def arm_pet_capture():
     _last_signature = None
     _pending_after_packet = False
     _last_inventory = None
+    _lead_counts = {}
+    _pet_ids.clear()
     _file_path = os.path.join(
         OUTPUT_DIRECTORY or os.path.dirname(os.path.abspath(__file__)),
         'pet-item-capture-%s.json' % time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()))
@@ -188,6 +210,22 @@ def finished():
 def _capture_packet(direction, opcode, data):
     global _packet_total, _pending_after_packet
     allowed = SERVER_OPCODES if direction == 'server_to_client' else CLIENT_OPCODES
+    if (_capture_until and time.monotonic() < _capture_until and
+            direction == 'server_to_client' and opcode in PET_STAT_LEAD_OPCODES):
+        if (isinstance(data, (bytes, bytearray)) and len(data) >= 4 and
+                int.from_bytes(bytes(data[:4]), 'little') in _pet_ids and
+                _lead_counts.get(opcode, 0) < MAX_LEAD_PACKETS_PER_OPCODE):
+            _lead_counts[opcode] = _lead_counts.get(opcode, 0) + 1
+            key = 'server_to_client:0x%04X' % opcode
+            _packet_counts[key] = _packet_counts.get(key, 0) + 1
+            _packets.append({
+                't': round(time.monotonic() - _started_at, 3),
+                'direction': direction, 'opcode': '0x%04X' % opcode,
+                'length': len(data), 'truncated': len(data) > 512,
+                'hex': bytes(data)[:512].hex(), 'pet_stat_lead': True,
+            })
+            _pending_after_packet = True
+        return
     if _capture_until and time.monotonic() < _capture_until and opcode in allowed:
         _packet_total += 1
         key = '%s:0x%04X' % (direction, opcode)

@@ -13,6 +13,16 @@ Why it exists: phBot's public `get_pets()` example shows pet item slots with mod
 5. Select **Stop and write file**, or wait for the timeout. Disconnecting or unloading the plugin also writes the current capture. The log prints the file name.
 6. Send the `pet-item-capture-<UTC>.json` file, then remove the plugin.
 
+## Pet level / HP capture (probe 0.3.0)
+
+To learn where each pet class reports level and HP (phBot's `get_pets()` gives only an absolute `hp`, no level or max HP):
+
+1. Arm the probe, then summon **each pet class you have, one at a time** (attack/fellow, wolf, horse/transport, pick), waiting a few seconds after each summon so its `0x30C8` header arrives.
+2. For an attack/fellow/wolf pet, let it take damage or heal, and if possible gain a level or experience, so HP and level updates appear. Note the in-game level and HP/max HP values you see for each pet (write them down with the time) so the bytes can be matched.
+3. Stop and send the file.
+
+The file now keeps every primitive field phBot returns per pet (`hp`, `model`, `name`, `mounted`, and any level-like field if the runtime has one) and records the unverified lead opcodes `0x3057` / `0x30C9` only when they start with a currently summoned pet's ID (24 packets per opcode). Nothing is decoded or enabled from this evidence yet.
+
 ## What the file contains
 
 * `packets`: up to 64 incoming `0x30C8` and `0xB034` packets and outgoing `0x7034` item-move requests with direction, opcode, length, time and hex payload (each capped at 32 KiB; other opcodes are ignored). A `truncated` marker identifies an incomplete packet. `packet_counts` also records successful `0xB034` subtypes even if the packet buffer fills.

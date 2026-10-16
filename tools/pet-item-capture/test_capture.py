@@ -179,5 +179,23 @@ class PetItemCaptureTests(unittest.TestCase):
             self.assertTrue(any('wrote pet-item-capture-' in line for line in lines))
 
 
+    def test_pet_stat_leads_only_kept_for_current_pet_ids(self):
+        lines = []
+        pets = {'77': {'type': 'wolf', 'servername': 'COS_P_WOLF_001', 'hp': 5, 'level': 3, 'items': []}}
+        probe = self.load(lambda: pets, lambda: {'items': []}, lines)
+        with tempfile.TemporaryDirectory() as directory:
+            probe.OUTPUT_DIRECTORY = directory
+            probe.arm_pet_capture()
+            self.assertEqual(probe._snapshots[0]['pets']['77']['level'], 3)
+            self.assertTrue(probe.handle_joymax(0x3057, (77).to_bytes(4, 'little') + b'\x01'))
+            self.assertTrue(probe.handle_joymax(0x3057, (99).to_bytes(4, 'little') + b'\x01'))
+            self.assertTrue(probe.handle_joymax(0x3057, b'\x01'))
+            self.assertEqual([p['opcode'] for p in probe._packets], ['0x3057'])
+            for _ in range(40):
+                probe.handle_joymax(0x30C9, (77).to_bytes(4, 'little'))
+            self.assertEqual(probe._lead_counts[0x30C9], probe.MAX_LEAD_PACKETS_PER_OPCODE)
+            probe.stop_pet_capture()
+
+
 if __name__ == '__main__':
     unittest.main()
