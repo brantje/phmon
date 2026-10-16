@@ -25,7 +25,7 @@ def zone_names(text):
             (value.strip() for value in (columns[9], columns[8]) if value.strip() not in ("", "0")),
             "",
         )
-        if not name or len(name) > 100:
+        if not name or len(name.encode("utf-8")) > 100:
             continue
         key = str(region)
         if key in names and names[key] != name:

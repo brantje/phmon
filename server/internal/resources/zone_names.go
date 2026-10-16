@@ -12,6 +12,9 @@ func (m *ItemMetadata) ZoneName(server string, region int) string {
 	if !ok {
 		return ""
 	}
+	if region > 32767 {
+		region -= 65536
+	}
 	return m.ZoneNames[dataset][strconv.Itoa(region)]
 }
 

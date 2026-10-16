@@ -41,6 +41,7 @@ const (
 	liveSnapshotTimeout              = 3 * time.Second
 	liveWriteTimeout                 = 3 * time.Second
 	liveHeartbeatInterval            = 10 * time.Second
+	liveRollingWindowRefresh         = time.Minute
 	liveHeartbeatTimeout             = 35 * time.Second
 	liveSnapshotCoalesce             = 500 * time.Millisecond
 	livePositionCoalesce             = 100 * time.Millisecond
@@ -675,6 +676,17 @@ func (c *liveClient) notifyAnalytics() {
 	c.signalSnapshot()
 }
 
+func (c *liveClient) hasStream(stream string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, subscription := range c.subscriptions {
+		if subscription.Stream == stream {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *liveClient) signalSnapshot() {
 	select {
 	case c.snapshotWake <- struct{}{}:
@@ -868,10 +880,18 @@ func (c *liveClient) refresh(message liveClientMessage) {
 func (c *liveClient) writeLoop() {
 	ticker := time.NewTicker(liveHeartbeatInterval)
 	defer ticker.Stop()
+	// Trades use a rolling 24-hour window; refresh it as time advances even when
+	// no new report arrives.
+	windowTicker := time.NewTicker(liveRollingWindowRefresh)
+	defer windowTicker.Stop()
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
+		case <-windowTicker.C:
+			if c.hasStream("trades") {
+				c.notifyStandard()
+			}
 		case payload := <-c.outgoing:
 			writeCtx, cancel := context.WithTimeout(c.ctx, liveWriteTimeout)
 			err := c.conn.Write(writeCtx, websocket.MessageText, payload)

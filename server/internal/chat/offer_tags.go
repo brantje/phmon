@@ -20,7 +20,11 @@ func (s *Store) SetOfferIconResolver(resolver OfferIconResolver) { s.iconResolve
 // current parser version. It runs lazily from Offers, in bounded batches, so
 // new messages and parser upgrades need no write-path hook or startup job.
 func (s *Store) ensureOfferTags(ctx context.Context) error {
-	s.tagMu.Lock()
+	// Backfill never blocks a request: a concurrent caller skips it and
+	// each call processes at most one bounded batch.
+	if !s.tagMu.TryLock() {
+		return nil
+	}
 	defer s.tagMu.Unlock()
 	for {
 		rows, err := s.pool.Query(ctx, `
@@ -83,9 +87,7 @@ ON CONFLICT(message_id) DO UPDATE SET parser_version=EXCLUDED.parser_version`, m
 		if err := tx.Commit(ctx); err != nil {
 			return err
 		}
-		if len(batch) < offerTagBatch {
-			return nil
-		}
+		return nil
 	}
 }
 

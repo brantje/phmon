@@ -165,8 +165,8 @@ watch(
   { immediate: true },
 )
 watch(
-  () => route.query.channel,
-  (value) => {
+  () => [route.query.channel, route.query.peer] as const,
+  ([value]) => {
     if (channels.some((channel) => channel.key === value))
       activeChannel.value = value as ChatChannel
     else if (value === 'unknown') activeChannel.value = 'unknown'
