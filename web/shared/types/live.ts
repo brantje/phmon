@@ -860,6 +860,7 @@ export interface PetInventoryRecord {
   model?: number
   level?: number
   exp?: number
+  max_exp?: number
   hp?: number
   hp_max?: number
   mounted?: boolean

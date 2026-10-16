@@ -235,6 +235,11 @@ function petHpPercent(pet: PetInventoryRecord): number | null {
     ? ratioPercent(pet.hp, max)
     : null
 }
+function petExpPercent(pet: PetInventoryRecord): string | null {
+  return typeof pet.exp === 'number' && pet.max_exp && pet.max_exp > 0
+    ? Math.min(100, (pet.exp / pet.max_exp) * 100).toFixed(1)
+    : null
+}
 let releaseProgressCharacter: (() => void) | undefined
 
 watch(
@@ -593,9 +598,15 @@ onBeforeUnmount(() => {
             <span v-if="petHpPercent(pet) !== null" class="ov-bar ov-bar-pet"
               ><i :style="{ width: `${petHpPercent(pet)}%` }"
             /></span>
-            <b v-if="typeof pet.hp === 'number'">{{
-              pet.hp.toLocaleString()
-            }}</b>
+            <b v-if="typeof pet.hp === 'number'"
+              >{{ pet.hp.toLocaleString()
+              }}<template v-if="pet.hp_max">
+                / {{ pet.hp_max.toLocaleString() }}</template
+              ></b
+            >
+            <small v-if="petExpPercent(pet) !== null" class="ov-pet-level">
+              EXP {{ petExpPercent(pet) }}%</small
+            >
           </span>
         </div>
       </section>

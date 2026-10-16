@@ -2088,3 +2088,20 @@ Plugin 1.9.43 allows an empty second API page while checking every packet-covere
 rejecting occupied uncovered positions. The live packet's own capacity was
 not retained, so 1.9.43 needs a new runtime observation.
 This does not recover historical items whose packet bytes were never captured.
+
+### Pet level, HP and EXP (2026-10-16, operator captures)
+
+phBot 20.1.x `get_pets()` returns `hp` (current; tracks `0x3057` HP-update packets exactly),
+and for growing pets `level` and `exp` (current-level EXP). Pick pets report level 0.
+`max_exp` is always 0 and there is no max HP. PhMon 1.9.48 forwards `level`/`exp`.
+The server adds catalog maxima at read time from `server/game-data/pet-reference.json`
+(built by `tools/game-data-exporter/build_pet_reference.py`): `hp_max` from
+`characterdata` column 59 by pet model and `max_exp` from `leveldata.txt` by level, each
+marked `*_source: "catalog"`. Verified against the in-game pet window: model 6142 is level
+37, HP 6018/6022, EXP 2805019/3239210 (86.60%). Catalog values never override a runtime
+value, and max HP is skipped when observed HP exceeds it.
+
+Unresolved: pet HGP (hunger, max 10000). Not in `get_pets()`. The `0x30C8` header holds a
+u16 at byte offset 25 (after a level byte at 24) that read 9745 at summon, consistent with
+the operator's estimate, but only one sample exists and no later packet updates it.
+`0x30D0` packets look like speed floats.
