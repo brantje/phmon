@@ -502,7 +502,21 @@ onBeforeUnmount(() => {
               >{{ chip }}</span
             >
           </div>
-          <small>{{ offer.server }} · Observed by {{ offer.observer }}</small>
+          <div class="dashboard-offer-foot">
+            <small>{{ offer.server }} · Observed by {{ offer.observer }}</small>
+            <NuxtLink
+              class="compact-button"
+              :to="{
+                path: '/chat',
+                query: {
+                  channel: 'private',
+                  character_id: offer.observer_character_id,
+                  peer: offer.sender,
+                },
+              }"
+              >Write PM</NuxtLink
+            >
+          </div>
         </li>
       </ul>
       <div

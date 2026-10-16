@@ -4916,3 +4916,19 @@ button.item-detail-name {
   color: var(--ph-muted);
   font-size: 11px;
 }
+
+.dashboard-offer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dashboard-offer-foot small {
+  min-width: 0;
+}
+
+.dashboard-offer-foot .compact-button {
+  flex: none;
+  text-decoration: none;
+}
