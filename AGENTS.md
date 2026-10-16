@@ -6978,5 +6978,5 @@ protocol 21 is required. The plugin and Go server now both use 21; existing
 protocol versions remain accepted. Full Go and plugin suites passed again,
 and the local contract check confirms the required protocol bump. CodeRabbit
 reported its free review quota will reset about 30 minutes after its
-2026-10-16 07:24 UTC comment; inspect review status again and request a fresh
-review after the reset if none arrives automatically. Do not merge PR #94.
+2026-10-16 07:24 UTC comment; the operator explicitly said there is no need
+to wait for CodeRabbit. Finish CI checks and leave PR #94 open and unmerged.
