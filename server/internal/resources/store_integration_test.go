@@ -404,6 +404,96 @@ func TestCurrentPartyObservationsFenceSessionAndAvailability(t *testing.T) {
 	}
 }
 
+func TestGuildStoragePrefersLoadedSnapshotsOverLegacyEmptyPolls(t *testing.T) {
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("set TEST_DATABASE_URL to run resource integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := agents.NewCredential()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := agents.NewStore(pool).CreateCredential(ctx, credential); err != nil {
+		t.Fatal(err)
+	}
+	server := "guild-empty-" + credential.AgentID[:8]
+	guild := "iBot"
+	charactersStore := characters.NewStore(pool)
+	store := NewStore(pool)
+	t.Cleanup(func() {
+		cleanup := context.Background()
+		_, _ = pool.Exec(cleanup, `DELETE FROM characters WHERE server_key=$1`, server)
+		_, _ = pool.Exec(cleanup, `DELETE FROM agents WHERE agent_id=$1`, credential.AgentID)
+	})
+	apply := func(name, payload string) (string, string) {
+		t.Helper()
+		id, err := charactersStore.Resolve(ctx, characters.Identity{Server: server, Name: name, Guild: &guild})
+		if err != nil {
+			t.Fatal(err)
+		}
+		session, err := charactersStore.ClaimSessionID(ctx, credential.AgentID, id, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := charactersStore.SnapshotSession(ctx, credential.AgentID, id, 1, session, characters.State{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Apply(ctx, credential.AgentID, id, 1, 1, session, Snapshot{Revision: 1, Full: true, Resources: map[string]json.RawMessage{
+			"guild_storage": json.RawMessage(payload),
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		return id, session
+	}
+	loadedID, loadedSession := apply("loaded", `{"availability":"observed","gold":900,"capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":8,"quantity":1}}]}`)
+	time.Sleep(2 * time.Millisecond)
+	apply("legacy-unopened", `{"availability":"observed","gold":0,"capacity":121,"used_slots":0,"slots":[]}`)
+	check := func(observer string, itemCount int64, gold int64) {
+		t.Helper()
+		rows, err := store.GuildStorage(ctx, server, guild)
+		if err != nil || len(rows) != 1 || rows[0].ObserverName != observer {
+			t.Fatalf("guild view observer=%s, rows=%+v, err=%v", observer, rows, err)
+		}
+		page, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Container: "guild_storage", Limit: 10, IncludeEquipment: true})
+		if err != nil || page.Total != itemCount {
+			t.Fatalf("guild item search total=%d, page=%+v, err=%v", itemCount, page, err)
+		}
+		balances, err := store.GuildStorageGold(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, balance := range balances {
+			if strings.EqualFold(balance.Server, server) && strings.EqualFold(balance.Guild, guild) {
+				if balance.Gold != gold {
+					t.Fatalf("guild gold=%d, want %d", balance.Gold, gold)
+				}
+				return
+			}
+		}
+		t.Fatal("guild gold missing")
+	}
+	check("loaded", 1, 900)
+	if err := store.Apply(ctx, credential.AgentID, loadedID, 1, 2, loadedSession, Snapshot{Revision: 2, BaseRevision: 1, Resources: map[string]json.RawMessage{
+		"guild_storage": json.RawMessage(`{"availability":"not_observed","reason":"item_list_not_loaded"}`),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	check("loaded", 1, 900)
+	time.Sleep(2 * time.Millisecond)
+	apply("opened-empty", `{"availability":"observed","gold":0,"capacity":1,"used_slots":0,"source_item_count":1,"slots":[null]}`)
+	check("opened-empty", 0, 0)
+}
+
 func TestGuildStorageGoldDistinctPerGuild(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {

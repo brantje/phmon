@@ -983,6 +983,26 @@ class ResourceCollectorTests(unittest.TestCase):
                 self.assertEqual(result['guild_storage']['availability'], 'observed')
                 self.assertEqual(result['guild_storage']['gold'], gold)
 
+    def test_unopened_storage_list_is_not_a_confirmed_empty_container(self):
+        result = plugin.collect_resources(api={
+            'get_storage': lambda: {'size': 251, 'gold': 0, 'items': []},
+            'get_guild_storage': lambda: {'size': 121, 'gold': 0, 'items': []},
+        })
+        for key in ('storage', 'guild_storage'):
+            self.assertEqual(result[key], {
+                'availability': 'not_observed',
+                'reason': 'item_list_not_loaded',
+            })
+
+    def test_opened_empty_guild_storage_remains_observed(self):
+        result = plugin.collect_resources(api={
+            'get_guild_storage': lambda: {'size': 60, 'gold': 0, 'items': [None] * 60},
+        })['guild_storage']
+        self.assertEqual(result['availability'], 'observed')
+        self.assertEqual(result['source_item_count'], 60)
+        self.assertEqual(result['used_slots'], 0)
+        self.assertEqual(len(result['slots']), 60)
+
     def test_storage_preserves_valid_api_gold(self):
         for gold in (0, 850000000):
             with self.subTest(gold=gold):

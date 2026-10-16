@@ -6938,3 +6938,45 @@ The Go/web containers were rebuilt locally and are healthy; Kalypso
 automatically reconnected with plugin 1.9.42 after the server restart.
 Exact next action: commit/push, then have the operator install plugin 1.9.43
 and resummon the Pick pet for live confirmation.
+
+### Resume — 2026-10-16 Greatest/iBot guild-storage empty view
+
+The operator asked why Greatest/iBot Guild Storage was empty despite saved
+snapshots, then requested a fix. Read-only PostgreSQL inspection showed the
+latest `nuker4` row at 06:45 UTC with 121 slots, zero items and zero gold;
+`nuker3` at 05:58 UTC retained 18 items in 60 slots and nonzero gold.
+`nuker2` had the same 121/zero pattern. phBot documents that an unopened
+storage getter has no items; the old plugin padded an empty getter list and
+marked it observed. Raw getter lists were not retained, so this diagnosis is
+strongly supported but not directly proven for those past polls.
+
+Active fix: plugin 1.9.45 / protocol 21 treats positive-capacity personal/guild storage with
+a zero-length item list as `not_observed`, retaining opened all-`None` lists
+as confirmed empty and recording `source_item_count`. Go guild API, Item
+Search and guild-gold projections rank loaded-list evidence or legacy
+items/nonzero gold before ambiguous legacy empty/zero-gold rows. Search also
+retains last-confirmed guild item rows after a later `not_observed` poll.
+Files: `plugin/{PhMon.py,README.md,test_phmon.py}`,
+`server/internal/resources/{store.go,search.go,store_integration_test.go}`,
+`docs/{phbot-capabilities.md,reference-parity.md}`, `AGENTS.md`.
+Python plugin/protocol tests (306 on current main), full `go test ./...`, `go vet
+./internal/resources`, and focused PostgreSQL integration passed. The
+temporary integration database was dropped. The local server container was
+rebuilt and is healthy; authenticated calls through the web proxy returned
+Greatest/iBot observer `nuker3`, 60 slots/18 items, 163583368773 gold, and
+Item Search total 18. No browser automation was available in this environment,
+so rendered-page verification remains manual. The Windows/phBot plugin is not
+installed by this agent; operator installation of 1.9.45 and a natural
+open/close observation are required to validate the getter distinction in the
+actual runtime. Focused PostgreSQL integration was rerun on a temporary
+database from current main and passed; the database was dropped. The branch
+is `codex/fix-guild-storage-observations`, based on `origin/main`. Do not
+operate a bot merely for the test.
+PR #94 was opened from commit `3116c80`. Its first CI plugin guard found that
+the new `source_item_count` changes the generated monitor output contract, so
+protocol 21 is required. The plugin and Go server now both use 21; existing
+protocol versions remain accepted. Full Go and plugin suites passed again,
+and the local contract check confirms the required protocol bump. CodeRabbit
+reported its free review quota will reset about 30 minutes after its
+2026-10-16 07:24 UTC comment; the operator explicitly said there is no need
+to wait for CodeRabbit. Finish CI checks and leave PR #94 open and unmerged.

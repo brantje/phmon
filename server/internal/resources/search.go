@@ -148,25 +148,27 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			return ItemSearchPage{Items: []ItemSearchEntry{}}, nil
 		}
 	}
-	// resource observation and slot revision are joined atomically; a closed
-	// storage does not retain queryable 'current' slots.
+	// Resource observation and slot revision are joined atomically. Guild
+	// storage is a saved shared view, so its last loaded slots remain searchable
+	// when an observer closes it. Personal storage still requires an open view.
 	const guildCTE = `WITH guild_snapshot AS (
 		SELECT DISTINCT ON (server_key,guild_key)
-			server_key,guild_key,observer_character_id,revision,session_id
-		FROM character_resource_observations
-		WHERE resource_key='guild_storage' AND guild_key<>'' AND availability='observed'
-		ORDER BY server_key,guild_key,observed_at DESC NULLS LAST,updated_at DESC,observer_character_id
+			server_key,guild_key,observer_character_id
+		FROM character_resource_observations o
+		WHERE resource_key='guild_storage' AND guild_key<>'' AND observed_at IS NOT NULL
+		ORDER BY server_key,guild_key,` + guildStorageEvidenceOrder + `,observed_at DESC NULLS LAST,updated_at DESC,observer_character_id
 	)`
 	const scope = `FROM character_resource_items i
 	JOIN characters c ON c.character_id=i.observer_character_id
 	JOIN character_resource_observations o
 		ON o.observer_character_id=i.observer_character_id
-		AND o.resource_key=i.container_key AND o.revision=i.revision
-		AND o.session_id=i.session_id AND o.availability='observed'
+		AND o.resource_key=i.container_key AND (
+			(i.container_key='guild_storage' AND o.observed_at IS NOT NULL) OR
+			(i.container_key<>'guild_storage' AND o.revision=i.revision
+				AND o.session_id=i.session_id AND o.availability='observed'))
 	LEFT JOIN guild_snapshot g ON g.server_key=i.server_key AND g.guild_key=i.guild_key
 	WHERE (i.container_key<>'guild_storage' OR
-		(i.guild_key<>'' AND g.observer_character_id=i.observer_character_id
-			AND g.revision=i.revision AND g.session_id=i.session_id))
+		(i.guild_key<>'' AND g.observer_character_id=i.observer_character_id))
 	AND ($1='' OR i.server_key=lower($1))
 	AND ($2='' OR coalesce(i.name,'') ILIKE '%'||$2||'%' OR
 		coalesce(i.server_name,'') ILIKE '%'||$2||'%' OR coalesce(i.model::text,'') ILIKE '%'||$2||'%')

@@ -1574,6 +1574,17 @@ observed academy ID changes, the plugin emits departures with the old ID and joi
 with the new ID so analytics can attribute each transition to the correct academy.
 This does not establish graduation, bans, or a lifetime-unique member identity.
 
+## Agent protocol 21: loaded storage-list evidence — 2026-10-16
+
+Plugin 1.9.45 adds `source_item_count` to observed personal storage, guild
+storage and job-pouch resources. For personal and guild storage, a positive
+reported capacity with an empty getter item list is `not_observed` with reason
+`item_list_not_loaded`; an opened, empty list of `None` slots remains observed
+and carries a positive `source_item_count`. The server accepts older protocols
+and ranks their nonempty items or nonzero gold ahead of ambiguous legacy
+empty/zero-gold guild snapshots. Raw getter lists were not retained for older
+observations.
+
 ## Agent protocol 20: character_info resource — 2026-10-15
 
 Plugin 1.9.39 adds a `character_info` resource observation built from documented
