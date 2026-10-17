@@ -162,6 +162,7 @@ func run() error {
 	commandService.SetReverseReturnLocations(metadata)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
 	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 15*time.Minute, live.InvalidateAnalytics)
+	go analyticsStore.RunGoldRollups(ctx, time.Minute)
 	live.SetCommands(commandService)
 	live.SetResources(resourceStore)
 	live.SetEvents(eventStore)

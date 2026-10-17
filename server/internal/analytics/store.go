@@ -149,6 +149,10 @@ WITH expired AS (
 SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&storageRows); err != nil {
 		return characterRows, guildRows, 0, err
 	}
+	// Drop summaries of expired quarters; at most a few rows per character-hour.
+	if _, err := s.pool.Exec(ctx, `DELETE FROM character_gold_rollups WHERE bucket_start<$1`, before.UTC()); err != nil {
+		return characterRows, guildRows, storageRows, err
+	}
 	return characterRows, guildRows, storageRows, nil
 }
 

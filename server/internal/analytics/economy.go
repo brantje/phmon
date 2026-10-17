@@ -15,20 +15,34 @@ func queryEconomy(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snaps
 }
 
 func queryCharacterGold(ctx context.Context, tx pgx.Tx, filter Filter, snapshot *Snapshot) error {
-	where := `s.sampled_at >= $1 AND s.sampled_at < $2 AND ($3='' OR s.server_key=$3)
-AND ($4='' OR s.character_id=$4::uuid)
-AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$5::uuid))`
-	args := []any{filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Bucket, filter.Timezone}
+	// Quarters before split come from character_gold_rollups; samples at or
+	// after split are read raw. split equals From when no rollup applies.
+	split, err := goldRollupSplit(ctx, tx, filter)
+	if err != nil {
+		return err
+	}
+	scope := func(alias string) string {
+		return `($3='' OR ` + alias + `.server_key=$3) AND ($4='' OR ` + alias + `.character_id=$4::uuid)
+AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=` + alias + `.character_id AND m.group_id=$5::uuid))`
+	}
+	args := []any{filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Bucket, filter.Timezone, split}
 	// Select one inventory sample per bucket before looking up bank balances.
 	// Reuse those balances for rankings and scope counts instead of rescanning
 	// the full history for each part of the same snapshot.
 	rows, err := tx.Query(ctx, `WITH latest AS MATERIALIZED (
-    SELECT DISTINCT ON(s.character_id,date_trunc($6,s.sampled_at AT TIME ZONE $7))
-           s.character_id,s.gold,s.sampled_at,
-           date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
-    FROM character_metric_samples s
-    WHERE `+where+` AND s.gold IS NOT NULL
-    ORDER BY s.character_id,date_trunc($6,s.sampled_at AT TIME ZONE $7),s.sampled_at DESC,s.sample_id DESC
+    SELECT DISTINCT ON(c.character_id,c.bucket) c.character_id,c.gold,c.sampled_at,c.bucket
+    FROM (
+        SELECT r.character_id,r.last_gold AS gold,r.last_sampled_at AS sampled_at,r.last_sample_id AS sample_id,
+               date_trunc($6,r.bucket_start AT TIME ZONE $7) AS bucket
+        FROM character_gold_rollups r
+        WHERE r.bucket_start >= $1 AND r.bucket_start < $8 AND r.last_gold IS NOT NULL AND `+scope("r")+`
+        UNION ALL
+        SELECT s.character_id,s.gold,s.sampled_at,s.sample_id,
+               date_trunc($6,s.sampled_at AT TIME ZONE $7) AS bucket
+        FROM character_metric_samples s
+        WHERE s.sampled_at >= $8 AND s.sampled_at < $2 AND s.gold IS NOT NULL AND `+scope("s")+`
+    ) c
+    ORDER BY c.character_id,c.bucket,c.sampled_at DESC,c.sample_id DESC
 ), entities AS (
     SELECT character_id,max(sampled_at) AS sampled_at FROM latest GROUP BY character_id
 ), selected AS (
@@ -83,20 +97,27 @@ FROM points ORDER BY kind,bucket,CASE WHEN kind='leader' THEN balance END DESC,c
 
 	var delta float64
 	var observedDays int64
+	// The rollup's first quarter excludes intervals that began before From,
+	// matching the raw rule that both samples lie inside the window.
 	err = tx.QueryRow(ctx, `WITH sequenced AS (
 SELECT s.character_id,s.session_id,s.sampled_at,date_trunc('day',s.sampled_at AT TIME ZONE $6) AS local_day,s.gold,
 lag(s.sampled_at) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_at,
 lag(s.gold) OVER(PARTITION BY s.session_id ORDER BY s.sampled_at,s.sample_id) AS before_gold
-FROM character_metric_samples s WHERE s.sampled_at >= ($1::timestamptz-interval '30 seconds') AND s.sampled_at < $2
-AND ($3='' OR s.server_key=$3) AND ($4='' OR s.character_id=$4::uuid)
-AND ($5='' OR EXISTS(SELECT 1 FROM character_group_members m WHERE m.character_id=s.character_id AND m.group_id=$5::uuid))
-), eligible AS (
-SELECT character_id,local_day,gold-before_gold AS delta FROM sequenced
-WHERE sampled_at >= $1 AND sampled_at < $2 AND before_at >= $1 AND sampled_at-before_at <= interval '30 seconds' AND gold IS NOT NULL AND before_gold IS NOT NULL
+FROM character_metric_samples s WHERE s.sampled_at >= ($7::timestamptz-interval '30 seconds') AND s.sampled_at < $2
+AND `+scope("s")+`
+), parts AS (
+SELECT character_id,local_day,(gold-before_gold)::numeric AS delta,1 AS intervals FROM sequenced
+WHERE sampled_at >= $7 AND sampled_at < $2 AND before_at >= $1 AND sampled_at-before_at <= interval '30 seconds' AND gold IS NOT NULL AND before_gold IS NOT NULL
+UNION ALL
+SELECT r.character_id,date_trunc('day',r.bucket_start AT TIME ZONE $6),
+       r.net_delta-CASE WHEN r.bucket_start=$1 THEN r.carry_delta ELSE 0 END,
+       r.interval_count-CASE WHEN r.bucket_start=$1 THEN r.carry_count ELSE 0 END
+FROM character_gold_rollups r
+WHERE r.bucket_start >= $1 AND r.bucket_start < $7 AND `+scope("r")+`
 ), daily AS (
-SELECT character_id,local_day,sum(delta) AS delta FROM eligible GROUP BY character_id,local_day
+SELECT character_id,local_day,sum(delta) AS delta,sum(intervals) AS intervals FROM parts GROUP BY character_id,local_day
 )
-SELECT COALESCE(sum(delta),0)::float8,count(*) FROM daily`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Timezone).Scan(&delta, &observedDays)
+SELECT COALESCE(sum(delta),0)::float8,count(*) FROM daily WHERE intervals > 0`, filter.From, filter.To, filter.Server, filter.CharacterID, filter.GroupID, filter.Timezone, split).Scan(&delta, &observedDays)
 	if err != nil {
 		return err
 	}

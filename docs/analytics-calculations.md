@@ -120,6 +120,19 @@ rewritten and failed reads are never cached. Analytics has a separate one-connec
 read-only pool so ingestion commit stalls do not consume its acquisition budget.
 Retention and rate resets continue on the ingestion pool.
 
+Character Economy reads settled history from `character_gold_rollups`: one row per
+character and UTC 15-minute quarter with the latest gold-bearing sample (time, ID,
+gold) and the sum/count of comparable intervals ending in that quarter, plus the
+subset whose earlier sample precedes the quarter. A background job rolls quarters
+that ended at least five minutes ago, rebuilds the last hour each minute to absorb
+late commits, and records the covered boundary in `analytics_rollup_state`. Queries
+read rollups before that boundary and raw samples after it. The window's first
+quarter subtracts its carried intervals, so both samples of every counted interval
+remain inside the window. Rollups apply only when `From` is quarter aligned and the
+timezone offset is a multiple of 15 minutes; otherwise the raw path runs unchanged.
+An integration test compares raw and rollup snapshots across DST, session changes,
+missing gold, group/character scopes and hour/day/week buckets.
+
 Alchemy counts use unique canonical `alchemy.attempt` event IDs. `success=true` and
 `success=false` count as successes/failures; absent/null outcomes count as unknown.
 Empirical success percentage is successes divided by known outcomes and shows that
