@@ -115,6 +115,25 @@ VALUES($1::uuid,$2::uuid,$3,$4,$5)`, characterID, session, count+1, at.Add(time.
 		if err := store.RebuildGoldRollups(ctx, rollupFrom, watermark); err != nil {
 			t.Fatal(err)
 		}
+		// Prove aligned filters read rollups: a tampered rollup must change
+		// the result. Rebuild before the equality checks.
+		if tag, err := f.pool.Exec(ctx, `UPDATE character_gold_rollups SET net_delta=net_delta+1
+WHERE (character_id,bucket_start)=(SELECT character_id,bucket_start FROM character_gold_rollups
+    WHERE character_id=$1::uuid AND bucket_start>$2 AND bucket_start<$3 AND interval_count>0
+    ORDER BY bucket_start LIMIT 1)`, f.chars[0], from, watermark); err != nil || tag.RowsAffected() != 1 {
+			t.Fatalf("tamper rollup: %v (%d rows)", err, tag.RowsAffected())
+		}
+		probe, err := analytics.NewStore(f.pool).Query(ctx, filters[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		probe.AsOf = time.Time{}
+		if reflect.DeepEqual(probe, raw[0]) {
+			t.Fatalf("watermark %s: aligned filter did not read rollups", watermark)
+		}
+		if err := store.RebuildGoldRollups(ctx, rollupFrom, watermark); err != nil {
+			t.Fatal(err)
+		}
 		for index, filter := range filters {
 			// Each Query call must bypass the five-second snapshot cache.
 			fresh := analytics.NewStore(f.pool)
@@ -127,6 +146,42 @@ VALUES($1::uuid,$2::uuid,$3,$4,$5)`, characterID, session, count+1, at.Add(time.
 				t.Fatalf("watermark %s filter %d: rollup result differs from raw samples\nraw:    %+v\nrollup: %+v", watermark, index, raw[index].Summary, result.Summary)
 			}
 		}
+	}
+
+	// Retention with a cutoff inside a quarter keeps that quarter's rollup,
+	// rebuilt from the samples it kept, so rollup reads still match raw ones.
+	cutoff := from.Add(7*time.Minute + 13*time.Second)
+	if _, _, _, err := store.PruneOldSamples(ctx, cutoff, analytics.MaxRetentionDeleteBatch); err != nil {
+		t.Fatal(err)
+	}
+	var older, boundary int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE bucket_start<$2),count(*) FILTER (WHERE bucket_start=$2)
+FROM character_gold_rollups WHERE character_id=ANY($1::uuid[])`, f.chars, from).Scan(&older, &boundary); err != nil {
+		t.Fatal(err)
+	}
+	if older != 0 || boundary == 0 {
+		t.Fatalf("retention kept %d expired rollups and %d boundary rollups", older, boundary)
+	}
+	var watermark time.Time
+	if err := f.pool.QueryRow(ctx, `DELETE FROM analytics_rollup_state WHERE name='character_gold' RETURNING watermark`).Scan(&watermark); err != nil {
+		t.Fatal(err)
+	}
+	// Fresh stores bypass the five-second Economy snapshot cache.
+	uncached := func(filter analytics.Filter) analytics.Snapshot {
+		t.Helper()
+		result, err := analytics.NewStore(f.pool).Query(ctx, filter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result.AsOf = time.Time{}
+		return result
+	}
+	pruned := uncached(filters[0])
+	if _, err := f.pool.Exec(ctx, `INSERT INTO analytics_rollup_state(name,watermark) VALUES('character_gold',$1)`, watermark); err != nil {
+		t.Fatal(err)
+	}
+	if result := uncached(filters[0]); !reflect.DeepEqual(result, pruned) {
+		t.Fatalf("after retention: rollup result differs from raw samples\nraw:    %+v\nrollup: %+v", pruned.Summary, result.Summary)
 	}
 
 	var rollups, carried int

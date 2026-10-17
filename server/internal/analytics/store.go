@@ -149,9 +149,17 @@ WITH expired AS (
 SELECT count(*) FROM removed`, before.UTC(), batchSize).Scan(&storageRows); err != nil {
 		return characterRows, guildRows, 0, err
 	}
-	// Drop summaries of expired quarters; at most a few rows per character-hour.
-	if _, err := s.pool.Exec(ctx, `DELETE FROM character_gold_rollups WHERE bucket_start<$1`, before.UTC()); err != nil {
+	// Drop summaries of fully expired quarters. Once raw cleanup has caught up,
+	// rebuild the quarter containing the cutoff from the samples it kept, so
+	// rollup-backed Economy reads still match raw samples there.
+	boundary := floorQuarter(before)
+	if _, err := s.pool.Exec(ctx, `DELETE FROM character_gold_rollups WHERE bucket_start<$1`, boundary); err != nil {
 		return characterRows, guildRows, storageRows, err
+	}
+	if characterRows < int64(batchSize) && before.After(boundary) {
+		if err := s.RebuildGoldRollups(ctx, boundary, boundary.Add(goldRollupQuarter)); err != nil {
+			return characterRows, guildRows, storageRows, err
+		}
 	}
 	return characterRows, guildRows, storageRows, nil
 }
