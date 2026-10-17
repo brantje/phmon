@@ -1616,6 +1616,25 @@ its neighbours, a 10 px minimum font, no overflow and no page errors. Only the l
 server container was rebuilt (backward compatible); web is not rebuilt. Exact next
 action: rebuild the web container to ship the card.
 
+### Resume — 2026-10-17 sighting locations in notifications and Thieves tab
+
+Operator request: trader / hunter / thief notifications include the location, and
+Events → Thieves shows a location instead of the region ID. Server: new
+`notificationLocation` adds `location` (`source`, `zone`, `x`, `y`, `z`) to the live
+notification for `job.hunter_trader_seen` and `job.thief_seen`; thief position comes
+from `tradenexus.SightingFromEvent`, everything else is labelled reporter location.
+`/api/thief-sightings` now fills `zone`. Web: `sightingLocationText`, popup body
+text, `NotificationEvent.location`. No plugin, protocol or migration change. Files:
+`server/internal/httpapi/{live.go,router.go,thief_sightings.go,
+notification_location_test.go}`, `web/app/{pages/events.vue,utils/{event-location,
+notificationPresentation}.ts}`, `web/shared/types/live.ts`, two web test files,
+`docs/reference-parity.md`. Validation: `go vet` and `go test` for httpapi,
+tradenexus and events; 310 web unit tests, Nuxt typecheck, Prettier and ESLint
+(existing void-element warnings only) on Node 24.20.0. Not run: browser check,
+container rebuild, real phBot callback. Exact next action: rebuild the server and web
+containers, then confirm a naturally occurring sighting shows the zone in its popup
+and Thieves row.
+
 ## Product and architecture
 
 Build a completely self-hosted alternative to phMonitor, using phMonitor only as a

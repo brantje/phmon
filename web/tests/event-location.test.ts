@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ActivityEvent } from '../shared/types/live.ts'
-import { eventLocationText } from '../app/utils/event-location.ts'
+import {
+  eventLocationText,
+  sightingLocationText,
+} from '../app/utils/event-location.ts'
 
 function event(fields: Partial<ActivityEvent> = {}): ActivityEvent {
   return {
@@ -40,4 +43,21 @@ test('event location uses an unknown zone label for legacy coordinate-only event
 test('event location keeps a zone name without coordinates and handles missing data', () => {
   assert.equal(eventLocationText(event({ zone: 'Jangan' })), 'Jangan')
   assert.equal(eventLocationText(event()), 'Location unknown')
+})
+
+test('thief sighting location shows the zone name instead of the region ID', () => {
+  assert.equal(
+    sightingLocationText({
+      zone: 'Jangan',
+      position: { region: 25735, x: 98.14, y: 1551.06 },
+    }),
+    'Jangan · 98.1, 1551.1',
+  )
+  assert.equal(
+    sightingLocationText({
+      position: { region: 25735, x: 98.14, y: 1551.06 },
+    }),
+    'Unknown zone · 98.1, 1551.1',
+  )
+  assert.equal(sightingLocationText({ zone: 'Jangan' }), 'Location unknown')
 })
