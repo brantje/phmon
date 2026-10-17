@@ -1593,6 +1593,27 @@ unchanged, Prettier on the Vue file. Not run: ESLint/typecheck (local Node is 20
 action: operator installs plugin 1.9.50, relogs a character and confirms the popup and
 Events rows show its name; rebuild web for the popup wording.
 
+### Resume — 2026-10-17 dashboard Recent Events card
+
+Operator request: align Recent Events with the other dashboard cards and show more
+events. Rows now match Last Deaths (36 px portrait/monster art, title, muted detail,
+date right, 50 px) and the list scrolls inside the card with up to 25 grouped rows.
+Unique notices no longer render as "Item / Unknown item" (their `payload.model` is a
+monster model); unmapped kinds use the notification titles. The live `events` stream
+accepts `exclude_kinds`, so the card gets 25 displayable rows instead of item stack
+changes; separate uniques and hunter (`hide_own`) feeds are kept, and the three
+feeds merge without gaps (`mergeRecentEventFeeds`). Files: `server/internal/{events/store.go,
+events/exclude_kinds_integration_test.go,httpapi/live.go,httpapi/live_test.go}`,
+`web/app/{components/DashboardOverview.vue,utils/{groupRecentEvents,uniqueEvent}.ts,
+assets/css/main.css}`, `web/shared/types/live.ts`, web tests, `docs/protocol.md`.
+Validation: Go vet; `go test -race ./internal/events ./internal/httpapi` on a
+disposable PostgreSQL database (dropped); 307 web unit tests, typecheck, ESLint (two
+existing-style `<img/>` warnings), Prettier on Node 24.20.0; a Chrome check against
+a dev server at 1440×1000, 1280×800 and 390×844 showed 25 rows, a card height equal to
+its neighbours, a 10 px minimum font, no overflow and no page errors. Only the local
+server container was rebuilt (backward compatible); web is not rebuilt. Exact next
+action: rebuild the web container to ship the card.
+
 ## Product and architecture
 
 Build a completely self-hosted alternative to phMonitor, using phMonitor only as a

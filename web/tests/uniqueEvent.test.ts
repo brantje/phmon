@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ActivityEvent } from '../shared/types/live.ts'
 import {
-  dashboardNoisyEvent,
+  DASHBOARD_NOISY_KINDS,
   uniqueEventDetails,
   uniqueEventHeadline,
 } from '../app/utils/uniqueEvent.ts'
@@ -63,7 +63,7 @@ test('callback-only unique names stay visible without a portrait', () => {
 })
 
 test('dashboard recent activity skips inventory and chat noise', () => {
-  assert.equal(dashboardNoisyEvent('item.quantity_decreased'), true)
-  assert.equal(dashboardNoisyEvent('world.unique_spawned'), false)
-  assert.equal(dashboardNoisyEvent('character.died'), false)
+  assert.equal(DASHBOARD_NOISY_KINDS.includes('item.quantity_decreased'), true)
+  assert.equal(DASHBOARD_NOISY_KINDS.includes('world.unique_spawned'), false)
+  assert.equal(DASHBOARD_NOISY_KINDS.includes('character.died'), false)
 })

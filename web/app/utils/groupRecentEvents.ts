@@ -5,6 +5,40 @@ export interface RecentEventGroup {
   observers: Array<{ characterID: string; character: string }>
 }
 
+export interface RecentEventFeed {
+  events: readonly ActivityEvent[]
+  // The page size requested for this feed.
+  limit: number
+}
+
+// Merges several latest-N feeds into one newest-first list. A full page only
+// reaches back to its oldest row, so rows from other feeds older than that are
+// dropped; otherwise the full feed's missing older rows would leave a silent gap.
+export function mergeRecentEventFeeds(
+  feeds: readonly RecentEventFeed[],
+): ActivityEvent[] {
+  let cutoff = Number.NEGATIVE_INFINITY
+  for (const feed of feeds) {
+    if (feed.limit < 1 || feed.events.length < feed.limit) continue
+    const times = feed.events
+      .map((event) => Date.parse(event.occurred_at))
+      .filter(Number.isFinite)
+    if (times.length) cutoff = Math.max(cutoff, Math.min(...times))
+  }
+
+  const byID = new Map<string, ActivityEvent>()
+  for (const feed of feeds) {
+    for (const event of feed.events) {
+      if (Date.parse(event.occurred_at) < cutoff) continue
+      byID.set(event.event_id, event)
+    }
+  }
+  return [...byID.values()].sort(
+    (left, right) =>
+      Date.parse(right.occurred_at) - Date.parse(left.occurred_at),
+  )
+}
+
 const CHAT_OBSERVATION_WINDOW_MS = 2_000
 const UNIQUE_OBSERVATION_WINDOW_MS = 15_000
 

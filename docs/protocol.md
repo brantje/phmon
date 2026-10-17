@@ -937,7 +937,11 @@ Migration `000007_event_pipeline.sql` generalizes `activity_events` for nullable
 agent-level context and adds sequence, dedupe key and indexed item model/code. Event
 queries retain deterministic `(occurred_at DESC,event_id DESC)` order and an opaque
 cursor. `GET /api/events` and the `/api/live` `events` stream support server,
-character ID/name, kind, category, item, date, cursor and page-size filters. Item
+character ID/name, kind, category, item, date, cursor and page-size filters. The live
+`events` stream also accepts `exclude_kinds`: 1–32 distinct known kinds left out of
+the page and its total. It cannot be combined with `kind` and only narrows other
+filters; the dashboard's Recent Events card uses it to skip item stack changes,
+sessions and chat. Item
 search checks canonical item code/model and observed item name/code in payloads. The
 alchemy-attempt result also includes attempts, recorded success/failure outcomes, and
 highest observed plus; it makes no probability estimate.

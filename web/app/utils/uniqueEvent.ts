@@ -8,7 +8,9 @@ export interface UniqueEventDetails {
   killer?: string
 }
 
-const DASHBOARD_NOISY_KINDS = new Set([
+// Kinds the dashboard's Recent Events card never shows. Hunters arrive through
+// their own hide-own feed instead.
+export const DASHBOARD_NOISY_KINDS: readonly string[] = [
   'item.quantity_increased',
   'item.quantity_decreased',
   'item.acquired',
@@ -20,11 +22,7 @@ const DASHBOARD_NOISY_KINDS = new Set([
   'session.disconnected',
   'session.joined_game',
   'session.teleported',
-])
-
-export function dashboardNoisyEvent(kind: string) {
-  return DASHBOARD_NOISY_KINDS.has(kind)
-}
+]
 
 export function uniqueEventDetails(
   event: ActivityEvent,

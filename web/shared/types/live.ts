@@ -736,6 +736,8 @@ export interface LiveFilter {
   resource_keys?: string[]
   server?: string
   kinds?: string[]
+  // Events stream only: leave out these exact kinds.
+  exclude_kinds?: string[]
   kind?: string
   category?: string
   item?: string

@@ -881,3 +881,45 @@ func TestTraderHunterLiveFilterValidation(t *testing.T) {
 		t.Fatal("unfiltered event feed compatibility broken")
 	}
 }
+
+func TestEventExcludeKindsLiveFilterValidation(t *testing.T) {
+	base := liveClientMessage{
+		Type: "subscribe", ProtocolVersion: liveProtocolVersion,
+		SubscriptionID: "dashboard-events", Revision: 1, Stream: "events",
+		Filter: liveFilter{Server: "Greatest", Limit: 25, ExcludeKinds: []string{"item.quantity_increased", "chat.message_received"}},
+	}
+	subscription, ok := validateLiveSubscription(base)
+	if !ok || len(subscription.Filter.ExcludeKinds) != 2 {
+		t.Fatalf("valid exclusion subscription rejected: %+v", subscription)
+	}
+	base.Filter.ExcludeKinds[0] = "character.died"
+	if subscription.Filter.ExcludeKinds[0] != "item.quantity_increased" {
+		t.Fatal("subscription shares the client's exclusion slice")
+	}
+	for name, kinds := range map[string][]string{
+		"empty list": {},
+		"unknown":    {"not.a.kind"},
+		"blank":      {""},
+		"pseudo":     {"item.gains"},
+		"duplicate":  {"chat.message_received", "chat.message_received"},
+		"too many":   make([]string, maxExcludedEventKinds+1),
+	} {
+		message := base
+		message.Filter.ExcludeKinds = kinds
+		if _, ok := validateLiveSubscription(message); ok {
+			t.Fatalf("%s exclusion list accepted", name)
+		}
+	}
+	withKind := base
+	withKind.Filter.ExcludeKinds = []string{"chat.message_received"}
+	withKind.Filter.Kind = "character.died"
+	if _, ok := validateLiveSubscription(withKind); ok {
+		t.Fatal("exclusion accepted alongside a single kind")
+	}
+	otherStream := base
+	otherStream.Stream = "notifications"
+	otherStream.Filter = liveFilter{Server: "Greatest", Kinds: []string{"character.died"}, ExcludeKinds: []string{"chat.message_received"}}
+	if _, ok := validateLiveSubscription(otherStream); ok {
+		t.Fatal("event exclusion accepted on another stream")
+	}
+}
