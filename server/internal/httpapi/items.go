@@ -42,7 +42,7 @@ func (h *itemSearchHandler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	if raw := q.Get("limit"); raw != "" {
 		limit, err := strconv.Atoi(raw)
-		if err != nil || limit < 1 || limit > 100 {
+		if err != nil || limit < 1 || limit > resources.MaxItemSearchLimit {
 			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
 			return
 		}
@@ -57,7 +57,7 @@ func (h *itemSearchHandler) list(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "select a server for taxonomy filters"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	page, err := h.store.ItemSearch(ctx, filter)
 	if err != nil {

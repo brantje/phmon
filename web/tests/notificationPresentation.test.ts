@@ -76,6 +76,55 @@ test('every selectable kind has a readable missing-data fallback and exact recor
   }
 })
 
+test('trader, hunter and thief sightings include the location and its source', () => {
+  const reporter = {
+    source: 'reporter' as const,
+    zone: 'Jangan',
+    x: 98.14,
+    y: 1551.06,
+  }
+  assert.equal(
+    notificationPresentation({
+      ...event('job.hunter_trader_seen', { value: 'TraderOne' }),
+      location: reporter,
+    }).body,
+    'TraderOne · Reporter location: Jangan · 98.1, 1551.1',
+  )
+  assert.equal(
+    notificationPresentation({
+      ...event('job.thief_seen', { value: 'Pickpocket' }),
+      location: reporter,
+    }).body,
+    'Pickpocket · Reporter location: Jangan · 98.1, 1551.1',
+  )
+  assert.equal(
+    notificationPresentation({
+      ...event('job.thief_seen', { value: 'Pickpocket' }),
+      location: { source: 'thief', zone: 'Donwhang', x: 10, y: 20 },
+    }).body,
+    'Pickpocket · Donwhang · 10.0, 20.0',
+  )
+  assert.equal(
+    notificationPresentation({
+      ...event('job.thief_seen', { value: 'Pickpocket' }),
+      location: { source: 'thief', x: 10, y: 20 },
+    }).body,
+    'Pickpocket · Unknown zone · 10.0, 20.0',
+  )
+  assert.equal(
+    notificationPresentation({
+      ...event('job.thief_seen', { value: 'Pickpocket' }),
+      location: { source: 'reporter', zone: 'Jangan' },
+    }).body,
+    'Pickpocket · Reporter location: Jangan',
+  )
+  assert.equal(
+    notificationPresentation(event('job.thief_seen', { value: 'Pickpocket' }))
+      .body,
+    'Pickpocket',
+  )
+})
+
 test('unique kill, spotted location, member names and trade outcomes use observed details', () => {
   const unique = notificationPresentation(
     event('world.unique_spawned', {
@@ -89,7 +138,7 @@ test('unique kill, spotted location, member names and trade outcomes use observe
   const hunter = notificationPresentation(
     event('job.hunter_trader_seen', { value: 'TraderOne' }),
   )
-  assert.match(hunter.body, /Reporter location only/)
+  assert.equal(hunter.body, 'TraderOne · Location unknown')
   assert.equal(
     notificationPresentation(
       event('party.member_joined', { member: { name: 'Beta' } }),

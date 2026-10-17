@@ -2,7 +2,9 @@ package analytics_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math"
 	"os"
@@ -128,6 +130,19 @@ func TestReviewRetentionMustContinueWhenOnlyOneTableHasBacklog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Retention rebuilds the gold rollup quarter at its cutoff, which can create
+	// the shared rollup watermark. Restore it so rollup tests are unaffected.
+	var watermark *time.Time
+	if err := f.pool.QueryRow(context.Background(), `SELECT watermark FROM analytics_rollup_state WHERE name='character_gold'`).Scan(&watermark); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if watermark == nil {
+			_, _ = f.pool.Exec(context.Background(), `DELETE FROM analytics_rollup_state WHERE name='character_gold'`)
+		} else {
+			_, _ = f.pool.Exec(context.Background(), `UPDATE analytics_rollup_state SET watermark=$1 WHERE name='character_gold'`, *watermark)
+		}
+	})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { analytics.NewStore(f.pool).RunRetention(ctx, 90, 6*time.Hour); close(done) }()

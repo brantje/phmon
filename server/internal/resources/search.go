@@ -61,6 +61,15 @@ type itemSearchCursor struct {
 	Slot      int    `json:"n"`
 }
 
+// MaxItemSearchLimit lets Item Search read every current row in one snapshot.
+// Paging across requests saw a different total almost every time, because
+// item rows change continuously.
+const MaxItemSearchLimit = 5000
+
+// itemSearchOmittedFields are raw phBot evidence that Item Search and its
+// tooltip never read. Character resource endpoints still return them.
+var itemSearchOmittedFields = []string{"api_fields", "api_field_types"}
+
 func encodeItemSearchCursor(value itemSearchCursor) string {
 	data, _ := json.Marshal(value)
 	return base64.RawURLEncoding.EncodeToString(data)
@@ -106,7 +115,7 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			return ItemSearchPage{}, ErrInvalid
 		}
 	}
-	if filter.Limit < 1 || filter.Limit > 100 {
+	if filter.Limit < 1 || filter.Limit > MaxItemSearchLimit {
 		return ItemSearchPage{}, ErrInvalid
 	}
 	cursor, err := decodeItemSearchCursor(filter.Cursor)
@@ -151,7 +160,9 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	// Resource observation and slot revision are joined atomically. Guild
 	// storage is a saved shared view, so its last loaded slots remain searchable
 	// when an observer closes it. Personal storage still requires an open view.
-	const guildCTE = `WITH guild_snapshot AS (
+	// MATERIALIZED keeps the generic prepared plan pgx switches to from
+	// re-running this DISTINCT ON once per item row (2 s instead of 17 ms).
+	const guildCTE = `WITH guild_snapshot AS MATERIALIZED (
 		SELECT DISTINCT ON (server_key,guild_key)
 			server_key,guild_key,observer_character_id
 		FROM character_resource_observations o
@@ -183,18 +194,18 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 	// Counting and paging from different snapshots can mix two guild
 	// observers' replacements, producing a total that doesn't match the page.
 	// Use one read-only snapshot for the complete response.
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+	pool := s.pool
+	if s.readPool != nil {
+		pool = s.readPool
+	}
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
 	})
 	if err != nil {
 		return ItemSearchPage{}, fmt.Errorf("begin item search: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	var total int64
-	if err := tx.QueryRow(ctx, guildCTE+` SELECT count(*) `+scope, args...).Scan(&total); err != nil {
-		return ItemSearchPage{}, fmt.Errorf("count item search: %w", err)
-	}
-	page := ItemSearchPage{Items: make([]ItemSearchEntry, 0, filter.Limit), Total: total}
+	page := ItemSearchPage{Items: make([]ItemSearchEntry, 0, min(filter.Limit, 256))}
 	rows, err := tx.Query(ctx, guildCTE+`
 	SELECT i.observer_character_id::text,i.server_key,i.container_key,i.pet_id,
 		i.source_slot,i.guild_key,i.revision,i.observed_at,o.updated_at,
@@ -237,12 +248,19 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 			entry.OwnerID = entry.ObserverCharacterID
 			entry.OwnerName = entry.ObserverName
 		}
-		var modelPtr *int64
-		if model > 0 {
-			modelPtr = &model
-		}
-		entry.Metadata = s.ItemPresentation(entry.Server, modelPtr, code)
 		entry.Item = s.EnrichItemRecord(entry.Server, entry.Item)
+		if _, ok := entry.Item["metadata"]; !ok {
+			// Enrichment already places the static presentation in item.metadata;
+			// only send it separately when enrichment could not.
+			var modelPtr *int64
+			if model > 0 {
+				modelPtr = &model
+			}
+			entry.Metadata = s.ItemPresentation(entry.Server, modelPtr, code)
+		}
+		for _, field := range itemSearchOmittedFields {
+			delete(entry.Item, field)
+		}
 		page.Items = append(page.Items, entry)
 	}
 	if err := rows.Err(); err != nil {
@@ -257,6 +275,12 @@ func (s *Store) ItemSearch(ctx context.Context, filter ItemSearchFilter) (ItemSe
 		})
 	}
 	rows.Close()
+	if filter.Cursor == "" && page.NextCursor == "" {
+		// The whole result fit in one page of this snapshot.
+		page.Total = int64(len(page.Items))
+	} else if err := tx.QueryRow(ctx, guildCTE+` SELECT count(*) `+scope, args...).Scan(&page.Total); err != nil {
+		return ItemSearchPage{}, fmt.Errorf("count item search: %w", err)
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return ItemSearchPage{}, fmt.Errorf("commit item search snapshot: %w", err)
 	}

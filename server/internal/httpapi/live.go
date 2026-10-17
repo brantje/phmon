@@ -442,6 +442,9 @@ func (h *LiveHub) PublishNotification(event events.Event) {
 	if unique := uniqueInfo(h.resources, event); unique != nil {
 		data["unique"] = unique
 	}
+	if location := notificationLocation(h.resources, event); location != nil {
+		data["location"] = location
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for client := range h.clients {
@@ -466,6 +469,46 @@ func (h *LiveHub) PublishNotification(event events.Event) {
 				Stream: "notifications", Data: map[string]any{"event": data}})
 		}
 	}
+}
+
+// notificationLocation describes where a job sighting happened. A thief report
+// carries the thief's own position only when the plugin found it in the nearby
+// player list; every other position is the reporting character's. The source
+// field keeps that distinction visible to the notification.
+func notificationLocation(store *resources.Store, event events.Event) map[string]any {
+	if event.Kind != "job.hunter_trader_seen" && event.Kind != "job.thief_seen" {
+		return nil
+	}
+	var region *int
+	var x, y, z *float64
+	source := "reporter"
+	zone := strings.TrimSpace(event.Zone)
+	if sighting, ok := tradenexus.SightingFromEvent(event); ok && sighting.Position != nil {
+		region, x, y, z = &sighting.Position.Region, &sighting.Position.X, &sighting.Position.Y, sighting.Position.Z
+		if sighting.PositionSource == tradenexus.SourceThief {
+			source = "thief"
+			zone = ""
+		}
+	} else if event.Region != nil && event.X != nil && event.Y != nil {
+		region, x, y, z = event.Region, event.X, event.Y, event.Z
+	}
+	if zone == "" && region != nil && store != nil {
+		zone = store.ZoneName(event.Server, *region)
+	}
+	if zone == "" && (x == nil || y == nil) {
+		return nil
+	}
+	location := map[string]any{"source": source}
+	if zone != "" {
+		location["zone"] = zone
+	}
+	if x != nil && y != nil {
+		location["x"], location["y"] = *x, *y
+		if z != nil {
+			location["z"] = *z
+		}
+	}
+	return location
 }
 
 // PublishTradeNotification adapts a newly stored Trade Nexus report to the

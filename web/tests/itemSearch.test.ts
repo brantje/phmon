@@ -114,6 +114,19 @@ test('filters use each row’s resolved metadata, even when model IDs collide ac
   assert.deepEqual(filterSearchItems(rows, { ...filters, query: '778' }), [
     unknown,
   ])
+  // Enriched rows carry their presentation only in item.metadata.
+  const enriched = row({
+    metadata: undefined,
+    item: {
+      model: 779,
+      servername: 'ITEM_CH_RING_09_A',
+      metadata: { name: 'Amber Ring', sort_type: 'Ring', degree: 9 },
+    },
+  })
+  assert.deepEqual(
+    filterSearchItems([...rows, enriched], { ...filters, query: 'amber' }),
+    [enriched],
+  )
   assert.deepEqual(itemSearchTaxonomy(unknown), {
     type: '',
     subcategory: '',

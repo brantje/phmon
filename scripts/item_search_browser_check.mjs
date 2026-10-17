@@ -14,6 +14,8 @@ mkdirSync(directory, { recursive: true })
 const { chromium } = await import(process.env.PHMON_PLAYWRIGHT_MODULE || 'playwright')
 const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox'] })
 const results = []
+// Item Search sends static presentation once, in item.metadata.
+const itemMetadata = row => row.metadata || row.item.metadata || {}
 try {
   const anonymous = await browser.newContext()
   for (const path of ['/api/items', '/api/economy/offers']) assert.equal((await anonymous.request.get(`${origin}${path}`)).status(), 401, `${path} must require authentication`)
@@ -23,7 +25,7 @@ try {
     const page = await context.newPage()
     const itemPages = []
     page.on('response', async response => {
-      if (new URL(response.url()).pathname === '/api/items' && new URL(response.url()).searchParams.get('limit') === '100' && response.status() === 200) {
+      if (new URL(response.url()).pathname === '/api/items' && new URL(response.url()).searchParams.get('limit') === '5000' && response.status() === 200) {
         const data = await response.json()
         if (!new URL(response.url()).searchParams.has('cursor')) itemPages.length = 0
         itemPages.push(data)
@@ -37,7 +39,7 @@ try {
     assert.equal(response.headers()['cache-control'], 'no-store')
     const first = await response.json()
     assert(first.total > 0 && first.items.length === 1, 'Need retained real items for browser acceptance')
-    assert.equal((await page.request.get(`${origin}/api/items?limit=101`)).status(), 400, 'Backend validation status must survive the proxy')
+    assert.equal((await page.request.get(`${origin}/api/items?limit=5001`)).status(), 400, 'Backend validation status must survive the proxy')
     const emptyResponse = await page.request.get(`${origin}/api/items?q=PHMON_NO_SUCH_ITEM_20261015`)
     assert.equal(emptyResponse.status(), 200)
     assert.equal((await emptyResponse.json()).total, 0, 'Search query was not forwarded')
@@ -54,7 +56,7 @@ try {
     const tiles = page.locator('.item-search-tile')
     await tiles.first().waitFor()
     assert.equal(await page.getByRole('alert').count(), 0)
-    assert(itemPages.length > 1, 'Expected complete cursor traversal, not one partial API page')
+    assert(itemPages.length > 0 && !itemPages.at(-1).next_cursor, 'Expected a complete item load, not a partial API page')
     const retained = new Map(itemPages.flatMap(result => result.items).map(item => [[item.server.toLowerCase(), item.observer_character_id, item.container, item.pet_id || '', item.slot].join('/'), item]))
     const rows = [...retained.values()]
     const defaultRows = rows.filter(row => row.container !== 'equipment')
@@ -77,7 +79,7 @@ try {
     await tiles.first().waitFor()
     await page.locator('.item-search-sets input').check()
     assert.equal(await tiles.count(), rows.length)
-    const weapons = rows.filter(row => !String(row.item.servername || '').startsWith('ITEM_MALL_') && row.metadata?.sort_type === 'Weapon')
+    const weapons = rows.filter(row => !String(row.item.servername || '').startsWith('ITEM_MALL_') && itemMetadata(row).sort_type === 'Weapon')
     await page.getByLabel('Item Type', { exact: true }).selectOption('weapons')
     assert.equal(await tiles.count(), weapons.length)
     assert(await page.getByLabel('Subcategory', { exact: true }).isEnabled())
@@ -85,13 +87,13 @@ try {
     const degrees = await page.getByLabel('Degree', { exact: true }).locator('option').evaluateAll(options => options.map(option => option.value).filter(Boolean))
     if (degrees.length) {
       await page.getByLabel('Degree', { exact: true }).selectOption(degrees[0])
-      assert.equal(await tiles.count(), weapons.filter(row => String(row.metadata.degree) === degrees[0]).length)
+      assert.equal(await tiles.count(), weapons.filter(row => String(itemMetadata(row).degree) === degrees[0]).length)
     }
     await page.getByRole('button', { name: 'Reset Filters', exact: true }).click()
     // Exercise a real subcategory selection, then verify changing category
     // clears dependent subcategory/degree values.
     await page.getByLabel('Item Type', {exact:true}).selectOption('accessories')
-    const necklaceCount = defaultRows.filter(row => row.metadata?.sort_type === 'Necklace').length
+    const necklaceCount = defaultRows.filter(row => itemMetadata(row).sort_type === 'Necklace').length
     if (necklaceCount) {
       await page.getByLabel('Subcategory', {exact:true}).selectOption('Necklace')
       assert.equal(await tiles.count(), necklaceCount)
@@ -141,7 +143,7 @@ try {
     assert.equal(offersResponse.headers()['cache-control'], 'no-store')
     const offers = await offersResponse.json()
     await page.goto(`${origin}/economy`)
-    await page.waitForFunction(() => !document.body.innerText.includes('Loading offers…') && /\d+ messages/.test(document.body.innerText))
+    await page.waitForFunction(() => !document.body.innerText.includes('Loading offers…') && /\d+ (messages|offers)/.test(document.body.innerText))
     assert.equal(await page.getByRole('alert').count(), 0)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
     await page.screenshot({ path: join(directory, `economy-${width}x${height}.png`), fullPage: true })

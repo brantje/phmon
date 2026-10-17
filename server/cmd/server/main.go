@@ -108,6 +108,14 @@ func run() error {
 	analyticsStore.SetRetentionDays(cfg.AnalyticsRetentionDays)
 	characterStore := characters.NewStore(pool)
 	resourceStore := resources.NewStore(pool)
+	itemSearchPoolCfg := analyticsPoolCfg.Copy()
+	itemSearchPoolCfg.MaxConns = 2
+	itemSearchPool, err := pgxpool.NewWithConfig(ctx, itemSearchPoolCfg)
+	if err != nil {
+		return errors.New("cannot initialize item search read pool")
+	}
+	defer itemSearchPool.Close()
+	resourceStore.SetReadPool(itemSearchPool)
 	eventStore := events.NewStore(pool)
 	chatStore := chat.NewStore(pool)
 	notificationStore := notifications.NewStore(pool)
@@ -154,6 +162,7 @@ func run() error {
 	commandService.SetReverseReturnLocations(metadata)
 	live := httpapi.NewLiveHub(store, registry, characterStore)
 	go analyticsStore.RunRetention(ctx, cfg.AnalyticsRetentionDays, 15*time.Minute, live.InvalidateAnalytics)
+	go analyticsStore.RunGoldRollups(ctx, time.Minute)
 	live.SetCommands(commandService)
 	live.SetResources(resourceStore)
 	live.SetEvents(eventStore)

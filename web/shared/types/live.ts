@@ -688,6 +688,16 @@ export interface NotificationEvent {
   payload: Record<string, unknown>
   item_name?: string
   unique?: ActivityEvent['unique']
+  /** Present on trader/hunter/thief sightings. `thief` is the spotted player's own position, `reporter` the reporting character's. */
+  location?: NotificationLocation
+}
+
+export interface NotificationLocation {
+  source: 'reporter' | 'thief'
+  zone?: string
+  x?: number
+  y?: number
+  z?: number
 }
 
 export interface GlobalOfferItem {

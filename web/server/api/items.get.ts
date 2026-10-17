@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
       baseURL: useRuntimeConfig(event).backendUrl,
       headers: backendAuthHeaders(event),
       query: getQuery(event),
-      timeout: 4000,
+      timeout: 9000,
       retry: 0,
     })
   } catch (error) {

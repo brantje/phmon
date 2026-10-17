@@ -297,8 +297,11 @@ a.nav-item {
 }
 
 .nav-item svg,
+.nav-item .iconify,
 .instance-button svg,
-.scope-block svg {
+.instance-button .iconify,
+.scope-block svg,
+.scope-block .iconify {
   width: 15px;
   height: 15px;
   flex: 0 0 15px;
@@ -313,10 +316,10 @@ a.nav-item {
 
 .is-collapsed .brand-copy,
 .is-collapsed .scope-block,
-.is-collapsed .nav-item span,
+.is-collapsed .nav-item span:not(.iconify):not(.sidebar-death-indicator),
 .is-collapsed .sidebar-groups,
 .is-collapsed .nav-heading,
-.is-collapsed .instance-button span,
+.is-collapsed .instance-button span:not(.iconify),
 .is-collapsed .instance-url,
 .is-collapsed .sidebar-qr,
 .is-collapsed .sidebar-copy {
@@ -1546,9 +1549,9 @@ a.nav-item {
 
   .is-collapsed .brand-copy,
   .is-collapsed .scope-block,
-  .is-collapsed .nav-item span,
+  .is-collapsed .nav-item span:not(.iconify):not(.sidebar-death-indicator),
   .is-collapsed .nav-heading,
-  .is-collapsed .instance-button span,
+  .is-collapsed .instance-button span:not(.iconify),
   .is-collapsed .instance-url,
   .is-collapsed .sidebar-qr,
   .is-collapsed .sidebar-copy {

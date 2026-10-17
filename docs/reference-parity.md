@@ -275,6 +275,19 @@ overflow horizontally at 1440×1000, 1280×800, or 390×844. Real phBot
 `EVENT_THIEF_SPAWN` validation remains a separate runtime gate. The message
 contract is [tradenexus.md](tradenexus.md).
 
+### Sighting locations — 2026-10-17
+
+The Events **Thieves** tab shows the zone name with coordinates (`Jangan · 98.1,
+1551.1`) instead of `Region 25735 · …`; `/api/thief-sightings` now resolves the zone
+from the sighting's region like the live Thieves stream. The row tooltip says whether
+the position is the reporter's or the thief's. Trader / Hunter / Thief notifications
+carry a `location` object (`source` reporter or thief, zone, x, y, z) built by the
+server. Only a thief sighting whose plugin found the thief in the nearby player list
+is labelled as the thief's own position; every other position, including all
+trader/hunter sightings, is shown as "Reporter location" because the callback does not
+report where the spotted player stands. Not verified in a browser or against a real
+phBot callback.
+
 ## Multi-character remote controls — 2026-10-01
 
 Before the Issue #35 screen changes, the operator supplied a reachable LAN demo

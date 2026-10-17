@@ -7,7 +7,11 @@ import type {
 } from '~~/shared/types/live'
 import type { MapProfile } from '~~/shared/types/map'
 import { mapEventLocation, mapEventRoute } from '~/utils/mapNavigation'
-import { eventLocationText, eventRowLocationText } from '~/utils/event-location'
+import {
+  eventLocationText,
+  eventRowLocationText,
+  sightingLocationText,
+} from '~/utils/event-location'
 import { deathCauseLabel } from '~/utils/deathCause'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import { uniqueEventDetails, uniqueEventHeadline } from '~/utils/uniqueEvent'
@@ -589,8 +593,12 @@ function sightingMapTarget(row: ThiefSighting) {
   }
 }
 function sightingLocation(row: ThiefSighting) {
-  if (!row.position) return 'Position unavailable'
-  return `Region ${row.position.region} · ${row.position.x.toFixed(1)}, ${row.position.y.toFixed(1)}`
+  return sightingLocationText(row)
+}
+function sightingLocationTitle(row: ThiefSighting) {
+  if (row.position_source === 'observer') return 'Reporter location'
+  if (row.position_source === 'thief') return 'Thief location'
+  return undefined
 }
 
 function nextPage() {
@@ -1057,7 +1065,9 @@ function localDateBoundary(value: string, addDays: number) {
               {{ row.reporter.name || '—' }}
             </div>
             <div class="event-row-detail">{{ sightingSource(row) }}</div>
-            <div class="event-row-location">{{ sightingLocation(row) }}</div>
+            <div class="event-row-location" :title="sightingLocationTitle(row)">
+              {{ sightingLocation(row) }}
+            </div>
             <div class="event-row-map">
               <NuxtLink
                 v-if="sightingMapTarget(row)"

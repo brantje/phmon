@@ -41,6 +41,26 @@ function observedName(input: unknown) {
   return value((input as Record<string, unknown>).name)
 }
 
+/**
+ * Zone and coordinates of a sighting. The callback does not report where a
+ * trader or hunter stands, so unless the server saw the spotted player's own
+ * position the text says it is the reporting character's location.
+ */
+function sightingLocation(event: NotificationEvent) {
+  const location = event.location
+  if (!location) return ''
+  const zone = value(location.zone)
+  const coordinates =
+    typeof location.x === 'number' && typeof location.y === 'number'
+      ? `${location.x.toFixed(1)}, ${location.y.toFixed(1)}`
+      : ''
+  const place = [zone || (coordinates ? 'Unknown zone' : ''), coordinates]
+    .filter(Boolean)
+    .join(' · ')
+  if (!place) return ''
+  return location.source === 'thief' ? place : `Reporter location: ${place}`
+}
+
 export function notificationPresentation(
   event: NotificationEvent,
 ): NotificationPresentation {
@@ -110,14 +130,16 @@ export function notificationPresentation(
       break
     case 'job.hunter_trader_seen':
       title = 'Trader / Hunter seen'
-      body = `${named} · Reporter location only`
+      body = `${named} · ${sightingLocation(event) || 'Location unknown'}`
       tone = 'activity'
       break
-    case 'job.thief_seen':
+    case 'job.thief_seen': {
       title = 'Thief seen'
-      body = named
+      const where = sightingLocation(event)
+      body = where ? `${named} · ${where}` : named
       tone = 'activity'
       break
+    }
     case 'pet.transport_died':
       title = 'Transport died'
       body = named

@@ -90,7 +90,7 @@ func New(deps Dependencies) http.Handler {
 		mux.Handle("GET /tradenexus", deps.TradeNexus)
 	}
 	if deps.ThiefSightings != nil {
-		sightings := &thiefSightingHandler{store: deps.ThiefSightings}
+		sightings := &thiefSightingHandler{store: deps.ThiefSightings, resources: deps.Resources}
 		register("GET /api/thief-sightings", false, sightings.list)
 		trades := &tradeReportHandler{store: deps.ThiefSightings}
 		register("GET /api/trade-reports", false, trades.list)

@@ -7,11 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"phmon/server/internal/resources"
 	"phmon/server/internal/tradenexus"
 )
 
 type thiefSightingHandler struct {
-	store *tradenexus.Store
+	store     *tradenexus.Store
+	resources *resources.Store
 }
 
 func (h *thiefSightingHandler) list(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +66,13 @@ func (h *thiefSightingHandler) list(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "service unavailable"})
 		return
+	}
+	if h.resources != nil {
+		for index, sighting := range page.Sightings {
+			if sighting.Position != nil {
+				page.Sightings[index].Zone = h.resources.ZoneName(sighting.Server, sighting.Position.Region)
+			}
+		}
 	}
 	respondJSON(w, http.StatusOK, page)
 }

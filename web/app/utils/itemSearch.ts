@@ -135,6 +135,7 @@ export function filterSearchItems(
         row.item.servername,
         row.item.model,
         row.metadata?.name,
+        record(row.item.metadata).name,
       ].some(
         (value) =>
           value != null && String(value).toLocaleLowerCase().includes(query),

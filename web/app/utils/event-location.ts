@@ -1,4 +1,4 @@
-import type { ActivityEvent } from '~~/shared/types/live'
+import type { ActivityEvent, ThiefSighting } from '~~/shared/types/live'
 
 export function zoneNameText(zone?: string | null): string {
   return typeof zone === 'string' && zone.trim() ? zone.trim() : 'Unknown zone'
@@ -25,6 +25,15 @@ export function eventLocationText(
   }
 
   return event.zone?.trim() ? zone : 'Location unknown'
+}
+
+/** Zone name with whole-map coordinates, as shown for thief sightings. */
+export function sightingLocationText(
+  sighting: Pick<ThiefSighting, 'position' | 'zone'>,
+): string {
+  const { position, zone } = sighting
+  if (!position) return 'Location unknown'
+  return `${zoneNameText(zone)} · ${position.x.toFixed(1)}, ${position.y.toFixed(1)}`
 }
 
 export function eventRowLocationText(event: ActivityEvent): string {
