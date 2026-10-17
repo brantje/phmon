@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 is not supported, kept harmle
     from urlparse import urlparse
 
 pName = 'PhMon'
-pVersion = '1.9.49'
+pVersion = '1.9.50'
 pUrl = ''
 
 PROTOCOL_VERSION = 22
@@ -55,6 +55,13 @@ MAX_EVENT_BYTES = 40 * 1024
 MAX_EVENT_PAYLOAD_BYTES = 32768
 MAX_EVENT_BATCH_SIZE = 16
 PET_LIFECYCLE_HOLD_SECONDS = 5.0
+# phBot reports connected()/joined_game() before a character is selected or its
+# data is loaded, so these two lifecycle events wait for the next registered
+# character. The server accepts session events up to five minutes before the
+# session starts; stay well inside that window.
+LOGIN_IDENTITY_HOLD_SECONDS = 120.0
+MAX_PENDING_LOGIN_EVENTS = 8
+LOGIN_HELD_KINDS = ('session.connected', 'session.joined_game')
 TELEPORT_READY_TIMEOUT_SECONDS = 10.0
 TELEPORT_RECOVERY_TIMEOUT_SECONDS = 30.0
 TELEPORT_STABLE_PET_SAMPLES = 2
@@ -3728,6 +3735,9 @@ class AgentWorker(object):
         self._pet_transition_timeout_logged = False
         self._pet_transition_ready_at = None
         self._pet_transition_pending_events = []
+        self._login_hold_lock = threading.Lock()
+        self._login_held_events = []
+        self._registration_generation = 0
         self._last_pet_roster = None
         self._pending_item_reconciliation = []
         self._pending_drop_lock = threading.Lock()
@@ -4403,6 +4413,31 @@ class AgentWorker(object):
         for record in ready:
             self._enqueue_event_record(record)
 
+    def _release_login_event(self, event, identity):
+        event = dict(event)
+        event['_phmon_login_released'] = True
+        return self.queue_event(identity, event)
+
+    def _flush_login_held(self, force=False):
+        """Attach the character that registered after a login event, or send it unbound."""
+        now = _monotonic()
+        released = []
+        with self._login_hold_lock:
+            identity = self._current_identity
+            registered = (identity is not None and self.character_id is not None and
+                          _validate_agent_id(self.character_id) and _validate_agent_id(self.session_id))
+            retained = []
+            for entry in self._login_held_events:
+                if registered and entry['generation'] < self._registration_generation:
+                    released.append((entry['event'], dict(identity)))
+                elif force or entry['ready_at'] <= now:
+                    released.append((entry['event'], None))
+                else:
+                    retained.append(entry)
+            self._login_held_events = retained
+        for event, bound_identity in released:
+            self._release_login_event(event, bound_identity)
+
     def _enqueue_event_record(self, record):
         try:
             self._event_samples.put_nowait(record)
@@ -4850,6 +4885,23 @@ class AgentWorker(object):
         if not isinstance(event, dict) or not event.get('kind') or not event.get('category'):
             _log('activity event is missing its canonical type')
             return False
+        if event.get('kind') == 'session.disconnected':
+            # Held login events precede the disconnect; send them first.
+            self._flush_login_held(force=True)
+        elif (identity is None and event.get('kind') in LOGIN_HELD_KINDS and
+                not event.get('_phmon_login_released') and event.get('server') is None):
+            overflow = None
+            with self._login_hold_lock:
+                if len(self._login_held_events) >= MAX_PENDING_LOGIN_EVENTS:
+                    overflow = self._login_held_events.pop(0)['event']
+                self._login_held_events.append({
+                    'event': dict(event),
+                    'generation': self._registration_generation,
+                    'ready_at': _monotonic() + LOGIN_IDENTITY_HOLD_SECONDS,
+                })
+            if overflow is not None:
+                self._release_login_event(overflow, None)
+            return True
         if (isinstance(identity, dict) and self._current_identity is not None and
                 self._identity_key(identity) != self._identity_key(self._current_identity)):
             _log('activity event was rejected because its character identity is no longer active')
@@ -4863,6 +4915,7 @@ class AgentWorker(object):
             return False
         record = dict(event)
         record.pop('_phmon_item_sort_type', None)
+        record.pop('_phmon_login_released', None)
         if isinstance(identity, dict):
             server = identity.get('server')
             character_name = identity.get('name')
@@ -4953,6 +5006,7 @@ class AgentWorker(object):
         )
 
     def leave_character(self):
+        self._flush_login_held(force=True)
         self._reset_pet_transition(release_pending=True)
         if self._active_walk is not None:
             self._finish_walk('unknown', 'character_left_during_walk', 'unverified')
@@ -4988,6 +5042,7 @@ class AgentWorker(object):
         # A held pet lifecycle event is still a real occurrence. Releasing it
         # here keeps worker shutdown from dropping it inside the hold window.
         self._reset_pet_transition(release_pending=True)
+        self._flush_login_held(force=True)
         self.stop_event.set()
         # Persist all released lifecycle events before returning from stop().
         # The spool lock prevents a concurrent network pass from racing us.
@@ -5094,6 +5149,7 @@ class AgentWorker(object):
         backoff = ReconnectBackoff()
         while not self.stop_event.is_set():
             self._flush_pending_pet_events()
+            self._flush_login_held()
             self._spool_queued_events()
             self._spool_queued_mob_samples()
             client = None
@@ -5174,6 +5230,7 @@ class AgentWorker(object):
                         pass
                     self._flush_death_events(client)
                     self._flush_pending_pet_events()
+                    self._flush_login_held()
                     self._flush_realtime_position(client)
                     self._flush_map_observations(client)
                     try:
@@ -5311,6 +5368,8 @@ class AgentWorker(object):
                 raise WebSocketClosed('character registration rejected')
             self.character_id = reply['character_id']
             self.session_id = reply['session_id']
+            with self._login_hold_lock:
+                self._registration_generation += 1
             self._reset_pet_transition(release_pending=True)
             self._adopt_position_session(self.session_id, identity)
             self._current_identity = identity

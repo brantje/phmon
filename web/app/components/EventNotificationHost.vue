@@ -200,8 +200,14 @@ onBeforeUnmount(() => {
           card.presentation.body
         }}</span>
         <small
-          >{{ card.event.character || 'Observer unavailable' }} ·
-          {{ card.event.server }}</small
+          >{{
+            card.event.character ||
+            (card.event.kind.startsWith('session.')
+              ? 'Character not selected'
+              : 'Observer unavailable')
+          }}<template v-if="card.event.server">
+            · {{ card.event.server }}</template
+          ></small
         >
       </NuxtLink>
       <button

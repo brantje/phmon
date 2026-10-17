@@ -2118,3 +2118,17 @@ scanned every server packet for the pet ID at any offset and for any u16 from 60
 client most likely decays it locally. `0x30BF` is the pet ID plus constant `0x0004`. Decay
 is uneven (about 0.23-0.47 per second across windows), so it cannot be estimated. Live HGP
 is therefore not obtainable; keep the summon-time value.
+
+### Login lifecycle events carry the registered character (plugin 1.9.50)
+
+phBot calls `connected()` and `joined_game()` before a character is selected or its
+data is loaded, so `session.connected` and `session.joined_game` were stored without a
+character and the notification popup showed "Observer unavailable". The worker now holds
+those two events (at most 8, `LOGIN_IDENTITY_HOLD_SECONDS` = 120 s) and attaches the
+next character that registers; event ID, `occurred_at` and position are unchanged. If no
+character registers before the hold ends, or on a `session.disconnected` callback,
+`leave_character()` or worker stop, they are sent without a character as before. The
+server already accepts character-bound `session.*` events within five minutes before
+the session start, so there is no protocol or server change. Existing events stay
+unchanged. Validated with plugin unit tests only; the order of `connected()`,
+`joined_game()` and registration on a real phBot runtime is unverified.

@@ -645,8 +645,83 @@ a.nav-item {
 }
 
 .dashboard-events {
-  grid-column: span 6;
+  display: flex;
   min-height: 285px;
+  flex-direction: column;
+  grid-column: span 6;
+}
+
+/* The list is taken out of flow so the card follows its row height and
+   scrolls, instead of making the whole dashboard row taller. */
+.dashboard-recent-scroll {
+  position: relative;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.dashboard-recent-scroll > .dashboard-recent-list {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-width: thin;
+}
+
+.dashboard-recent-list li {
+  min-height: 50px;
+}
+
+.dashboard-event-lead {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border: 1px solid var(--ph-border-soft);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--ph-muted);
+}
+
+.dashboard-event-lead svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dashboard-recent-list .dashboard-event-identity > span:last-child {
+  overflow: hidden;
+  color: #9caabd;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-recent-list .dashboard-event-item {
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+.dashboard-recent-list .dashboard-event-item > strong {
+  flex: none;
+}
+
+.dashboard-recent-list .item-detail-popup {
+  min-width: 0;
+  gap: 4px;
+}
+
+.dashboard-recent-list .item-detail-icon {
+  width: 22px;
+  height: 22px;
+  flex-basis: 22px;
+  padding: 1px;
+}
+
+.dashboard-recent-list .item-detail-name {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dashboard-stack {
@@ -1535,6 +1610,11 @@ a.nav-item {
     grid-template-columns: 1fr 1fr;
   }
 
+  .dashboard-recent-scroll > .dashboard-recent-list {
+    position: static;
+    max-height: 420px;
+  }
+
   .top-summary-item:nth-child(2),
   .top-summary-item:nth-child(3) {
     display: none;
@@ -1982,8 +2062,10 @@ a.nav-item {
 }
 
 .dashboard-recent-list .unique-event-art {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--ph-border-soft);
+  border-radius: 8px;
 }
 
 .event-rows-scroll {

@@ -1577,6 +1577,45 @@ for the combined scope, then monitor CI and automated review on the pushed head,
 address actionable findings and rerun affected checks. Leave the PR open; merge
 is not authorized by this request. No worktree or bot operations are needed.
 
+### Resume — 2026-10-17 character on Connected / Joined game notifications
+
+Operator request: the Connected popup showed "Observer unavailable". phBot calls
+`connected()`/`joined_game()` before a character is selected, so those events had no
+character. Plugin **1.9.50** (protocol stays 22) holds `session.connected` and
+`session.joined_game` (at most 8, 120 s) and attaches the next registered character,
+keeping event ID, `occurred_at` and position; they are sent unbound after the hold, on
+disconnect, `leave_character()` or stop. No server change. The popup shows "Character
+not selected" for unbound session events and drops the empty server separator. Files:
+`plugin/{PhMon.py,test_phmon.py,README.md}`, `web/app/components/EventNotificationHost.vue`,
+`docs/phbot-capabilities.md`. Validation: 310 plugin tests, protocol contract
+unchanged, Prettier on the Vue file. Not run: ESLint/typecheck (local Node is 20, not
+24.20.0), browser check, real phBot. Existing events are not backfilled. Exact next
+action: operator installs plugin 1.9.50, relogs a character and confirms the popup and
+Events rows show its name; rebuild web for the popup wording.
+
+### Resume — 2026-10-17 dashboard Recent Events card
+
+Operator request: align Recent Events with the other dashboard cards and show more
+events. Rows now match Last Deaths (36 px portrait/monster art, title, muted detail,
+date right, 50 px) and the list scrolls inside the card with up to 25 grouped rows.
+Unique notices no longer render as "Item / Unknown item" (their `payload.model` is a
+monster model); unmapped kinds use the notification titles. The live `events` stream
+accepts `exclude_kinds`, so the card gets 25 displayable rows instead of item stack
+changes; separate uniques and hunter (`hide_own`) feeds are kept, and the three
+feeds merge without gaps (`mergeRecentEventFeeds`). `useLiveData` exposes `eventFeedStatus`; a feed the
+server reports unavailable counts as answered (no rows), so the other feeds stay visible,
+and an empty card then says the history is unavailable (CodeRabbit finding on PR #98). Files: `server/internal/{events/store.go,
+events/exclude_kinds_integration_test.go,httpapi/live.go,httpapi/live_test.go}`,
+`web/app/{components/DashboardOverview.vue,utils/{groupRecentEvents,uniqueEvent}.ts,
+assets/css/main.css}`, `web/shared/types/live.ts`, web tests, `docs/protocol.md`.
+Validation: Go vet; `go test -race ./internal/events ./internal/httpapi` on a
+disposable PostgreSQL database (dropped); 307 web unit tests, typecheck, ESLint (two
+existing-style `<img/>` warnings), Prettier on Node 24.20.0; a Chrome check against
+a dev server at 1440×1000, 1280×800 and 390×844 showed 25 rows, a card height equal to
+its neighbours, a 10 px minimum font, no overflow and no page errors. Only the local
+server container was rebuilt (backward compatible); web is not rebuilt. Exact next
+action: rebuild the web container to ship the card.
+
 ## Product and architecture
 
 Build a completely self-hosted alternative to phMonitor, using phMonitor only as a

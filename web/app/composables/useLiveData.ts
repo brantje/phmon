@@ -73,6 +73,11 @@ const characterResources = ref<Record<string, CharacterResourcesView>>({})
 const commandHistory = ref<RemoteCommand[]>([])
 const characterControls = ref<ControlsSnapshot | null>(null)
 const eventFeeds = ref<Record<string, EventPage>>({})
+// A feed with no snapshot yet is 'loading'; one the server could not answer is
+// 'unavailable', so a view merging several feeds can settle without it.
+const eventFeedStatus = ref<
+  Record<string, 'loading' | 'current' | 'unavailable'>
+>({})
 const offerFeeds = ref<Record<string, GlobalOffersPage>>({})
 const offerFeedStatus = ref<
   Record<string, 'loading' | 'current' | 'unavailable'>
@@ -513,6 +518,10 @@ function setCharacterControls(characterID: string) {
 function setEventFeed(subscriptionID: string, filter: LiveFilter) {
   ensureSubscription(subscriptionID, 'events', filter, () => {
     removeEventFeedSnapshot(subscriptionID)
+    eventFeedStatus.value = {
+      ...eventFeedStatus.value,
+      [subscriptionID]: 'loading',
+    }
   })
 }
 
@@ -829,6 +838,11 @@ function removeEventFeedSnapshot(subscriptionID: string) {
     if (id !== subscriptionID) next[id] = page
   }
   eventFeeds.value = next
+  eventFeedStatus.value = Object.fromEntries(
+    Object.entries(eventFeedStatus.value).filter(
+      ([id]) => id !== subscriptionID,
+    ),
+  )
 }
 
 function clearCharacterCommandSubscriptions() {
@@ -1240,6 +1254,12 @@ function handleFrame(frame: LiveServerFrame) {
         [subscription.id]: 'unavailable',
       }
     }
+    if (subscription.stream === 'events') {
+      eventFeedStatus.value = {
+        ...eventFeedStatus.value,
+        [subscription.id]: 'unavailable',
+      }
+    }
     if (subscription.id.startsWith('fanout-')) {
       markCommandFanOutUnavailable(subscription.id)
     } else if (markResourceFeedUnavailable(subscription)) {
@@ -1489,6 +1509,10 @@ function applySnapshot(subscription: Subscription, data: unknown) {
         )
           return false
         eventFeeds.value = { ...eventFeeds.value, [subscription.id]: page }
+        eventFeedStatus.value = {
+          ...eventFeedStatus.value,
+          [subscription.id]: 'current',
+        }
         return true
       }
       if (subscription.stream === 'analytics') {
@@ -1740,6 +1764,7 @@ export function useLiveData() {
     commandHistory: readonly(commandHistory),
     characterControls: readonly(characterControls),
     eventFeeds: readonly(eventFeeds),
+    eventFeedStatus: readonly(eventFeedStatus),
     offerFeeds: readonly(offerFeeds),
     offerFeedStatus: readonly(offerFeedStatus),
     tradeFeeds: readonly(tradeFeeds),

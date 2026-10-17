@@ -61,6 +61,7 @@ type liveFilter struct {
 	ResourceKeys      []string `json:"resource_keys,omitempty"`
 	Server            string   `json:"server,omitempty"`
 	Kinds             []string `json:"kinds,omitempty"`
+	ExcludeKinds      []string `json:"exclude_kinds,omitempty"`
 	Kind              string   `json:"kind,omitempty"`
 	Category          string   `json:"category,omitempty"`
 	Item              string   `json:"item,omitempty"`
@@ -1306,7 +1307,8 @@ func (h *LiveHub) snapshot(ctx context.Context, subscription liveSubscription) (
 		filter := events.Filter{Server: subscription.Filter.Server, CharacterID: subscription.Filter.CharacterID, CharacterQuery: subscription.Filter.Query,
 			Kind: subscription.Filter.Kind, Category: subscription.Filter.Category, ItemQuery: subscription.Filter.Item, EventID: subscription.Filter.EventID,
 			Cursor: subscription.Filter.Cursor, Limit: subscription.Filter.Limit, IncludePetPickups: subscription.Filter.IncludePetPickups,
-			IncludeOwnedGains: subscription.Filter.IncludeOwnedGains, HideOwn: subscription.Filter.HideOwn}
+			IncludeOwnedGains: subscription.Filter.IncludeOwnedGains, HideOwn: subscription.Filter.HideOwn,
+			ExcludeKinds: subscription.Filter.ExcludeKinds}
 		var err error
 		if subscription.Filter.From != "" {
 			value, parseErr := parseEventBound(subscription.Filter.From, false)
@@ -1533,9 +1535,10 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			Limit:           message.Filter.Limit,
 			ResourceKeys:    append([]string(nil), message.Filter.ResourceKeys...),
 			Server:          strings.TrimSpace(message.Filter.Server), Kind: message.Filter.Kind, Category: message.Filter.Category, Item: message.Filter.Item,
-			Kinds:   cloneOptionalStringSlice(message.Filter.Kinds),
-			EventID: message.Filter.EventID,
-			From:    message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
+			Kinds:        cloneOptionalStringSlice(message.Filter.Kinds),
+			ExcludeKinds: cloneOptionalStringSlice(message.Filter.ExcludeKinds),
+			EventID:      message.Filter.EventID,
+			From:         message.Filter.From, To: message.Filter.To, Cursor: message.Filter.Cursor,
 			IncludePetPickups: message.Filter.IncludePetPickups,
 			IncludeOwnedGains: message.Filter.IncludeOwnedGains,
 			HideOwn:           message.Filter.HideOwn,
@@ -1561,6 +1564,9 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 		return liveSubscription{}, false
 	}
 	if subscription.Stream != "notifications" && subscription.Filter.Kinds != nil {
+		return liveSubscription{}, false
+	}
+	if subscription.Stream != "events" && subscription.Filter.ExcludeKinds != nil {
 		return liveSubscription{}, false
 	}
 	switch subscription.Stream {
@@ -1655,7 +1661,9 @@ func validateLiveSubscription(message liveClientMessage) (liveSubscription, bool
 			subscription.Filter.EventID != "" && !agentdomain.ValidAgentID(subscription.Filter.EventID) ||
 			subscription.Filter.Limit != 0 && (subscription.Filter.Limit < 1 || subscription.Filter.Limit > events.MaxPageSize) ||
 			(subscription.Filter.IncludePetPickups || subscription.Filter.IncludeOwnedGains) && (subscription.Filter.Category != "" || (subscription.Filter.Kind != "drop.item" && subscription.Filter.Kind != "drop.rare")) ||
-			subscription.Filter.HideOwn && subscription.Filter.Kind != "job.hunter_trader_seen" {
+			subscription.Filter.HideOwn && subscription.Filter.Kind != "job.hunter_trader_seen" ||
+			!validExcludedEventKinds(subscription.Filter.ExcludeKinds) ||
+			len(subscription.Filter.ExcludeKinds) > 0 && subscription.Filter.Kind != "" {
 			return liveSubscription{}, false
 		}
 		var from, to *time.Time
@@ -1783,6 +1791,30 @@ func validAnalyticsCharacterIDs(ids []string) bool {
 			return false
 		}
 		seen[id] = struct{}{}
+	}
+	return true
+}
+
+// maxExcludedEventKinds bounds the exclusion list; there are fewer kinds than this.
+const maxExcludedEventKinds = 32
+
+// validExcludedEventKinds accepts a short list of distinct, known event kinds.
+func validExcludedEventKinds(kinds []string) bool {
+	if kinds == nil {
+		return true
+	}
+	if len(kinds) == 0 || len(kinds) > maxExcludedEventKinds {
+		return false
+	}
+	seen := make(map[string]struct{}, len(kinds))
+	for _, kind := range kinds {
+		if kind == "" || kind == "item.gains" || !events.ValidKind(kind) {
+			return false
+		}
+		if _, exists := seen[kind]; exists {
+			return false
+		}
+		seen[kind] = struct{}{}
 	}
 	return true
 }

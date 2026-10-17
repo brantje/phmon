@@ -12,13 +12,18 @@ import {
   tradeOutcomeLabel,
   tradeRouteLabel,
 } from '~/utils/tradeReportSummary'
-import { groupRecentEvents } from '~/utils/groupRecentEvents'
+import {
+  groupRecentEvents,
+  mergeRecentEventFeeds,
+  recentEventFeedsSettled,
+} from '~/utils/groupRecentEvents'
+import { notificationPresentation } from '~/utils/notificationPresentation'
 import { deathCauseLabel } from '~/utils/deathCause'
 import { formatCompactObservedGold } from '~/utils/fleetGold'
 import { offerItemChips } from '~/utils/offerTaxonomy'
 import { itemRecordFromActivityEvent } from '~/utils/itemDetailPopup'
 import {
-  dashboardNoisyEvent,
+  DASHBOARD_NOISY_KINDS,
   uniqueEventDetails,
   uniqueEventHeadline,
 } from '~/utils/uniqueEvent'
@@ -35,6 +40,7 @@ const {
 } = useFleetSummary()
 const {
   eventFeeds,
+  eventFeedStatus,
   offerFeeds,
   offerFeedStatus,
   connectionState,
@@ -57,21 +63,56 @@ const { serverScope } = useServerScope()
 const lastDeaths = computed(
   () => eventFeeds.value['dashboard-deaths']?.events || [],
 )
-const recentEvents = computed(() => {
-  const general = (eventFeeds.value['dashboard-events']?.events || []).filter(
-    (event) => !dashboardNoisyEvent(event.kind),
-  )
-  const uniques = eventFeeds.value['dashboard-uniques']?.events || []
-  const hunters = eventFeeds.value['dashboard-hunters']?.events || []
-  const byID = new Map<string, ActivityEvent>()
-  for (const event of [...uniques, ...hunters, ...general])
-    byID.set(event.event_id, event)
-  const merged = [...byID.values()].sort(
-    (left, right) =>
-      Date.parse(right.occurred_at) - Date.parse(left.occurred_at),
-  )
-  return groupRecentEvents(merged, 5)
-})
+// Recent Events scrolls inside its card. The server leaves out the noisy kinds,
+// so every feed returns rows the card actually shows.
+const RECENT_EVENT_ROWS = 25
+const RECENT_EVENT_FEEDS = [
+  'dashboard-uniques',
+  'dashboard-hunters',
+  'dashboard-events',
+] as const
+// Wait for every feed (an unavailable one counts as answered) so one arriving
+// first does not briefly show only uniques or only hunters.
+const recentEventsLoaded = computed(() =>
+  recentEventFeedsSettled(
+    RECENT_EVENT_FEEDS,
+    eventFeeds.value,
+    eventFeedStatus.value,
+  ),
+)
+const recentEventsUnavailable = computed(() =>
+  RECENT_EVENT_FEEDS.some((id) => eventFeedStatus.value[id] === 'unavailable'),
+)
+const recentEvents = computed(() =>
+  !recentEventsLoaded.value
+    ? []
+    : groupRecentEvents(
+        mergeRecentEventFeeds(
+          RECENT_EVENT_FEEDS.map((id) => ({
+            events: eventFeeds.value[id]?.events || [],
+            limit: RECENT_EVENT_ROWS,
+          })),
+        ),
+        RECENT_EVENT_ROWS,
+      ),
+)
+const recentEventRows = computed(() =>
+  recentEvents.value.map((group) => {
+    const { event } = group
+    const unique = uniqueEventDetails(event)
+    const item = ITEM_EVENT_KIND.test(event.kind)
+      ? itemRecordFromActivityEvent(event)
+      : null
+    return {
+      id: event.event_id,
+      event,
+      art: unique?.imageUrl,
+      item,
+      title: item ? itemEventLabel(event) : eventHeadline(event),
+      detail: recentEventDetail(group),
+    }
+  }),
+)
 const recentRareDrops = computed(
   () => eventFeeds.value['dashboard-rare-drops']?.events || [],
 )
@@ -196,9 +237,33 @@ function eventHeadline(event: ActivityEvent) {
       return uniqueEventHeadline(event)
     case 'chat.message_received':
       return `${textField(payload.sender) || event.character || 'Chat'}: ${textField(payload.message)}`
-    default:
-      return event.kind.replaceAll('.', ' ')
+    case 'job.hunter_trader_seen':
+      return `Trader / Hunter seen · ${textField(payload.value).trim() || 'Name unavailable'}`
+    default: {
+      const { title, body } = notificationPresentation(event)
+      return body ? `${title} · ${body}` : title
+    }
   }
+}
+
+// Unique notices carry the monster model in payload.model, so only these kinds
+// may be read as item events.
+const ITEM_EVENT_KIND = /^(drop|item|alchemy)\./
+
+function recentEventDetail(item: (typeof recentEvents.value)[number]) {
+  const { event } = item
+  if (event.kind === 'character.died') {
+    return [deathCauseLabel(event.payload), event.server]
+      .filter(Boolean)
+      .join(' · ')
+  }
+  if (uniqueEventDetails(event)) {
+    const names = item.observers.length
+      ? item.observers.map((observer) => observer.character).join(', ')
+      : event.character || 'unknown'
+    return [`Seen by ${names}`, event.server].filter(Boolean).join(' · ')
+  }
+  return eventObservers(item)
 }
 
 function eventObservers(item: (typeof recentEvents.value)[number]) {
@@ -265,15 +330,19 @@ function watchDashboardEvents(server: string) {
     limit: 5,
     kind: 'character.died',
   })
-  setEventFeed('dashboard-events', { ...scope, limit: 50 })
+  setEventFeed('dashboard-events', {
+    ...scope,
+    limit: RECENT_EVENT_ROWS,
+    exclude_kinds: [...DASHBOARD_NOISY_KINDS],
+  })
   setEventFeed('dashboard-uniques', {
     ...scope,
-    limit: 5,
+    limit: RECENT_EVENT_ROWS,
     kind: 'world.unique_spawned',
   })
   setEventFeed('dashboard-hunters', {
     ...scope,
-    limit: 5,
+    limit: RECENT_EVENT_ROWS,
     kind: 'job.hunter_trader_seen',
     hide_own: true,
   })
@@ -549,72 +618,86 @@ onBeforeUnmount(() => {
           Show recent events <UIcon name="i-lucide-arrow-up-right" />
         </NuxtLink>
       </div>
-      <ul v-if="recentEvents.length" class="dashboard-recent-list">
-        <li v-for="item in recentEvents" :key="item.event.event_id">
-          <img
-            v-if="uniqueEventDetails(item.event)?.imageUrl"
-            class="unique-event-art"
-            :src="uniqueEventDetails(item.event)?.imageUrl"
-            alt=""
-          />
-          <UIcon v-else name="i-lucide-activity" />
-          <div
-            v-if="itemRecordFromActivityEvent(item.event)"
-            class="dashboard-event-row"
-          >
-            <NuxtLink
-              v-if="item.event.character_id"
-              :to="`/characters/${item.event.character_id}`"
-            >
+      <div
+        v-if="liveStale && recentEventRows.length"
+        class="event-stale-note"
+        role="status"
+      >
+        Showing the last received events as stale.
+      </div>
+      <div v-if="recentEventRows.length" class="dashboard-recent-scroll">
+        <ul class="dashboard-recent-list">
+          <li v-for="row in recentEventRows" :key="row.id">
+            <div v-if="row.item" class="dashboard-event-row">
               <CharacterPortrait
-                :name="item.event.character"
-                :portrait-url="item.event.portrait_url"
+                v-if="row.event.character_id"
+                :name="row.event.character"
+                :portrait-url="row.event.portrait_url"
+                :to="`/characters/${row.event.character_id}`"
                 size="small"
               />
-            </NuxtLink>
-            <span class="dashboard-event-identity">
-              <span class="dashboard-event-item">
-                <strong>{{ itemEventLabel(item.event) }}</strong>
-                <ItemDetailPopup
-                  :item="itemRecordFromActivityEvent(item.event)!"
-                  :to="dashboardItemTarget(item.event)"
-                />
+              <span v-else class="dashboard-event-lead">
+                <UIcon name="i-lucide-gem" />
               </span>
-              <span>{{ eventObservers(item) }}</span>
-            </span>
-          </div>
-          <NuxtLink
-            v-else-if="item.event.character_id"
-            :to="`/characters/${item.event.character_id}`"
-          >
-            <CharacterPortrait
-              v-if="!uniqueEventDetails(item.event)?.imageUrl"
-              :name="item.event.character"
-              :portrait-url="item.event.portrait_url"
-              size="small"
-            />
-            <span class="dashboard-event-identity">
-              <strong>{{ eventHeadline(item.event) }}</strong>
-              <span>{{
-                uniqueEventDetails(item.event)
-                  ? `Seen by ${item.event.character || 'unknown'}`
-                  : eventObservers(item)
-              }}</span>
-            </span>
-          </NuxtLink>
-          <div v-else>
-            <strong>{{ eventHeadline(item.event) }}</strong>
-            <span>{{ eventObservers(item) }}</span>
-          </div>
-          <FormattedDate :value="item.event.occurred_at" />
-        </li>
-      </ul>
+              <span class="dashboard-event-identity">
+                <span class="dashboard-event-item">
+                  <strong>{{ row.title }}</strong>
+                  <ItemDetailPopup
+                    :item="row.item"
+                    :to="dashboardItemTarget(row.event)"
+                  />
+                </span>
+                <span>{{ row.detail }}</span>
+              </span>
+            </div>
+            <NuxtLink
+              v-else-if="row.event.character_id"
+              :to="`/characters/${row.event.character_id}`"
+            >
+              <img
+                v-if="row.art"
+                class="unique-event-art"
+                :src="row.art"
+                alt=""
+              />
+              <CharacterPortrait
+                v-else
+                :name="row.event.character"
+                :portrait-url="row.event.portrait_url"
+                size="small"
+              />
+              <span class="dashboard-event-identity">
+                <strong>{{ row.title }}</strong>
+                <span>{{ row.detail }}</span>
+              </span>
+            </NuxtLink>
+            <div v-else class="dashboard-event-row">
+              <img
+                v-if="row.art"
+                class="unique-event-art"
+                :src="row.art"
+                alt=""
+              />
+              <span v-else class="dashboard-event-lead">
+                <UIcon name="i-lucide-activity" />
+              </span>
+              <span class="dashboard-event-identity">
+                <strong>{{ row.title }}</strong>
+                <span>{{ row.detail }}</span>
+              </span>
+            </div>
+            <FormattedDate :value="row.event.occurred_at" />
+          </li>
+        </ul>
+      </div>
       <div v-else class="dashboard-event-empty">
         <UIcon name="i-lucide-clock-3" />
         <span>{{
-          connectionState === 'current'
+          recentEventsLoaded && connectionState === 'current'
             ? 'No recent events.'
-            : 'Waiting for event history…'
+            : recentEventsLoaded && recentEventsUnavailable
+              ? 'Event history is unavailable.'
+              : 'Waiting for event history…'
         }}</span>
       </div>
     </article>
