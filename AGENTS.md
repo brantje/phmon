@@ -7222,3 +7222,78 @@ were produced and no preferences were saved): burst of six, every card strictly
 decreasing, never more than three visible, no mid-countdown reset to 100%; a
 single notification decreases monotonically. Typecheck, ESLint and Prettier pass.
 Only the production web container needs a rebuild to pick this up.
+
+### Resume — 2026-10-17 Item Search load failure
+
+The operator reported "Item Search could not be loaded" on `/items`. The SQL
+itself takes 8–12 ms. Two causes were reproduced with the operator login. First,
+the page read about 14 pages of 100 rows, each in its own snapshot. Item rows
+change continuously, so every replayed sweep saw the total change by page 3 and
+the client gave up after two attempts. Second, pgx moves to a generic prepared
+plan after a few runs. In that plan PostgreSQL inlined the `guild_snapshot` CTE
+and re-ran its DISTINCT ON once per item row: 1.9 s instead of 17 ms.
+
+Fix: `ItemSearch` accepts up to 5000 rows (`MaxItemSearchLimit`) and the page
+reads everything in one request and one snapshot. `count(*)` runs only when
+paging. The CTE is `MATERIALIZED`. A dedicated two-connection read-only pool
+(`resources.Store.SetReadPool`) keeps searches from waiting behind ingestion.
+Rows no longer carry the unused `api_fields`/`api_field_types` or the duplicate
+top-level `metadata` (it stays in `item.metadata`): 6 MB → 1.5 MB. Timeouts are
+5 s in Go, 8 s in the Nuxt proxy and 15 s in the client. Files:
+`server/internal/resources/{search,store,store_integration_test}.go`,
+`server/internal/httpapi/{items,items_test}.go`, `server/cmd/server/main.go`,
+`web/app/composables/useItemSearch.ts`, `web/server/api/items.get.ts`,
+`scripts/{item_search_browser_check.mjs,search_proxy_smoke.py}`.
+
+Validation: Go resources/httpapi tests on a throwaway database (dropped
+afterwards), 310 web unit tests, typecheck, focused lint and Prettier. Only the
+server and web containers were rebuilt; PostgreSQL stayed up. 16 replayed loads
+against the live instance each succeeded in one request at ~0.3 s.
+`item_search_browser_check.mjs` passes at 1440×1000, 1280×800 and 390×844. Its
+stale Economy "N messages" wait now also accepts "N offers". Ingestion still
+deletes and re-inserts whole containers on change (about 13M item-row rewrites);
+that is out of scope here. Not committed. Exact next action: none for this fix.
+
+### Resume — 2026-10-17 Economy all-character timeout (rollups)
+
+Operator report: `/analytics?view=economy` with all characters timed out, then
+loaded later. Samples had grown to 888k (≈90k/day); the 7-day all-character
+latest-per-bucket and net-change queries scanned ~663k rows (1.3 s + 1.7 s) and
+exceeded the 2.5 s statement budget, alone on an idle copy as well as under load.
+Migration 000038 adds `character_gold_rollups` (per character × UTC quarter:
+latest gold sample, comparable-interval sum/count and carried subset) and
+`analytics_rollup_state`. `RunGoldRollups` (1 min) rolls quarters older than
+5 min, rebuilds the last hour, and backfills from the oldest sample on first run
+(10 days took 3.5 s). Economy reads rollups before the watermark and raw samples
+after it; unaligned `From` or non-15-minute offsets keep the raw path. Retention
+deletes expired rollups. Guild Economy is unchanged.
+
+Files: migration 000038, `server/internal/analytics/{gold_rollup.go,economy.go,
+store.go,gold_rollup_integration_test.go}`, `server/cmd/server/main.go`,
+`docs/analytics-calculations.md`. Validation: full `go test ./...` and race
+analytics/httpapi on a disposable database (dropped); the raw-vs-rollup test fails
+when the first-quarter carry rule is removed. On a copy of live data raw 7/10-day
+queries timed out while rollup results took 85–103 ms and matched raw exactly for
+every window raw could finish. Only the server container was rebuilt; migration
+38 applied and the watermark advances. A 75 s browser check of the exact URL, a
+10-day range and 390 px had 241 snapshots, zero unavailable frames, 12 series.
+Note: live `character_metric_samples` has an unused `storage_gold` column not
+created by any migration. Not committed. Exact next action: none for this fix;
+`sampleCoverage` still counts all samples per snapshot (73 ms today) and could
+use the rollups if it grows.
+
+### Resume — 2026-10-17 GreatestSRO notification sound candidates
+
+The operator asked for in-game sounds suitable for the 30 browser notification
+kinds. The existing read-only PK2 reader inventoried GreatestSRO: `Data.pk2`
+contains 2,982 WAVs (78 under `prim/snd/ui/`); `Media.pk2` contains no WAV/OGG;
+`Music.pk2` has 56 background OGG tracks. Extracted all 78 UI clips and 9 related
+effects into ignored `exports/notification-sound-review/`, with a local audition
+`index.html`, manifest/checksums and a suggested mapping for every kind. The
+client's `effectsound.txt` verifies rare-drop, pickup, level-up, warning,
+alchemy and pet-summon cues; other matches are explicitly proposals. See
+`docs/notification-sound-candidates.md`. All 87 files passed PCM/size/SHA checks,
+all 30 recommendations match the current notification catalog, and headless
+Chrome loaded the local review page. No audio was added to the production bundle
+or web app, and no notifications were sent. Exact next action for this request:
+operator auditions candidates; browser integration can follow if requested.
