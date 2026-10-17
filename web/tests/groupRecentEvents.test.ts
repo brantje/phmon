@@ -4,6 +4,7 @@ import type { ActivityEvent } from '../shared/types/live.ts'
 import {
   groupRecentEvents,
   mergeRecentEventFeeds,
+  recentEventFeedsSettled,
 } from '../app/utils/groupRecentEvents.ts'
 
 function chatEvent(
@@ -180,4 +181,39 @@ test('keeps every row when no feed is full', () => {
   ])
 
   assert.equal(merged.length, 2)
+})
+
+test('recent event feeds settle once each has a page or is unavailable', () => {
+  const ids = ['uniques', 'hunters', 'events']
+  const page = { events: [], total: 0 }
+
+  assert.equal(recentEventFeedsSettled(ids, {}, {}), false)
+  assert.equal(
+    recentEventFeedsSettled(ids, { uniques: page, events: page }, {}),
+    false,
+  )
+  assert.equal(
+    recentEventFeedsSettled(
+      ids,
+      { uniques: page, events: page },
+      { hunters: 'loading' },
+    ),
+    false,
+  )
+  assert.equal(
+    recentEventFeedsSettled(
+      ids,
+      { uniques: page, events: page },
+      { hunters: 'unavailable' },
+    ),
+    true,
+  )
+  assert.equal(
+    recentEventFeedsSettled(
+      ids,
+      { uniques: page, hunters: page, events: page },
+      {},
+    ),
+    true,
+  )
 })

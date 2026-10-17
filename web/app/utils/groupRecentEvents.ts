@@ -11,6 +11,19 @@ export interface RecentEventFeed {
   limit: number
 }
 
+export type EventFeedStatus = 'loading' | 'current' | 'unavailable'
+
+// The merge below assumes every feed has answered: one arriving first would
+// briefly show only its own rows. A feed the server could not answer counts as
+// answered (with no rows), so the others stay visible.
+export function recentEventFeedsSettled(
+  ids: readonly string[],
+  loaded: Readonly<Record<string, unknown>>,
+  status: Readonly<Record<string, EventFeedStatus | undefined>>,
+): boolean {
+  return ids.every((id) => loaded[id] || status[id] === 'unavailable')
+}
+
 // Merges several latest-N feeds into one newest-first list. A full page only
 // reaches back to its oldest row, so rows from other feeds older than that are
 // dropped; otherwise the full feed's missing older rows would leave a silent gap.

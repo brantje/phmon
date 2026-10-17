@@ -15,6 +15,7 @@ import {
 import {
   groupRecentEvents,
   mergeRecentEventFeeds,
+  recentEventFeedsSettled,
 } from '~/utils/groupRecentEvents'
 import { notificationPresentation } from '~/utils/notificationPresentation'
 import { deathCauseLabel } from '~/utils/deathCause'
@@ -39,6 +40,7 @@ const {
 } = useFleetSummary()
 const {
   eventFeeds,
+  eventFeedStatus,
   offerFeeds,
   offerFeedStatus,
   connectionState,
@@ -69,10 +71,17 @@ const RECENT_EVENT_FEEDS = [
   'dashboard-hunters',
   'dashboard-events',
 ] as const
-// The merge assumes every feed is loaded; one arriving first would briefly
-// show only uniques or only hunters.
+// Wait for every feed (an unavailable one counts as answered) so one arriving
+// first does not briefly show only uniques or only hunters.
 const recentEventsLoaded = computed(() =>
-  RECENT_EVENT_FEEDS.every((id) => eventFeeds.value[id]),
+  recentEventFeedsSettled(
+    RECENT_EVENT_FEEDS,
+    eventFeeds.value,
+    eventFeedStatus.value,
+  ),
+)
+const recentEventsUnavailable = computed(() =>
+  RECENT_EVENT_FEEDS.some((id) => eventFeedStatus.value[id] === 'unavailable'),
 )
 const recentEvents = computed(() =>
   !recentEventsLoaded.value
@@ -686,7 +695,9 @@ onBeforeUnmount(() => {
         <span>{{
           recentEventsLoaded && connectionState === 'current'
             ? 'No recent events.'
-            : 'Waiting for event history…'
+            : recentEventsLoaded && recentEventsUnavailable
+              ? 'Event history is unavailable.'
+              : 'Waiting for event history…'
         }}</span>
       </div>
     </article>

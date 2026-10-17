@@ -1602,7 +1602,9 @@ Unique notices no longer render as "Item / Unknown item" (their `payload.model` 
 monster model); unmapped kinds use the notification titles. The live `events` stream
 accepts `exclude_kinds`, so the card gets 25 displayable rows instead of item stack
 changes; separate uniques and hunter (`hide_own`) feeds are kept, and the three
-feeds merge without gaps (`mergeRecentEventFeeds`). Files: `server/internal/{events/store.go,
+feeds merge without gaps (`mergeRecentEventFeeds`). `useLiveData` exposes `eventFeedStatus`; a feed the
+server reports unavailable counts as answered (no rows), so the other feeds stay visible,
+and an empty card then says the history is unavailable (CodeRabbit finding on PR #98). Files: `server/internal/{events/store.go,
 events/exclude_kinds_integration_test.go,httpapi/live.go,httpapi/live_test.go}`,
 `web/app/{components/DashboardOverview.vue,utils/{groupRecentEvents,uniqueEvent}.ts,
 assets/css/main.css}`, `web/shared/types/live.ts`, web tests, `docs/protocol.md`.
