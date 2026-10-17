@@ -556,6 +556,44 @@ func TestPackagedMetadata(t *testing.T) {
 	}
 }
 
+func TestPackagedSealedDegreesAboveTen(t *testing.T) {
+	m, err := LoadItemMetadata("../../game-data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := m.Catalogs[m.Servers["greatest"]]
+	nova := c.Items["4044"].Presentation
+	if c.Items["4044"].Code != "ITEM_CH_SWORD_11_A_RARE" || nova["seal"] != "Seal of Nova" ||
+		fmt.Sprint(nova["degree"]) != "11" || nova["rare"] != true {
+		t.Fatalf("11th degree sealed sword = %v", nova)
+	}
+	// No client string names a seal for the 12th degree and up; the degree is still known.
+	divine := c.Items["4047"].Presentation
+	if c.Items["4047"].Code != "ITEM_CH_SWORD_12_A_RARE" || fmt.Sprint(divine["degree"]) != "12" ||
+		divine["rare"] != true {
+		t.Fatalf("12th degree sealed sword = %v", divine)
+	}
+	if _, ok := divine["seal"]; ok {
+		t.Fatalf("12th degree item must not invent a seal: %v", divine)
+	}
+	for id, item := range c.Items {
+		degree := fmt.Sprint(item.Presentation["degree"])
+		switch item.Presentation["seal"] {
+		case "Seal of Nova":
+			if degree != "11" {
+				t.Fatalf("item %s has Seal of Nova at degree %s", id, degree)
+			}
+		case "Seal of Star", "Seal of Moon", "Seal of Sun":
+			if n, err := strconv.Atoi(degree); err != nil || n < 1 || n > 10 {
+				t.Fatalf("item %s has a legacy seal at degree %s", id, degree)
+			}
+		case nil:
+		default:
+			t.Fatalf("item %s has unexpected seal %v", id, item.Presentation["seal"])
+		}
+	}
+}
+
 func TestBlueRollPercentMatchesClientTooltips(t *testing.T) {
 	for _, tc := range []struct {
 		code     string

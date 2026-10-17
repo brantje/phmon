@@ -733,7 +733,8 @@ and runtime evidence for a session-targeted safe action.
   remains unchanged in storage. Guild and pet slots use the same resolver.
 - Greatest maps to operator dataset `gamedata-47c969ded0613d4c2a22`; 14,238 items,
   3,411 distinct local icon files, all present. Verified table-derived rarity,
-  degree (legacy degrees 1–10), seal, equipment classification/position and
+  degree (degrees 1–15), seal (Star/Moon/Sun for 1–10, Nova for 11; none
+  defined for 12+), equipment classification/position and
   requirements are separate from instance data. Unknown semantics stay omitted.
 - Open: passive vSRO 1.188 item decoding and representative captured packet
   fixtures are not implemented/available. Therefore rolled defense/absorption,

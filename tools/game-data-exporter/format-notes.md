@@ -174,7 +174,12 @@ https://github.com/SDClowen/RSBot/blob/1723fed61b7c75cdb7db58cf04cd5a19dc560fc5/
 and sibling RefObjCommon/ObjectCountry/ObjectGender/ObjectRarity sources.
 Common columns 9–12 type IDs, 14 country, 15 rarity, 32–39 requirement pairs;
 item columns 58 gender, 59 strength, 60 intelligence, 61 item class. Equipment
-class determines degree and, for rarity 2 and legacy class 1–30, Star/Moon/Sun.
+class determines degree (three classes per degree: 1–30 are degrees 1–10, 31 is
+degree 11 with 32–33 unused, 34–45 are degrees 12–15; item codes and required
+levels agree) and, for rarity 2, the seal: class 1–30 Star/Moon/Sun, class 31
+"Seal of Nova" (client strings `PARAM_RARE_FIRST2` and "11th Grade Seal of Nova").
+No client string names a seal for degree 12 and up (their A/B/C tiers are
+Magic/Rare/Legend), so none is exported for them.
 No name-pattern classification or unverified rolled-stat formula is used.
 The local source definitions for the four operator screenshots agree with their
 visible static fields. Base stats are deliberately not displayed as instance stats.

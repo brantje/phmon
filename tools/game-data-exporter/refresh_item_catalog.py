@@ -3,8 +3,8 @@
 Usage: python refresh_item_catalog.py CATALOG_JSON TEXTDATA_DIR
 
 Adds static tooltip facts (attack distance, max magic options, mastery
-requirements, specific item group) to existing item presentations and value
-ranges to magic options. Existing keys, names and icons are kept. A matched ID
+requirements, degree and seal, specific item group) to existing item
+presentations and value ranges to magic options. Existing keys, names and icons are kept. A matched ID
 whose item code differs from the catalog aborts the run before writing.
 """
 import json
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 from phmon_game_exporter.item_metadata import item_metadata
 
-NEW_KEYS = ('attack_distance', 'max_magic_options', 'mastery_requirements')
+NEW_KEYS = ('attack_distance', 'max_magic_options', 'mastery_requirements', 'degree', 'seal')
 
 
 def read_table(path: Path) -> list[list[str]]:

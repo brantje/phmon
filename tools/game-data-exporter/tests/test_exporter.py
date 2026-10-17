@@ -658,6 +658,38 @@ def test_item_tooltip_static_facts() -> None:
     assert "required_level" not in presentation
 
 
+def _sealed_equipment(item_class: int, rarity: str = "2") -> dict:
+    fields = ["0"] * 160
+    fields[9:13] = ["3", "1", "6", "2"]
+    fields[14], fields[15] = "1", rarity
+    fields[58:62] = ["0", "0", "0", str(item_class)]
+    return item_metadata(fields)
+
+
+def test_item_class_degree_and_seal_cover_degrees_above_ten() -> None:
+    # Three classes per degree. Seals follow the client's PARAM_RARE_* strings.
+    for item_class, degree, seal in (
+        (1, 1, "Seal of Star"),
+        (2, 1, "Seal of Moon"),
+        (30, 10, "Seal of Sun"),
+        (31, 11, "Seal of Nova"),
+    ):
+        presentation = _sealed_equipment(item_class)
+        assert (presentation["degree"], presentation["seal"]) == (degree, seal)
+    # 12th degree and up (classes 34-45) have no client seal string: degree only.
+    for item_class, degree in ((34, 12), (36, 12), (37, 13), (42, 14), (45, 15)):
+        presentation = _sealed_equipment(item_class)
+        assert presentation["degree"] == degree
+        assert "seal" not in presentation
+        assert presentation["rare"] is True
+    # Only rarity 2 is sealed; set items of class 31 keep their degree but no seal.
+    presentation = _sealed_equipment(31, rarity="3")
+    assert presentation["degree"] == 11 and "seal" not in presentation
+    # Unknown and out-of-range classes carry no degree.
+    assert "degree" not in _sealed_equipment(0)
+    assert "degree" not in _sealed_equipment(61)
+
+
 def _load_refresh_script():
     import importlib.util
 
@@ -708,6 +740,7 @@ def test_refresh_item_catalog_merges_static_facts(tmp_path) -> None:
     assert presentation["name"] == "Soul Fiend" and presentation["sort_type"] == "Weapon"
     assert presentation["item_group"] == "Twohand staff"
     assert presentation["attack_distance"] == "0.6" and presentation["max_magic_options"] == 9
+    assert presentation["degree"] == 10 and presentation["seal"] == "Seal of Star"
     assert (refreshed["magic_options"]["101"]["value_min"], refreshed["magic_options"]["101"]["value_max"]) == (5, 60)
     assert catalog_path.stat().st_mode & 0o777 == 0o644
 
