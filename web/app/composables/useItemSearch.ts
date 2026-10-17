@@ -23,12 +23,14 @@ export function useItemSearch(server: Ref<string>) {
           query: {
             server: scope === 'all' ? undefined : scope,
             include_sets: 'true',
-            limit: 100,
+            // One page reads every row from one snapshot; paging across
+            // requests almost always saw the total change midway.
+            limit: 5000,
             cursor,
           },
           signal,
           retry: 0,
-          timeout: 10_000,
+          timeout: 15_000,
         }),
       )
       if (current === generation) items.value = result

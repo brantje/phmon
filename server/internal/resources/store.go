@@ -18,6 +18,7 @@ import (
 
 type Store struct {
 	pool     *pgxpool.Pool
+	readPool *pgxpool.Pool
 	metadata *ItemMetadata
 }
 
@@ -32,6 +33,14 @@ const guildStorageEvidenceOrder = `CASE WHEN
     THEN 1 ELSE 0 END DESC`
 
 func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+// Item Search reads must not wait behind stalled ingestion commits. Snapshot
+// writes keep using the original pool.
+func (s *Store) SetReadPool(pool *pgxpool.Pool) {
+	if s != nil {
+		s.readPool = pool
+	}
+}
 
 func (s *Store) Apply(ctx context.Context, agentID, characterID string, generation, revision uint64, sessionID string, snapshot Snapshot) error {
 	if s == nil || s.pool == nil || generation == 0 || revision == 0 || snapshot.Revision != revision {

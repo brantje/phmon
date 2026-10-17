@@ -72,7 +72,7 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	}
 	store := NewStore(pool)
 	ownerFull := Snapshot{Revision: 1, Full: true, Resources: map[string]json.RawMessage{
-		"inventory":       json.RawMessage(`{"availability":"observed","capacity":2,"used_slots":1,"slots":[{"source_slot":13,"displayed_slot":0,"item":{"model":7,"name":"Stack","servername":"ITEM_STACK","quantity":9007199254740993}} ,null]}`),
+		"inventory":       json.RawMessage(`{"availability":"observed","capacity":2,"used_slots":1,"slots":[{"source_slot":13,"displayed_slot":0,"item":{"model":7,"name":"Stack","servername":"ITEM_STACK","quantity":9007199254740993,"api_fields":{"plus":0},"api_field_types":{"plus":"int"}}} ,null]}`),
 		"storage":         json.RawMessage(`{"availability":"not_observed","reason":"getter_unavailable_or_not_open"}`),
 		"guild_storage":   json.RawMessage(`{"availability":"observed","gold":4000,"capacity":1,"used_slots":1,"slots":[{"source_slot":0,"displayed_slot":0,"item":{"model":8,"quantity":3}}]}`),
 		"item_enrichment": json.RawMessage(`{"availability":"unavailable","protocol":"unknown","reason":"passive_item_packet_decoder_not_enabled"}`),
@@ -113,6 +113,22 @@ func TestResourceSnapshotsPersistFencingAndFreshness(t *testing.T) {
 	if err != nil || stackPage.Total != 1 || len(stackPage.Items) != 1 ||
 		stackPage.Items[0].QuantityExact != "9007199254740993" {
 		t.Fatalf("search exact stack quantity = %+v, err=%v", stackPage, err)
+	}
+	if _, ok := stackPage.Items[0].Item["api_fields"]; ok {
+		t.Fatalf("item search returned raw api_fields: %+v", stackPage.Items[0].Item)
+	}
+	if _, ok := stackPage.Items[0].Item["api_field_types"]; ok {
+		t.Fatalf("item search returned raw api_field_types: %+v", stackPage.Items[0].Item)
+	}
+	// The page reads every row in one snapshot; total needs no second query.
+	store.SetReadPool(pool)
+	wholePage, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Limit: MaxItemSearchLimit, IncludeEquipment: true})
+	if err != nil || wholePage.Total != 2 || len(wholePage.Items) != 2 || wholePage.NextCursor != "" {
+		t.Fatalf("single-snapshot search = %+v, err=%v", wholePage, err)
+	}
+	store.SetReadPool(nil)
+	if _, err := store.ItemSearch(ctx, ItemSearchFilter{Server: server, Limit: MaxItemSearchLimit + 1}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversized item search limit err=%v", err)
 	}
 	contexts, err := store.ReverseReturnContexts(ctx, map[string]string{characterID: ownerSession, observerID: observerSession}, time.Now())
 	if err != nil {

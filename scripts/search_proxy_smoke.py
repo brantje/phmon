@@ -26,13 +26,13 @@ for path in ("/api/items", "/api/economy/offers"):
     assert status == 401, (path, "unauthenticated status", status)
 
 cookie = login_cookie(web, web, root)
-for path, key in (("/api/items", "items"), ("/api/economy/offers", "offers")):
+for path, key, too_large in (("/api/items", "items", 5001), ("/api/economy/offers", "offers", 101)):
     status, headers, body = read(path + "?limit=1", cookie)
     assert status == 200, (path, status, body)
     assert headers.get("Cache-Control") == "no-store", path
     assert isinstance(body.get(key), list), (path, body)
     assert isinstance(body.get("total"), int), (path, body)
     assert len(body[key]) <= 1, (path, "limit was not forwarded")
-    status, _, _ = read(path + "?limit=101", cookie)
+    status, _, _ = read(path + "?limit={}".format(too_large), cookie)
     assert status == 400, (path, "validation status", status)
     print("PASS {}: authenticated response, query limit, no-store and HTTP 400/401".format(path))
