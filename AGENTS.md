@@ -1577,6 +1577,22 @@ for the combined scope, then monitor CI and automated review on the pushed head,
 address actionable findings and rerun affected checks. Leave the PR open; merge
 is not authorized by this request. No worktree or bot operations are needed.
 
+### Resume — 2026-10-17 character on Connected / Joined game notifications
+
+Operator request: the Connected popup showed "Observer unavailable". phBot calls
+`connected()`/`joined_game()` before a character is selected, so those events had no
+character. Plugin **1.9.50** (protocol stays 22) holds `session.connected` and
+`session.joined_game` (at most 8, 120 s) and attaches the next registered character,
+keeping event ID, `occurred_at` and position; they are sent unbound after the hold, on
+disconnect, `leave_character()` or stop. No server change. The popup shows "Character
+not selected" for unbound session events and drops the empty server separator. Files:
+`plugin/{PhMon.py,test_phmon.py,README.md}`, `web/app/components/EventNotificationHost.vue`,
+`docs/phbot-capabilities.md`. Validation: 310 plugin tests, protocol contract
+unchanged, Prettier on the Vue file. Not run: ESLint/typecheck (local Node is 20, not
+24.20.0), browser check, real phBot. Existing events are not backfilled. Exact next
+action: operator installs plugin 1.9.50, relogs a character and confirms the popup and
+Events rows show its name; rebuild web for the popup wording.
+
 ## Product and architecture
 
 Build a completely self-hosted alternative to phMonitor, using phMonitor only as a

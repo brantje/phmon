@@ -3340,6 +3340,86 @@ class CanonicalCallbackTests(unittest.TestCase):
         self.assertEqual(released['occurred_at'], held['occurred_at'])
         self.assertEqual(released['sequence'], held['sequence'])
 
+    def hold_login_events(self):
+        # A login before any character is selected: the worker has no registration.
+        self.worker._current_identity = None
+        self.worker.character_id = None
+        self.worker.session_id = None
+        with patch.object(plugin, '_monotonic', return_value=100.0):
+            plugin._lifecycle_event('session.connected', 'connected')
+            plugin._lifecycle_event('session.joined_game', 'joined_game')
+        self.assertEqual(len(self.worker._login_held_events), 2)
+        self.assertTrue(self.worker._event_samples.empty())
+
+    def register_character(self):
+        self.worker._current_identity = self.identity
+        self.worker.character_id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+        self.worker.session_id = 'ffffffff-1111-4222-8333-444444444444'
+        self.worker._registration_generation += 1
+
+    def test_login_events_wait_for_the_registered_character_and_keep_order(self):
+        self.hold_login_events()
+        held_ids = [entry['event']['event_id'] for entry in self.worker._login_held_events]
+        held_times = [entry['event']['occurred_at'] for entry in self.worker._login_held_events]
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.worker._flush_login_held()
+        self.assertEqual(len(self.worker._login_held_events), 2)
+        self.register_character()
+        with patch.object(plugin, '_monotonic', return_value=101.0):
+            self.worker._flush_login_held()
+        released = [self.worker._event_samples.get_nowait() for _ in range(2)]
+        self.assertEqual([event['kind'] for event in released], ['session.connected', 'session.joined_game'])
+        self.assertEqual([event['event_id'] for event in released], held_ids)
+        self.assertEqual([event['occurred_at'] for event in released], held_times)
+        for event in released:
+            self.assertEqual(event['server'], 'Silkroad')
+            self.assertEqual(event['character_name'], 'Alpha')
+            self.assertEqual(event['character_id'], self.worker.character_id)
+            self.assertEqual(event['session_id'], self.worker.session_id)
+            self.assertIsNotNone(event['sequence'])
+            self.assertNotIn('_phmon_login_released', event)
+        self.assertEqual(self.worker._login_held_events, [])
+        self.assertTrue(self.worker._event_samples.empty())
+
+    def test_login_events_are_sent_without_a_character_after_the_hold(self):
+        self.hold_login_events()
+        with patch.object(plugin, '_monotonic', return_value=100.0 + plugin.LOGIN_IDENTITY_HOLD_SECONDS + 1):
+            self.worker._flush_login_held()
+        released = [self.worker._event_samples.get_nowait() for _ in range(2)]
+        for event in released:
+            self.assertIsNone(event['character_id'])
+            self.assertIsNone(event['session_id'])
+            self.assertIsNone(event.get('server'))
+        self.assertTrue(self.worker._event_samples.empty())
+        self.assertEqual(self.worker._login_held_events, [])
+
+    def test_disconnect_releases_held_login_events_before_itself(self):
+        self.hold_login_events()
+        self.worker.queue_event(None, {
+            'event_id': 'dddddddd-0000-4000-8000-000000000001', 'schema_version': 1,
+            'kind': 'session.disconnected', 'category': 'session',
+            'occurred_at': '2026-01-01T00:00:00Z', 'source': 'phbot.lifecycle_callback',
+            'source_ref': 'disconnected', 'payload': {},
+        })
+        kinds = [self.worker._event_samples.get_nowait()['kind'] for _ in range(3)]
+        self.assertEqual(kinds, ['session.connected', 'session.joined_game', 'session.disconnected'])
+
+    def test_worker_stop_releases_held_login_events(self):
+        self.hold_login_events()
+        self.worker.stop()
+        self.assertEqual(self.worker._login_held_events, [])
+        kinds = sorted(event['kind'] for event in plugin.EventSpool(self.spool_path).pending())
+        self.assertEqual(kinds, ['session.connected', 'session.joined_game'])
+
+    def test_login_hold_is_bounded(self):
+        self.worker._current_identity = None
+        self.worker.character_id = None
+        self.worker.session_id = None
+        for index in range(plugin.MAX_PENDING_LOGIN_EVENTS + 2):
+            plugin._lifecycle_event('session.connected', 'connected')
+        self.assertEqual(len(self.worker._login_held_events), plugin.MAX_PENDING_LOGIN_EVENTS)
+        self.assertEqual(self.worker._event_samples.qsize(), 2)
+
     def test_worker_stop_releases_held_pet_lifecycle_events(self):
         with patch.object(plugin, '_monotonic', return_value=100.0), \
                 patch.object(plugin, '_get_character_data', return_value=self.identity), \
